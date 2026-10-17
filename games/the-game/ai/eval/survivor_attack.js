@@ -516,14 +516,17 @@ module.exports = function (opts) {
     if (made.length) s.drop(made);
     return res;
   }
-  // the first frame (from the root) the board at node n, left alone, is lost before `to` -- Infinity when it is alive at `to`
-  function lostAlone(s, root, n, to, made) {
-    var from = n.t - root.t, lo = 0, hi = Math.max(1, Math.ceil(to - from));
-    var lost = function (t) { var x = s.advance(n, 'long', null, t); if (x && x._i >= 0) made.push(x); return !x || x.dead; };
-    if (!lost(hi)) return Infinity;
-    while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (lost(mid)) hi = mid; else lo = mid; }
-    return from + hi;
+  // the first frame (from the root) the board at node n, left alone, is lost before `to` -- Infinity when it is alive at `to`: one run of
+  // the engine, which stops at the frame the board is lost and says which (lostMany: a batch of them, on every thread)
+  function lostMany(s, root, ns, tos, made) {
+    var steps = ns.map(function (n, q) { return [n, 'long', null, Math.max(1, Math.ceil(tos[q] - (n.t - root.t)))]; });
+    return s.advanceMany(steps, true).map(function (x) {
+      if (!x || x.dead) return x ? x.t - root.t : 0;
+      made.push(x);
+      return Infinity;
+    });
   }
+  function lostAlone(s, root, n, to, made) { return lostMany(s, root, [n], [to], made)[0]; }
   // A PLAN ONCE EVERYTHING SHOWN HAS LANDED: from node n, the board run to `wait` frames after the root (the last block the game shows
   // landed) and settled, then a break looked for in two swaps -- true when a line of one or two swaps breaks more garbage than standing
   // still, false when none does, null when the board is lost before; the nodes made are added to `made`, for the caller to let go of
@@ -548,28 +551,27 @@ module.exports = function (opts) {
   function diesIn(board, hold, arrivals, horizon) {
     var s = search();
     s.reset();
-    var root = s.root(board.copy(), hold, arrivals || [], false), made = [], lo = 0, hi = Math.max(1, Math.ceil(horizon));
-    var lost = function (t) { var n = s.advance(root, 'long', null, t); if (n && n._i >= 0) made.push(n); return !n || n.dead; };
-    if (!lost(hi)) { s.drop(made); return Infinity; }
-    while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (lost(mid)) hi = mid; else lo = mid; }
+    var root = s.root(board.copy(), hold, arrivals || [], false), made = [], lost = lostAlone(s, root, root, Math.max(1, Math.ceil(horizon)), made);
     s.drop(made);
-    return hi;
+    return lost;
   }
   // GAMBIT'S SURVIVAL SEARCH (outlive): lines of swaps played on the engine one after another, a beam of the boards lost latest left
   // alone, on the engine, of those held longest -- the frame the garbage queued could next drop (the line's frames, then the later of
   // stop + pre-stop and the shake: they count down together) -- then with the most room over the stack, then the least garbage; each step's clears held to o.ok(sizes, chain) (the
-  // list), for as long as o.ms lasts (a level is begun only while the last one's time is left). The first line whose board, left alone,
+  // list), for as long as o.ms lasts. The first line whose board, left alone,
   // is still alive at o.to (frames from now), and o.rest past its own end, is the answer; else the line whose board is lost latest.
   // { seq, lostAt } or null. o: { to, rest, ms, depth, beam, ok }
   function outlive(board, hold, arrivals, o) {
-    var t0 = Date.now(), s = search(), depth = o.depth || 6, width = o.beam || 12, best = null, made = [], levelMs = 0;
+    var t0 = Date.now(), s = search(), depth = o.depth || 6, width = o.beam || 12, best = null, made = [];
     s.reset();
     var root = s.root(board.copy(), hold, arrivals || [], false);
     var held = function (n) { return (n.t - root.t) + Math.max((n.carry.stopTime || 0) + (n.carry.preStopTime || 0), n.carry.shakeTime || 0); };
     var level = [{ n: root, seq: [] }];
-    for (var d = 1; d <= depth && level.length && Date.now() - t0 + levelMs < o.ms; d++) {
+    for (var d = 1, perStep = 0; d <= depth && level.length; d++) {
       var tl = Date.now(), steps = [], meta = [];
       level.forEach(function (x) { x.n.b.legalSwaps().forEach(function (m) { steps.push([x.n, 'swap', m, 0]); meta.push(x.seq.concat([m])); }); });
+      // (a level is begun only while what the last took a step, over this one's steps, is left)
+      if (Date.now() - t0 + perStep * steps.length > o.ms) break;
       var outs = s.advanceMany(steps, true), kids = [], seen = {};
       outs.forEach(function (out, q) {
         if (!out || out.dead) return;
@@ -584,13 +586,18 @@ module.exports = function (opts) {
       // beam keeps the ones lost latest)
       kids.sort(function (a, b) { return b.h - a.h || b.room - a.room || a.g - b.g; });
       kids = kids.slice(0, 2 * width);
-      for (var i = 0; i < kids.length && Date.now() - t0 < o.ms; i++) {
-        var lost = kids[i].lost = lostAlone(s, root, kids[i].n, Math.max(o.to, kids[i].n.t - root.t + (o.rest || 0)), made);
+      var losts = lostMany(s, root, kids.map(function (x) { return x.n; }), kids.map(function (x) { return Math.max(o.to, x.n.t - root.t + (o.rest || 0)); }), made);
+      for (var i = 0; i < kids.length; i++) {
+        var lost = kids[i].lost = losts[i];
         if (!best || lost > best.lostAt) best = { seq: kids[i].seq, lostAt: lost };
         if (lost === Infinity) { s.drop(made); return best; }
       }
-      level = kids.filter(function (x) { return x.lost !== undefined; }).sort(function (a, b) { return b.lost - a.lost; }).slice(0, width);
-      levelMs = Date.now() - tl;
+      level = kids.sort(function (a, b) { return b.lost - a.lost; }).slice(0, width);
+      // (every board not kept is let go before the next level: the search holds one level's boards)
+      var keep = new Set(level.map(function (x) { return x.n; }));
+      s.drop(made.filter(function (x) { return !keep.has(x); }));
+      made = level.map(function (x) { return x.n; });
+      perStep = (Date.now() - tl) / steps.length;
     }
     s.drop(made);
     return best;

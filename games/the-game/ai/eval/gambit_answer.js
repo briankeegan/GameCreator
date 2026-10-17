@@ -32,11 +32,14 @@ function breakSearch(c) {
 function keyOf(k) { return k.kind === 'swap' && k.move ? k.move[0] + ',' + k.move[1] : k.kind; }
 
 // WHICH MOVES LIVE, GAMBIT'S OWN (plans/decision.md): every move judged on the engine as it will be pressed (attacker.judge), the board it
-// leaves then left alone -- it lives when that board is still alive LIFE frames past the last block the game shows landing (and past the
-// line's own end), or when, everything shown landed and settled, a break is left within two swaps (ready: a plan). One judge for every
-// move: Gambit's lines, the hold, and when none of them lives every other swap that fits the list. A raise lives only as Gambit decided
-// it (R.up: raiseReady played it out). With nothing living, the move whose board is lost latest -- Gambit's order between equals.
-var LIFE = 240, OUTLIVE_MS = 150;   // (OUTLIVE_MS: the most of a decision the survival search takes)   // (the frames past the last landing the board must stand: the survival search's horizon, SURVIVE_FRAMES)
+// leaves then left alone -- it lives as the default's survival search proves a move: still alive at the horizon (SURVIVE_FRAMES, or the
+// line's own end if later) and SURVIVE_REST frames of standing still past it (puyocpu.js, the same numbers) -- or when, everything shown
+// landed and settled, a break is left within two swaps (ready: a plan). One judge for every move: Gambit's lines, the hold, and when none
+// of them lives the lines of Gambit's survival search (outlive: the default's beam, SURVIVE_BEAM wide, every clear within the list). A
+// raise lives only as Gambit decided it (R.up: raiseReady played it out). With nothing living, the move whose board is lost latest --
+// Gambit's order between equals.
+var CPU = require(path.join(__dirname, 'puyocpu.js')).prototype;
+var HORIZON = CPU.SURVIVE_FRAMES, REST = CPU.SURVIVE_REST, BEAM = CPU.SURVIVE_BEAM;
 function lastLanding(c, R) {
   var land = null;
   c.arrivals.forEach(function (a) { if (land === null || a.at > land) land = a.at; });
@@ -45,10 +48,9 @@ function lastLanding(c, R) {
 }
 // one move judged: { lives, lostAt, ready } -- the readiness the decision already found for a candidate (k.ready, gambit_decide ready())
 // is not looked for again; the readiness check only when the board left alone does not stand
-function lifeSpan(c, R) { var land = lastLanding(c, R); return { land: land, to: Math.max(land || 0, 0) + LIFE }; }
 function survives(c, R, seq, isSettled, k) {
-  var sp = lifeSpan(c, R), known = k && k.ready !== undefined;
-  var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: known ? null : sp.land, readyIfLost: true, lifeTo: sp.to, lifeRest: LIFE });
+  var land = lastLanding(c, R), known = k && k.ready !== undefined;
+  var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: known ? null : land, readyIfLost: true, lifeTo: HORIZON + REST, lifeRest: REST });
   var ready = known ? k.ready : j.ready;
   return { lives: !j.dead && (j.lostAt === Infinity || ready === true), lostAt: j.lostAt, ready: ready, dead: j.dead };
 }
@@ -76,12 +78,12 @@ function lives(c, D) {
   // judged as every move is; its first swap is played, and the next decision searches again from the board it makes)
   if (!d) {
     if (!R.aloneOut && c.left() > 0) weigh('hold', 'fits');
-    var ms = Math.min(c.left(), OUTLIVE_MS);
+    var ms = c.left();
     if (!d && ms > 0) {
       var fitsAll = function (sizes, chain) {
         return chain <= GAMBIT.MAXCHAIN && (chain < 2 || GAMBIT.fits(list, { combo: 0, chain: chain })) && sizes.every(function (z) { return GAMBIT.fits(list, { combo: z, chain: 1 }); });
       };
-      var sv = c.attacker.outlive(c.board, c.m.hold, c.arrivals, { to: lifeSpan(c, R).to, rest: LIFE, ms: ms, ok: fitsAll });
+      var sv = c.attacker.outlive(c.board, c.m.hold, c.arrivals, { to: HORIZON + REST, rest: REST, beam: BEAM, ms: ms, ok: fitsAll });
       if (sv && sv.seq.length) {
         var k0 = sv.seq[0][0] + ',' + sv.seq[0][1], jl = c.attacker.judge(c.board, c.m.hold, sv.seq, c.arrivals, { tight: c.tight });
         if (!jl.dead && JUDGE.fitsList(list, jl.made, jl) && Math.max(jl.made.chain || 0, jl.chainAll || 0) <= GAMBIT.MAXCHAIN) {
