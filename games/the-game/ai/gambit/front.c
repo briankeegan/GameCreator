@@ -18,7 +18,7 @@
 #define MAXARRIVALS 1024
 #define FTHINK 8           // the answers' times kept, for how soon the next comes
 
-typedef struct { int32_t at; Incoming g; } Arrival;   // at: the stopWatch it is received on
+typedef struct { int32_t at, capped; Incoming g; } Arrival;   // at: the stopWatch it is received on; capped: held back (search.h CAPPED_AT)
 typedef struct { int32_t bits, holdLeft, holdStarted, swap; } Planned;
 typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys;
 
@@ -87,20 +87,22 @@ static double fNow(void) { return clock_ms(); }
 // What the senders' telegraphs show, as the garbage this board will receive and the stopWatch it arrives on (garbage due at T is
 // received once the frame before T has run): a source's transit by the stopWatch it lands on, its staged shipped from the end of the
 // list, none before the one ahead of it; a chain still going ships once it ends, at the soonest. The host's words (gn_tele):
-// nsrc, then per source its stopWatch, ntransit, each transit's at and npieces and pieces, nstaged and pieces; a piece is width, height,
-// isChain, isMetal, frameEarned, finalized (NUL, 0, 1).
+// nsrc, then per source its stopWatch, whether it is held back (an attack engine's queue: GarbageDelivery delivers it only while fewer
+// than CAPPED_AT are queued, a transit a frame, the late ones too), ntransit, each transit's at and npieces and pieces -- every transit
+// not yet delivered, the finished ones held back as well -- nstaged and pieces; a piece is width, height, isChain, isMetal,
+// frameEarned, finalized (NUL, 0, 1).
 static int32_t tele[1 << 15];
 static void arrivalsOf(const Board *b) {
   const int32_t *w = tele;
   int32_t mine = b->stopWatch, nsrc = *w++;
   F.narr = 0;
   for (int s = 0; s < nsrc; s++) {
-    int32_t sw = *w++, offset = mine - sw, floor = mine + 1, nt = *w++;
+    int32_t sw = *w++, capped = *w++, offset = mine - sw, floor = mine + 1, nt = *w++;
     for (int t = 0; t < nt; t++) {
       int32_t at = *w++ + offset, np = *w++;
       if (at < floor) at = floor;
       for (int k = 0; k < np; k++, w += 6)
-        if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = at; a->g = (Incoming){ w[0], w[1], w[2], w[3], w[4], w[5] }; }
+        if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = at; a->capped = capped; a->g = (Incoming){ w[0], w[1], w[2], w[3], w[4], w[5] }; }
     }
     int32_t ns = *w++, ship = sw;
     const int32_t *g0 = w;
@@ -109,7 +111,7 @@ static void arrivalsOf(const Board *b) {
       const int32_t *g = g0 + 6 * i;
       int32_t chainGoing = g[2] && g[5] != 1 ? sw + 1 : 0;
       ship = imax(ship, imax((g[4] == NUL ? sw : g[4]) + STAGING, chainGoing));
-      if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = ship + LAND + offset; a->g = (Incoming){ g[0], g[1], g[2], g[3], g[4], g[5] }; }
+      if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = imax(ship + LAND + offset, floor); a->capped = capped; a->g = (Incoming){ g[0], g[1], g[2], g[3], g[4], g[5] }; }
     }
   }
   // (sorted by when they arrive, the order they came in kept between equals)
@@ -133,11 +135,14 @@ static int unforeseenBy(const Arrival *knew, int nk, const Arrival *now, int nn,
   return 0;
 }
 // Garbage due by the frame just reached, received as the server receives it; what lands is taken out of `pend`.
+// (garbage held back lands as the search lands it, search.h runFrame: only while fewer than CAPPED_AT are queued, the earliest due a frame)
 static void landOn(Board *b, Arrival *pend, int32_t *n) {
-  int k = 0;
+  int k = 0, first = 0x7fffffff;
+  for (int i = 0; i < *n; i++) if (pend[i].capped && pend[i].at <= b->stopWatch && pend[i].at < first) first = pend[i].at;
+  int open = first != 0x7fffffff && b->ninc < CAPPED_AT;
   for (int i = 0; i < *n; i++) {
     Arrival *a = &pend[i];
-    if (a->at > b->stopWatch) { pend[k++] = *a; continue; }
+    if (a->at > b->stopWatch || (a->capped && !(open && a->at == first))) { pend[k++] = *a; continue; }
     nb_receive(b, a->g.width, a->g.height, a->g.isChain ? 1 : 0, a->g.isMetal ? 1 : 0, a->g.frameEarned == NUL ? b->stopWatch : a->g.frameEarned, a->g.finalized);
   }
   *n = k;
@@ -148,7 +153,7 @@ static int arrivalsFrom(const Board *b, const Arrival *arr, int n, Arr *out) {
   for (int i = 0; i < n && k < MAXARR; i++) {
     const Arrival *a = &arr[i];
     if (a->at <= b->stopWatch) continue;
-    out[k++] = (Arr){ imax(1, a->at - b->stopWatch), a->g.width, a->g.height, a->g.isChain ? 1 : 0, a->g.isMetal ? 1 : 0 };
+    out[k++] = (Arr){ imax(1, a->at - b->stopWatch), a->g.width, a->g.height, a->g.isChain ? 1 : 0, (a->g.isMetal ? 1 : 0) | (a->capped ? 2 : 0) };
   }
   return k;
 }
@@ -512,7 +517,14 @@ static int frontFrame(void) {
   int diverged = 0;
   if (F.haveExpect && differ(F.expect, t, why, sizeof why)) {
     dropAll(); F.st.diverged++; diverged = 1;
-    if (F.loggedDiffer < 40) { char l[256]; snprintf(l, sizeof l, "DIVERGED clock %d: %s", now, why); flog(l); F.loggedDiffer++; }
+    if (F.loggedDiffer < 40) {
+      // (and the garbage on its way as the telegraph shows it now, and as the plan knew it: how many, and how many due by now)
+      int dueNow = 0, dueKnew = 0;
+      for (int i = 0; i < F.narr; i++) dueNow += F.arr[i].at <= t->stopWatch;
+      for (int i = 0; i < F.nknew; i++) dueKnew += F.knew[i].at <= t->stopWatch;
+      char l[320]; snprintf(l, sizeof l, "DIVERGED clock %d: %s (on its way %d, due %d; known %d, due %d)", now, why, F.narr, dueNow, F.nknew, dueKnew);
+      flog(l); F.loggedDiffer++;
+    }
   }
   if (!diverged && F.haveExpect && revealed(F.expect, t)) { dropAll(); F.st.revealed++; }
   int32_t off = t->clock - t->stopWatch;
