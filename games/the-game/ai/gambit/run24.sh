@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # THE 24 GAMES, DISPATCHED: gambit-24.yml on main, with the profile, the bot and the panel-game branch given. Prints the run's id, when it
-# started and when it should be done (EDT; the median length of the last five runs that finished), then with `wait` waits for it and
+# started and when it should be done (Eastern time; the median length of the last five runs that finished), then with `wait` waits for it and
 # prints when it finished and the run's summary.
 #
 #   bash run24.sh [PROFILE] [wait]     PROFILE relative to games/the-game/ai/eval (default survivor-profiles/gambit-finish.json)
@@ -8,7 +8,7 @@
 set -u
 REPO=briankeegan/GameCreator WF=gambit-24.yml
 PROFILE=${1:-survivor-profiles/gambit-finish.json} WAIT=${2:-}
-edt() { TZ=America/New_York date -d "@$1" '+%H:%M %Z'; }
+edt() { TZ=America/New_York date -d "@$1" '+%H:%M ET'; }
 T0=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 for n in 1 2 3 4; do
   gh api -X POST repos/$REPO/actions/workflows/$WF/dispatches -f ref=main -f "inputs[profile]=$PROFILE" \
