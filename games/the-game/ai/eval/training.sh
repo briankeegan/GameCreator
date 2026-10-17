@@ -29,7 +29,8 @@ case "$PATTERN" in combo_storm) SIZE=4x1 ;; factory) SIZE=6x2 ;; large_garbage) 
 
 # THE BOT HAS THE MACHINE THE DRILLS GIVE IT. The client draws every frame in
 # software (llvmpipe), which spreads over every core it is given; it is held
-# to the first core with one render thread, and WasmSurvivor runs on the rest.
+# to the first core with one render thread, and the bot's thinking and the X server run on the rest, so nothing else is scheduled on
+# the game's core.
 NCPU=$(nproc); CLIENT_CPU=0; MIND_CPUS="1-$(( NCPU - 1 ))"
 [ "$NCPU" -lt 2 ] && MIND_CPUS=0
 MIND=
@@ -62,7 +63,8 @@ for g in $(seq 1 "$GAMES"); do
   : > "$OUT"; : > "$CMD"
   (cd "$PG" && XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp} PA_CMD_FILE="$CMD" PA_OUT_FILE="$OUT" \
      PA_SURVIVOR=1 PA_BOT="$BOT" PA_SURVIVOR_PORT="$PORT" GC_EVAL_DIR="$EVAL" PA_TRAINING_FRAMES="${FRAMES:-10800}" \
-     LP_NUM_THREADS=1 exec taskset -c "$CLIENT_CPU" timeout $(( MINUTES * 60 )) stdbuf -oL xvfb-run --auto-servernum -s "-screen 0 1280x720x24" "$LOVE" "$PG") > "$OUT_DIR/client-$g.log" 2>&1 &
+     LP_NUM_THREADS=1 exec taskset -c "$MIND_CPUS" timeout $(( MINUTES * 60 )) stdbuf -oL xvfb-run --auto-servernum -s "-screen 0 1280x720x24" \
+       taskset -c "$CLIENT_CPU" "$LOVE" "$PG") > "$OUT_DIR/client-$g.log" 2>&1 &
   CLIENT=$!
   for i in $(seq 1 300); do grep -q '^ready=' "$OUT" && break; kill -0 $CLIENT 2>/dev/null || break; sleep 1; done
   grep -q '^ready=' "$OUT" || { echo "game $g: the client did not start" | tee -a "$OUT_DIR/results.txt"; continue; }
