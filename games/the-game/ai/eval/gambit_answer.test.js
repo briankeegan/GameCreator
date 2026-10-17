@@ -150,6 +150,23 @@ var tsw = tbd.legalSwaps(), backLine = [tsw[0]], fwdLine = [tsw[1]], seenT = new
 var offeredT = PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: seenT }, { under: true });
 assert.deepStrictEqual(offeredT[0] && offeredT[0].seq, fwdLine, 'the line back to a board stood on is passed over');
 assert.deepStrictEqual(PROPt.toward({ board: tbd, br: { towards: [backLine, fwdLine] }, seenDig: new Set() }, { under: true })[0].seq, backLine, 'with nothing stood on, the first line');
+// READY WHEN EVERYTHING LANDS: with garbage on its way, a line that breaks nothing lives only when a break is there once it has landed --
+// standing on stop time is not enough. A board under a slab with 600 frames of stop, a second twelve-row slab shown coming: the hold
+// stands to the horizon, and lives only as it is ready
+var Rr = { list: [{ combo: '>=5' }, { combo: '<=3', chain: '==1' }], F: { us: { nextLands: null, topped: false } } }, readyChecked = 0;
+for (var rs = 1; rs <= 6; rs++) {
+  var rb = PA.game({ level: 10, seed: rs, countdown: false });
+  for (var rf = 0; rf < 200; rf++) rb.run();
+  rb.receiveGarbage([{ width: 6, height: 6, isChain: false, isMetal: false }]);
+  for (rf = 0; rf < 160 && rb.gameOverClock <= 0 && !SHt.lowestGarbageRow(rb); rf++) rb.run();
+  if (rb.gameOverClock > 0) continue;
+  rb.stopTime = 600;
+  var ro = JUDGE.outcome(cOf(rb, [{ at: 40, width: 6, height: 12 }]), Rr, [], false);
+  if (ro.dead || ro.lostAt !== Infinity) continue;
+  assert.strictEqual(ro.lives, ro.ready === true, 'seed ' + rs + ': the hold stands on its stop (lostAt Infinity) and lives only as it is ready (' + ro.ready + ')');
+  readyChecked++;
+}
+assert.ok(readyChecked > 0, 'boards standing on stop with a slab coming: ' + readyChecked);
 // HEALTH IS IGNORED: every board Gambit judges has level 10's health (planHealth), and one where nothing lives is judged so again --
 // no decision ever counts on the health a game gives
 var SHh = require('./survivor_shared.js'), mindH2 = require('./survivor_think.js')({ profile: SHh.profile(), threads: 1 }), doomedSeen = 0;

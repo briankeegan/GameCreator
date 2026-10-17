@@ -46,8 +46,8 @@ function stepFits(list) {
 //   lostAt                    the frame its board, left alone, is lost -- Infinity when it stands to the horizon (SURVIVE_FRAMES, or its
 //                             last swap if later) and SURVIVE_REST past it, as the default's survival search proves a move
 //   ready                     once everything shown has landed and settled, a break within two swaps the list allows
-//   lives                     it stands, or it leaves a plan -- topped out, a plan only for a line that buys stop: the board always has
-//                             to have some stop
+//   lives                     it stands, or it leaves a plan -- with garbage on its way, a line that breaks nothing only by the plan;
+//                             topped out, a plan only for a line that buys stop: the board always has to have some stop
 // { dead, lostAt } when the judge could not play the line out (its board lost on the way, or a step not legal).
 var CPU = require(path.join(__dirname, 'puyocpu.js')).prototype, HORIZON = CPU.SURVIVE_FRAMES, REST = CPU.SURVIVE_REST, BEAM = CPU.SURVIVE_BEAM;
 function lastLanding(c, R) {
@@ -60,14 +60,18 @@ function outcome(c, R, seq, isSettled) {
   var key = (isSettled ? 's ' : 'r ') + seq.map(function (mv) { return mv[0] + ',' + mv[1]; }).join(' ');
   c.outcomes = c.outcomes || {};
   if (key in c.outcomes) return c.outcomes[key];
-  var land = lastLanding(c, R), timeLeft = !c.left || c.left() > 0;
-  var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: timeLeft ? land : null, readyIfLost: true, lifeTo: HORIZON + REST, lifeRest: REST });
+  // (garbage on its way -- shown arriving, or queued to drop: a line that breaks nothing lives only when a break is there once it has all
+  // landed, however long the stop it stands on lasts -- ready when everything lands, with a plan; the readiness is asked of it always.
+  // A break, or a board with nothing coming, lives by standing to the horizon too)
+  var land = lastLanding(c, R), timeLeft = !c.left || c.left() > 0, coming = land !== null && land !== undefined;
+  var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: timeLeft ? land : null, readyIfLost: !coming, lifeTo: HORIZON + REST, lifeRest: REST });
   var o = { dead: true, lostAt: j.lostAt, lives: false };
   if (!j.dead) {
     var stopNow = Math.max((c.board.stopTime || 0) + (c.board.preStopTime || 0), c.board.shakeTime || 0);
-    var ready = R.F.us.topped && !(j.dropAt > stopNow) ? false : j.ready;
+    var ready = R.F.us.topped && !(j.dropAt > stopNow) ? false : j.ready, breaks = (j.made.broke || 0) > 0, stands = j.lostAt === Infinity;
+    var lives = breaks || !coming ? stands || ready === true : ready === true || (ready === undefined && stands);
     o = { made: j.made, chainAll: j.chainAll || 0, singles: j.singles || [], fits: fitsList(R.list, j.made, j) && Math.max(j.made.chain || 0, j.chainAll || 0) <= GAMBIT.MAXCHAIN,
-          done: j.done, fire: j.fire, ats: j.ats, dropAt: j.dropAt, lostAt: j.lostAt, ready: ready, lives: j.lostAt === Infinity || ready === true };
+          done: j.done, fire: j.fire, ats: j.ats, dropAt: j.dropAt, lostAt: j.lostAt, ready: ready, lives: lives };
   }
   c.outcomes[key] = o;
   return o;

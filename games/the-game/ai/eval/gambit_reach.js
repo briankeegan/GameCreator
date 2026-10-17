@@ -13,7 +13,7 @@ var A = require('./survivor_attack.js')({ reaction: 12, swapGap: 12, cursorMoveF
 var rules = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8'));
 var list = rules.attack.filter(function (r) { return r.name === 'finish them'; })[0].aims.filter(function (a) { return typeof a !== 'string'; });
 A.useRules({ fits: JUDGE.stepFits(list), floorLow: false });
-var totals = { missed: 0, impossible: 0, boards: 0 };
+var totals = { missed: 0, impossible: 0, boards: 0 }, turns = {};
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
   if (!fs.existsSync(rf) || !fs.existsSync(lf)) return;
@@ -34,5 +34,23 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     out.push(x.at + (found ? ' MISSED(' + line.length + ')' : ' none'));
   });
   console.log(g + '  ' + m[1] + ' lost at ' + lostAt + ': ' + (out.length ? out.join(', ') : 'no empty searches logged'));
+  // THE TURN: the last frame a break was there -- a decision whose break search found one, or a board searched again that had one --
+  // and the decisions from it to the first board after it with none to find: the moves that left the board without a break
+  var ds = fs.readFileSync(lf, 'utf8').split('\n').filter(function (l) { return l.indexOf('GAMBITD ') === 0; }).map(function (l) {
+    var o = { at: +l.split(' ')[1] }; l.split(' ').forEach(function (p) { var i = p.indexOf('='); if (i > 0) o[p.slice(0, i)] = p.slice(i + 1); }); return o;
+  }).filter(function (d) { return d.at <= lostAt && d.at >= lostAt - 3 * LAST; }).sort(function (a, b) { return a.at - b.at; });
+  var none = bs.map(function (x, i) { return { at: x.at, had: /MISSED/.test(out[i]) }; }).sort(function (a, b) { return a.at - b.at; });
+  var lastHad = -1;
+  ds.forEach(function (d) { if (/^[1-9]/.test(d.br || '')) lastHad = Math.max(lastHad, d.at); });
+  none.forEach(function (x) { if (x.had) lastHad = Math.max(lastHad, x.at); });
+  var firstNone = none.filter(function (x) { return !x.had && x.at > lastHad; })[0];
+  if (lastHad >= 0 && firstNone) {
+    console.log('   THE TURN: a break was there at ' + lastHad + ', none from ' + firstNone.at + '; the decisions between:');
+    ds.filter(function (d) { return d.at >= lastHad && d.at <= firstNone.at; }).forEach(function (d) {
+      console.log('     ' + d.at + ' play=' + d.play + ' got=' + d.got + ' stop=' + d.stop + ' land=' + d.land + ' br=' + d.br + ' cands=' + d.cands);
+      turns[d.play] = (turns[d.play] || 0) + 1;
+    });
+  }
 });
+console.log('\nthe moves at the turn, every loss: ' + JSON.stringify(turns));
 console.log('\n' + totals.boards + ' boards searched again: ' + totals.missed + ' had a break the live search missed, ' + totals.impossible + ' had none to find');
