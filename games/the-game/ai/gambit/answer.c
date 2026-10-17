@@ -191,6 +191,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   decQ.tight = allowanceKnown && allowance <= HOLDTIGHT;
   pressTight = decQ.tight; pressMemoClear();
   towardRestLen = 0;
+  carryFrom = lineFrom; carryPressed = linePressed;
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)
   int32_t gid = digTargetOf(decQ.b);
   if (gid == NUL) { digOn = 0; digN = 0; digGid = NUL; }
@@ -222,8 +223,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (d.kind == 1 && P.line && P.line->k.play == PLAY_TOWARD) { towardPlayedN = P.line->k.nseq; for (int i = 0; i < P.line->k.nseq; i++) towardPlayed[i] = P.line->k.seq[i]; }
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
-  if (A->nhand) theCarry.set = 0;
-  else if (!(d.kind == 0 && P.top && P.top->wait)) carryOf(&R, P.line);
+  if (!(d.kind == 0 && P.top && P.top->wait)) carryOf(&R, P.line, qid);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
   int32_t pa = NUL, pb = NUL;
   if (d.kind == 1) { pa = decQ.b->p[CR(d.move)][CC(d.move)].f[ID]; pb = decQ.b->p[CR(d.move)][CC(d.move) + 1].f[ID]; }

@@ -128,10 +128,13 @@ static Played playOf(const Read *R, int n) {
 }
 // THE LINE IN PROGRESS (carryOf): the line of the move played, when it has more than one swap and is a play -- not a hold or a clear. It
 // keeps how it is pressed, what it was begun for (its entry, a break), and a panel of the bottom row it does not touch, by which it is
-// found again once the stack has risen.
-typedef struct { int32_t set, nrest, rest[MAXLINE], settled, hasAim, broke, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
+// found again once the stack has risen. A line handed to the frame loop is the line in progress too: the next decision judges what is
+// left of it once the swaps the frame loop pressed of it since (carryFrom, carryPressed: the question's lineFrom, linePressed) are
+// played, so a line begun is played on unless something ranks above it.
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
 static Carry theCarry;
-static void carryOf(const Read *R, const Judge *k) {
+static int32_t carryFrom = -1, carryPressed;
+static void carryOf(const Read *R, const Judge *k, int32_t qid) {
   memset(&theCarry, 0, sizeof theCarry);
   if (!k || k->wait || k->k.nseq < 2 || k->t.tier > 4) return;
   int col = 0;
@@ -143,7 +146,7 @@ static void carryOf(const Read *R, const Judge *k) {
     if (!touched) { col = c; theCarry.anchorRow = 1; theCarry.anchorCol = c; theCarry.anchorId = id; }
   }
   if (!col) return;
-  theCarry.set = 1; theCarry.nrest = k->k.nseq - 1;
+  theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - 1;
   for (int i = 1; i < k->k.nseq; i++) theCarry.rest[i - 1] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->aims.aim[k->aim]; }
@@ -154,29 +157,30 @@ static void carryOf(const Read *R, const Judge *k) {
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0;
-  if (!C->set || !C->nrest) return 0;
+  int skip = C->id == carryFrom ? carryPressed : 0;
+  if (!C->set || C->nrest <= skip) return 0;
   int dr = NOT_ASKED;
   for (int r = 1; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][C->anchorCol].f[ID] == C->anchorId) dr = r - C->anchorRow;
   if (dr == NOT_ASKED) return 0;
-  int32_t rest[MAXLINE];
-  for (int i = 0; i < C->nrest; i++) rest[i] = (CR(C->rest[i]) + dr) * 8 + CC(C->rest[i]);
+  int32_t rest[MAXLINE], nrest = C->nrest - skip;
+  for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
   Made x; int32_t done, fire, nats = 0, ats[MAXLINE];
   if (C->settled) {
     Replayed rp;
-    if (!replay(&decQ, rest, C->nrest, 1, &rp)) return 0;
+    if (!replay(&decQ, rest, nrest, 1, &rp)) return 0;
     *wait = rp.wait > 1;
     x = (Made){ rp.combo, rp.chain, rp.broke, rp.cells }; done = rp.done; fire = rp.fire; nats = rp.nats; for (int i = 0; i < nats; i++) ats[i] = rp.ats[i];
   } else {
     JudgeOpts jo = { 0, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
     Judged j;
-    judge(&decQ, rest, C->nrest, &jo, &j);
-    if (j.dead || j.nats < C->nrest) return 0;   // (a step no longer legal: the judge pressed fewer than the line has)
+    judge(&decQ, rest, nrest, &jo, &j);
+    if (j.dead || j.nats < nrest) return 0;   // (a step no longer legal: the judge pressed fewer than the line has)
     x = (Made){ j.made.combo, j.made.chain, j.made.broke, 0 }; done = j.done; fire = j.fire; nats = j.nats; for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
   }
   if ((C->broke && !(x.broke > 0)) || (C->hasAim && !meets(&C->aim, x))) return 0;
   int aim = -1;
   if (C->hasAim) for (int i = 0; i < R->aims.n && aim < 0; i++) if (!memcmp(&R->aims.aim[i], &C->aim, sizeof(Aim))) aim = i;
-  if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, C->nrest, aim, 0)) return 0;
+  if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, nrest, aim, 0)) return 0;
   k->settled = C->settled;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;
   k->xNats = nats; for (int i = 0; i < nats; i++) k->xAts[i] = ats[i];
