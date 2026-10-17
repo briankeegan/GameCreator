@@ -274,7 +274,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (i) L_s(",");
     L_play(j->hold ? PLAY_HOLD : j->k.play); if (j == carriedJ) L_s("*");
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
-    L_s(":"); L_i(j->apBroke);
+    L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart));

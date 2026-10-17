@@ -13,6 +13,7 @@ typedef struct {
   int32_t topped;      // the board is topped out
   int32_t timeLeft;    // the decision's searches still have time (c.left() > 0): readiness is asked only then
   int32_t belowFloor;  // below the rule's material floor: a line that clears panels and breaks nothing is no candidate
+  int32_t next;        // frames until the next block shown lands (NOT_ASKED: none coming)
 } Facts;
 typedef struct {
   int32_t dead, lostAt, lives, fits, ready, late;
@@ -85,6 +86,22 @@ static Outcome outcome(const int32_t *seq, int n, int settled) {
   // (a judging the clock stopped is no answer: it is not kept, and the next asking judges it again)
   if (!o.late) keep(seq, n, settled, 0, &o);
   return o;
+}
+// READY FOR THE NEXT BLOCK: after the line, a break in reach once the next block shown has landed -- what a board that cannot be ready
+// for everything (the queue outlasts it) can still be ready for. 1, 0, or NOT_ASKED (nothing coming, or out of time).
+static int32_t readyNextOf(const int32_t *seq, int n, int settled) {
+  if (decF.next == NOT_ASKED) return NOT_ASKED;
+  Outcome *hit = cached(seq, n, settled, 2);
+  if (hit) return hit->ready;
+  if (clockOut()) return NOT_ASKED;
+  JudgeOpts jo = { settled, decQ.tight, decF.next, 1, 1, -1, 0, 0 };
+  Outcome o;
+  memset(&o, 0, sizeof o);
+  judge(&decQ, seq, n, &jo, &o.j);
+  if (o.j.late) return NOT_ASKED;
+  o.ready = !o.j.dead && o.j.ready == 1;
+  keep(seq, n, settled, 2, &o);
+  return o.ready;
 }
 // THE SHARED LINE CHECK: what the line makes and sets off fits the list, the chain is within MAXCHAIN, and below the rule's material
 // floor it does not clear panels and break nothing. A check not begun by the decision's deadline keeps no line.

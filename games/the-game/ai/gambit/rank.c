@@ -16,6 +16,7 @@ typedef struct {
   Tier t;
   Outcome o;
   int32_t apDone, apFire, apNats, apAts[MAXLINE], apChain, apChainAll, apCombo, apBroke, apPlayed;
+  int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, NDROPS };
@@ -37,6 +38,7 @@ typedef struct {
 
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
+  J->readyNext = NOT_ASKED;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -86,6 +88,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 #define HOLD_TIER 5
 static void holdCand(int wait, Judge *J) {
   memset(J, 0, sizeof *J);
+  J->readyNext = NOT_ASKED;
   J->o = outcome(0, 0, 0);
   J->k.play = PLAY_HOLD; J->k.aim = -1; J->hold = 1; J->wait = wait; J->aim = -1;
   J->t.tier = HOLD_TIER; J->t.nsub = 1; J->t.sub[0] = wait ? -1 : 0;
@@ -94,16 +97,21 @@ static void holdCand(int wait, Judge *J) {
 }
 // A DIG THAT CAN WAIT: a line toward a break that lives no longer than the hold, and is still done before the hold is lost after one
 // more decision (react frames)
+static void readyNextFor(Judge *J) {
+  if (J->o.lives || J->readyNext != NOT_ASKED) return;
+  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled);
+}
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
          k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react;
 }
-// THE ONE ORDER: a line that lives before one that does not; of two that do not, the one whose board is lost later; then the tier, then
-// each sub-key in turn
+// THE ONE ORDER: a line that lives before one that does not; of two that do not, the one with a break in reach once the next block
+// lands, then the one whose board is lost later; then the tier, then each sub-key in turn
 static double lostOf(const Judge *x) { return x->o.lostAt == FOREVER ? 1e300 : x->o.lostAt == NOT_ASKED ? -1 : x->o.lostAt; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   if (lx != ly) return lx ? -1 : 1;
+  if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
   int n = x->t.nsub < y->t.nsub ? x->t.nsub : y->t.nsub;

@@ -16,6 +16,7 @@ static int readBoard_(Read *R) {
   decF.land = NOT_ASKED;
   for (int i = 0; i < decQ.narr; i++) if (decF.land == NOT_ASKED || decQ.arr[i].at > decF.land) decF.land = decQ.arr[i].at;
   if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
+  decF.next = F->known[FACT_US_NEXTLANDS] ? (int32_t)F->v[FACT_US_NEXTLANDS] : NOT_ASKED;
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
   R->enemyTopped = theOpp.has && theOpp.out;
   // (the frames until the board is lost if nothing is done, from the engine with the garbage the game shows landing when it lands:
@@ -94,6 +95,8 @@ static int ranked(const Read *R, const Found *S) {
   if (!R->aloneOut) { order[n] = H; n++; }
   if (!R->aloneOut) for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) { order[i]->wait = 1; order[i]->t.tier = HOLD_TIER; order[i]->t.nsub = 1; order[i]->t.sub[0] = -1; }
   sortJudged(order, n);
+  // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
+  if (!(n && order[0]->o.lives)) { for (int i = 0; i < n; i++) readyNextFor(order[i]); sortJudged(order, n); }
   double t2 = nowMs();
   surviveAsked = 0;
   if (!(n && order[0]->o.lives) && leftMs() > 0) {
@@ -101,7 +104,7 @@ static int ranked(const Read *R, const Found *S) {
     Outlived sv = outlive(&decQ, HORIZON + REST, REST, leftMs(), 6, 30);
     offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
     Cand sk;
-    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
+    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
   }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
