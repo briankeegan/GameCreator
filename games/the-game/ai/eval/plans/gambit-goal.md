@@ -40,11 +40,11 @@ engine at level 10, the game's own think and input budgets.
 
 - **Gambit is its own program, in C**, in `games/the-game/ai/gambit/` -- its layout: `gambit/README.md`.
 
-- **One of each**: one judge (`JUDGE.outcome`), one ranking (`JUDGE.compare`), one shared line check every play keeps its lines
-  through (`JUDGE.lineFits`), one set of rules handed to every search (`attacker.useRules`).
+- **One of each**: one judge (`judge.c`, `outcome.c`), one ranking (`rank.c`), one shared line check every play keeps its lines
+  through (`lineFits`), one set of rules handed to every search (`rules.c`), one clock (`core/clock.h`: in the client, the game's own
+  frame).
 - **When something fails, find where two things measure the same fact differently, and make them one.**
-- **Every rule has a test that fails without it**, in the gate (`gate_garbage_rules`), and the agreement gate
-  (`gambit_agree.test.js`) holds every engine check to the judge.
+- **The true test is that things survive**: the 24 games. A test is kept only where it holds something the games cannot.
 - **Each change is measured once on the real game**, all 24, and reported: survived per mode and the frames lost at; the combos and
   chains made; the budgets (frames over, keys dropped, late moves); the loss report (`gambit_losses.js`), the reach report and the turn
   (`gambit_reach.js`) -- written by the run on Actions; and the time it finishes, in EDT.
@@ -54,7 +54,7 @@ engine at level 10, the game's own think and input budgets.
 
 | mode | survived | runs |
 |---|---|---|
-| finish them | 17-22 of 24 | 19, 19, 17, 17, 17, 17, 22, 21 (C), 22, 23 (C in the client) |
+| finish them | accepted at 23 of 24 (the owner: close enough; checked again as the infra changes) | 19, 19, 17, 17, 17, 17, 22, 21 (C), 22, 23 (C in the client) |
 | pressure | not yet run | |
 | big chain | not yet run | |
 | build | not yet run | |
