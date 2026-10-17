@@ -1425,9 +1425,10 @@ static int baseLanding;
 // engine landing it on the board held says whether one is in reach when it
 // does. Where no engine holds the board, or nothing is queued, the masks stand.
 static int readyInTime(const int32_t *sw, int n, int *br, int *bc);
+static int waveExpected(void);
 static int heldReady(void) {
   int r, c;
-  return !BIN[IN_HASPA] || !(BIN[IN_INCOMING] > 0) || readyInTime(0, 0, &r, &c);
+  return !BIN[IN_HASPA] || !waveExpected() || readyInTime(0, 0, &r, &c);
 }
 static int unreadies(const Cand *pc) {
   if (!pc || pc->kind != K_SWAP || pc->res.broke) return 0;
@@ -1557,7 +1558,7 @@ static Dec decideCore(void) {
   int readyBase = slabReadyBoard(base) && heldReady();
   int readyFirst = !poolBreak && !topped && !readyBase && !(BT->nLine >= 1 && BT->lineKind == LINE_PLAN);   // the slab-ready record is read; a plan kept is played to its end, not made again
   optSkip = 4 | (readyFirst ? 0 : 8);
-  baseReady = BIN[IN_INCOMING] > 0 && readyBase;
+  baseReady = waveExpected() && readyBase;
   baseLanding = landingOf(base);
   double dl2 = topped ? dmax(deadline, resolveFramesOf(3, 0)) : deadline;
   int lookDepth = depthIn(dl2, topped || BIN[IN_STOP] > 0);
@@ -4237,7 +4238,7 @@ static int optReady(Opt *o) {
     int r, c, hold = o->d.kind == K_HOLD;
     o->rdy = 0;
     if (o->lives && BIN[IN_HASPA]) {
-      if (BIN[IN_INCOMING] > 0) o->rdy = hold ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c);
+      if (waveExpected()) o->rdy = hold ? readyInTime(0, 0, &r, &c) : readyInTime(o->sw, o->n, &r, &c);
       else { int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
              if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) == 0) o->rdy = waveReady(st); }
     }
@@ -4417,9 +4418,9 @@ static int optRank(Opt *a, Opt *b) {
   // a clear that is not yet due ranks below any option that lives -- an attack that readies the landing the other does not is the readiness's to place
   if (ka && (a->early || b->early)) {
     int ea = optEarly(a), eb = optEarly(b);
-    if (ea != eb && !(BIN[IN_INCOMING] > 0 && ((ea && a->cash) || (eb && b->cash)) && optReady(a) != optReady(b))) return ea ? -1 : 1;
+    if (ea != eb && !(waveExpected() && ((ea && a->cash) || (eb && b->cash)) && optReady(a) != optReady(b))) return ea ? -1 : 1;
   }
-  if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
+  if (ka && waveExpected()) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
@@ -5606,7 +5607,7 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
   return 0;
 }
 static Dec readyWhenLands(Dec d) {
-  if (d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) return d;
+  if (d.kind == K_RAISE || !waveExpected() || !BIN[IN_HASPA]) return d;
   if (lineLast == 3 || (lineLast == 1 && BT->lineKind == LINE_BREAK)) return d;   // a break being played
   // no room for what a break makes: the room is made only when no line readies the landing
   int room = roomForBreak(DBASE);
@@ -6552,7 +6553,7 @@ static Dec meanwhile(Dec d) {
 // that leaves it unready is not played -- unless it breaks now, is a step of
 // a break or lineup line, or the board held loses health before the swap does.
 static Dec keepReady(Dec d) {
-  if (!(BIN[IN_INCOMING] > 0) || !baseReady || d.kind != K_SWAP || !d.hasMove) return d;
+  if (!waveExpected() || !baseReady || d.kind != K_SWAP || !d.hasMove) return d;
   if (lineLast == 3 || lineLast == 5 || (lineLast == 1 && (BT->lineKind == LINE_BREAK || BT->lineKind == LINE_PLAN))) return d;
   Cand *pc = poolSwap(d.sr, d.sc);
   if (!pc || swapBreaks(d) || slabReadyHook(pc->masks)) return d;
