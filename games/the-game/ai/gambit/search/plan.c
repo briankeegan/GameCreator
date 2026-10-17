@@ -100,6 +100,10 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   int32_t base = 0;
   Stats bs;
   if (liveNode(x, baseOut) && statsOf(x, baseOut, &bs) && bs.cleared > 0) base = sentCells(&bs);
+  // (and the garbage it converts whatever is pressed -- a slab popping: a line's first step breaks what it breaks beyond it, as the judge
+  // counts it; the steps after begin once that settle is over)
+  int32_t baseBroke = liveNode(x, baseOut) && statsOf(x, baseOut, &bs) ? bs.broke : 0;
+  #define BROKE_OF(it, st) imax(0, (st).broke - ((it)->nseq ? 0 : baseBroke))
   P->base = base;
   int32_t rootH = connectedOf(ensureBoard(x, root));
   int32_t setH = rootH, haveSetup = 0; double setReachD = 0;
@@ -150,7 +154,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
       // counts toward the parent's reach; it is kept as no line and grows no kid)
       if (!stepFitsAt(x, out)) {
         if (st.cleared > 0 && !(o->by != NOT_ASKED && NODE(x, it->n)->t > o->by)) {
-          Made mo = { biggestOf(&st), chainOfStats(&st), st.broke, imax(0, sentCells(&st) - base) };
+          Made mo = { biggestOf(&st), chainOfStats(&st), BROKE_OF(it, st), imax(0, sentCells(&st) - base) };
           double nr = leadOf(o->aims, mo, o->under);
           if (nr > it->reach) it->reach = nr;
         }
@@ -164,7 +168,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         seqTmp[ns++] = m;
         int endOk = -1;
         #define OKE() (endOk < 0 ? (endOk = allowedAt(x, out) && lineFits(seqTmp, ns, 1)) : endOk)
-        Made made = { bigC, chain, st.broke, imax(0, sentCells(&st) - base) };
+        Made made = { bigC, chain, BROKE_OF(it, st), imax(0, sentCells(&st) - base) };
         Board *ob = ensureBoard(x, out);
         int inTime = !(o->by != NOT_ASKED && fire > o->by), kept = keepsFloor(o->keep, ob, made.broke), floor = keepsFloor(o->keep, ob, 0);
         #define FILL(L, ai) do { memset(&(L), 0, sizeof (L)); lineFrom(&(L), it, m, out, fire); (L).cells = made.cells; (L).chain = chain; (L).combo = bigC; \
@@ -243,6 +247,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   if (!haveSetup) P->setup = 0;
   P->ms = nowMs() - t0;
   clockShareEnd(shareOld);
+  #undef BROKE_OF
 }
 
 // ---- for a host's check: the planner on the question set (gb_question), the list set (gb_list), its numbers given; back into the io:
