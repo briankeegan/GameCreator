@@ -106,10 +106,10 @@
   }
   // The module is compiled once per process (or page, or worker): from bytes
   // where there is no file system, from native/pa.wasm beside this file
-  // in node.
+  // in node -- or from GC_NATIVE_WASM, another build of the same engine (gambit/gambit.wasm: its engine checked by these tests).
   function init(bytes) {
     if (X) return Native;
-    if (!bytes) bytes = require('fs').readFileSync(require('path').join(__dirname, 'native', 'pa.wasm'));
+    if (!bytes) bytes = require('fs').readFileSync(process.env.GC_NATIVE_WASM || require('path').join(__dirname, 'native', 'pa.wasm'));
     var inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), imports(null));
     X = inst.exports; MEM = X.memory;
     readNames();
