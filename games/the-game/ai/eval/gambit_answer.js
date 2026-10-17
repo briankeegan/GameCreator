@@ -52,6 +52,10 @@ function survives(c, R, seq, isSettled, k) {
   var land = lastLanding(c, R), known = k && k.ready !== undefined;
   var j = c.attacker.judge(c.board, c.m.hold, seq, c.arrivals, { settled: isSettled, tight: c.tight, readyAt: known ? null : land, readyIfLost: true, lifeTo: HORIZON + REST, lifeRest: REST });
   var ready = known ? k.ready : j.ready;
+  // (topped out the board always has to have some stop: a plan left for later is no life for a move that buys none -- one whose garbage
+  // can drop no later than it can now, the hold among them)
+  var stopNow = Math.max((c.board.stopTime || 0) + (c.board.preStopTime || 0), c.board.shakeTime || 0);
+  if (R.F.us.topped && !(j.dropAt > stopNow)) ready = false;
   return { lives: !j.dead && (j.lostAt === Infinity || ready === true), lostAt: j.lostAt, ready: ready, dead: j.dead };
 }
 function lives(c, D) {

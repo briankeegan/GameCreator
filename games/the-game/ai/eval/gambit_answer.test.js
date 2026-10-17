@@ -56,5 +56,19 @@ var Lh = GA.lives(cOf(low, heavy), { order: ['raise', 'hold'], cands: [], R: Rq(
 assert.notStrictEqual(Lh.d.kind, 'raise', 'no raise Gambit did not decide: ' + Lh.d.kind);
 assert.ok(Lh.why === 'latest' || Lh.verdict !== 'dies', 'with none living, the latest lost is played: ' + Lh.why + ' ' + Lh.verdict);
 assert.ok(GA.lives(cOf(low, []), { order: ['raise', 'hold'], cands: [], R: Rq(true) }).d.kind === 'raise', 'the raise Gambit decided is played');
+// TOPPED OUT, ALWAYS SOME STOP: on a topped board the hold buys no stop, so a break left for later is no life for it
+var tb = null;
+for (var ts = 1; ts <= 20 && !tb; ts++) {
+  var tg = PA.game({ level: 10, seed: ts, countdown: false });
+  for (var tf = 0; tf < 400; tf++) tg.run();
+  tg.receiveGarbage([{ width: 6, height: 4, isChain: false, isMetal: false }]);
+  for (tf = 0; tf < 600 && !(tg.isToppedOut && tg.isToppedOut()) && tg.gameOverClock <= 0; tf++) tg.run();
+  if (tg.gameOverClock <= 0 && tg.isToppedOut && tg.isToppedOut()) { tg.stopTime = 90; tb = tg; }
+}
+assert.ok(tb, 'a topped board');
+var Rt = { list: Rq(false).list, up: false, aloneOut: false, F: { us: { nextLands: null, topped: true } } };
+var th = GA.survives(cOf(tb, []), Rt, [], false);
+assert.ok(th.ready !== true, 'topped: the hold buys no stop, and no plan left for later makes it live (ready ' + th.ready + ')');
+assert.ok(GA.lives(cOf(tb, []), { order: ['hold'], cands: [], R: Rt }).why !== 'gambit' || !th.lives, 'topped: the hold is not chosen as living on a plan');
 assert.ok(gambit >= answered / 2, 'Gambit chooses most moves: ' + gambit + ' of ' + answered);
 console.log('ok: gambit answers -- ' + answered + ' questions over ' + modes.length + ' modes, ' + gambit + ' Gambit\'s own');
