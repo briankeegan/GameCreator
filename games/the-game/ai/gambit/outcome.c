@@ -4,6 +4,7 @@
 //
 // What the decision knows of the board (Facts) comes from its reading of it (gambit_decide.js read, until that is C too).
 
+static double leftMsOf(void);   // (propose.c leftMs: the time the decision's searches have left)
 #define HORIZON 240   // puyocpu.js SURVIVE_FRAMES: a board stands when it is alive this long after now
 #define REST 120      // puyocpu.js SURVIVE_REST: and this long after the line's last swap
 
@@ -65,7 +66,8 @@ static Outcome outcome(const int32_t *seq, int n, int settled) {
   Outcome *hit = cached(seq, n, settled, 0);
   if (hit) return *hit;
   int coming = decF.land != NOT_ASKED;
-  JudgeOpts jo = { settled, decQ.tight, decF.timeLeft && coming ? decF.land : NOT_ASKED, !coming, 1, HORIZON + REST, REST, 0 };
+  int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
+  JudgeOpts jo = { settled, decQ.tight, timeLeft && coming ? decF.land : NOT_ASKED, !coming, 1, HORIZON + REST, REST, 0 };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);

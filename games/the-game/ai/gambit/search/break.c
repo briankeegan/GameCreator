@@ -162,7 +162,6 @@ static int32_t stillAt(BS *s, int32_t t) {
   if (s->nIdle < 256) { s->idleT[s->nIdle] = t; s->idleB[s->nIdle++] = b; }
   return b;
 }
-static int liveNode(Ctx *x, int i) { return i >= 0 && !NODE(x, i)->dead; }
 static int within(BS *s, int i) { return !(listOn && i >= 0 && i < (1 << 20) && s->outside[i]); }
 // (every node a step makes is marked as the rules see it: off them when its parent was, when it is a first swap that is a swap back,
 // or when its own clears are outside the list)

@@ -2,13 +2,14 @@
 var fs = require('fs'), path = require('path');
 
 var OPS = { '>=': 1, '<=': 2, '==': 3, '!=': 4, '>': 5, '<': 6 };   // rules.c OP_*
-// A test as the rules file writes it ("<=3", or a number: ==) as rules.c reads it: [op, n]. Undefined: not asked.
+// A test as the rules file writes it ("<=3", or a number or a boolean: ==) as rules.c reads it: [op, n, near] -- near when it is a
+// string gambit.js nearKey reads (no "!=", no negative). Undefined: not asked.
 function testOf(t, what) {
-  if (t === undefined || t === null) return [0, 0];
-  if (typeof t === 'number') return [OPS['=='], t];
+  if (t === undefined || t === null) return [0, 0, 0];
+  if (typeof t === 'number' || typeof t === 'boolean') return [OPS['=='], +t, 0];
   var m = /^(>=|<=|==|!=|>|<)\s*(-?\d+)$/.exec(String(t).trim());
   if (!m) throw new Error('gambit: ' + what + ' test ' + JSON.stringify(t) + ' is not one rules.c reads');
-  return [OPS[m[1]], +m[2]];
+  return [OPS[m[1]], +m[2], m[1] !== '!=' && +m[2] >= 0 ? 1 : 0];
 }
 // An aim as rules.c reads it: combo, chain, send (each [op, n]) and break (-1 not asked, 0, 1). Every field meets() reads is here; an
 // aim with any other is refused, so nothing in a list is dropped unseen.
@@ -33,7 +34,7 @@ function bind(X) {
 }
 function load(file) {
   var inst = new WebAssembly.Instance(new WebAssembly.Module(fs.readFileSync(file || path.join(__dirname, 'gambit.wasm'))),
-                                      { env: { abort_poll: function () { return 0; } } });
+                                      { env: { abort_poll: function () { return 0; }, clock_ms: function () { return Date.now(); } } });
   return bind(inst.exports);
 }
 

@@ -7,5 +7,15 @@
 #include "outcome.c"
 #include "core/sort.h"
 #include "search/break.c"
+#include "facts.c"
+#include "search/plan.c"
+#include "search/extend.c"
+#include "search/ready.c"
+#include "search/level.c"
+#include "search/outlive.c"
+#include "rank.c"
+#include "propose.c"
+#include "decide.c"
+#include "answer.c"
 
 EXPORT(gb_version) int gb_version(void) { return 1; }

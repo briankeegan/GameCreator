@@ -89,7 +89,7 @@
   // The module is compiled once per thread: from bytes where there is no file
   // system (a page, a worker), from native/pa.wasm beside this file in node.
   function imports(memory) {
-    var env = { abort_poll: function () { return ABORT && ABORT() ? 1 : DEADLINE && Date.now() > DEADLINE ? 2 : 0; } };
+    var env = { abort_poll: function () { return ABORT && ABORT() ? 1 : DEADLINE && Date.now() > DEADLINE ? 2 : 0; }, clock_ms: function () { return Date.now(); } };
     if (memory) env.memory = memory;
     return { env: env };
   }

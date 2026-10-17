@@ -10,13 +10,14 @@
 
 // One test of a number: an operator and its operand ("<=3"); OP_NONE where the aim does not ask it.
 enum { OP_NONE, OP_GE, OP_LE, OP_EQ, OP_NE, OP_GT, OP_LT };
-typedef struct { int32_t op, n; } Test;
+// near: written as a string near() reads (gambit.js nearKey: ">=8", not a plain number or a negative)
+typedef struct { int32_t op, n, near; } Test;
 // brk: -1 not asked, 0 a line that breaks nothing, 1 a line that breaks
 typedef struct { Test combo, chain, send; int32_t brk; } Aim;
 typedef struct { Aim aim[MAXAIMS]; int32_t n; } List;
 typedef struct { int32_t combo, chain, broke, cells; } Made;
 
-static int test(int32_t v, Test t) {
+static int test(double v, Test t) {
   switch (t.op) {
     case OP_GE: return v >= t.n;
     case OP_LE: return v <= t.n;
@@ -72,14 +73,14 @@ static int32_t comboCells(int32_t size) {
   return size < 20 ? 24 : size < 27 ? 36 : 48;
 }
 
-// THE LIST FROM THE HOST: n entries, each seven words -- combo op, combo n, chain op, chain n, send op, send n, break -- in the io
-// body (gambit.js writes them from the rules file).
+// THE LIST FROM THE HOST: n entries, each ten words -- combo, chain and send (each op, n, near) and break -- in the io body (gambit.js
+// writes them from the rules file).
 static List theList;
 EXPORT(gb_list) int gb_list(int n) {
   if (n < 0 || n > MAXAIMS) return -1;
   const int32_t *w = ioBody;
-  for (int i = 0; i < n; i++, w += 7) {
-    Aim a = { { w[0], w[1] }, { w[2], w[3] }, { w[4], w[5] }, w[6] };
+  for (int i = 0; i < n; i++, w += 10) {
+    Aim a = { { w[0], w[1], w[2] }, { w[3], w[4], w[5] }, { w[6], w[7], w[8] }, w[9] };
     theList.aim[i] = a;
   }
   theList.n = n;

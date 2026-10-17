@@ -39,6 +39,8 @@ static int rootOf(Ctx *x, const Question *q) {
   for (int i = 0; i < x->tagCap; i++) x->brkAt[i] = -1;
   return n->err ? STEP_ERR : (int)(n - x->nodes);
 }
+// A node made and not lost (a step can come back refused, lost, or out of the clock).
+static int liveNode(Ctx *x, int i) { return i >= 0 && !NODE(x, i)->dead; }
 // Whether the swap at (r, c) is one of node i's legal swaps.
 static int legalAt(Ctx *x, int i, int r, int c) {
   static int32_t ms[MAXROWS * W];

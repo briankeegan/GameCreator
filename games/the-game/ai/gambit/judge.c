@@ -10,7 +10,8 @@
 
 #define MAXLINE 64
 #define NOT_ASKED (-1)   // a readiness not asked, or not finished in time (the JavaScript's undefined)
-#define FOREVER 0x7fffffff   // a board that stands to the horizon: lostAt (the JavaScript's Infinity)
+#define FOREVER 0x7fffffff
+#define LOST_FIRST 2     // breaksAfterLanding: the board is lost before everything lands (the JavaScript's null)   // a board that stands to the horizon: lostAt (the JavaScript's Infinity)
 
 typedef struct {
   int32_t settled, tight;
@@ -80,38 +81,38 @@ static int stepFitsAt(Ctx *x, int i) {
   return stepFits(&theList, own, n, chainOfStats(&s));
 }
 static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
-static int alive(int r) { return r >= 0 && !NODE(judgeCtx, r)->dead; }
 
 // (the garbage the board left alone has broken by frame t, from the board landed: cached per frame)
 static int32_t still_(Ctx *x, int land, int32_t t, int32_t *idleT, int32_t *idleB, int32_t *nIdle) {
   for (int i = 0; i < *nIdle; i++) if (idleT[i] == t) return idleB[i];
   int w = t > NODE(x, land)->t ? step(x, land, MK_LONG, 0, 0, t - NODE(x, land)->t) : land;
-  int32_t b = alive(w) ? NODE(x, w)->brk : NODE(x, land)->brk;
+  int32_t b = liveNode(x, w) ? NODE(x, w)->brk : NODE(x, land)->brk;
   if (*nIdle < 64) { idleT[*nIdle] = t; idleB[*nIdle] = b; (*nIdle)++; }
   return b;
 }
 // (and the board it breaks on lives through the break's settle, its clears within the list)
-static int settles(Ctx *x, int o) { int z = settleOf(x, o); return alive(z) && stepFitsAt(x, z); }
+static int settles(Ctx *x, int o) { int z = settleOf(x, o); return liveNode(x, z) && stepFitsAt(x, z); }
 // READY ONCE EVERYTHING LANDS (attacker breaksAfterLanding): the board the line ends on run to `wait` frames after the root and let
 // settle, then a break within two swaps that fits the list -- one the board left alone would not have made by the same frame, and
-// whose board lives through the break's settle. 1, 0, or NOT_ASKED when the clock stops it.
+// whose board lives through the break's settle. 1, 0, LOST_FIRST when the board is lost before it lands, or NOT_ASKED when the clock
+// stops it.
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   int land = step(x, n, MK_LONG, 0, 0, imax(1, wait - NODE(x, n)->t));
-  if (!alive(land)) return clockOut() ? NOT_ASKED : 0;
+  if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   int calm = settleOf(x, land);
-  if (alive(calm)) land = calm;
+  if (liveNode(x, calm)) land = calm;
   // (a break is one the board left alone would not have made by the same frame, as the judge and the break search count it)
   enum { IDLE = 64 };
   int32_t idleT[IDLE], idleB[IDLE], nIdle = 0;
   #define STILL(t) still_(x, land, (t), idleT, idleB, &nIdle)
-  #define BRK(o) (alive(o) && NODE(x, o)->brk > STILL(NODE(x, o)->t) && stepFitsAt(x, o) && settles(x, o))
+  #define BRK(o) (liveNode(x, o) && NODE(x, o)->brk > STILL(NODE(x, o)->t) && stepFitsAt(x, o) && settles(x, o))
   static int32_t ms1[MAXROWS * W], ms2[MAXROWS * W];
   int n1 = legalSwaps(ensureBoard(x, land), ms1), live[MAXROWS * W], liveM[MAXROWS * W], nLive = 0;
   int firsts[MAXROWS * W];
   for (int q = 0; q < n1; q++) firsts[q] = step(x, land, MK_SWAP, CR(ms1[q]), CC(ms1[q]), 0);
   for (int q = 0; q < n1; q++) {
     int o = firsts[q];
-    if (!alive(o)) continue;
+    if (!liveNode(x, o)) continue;
     if (BRK(o)) { if (why) { why[0] = ms1[q]; *whyN = 1; } return 1; }
     if (stepFitsAt(x, o)) { live[nLive] = o; liveM[nLive++] = ms1[q]; }
   }
@@ -146,7 +147,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   int base = settleOf(x, root);
   int32_t baseChain = 0, baseCombo = 0, baseBroke = 0;
   Stats bs;
-  if (alive(base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
+  if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 };
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
@@ -155,12 +156,12 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     int32_t late = last ? 0 : pressDelay(x, n, mr, mc, o->tight);
     if (late > 0) {
       int w = step(x, n, MK_LONG, 0, 0, late);
-      if (!alive(w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+      if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
       n = w;
     }
     if (!last && j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
     int out = step(x, n, last || o->settled ? MK_SETTLE : MK_SWAP, mr, mc, 0);
-    if (!alive(out)) { j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+    if (!liveNode(x, out)) { j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
     Stats st;
     statsOf(x, out, &st);
     for (int i = 0; i < st.n; i++) { if (st.size[i] > combo) combo = st.size[i]; if (!(st.chainAt[i] > 1) && st.size[i] >= 4 && st.size[i] < MAXCOMBOS + 64) single[st.size[i]] = 1; }
@@ -181,7 +182,10 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, lastAt + o->lifeRest));
   // (readiness, the dearer check, only when the board left alone does not stand to lifeTo -- always, or for a line that breaks)
   int standsOut = j->lostAt == FOREVER && (o->readyIfLost || (o->readyIfBreak && j->made.broke > 0));
-  if (o->readyAt != NOT_ASKED && !j->dead && !standsOut) j->ready = breaksAfterLanding(x, n, imax(1, o->readyAt + 2), o->why ? j->readyLine : 0, &j->readyN);
+  if (o->readyAt != NOT_ASKED && !j->dead && !standsOut) {
+    j->ready = breaksAfterLanding(x, n, imax(1, o->readyAt + 2), o->why ? j->readyLine : 0, &j->readyN);
+    if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
+  }
   j->late = j->late || clockOut();
 }
 
@@ -215,4 +219,59 @@ EXPORT(gb_judge) int gb_judge(int nseq, int settled, int tight, int readyAt, int
   w[k++] = j.nsingles; for (int i = 0; i < j.nsingles; i++) w[k++] = j.singles[i];
   w[k++] = j.readyN; for (int i = 0; i < j.readyN; i++) w[k++] = j.readyLine[i];
   return k;
+}
+
+// THE FIRST CLEAR OF A LINE THAT IS TO CLEAR NOTHING (attacker.firstClear): each step played to the board's settle, in turn, pressed when
+// the frame loop presses it; the index of the first that clears panels and breaks no garbage, -1 if none does
+static int firstClear(const Question *q, const int32_t *seq, int nseq) {
+  Ctx *x = judgeCtx = ctxOf(judgeCtx);
+  int n = rootOf(x, q);
+  if (n < 0) return -1;
+  for (int k = 0; k < nseq; k++) {
+    int32_t late = pressDelay(x, n, CR(seq[k]), CC(seq[k]), q->tight);
+    if (late > 0) { int w = step(x, n, MK_LONG, 0, 0, late); if (!liveNode(x, w)) break; n = w; }
+    int out = step(x, n, MK_SETTLE, CR(seq[k]), CC(seq[k]), 0);
+    if (!liveNode(x, out)) break;
+    Stats st; statsOf(x, out, &st);
+    if (st.cleared > 0 && !(st.broke > 0)) return k;
+    n = out;
+  }
+  return -1;
+}
+// A LINE PLAYED ON (attacker.replay: the rest of a line begun): each step played to the board's settle, as the planner plays a line,
+// the next step pressed once the board has settled from the last (settleFirst); what its last step makes, or 0 when a step is not
+// legal or the board dies. wait: the frames until the board has settled first.
+typedef struct { int32_t combo, chain, broke, cells, earned, done, fire, wait, nats, ats[MAXLINE]; } Replayed;
+static int replay(const Question *q, const int32_t *seq, int nseq, int settleFirst, Replayed *r) {
+  memset(r, 0, sizeof *r);
+  Ctx *x = judgeCtx = ctxOf(judgeCtx);
+  int root = rootOf(x, q), n = root, got = 0;
+  if (root < 0) return 0;
+  int baseOut = settleOf(x, root);
+  int32_t base = 0;
+  Stats bs;
+  if (liveNode(x, baseOut) && statsOf(x, baseOut, &bs) && bs.cleared > 0) {
+    int32_t cells = 0, ch = chainOfStats(&bs);
+    for (int j = 0; j < bs.n; j++) cells += comboCells(bs.size[j]);
+    base = cells + (ch > 1 ? W * (ch - 1) : 0);
+  }
+  if (settleFirst) { if (!liveNode(x, baseOut)) return 0; n = baseOut; r->wait = NODE(x, baseOut)->t; }
+  for (int k = 0; k < nseq; k++) {
+    if (!legalAt(x, n, CR(seq[k]), CC(seq[k]))) break;
+    int32_t late = pressDelay(x, n, CR(seq[k]), CC(seq[k]), q->tight);
+    if (late > 0) { int w = step(x, n, MK_LONG, 0, 0, late); if (!liveNode(x, w)) break; n = w; }
+    if (r->nats < MAXLINE) r->ats[r->nats++] = NODE(x, n)->t;
+    int out = step(x, n, MK_SETTLE, CR(seq[k]), CC(seq[k]), 0);
+    if (!liveNode(x, out)) break;
+    if (k == nseq - 1) {
+      Stats st; statsOf(x, out, &st);
+      int32_t ch = chainOfStats(&st), cells = 0;
+      for (int j = 0; j < st.n; j++) cells += comboCells(st.size[j]);
+      if (ch > 1) cells += W * (ch - 1);
+      r->combo = biggestOf(&st); r->chain = ch; r->broke = st.broke; r->cells = imax(0, cells - base); r->earned = st.earned;
+      r->done = NODE(x, out)->t; r->fire = r->ats[k]; got = 1;
+    }
+    n = out;
+  }
+  return got;
 }
