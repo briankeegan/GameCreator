@@ -7,7 +7,7 @@
 var fs = require('fs'), path = require('path');
 var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
-var modes = {}, links = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0 };
+var modes = {}, links = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0 };
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
   if (!fs.existsSync(rf)) return;
@@ -22,7 +22,10 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   if (worst) budget.worst = Math.max(budget.worst, +worst[1]);
   if (drop) budget.dropped += +drop[1];
   if (fs.existsSync(lf)) {
-    var over2 = fs.readFileSync(lf, 'utf8').split('\n').filter(function (l) { return l.indexOf('match over: ') >= 0; }).pop();
+    var lines = fs.readFileSync(lf, 'utf8').split('\n');
+    // (the decisions the clock cut: what a faster or slower machine would have played differently)
+    lines.forEach(function (l) { if (l.indexOf('GAMBITD ') !== 0) return; var c = / out=(\d+)/.exec(l); if (!c) return; budget.decisions++; if (+c[1]) budget.out++; });
+    var over2 = lines.filter(function (l) { return l.indexOf('match over: ') >= 0; }).pop();
     if (over2) {
       var o = JSON.parse(over2.slice(over2.indexOf('match over: ') + 12));
       budget.late += o.late || 0; budget.lateWorst = Math.max(budget.lateWorst, o.late || 0);
@@ -44,3 +47,4 @@ console.log('SURVIVED ' + all + '/' + games);
 if (Object.keys(links).length) console.log('chain links past two, by cause: ' + ['garbage', 'swap', 'alone'].map(function (w) { return w + ' ' + fmt(links[w] || {}); }).join('; '));
 console.log('budgets: ' + budget.over + ' frames over the think budget, slowest frame ' + budget.worst + ' ms, ' + budget.dropped + ' keys dropped, ' +
             budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), over ' + budget.games + ' games');
+if (budget.decisions) console.log('decisions the clock cut: ' + budget.out + ' of ' + budget.decisions + ' (' + (100 * budget.out / budget.decisions).toFixed(1) + '%)');
