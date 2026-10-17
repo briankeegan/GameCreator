@@ -6033,9 +6033,9 @@ static double breakTier(const int32_t *sw, int n, int die) {
   if (fillUrgent && marginWithin(sw, n, die ? die : LINEREACH, 0) >= 0) return BREAKS_IN_TIME;
   return reachFirst() && breakKept(sw, n) ? BREAK_IN_REACH : 0;
 }
-// THE CONTACT A FILL LEAVES THE COMING SLAB, ahead of the hollow and the material (a break can only be made at a contact, contactOf): a column
-// of it is worth more than the hollow cells or the panels' worth that any fill moves
-#define CONTACT_WORTH 1024.0
+// THE CONTACT A FILL LEAVES THE COMING SLAB (a break can only be made at a contact, contactOf), after the hollow and the material: of two fills
+// that leave as much of both, the one with more of it. A column is worth under a cell, so it never outweighs what the others count
+#define CONTACT_WORTH 0.1
 static double contactBonus(const int32_t *sw, int n) {
   if (!waveExpected()) return 0;
   Cand *pc = n == 1 ? poolSwap(sw[0], sw[1]) : 0;
