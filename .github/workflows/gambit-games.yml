@@ -1,6 +1,6 @@
 # Gambit's games, repeatable: every seed of each training mode played at level 10 on the server's own Lua engine
 # (games/the-game/ai/eval/lua/gambitTrain.lua), Gambit through the survivor link with every answer waited for and its searches on a
-# fixed clock (GC_FIXED_CLOCK), so the same build plays the same games every time -- the way to compare two builds. Each decision's real
+# fixed clock that counts the engine's work (GC_FIXED_CLOCK), so the same build plays the same games every time -- the way to compare two builds. Each decision's real
 # time is logged beside it (GAMBITD wallMs): the real-client runs (training-mode.yml) stay the check that it plays in time.
 name: Gambit games
 
@@ -19,15 +19,12 @@ on:
       frames:
         description: frames each game plays (21600 is six minutes)
         default: '21600'
-      clock:
-        description: "GC_FIXED_CLOCK: the mind's milliseconds per clock read"
-        default: '1.4'
       panel_game_ref:
         description: the panel-game commit the games run on (bramp/multi-player); change it on purpose, never by drift
         default: 3e46f42dce861916ba0955842746d2ad6decc578
 
 concurrency:
-  group: gambit-games-${{ github.sha }}-${{ inputs.profile }}-${{ inputs.modes }}-${{ inputs.seeds }}-${{ inputs.frames }}-${{ inputs.clock }}
+  group: gambit-games-${{ github.sha }}-${{ inputs.profile }}-${{ inputs.modes }}-${{ inputs.seeds }}-${{ inputs.frames }}
   cancel-in-progress: true
 
 jobs:
@@ -76,7 +73,7 @@ jobs:
       - name: ${{ matrix.mode }} seed ${{ matrix.seed }}
         timeout-minutes: 75
         env:
-          GC_FIXED_CLOCK: ${{ inputs.clock }}
+          GC_FIXED_CLOCK: '1'
           GC_SURVIVOR_SYNC: '1'
           PA_SURVIVOR_PORT: '47791'
         run: |

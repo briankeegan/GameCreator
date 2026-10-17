@@ -283,6 +283,7 @@
     return NODEOFF;
   }
   var KIND = { long: 0, hold: 1, raise: 2, swap: 3, settle: 4 };
+  var WORK = 0;   // (frames simulated, every search: server.work())
   function Search(cfg) {
     if (cfg.threads > 1) initThreads(cfg.threads); else init();
     nodeFields();
@@ -421,7 +422,9 @@
   Search.prototype.advance = function (node, kind, m, frames) {
     var k = KIND[kind];
     if (k === undefined) throw new Error('Native: step kind ' + kind);
-    return unstep(this, X.ns_advance(this.ctx, node._i, k, k >= 3 && m ? m[0] : 0, k >= 3 && m ? m[1] : 0, frames | 0));
+    var r = unstep(this, X.ns_advance(this.ctx, node._i, k, k >= 3 && m ? m[0] : 0, k >= 3 && m ? m[1] : 0, frames | 0));
+    WORK += r && r.t > node.t ? r.t - node.t : 1;
+    return r;
   };
   // Many steps at once, on every thread: steps[i] is [node, kind, move,
   // frames], as advance takes them. Each answer is what advance gives; only
@@ -445,6 +448,7 @@
     if (got !== n) throw new Error('Native: stepped ' + got + ' of ' + n);
     var body = new Int32Array(MEM.buffer, (X.nb_io_body() >>> 0), 4 * n), rs = [], out = [], S = this;
     for (i = 0; i < n; i++) rs.push([body[4 * i], body[4 * i + 1], body[4 * i + 2], body[4 * i + 3]]);
+    for (i = 0; i < n; i++) WORK += rs[i][1] > steps[i][0].t ? rs[i][1] - steps[i][0].t : 1;
     for (i = 0; i < n; i++) {
       var r = rs[i][0];
       if (r === -2) out.push({ dead: true, t: rs[i][1] });
@@ -624,7 +628,10 @@
     // the agro profile's holdThrough: a held raise goes on through the rows it brings in (search.h raiseStep); never set, it ends
     // where the engine lets go of the button
     holdThrough: function () { HOLD_THROUGH = true; holdNow(); },
-    exports: function () { init(); return X; }
+    exports: function () { init(); return X; },
+    // THE WORK DONE: frames the engine has simulated in every search step and batch since the process began -- the measure a fixed
+    // clock reads (survivor_mind.js GC_FIXED_CLOCK)
+    work: function () { return WORK; }
   };
   return Native;
   }
