@@ -2331,10 +2331,8 @@ static int aloneOnEngine(void);
 // WHAT A PANEL IS WORTH, by the panels the board is left with: the risk the
 // next landing carries, against its floor. Calibrated on 9,918 landings of four
 // survival scans (landings.py): 36 panels and more 0.65% fatal, 30-35 1.05%,
-// 24-29 2.34%, 18-23 5.2%, under 18 23%. Again on 1,200 landings of eight scans: 36 and more 0.9%, 30-35 3.2%, 24-29 5.9%, 18-23 7.8%, under 18 40%;
-// a fatal landing costs the life that is left (about 6,000 frames), so a panel is worth 20 to 30 frames from 18 to 42 panels. The bands from 30 to 41
-// panels are priced alike: the steps between them are a boundary that a fixed count cannot place, and a panel spent at 36 is a panel less at 35.
-static double panelWorth(int panels) { static double mult = -1; if (mult < 0) mult = knob("GC_PW_MULT", 2); return mult * (panels >= 30 ? 2.5 : panels >= 24 ? 3.6 : panels >= 18 ? 8 : 35); }
+// 24-29 2.34%, 18-23 5.2%, under 18 23%.
+static double panelWorth(int panels) { static double mult = -1; if (mult < 0) mult = knob("GC_PW_MULT", 1); return mult * (panels >= 36 ? 1 : panels >= 30 ? 1.6 : panels >= 24 ? 3.6 : panels >= 18 ? 8 : 35); }
 // THE MATERIAL A JUDGED LINE (LNO) SPENDS against the board left alone: the
 // panels it ends with and the garbage it converted, less the board left
 // alone's, each worth what a panel is worth on the board the line leaves
