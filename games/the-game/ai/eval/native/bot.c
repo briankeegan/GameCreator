@@ -23,7 +23,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 16   // the most steps a line holds: storage, never a limit on what is searched -- a line that does not fit is refused, never cut
-#define LNOLEN 20   // out[19]: the stop time still running (stop and pre-stop) when the next slab lands in the line's world, -1 when none lands in it
+#define LNOLEN 21   // out[19]: the stop time still running (stop and pre-stop) when the next slab lands in the line's world, -1 when none lands in it; out[20]: the frame it lands
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -3859,6 +3859,22 @@ static int readyCounts(const LineC *l, int alone) {
 }
 static int rdRefused;   // (defined with readyInTime)
 static int bbReady;   // the break bestBreak picked leaves the board ready for the next slab
+int frontWindowLeft(int ahead);
+double frontBreakActs(void);
+static int bbWinWait;   // the break held is held for the input window: it plays only when the window has the actions for the break and the one the landing needs
+// A LANDING MET WITH THE WINDOW SPENT: the slab a break lets land is met with a break of its own, and a break line takes about bkActs of the actions a window
+// allows (front.c). Landings that found 60 or more of the 76 spent were fatal 9%, the rest 1%. The window frees an action only as the press 600 frames ago
+// ages out, so a break that lands the next slab while the window would hold less than two break lines at the landing waits -- while the board left alone lives.
+static int windowShort(const LineC *l) {
+  double need = frontBreakActs();
+  if (need <= 0 || !aloneOnEngine() || LNA[0]) return 0;
+  int32_t keep[LNOLEN]; for (int k = 0; k < LNOLEN; k++) keep[k] = LNO[k];
+  lineJudge(l->sw, l->n, l->waitAll);
+  int at = LNO[20], cover = LNO[19];
+  for (int k = 0; k < LNOLEN; k++) LNO[k] = keep[k];
+  if (at < 0 || cover < 0) return 0;
+  return frontWindowLeft(at) < 2 * need;
+}
 static LineC bbDeferred; static int bbHasDeferred;   // a living break held for a better time, this decision
 static LineC *bestBreak(void) {
   static unsigned char taken[MAXLINES];
@@ -4744,7 +4760,7 @@ static Dec breakDeeper(Dec d);
 static Dec makeRoom(Dec d);
 static int roomForBreak(const int32_t *st);
 static Dec breakFirst(Dec d) {
-  bbHasDeferred = 0;
+  bbHasDeferred = 0; bbWinWait = 0;
   // a line played on is kept only if it is itself a break
   int playing = lineLast == 1 && BT->lineKind != LINE_BREAK;
   if ((lineLast && !playing) || d.kind == K_RAISE || !hasGarbage(DBASE)) {
@@ -4785,6 +4801,7 @@ static Dec breakFirst(Dec d) {
   // -- and only while the board can still hold what the break makes, the next
   // slab on the pile included: past that, waiting only grows the pile
   if (!bbReady && roomForBreak(DBASE) && aloneOnEngine() && !LNA[0]) { bbDeferred = *l; bbHasDeferred = 1; return d; }
+  if (roomForBreak(DBASE) && windowShort(l)) { bbDeferred = *l; bbHasDeferred = 1; bbWinWait = 1; return d; }
   lineLast = 3;
   plansDrop();
   if (l->n > 1) lineKeep(l, LINE_BREAK); else BT->nLine = 0;
@@ -6777,7 +6794,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     d = dS; }
   // A BREAK HELD FOR A BETTER TIME IS NOT HELD FOR NOTHING: if the decision
   // comes to standing still, the break is played -- idle readies nothing
-  if (d.kind == K_HOLD && bbHasDeferred) d = playDeferred(d);
+  if (d.kind == K_HOLD && bbHasDeferred && !bbWinWait) d = playDeferred(d);
   // A LINE IS PRESSED AS IT WAS JUDGED: a decision that plays the kept line's
   // step takes the line's timing (a break waits for its panels to settle),
   // whichever route returned it
@@ -6786,7 +6803,7 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
   WORKAT("before setupTwos"); d = setupTwos(d); WORKAT("after setupTwos");
   d = arbitrate(d); WORKAT("after arbitrate");
   // the one choice may come to standing still after the stages did not (a clear not yet due is refused for the hold): the break held for a better time is played then too
-  if (d.kind == K_HOLD && bbHasDeferred) d = playDeferred(d);
+  if (d.kind == K_HOLD && bbHasDeferred && !bbWinWait) d = playDeferred(d);
   recordTarget(d);
   // a line set this decision is stamped with the presses made before it
   if (BT->nLine && (BT->nLine != nLineAfterPlay || __builtin_memcmp(BT->line, lineAfterPlay, (unsigned long)BT->nLine * 8))) { BT->linePresses = BIN[IN_PRESSES]; BT->lineBorn = BT->nNotes; }

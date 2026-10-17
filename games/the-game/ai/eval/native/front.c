@@ -748,7 +748,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(BLOG, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[2] = out[3] = out[4] = 0; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1; out[19] = -1;   // out[16]: the clock the first step is pressed at
+  out[0] = 0; out[1] = -1; out[2] = out[3] = out[4] = 0; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1; out[19] = out[20] = -1;   // out[16]: the clock the first step is pressed at
   lpArrive = -1; lpEvent = -1;
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
   int pressStep = -1, pressLast = 0;   // the step pressed this frame, and the last press before it
@@ -823,7 +823,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     }
     if (lpEvent < 0 && (b->sCleared || b->sBroke || b->sNCombo || b->sFell || b->sEarned || b->sHollow)) lpEvent = f;
     if (b->health < h0 || b->gameOverClock > 0) { out[0] = f + 1; break; }
-    if (out[19] < 0 && b->garbageCreatedCount > landedFrom) out[19] = b->stopTime + b->preStopTime;
+    if (out[19] < 0 && b->garbageCreatedCount > landedFrom) { out[19] = b->stopTime + b->preStopTime; out[20] = f; }
     if (out[15] < 0 && b->garbageCreatedCount > landedFrom && !nb_falling_garbage(b)) out[15] = standingHollow(b);
   }
   out[1] = step == n ? last : -1;
@@ -902,7 +902,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
 // the engine the same lines every one of them. The times of the answer (the frame health is lost, the last press, the frame the front
 // decides again) move by the frames gone; the counts (broken, cleared, hollow) stay.
 #define LNCN 4096
-typedef struct { int epoch, n, waitAll, delay, clock0, absEnd, arrive, event, rc; int32_t sw[2 * LINEMAX], out[20]; } LnMemo;
+typedef struct { int epoch, n, waitAll, delay, clock0, absEnd, arrive, event, rc; int32_t sw[2 * LINEMAX], out[LNOLEN]; } LnMemo;
 static LnMemo LNM[LNCN];
 static int lnEpoch, lnHits, lnMiss, lnCheck = -1, lnBad;
 static uint32_t lnHash;
@@ -936,19 +936,20 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
     int f1 = n ? m->out[16] - m->clock0 : 0;
     int ok = d >= 0 && m->absEnd == now + horizon && (n == 0 || (m->out[16] >= 0 && f1 > d && m->arrive >= 0 && m->arrive <= f1 - d)) && (m->out[0] <= 0 || m->out[0] > d) && (m->event < 0 || m->event > d);
     if (ok) {
-      int32_t keep[20]; if (lnCheck == 2) for (int k = 0; k < 20; k++) keep[k] = 0;
-      for (int k = 0; k < 20; k++) out[k] = m->out[k];
+      int32_t keep[LNOLEN]; if (lnCheck == 2) for (int k = 0; k < LNOLEN; k++) keep[k] = 0;
+      for (int k = 0; k < LNOLEN; k++) out[k] = m->out[k];
       if (out[0] > 0) out[0] -= d;
       if (n && out[1] >= 0) out[1] -= d;
       if (out[8] >= 0) out[8] -= d;
+      if (out[20] >= 0) out[20] -= d;
       lnHits++;
       if (lnCheck == 2) {   // the same line played fresh: every field must agree
-        int32_t fr[20]; int rc2 = lineOnEngineFresh(steps, n, horizon, waitAll, fr); (void)keep;
+        int32_t fr[LNOLEN]; int rc2 = lineOnEngineFresh(steps, n, horizon, waitAll, fr); (void)keep;
         int same = 1;   // a replay the budget refused says nothing
-        if (rc2 != 0) same = 1; else for (int k = 0; k < 20 && same; k++) if (fr[k] != out[k] && k != 4 && k != 5 && k != 6 && k != 7) same = 0;   // out[4..7]: unset or a refusal's, never read
+        if (rc2 != 0) same = 1; else for (int k = 0; k < LNOLEN && same; k++) if (fr[k] != out[k] && k != 4 && k != 5 && k != 6 && k != 7) same = 0;   // out[4..7]: unset or a refusal's, never read
         if (!same) { lnBad++;
 #ifndef __wasm__
-          extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LINECACHE MISMATCH n %d d %d | cached", n, d); for (int k = 0; k < 20; k++) fprintf(stderr, " %d", out[k]); fprintf(stderr, " | fresh"); for (int k = 0; k < 20; k++) fprintf(stderr, " %d", fr[k]); fprintf(stderr, "\n");
+          extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(stderr, "LINECACHE MISMATCH n %d d %d | cached", n, d); for (int k = 0; k < LNOLEN; k++) fprintf(stderr, " %d", out[k]); fprintf(stderr, " | fresh"); for (int k = 0; k < LNOLEN; k++) fprintf(stderr, " %d", fr[k]); fprintf(stderr, "\n");
 #endif
         }
       }
@@ -961,7 +962,7 @@ int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t 
   if (rc == 0 && !paBudgetOut()) {
     m->epoch = lnEpoch; m->n = n; m->waitAll = waitAll; m->delay = LDELAY; m->clock0 = now; m->absEnd = now + horizon; m->arrive = n ? lpArrive : 0; m->event = lpEvent; m->rc = 0;
     for (int k = 0; k < 2 * n; k++) m->sw[k] = steps[k];
-    for (int k = 0; k < 20; k++) m->out[k] = out[k];
+    for (int k = 0; k < LNOLEN; k++) m->out[k] = out[k];
   }
   return rc;
 }
@@ -1493,6 +1494,15 @@ static int garbageMatched(void) {
 // when what the window has left is less than BKRESERVE break lines have taken (measured: bkActs) -- the break a landing needs and the one
 // after it would wait for the window, which frees an action only as the press 600 frames ago ages out
 #define BKRESERVE 3
+// THE ACTIONS THE WINDOW HAS LEFT `ahead` frames from now, if none are made until then: the limit less those pressed within the window then
+int frontWindowLeft(int ahead) {
+  if (!LF) return ACTIONLIMIT;
+  Pad *p = &LF->pad; int clock = paLibBoard()->clock + ahead, n = 0;
+  for (int i = 0; i < p->actN; i++) if (clock - p->actAt[(p->actOld + i) % ACTIONRING] < ACTIONWINDOW) n++;
+  return (p->limit ? p->limit : ACTIONLIMIT) - n;
+}
+// the actions a break line takes, as measured (0 before one has been seen)
+double frontBreakActs(void) { return LF && LF->bkActs > 0 ? LF->bkActs : 0; }
 static int idleVia(int via) { return via == V_SETUP || via == V_LINEUP || via == V_READYFIRST || via == V_BESTATTACK; }
 static int frontFrame1(int fid, Board *b);
 // THE ACTIONS SPENT, BY THE ROUTE THAT DECIDED THEM, in the run log every 2,000 frames
