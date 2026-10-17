@@ -2296,6 +2296,7 @@ static int lineHorizon(void) { return lineHorizonV > 0 ? lineHorizonV : 2 * live
 #define MAXJUDGED 96
 int lineOnEngine(const int32_t *steps, int n, int horizon, int waitAll, int32_t *out);
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
+int stopAwardOf(int chain, int total, int topped);
 // LIVES: no health lost before the next decision after its last step. PAYS:
 // clears more than the board left alone, BREAKS: converts more. GAINS: the
 // board left alone loses health within the horizon and the line loses it
@@ -2938,6 +2939,9 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
       // loss of health later -- the break looked for while it resolves
       SITND[j].left = frozen && SITND[j].settled - 2 > pa->left ? SITND[j].settled - 2 : pa->left;
       if (SITR[R_TOTAL] > 0) { double own = framesToDeath(tallestBoard(SITST[j]), BIN[IN_FPR]); if (own > SITND[j].left) SITND[j].left = own; }
+      // and the stop time its chain or combo awards, which the engine keeps beside the stop running (the larger of the two): the board is covered
+      // to the end of the clear's pops plus the award, so a line that clears to buy the time may go on to press what the cover alone would not reach
+      if (SITR[R_TOTAL] > 0) { double cover = SITND[j].settled - 2 + stopAwardOf(SITR[R_CHAIN], SITR[R_TOTAL], BIN[IN_TOPPED] != 0); if (cover > SITND[j].left) SITND[j].left = cover; }
       disturbed(SITST[kd.parent], SITR + R_INTS, SITND[j].dist);
     }
     int say = accept(SITR, line, n, kd.t, ctx);

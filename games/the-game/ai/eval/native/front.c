@@ -1411,6 +1411,17 @@ static int parTasks(void) { return 0; }
 static void parallelBg(int count, void (*task)(int)) { (void)count; (void)task; }
 static void parallelJoin(void) {}
 #endif
+// THE STOP TIME A CLEAR AWARDS (pa.c calculateStopTime, the level's own constants): a chain of `chain` links or a match of `total` cells, topped
+// or not -- what a line's clear buys the board before it loses health
+int stopAwardOf(int chain, int total, int topped) {
+  Board *b = paLibBoard();
+  int isChain = chain >= 2;
+  if (!(total > 3 || isChain)) return 0;
+  if (topped && isChain) return b->sDangerConstant + ((chain > 4 ? 6 : chain) - 1) * b->sDangerCoefficient;
+  if (topped) return b->sCoefficient * (total < 9 ? 2 : 3) + b->sChainConstant;
+  if (isChain) return b->sCoefficient * (chain < 13 ? chain : 13) + b->sChainConstant;
+  return b->sCoefficient * total + b->sComboConstant;
+}
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 0, masks, can, wait, cur, t);
 }
