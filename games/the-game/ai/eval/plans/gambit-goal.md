@@ -54,7 +54,7 @@ engine at level 10, the game's own think and input budgets.
 
 | mode | survived | runs |
 |---|---|---|
-| finish them | 17-22 of 24 | 19, 19, 17, 17, 17, 17, 22, 21 (C) |
+| finish them | 17-22 of 24 | 19, 19, 17, 17, 17, 17, 22, 21 (C), 22 (C in the client) |
 | pressure | not yet run | |
 | big chain | not yet run | |
 | build | not yet run | |
