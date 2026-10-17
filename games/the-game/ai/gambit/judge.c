@@ -30,11 +30,12 @@ typedef struct {
   int32_t dead, deadAt, done, fire, nats, ats[MAXLINE];
   int32_t lostAt;               // FOREVER, a frame, or NOT_ASKED
   int32_t ready;                // 1, 0, or NOT_ASKED
-  int32_t readyLine[2], readyN; // the swaps the readiness found (why), as r * 8 + c
+  int32_t readyLine[MAXLINE], readyN; // the swaps the readiness found (why), as r * 8 + c
   int32_t readyWait;            // the frame from the root the readiness looked from (its waitTo)
   int32_t late;                 // the clock stopped it: no answer
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
+  int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
 } Judged;
 
 static Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -84,40 +85,16 @@ static int32_t still_(Ctx *x, int land, int32_t t, int32_t *idleT, int32_t *idle
 // (and the board it breaks on lives through the break's settle, its clears within the list)
 static int settles(Ctx *x, int o) { int z = settleOf(x, o); return liveNode(x, z) && stepFitsAt(x, z); }
 // READY ONCE EVERYTHING LANDS (attacker breaksAfterLanding): the board the line ends on run to `wait` frames after the root and let
-// settle, then a break within two swaps that fits the list -- one the board left alone would not have made by the same frame, and
-// whose board lives through the break's settle. 1, 0, LOST_FIRST when the board is lost before it lands, or NOT_ASKED when the clock
-// stops it.
+// settle, then a break on it -- the break search's own answer (search/break.c readyBreak), bounded by its share of the time and by no
+// count of swaps. 1, 0, LOST_FIRST when the board is lost before it lands, or NOT_ASKED when the clock stops it. why: the break's line.
+static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN);
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   int land = step(x, n, MK_LONG, 0, 0, imax(1, wait - NODE(x, n)->t));
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   int calm = settleOf(x, land);
   if (liveNode(x, calm)) land = calm;
-  // (a break is one the board left alone would not have made by the same frame, as the judge and the break search count it)
-  enum { IDLE = 64 };
-  int32_t idleT[IDLE], idleB[IDLE], nIdle = 0;
-  #define STILL(t) still_(x, land, (t), idleT, idleB, &nIdle)
-  #define BRK(o) (liveNode(x, o) && NODE(x, o)->brk > STILL(NODE(x, o)->t) && stepFitsAt(x, o) && settles(x, o))
-  static int32_t ms1[MAXROWS * W], ms2[MAXROWS * W];
-  int n1 = legalSwaps(ensureBoard(x, land), ms1), live[MAXROWS * W], liveM[MAXROWS * W], nLive = 0;
-  int firsts[MAXROWS * W];
-  for (int q = 0; q < n1; q++) firsts[q] = step(x, land, MK_SWAP, CR(ms1[q]), CC(ms1[q]), 0);
-  for (int q = 0; q < n1; q++) {
-    int o = firsts[q];
-    if (!liveNode(x, o)) continue;
-    if (BRK(o)) { if (why) { why[0] = ms1[q]; *whyN = 1; } return 1; }
-    if (stepFitsAt(x, o)) { live[nLive] = o; liveM[nLive++] = ms1[q]; }
-  }
   if (clockOut()) return NOT_ASKED;
-  int any = 0;
-  for (int k = 0; k < nLive; k++) {
-    int n2 = legalSwaps(ensureBoard(x, live[k]), ms2), outs[MAXROWS * W];
-    for (int q = 0; q < n2; q++) outs[q] = step(x, live[k], MK_SWAP, CR(ms2[q]), CC(ms2[q]), 0);
-    for (int q = 0; q < n2 && !any; q++) if (BRK(outs[q])) { any = 1; if (why) { why[0] = liveM[k]; why[1] = ms2[q]; *whyN = 2; } }
-    if (any) break;
-  }
-  #undef STILL
-  #undef BRK
-  return clockOut() && !any ? NOT_ASKED : any;
+  return readyBreak(x, land, why, whyN);
 }
 
 // A board lost left alone (attacker lostAlone): the first frame from the root the board at node n, left alone, is lost before `to` --
@@ -169,6 +146,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->chainAll = imax(chain, q->b->chainCounter);
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
+  j->endNode = n;
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, lastAt + o->lifeRest));

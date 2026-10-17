@@ -23,6 +23,7 @@
 #define PAIR 5
 #define NEAR_MISS 20
 #define MAXPATH 32
+#define LINEUP_AFTER 30
 #define LINEPOOL 8192   // lines one level holds: TOUCH_WIDE x the swaps of a board
 
 typedef struct { int32_t key, n, s, h, len, kept; int32_t path[MAXPATH]; } Line;
@@ -405,10 +406,13 @@ static int lineups(BS *s, Line **firsts, int nfirsts) {
 // decision's beam was growing, on this board. Answers into out.
 static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, Broke *out);
 // (the marks of the last search's nodes are let go before the next: every node of a search starts within the rules)
+static int breakBusy;
 static void breakMoves(const Question *q, int32_t wait, const Paths *resume, Broke *out) {
   static int32_t high;
   memset(outsideBuf, 0, sizeof(int32_t) * (unsigned long)high);
+  breakBusy = 1;
   breakMovesIn(q, wait, resume, out);
+  breakBusy = 0;
   high = breakCtx && breakCtx->n < (1 << 20) ? breakCtx->n : (1 << 20);
 }
 static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, Broke *out) {
@@ -469,3 +473,33 @@ EXPORT(gb_break) int gb_break(int wait, int nresume) {
   putPaths(w, &k, &o->keepOut);
   return k;
 }
+
+// READY (judge.c breaksAfterLanding): a break on node n's board -- the break search asked of it, off the list (readiness counts any break,
+// as a list ended by "default" does), in half the time the decision has left. Asked inside a break search (its line check judging), it
+// answers NOT_ASKED: the search's own context is in use.
+static int32_t popLeft(const Board *b);   // (propose.c: the frames a popping slab has left)
+static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
+  if (breakBusy) return NOT_ASKED;
+  Board *b = ensureBoard(x, n);
+  if (!b) return NOT_ASKED;
+  static Question q;
+  memset(&q, 0, sizeof q);
+  q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;
+  q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
+  int32_t pop = popLeft(b), saved = listDefault;
+  static Broke rb;
+  double old = clockShareBegin(nowMs() + leftMsOf() / 2);
+  listDefault = 1;
+  breakMoves(&q, pop ? pop + LINEUP_AFTER : 0, 0, &rb);
+  listDefault = saved;
+  clockShareEnd(old);
+  if (!rb.depth) return clockOut() ? NOT_ASKED : 0;
+  if (why) {
+    int k = 0;
+    if (rb.pathLen) for (; k < rb.pathLen && k < MAXLINE; k++) why[k] = rb.path[k];
+    else if (rb.nmoves) why[k++] = rb.moves[0];
+    *whyN = k;
+  }
+  return 1;
+}
+static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN) = readyBreakOf;

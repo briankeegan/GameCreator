@@ -6,7 +6,6 @@
 #define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
 #define BREAK_MIN_MS 5
 #define BREAK_MAX_MS 400
-#define LINEUP_AFTER 30
 #define HOLDTIGHT 40       // the actions short of the input limit at which every walk is held
 #define ROW_STEPS 16
 
@@ -246,6 +245,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (ran && theBr.depth && d.kind == 1) for (int i = 0; i < theBr.nmoves; i++) if (theBr.moves[i] == d.move) A->took = 1;
   A->idleMs = S.idleMs; A->brMs = brMs;
   A->rule = theTables.r[R.rule].name; A->nlive = P.nlive; A->ncands = P.ncands;
+
   // (urgent: a cascade or a pop, an extension, or the line done within a pace gap of its deadline -- the frame loop's pace)
   A->urgent = (P.line && P.line->k.extend) || popLeft(decQ.b) > 0 || cascadeLive(decQ.b);
   // THE LOG LINE
