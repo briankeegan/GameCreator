@@ -42,6 +42,7 @@ void gn_match(void);
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop);
 void gn_end(void);
 void gn_log(const char *s);
+void gn_thread_stats(double *out);
 ]]
 local C = ffi.load(DIR .. "/libgambit.so")
 local B = dofile(DIR .. "/lua/board.lua")
@@ -85,6 +86,7 @@ function GambitNative.new(opts)
   self.inputs = opts.inputBudget or InputBudget.standard()
   self.ownInputs = opts.inputBudget == nil
   self.dropped, self.frames, self.ages, self.pv = 0, 0, {}, {}
+  self.ts0, self.ts1 = ffi.new("double[4]"), ffi.new("double[4]")
   return self
 end
 
@@ -214,6 +216,7 @@ end
 -- The frame's work, charged to the thinking budget, its key pressed on the input budget -- the game's own.
 function GambitNative:input(stack, sources)
   collectgarbage("stop")
+  C.gn_thread_stats(self.ts0)
   local began = ThinkBudget.now()
   local ok, key = pcall(self.think, self, stack, sources)
   if ok and self.ownInputs then key = self:press(key, stack.clock) end
@@ -224,8 +227,11 @@ function GambitNative:input(stack, sources)
   -- a frame over the ceiling, and where its time went
   if took > self.thinking:snapshot().ceiling and self.steps and (self.slowLogged or 0) < 50 then
     self.slowLogged = (self.slowLogged or 0) + 1
-    C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f)", stack.clock, took * 1000,
-      self.steps.load * 1000, self.steps.telegraph * 1000, self.steps.frame * 1000))
+    -- (and the game thread's own account of it: its CPU time, the times it was taken off its core or gave it up, its page faults)
+    local a, b = self.ts0, self.ts1
+    C.gn_thread_stats(b)
+    C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d",
+      stack.clock, took * 1000, self.steps.load * 1000, self.steps.telegraph * 1000, self.steps.frame * 1000, b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3]))
   end
   self.steps = nil
   return key

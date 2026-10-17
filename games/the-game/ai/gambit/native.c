@@ -13,6 +13,7 @@
 // ---------------------------------------------------------------- host.c
 void *paHeap(unsigned long n);
 double hostNowMs(void);
+void hostThreadStats(double *out);
 void hostLock(void), hostUnlock(void), hostWait(void), hostSignal(void);
 int hostThread(void *(*fn)(void *));
 int hostOpenLog(const char *path);
@@ -205,6 +206,7 @@ void gn_rule_name(int i, const char *name) { if (i >= 0 && i < MAXRULES) snprint
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff) {
   gb_profile(mode, ms, extendMs, width, depth, pool, extendDepth, extendOff, cfgReaction, cfgSwapGap, cfgCursor);
 }
+void gn_thread_stats(double *out) { hostThreadStats(out); }
 int32_t *gn_tele(void) { return tele; }
 int32_t *gn_ages(void) { return ages; }
 static void statsOut(void) { static char line[4096]; if (!F.st.frames) return; statsLine(line, sizeof line); flog(line); }

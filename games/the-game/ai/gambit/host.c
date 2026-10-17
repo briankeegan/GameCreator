@@ -6,8 +6,16 @@
 #include <time.h>
 #include <sched.h>
 #include <string.h>
+#include <sys/resource.h>
 
 void *paHeap(unsigned long n) { return calloc(1, (n + 15) & ~15ul); }
+// The calling thread's own account: its CPU time (ms), the times it was taken off its core and gave it up, its page faults.
+void hostThreadStats(double *out) {
+  struct timespec t; clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);
+  struct rusage u; getrusage(RUSAGE_THREAD, &u);
+  out[0] = (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6; out[1] = (double)u.ru_nivcsw; out[2] = (double)u.ru_nvcsw;
+  out[3] = (double)(u.ru_minflt + u.ru_majflt);
+}
 double hostNowMs(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6; }
 
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
