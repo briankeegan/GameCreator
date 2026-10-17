@@ -4216,7 +4216,9 @@ static int optJudge(Opt *o) {
     // left alone), before it is due (clearDue), is a spend the board does not need yet
     // a plain clear: it clears, breaks nothing, is no combo or chain and fills nothing under the garbage -- a last resort
     o->plain = !o->breaks && !o->cash && LNO[3] > LNA[3] && (!aloneOnEngine() || o->hollow >= HOLLOW(LNA));
-    o->early = o->plain && !clearDue(o->sw, o->n, 0);
+    // an attack that breaks nothing buys only the stop time it awards, and the engine keeps the larger of that and the stop running
+    // (checkMatches awardStopTime): begun with time to spare it wastes what it replaces and spends the material -- it too waits until due
+    o->early = (o->plain || (o->cash && !o->breaks)) && !clearDue(o->sw, o->n, 0);
   }
   o->life = lifeOf(o->die, last, o->hollow, spent);
   return 1;
@@ -4383,12 +4385,16 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
 // A PLAIN CLEAR THAT OPENS AN ATTACK IS NOT PLAIN: the board it settles to reaches a combo or a chain in the time there
 // is (the first clear starts it, the rest is set up on what falls), so it is not a last resort.
 static int optPlain(Opt *o) { if (!o->plain) return 0; optAhead(o); return !isAttack(o->ahead); }
-static int optEarly(Opt *o) { return o->early && optPlain(o); }
+static int optEarly(Opt *o) { return o->early && (o->cash || optPlain(o)); }
 // 1: a is better, -1: b is, 0: the same
 static int optRank(Opt *a, Opt *b) {
   int ka = a->lives ? 1 + a->breaks : 0, kb = b->lives ? 1 + b->breaks : 0;
   if (ka != kb) return ka > kb ? 1 : -1;
-  if (ka && (a->early || b->early)) { int ea = optEarly(a), eb = optEarly(b); if (ea != eb) return ea ? -1 : 1; }   // a clear that is not yet due ranks below any option that lives
+  // a clear that is not yet due ranks below any option that lives -- an attack that readies the landing the other does not is the readiness's to place
+  if (ka && (a->early || b->early)) {
+    int ea = optEarly(a), eb = optEarly(b);
+    if (ea != eb && !(BIN[IN_INCOMING] > 0 && ((ea && a->cash) || (eb && b->cash)) && optReady(a) != optReady(b))) return ea ? -1 : 1;
+  }
   if (ka && BIN[IN_INCOMING] > 0) { int ra = optReady(a), rb = optReady(b); if (ra != rb) return ra > rb ? 1 : -1; }
   // dying within LIVEHORIZON, the later loss of health is the time there is: a
   // line that takes longer to finish still outlives a hold that dies first
