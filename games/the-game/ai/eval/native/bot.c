@@ -4436,12 +4436,15 @@ static int optRank(Opt *a, Opt *b) {
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1;
     // no break in reach for either: the one that leaves the board nearer one is the progress (the lineup toward the break the next slab needs)
     if (ka == 1 && kb == 1 && sa >= INF && sb >= INF && !a->clears && !b->clears) { double na = optNear(a), nb = optNear(b); if (na != nb) return na < nb ? 1 : -1; } }
+  // two options that clear and break nothing (the hold, a setup, a fill or a levelling swap): the one that leaves the coming slab more contact comes first --
+  // a break can only be made at a contact (contactOf); a line of several swaps is told by its own board, which only the hold and one swap have at hand
+  if (ka && waveExpected() && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash && a->n <= 1 && b->n <= 1) {
+    int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1;
+  }
   // two options that clear nothing (the hold, the setups): the one that leaves the better attack within reach in the time there is -- then more vertical twos
   // only a setup against the hold or another setup: any other swap that clears nothing (a fill, a levelling) is ranked by life and hollow
   if (ka && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash && (a->stall || b->stall)
       && (a->stall || a->d.kind == K_HOLD) && (b->stall || b->d.kind == K_HOLD)) {
-    // the contact the coming slab will have comes first: a break can only be made at a contact (contactOf)
-    if (waveExpected()) { int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1; }
     optAhead(a); optAhead(b);
     int w = attackFirst(a->ahead, b->ahead); if (w) return w;
     if (a->twos != b->twos) return a->twos > b->twos ? 1 : -1;
