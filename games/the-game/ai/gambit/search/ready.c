@@ -25,8 +25,10 @@ static Readied readyFor(const Question *q, double ms) {
     if (!firstOk(CR(ms1[i]), CC(ms1[i]), 0)) continue;   // (a setup clears nothing: never the swap back)
     int n = step(x, root, MK_SWAP, CR(ms1[i]), CC(ms1[i]), 0);
     if (!liveNode(x, n)) continue;
+    readyShare(n1 - i);
     if (breaksAfterLanding(x, n, wait, 0, 0) == 1) out.setup = ms1[i];
   }
+  readyShare(0);
   clockShareEnd(shareOld);
   out.ms = nowMs() - t0;
   return out;
@@ -124,7 +126,10 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     // (a plan once landed: the readiness every move is held to -- a break within two swaps that the list allows)
     Question q2 = *q; q2.b = got; q2.narr = 0;
     int rt = rootOf(x, &q2);
-    if (rt < 0 || breaksAfterLanding(x, rt, 1, 0, 0) != 1) break;
+    readyShare(rows - k + 1);
+    int r = rt < 0 ? 0 : breaksAfterLanding(x, rt, 1, 0, 0);
+    readyShare(0);
+    if (r != 1) break;
     ok = k;
   }
   return ok;

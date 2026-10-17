@@ -475,9 +475,13 @@ EXPORT(gb_break) int gb_break(int wait, int nresume) {
 }
 
 // READY (judge.c breaksAfterLanding): a break on node n's board -- the break search asked of it, off the list (readiness counts any break,
-// as a list ended by "default" does), in half the time the decision has left. Asked inside a break search (its line check judging), it
+// as a list ended by "default" does), in its share of the time: a caller asking it of many lines gives each an equal part of the time
+// left (readyShare: the time over the askings still to come), and otherwise half the time the decision has left; never past the share
+// of the search that asks. Asked inside a break search (its line check judging), it
 // answers NOT_ASKED: the search's own context is in use.
 static int32_t popLeft(const Board *b);   // (propose.c: the frames a popping slab has left)
+static double readyShareMs = -1;
+static void readyShare(int asks) { readyShareMs = asks > 0 ? leftMsOf() / (2.0 * asks) : -1; }
 static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   if (breakBusy) return NOT_ASKED;
   Board *b = ensureBoard(x, n);
@@ -488,7 +492,9 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
   int32_t pop = popLeft(b), saved = listDefault;
   static Broke rb;
-  double old = clockShareBegin(nowMs() + leftMsOf() / 2);
+  double by = nowMs() + (readyShareMs >= 0 ? readyShareMs : leftMsOf() / 2);
+  if (clockShare && clockShare < by) by = clockShare;   // (never past the share of the search that asks)
+  double old = clockShareBegin(by);
   listDefault = 1;
   breakMoves(&q, pop ? pop + LINEUP_AFTER : 0, 0, &rb);
   listDefault = saved;

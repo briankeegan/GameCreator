@@ -81,7 +81,9 @@ static int ranked(const Read *R, const Found *S) {
   int nc = proposeAll(R, S, theCands, MAXCANDS), n = 0;
   double t1 = nowMs();
   for (int i = 0; i < nc; i++) offered[theCands[i].play]++;
-  for (int i = 0; i < nc; i++) if (judgeCand(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+  // (each judging's readiness an equal part of the time left: the candidates still to judge, the line in progress and the hold)
+  for (int i = 0; i < nc; i++) { readyShare(nc - i + 2); if (judgeCand(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; } }
+  readyShare(2);
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0;
@@ -94,12 +96,14 @@ static int ranked(const Read *R, const Found *S) {
   }
   // (the hold: never while the chain the board makes alone runs past the list)
   Judge *H = &theJudged[n];
+  readyShare(1);
   holdCand(0, H);
+  readyShare(0);
   if (!R->aloneOut) { order[n] = H; n++; }
   if (!R->aloneOut) for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) { order[i]->wait = 1; order[i]->t.tier = HOLD_TIER; order[i]->t.nsub = 1; order[i]->t.sub[0] = -1; }
   sortJudged(order, n);
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
-  if (!(n && order[0]->o.lives)) { for (int i = 0; i < n; i++) readyNextFor(order[i]); sortJudged(order, n); }
+  if (!(n && order[0]->o.lives)) { for (int i = 0; i < n; i++) { readyShare(n - i); readyNextFor(order[i]); } readyShare(0); sortJudged(order, n); }
   double t2 = nowMs();
   surviveAsked = 0;
   if (!(n && order[0]->o.lives) && leftMs() > 0) {
