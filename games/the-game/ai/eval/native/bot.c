@@ -6723,7 +6723,15 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
     double keep = stageEnd, line = optLine(), half = paWork + (line - paWork) * frac + bgReserve + reachHold;
     if (line > paWork && half < stageEnd) stageEnd = half;
     dRwl = readyWhenLands(dKeep); stageEnd = keep; }
-  WORKAT("after readyWhenLands"); Dec dMw = meanwhile(dRwl); WORKAT("after meanwhile");
+  WORKAT("after readyWhenLands");
+  // MEANWHILE changes nothing on a position it has changed nothing on for BDFLATFRAMES frames: it is asked on every fourth frame of it, a wait of
+  // under four frames in a clear that has MEANWHILE frames to spare
+  Dec dMw;
+  { static int mwQuiet, mwPos;
+    if (mwPos != raPos) { mwPos = raPos; mwQuiet = 0; }
+    if (mwQuiet >= BDFLATFRAMES && (btDecision & 3)) dMw = dRwl;
+    else { dMw = meanwhile(dRwl); if (dMw.kind == dRwl.kind && dMw.sr == dRwl.sr && dMw.sc == dRwl.sc && dMw.via == dRwl.via) mwQuiet++; else mwQuiet = 0; } }
+  WORKAT("after meanwhile");
   { Dec dC = dropReady(dMw), dS = noStall(dC);
     // A STALL REFUSED FALLS BACK TO THE CHOICE IT WAS PUT BEFORE, not to
     // standing still: the fill (or what came before it), if that is no stall
