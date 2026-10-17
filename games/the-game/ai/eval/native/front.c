@@ -1511,6 +1511,9 @@ static int frontFrame(int fid, Board *b) {
   int t0 = F->pad.total;
   int r = frontFrame1(fid, b);
 #ifndef __wasm__
+  if (botTraceOn && F->walk && F->pad.total == t0 && !padAllowed(&F->pad, b->clock)) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "NOALLOWANCE walking to %d,%d used %d\n", F->wRow, F->wCol, padCount(&F->pad, b->clock)); }
+#endif
+#ifndef __wasm__
   static long acts[64]; static int next = 2000;
   if (b->clock < 100) { for (int i = 0; i < 64; i++) acts[i] = 0; next = 2000; }
   if (F->pad.total > t0) acts[F->lastVia & 63] += F->pad.total - t0;
@@ -1585,7 +1588,11 @@ static int frontFrame1(int fid, Board *b) {
   { static double first = -1; if (first < 0) first = knob("GC_BK0", 0);
     double reserve = F->bkActs > 0 ? BKRESERVE * F->bkActs : first;   // before a break has been seen the reserve is the first guess
     if (d.kind == K_SWAP && d.hasMove && d.idle && idleVia(d.via) && reserve > 0
-        && padCount(&F->pad, b->clock) + reserve > (F->pad.limit ? F->pad.limit : ACTIONLIMIT)) { d.kind = K_HOLD; d.hasMove = 0; d.hasPark = 0; } }
+        && padCount(&F->pad, b->clock) + reserve > (F->pad.limit ? F->pad.limit : ACTIONLIMIT)) {
+#ifndef __wasm__
+      if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "IDLEHELD via %d used %d reserve %.1f\n", d.via, padCount(&F->pad, b->clock), reserve); }
+#endif
+      d.kind = K_HOLD; d.hasMove = 0; d.hasPark = 0; } }
   if (d.kind == K_RAISE) {
     F->wantRaise = !nb_topped(b); F->cooldown = F->reaction;
     if (F->pad.holdKey) { F->pad.holdKey = 0; return fSend(F, input & ~DIRS, held); }
