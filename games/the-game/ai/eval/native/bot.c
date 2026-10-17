@@ -2331,6 +2331,7 @@ static int waveExpected(void);
 // the queue back -- nothing drops on it -- so while its pile stands, readiness for the next slab is for a landing that is not in the world.
 static int aloneOnEngine(void);
 static int waveSoon(void) { return waveExpected() && (!aloneOnEngine() || LNA[20] >= 0); }
+static int setupScore(const int32_t *m);
 static JLOCAL int32_t LNO[LNOLEN];
 static int aloneOnEngine(void);
 // WHAT A PANEL IS WORTH, by the panels the board is left with: the risk the
@@ -4248,7 +4249,7 @@ static int optJudge(Opt *o) {
   o->contactKnown = o->contact = 0; o->cover = -1;
   o->rdy = o->rdyKnown = o->soonKnown = o->nearKnown = o->breaks = o->conv = o->cash = o->early = o->plain = o->clears = o->size = o->chain = 0;
   if (o->d.kind == K_HOLD) {
-    o->twos = twosOf(DBASE); o->twosKnown = 1;   // read off the masks, so the setup rule has it when the work is spent
+    o->twos = setupScore(DBASE); o->twosKnown = 1;   // read off the masks, so the setup rule has it when the work is spent
     o->die = aloneDie(1 << 20);
     o->cover = aloneOnEngine() ? LNA[19] : -1;
     o->hollow = aloneOnEngine() ? HOLLOW(LNA) : 0;
@@ -4349,7 +4350,7 @@ static void optAhead(Opt *o) {
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   int hold = o->d.kind == K_HOLD;
   if (lineState(hold ? 0 : o->sw, hold ? 0 : o->n, st, can, w, cur, &t) != 0) return;
-  if (!o->twosKnown) o->twos = twosOf(st);
+  if (!o->twosKnown) o->twos = setupScore(st);
   ReachCtx rx = { atkOf(0, 0) };
   double work = optLine() - paWork; if (work > REACHWORK) work = REACHWORK;
   searchInTime(st, cur[0], cur[1], t, 0, timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, work, sitReach, &rx, 0, 0, 0);
@@ -4661,7 +4662,7 @@ static int setupOptions(Opt *O, int n, Dec d) {
     o->d = mkSwap(c->sr, c->sc, V_SETUP, d.mode, d.alive);
     // a setup has no reason but what it sets up: the rise it locks buys no time; its vertical twos are read off the masks it leaves
     o->n = 1; o->wait = 0; o->sw[0] = c->sr; o->sw[1] = c->sc; o->pri = 2; o->stall = 1;
-    o->twos = twosOf(c->masks); o->twosKnown = 1;
+    o->twos = setupScore(c->masks); o->twosKnown = 1;
     if (optJudge(o)) { o->contact = waveSoon() ? contactOf(c->masks) : 0; o->contactKnown = 1; n++; }
   }
   return n;
@@ -4700,6 +4701,12 @@ static Dec arbitrate(Dec d) {
       o->n = line ? BT->nLine : 1; o->wait = line ? BT->lineWaitAll : 0;
       if (line) for (int k = 0; k < 2 * o->n; k++) o->sw[k] = BT->line[k]; else { o->sw[0] = d.sr; o->sw[1] = d.sc; }
     } else o->n = 0;
+    // a setup the setups stage chose is a setup as setupOptions' are: it has no reason but what it sets up (its score, the board it leaves), beside the hold
+    if (d.kind == K_SWAP && d.via == V_SETUP) {
+      o->stall = 1;
+      int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
+      o->twos = lineState(o->sw, o->n, st, can, w, cur, &t) == 0 ? setupScore(st) : 0; o->twosKnown = 1;
+    }
     if (!optJudge(o)) return d;
     n++; }
   // what stayAlive chose
