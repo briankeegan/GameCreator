@@ -13,16 +13,21 @@ static int64_t clockWork;
 static int32_t clockAborted;
 static double nowMs(void) { return clock_ms(); }
 // A decision begun: its deadline (0: none).
-static void clockStart(double due) { clockDue = due; clockShare = 0; clockWork = 0; clockAborted = 0; }
+static double clockWentOut;   // when the decision first ran out of time (0: not yet), for the host to time its closing work
+static void clockStart(double due) { clockDue = due; clockShare = 0; clockWork = 0; clockAborted = 0; clockWentOut = 0; }
 // A SEARCH'S SHARE: within the decision's deadline, a search may stop sooner -- at `by`. Shares nest; the old one comes back after.
 static double clockShareBegin(double by) { double old = clockShare; clockShare = by; return old; }
 static void clockShareEnd(double old) { clockShare = old; }
 static int64_t clockPoll;
+// A host that knows the game's frame (native.c) stops a decision on it: out once the frame before its move has begun.
+static int (*clockFrameOut)(void);
 static int clockOut(void) {
   if (clockAborted) return 1;
   if (clockWork >= clockPoll) { clockPoll = clockWork + 400; if (abort_poll() == 1) { clockAborted = 1; return 1; } }
+  if (clockFrameOut && clockFrameOut()) { if (!clockWentOut) clockWentOut = nowMs(); return 1; }
   if (!clockDue && !clockShare) return 0;
   double t = nowMs();
+  if (clockDue && t >= clockDue && !clockWentOut) clockWentOut = t;
   return (clockShare && t >= clockShare) || (clockDue && t >= clockDue);
 }
 static void clockCharge(int64_t units) { clockWork += units > 0 ? units : 1; }

@@ -102,18 +102,31 @@ static void dumpBoard(int32_t at, const Board *b, const Arr *arr, int narr) {
   snprintf(line + k, sizeof line - (unsigned long)k, "]");
   flog(line);
 }
-// A question answered: the board judged at level 10's health, a clock behind the last a new game. It is due a reaction's frames after it
-// was asked, or, when its move is further off than that and SLACK frames, SLACK frames before its move: Gambit thinks on its own
-// thread, so the frames before the move are its to think in, less the slack the answer needs to reach the frame loop before its frame
-// (a reaction's frames from a question asked about twenty frames ahead left about seven, and no answer late).
-#define SLACK 7
+// A question answered: the board judged at level 10's health, a clock behind the last a new game. It stops in time for its move, on
+// the game's own frame, which the frame loop publishes (the frame played, when it began, the ms a frame takes): out once the frame
+// before its move has begun, or sooner when what it still has to do once out (its closing work, the slowest of the last CLOSEN
+// decisions') would not be done before its move's frame begins. Its searches share the time until then.
+#define CLOSEN 32
+static int32_t gameFrame, dueFrame;
+static double gameFrameMs, gameMsPerFrame = 1000.0 / 60, closeMs[CLOSEN];
+static int32_t nclose; static uint32_t frameCounter;
+static double closeWorst(void) { double w = 0; for (int i = 0; i < nclose; i++) if (closeMs[i] > w) w = closeMs[i]; return w; }
+static double moveStartMs(int32_t at) {
+  hostLock();
+  double began = gameFrameMs, per = gameMsPerFrame; int32_t f = gameFrame;
+  hostUnlock();
+  return began + (at - f) * per;
+}
+static int frameOut(void) {
+  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame) return 1;
+  return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
+}
 static int32_t lastAt = NUL;
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
-  double perFrame = q->lead > 0 && q->ms > 0 ? q->ms / q->lead : 1000.0 / 60;
-  int32_t frames = imax(imin(q->lead, gnReaction + 1), q->lead - SLACK);
-  double due = q->ms > 0 ? q->posted + frames * perFrame : 0;
+  dueFrame = q->at - 1; clockFrameOut = frameOut;
+  double due = moveStartMs(q->at) - closeWorst();
   if (lastAt != NUL && q->at < lastAt) gb_new_game();
   lastAt = q->at;
   if (!hostBoard) hostBoard = nb_new();
@@ -122,7 +135,9 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   hostQ.b = hostBoard; hostQ.holdLeft = q->holdLeft; hostQ.holdStarted = q->holdStarted; hostQ.tight = 0;
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, 1, q->oppTop, 0, 0, 1, q->allowance, q->lineFrom, q->linePressed,
-                 canRaiseOn(hostBoard), due, t0, MARGIN_MS);
+                 canRaiseOn(hostBoard), due, t0, 0);
+  // (the closing work: from the moment it ran out of time to its answer)
+  if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
   Answer *A = &theAnswer;
   memset(out, 0, sizeof *out);
   out->id = q->id; out->epoch = q->epoch; out->at = q->at; out->kind = A->d.kind; out->move = A->d.move;
@@ -206,6 +221,7 @@ void gn_match(void) {
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop) {
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
+  hostLock(); gameFrameMs = clock_ms(); gameMsPerFrame = F.msPerFrame; __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST); hostUnlock();
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
   F.npress = 0;

@@ -13,7 +13,6 @@
 #define FHOLDTIGHT 40      // the actions short of the limit at which every walk of two cells or more is held
 #define STAGING (45 + 45 + 1)   // a sender stages garbage this long, then it lands LAND frames later
 #define LAND 60
-#define MARGIN_MS 30       // an answer's margin before it is due
 #define PLANN 4096         // frames of plan kept, by clock
 #define MAXKEYS 2048
 #define MAXARRIVALS 1024
