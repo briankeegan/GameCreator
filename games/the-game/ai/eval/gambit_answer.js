@@ -14,7 +14,9 @@ var SH = require(path.join(__dirname, 'survivor_shared.js')), CK = require(path.
 
 // THE BREAK SEARCH: the lines to a break, in the share of the decision's time it is given -- carried on from the last decision's
 // (bot._brKeep) while it digs toward the same garbage: its best lines, less the swap played since, their rows moved by the stack's rise
-var BREAK_SHARE = 0.4, BREAK_MIN_MS = 5, BREAK_MAX_MS = 400, LINEUP_AFTER = 30;
+// (BREAK_SHARE: of the decision's time; UNDER_SHARE with garbage on the board -- there the break is what saves the board, and the
+// searches after it are left the rest: gambit_reach.js found two in three of the boards it came up empty on before a loss had a break)
+var BREAK_SHARE = 0.4, UNDER_SHARE = 0.75, BREAK_MIN_MS = 5, BREAK_MAX_MS = 400, LINEUP_AFTER = 30;
 // (the garbage the search digs toward: the id of the lowest block on the board)
 function digTarget(board) {
   var r = SH.lowestGarbageRow(board), row = r && board.panels[r];
@@ -55,14 +57,14 @@ function keep(c, br, keepOut, d, handed) {
   }
   if (anchor) bot._brKeep = { paths: keepOut.paths, gid: digTarget(c.board), anchor: anchor, id: c.m.id, played: d.kind === 'hold' ? 'hold' : d.move.slice(), handed: handed || null };
 }
-function breakSearch(c) {
-  var board = c.board, bot = c.bot;
+function breakSearch(c, R) {
+  var board = c.board, bot = c.bot, share = R && R.under ? UNDER_SHARE : BREAK_SHARE;
   c.keepOut = {};
   // (no break search on a question due sooner than it could take: the answer would come late)
   if (c.due && c.due - Date.now() < c.margin + BREAK_MIN_MS) return { br: null, ms: 0 };
   bot._natSearch();   // (the engine, on the bot's threads, before a second context is made on it)
   var t = Date.now(), pop = SH.popLeft(board), resume = carriedPaths(c);
-  var by = c.due ? Math.min(t + Math.max(BREAK_MIN_MS, (c.due - c.t0) * BREAK_SHARE), c.due - c.margin) : t + BREAK_MAX_MS;
+  var by = c.due ? Math.min(t + Math.max(BREAK_MIN_MS, (c.due - c.t0) * share), c.due - c.margin) : t + BREAK_MAX_MS;
   var br = SH.breakMoves(c.search(), board, { left: c.m.hold.left, started: c.m.hold.started }, c.arrivals, 1, pop ? pop + LINEUP_AFTER : 0, by,
                          c.stale ? function () { return c.stale() ? c.aborted : null; } : null, null,
                          { touchInPop: true, near: true, ok: c.attacker.allowed, stepOk: c.attacker.stepOk, firstOk: c.attacker.firstOk, resume: resume, keepOut: c.keepOut });
@@ -130,7 +132,7 @@ function answer(c) {
   // (the rules read first -- the list, the floor -- so the break search finds only breaks the judge will take)
   var R = DECIDE.read(c);
   if (!R) return null;
-  var B = breakSearch(c);
+  var B = breakSearch(c, R);
   c.br = B.br; c.brMs = B.ms;
   var D = DECIDE.decide(c, R);
   if (D.R.F.us.contact !== null || D.R.F.us.topped) bot._gambitHit = true;
