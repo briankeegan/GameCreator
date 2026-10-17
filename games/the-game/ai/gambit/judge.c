@@ -72,6 +72,9 @@ static int32_t pressDelay(Ctx *x, int pi, int mr, int mc, int tightOn) {
 // THE LIST FOR ONE STEP (attacker stepFits): its own clears, each no link of a chain, and the chain it reaches -- held to the list when
 // the decision has handed the searches one (listOn)
 static int32_t listOn;
+// the break search's lines are held to the list unless it ends by "default" (every list under garbage): there a break is the default's own
+static int32_t listDefault;
+#define BREAK_LIST (listOn && !listDefault)
 // Whether the list wants a chain longer than `chain`: an entry a longer chain (within MAXCHAIN) meets.
 static int listWantsLonger(const List *L, int32_t chain) {
   for (int i = 0; i < L->n; i++) {

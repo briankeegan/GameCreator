@@ -162,12 +162,12 @@ static int32_t stillAt(BS *s, int32_t t) {
   if (s->nIdle < 256) { s->idleT[s->nIdle] = t; s->idleB[s->nIdle++] = b; }
   return b;
 }
-static int within(BS *s, int i) { return !(listOn && i >= 0 && i < (1 << 20) && s->outside[i]); }
+static int within(BS *s, int i) { return !(BREAK_LIST && i >= 0 && i < (1 << 20) && s->outside[i]); }
 // (every node a step makes is marked as the rules see it: off them when its parent was, when it is a first swap that is a swap back,
 // or when its own clears are outside the list)
 static void markStep(BS *s, int par, int kind, int mv, int o) {
   Ctx *x = s->x;
-  if (!listOn || !liveNode(x, o) || o >= (1 << 20)) return;
+  if (!BREAK_LIST || !liveNode(x, o) || o >= (1 << 20)) return;
   int fromRoot = par == s->root, firstBad = 0;
   if (fromRoot && kind == MK_SWAP) {
     Stats st; statsOf(x, o, &st);
@@ -191,7 +191,7 @@ static int breaksAt(BS *s, int n, const int32_t *path, int len) {
   Ctx *x = s->x;
   if (!liveNode(x, n) || !within(s, n) || !(NODE(x, n)->brk > stillAt(s, NODE(x, n)->t))) return 0;
   if (clockOut()) return 0;
-  return (!listOn || allowedAt(x, n)) && (!path || !listOn || lineFits(path, len, 0));
+  return (!BREAK_LIST || allowedAt(x, n)) && (!path || !BREAK_LIST || lineFits(path, len, 0));
 }
 static int swapsOfNode(Ctx *x, int n, int32_t *ms) { Board *b = ensureBoard(x, n); return b ? legalSwaps(b, ms) : 0; }
 static void keepPaths(Paths *p, Line **ls, int n) {
