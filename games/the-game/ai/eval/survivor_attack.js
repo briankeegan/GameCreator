@@ -92,7 +92,7 @@ module.exports = function (opts) {
           var sw = s.advanceMany(dj, true);
           for (var dk = 0; dk < sw.length; dk++) {
             var x = sw[dk];
-            if (!x || x.dead || !stepFits(s, x)) continue;   // (within the rules, useRules)
+            if (!x || x.dead || !stepFits(s, x, stillBreaks)) continue;   // (within the rules, useRules)
             var bk = s.breaks(x) - stillBreaks(x.t);
             if (o.by && dm[dk][0].n.t - root.t > o.by) bk = 0;   // (in time, as every line)
             if (bk > 0 && (!quick || bk > quick.broke || (bk === quick.broke && x.t - root.t < quick.done))) {
@@ -106,15 +106,16 @@ module.exports = function (opts) {
         var out = outs[i], it = meta[i][0], m = meta[i][1];
         if (!out || out.dead) continue;
         // (a line that breaks the rules -- the list, the floor (useRules) -- at any step is no line, and grows no further)
-        if (!stepFits(s, out)) continue;
+        if (!stepFits(s, out, stillBreaks)) continue;
         var st = s.stepStats(out);
+        if (!it.seq.length && !firstFits(m, st.cleared > 0 || s.breaks(out) > stillBreaks(out.t))) continue;
         if (st.cleared > 0) {
           // (EVERY STEP ITS OWN TIME: ats[k] is the frame the line's k-th swap is begun, and `fire` its last's -- the line is in time when
           // its last swap is, plans/gambit.md step 2; `done` is when the cascade it sets off has settled)
           var g = sent(st), seq = it.seq.concat([m]), fire = it.n.t - root.t, ats = it.ats.concat([fire]);
           // (a line is kept as an answer only when it is within the rules through its settle, as the judge plays it -- allowed(), asked
           // once, only of a line about to be kept)
-          var endOk = null, okE = function () { if (endOk === null) endOk = allowed(s, out); return endOk; };
+          var endOk = null, okE = function () { if (endOk === null) endOk = allowed(s, out, stillBreaks); return endOk; };
           var bigC = 0; st.comboSizes.forEach(function (z) { if (z > bigC) bigC = z; });
           if (aims) {
             // (aims: the line is kept for every aim it meets, by its deadline and keeping what o.keep asks; the search goes on past it)
@@ -327,6 +328,7 @@ module.exports = function (opts) {
     var found = null;
     var firsts = root.b.legalSwaps();
     for (var i = 0; i < firsts.length && !found && Date.now() - t0 < (o.ms || 150); i++) {
+      if (!firstFits(firsts[i], false)) continue;   // (a setup clears nothing: never the swap back)
       var n1 = s.advance(root, 'swap', firsts[i], 0);
       if (!n1 || n1.dead) continue;
       var okFirst = check(n1);
@@ -406,7 +408,7 @@ module.exports = function (opts) {
     if (!r0 || r0.dead) return null;
     var before = shapeOf(r0.b.grid), ms = root.b.legalSwaps(), outs = s.advanceMany(ms.map(function (m) { return [root, 'settle', m, 0]; }), true), bestL = null;
     outs.forEach(function (out, i) {
-      if (!out || out.dead || s.stepStats(out).cleared > 0 || (o && o.by && out.t - root.t > o.by)) return;
+      if (!out || out.dead || s.stepStats(out).cleared > 0 || (o && o.by && out.t - root.t > o.by) || !firstFits(ms[i], false)) return;
       var sh = shapeOf(out.b.grid);
       if (sh.hollow > before.hollow || (sh.hollow === before.hollow && sh.even >= before.even)) return;
       if (!bestL || sh.hollow < bestL.after.hollow || (sh.hollow === bestL.after.hollow && sh.even < bestL.after.even)) bestL = { move: ms[i], before: before, after: sh };
@@ -549,19 +551,22 @@ module.exports = function (opts) {
   // the chain it reaches within the list -- and floorLow, the board below the rule's material floor, where a step that clears panels and
   // breaks no garbage spends what the board needs. allowed(s, node): a step and the settle after it both within them -- what the judge
   // filters by, so a search finds only what the judge will take
-  var listFits = null, floorLow = false;
-  function useRules(r) { listFits = (r && r.fits) || null; floorLow = !!(r && r.floorLow); }
-  function useList(fits) { useRules({ fits: fits, floorLow: floorLow }); }
-  function stepFits(s, out) {
+  // first(mv, clears): a line's first swap is not the swap back the judge refuses (JUDGE.swapBack). still(t): what the board left alone
+  // has broken by frame t -- a break is garbage broken beyond it, as the judge counts one
+  var listFits = null, floorLow = false, firstOk = null;
+  function useRules(r) { listFits = (r && r.fits) || null; floorLow = !!(r && r.floorLow); firstOk = (r && r.first) || null; }
+  function useList(fits) { useRules({ fits: fits, floorLow: floorLow, first: firstOk }); }
+  function firstFits(mv, clears) { return !firstOk || firstOk(mv, clears); }
+  function stepFits(s, out, still) {
     if (!listFits && !floorLow) return true;
     var st = s.stepStats(out);
-    if (floorLow && st.comboSizes.length && !(st.broke > 0)) return false;
+    if (floorLow && st.comboSizes.length && !(still ? s.breaks(out) > still(out.t) : st.broke > 0)) return false;
     return !listFits || listFits(st.comboSizes.filter(function (z, i) { return !(st.chainAt[i] > 1); }), sent(st).chain);
   }
-  function allowed(s, out) {
-    if (!out || out.dead || !stepFits(s, out)) return false;
+  function allowed(s, out, still) {
+    if (!out || out.dead || !stepFits(s, out, still)) return false;
     var z = s.advanceMany([[out, 'settle', null, 0]], true)[0];
-    var ok = !!(z && !z.dead) && stepFits(s, z);
+    var ok = !!(z && !z.dead) && stepFits(s, z, still);
     if (z && !z.dead && z._i >= 0) s.drop([z]);
     return ok;
   }
@@ -613,7 +618,8 @@ module.exports = function (opts) {
   function outlive(board, hold, arrivals, o) {
     var t0 = Date.now(), s = search(), depth = o.depth || 6, width = o.beam || 12, best = null, made = [];
     s.reset();
-    var root = s.root(board.copy(), hold, arrivals || [], false);
+    var root = s.root(board.copy(), hold, arrivals || [], false), stillAt = {};
+    var still = function (t) { if (!(t in stillAt)) { var w = t > root.t ? s.advance(root, 'long', null, t - root.t) : root; stillAt[t] = w && !w.dead ? s.breaks(w) : s.breaks(root); } return stillAt[t]; };
     var held = function (n) { return (n.t - root.t) + Math.max((n.carry.stopTime || 0) + (n.carry.preStopTime || 0), n.carry.shakeTime || 0); };
     var level = [{ n: root, seq: [] }];
     for (var d = 1, perStep = 0; d <= depth && level.length; d++) {
@@ -625,7 +631,8 @@ module.exports = function (opts) {
       outs.forEach(function (out, q) {
         if (!out || out.dead) return;
         made.push(out);
-        if (!stepFits(s, out)) return;   // (the line's end is held to allowed() before it is the answer)
+        if (!stepFits(s, out, still)) return;   // (the line's end is held to allowed() before it is the answer)
+        if (d === 1 && !firstFits(meta[q][0], s.stepStats(out).cleared > 0 || s.breaks(out) > still(out.t))) return;
         var key = out.b.key;
         if (seen[key]) return;
         seen[key] = true;
@@ -638,7 +645,7 @@ module.exports = function (opts) {
       var losts = lostMany(s, root, kids.map(function (x) { return x.n; }), kids.map(function (x) { return Math.max(o.to, x.n.t - root.t + (o.rest || 0)); }), made);
       for (var i = 0; i < kids.length; i++) {
         var lost = kids[i].lost = losts[i];
-        if (!(lost === Infinity ? allowed(s, kids[i].n) : true)) { kids[i].lost = -1; continue; }
+        if (!(lost === Infinity ? allowed(s, kids[i].n, still) : true)) { kids[i].lost = -1; continue; }
         if (!best || lost > best.lostAt) best = { seq: kids[i].seq, lostAt: lost };
         if (lost === Infinity) { s.drop(made); return best; }
       }
@@ -663,6 +670,7 @@ module.exports = function (opts) {
     for (var i = 0; i < firsts.length && Date.now() - t0 < ms; i++) {
       var j = check([firsts[i]]);
       if (j.dead) continue;
+      if (!firstFits(firsts[i], j.made.combo > 0 || j.made.chain > 0 || j.made.broke > 0)) continue;
       if (j.ready === true) return { seq: [firsts[i]], at: j.done };
       live.push(firsts[i]);
     }
@@ -672,10 +680,10 @@ module.exports = function (opts) {
       var seconds = b1.legalSwaps();
       for (var k = 0; k < seconds.length && Date.now() - t0 < ms; k++) {
         var j2 = check([live[i], seconds[k]]);
-        if (!j2.dead && j2.ready === true) return { seq: [live[i], seconds[k]], at: j2.done };
+        if (!j2.dead && j2.ready === true && firstFits(live[i], j2.made.combo > 0 || j2.made.chain > 0 || j2.made.broke > 0)) return { seq: [live[i], seconds[k]], at: j2.done };
       }
     }
     return null;
   }
-  return { useRules: useRules, useList: useList, allowed: allowed, stepOk: stepFits, outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
+  return { useRules: useRules, useList: useList, allowed: allowed, stepOk: stepFits, firstOk: firstFits, outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
 };

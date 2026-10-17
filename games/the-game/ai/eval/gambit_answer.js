@@ -23,7 +23,7 @@ function breakSearch(c) {
   var t = Date.now(), pop = SH.popLeft(board);
   var by = c.due ? Math.min(t + Math.max(BREAK_MIN_MS, c.m.ms * BREAK_SHARE), c.due - c.margin) : t + BREAK_MAX_MS;
   var br = SH.breakMoves(c.search(), board, { left: c.m.hold.left, started: c.m.hold.started }, c.arrivals, 1, pop ? pop + LINEUP_AFTER : 0, by,
-                         c.stale ? function () { return c.stale() ? c.aborted : null; } : null, null, { touchInPop: true, near: true, ok: c.attacker.allowed, stepOk: c.attacker.stepOk });
+                         c.stale ? function () { return c.stale() ? c.aborted : null; } : null, null, { touchInPop: true, near: true, ok: c.attacker.allowed, stepOk: c.attacker.stepOk, firstOk: c.attacker.firstOk });
   if (br) br.cut = Date.now() >= by;
   return { br: br, ms: Date.now() - t };
 }

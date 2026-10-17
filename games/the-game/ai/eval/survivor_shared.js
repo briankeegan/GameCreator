@@ -305,10 +305,17 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
   // them, is out (outside[i]), so a break counts only on a line within them from its first swap)
   var stepOk = opts && opts.stepOk, outside = {};
   function mark(steps, outs) {
-    if (stepOk) outs.forEach(function (o, q) { if (o && !o.dead && o._i >= 0) { var par = steps[q][0]; outside[o._i] = !!(par && par._i >= 0 && outside[par._i]) || !stepOk(S, o); } });
+    if (stepOk) outs.forEach(function (o, q) {
+      if (!o || o.dead || !(o._i >= 0)) return;
+      var par = steps[q][0], fromRoot = par === root || (par && par._i === root._i);
+      // (a line's first swap: not the swap back the judge refuses -- opts.firstOk(move, clears))
+      var firstBad = fromRoot && steps[q][1] === 'swap' && opts.firstOk && !opts.firstOk(steps[q][2], S.stepStats(o).cleared > 0 || S.breaks(o) > still(o.t));
+      outside[o._i] = !!(par && par._i >= 0 && outside[par._i]) || firstBad || !stepOk(S, o, still);
+    });
     return outs;
   }
-  function breaks(n) { return n && !n.dead && !(stepOk && outside[n._i]) && (n.brk !== undefined ? n.brk : S.breaks(n)) > still(n.t) && (!opts || !opts.ok || opts.ok(S, n)); }
+  function breaks(n) { return n && !n.dead && !(stepOk && outside[n._i]) && (n.brk !== undefined ? n.brk : S.breaks(n)) > still(n.t) && (!opts || !opts.ok || opts.ok(S, n, still)); }
+  function within(n) { return !(stepOk && n && n._i >= 0 && outside[n._i]); }
   function swapsOf(n, near) {
     var ms = n.b.legalSwaps();
     return near ? ms.filter(function (m) { return m[0] >= g - 3 && m[0] <= g + 1; }) : ms;
@@ -365,7 +372,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
     return out;
   }
   function touchBeam() {
-    var tl0 = firsts.filter(function (f) { return f.n && !f.n.dead; }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null, tat = null;
+    var tl0 = firsts.filter(function (f) { return f.n && !f.n.dead && within(f.n); }).map(function (f) { return { key: f.key, n: f.n, path: [f.m] }; }), tpath = null, tat = null;
     // TOUCH_BEAM first; finding nothing, wider (TOUCH_WIDER) while time is left.
     for (var tb = 0; tb < TOUCH_WIDER.length + 1 && !tpath && Date.now() < deadline; tb++) {
       var beam = tb ? TOUCH_WIDER[tb - 1] : TOUCH_BEAM, tl = tl0;
@@ -407,7 +414,7 @@ function breakMoves(S, board, hold, arrivals, maxDepth, wait, deadline, stop, ke
             if (!t3 || t3.dead) continue;
             var tp = tl[i].path.concat([tms[i][j]]);
             if (breaks(t3)) { found[tl[i].key] = true; any = true; tpath = tp; tat = t3.t - root.t; break; }
-            tn.push({ key: tl[i].key, n: t3, path: tp });
+            if (within(t3)) tn.push({ key: tl[i].key, n: t3, path: tp });
           }
           at += tms[i].length;
         }

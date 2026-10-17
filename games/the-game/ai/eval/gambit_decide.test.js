@@ -143,7 +143,7 @@ for (var fseed = 1; fseed <= 4; fseed++) {
 }
 assert.ok(floored > 0, 'moves were ranked below the floor: the check above is not empty');
 // EVERY MOVE IS HELD TO THE SAME CHECKS, whoever offered it (plans/decision.md, every move first): on boards with a block on its way
-var PROPOSE = require('./gambit_propose.js'), SHD = require('./survivor_shared.js'), kinds = {}, lateDropped = 0, readyKept = 0, carriedN = 0, aloneReady = 0, readyFirst = 0, readyLinesFound = 0;
+var PROPOSE = require('./gambit_propose.js'), SHD = require('./survivor_shared.js'), backBoards = 0, kinds = {}, lateDropped = 0, readyKept = 0, carriedN = 0, aloneReady = 0, readyFirst = 0, readyLinesFound = 0;
 var BSD = new (require('./native.js').server.Search)({ reaction: 12, swapGap: 12, cursorMoveFrames: 4, threads: 1 });
 // (these checks hold whatever the mode's list is: run on a list of their own, so a change to the shipped list leaves them the boards to check)
 var wideFile = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles', 'gambit-rules.json'), 'utf8'));
@@ -157,6 +157,12 @@ for (var eseed = 1; eseed <= 10; eseed++) {
   var ebr = SHD.breakMoves(BSD, eb, hold, arr, 1, 0, Date.now() + 200, null, null, { touchInPop: true });
   var ec = { bot: { _canRaise: function () { return false; } }, m: { at: eb.clock, hold: hold, topped: false, opp: null }, board: eb, arrivals: arr, br: ebr, brMs: 0, attacker: at, rules: wide,
              GP: { mode: 'finish them', ms: 60, width: 30, depth: 5, pool: 120 }, pace: null, canRaise: function () { return false; }, left: function () { return 200; } };
+  // (the last swap made: the pair of the board's first legal swap -- a line beginning with that swap back, clearing nothing, the judge
+  // refuses, so no search may offer one)
+  // (the pair is that of a move a search offers on this board, one that clears nothing: found by a pass without it)
+  var R1 = DECIDE.read(ec), S1 = PROPOSE.search(ec, R1), o1 = PROPOSE.all(ec, R1, S1).filter(function (k) { return ['setup', 'toward', 'level', 'ready', 'survive'].indexOf(k.play) >= 0; })[0];
+  var lp = o1 ? o1.seq[0] : eb.legalSwaps()[0], lpa = eb.panels[lp[0]] && eb.panels[lp[0]][lp[1]], lpb = eb.panels[lp[0]] && eb.panels[lp[0]][lp[1] + 1];
+  if (lpa && lpb && lpa.id != null && lpb.id != null) { ec.bot._gambitLastPair = [lpa.id, lpb.id].sort().join(','); if (o1) backBoards++; }
   var ER = DECIDE.read(ec), ES = PROPOSE.search(ec, ER), offered = PROPOSE.all(ec, ER, ES);
   // (1) THE DEADLINE, from the judge, for every move: with one frame to begin the last swap, a line the judge presses later is dropped
   ec.judged = {}; ec.dropped = {};
@@ -179,7 +185,7 @@ for (var eseed = 1; eseed <= 10; eseed++) {
   }
   var rk = DECIDE.ranked(ec, ER, ES), seenDead = false;
   // (every search finds only what the judge will take: no candidate any proposer offered is dropped for the list or the floor)
-  Object.keys(ec.dropped).forEach(function (p) { var d = ec.dropped[p]; assert.ok(!d.list && !d.floor, 'seed ' + eseed + ': ' + p + ' offered a line the judge drops (' + JSON.stringify(d) + ')'); });
+  Object.keys(ec.dropped).forEach(function (p) { var d = ec.dropped[p]; assert.ok(!d.list && !d.floor && !d.back, 'seed ' + eseed + ': ' + p + ' offered a line the judge drops (' + JSON.stringify(d) + ')'); });
   assert.ok(rk.some(function (k) { return k.hold; }) || ER.aloneOut, 'seed ' + eseed + ': the hold is ranked with the rest');
   rk.forEach(function (k) {
     if (!k.o.lives) seenDead = true;
@@ -209,6 +215,7 @@ for (var eseed = 1; eseed <= 10; eseed++) {
   });
   ec.bot._gambitCarry = null;
 }
+assert.ok(backBoards > 0, 'boards with an offered move\'s swap back to refuse: ' + backBoards);
 assert.ok(lateDropped > 0 && readyKept > 0 && carriedN > 0 && aloneReady > 0, 'every check ran: ' + lateDropped + ' late, ' + readyKept + ' ready (' + aloneReady + ' boards ready alone), ' + carriedN + ' carried');
 assert.ok(kinds['break search'] || kinds.toward, 'the break search\'s moves were among those checked');
 console.log('ok: every move held to the deadline, readiness (' + readyFirst + ' boards not ready alone, a ready move first, ' + readyLinesFound + ' lines found that leave a plan) and the line in progress -- ' + Object.keys(kinds).sort().join(', '));
