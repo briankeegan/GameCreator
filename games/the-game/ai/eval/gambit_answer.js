@@ -80,10 +80,7 @@ function lives(c, D) {
     if (!R.aloneOut && c.left() > 0) weigh('hold', 'fits');
     var ms = c.left();
     if (!d && ms > 0) {
-      var fitsAll = function (sizes, chain) {
-        return chain <= GAMBIT.MAXCHAIN && (chain < 2 || GAMBIT.fits(list, { combo: 0, chain: chain })) && sizes.every(function (z) { return GAMBIT.fits(list, { combo: z, chain: 1 }); });
-      };
-      var sv = c.attacker.outlive(c.board, c.m.hold, c.arrivals, { to: HORIZON + REST, rest: REST, beam: BEAM, ms: ms, ok: fitsAll });
+      var sv = c.attacker.outlive(c.board, c.m.hold, c.arrivals, { to: HORIZON + REST, rest: REST, beam: BEAM, ms: ms });
       if (sv && sv.seq.length) {
         var k0 = sv.seq[0][0] + ',' + sv.seq[0][1], jl = c.attacker.judge(c.board, c.m.hold, sv.seq, c.arrivals, { tight: c.tight });
         if (!jl.dead && JUDGE.fitsList(list, jl.made, jl) && Math.max(jl.made.chain || 0, jl.chainAll || 0) <= GAMBIT.MAXCHAIN) {

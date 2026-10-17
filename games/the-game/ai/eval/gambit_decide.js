@@ -23,6 +23,8 @@ function read(c) {
   var list = GAMBIT.aimsOf(pick.rule), endAt = list.length, end = null;
   for (var i = 0; i < list.length; i++) if (typeof list[i] === 'string') { endAt = i; end = list[i]; break; }
   var aims = list.slice(0, endAt), listAims = aims, by = GAMBIT.deadline(F, pick.rule.by);
+  // (every search on the engine this decision reads the list: readiness, the raise, the survival search)
+  if (c.attacker.useList) c.attacker.useList(JUDGE.stepFits(list));
   // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's --
   // before the board dies; the rule's `by` is an attack's)
   // (topped out with no garbage on the board, there is nothing to break: the list as written, and the deadline is the board's)

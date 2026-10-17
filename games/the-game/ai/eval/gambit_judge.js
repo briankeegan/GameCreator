@@ -30,6 +30,13 @@ function fitsList(list, m, j) {
          !(j && (j.singles || []).some(function (z) { return !GAMBIT.fits(list, { combo: z, chain: 1 }); }));
 }
 
+// THE LIST FOR ONE STEP ON THE ENGINE (attacker.useList): its own clears each fit, and the chain it reaches fits and is within MAXCHAIN
+function stepFits(list) {
+  return function (sizes, chain) {
+    return chain <= GAMBIT.MAXCHAIN && (chain < 2 || GAMBIT.fits(list, { combo: 0, chain: chain })) && sizes.every(function (z) { return GAMBIT.fits(list, { combo: z, chain: 1 }); });
+  };
+}
+
 // The whole line played as it will be pressed (attacker.judge), once per line a decision: what it makes and when each step is begun --
 // null when the judge could not play it out
 function played(c, seq, isSettled) {
@@ -89,4 +96,4 @@ function compare(x, y) {
   return 0;
 }
 
-module.exports = { fitsList: fitsList, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };
+module.exports = { stepFits: stepFits, fitsList: fitsList, judge: judge, compare: compare, settled: settled, SETTLED: SETTLED, swapBack: swapBack, drop: drop };

@@ -382,9 +382,12 @@ module.exports = function (opts) {
       if (st.gameOverClock > 0 || CK.fullTop(st) < top0 + k) break;
       var left = arrivals.map(function (a) { return Object.assign({}, a, { at: Math.max(0, a.at - f) }); });
       var at = landedAll(st, left, Math.max(0, last - f));
-      if (!at) break;
-      var r = SH.breakMoves(s, at, hold, [], 3, 0, t0 + Math.max(20, ms), null, null, { touchInPop: true, near: true });
-      if (!(r && r.depth > 0)) break;
+      if (!at || Date.now() - t0 > ms) break;
+      // (a plan once landed: the readiness every move is held to -- a break within two swaps that the list allows)
+      s.reset();
+      var made = [], rt = s.root(at, hold, [], false), r = breaksAfterLanding(s, rt, rt, 1, made);
+      s.drop(made);
+      if (r !== true) break;
       ok = k;
     }
     return ok;
@@ -530,15 +533,24 @@ module.exports = function (opts) {
   // A PLAN ONCE EVERYTHING SHOWN HAS LANDED: from node n, the board run to `wait` frames after the root (the last block the game shows
   // landed) and settled, then a break looked for in two swaps -- true when a line of one or two swaps breaks more garbage than standing
   // still, false when none does, null when the board is lost before; the nodes made are added to `made`, for the caller to let go of
+  // THE LIST, as every search on the engine reads it (useList: set once a decision): fits(sizes, chain) for a step's own clears and the
+  // chain it reaches; a break that makes what the list does not allow is no break
+  var listFits = null;
+  function useList(fits) { listFits = fits || null; }
+  function stepFits(s, out) {
+    if (!listFits) return true;
+    var st = s.stepStats(out);
+    return listFits(st.comboSizes.filter(function (z, i) { return !(st.chainAt[i] > 1); }), sent(st).chain);
+  }
   function breaksAfterLanding(s, root, n, wait, made) {
     var land = s.advance(n, 'long', null, Math.max(1, wait - (n.t - root.t)));
     if (!land || land.dead) return null;
     made.push(land);
     var calm = s.advanceMany([[land, 'settle', null, 0]], true)[0];
     if (calm && !calm.dead) { made.push(calm); land = calm; }
-    var base = s.breaks(land), brk = function (x) { return x && !x.dead && (x.brk !== undefined ? x.brk : s.breaks(x)) > base; };
+    var base = s.breaks(land), brk = function (x) { return x && !x.dead && (x.brk !== undefined ? x.brk : s.breaks(x)) > base && stepFits(s, x); };
     var firsts = s.advanceMany(land.b.legalSwaps().map(function (m) { return [land, 'swap', m, 0]; }), true), any = false, live = [];
-    firsts.forEach(function (out) { if (out && !out.dead) { made.push(out); if (brk(out)) any = true; else live.push(out); } });
+    firsts.forEach(function (out) { if (out && !out.dead) { made.push(out); if (brk(out)) any = true; else if (stepFits(s, out)) live.push(out); } });
     if (any) return true;
     var seconds = [];
     live.forEach(function (out) { out.b.legalSwaps().forEach(function (m) { seconds.push([out, 'swap', m, 0]); }); });
@@ -557,8 +569,7 @@ module.exports = function (opts) {
   }
   // GAMBIT'S SURVIVAL SEARCH (outlive): lines of swaps played on the engine one after another, a beam of the boards lost latest left
   // alone, on the engine, of those held longest -- the frame the garbage queued could next drop (the line's frames, then the later of
-  // stop + pre-stop and the shake: they count down together) -- then with the most room over the stack, then the least garbage; each step's clears held to o.ok(sizes, chain) (the
-  // list), for as long as o.ms lasts. The first line whose board, left alone,
+  // stop + pre-stop and the shake: they count down together) -- then with the most room over the stack, then the least garbage; each step's clears held to the list (useList), for as long as o.ms lasts. The first line whose board, left alone,
   // is still alive at o.to (frames from now), and o.rest past its own end, is the answer; else the line whose board is lost latest.
   // { seq, lostAt } or null. o: { to, rest, ms, depth, beam, ok }
   function outlive(board, hold, arrivals, o) {
@@ -576,7 +587,7 @@ module.exports = function (opts) {
       outs.forEach(function (out, q) {
         if (!out || out.dead) return;
         made.push(out);
-        if (o.ok) { var st = s.stepStats(out); if (!o.ok(st.comboSizes.filter(function (z, i) { return !(st.chainAt[i] > 1); }), sent(st).chain)) return; }
+        if (!stepFits(s, out)) return;
         var key = out.b.key;
         if (seen[key]) return;
         seen[key] = true;
@@ -627,5 +638,5 @@ module.exports = function (opts) {
     }
     return null;
   }
-  return { outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
+  return { useList: useList, outlive: outlive, readyLines: readyLines, plan: plan, extend: extend, readyFor: readyFor, readyInTime: readyInTime, level: level, shapeOf: shapeOf, firstClear: firstClear, replay: replay, judge: judge, diesIn: diesIn, raiseReady: raiseReady };
 };
