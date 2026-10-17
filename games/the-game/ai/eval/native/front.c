@@ -1494,7 +1494,7 @@ static int garbageMatched(void) {
 // THE INPUT BUDGET IS KEPT FOR THE BREAKS: an idle decision (setups, lineups, readiness, an attack with nothing to save) is not pressed
 // when what the window has left is less than BKRESERVE break lines have taken (measured: bkActs) -- the break a landing needs and the one
 // after it would wait for the window, which frees an action only as the press 600 frames ago ages out
-#define BKRESERVE 4
+#define BKRESERVE 3
 #define BKFIRST 14   // the actions a break line takes before one has been measured: 13.8 on average over 349 breaks of 21 games
 // THE ACTIONS THE WINDOW HAS LEFT `ahead` frames from now, if none are made until then: the limit less those pressed within the window then
 int frontWindowLeft(int ahead) {
