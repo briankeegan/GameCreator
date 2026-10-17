@@ -4391,10 +4391,15 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
 // A PLAIN CLEAR THAT OPENS AN ATTACK IS NOT PLAIN: the board it settles to reaches a combo or a chain in the time there
 // is (the first clear starts it, the rest is set up on what falls), so it is not a last resort.
 static int optPlain(Opt *o) { if (!o->plain) return 0; optAhead(o); return !isAttack(o->ahead); }
+// the contact of the board the option leaves: a swap of the pool has it settled already, any other line is played (lineState) and its board read
 static int optContact(Opt *o) {
   if (!o->contactKnown) {
     Cand *pc = o->d.kind == K_HOLD || o->n != 1 ? 0 : poolSwap(o->sw[0], o->sw[1]);
-    o->contact = contactOf(pc ? pc->masks : DBASE); o->contactKnown = 1;
+    if (pc) o->contact = contactOf(pc->masks);
+    else if (o->d.kind == K_HOLD || o->n < 1) o->contact = contactOf(DBASE);
+    else { int32_t st[ST_INTS], cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
+           o->contact = lineState(o->sw, o->n, st, can, w, cur, &t) == 0 ? contactOf(st) : contactOf(DBASE); }
+    o->contactKnown = 1;
   }
   return o->contact;
 }
@@ -4435,10 +4440,13 @@ static int optRank(Opt *a, Opt *b) {
   // a break sooner by more than NEXTMOVE: less is the walk's own movement, and the target stands
   if (ka) { double sa = optSoon(a), sb = optSoon(b), gap = sa > sb ? sa - sb : sb - sa; if (sa != sb && !(gap <= NEXTMOVE)) return sa < sb ? 1 : -1;
     // no break in reach for either: the one that leaves the board nearer one is the progress (the lineup toward the break the next slab needs)
-    if (ka == 1 && kb == 1 && sa >= INF && sb >= INF && !a->clears && !b->clears) { double na = optNear(a), nb = optNear(b); if (na != nb) return na < nb ? 1 : -1; } }
+    if (ka == 1 && kb == 1 && sa >= INF && sb >= INF && !a->clears && !b->clears) {
+      // the contact the slab will have is what a break is made at, so it comes before how near a three is to it
+      if (waveExpected() && !a->cash && !b->cash) { int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1; }
+      double na = optNear(a), nb = optNear(b); if (na != nb) return na < nb ? 1 : -1; } }
   // two options that clear and break nothing (the hold, a setup, a fill or a levelling swap): the one that leaves the coming slab more contact comes first --
-  // a break can only be made at a contact (contactOf); a line of several swaps is told by its own board, which only the hold and one swap have at hand
-  if (ka && waveExpected() && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash && a->n <= 1 && b->n <= 1) {
+  // a break can only be made at a contact (contactOf); a line is told by the board it leaves
+  if (ka && waveExpected() && !a->clears && !a->breaks && !a->cash && !b->clears && !b->breaks && !b->cash) {
     int ca = optContact(a), cb = optContact(b); if (ca != cb) return ca > cb ? 1 : -1;
   }
   // two options that clear nothing (the hold, the setups): the one that leaves the better attack within reach in the time there is -- then more vertical twos
