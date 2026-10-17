@@ -3,5 +3,7 @@
 #include "../eval/native/pa.c"
 #include "core/nodes.h"
 #include "rules.c"
+#include "judge.c"
+#include "outcome.c"
 
 EXPORT(gb_version) int gb_version(void) { return 1; }

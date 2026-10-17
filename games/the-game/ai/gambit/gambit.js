@@ -18,15 +18,11 @@ function aimWords(a) {
   return [].concat(testOf(a.combo, 'combo'), testOf(a.chain, 'chain'), testOf(a.send, 'send'), [a.break === true ? 1 : a.break === false ? 0 : -1]);
 }
 
-function load(file) {
-  var mem = null;
-  var inst = new WebAssembly.Instance(new WebAssembly.Module(fs.readFileSync(file || path.join(__dirname, 'gambit.wasm'))),
-                                      { env: { abort_poll: function () { return 0; } } });
-  var X = inst.exports;
-  mem = X.memory;
-  function body(n) { return new Int32Array(mem.buffer, (X.nb_io_body() >>> 0), n); }
+// The exports of a gambit.wasm instance, bound: its io body and the calls that hand it what it decides on.
+function bind(X) {
+  function body(n) { return new Int32Array(X.memory.buffer, (X.nb_io_body() >>> 0), n); }
   return {
-    X: X,
+    X: X, body: body,
     // The mode's list (its aims, as the rules file has them), into rules.c.
     list: function (aims) {
       var w = [].concat.apply([], aims.map(aimWords)), b = body(w.length);
@@ -35,5 +31,10 @@ function load(file) {
     }
   };
 }
+function load(file) {
+  var inst = new WebAssembly.Instance(new WebAssembly.Module(fs.readFileSync(file || path.join(__dirname, 'gambit.wasm'))),
+                                      { env: { abort_poll: function () { return 0; } } });
+  return bind(inst.exports);
+}
 
-module.exports = { load: load, aimWords: aimWords };
+module.exports = { load: load, bind: bind, aimWords: aimWords };
