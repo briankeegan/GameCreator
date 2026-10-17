@@ -1047,24 +1047,16 @@ module.exports = function think(cfg) {
       out = failed(e);
     }
     return out;
-    // GAMBIT'S TURN: the survival search's budget for the time there is, then Gambit's answer (gambit_answer.js)
+    // GAMBIT'S TURN (gambit_answer.js): its own judge on the engine, the native searches cut at the answer's due time
     function gambitTurn() {
-      var N = require(path.join(DIR, 'native.js')).server, nodesPerMs = rates.length ? Math.min.apply(null, rates) : 30;
-      var FULL = Number(process.env.GC_SURVIVOR_FULL) || P.prototype.SURVIVE_SEARCH_BUDGET, CHEAP = Number(process.env.GC_SURVIVOR_CHEAP) || P.prototype.SURVIVE_SEARCH_BUDGET_CHEAP;
-      bot.SURVIVE_SEARCH_BUDGET = due ? Math.max(CHEAP, Math.min(FULL, Math.round((due - Date.now()) * nodesPerMs * SPEND))) : FULL;
-      bot._abort = cfg.abort ? stale : null;
+      var N = require(path.join(DIR, 'native.js')).server;
       if (due) N.deadline(due - DEADLINE_MARGIN_MS);
-      var depth0 = bot.depth, t1 = Date.now();
-      if (due && due - Date.now() < TIGHT_MS) bot.depth = 1;
-      bot._dueAt = due ? due - LOOKAHEAD_MARGIN_MS : 0;
       if (!attacker) attacker = ATTACK({ reaction: OPTS.reaction, swapGap: OPTS.swapGap, cursorMoveFrames: OPTS.cursorMoveFrames });
       try {
         return GANSWER.answer({ bot: bot, m: m, board: board, arrivals: arrivals, due: due, t0: t0, attacker: attacker, search: search, rules: gambitRules,
                                 GP: cfg.profile.gambit, pace: cfg.profile.pace, margin: DEADLINE_MARGIN_MS, nativeMem: NativeMem, stale: stale, aborted: P.ABORTED });
       } finally {
-        bot._abort = null; N.deadline(0); bot.depth = depth0; bot._dueAt = 0;
-        var took = Date.now() - t1;
-        if (took > 20) { rates.push(bot.SURVIVE_SEARCH_BUDGET / took); if (rates.length > 8) rates.shift(); }
+        N.deadline(0);
       }
     }
     function failed(e) {

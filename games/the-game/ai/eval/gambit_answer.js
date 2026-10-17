@@ -151,10 +151,10 @@ function answer(c) {
            // (every swap is its own decision, judged on the board as it is when it is pressed: the frame loop is handed no line to press
            // on its own clock -- the rest of a line is carried on by the next decisions, as the line in progress)
            line: null, lineAt: null, lineFree: false,
-           pace: { hold: L.holdLives, brk: !!(c.br && c.br.depth), urgent: !!(bot.allDoomedNow || D.urgent) },
+           pace: { hold: L.holdLives, brk: !!(c.br && c.br.depth), urgent: !!D.urgent },
            mem: c.nativeMem(),
            breaks: c.br && c.br.depth ? { offered: c.br.depth, lineup: !!c.br.lineup, touch: !!c.br.touch, took: !!(c.br.moves && d.move && c.br.moves[keyOf(d)]) } : null,
-           diag: { budget: bot.SURVIVE_SEARCH_BUDGET, allDoomed: bot.allDoomedNow, walk: null,
+           diag: { walk: null,
                    clears: (made.combo > 0 || made.broke > 0) ? 1 : 0, gambit: D.info } };
 }
 
