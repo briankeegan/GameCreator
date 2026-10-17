@@ -178,6 +178,8 @@ for (var eseed = 1; eseed <= 10; eseed++) {
     if (rl) { assert.strictEqual(at.judge(eb, hold, rl.seq, arr, { settled: false, readyAt: ER.F.us.nextLands }).ready, true, 'seed ' + eseed + ': the line found leaves a plan'); readyLinesFound++; }
   }
   var rk = DECIDE.ranked(ec, ER, ES), seenDead = false;
+  // (every search finds only what the judge will take: no candidate any proposer offered is dropped for the list or the floor)
+  Object.keys(ec.dropped).forEach(function (p) { var d = ec.dropped[p]; assert.ok(!d.list && !d.floor, 'seed ' + eseed + ': ' + p + ' offered a line the judge drops (' + JSON.stringify(d) + ')'); });
   assert.ok(rk.some(function (k) { return k.hold; }) || ER.aloneOut, 'seed ' + eseed + ': the hold is ranked with the rest');
   rk.forEach(function (k) {
     if (!k.o.lives) seenDead = true;

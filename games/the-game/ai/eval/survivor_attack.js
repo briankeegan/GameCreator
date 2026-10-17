@@ -92,7 +92,7 @@ module.exports = function (opts) {
           var sw = s.advanceMany(dj, true);
           for (var dk = 0; dk < sw.length; dk++) {
             var x = sw[dk];
-            if (!x || x.dead) continue;
+            if (!x || x.dead || !stepFits(s, x)) continue;   // (within the rules, useRules)
             var bk = s.breaks(x) - stillBreaks(x.t);
             if (o.by && dm[dk][0].n.t - root.t > o.by) bk = 0;   // (in time, as every line)
             if (bk > 0 && (!quick || bk > quick.broke || (bk === quick.broke && x.t - root.t < quick.done))) {
@@ -105,11 +105,16 @@ module.exports = function (opts) {
       for (var i = 0; i < outs.length; i++) {
         var out = outs[i], it = meta[i][0], m = meta[i][1];
         if (!out || out.dead) continue;
+        // (a line that breaks the rules -- the list, the floor (useRules) -- at any step is no line, and grows no further)
+        if (!stepFits(s, out)) continue;
         var st = s.stepStats(out);
         if (st.cleared > 0) {
           // (EVERY STEP ITS OWN TIME: ats[k] is the frame the line's k-th swap is begun, and `fire` its last's -- the line is in time when
           // its last swap is, plans/gambit.md step 2; `done` is when the cascade it sets off has settled)
           var g = sent(st), seq = it.seq.concat([m]), fire = it.n.t - root.t, ats = it.ats.concat([fire]);
+          // (a line is kept as an answer only when it is within the rules through its settle, as the judge plays it -- allowed(), asked
+          // once, only of a line about to be kept)
+          var endOk = null, okE = function () { if (endOk === null) endOk = allowed(s, out); return endOk; };
           var bigC = 0; st.comboSizes.forEach(function (z) { if (z > bigC) bigC = z; });
           if (aims) {
             // (aims: the line is kept for every aim it meets, by its deadline and keeping what o.keep asks; the search goes on past it)
@@ -121,25 +126,25 @@ module.exports = function (opts) {
             // leaves the lowest stack, and the one that buys the most stop time)
             if (o.near && !(o.dies && out.t - root.t > o.dies)) {
               var shp = shapeOf(out.b.grid);
-              if (!lowest || shp.top < lowest.top || (shp.top === lowest.top && seq.length < lowest.seq.length))
+              if ((!lowest || shp.top < lowest.top || (shp.top === lowest.top && seq.length < lowest.seq.length)) && okE())
                 lowest = { top: shp.top, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: -1 };
-              if ((st.earned || 0) > 0 && (!stopBest || st.earned > stopBest.earned || (st.earned === stopBest.earned && seq.length < stopBest.seq.length)))
+              if ((st.earned || 0) > 0 && (!stopBest || st.earned > stopBest.earned || (st.earned === stopBest.earned && seq.length < stopBest.seq.length)) && okE())
                 stopBest = { earned: st.earned, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: -1 };
             }
             // (of the lines in time that break garbage at all, a plain three included, the one that breaks the most -- the sooner between
             // equals: the last line before the default's own)
-            if (o.near && inTime && kept && made.broke > 0 && (!quick || made.broke > quick.broke || (made.broke === quick.broke && out.t - root.t < quick.done)))
+            if (o.near && inTime && kept && made.broke > 0 && (!quick || made.broke > quick.broke || (made.broke === quick.broke && out.t - root.t < quick.done)) && okE())
               quick = { near: 0, brk: true, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: -1 };
             if (o.near && inTime && kept) {
               var nr = o.near(made);
               if (nr > it.reach) it.reach = nr;   // (the beam is led by the list: a board ranks by the nearest line one swap from it)
-              if (nr > 0 && (!nearest || nr > nearest.near || (nr === nearest.near && seq.length < nearest.seq.length)))
+              if (nr > 0 && (!nearest || nr > nearest.near || (nr === nearest.near && seq.length < nearest.seq.length)) && okE())
                 nearest = { near: nr, brk: made.broke > 0, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: -1 };
             }
             if (inTime && kept) for (var ai = 0; ai < aims.length; ai++) {
               if (!aims[ai] || !aims[ai](made)) continue;
               var pa = perAim[ai];
-              if (!pa || made.cells > pa.cells || (made.cells === pa.cells && seq.length < pa.seq.length))
+              if ((!pa || made.cells > pa.cells || (made.cells === pa.cells && seq.length < pa.seq.length)) && okE())
                 perAim[ai] = { brk: made.broke > 0, cells: made.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: made.broke, earned: st.earned || 0, done: out.t - root.t, fire: fire, ats: ats, floor: floor, aimIndex: ai };
             }
             it.kids.push({ n: out, seq: seq, ats: ats });
@@ -155,7 +160,7 @@ module.exports = function (opts) {
           // the fire kept: the most garbage, or with o.rate the most garbage for the time it takes (cells over swaps + rate) -- pressure, not the biggest
           var rated = o.rate ? g.cells / (seq.length + o.rate) : g.cells, bestRated = best ? (o.rate ? best.cells / (best.seq.length + o.rate) : best.cells) : -1;
           var better = !best || (o.breakFirst && brk !== !!best.brk ? brk : rated > bestRated || (rated === bestRated && seq.length < best.seq.length));
-          if (better) best = { brk: brk, cells: g.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: st.broke || 0, earned: st.earned || 0, done: out.t - root.t, fire: fire, ats: ats };
+          if (better && okE()) best = { brk: brk, cells: g.cells, chain: g.chain, combo: bigC, seq: seq, n: out, broke: st.broke || 0, earned: st.earned || 0, done: out.t - root.t, fire: fire, ats: ats };
         } else it.kids.push({ n: out, seq: it.seq.concat([m]), ats: it.ats.concat([it.n.t - root.t]) });
       }
       pool.sort(function (a, b) { return b.reach - a.reach || b.h - a.h; });
@@ -272,7 +277,7 @@ module.exports = function (opts) {
         if (j0 && Date.now() - t0 >= o.ms) break;
         outs = outs.concat(s.advanceMany(jobs.slice(j0, j0 + SLICE), false));
       }
-      outs.forEach(function (out, i) { if (out && !out.dead) kids.push({ n: out, seq: meta[i][0].seq.concat([meta[i][1]]) }); });
+      outs.forEach(function (out, i) { if (out && !out.dead && stepFits(s, out)) kids.push({ n: out, seq: meta[i][0].seq.concat([meta[i][1]]) }); });
       var got = sends(kids.map(function (k) { return k.n; })), next = [];
       kids.forEach(function (k, i) {
         var g = got[i];

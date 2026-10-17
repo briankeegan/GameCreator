@@ -138,8 +138,11 @@ function holds(F, when) { return Object.keys(when || {}).every(function (k) { re
 var MAXCHAIN = 13;
 // What a line makes ({ combo, combos, chain, broke, cells }) against an aim.
 // An aim that names a combo and no chain is a combo of one clear: a chain whose largest match is that size does not meet it.
+// (a clear is a chain of one link: a match made with no chain running is chain 1, however a counter reports it -- the list's language)
+function chainOf(made) { return Math.max(made.chain || 0, (made.combo || 0) > 0 ? 1 : 0); }
 function meets(aim, made) {
   if (!aim) return false;
+  made = Object.assign({}, made, { chain: chainOf(made) });
   if (aim.any && !aim.any.some(function (a) { return meets(a, made); })) return false;
   if (aim.combo !== undefined && aim.chain === undefined && (made.chain || 0) > 1) return false;
   if (aim.combo !== undefined && !test(made.combo, aim.combo)) return false;
