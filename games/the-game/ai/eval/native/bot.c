@@ -2334,11 +2334,15 @@ static int waveSoon(void) { return waveExpected() && (!aloneOnEngine() || LNA[20
 static int setupScore(const int32_t *m);
 static JLOCAL int32_t LNO[LNOLEN];
 static int aloneOnEngine(void);
-// WHAT A PANEL IS WORTH, by the panels the board is left with: the risk the
-// next landing carries, against its floor. Calibrated on 9,918 landings of four
-// survival scans (landings.py): 36 panels and more 0.65% fatal, 30-35 1.05%,
-// 24-29 2.34%, 18-23 5.2%, under 18 23%.
-static double panelWorth(int panels) { static double mult = -1; if (mult < 0) mult = knob("GC_PW_MULT", 1); return mult * (panels >= 36 ? 1 : panels >= 30 ? 1.6 : panels >= 24 ? 3.6 : panels >= 18 ? 8 : 35); }
+// WHAT A PANEL IS WORTH, by the panels the board is left with, in the frames of life it costs. Measured on 1,334 cycles (a pop to the next pop, ten scans):
+// the board lost 0.39 in 1,000 frames when a pop began on under 18 panels, 0.20 on 18-23, 0.10-0.16 on 24-35, 0.03-0.06 on 36 and more; a panel moves that
+// by 0.008-0.03 for the 400 frames a cycle lasts, against the 6,500 frames of life there are, so it costs 22 to 34 frames from 18 to 41 and 83 under 18.
+// (spentOf prices cells as worth * FPR / BW, so the worth is the frames over that.)
+static double panelWorth(int panels) {
+  double frames = panels >= 36 ? 20 : panels >= 30 ? 25 : panels >= 24 ? 30 : panels >= 18 ? 40 : 85;
+  static double mult = -1; if (mult < 0) mult = knob("GC_PW_MULT", 1);
+  return mult * frames * BW / (BIN[IN_FPR] > 1 ? BIN[IN_FPR] : 1);
+}
 // THE MATERIAL A JUDGED LINE (LNO) SPENDS against the board left alone: the
 // panels it ends with and the garbage it converted, less the board left
 // alone's, each worth what a panel is worth on the board the line leaves
