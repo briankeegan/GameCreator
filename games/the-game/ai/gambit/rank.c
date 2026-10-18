@@ -170,7 +170,6 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 // (a line ready for the next block is lost where its readiness break leads, when that is later; a hold is not credited for the break
 // it waits for -- that break is a candidate of its own)
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
-static int32_t rankFull;    // (the board fuller than it lives longest with -- Read.full, set by the decision: every line, the hold too)
 static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
 static double lostOf(const Judge *x) {
@@ -251,9 +250,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 7. SAVING PANELS UP (decide.c read: begun topped and short, kept until the list's largest combo is sure): of two breaks under
   // garbage, the one whose board has more life by its panels -- before the list's entry: the board's life is its next breaks
   if (x->saving && y->saving && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
-  // 7b. A FULL BOARD (more panels than the measured life peaks at, outcome.c lifePeakOf): of two lines, the one whose board has more life
-  // by its panels, when one of them clears -- before the list's entry: there a panel cleared is life, as on a short board a panel kept is
-  if (rankFull && (clears(x) || clears(y)) && x->o.lifeLeft >= 0 && y->o.lifeLeft >= 0 && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held, or a defence, is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }

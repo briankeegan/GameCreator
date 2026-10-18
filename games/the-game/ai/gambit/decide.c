@@ -134,7 +134,6 @@ static int ranked(const Read *R, const Found *S) {
   for (int i = 0; i < nc; i++) offered[theCands[i].play]++;
   readyDefer = 1;   // (the proposers above ask readiness whole; the judging below ranks first)
   rankReact = C2.reaction + 1;
-  rankFull = R->full;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
   for (int i = 0; i < nc; i++) if (judgeCand(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
