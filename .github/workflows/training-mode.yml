@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       bot:
-        description: 'wasm (WasmSurvivor) or bitbot (BitBot)'
+        description: 'wasm (WasmSurvivor)'
         default: 'wasm'
       pattern:
         description: 'combo_storm, factory or large_garbage'

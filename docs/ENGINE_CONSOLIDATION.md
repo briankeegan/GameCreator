@@ -5,10 +5,9 @@ original. Everything plays by it, through as few copies as possible:
 
 - **One JS engine: `pa-engine.js`** -- the Lua line for line. Newsey runs on
   it, and so does every JS tool.
-- **One C engine: `pa.c`** -- the same rules, for speed. The bot thinks on it
-  (it is linked into `bit.wasm`).
-- **The Lua itself** is the reference: copies are held to it by recordings,
-  and the bot's drills confirm against it.
+- **One C engine: `pa.c`** -- the same rules, for speed. It is built into
+  `pa.wasm` and linked into `gambit.wasm`.
+- **The Lua itself** is the reference: copies are held to it by recordings.
 
 Delete `panel-engine.js` and its C copy `engine.c` (`engine*.wasm`).
 
@@ -29,10 +28,6 @@ Delete `panel-engine.js` and its C copy `engine.c` (`engine*.wasm`).
    rest. Update `gates.sh`, the workflows and `check_gate_wiring`.
 4. **Delete** `panel-engine.js`, `engine.c`, `engine*.wasm`, and the parts of
    `native.js` that only served them.
-5. **The bot's drills** run on `pa.c`: `ai/eval/drill.sh SEED` -- the Lua
-   deals the seed (`lua/deal.lua`), `native/drill` plays it, the bot reading
-   the C board directly (`native/front.c`). No JS engine is involved. The bot
-   thinks in C: a Lua call per prediction cannot fit the 10 ms budget.
 
 ## Watch for
 
