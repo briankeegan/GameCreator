@@ -219,6 +219,16 @@ Not in this step, each with what brings it back: the searches capped by count (t
 search) made time-bounded once the clock-cut count says they are short of time; the perched drop's walk taught that a walked panel
 falls once the drop rate says it matters; the shared prefix's replay once the judge is short of time.
 
+## 7. One press, one clock
+
+- **A swap is pressed one way** (`core/nodes.h pressWalk`, the frame loop's `keysOf` and the judge): the walk begun, and a press
+  refused while the board moves walked to again from the frame after -- the swap goes in on the first frame a walk can put it in.
+  The judge pressing a moving board's swap a walk later judged boards the game never made.
+- **The judging's quarter is the judging's.** Every search runs in one share that ends where the judging's quarter begins
+  (`propose.c searchesEnd`); shares nest, never past the one they are taken in; the break search takes its share of the searches'
+  time, not the decision's.
+- **The replay runs on a game's clock**: `REPLAY_MS` read off the work done, so the shares fall as a game's do and the judge judges.
+
 ## Kept for when it is needed
 
 - **A shared prefix's replay**: the lines a judge plays from one root often begin with the same swaps (a grown three, a break and the

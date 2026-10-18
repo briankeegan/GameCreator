@@ -2,7 +2,7 @@
 // decision, the move. What carries from one decision to the next lives here: the break search's lines, the boards this dig has stood
 // on, the line toward a break begun, the line in progress, the pair the last swap swapped.
 
-#define BREAK_SHARE 0.4    // of the decision's time, for the break search
+#define BREAK_SHARE 0.4    // of the searches' time (propose.c leftMs), for the break search
 #define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
 #define BREAK_MIN_MS 5
 #define BREAK_MAX_MS 400
@@ -120,13 +120,13 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
   double share = R->under ? UNDER_SHARE : BREAK_SHARE;
   *ms = 0; brCut = 0; brResumed = 0;
   // (no break search on a question due sooner than it could take: the answer would come late)
-  if (C2.due && C2.due - nowMs() < C2.margin + BREAK_MIN_MS) return 0;
+  if (C2.due && leftMs() < BREAK_MIN_MS) return 0;
   double t = nowMs();
   int32_t pop = popLeft(decQ.b);
   static Paths resume;
   int have = carriedPaths(decQ.b, lineFrom, linePressed, &resume);
-  double by = C2.due ? (t + (BREAK_MIN_MS > (C2.due - C2.t0) * share ? BREAK_MIN_MS : (C2.due - C2.t0) * share)) : t + BREAK_MAX_MS;
-  if (C2.due && by > C2.due - C2.margin) by = C2.due - C2.margin;
+  // (its share of what the searches have, propose.c leftMs: the other searches the rest, the judging its quarter)
+  double by = C2.due ? t + (BREAK_MIN_MS > leftMs() * share ? BREAK_MIN_MS : leftMs() * share) : t + BREAK_MAX_MS;
   double old = clockShareBegin(by);
   // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
   // is searched first, quick to find, so a break to play is in hand however long the list's own takes; the rest of the share then goes
@@ -205,12 +205,15 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   readMs = nowMs() - tStart;
   double brMs;
+  // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
+  double searchShare = clockShareBegin(searchesEnd());
   int ran = breakSearch(&R, lineFrom, linePressed, &brMs);
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
   double ts = nowMs();
   static Found S;
   searchAll(&R, &S);
   S.searchMs = nowMs() - ts;
+  clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
   int n = ranked(&R, &S);
   Played P = playOf(&R, n);

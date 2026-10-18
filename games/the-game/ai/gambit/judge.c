@@ -131,6 +131,13 @@ static int32_t lostAlone(Ctx *x, int n, int32_t to) {
   if (w < 0) return NOT_ASKED;   // (the clock stopped it, or the step was refused: no answer -- never a loss at 0)
   return NODE(x, w)->dead ? NODE(x, w)->t : FOREVER;
 }
+// (a step with the walk tapped, as the frame loop's keys are made before it holds them: where a press is taken -- pressWalk)
+static int stepTapped(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
+  int32_t t = pressTight; pressTight = 0;
+  int r = step(x, pi, kind, mr, mc, frames);
+  pressTight = t;
+  return r;
+}
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
@@ -155,21 +162,6 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       int calm = settleOf(x, w);
       n = liveNode(x, calm) ? calm : w;
     }
-    // (a swap not there to press while the board still moves -- its pair still swapping or falling -- is pressed once it is, as the
-    // frame loop presses it; one not there on a still board is not there)
-    if (!last && !legalAt(x, n, mr, mc)) {
-      while (!legalAt(x, n, mr, mc)) {
-        Board *bn = ensureBoard(x, n);
-        if (!bn || !(hasActivePanels(bn) || bn->swappingCount > 0)) break;
-        int w = step(x, n, MK_LONG, 0, 0, 1);
-        if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
-        if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
-        n = w;
-      }
-      if (j->late || j->dead) break;
-      if (!legalAt(x, n, mr, mc)) { j->cut = k; break; }
-    }
-    if (!last && j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
     // (the allowance this swap is pressed under: the decision's less what the line's swaps before it spent -- core/nodes.h actionsFor)
     if (!last && pressAllowance >= 0) {
       Board *bn = ensureBoard(x, n);
@@ -177,9 +169,24 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       pressTight = left <= HOLDTIGHT;
       if (bn) spent += actionsFor(bn->curRow, bn->curCol, mr, mc, left);
     }
-    int out = step(x, n, last || o->settled ? MK_SETTLE : MK_SWAP, mr, mc, 0);
+    int kind = last || o->settled ? MK_SETTLE : MK_SWAP, out;
+    if (last) out = step(x, n, kind, mr, mc, 0);
+    else {
+      // (pressed as the frame loop presses it, core/nodes.h pressWalk: a swap whose pair still moves is walked to from the first frame its
+      // walk is taken on, found with the walk tapped as the frame loop's keys are, then pressed as the frame loop walks it -- held, when
+      // tight; one refused on a still board is not there to press)
+      int from;
+      out = pressWalk(x, n, kind, mr, mc, stepTapped, &from);
+      if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
+      if (out == STEP_NULL) { j->cut = k; break; }
+      if (from < 0) { j->dead = 1; j->deadAt = deadAt; break; }
+      if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
+      n = from;
+      if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
+    }
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
     if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
+    if (!last && out == STEP_NULL) { j->cut = k; break; }
     if (!liveNode(x, out)) { j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
     Stats st;
     statsOf(x, out, &st);

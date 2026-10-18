@@ -142,6 +142,27 @@ static int legalAt(Ctx *x, int i, int r, int c) {
   for (int k = 0; k < n; k++) if (ms[k] == r * 8 + c) return 1;
   return 0;
 }
+// A SWAP PRESSED AS THE FRAME LOOP PRESSES IT (front.c keysOf and the judge, the one way): the walk to it begun and the swap pressed when
+// the cursor gets there. A press refused there while the board still moves -- its pair swapping or falling -- is walked to again from
+// the frame after, until one is taken or the board stands still: the swap goes in the first frame the walk can put it in, never a walk
+// later. walk: the step that walks (the frame loop's advance writing its keys; the judge's, unheld). Returns the walk taken (a node,
+// STEP_NULL none, STEP_DEAD lost on it, STEP_ERR) and in *from the node it began on -- -1 when the board was lost while it waited.
+#define PRESS_WAIT 240   // the frames a swap is waited for at most
+static int pressWalk(Ctx *x, int n, int kind, int mr, int mc, int (*walk)(Ctx *, int, int, int, int, int32_t), int *from) {
+  for (int k = 0;; k++) {
+    int32_t mark = tapeN;
+    int r = walk(x, n, kind, mr, mc, 0);
+    *from = n;
+    if (r != STEP_NULL) return r;
+    tapeN = mark;
+    Board *b = ensureBoard(x, n);
+    if (k >= PRESS_WAIT || !b || !(hasActivePanels(b) || b->swappingCount > 0)) return STEP_NULL;
+    int w = walk(x, n, MK_LONG, 0, 0, 1);
+    if (w == STEP_NULL || w == STEP_ERR) return w;
+    if (w == STEP_DEAD || NODE(x, w)->dead) { if (w >= 0) deadAt = NODE(x, w)->t; *from = -1; return STEP_DEAD; }
+    n = w;
+  }
+}
 // WHAT A STEP DID (pa.c ns_step_stats), read off the board it made: each clear's size and the chain counter it reached, panels
 // cleared, garbage cells converted, the most stop one clear paid.
 typedef struct { int32_t n, size[MAXCOMBOS], chainAt[MAXCOMBOS], cleared, broke, earned; } Stats;
