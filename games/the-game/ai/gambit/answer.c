@@ -236,6 +236,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
   if (!(d.kind == 0 && P.top && P.top->wait)) carryOf(&R, P.line, qid);
+  if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
   int32_t pa = NUL, pb = NUL;
   if (d.kind == 1) { pa = decQ.b->p[CR(d.move)][CC(d.move)].f[ID]; pb = decQ.b->p[CR(d.move)][CC(d.move) + 1].f[ID]; }

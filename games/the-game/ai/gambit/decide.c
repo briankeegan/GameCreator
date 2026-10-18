@@ -172,6 +172,26 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid) {
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->aims.aim[k->aim]; }
 }
+// THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
+// of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
+// as soon as it lives.
+static void carryReady(const Judge *H, int32_t qid) {
+  const Judged *j = &H->o.j;
+  if (!H->hold || H->o.ready != 1 || j->readyN < 1) return;
+  memset(&theCarry, 0, sizeof theCarry);
+  int col = 0;
+  for (int c = 1; c <= W && !col; c++) {
+    int32_t id = j->readyRow1[c];
+    if (id == NUL) continue;
+    int touched = 0;
+    for (int i = 0; i < j->readyN; i++) if (CR(j->readyLine[i]) == 1 && (CC(j->readyLine[i]) == c || CC(j->readyLine[i]) + 1 == c)) touched = 1;
+    if (!touched) { col = c; theCarry.anchorRow = 1; theCarry.anchorCol = c; theCarry.anchorId = id; }
+  }
+  if (!col) return;
+  theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
+  for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
+  theCarry.settled = 0; theCarry.broke = 1;
+}
 // CARRIED ON: the rest of the line in progress, found again on this board by its bottom-row panel and
 // played on as it is pressed, while every step is legal and it still makes what it was begun for. wait: its next step must wait for
 // the board to settle.
@@ -184,7 +204,8 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   int skip = C->id == carryFrom ? carryPressed : 0;
   if (!C->set || C->nrest <= skip) return 0;
   int dr = NOT_ASKED;
-  for (int r = 1; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][C->anchorCol].f[ID] == C->anchorId) dr = r - C->anchorRow;
+  // (from the row not yet risen: the board a waited-for break was found on may have risen past this one)
+  for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][C->anchorCol].f[ID] == C->anchorId) dr = r - C->anchorRow;
   if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
   int32_t rest[MAXLINE], nrest = C->nrest - skip;
   for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);

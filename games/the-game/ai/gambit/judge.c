@@ -32,6 +32,7 @@ typedef struct {
   int32_t ready;                // 1, 0, or NOT_ASKED
   int32_t readyLine[MAXLINE], readyN; // the swaps the readiness found (why), as r * 8 + c
   int32_t readyWait;            // the frame from the root the readiness looked from (its waitTo)
+  int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
   int32_t late;                 // the clock stopped it: no answer
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
@@ -91,12 +92,14 @@ static int settles(Ctx *x, int o) { int z = settleOf(x, o); return liveNode(x, z
 // of the best-ranked in the time left (decide.c ranked).
 static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN);
 static int readyDefer;
+static int32_t readyRow1Buf[W + 1];
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   int land = step(x, n, MK_LONG, 0, 0, imax(1, wait - NODE(x, n)->t));
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   if (readyDefer) return NOT_ASKED;
   int calm = settleOf(x, land);
   if (liveNode(x, calm)) land = calm;
+  { Board *lb = ensureBoard(x, land); for (int c = 1; c <= W; c++) readyRow1Buf[c] = lb && lb->nrows > 1 ? lb->p[1][c].f[ID] : NUL; }
   if (clockOut()) return NOT_ASKED;
   return readyBreak(x, land, why, whyN);
 }
@@ -178,6 +181,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     int32_t from = nseq ? 0 : cfgReaction;
     j->readyWait = imax(1, imax(o->readyAt, from) + 2);
     j->ready = breaksAfterLanding(x, n, j->readyWait, o->why ? j->readyLine : 0, &j->readyN);
+    memcpy(j->readyRow1, readyRow1Buf, sizeof j->readyRow1);
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
   }
   j->late = j->late || clockOut();
