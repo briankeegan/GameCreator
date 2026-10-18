@@ -2707,7 +2707,7 @@ static JLOCAL double sitNodeLeft;   // the time the line just offered to the acc
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-#define SITKEEPS 5   // searches that go on from one frame to the next: each keeps a set of memory of its own
+#define SITKEEPS 6   // searches that go on from one frame to the next: each keeps a set of memory of its own
 typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; int cap, kids, hash; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS + SITKEEPS];
 static JLOCAL int sitLevel;
@@ -4921,6 +4921,8 @@ static int sitNear(const int32_t *res, const int32_t *sw, int n, double at, void
 typedef struct { int valid, done, found, n; u64 pos; double left; int frozen; int32_t cur[2], t0; uint32_t can[WMAX]; Wait wt[32][WMAX]; int32_t sw[2 * LINEMAX]; } BgJob;
 static BgJob BG; static ST BGROOT;
 #define BGKEEP 5   // its kept slot
+#define BIKEEP 6
+static double biBackground(double units);
 static void bgOffer(const int32_t *root, int live, const int32_t *cur, int32_t t0, const uint32_t *can, Wait (*wt)[WMAX], double left, int frozen) {
   if (BG.valid && BG.pos == (u64)(unsigned)raPos) return;   // the same position: the search goes on
   BG.valid = 1; BG.done = 0; BG.found = 0; BG.n = 0; BG.pos = (u64)(unsigned)raPos; BG.left = left; BG.frozen = frozen;
@@ -4931,7 +4933,9 @@ static void bgOffer(const int32_t *root, int live, const int32_t *cur, int32_t t
 }
 __attribute__((export_name("bot_background"))) double bot_background(double units) {
   extern PATLS double paWork, paWorkEnd;
-  if (!BG.valid || BG.done || BG.found || !(units > 0) || inWorker) return 0;
+  if (!(units > 0) || inWorker) return 0;
+  double usedI = biBackground(units);
+  if (!BG.valid || BG.done || BG.found) return usedI;
   double keep = paWork, keepEnd = paWorkEnd; extern int paBudgetOut(void);
   probeOn = 1; paWorkEnd = 1e300;
   int32_t sw[2 * LINEMAX]; int n = 0; double at = 0;
@@ -4943,7 +4947,7 @@ __attribute__((export_name("bot_background"))) double bot_background(double unit
   probeOn = 0; paWork = keep; paWorkEnd = keepEnd;
   if (got && n >= 1 && n <= LINEMAX) { BG.found = 1; BG.n = n; for (int k = 0; k < 2 * n; k++) BG.sw[k] = sw[k]; }
   else if (used < 0.9 * units) BG.done = 1;   // the frontier was spent, not the work: there is no break in the time there is from this board
-  return used;
+  return used + usedI;
 }
 static Dec breakDeeper(Dec d) {
   if (!BIN[IN_HASPA]) return d;
@@ -5584,6 +5588,30 @@ static int lineKeepsClear(const int32_t *sw, int n) {
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   return lineState(sw, n, st, can, w, cur, &t) == 0 && oneSwapClear(st);
 }
+// THE STAGING SEARCHED ON BETWEEN FRAMES (bot_background): the same search as BG's, for the soonest clear
+static BgJob BI; static ST BIROOT;
+static void biOffer(const int32_t *root, const int32_t *cur, int32_t t0, const uint32_t *can, Wait (*wt)[WMAX], double left) {
+  if (BI.valid && BI.pos == (u64)(unsigned)raPos) return;
+  BI.valid = 1; BI.done = 0; BI.found = 0; BI.n = 0; BI.pos = (u64)(unsigned)raPos; BI.left = left; BI.frozen = 1;
+  stcpy(BIROOT, root);
+  BI.cur[0] = cur[0]; BI.cur[1] = cur[1]; BI.t0 = t0;
+  for (int c = 0; c < WMAX; c++) BI.can[c] = can[c];
+  for (int r = 0; r < 32; r++) for (int c = 0; c < WMAX; c++) BI.wt[r][c] = wt[r][c];
+}
+static double biBackground(double units) {
+  extern PATLS double paWork, paWorkEnd;
+  if (!BI.valid || BI.done || BI.found || !(units > 0) || inWorker) return 0;
+  double keep = paWork, keepEnd = paWorkEnd;
+  probeOn = 1; paWorkEnd = 1e300;
+  InsureCtx x; x.n = 0; double w0 = paWork;
+  sitKeepSlot = BIKEEP; sitKeepKey = (BI.pos << 3) | 4; sitGuide = 0;
+  searchInTime(BIROOT, BI.cur[0], BI.cur[1], BI.t0, 0, BI.left, 1, BI.can, BI.wt, units, sitInsure, &x, 0, 0, 0);
+  double used = paWork - w0;
+  probeOn = 0; paWork = keep; paWorkEnd = keepEnd;
+  if (x.n >= 1 && x.n <= LINEMAX) { BI.found = 1; BI.n = x.n; for (int k = 0; k < 2 * x.n; k++) BI.sw[k] = x.sw[k]; }
+  else if (used < 0.9 * units) BI.done = 1;
+  return used;
+}
 static void insureFind(void) {
   extern PATLS double paWork; extern int paBudgetOut(void);
   static int noneAt;   // the position (raPos) in which no staging was found: none is found again while it stands
@@ -5594,6 +5622,7 @@ static void insureFind(void) {
   // the search goes on from the last frame's while the position stands (sitKeepSlot): a pop holds one for hundreds of frames
   static InsureCtx xKeep; InsureCtx x; u64 pk = ((u64)(unsigned)raPos << 3) | 5;
   if (SITKEEP[3].valid && SITKEEP[3].key == pk) x = xKeep; else x.n = 0;
+  if (BI.found && BI.n >= 1) { x.n = BI.n; for (int k = 0; k < 2 * BI.n; k++) x.sw[k] = BI.sw[k]; BI.found = 0; BI.valid = 0; }   // the soonest clear the background pass found
   double work = optLine() - paWork; if (work > SETUPWORK) work = SETUPWORK;
   double w0 = paWork;
   insNodes = insMaxN = insEnd0 = 0; sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;
@@ -5603,6 +5632,7 @@ static void insureFind(void) {
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE die %d pop-end stop %d: the soonest clear is %d swaps, work %.0f of %.0f | nodes %d depth %d ended %d | root legal %d can %d late %d\n", LNA[0], LNA[22], x.n, paWork - w0, work, insNodes, insMaxN, insEnd0, sitRootLegal, sitRootCan, sitRootLate); }
 #endif
+  if (!x.n && paWork - w0 >= 0.9 * work) biOffer(st1, cur1, t1, can1, waits1, timeLeft());
   if (x.n < 2) { if (!x.n && paWork - w0 < 0.9 * work && !paBudgetOut()) noneAt = raPos; return; }   // a search the budget cut found nothing about the position   // 1: already a swap away
   int n = x.n - 1;
   int v = lineJudge(x.sw, n, 0);
