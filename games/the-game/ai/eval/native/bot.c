@@ -23,7 +23,7 @@ enum { M_BUILD, M_DEFEND, M_ATTACK };
 // the line a bot plays (Bot.line): what it is for, and the most steps it holds
 enum { LINE_BREAK = 1, LINE_CASH = 2, LINE_PLAN = 3 };
 #define LINEMAX 16   // the most steps a line holds: storage, never a limit on what is searched -- a line that does not fit is refused, never cut
-#define LNOLEN 22   // out[19]: the stop time still running (stop and pre-stop) when the next slab lands in the line's world, -1 when none lands in it; out[20]: the frame it lands; out[21]: the actions the line takes
+#define LNOLEN 23   // out[19]: the stop time still running (stop and pre-stop) when the next slab lands in the line's world, -1 when none lands in it; out[20]: the frame it lands; out[21]: the actions the line takes; out[22]: the stop time running when the pop under way ends, -1 when none ends in it
 // THE HOLLOW of a judged line: the gaps under garbage on the board it ends on
 // ([10]) and the gaps the slabs to come would leave over its towers ([13]). A
 // tower lowered also lets a pile perched on it down onto panels it can break on.
@@ -5482,6 +5482,58 @@ static int setupLines(SetupCtx *x, double left) {
   searchInTime(st1, cur1[0], cur1[1], t1, 0, left, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can1, waits1, work, sitSetup, x, 0, 0, 0);
   return 1;
 }
+// COVER FOR THE END OF A POP: a pop locks the rise while it runs and the stop time is frozen under it, so a topped board whose pop ends with no stop time
+// running loses health the frame its last panels land. A plain three holds the rise for its flash, face and pops (38 + 7 x 3 frames) for the price of
+// three panels -- as good as 60 frames of stop time -- but only a swap away: the board is staged for one in the pop's idle frames, and pressed when it is due
+// (clearDue), so its lock runs on from the pop's.
+#define INSURESTOP 40   // the stop time a pop's end must be met with, else a clear is staged
+static int oneSwapClear(const int32_t *st) {
+  static JLOCAL ST sc; static JLOCAL int32_t rr[R_INTS + ST_INTS];
+  int W = st[O_W], H = st[O_H] < 30 ? st[O_H] : 30;
+  for (int r = 1; r <= H; r++) {
+    uint32_t b = 1u << (r - 1);
+    for (int c = 1; c < W; c++) {
+      if (!((U(st, OCC + c) | U(st, OCC + c + 1)) & b)) continue;
+      stcpy(sc, st);
+      if (!swapIn(sc, r, c)) continue;
+      resolve(sc, rr, 1);
+      if ((rr[R_SCOPE] == SC_OK || rr[R_SCOPE] == SC_BROKE) && rr[R_TOTAL] > 0) return 1;
+    }
+  }
+  return 0;
+}
+typedef struct { int n; int32_t sw[2 * LINEMAX]; } InsureCtx;
+static int sitInsure(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
+  InsureCtx *x = ctx; (void)at;
+  if (res[R_SCOPE] != SC_OK || res[R_TOTAL] > 0) return SIT_END;   // a line that clears has fired what it staged
+  if (n <= LINEMAX && oneSwapClear(res + R_INTS)) { x->n = n; for (int k = 0; k < 2 * n; k++) x->sw[k] = sw[k]; return SIT_TAKE; }
+  return SIT_GROW;
+}
+// a pop is under way on a topped board that would meet its end with less than INSURESTOP of stop time
+static int popUninsured(void) {
+  return BIN[IN_TOPPED] && BIN[IN_POPPING] > 0 && aloneOnEngine() && LNA[22] >= 0 && LNA[22] < INSURESTOP;
+}
+static int lineKeepsClear(const int32_t *sw, int n) {
+  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
+  return lineState(sw, n, st, can, w, cur, &t) == 0 && oneSwapClear(st);
+}
+static Dec insureClear(Dec d) {
+  extern PATLS double paWork;
+  if (!popUninsured() || paWork >= optLine()) return d;
+  static ST st1; int32_t cur1[2], t1; uint32_t can1[WMAX]; Wait waits1[32][WMAX];
+  if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0 || oneSwapClear(st1)) return d;
+  InsureCtx x; x.n = 0;
+  double work = optLine() - paWork; if (work > SETUPWORK) work = SETUPWORK;
+  searchInTime(st1, cur1[0], cur1[1], t1, 0, timeLeft(), 1, can1, waits1, work, sitInsure, &x, 0, 0, 0);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE stop at the pop's end %d, staged in %d swaps\n", LNA[22], x.n); }
+#endif
+  if (!x.n) return d;
+  int v = lineJudge(x.sw, x.n, 0);
+  if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) return d;
+  if (x.n > 1) lineSet(x.sw, x.n, LINE_PLAN, 0);
+  return mkSwap(x.sw[0], x.sw[1], V_SETUP, d.mode, d.alive);
+}
 static Dec setupTwos(Dec d) {
   setupHold = 0;   // the work held for the setups is theirs to spend now
   if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA]) return d;
@@ -5490,6 +5542,8 @@ static Dec setupTwos(Dec d) {
   // levelling first: a slab that perches breaks on nothing
   if (fillLevelDec == btDecision && fillLevel.has && levelInTime()) return mkSwap(fillLevel.sw[0], fillLevel.sw[1], V_FILL, d.mode, d.alive);
   if (!aloneOnEngine()) return d;
+  { Dec m = insureClear(d); if (m.kind == K_SWAP && m.hasMove) return m; }
+  int insured = popUninsured() && oneSwapClear(DBASE);   // a clear staged is kept: no setup takes it apart
   static SetupCtx x;
   if (!setupLines(&x, timeLeft())) return d;
 #ifndef __wasm__
@@ -5511,6 +5565,7 @@ static Dec setupTwos(Dec d) {
     // it pays nothing -- unless it leaves a break in reach: material spent only to break
     if (!(v & LV_LIVES) || ((v & LV_PAYS) && !x.reach[at]) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) continue;
     if (need >= 0 && marginAfter(sw, n, LNO[0]) < 0) continue;
+    if (insured && !lineKeepsClear(sw, n)) continue;
     if (n > 1) lineSet(sw, n, LINE_PLAN, 0);
     return mkSwap(sw[0], sw[1], V_SETUP, d.mode, d.alive);
   }

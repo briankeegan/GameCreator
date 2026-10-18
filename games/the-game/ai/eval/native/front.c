@@ -750,9 +750,10 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   if (botTraceOn && n == 1 && waitTo > 60 && LF) { extern int fprintf(void *, const char *, ...); extern void *stderr; int r = steps[0], c = steps[1];
     fprintf(BLOG, "  WAIT %d,%d to %d | first %d,%d last %d,%d\n", r, c, waitTo, LF->settle.first[r][c], LF->settle.first[r][c + 1], LF->settle.last[r][c], LF->settle.last[r][c + 1]); }
 #endif
-  out[0] = 0; out[1] = -1; out[2] = out[3] = out[4] = 0; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1; out[19] = out[20] = -1; out[21] = 0;   // out[16]: the clock the first step is pressed at
+  out[0] = 0; out[1] = -1; out[2] = out[3] = out[4] = 0; out[5] = out[6] = -1; out[7] = paLibBoard()->ninc; out[8] = -1; out[9] = out[10] = out[11] = out[12] = out[13] = out[14] = 0; out[15] = out[16] = -1; out[19] = out[20] = -1; out[21] = 0; out[22] = -1;   // out[16]: the clock the first step is pressed at
   lpArrive = -1; lpEvent = -1;
   int32_t landedFrom = b->garbageCreatedCount;   // out[15]: read once the next slab has landed
+  int popSeen = b->preStopTime > 0;   // out[22]: the stop time running when the pop under way ends
   int pressStep = -1, pressLast = 0;   // the step pressed this frame, and the last press before it
   { extern int paBudgetOut(void); if (paBudgetOut() || workLeft() <= 0) return -1; }   // past the decision's budget, or this thread's share of it (workLeft): not played
   // A LINE IS JUDGED TO WHERE ITS CONSEQUENCE SHOWS: past the horizon the
@@ -825,6 +826,7 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
     }
     if (lpEvent < 0 && (b->sCleared || b->sBroke || b->sNCombo || b->sFell || b->sEarned || b->sHollow)) lpEvent = f;
     if (b->health < h0 || b->gameOverClock > 0) { out[0] = f + 1; break; }
+    if (out[22] < 0) { if (b->preStopTime > 0) popSeen = 1; else if (popSeen) out[22] = b->stopTime; }
     if (out[19] < 0 && b->garbageCreatedCount > landedFrom) { out[19] = b->stopTime + b->preStopTime; out[20] = f; }
     if (out[15] < 0 && b->garbageCreatedCount > landedFrom && !nb_falling_garbage(b)) out[15] = standingHollow(b);
   }
