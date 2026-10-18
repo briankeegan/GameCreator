@@ -723,12 +723,6 @@ static int standingHollow(const Board *b) {
     }
   return h;
 }
-// a garbage cell of the board b still matched or popping: a pop is under way
-static int boardPopping(const Board *b) {
-  for (int r = 1; r <= b->height; r++)
-    for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; if (f[ISGARBAGE] && (f[STATE] == MATCHED || f[STATE] == POPPING)) return 1; }
-  return 0;
-}
 static JLOCAL int lpEvent;   // linePlay's first frame anything cleared, broke, chained or fell (-1: none)
 static JLOCAL int lpArrive;   // linePlay's frame the cursor first stood on the first step's pair (-1: never)
 static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, int32_t *out) {
@@ -772,10 +766,6 @@ static int linePlay(const int32_t *steps, int n, int horizon, int stopAtNext, in
   for (f = f0; f < horizon || (stopAtNext == 0 && (b->nActive > 0 || nb_falling_garbage(b) || b->shakeTime > 0 || (b->stopTime > 0 && nb_topped(b)))); f++) {
     { extern int paBudgetOut(void); if (paBudgetOut() || workLeft() <= 0) return -1; }   // past the budget, or this thread's share of it, mid-line: not played
     int input = 0;
-    // stopAtNext 3: on until the pop under way has ended and the board it leaves has settled
-    if (stopAtNext == 3 && step == n && !walking && b->preStopTime == 0 && b->nActive == 0 && !boardPopping(b) && !nb_falling_garbage(b)) {
-      out[1] = last; out[8] = f; out[21] = pad.total - (LF ? LF->pad.total : 0); return 1;
-    }
     // stopAtNext 2: on until the next landK slabs have dropped and landed
     if (stopAtNext == 2 && step == n && !walking && b->garbageCreatedCount >= dropped + landK && !nb_falling_garbage(b)) {
       out[1] = last; out[8] = f; out[21] = pad.total - (LF ? LF->pad.total : 0); return 1;
@@ -1141,7 +1131,7 @@ static int lineStateRun(const int32_t *steps, int n, int landing, int32_t *masks
   int32_t out[LNOLEN];
   snapLast = 0;
   landK = landing > 0 ? landing : 1;
-  int rc = n > 0 || landing ? linePlay(steps, n, 400, landing < 0 ? 3 : landing ? 2 : 1, out) : (nb_copy(LNB ? LNB : (LNB = nb_new()), paLibBoard()), out[0] = 0, out[8] = 0, 1);
+  int rc = n > 0 || landing ? linePlay(steps, n, 400, landing ? 2 : 1, out) : (nb_copy(LNB ? LNB : (LNB = nb_new()), paLibBoard()), out[0] = 0, out[8] = 0, 1);
   landK = 1;
   if (rc != 1 || out[0]) return -1;
   // the next step targets settled panels: the board once it has settled, each
@@ -1442,8 +1432,6 @@ int stopAwardOf(int chain, int total, int topped) {
 int lineState(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t) {
   return lineStateAt(steps, n, 0, masks, can, wait, cur, t);
 }
-// the board once the pop under way has ended and settled (its frames from now in t)
-int lineStatePop(int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t) { return lineStateAt(0, 0, -1, masks, can, wait, cur, t); }
 // THE BOARD THE NEXT SLAB LANDS ON: `steps` played, then the board left alone
 // until the next slab has dropped and landed, then settled.
 int lineLandedFull(const int32_t *steps, int n, int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t) {

@@ -2707,7 +2707,7 @@ static JLOCAL double sitNodeLeft;   // the time the line just offered to the acc
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-#define SITKEEPS 5   // searches that go on from one frame to the next: each keeps a set of memory of its own
+#define SITKEEPS 4   // searches that go on from one frame to the next: each keeps a set of memory of its own
 typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; int cap, kids, hash; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS + SITKEEPS];
 static JLOCAL int sitLevel;
@@ -4652,7 +4652,6 @@ static int attackOptions(Opt *O, int n, Dec d) {
 }
 // the line staged this decision (insureFind), for the setups stage to play on a hold and the arbiter to weigh beside it
 static struct { int dec, n; int32_t sw[2 * LINEMAX]; } insStage = { -1, 0, { 0 } };
-static struct { int pos, n; int32_t sw[2 * LINEMAX]; } prepStage = { 0, 0, { 0 } };
 static int setupOptions(Opt *O, int n, Dec d) {
   double base = setupKey(DBASE), key[SETUPOPTS]; int at[SETUPOPTS], na = 0;
   for (int i = 0; i < nPool; i++) {
@@ -4694,7 +4693,7 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
 static Dec arbitrate(Dec d) {
   reachHold = 0;   // the stages before it have left the scramble its work
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[7 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
+  Opt O[6 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
   memset(O, 0, sizeof O);
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
@@ -4765,15 +4764,6 @@ static Dec arbitrate(Dec d) {
         for (int k = 0; k < 2 * o->n; k++) o->sw[k] = insStage.sw[k];
         o->twos = 1 << 20; o->twosKnown = 1;
         if (optJudge(o)) n++;
-      }
-      // the swaps of the break planned through the pop that need nothing the pop holds (prepFind): beside the hold, below the clear staged for the pop's end
-      if (prepStage.pos == raPos && prepStage.n > 0) {
-        Opt *o = &O[n];
-        o->d = mkSwap(prepStage.sw[0], prepStage.sw[1], V_LINEUP, d.mode, d.alive);
-        o->n = prepStage.n; o->wait = 0; o->pri = 2; o->stall = 1;
-        for (int k = 0; k < 2 * o->n; k++) o->sw[k] = prepStage.sw[k];
-        o->twos = 1 << 19; o->twosKnown = 1;
-        if (optJudge(o)) n++;
       } } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
@@ -4836,65 +4826,6 @@ static Dec arbitrate(Dec d) {
 static Dec breakDeeper(Dec d);
 static Dec makeRoom(Dec d);
 static int roomForBreak(const int32_t *st);
-// THE BREAK PLANNED THROUGH THE POP: the pop's end is met with the clear one swap away, so a break line that begins after it is in time. Its swaps that
-// need nothing the pop holds -- the lower stack, pairs that settle before the pop ends -- are made now, and the rest is the gap after the pop.
-static int oneSwapClear(const int32_t *st);
-static int popUninsured(void);
-static int lineKeepsClear(const int32_t *sw, int n);
-int lineStatePop(int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
-static void prepFind(void) {
-  extern PATLS double paWork;
-  static int nonePos;   // the position (raPos) in which no break was planned through the pop: none is planned again while it stands
-  if (prepStage.pos == raPos && prepStage.n > 0) return;   // found for this position: kept while it stands
-  prepStage.pos = 0; prepStage.n = 0;
-  if (nonePos == raPos || BT->nLine || paWork >= optLine()) return;
-  // the plain clear one swap away meets the pop's end: the break may begin after it
-  static int coverPos = -1, cover; if (coverPos != raPos) { cover = oneSwapClear(DBASE); coverPos = raPos; }
-  if (!cover) return;
-  static ST post, now; int32_t pc[2], pt, nc[2], nt; uint32_t pcan[WMAX], ncan[WMAX]; Wait pw[32][WMAX], nw[32][WMAX];
-  if (lineStatePop(post, pcan, pw, pc, &pt) != 0 || lineState(0, 0, now, ncan, nw, nc, &nt) != 0) return;
-  // the break there is on the board the pop leaves, searched as breakDeeper searches (best-first by the contact column's distance), the search going on from
-  // frame to frame while the position stands
-  static int32_t bsw[2 * LINEMAX]; static int bn; static double bat;
-  u64 pk = ((u64)(unsigned)raPos << 3) | 6;
-  double share = optLine() - paWork; if (share > 12000) share = 12000;
-  double limit = timeLeft() - 2 + resolveFramesOf(3, 0), w0 = paWork;
-  bn = 0;
-  sitGuide = readyGuide;
-  sitKeepSlot = 5; sitKeepKey = pk;
-  int got = searchInTime(post, pc[0], pc[1], pt, 0, limit, 1, pcan, pw, share, sitBreaks, 0, bsw, &bn, &bat);
-  sitGuide = 0;
-  struct { int n; int32_t sw[2 * LINEMAX]; } bl; bl.n = got ? bn : 0;
-  for (int q = 0; q < 2 * bl.n; q++) bl.sw[q] = bsw[q];
-  LineC *best = bl.n >= 2 ? (LineC *)&bl : 0;
-  int k = 0, found = got != 0; int bestn = bl.n;
-  if (best) {
-    double pop = timeLeft() - 4;
-    // the swaps made now: the pair swappable now before the pop ends, the same two cells on the board the pop leaves
-    while (k < bestn - 1) {
-      int r = bl.sw[2 * k], c = bl.sw[2 * k + 1];
-      if (r < 1 || r > 31 || c < 1 || c >= WMAX || !(ncan[c] & (1u << (r - 1))) || (double)nw[r][c] >= pop) break;
-      uint32_t bit = 1u << (r - 1); int same = 1;
-      for (int cc = c; cc <= c + 1; cc++)
-        same &= (U(now, OCC + cc) & bit) == (U(post, OCC + cc) & bit) && (U(now, GARB + cc) & bit) == (U(post, GARB + cc) & bit)
-                && (!(U(now, OCC + cc) & bit) || colourFirst(now, cc, bit) == colourFirst(post, cc, bit));
-      if (!same) break;
-      k++;
-    }
-  }
-#ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; int gp = 0, op = 0, gn = 0, on_ = 0; for (int c = 1; c <= BW; c++) { gp += popc(U(post, GARB + c)); op += popc(U(post, OCC + c)); gn += popc(U(now, GARB + c)); on_ += popc(U(now, OCC + c)); } fprintf(BLOG, "PREP break %d prefix %d of %d, work %.0f, pop ends in %g | post t %d garb %d occ %d | now garb %d occ %d\n", found, k, bestn, paWork - w0, timeLeft(), pt, gp, op, gn, on_); }
-#endif
-  if (k >= 1) {
-    int v = lineJudge(bl.sw, k, 0);
-    if ((v & LV_LIVES) && !(LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) && HOLLOW(LNO) <= HOLLOW(LNA)
-        && !(popUninsured() && !lineKeepsClear(bl.sw, k))) {
-      prepStage.pos = raPos; prepStage.n = k;
-      for (int q = 0; q < 2 * k; q++) prepStage.sw[q] = bl.sw[q];
-    }
-  }
-  if (!prepStage.n && !got && paWork - w0 < 0.9 * share) nonePos = raPos;
-}
 static Dec breakFirst(Dec d) {
   bbHasDeferred = 0; bbWinWait = 0;
   // a line played on is kept only if it is itself a break
@@ -4918,8 +4849,7 @@ static Dec breakFirst(Dec d) {
 #ifndef __wasm__
     if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
 #endif
-    l = bestBreak();
-    if (!l && BIN[IN_POPPING] == 1 && BIN[IN_TOPPED] && aloneOnEngine()) prepFind(); }
+    l = bestBreak(); }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; int g = 0, live = 0;
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
@@ -7129,8 +7059,6 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
         int v = lineJudge(playsLine ? BT->line : one, playsLine ? BT->nLine : 1, 0);
         if (v >= 0 && !(v & LV_PAYS) && !(v & LV_BREAKS)) idle = 1;
       }
-      // the swaps of the break planned through the pop are the break's own actions, made early: never held for the window the break needs
-      if (prepStage.n > 0 && prepStage.pos == raPos && prepStage.sw[0] == d.sr && prepStage.sw[1] == d.sc) idle = 0;
     }
     o[99] = idle; }
   double ew = INF;
