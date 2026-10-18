@@ -6,7 +6,6 @@
 #define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
 #define BREAK_MIN_MS 5
 #define BREAK_MAX_MS 400
-#define HOLDTIGHT 40       // the actions short of the input limit at which every walk is held
 #define ROW_STEPS 16
 
 

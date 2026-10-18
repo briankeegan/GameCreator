@@ -13,19 +13,32 @@ EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 // frames later, from node pi -- the search's keys for the swap, walked as the frame loop walks them.
 #define TAP_GAP 4         // frames between taps (cursorMoveFrames)
 #define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
+#define HOLDTIGHT 40      // the actions short of the input limit at which every walk of two cells or more is held (the search and the frame loop)
 static int32_t pressTight;
 static int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
 static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
+// A WALK'S LEG in a line's keys, from key i: a direction tapped a cell at a time, TAP_GAP frames apart (in[i] the direction with the
+// frame's other keys, in[i + 1] those keys alone). 0 when key i begins none; else its cells (*cells), its last tap (*p), the last frame of
+// its taps' gap (*end), and the frame a held key reaches its last cell (*last). Every reader of the walks (slowWalks, front.c) asks it.
+typedef struct { int32_t v, base; int cells, p, end, last; } Leg;
+static int walkLeg(const int32_t *in, int n, int i, Leg *L) {
+  int32_t v = in[i], dir = v & 15;
+  if (!dir || (dir & (dir - 1)) || i + 1 >= n || (in[i + 1] & 15) || (v & ~15) != in[i + 1]) return 0;
+  int32_t base = in[i + 1];
+  int cells = 1, p = i;
+  while (p + TAP_GAP < n && in[p + TAP_GAP] == v && in[p + 1] == base && in[p + 2] == base && in[p + 3] == base) { p += TAP_GAP; cells++; }
+  int end = p;
+  while (end + 1 < n && end + 1 <= p + TAP_GAP - 1 && in[end + 1] == base) end++;
+  L->v = v; L->base = base; L->cells = cells; L->p = p; L->end = end; L->last = i + cells + REPEAT_FIRST - 2;
+  return 1;
+}
 // slowWalks' keys: every walk of two cells or more held, the frames it is late by put in before the next key
 static int slowWalks(const int32_t *in, int n, int32_t *out, int cap) {
   int k = 0, i = 0;
   while (i < n && k < cap) {
-    int32_t v = in[i], dir = v & 15;
-    if (!dir || (dir & (dir - 1)) || i + 1 >= n || (in[i + 1] & 15) || (v & ~15) != in[i + 1]) { out[k++] = v; i++; continue; }
-    int32_t base = in[i + 1], cnt = 1, p = i;
-    while (p + TAP_GAP < n && in[p + TAP_GAP] == v && in[p + 1] == base && in[p + 2] == base && in[p + 3] == base) { p += TAP_GAP; cnt++; }
-    int last = i + cnt + REPEAT_FIRST - 2, end = p;
-    while (end + 1 < n && end + 1 <= p + TAP_GAP - 1 && in[end + 1] == base) end++;
+    Leg L;
+    if (!walkLeg(in, n, i, &L)) { out[k++] = in[i]; i++; continue; }
+    int32_t v = L.v, base = L.base, cnt = L.cells, last = L.last, end = L.end;
     if (cnt < 2) { for (int f = i; f <= end && k < cap; f++) out[k++] = in[f]; i = end + 1; continue; }
     for (int g = i; g <= (last > end ? last : end) && k < cap; g++) out[k++] = g <= last ? v : base;
     i = end + 1;

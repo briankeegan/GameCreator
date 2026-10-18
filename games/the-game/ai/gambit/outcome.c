@@ -28,8 +28,7 @@ typedef struct {
 // WHETHER WHAT A LINE MAKES FITS THE LIST: what it makes, the chain it reaches as the game counts it, and
 // every clear of its own
 static int fitsList(const List *L, Made m, const Judged *j) {
-  // (a break made by one clear -- no chain, as the game counts it -- is the board's own defence, never an attack: within every list)
-  if (m.broke > 0 && chainOf(m) <= 1 && j->chainAll <= 1) return 1;
+  if (defends(m, j->chainAll)) return 1;   // (the defence: judge.c defends)
   // (a chain shorter than the list asks is begun toward it (judge.c chainBegins): within the list, its own clears held to it as ever;
   // ranked after every line that meets an entry, as it meets none)
   int32_t chain = imax(chainOf(m), j->chainAll);

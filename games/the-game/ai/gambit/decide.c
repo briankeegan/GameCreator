@@ -104,15 +104,14 @@ static int ranked(const Read *R, const Found *S) {
   if (R->aims.n && carriedCand(R, &ck, &cwait) && judgeCand(R, &ck, &theJudged[n])) {
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
-    if (cwait) { cj->t.tier = imax(cj->t.tier, HOLD_TIER); cj->t.nsub = 1; cj->t.sub[0] = -1; }
-    else { for (int q = imin(cj->t.nsub, MAXSUB - 1); q > 0; q--) cj->t.sub[q] = cj->t.sub[q - 1]; cj->t.sub[0] = -1e300; cj->t.nsub = imin(cj->t.nsub + 1, MAXSUB); }
+    if (cwait) cj->waitMax = 1; else cj->first = 1;   // (its place: rank.c tierView)
     order[n] = cj; n++; carriedJ = cj;
   }
   // (the hold: never while the chain the board makes alone runs past the list)
   Judge *H = &theJudged[n];
   holdCand(0, H);
   if (!R->aloneOut) { order[n] = H; n++; }
-  if (!R->aloneOut) for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) { order[i]->wait = 1; order[i]->t.tier = HOLD_TIER; order[i]->t.nsub = 1; order[i]->t.sub[0] = -1; }
+  if (!R->aloneOut) for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
@@ -126,7 +125,7 @@ static int ranked(const Read *R, const Found *S) {
     else {
       static Judge again; Cand kc = J->k;
       if (judgeCand(R, &kc, &again)) {
-        if (J->wait) { again.wait = J->wait; again.t.tier = HOLD_TIER; again.t.nsub = 1; again.t.sub[0] = -1; }
+        again.wait = J->wait;
         again.outside = again.outside || J->outside;
         *J = again;
       }
@@ -183,18 +182,23 @@ static Played playOf(const Read *R, int n) {
 typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
 static Carry theCarry;
 static int32_t carryFrom = -1, carryPressed;
+// THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
+// into theCarry; 0 when every one is touched. carryOf and carryReady ask it.
+static int anchorOf(const int32_t *row1, const int32_t *seq, int n) {
+  for (int c = 1; c <= W; c++) {
+    if (row1[c] == NUL) continue;
+    int touched = 0;
+    for (int i = 0; i < n; i++) if (CR(seq[i]) == 1 && (CC(seq[i]) == c || CC(seq[i]) + 1 == c)) touched = 1;
+    if (!touched) { theCarry.anchorRow = 1; theCarry.anchorCol = c; theCarry.anchorId = row1[c]; return 1; }
+  }
+  return 0;
+}
 static void carryOf(const Read *R, const Judge *k, int32_t qid) {
   memset(&theCarry, 0, sizeof theCarry);
   if (!k || k->wait || k->k.nseq < 2 || k->t.tier > 4) return;
-  int col = 0;
-  for (int c = 1; c <= W && !col; c++) {
-    int32_t id = decQ.b->p[1][c].f[ID];
-    if (id == NUL) continue;
-    int touched = 0;
-    for (int i = 0; i < k->k.nseq; i++) if (CR(k->k.seq[i]) == 1 && (CC(k->k.seq[i]) == c || CC(k->k.seq[i]) + 1 == c)) touched = 1;
-    if (!touched) { col = c; theCarry.anchorRow = 1; theCarry.anchorCol = c; theCarry.anchorId = id; }
-  }
-  if (!col) return;
+  int32_t row1[W + 1];
+  for (int c = 1; c <= W; c++) row1[c] = decQ.b->p[1][c].f[ID];
+  if (!anchorOf(row1, k->k.seq, k->k.nseq)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - 1;
   for (int i = 1; i < k->k.nseq; i++) theCarry.rest[i - 1] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0;
@@ -207,15 +211,7 @@ static void carryReady(const Judge *H, int32_t qid) {
   const Judged *j = &H->o.j;
   if (!H->hold || H->o.ready != 1 || j->readyN < 1) return;
   memset(&theCarry, 0, sizeof theCarry);
-  int col = 0;
-  for (int c = 1; c <= W && !col; c++) {
-    int32_t id = j->readyRow1[c];
-    if (id == NUL) continue;
-    int touched = 0;
-    for (int i = 0; i < j->readyN; i++) if (CR(j->readyLine[i]) == 1 && (CC(j->readyLine[i]) == c || CC(j->readyLine[i]) + 1 == c)) touched = 1;
-    if (!touched) { col = c; theCarry.anchorRow = 1; theCarry.anchorCol = c; theCarry.anchorId = id; }
-  }
-  if (!col) return;
+  if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
   theCarry.settled = 0; theCarry.broke = 1;

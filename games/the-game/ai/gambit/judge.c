@@ -59,6 +59,10 @@ static int listWantsLonger(const List *L, int32_t chain) {
   }
   return 0;
 }
+// THE DEFENCE: a break made by one clear -- no chain, as the game counts it (chainAll: the chain the board is in) -- is the board's own
+// defence, never an attack: within every list. The one rule; the step check (stepFitsAt) and the line's (outcome.c fitsList) ask it, and
+// the list under garbage carries its search side (decide.c read: the defence's entry).
+static int defends(Made m, int32_t chainAll) { return m.broke > 0 && chainOf(m) <= 1 && chainAll <= 1; }
 // A CHAIN BEGUN TOWARD THE LIST: a chain the list wants longer than (within MAXCHAIN) is a beginning of one it asks for -- a chain is
 // carried on by the decisions after (extend), so one short of the ask is on its way to it, not outside it. A step's (stepFitsAt) and a
 // whole line's (outcome.c fitsList) the same.
@@ -72,8 +76,7 @@ static int stepFitsAt(Ctx *x, int i) {
   int32_t own[MAXCOMBOS], n = 0;
   for (int j = 0; j < s.n; j++) if (!(s.chainAt[j] > 1)) own[n++] = s.size[j];
   int32_t chain = chainOfStats(&s);
-  // (a step whose clear breaks garbage with no chain is the board's own defence: within every list, as fitsList takes the line)
-  if (s.broke > 0 && chain <= 1) return 1;
+  if (defends((Made){ 0, chain, s.broke, 0 }, chain)) return 1;   // (the defence)
   if (stepFits(&theList, own, n, chain)) return 1;
   Board *b = ensureBoard(x, i);
   if (!b || !(b->chainCounter > 0 || hasChainingPanels(b) || hasActivePanels(b))) return 0;

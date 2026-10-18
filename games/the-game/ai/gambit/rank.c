@@ -22,6 +22,8 @@ typedef struct {
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t met;         // the entry of the list (with the defence's) the judged line meets, -1 none (rules.c metOf)
+  int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
+  int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
   int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
 } Judge;
@@ -159,6 +161,15 @@ static double lostOf(const Judge *x) {
   double ext = lostAtOf(x->extLost, 0);
   return ext > own ? ext : own;
 }
+// A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
+// is lower for the line in progress, waitMax), before the hold itself; the line in progress whose next step is due now is first of its
+// tier. The only place a line's tier is read otherwise than tierOf made it.
+static Tier tierView(const Judge *J) {
+  Tier t = J->t;
+  if (J->wait && !J->hold) { t.tier = J->waitMax ? imax(t.tier, HOLD_TIER) : HOLD_TIER; t.nsub = 1; t.sub[0] = -1; }
+  else if (J->first) { for (int q = imin(t.nsub, MAXSUB - 1); q > 0; q--) t.sub[q] = t.sub[q - 1]; t.sub[0] = -1e300; t.nsub = imin(t.nsub + 1, MAXSUB); }
+  return t;
+}
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
 static int compareJudged(const Judge *x, const Judge *y) {
@@ -193,9 +204,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // line that keeps a topped board held, or a defence, is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
-  if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
-  int n = x->t.nsub < y->t.nsub ? x->t.nsub : y->t.nsub;
-  for (int q = 0; q < n; q++) if (x->t.sub[q] != y->t.sub[q]) return x->t.sub[q] < y->t.sub[q] ? -1 : 1;
+  Tier tx = tierView(x), ty = tierView(y);
+  if (tx.tier != ty.tier) return tx.tier - ty.tier;
+  int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
+  for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return tx.sub[q] < ty.sub[q] ? -1 : 1;
   return 0;
 }
 // sorted stably by the one order

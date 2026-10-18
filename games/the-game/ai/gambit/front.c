@@ -7,10 +7,7 @@
 // drops every plan and question made before it. So does garbage shown that the plan was not made knowing, and a broken slab's
 // colours shown.
 
-#define TAP_GAP 4          // frames between taps (cursorMoveFrames)
-#define REPEAT_FIRST 10    // frames from a direction's press to its second cell (the engine's repeat delay)
 #define MIN_LEG 3          // the shortest walk a held key is no later on
-#define FHOLDTIGHT 40      // the actions short of the limit at which every walk of two cells or more is held
 #define STAGING (45 + 45 + 1)   // a sender stages garbage this long, then it lands LAND frames later
 #define LAND 60
 #define PLANN 4096         // frames of plan kept, by clock
@@ -312,15 +309,10 @@ static void fHoldWalks(Keys *k) {
   Keys o = *k;
   int held = 0, i = 0, n0 = k->n;
   while (i < n0) {
-    int32_t v = k->ins[i], dir = v & 15;
-    if (!dir || (dir & (dir - 1)) || i + 1 >= n0 || (k->ins[i + 1] & 15) || (v & ~15) != k->ins[i + 1]) { i++; continue; }
-    int32_t base = k->ins[i + 1];
-    int n = 1, p = i;
-    while (p + TAP_GAP < n0 && k->ins[p + TAP_GAP] == v && k->ins[p + 1] == base && k->ins[p + 2] == base && k->ins[p + 3] == base) { p += TAP_GAP; n++; }
-    int last = i + n + REPEAT_FIRST - 2, end = p;
-    while (end + 1 < n0 && end + 1 <= p + TAP_GAP - 1 && k->ins[end + 1] == base) end++;
-    if (n >= MIN_LEG && last <= end) { for (int f = i; f <= end; f++) o.ins[f] = f <= last ? v : base; held++; }
-    i = p + 1;
+    Leg L;
+    if (!walkLeg(k->ins, n0, i, &L)) { i++; continue; }
+    if (L.cells >= MIN_LEG && L.last <= L.end) { for (int f = i; f <= L.end; f++) o.ins[f] = f <= L.last ? L.v : L.base; held++; }
+    i = L.p + 1;
   }
   o.held = held;
   *k = o;
@@ -333,17 +325,12 @@ static void fSlowWalks(Keys *k) {
   o.n = 0;
 #define PUSH(v, f) do { if (o.n < MAXKEYS) { o.ins[o.n] = (v); o.hl[o.n] = k->hl[f]; o.hs[o.n] = k->hs[f]; o.n++; } } while (0)
   while (i < n0) {
-    int32_t v = k->ins[i], dir = v & 15;
-    if (!dir || (dir & (dir - 1)) || i + 1 >= n0 || (k->ins[i + 1] & 15) || (v & ~15) != k->ins[i + 1]) { PUSH(v, i); i++; continue; }
-    int32_t base = k->ins[i + 1];
-    int n = 1, p = i;
-    while (p + TAP_GAP < n0 && k->ins[p + TAP_GAP] == v && k->ins[p + 1] == base && k->ins[p + 2] == base && k->ins[p + 3] == base) { p += TAP_GAP; n++; }
-    int last = i + n + REPEAT_FIRST - 2, end = p;
-    while (end + 1 < n0 && end + 1 <= p + TAP_GAP - 1 && k->ins[end + 1] == base) end++;
-    if (n < 2) { for (int f = i; f <= end; f++) PUSH(k->ins[f], f); i = end + 1; continue; }
-    for (int g = i; g <= imax(last, end); g++) PUSH(g <= last ? v : base, imin(g, end));
+    Leg L;
+    if (!walkLeg(k->ins, n0, i, &L)) { PUSH(k->ins[i], i); i++; continue; }
+    if (L.cells < 2) { for (int f = i; f <= L.end; f++) PUSH(k->ins[f], f); i = L.end + 1; continue; }
+    for (int g = i; g <= imax(L.last, L.end); g++) PUSH(g <= L.last ? L.v : L.base, imin(g, L.end));
     held++;
-    i = end + 1;
+    i = L.end + 1;
   }
 #undef PUSH
   o.held = held;
@@ -394,7 +381,7 @@ static void countActions(int32_t bits, int32_t now) {
 }
 // The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be.
 static int actionsFor(int row, int col, int r, int c, int left) {
-  int tight = left <= FHOLDTIGHT, legs[2], nl = 0, cost = 1;
+  int tight = left <= HOLDTIGHT, legs[2], nl = 0, cost = 1;
   if (abs(c - col)) legs[nl++] = abs(c - col);
   if (abs(r - row)) legs[nl++] = abs(r - row);
   for (int k = 0; k < nl; k++) {
@@ -403,7 +390,7 @@ static int actionsFor(int row, int col, int r, int c, int left) {
   }
   return cost;
 }
-static void walkKeys(Keys *k, int32_t at) { if (allowanceAt(at) <= FHOLDTIGHT) fSlowWalks(k); else fHoldWalks(k); }
+static void walkKeys(Keys *k, int32_t at) { if (allowanceAt(at) <= HOLDTIGHT) fSlowWalks(k); else fHoldWalks(k); }
 
 // ---------------------------------------------------------------- pacing
 // How soon an answer can be had, in frames: half again the slowest of the last few.
