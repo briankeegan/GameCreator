@@ -47,6 +47,7 @@ typedef struct {
   int32_t by;                      // NOT_ASKED: none
   int32_t under, topped, breakWaits, belowFloor;
   int32_t saving;                  // saving panels up: breaks that leave the most come before the list (decide.c read)
+  int32_t full;                    // more panels than the board lives longest with (outcome.c lifePeakOf): every line's life by them before the list
   Keep keep; int32_t keepOn;
   int32_t readyAt;                 // NOT_ASKED: none
   int32_t pop, to, low, up;
@@ -167,6 +168,7 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 // (a line ready for the next block is lost where its readiness break leads, when that is later; a hold is not credited for the break
 // it waits for -- that break is a candidate of its own)
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
+static int32_t rankFull;    // (the board fuller than it lives longest with -- Read.full, set by the decision: every line, the hold too)
 static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
 static double lostOf(const Judge *x) {
@@ -187,13 +189,14 @@ static Tier tierView(const Judge *J) {
   return t;
 }
 // A MOVE MUST BEAT DOING NOTHING: a line that clears nothing comes before the hold only when the engine says it does better than holding
-// -- a later loss, more life by its panels, a nearer break, or ready for the next block where the hold is not. Being offered is never a
+// -- a later loss, a nearer break, or ready for the next block where the hold is not. (Not more life by its panels: a line that clears
+// nothing leaves the panels the hold does, and two such boards read at different frames differ only by what landed between.) Being offered is never a
 // reason to be played. (markIdle, before every sort of the order: idle lines rank after the hold, tierView)
-static int clearsNothing(const Judge *J) { return !J->hold && !(J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0); }
+static int clears(const Judge *J) { return J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0; }
+static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
   if (l != NOT_ASKED && !L->o.dead && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
-  if (L->o.lifeLeft > H->o.lifeLeft) return 1;
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
   if (L->o.ready == 1 && H->o.ready != 1) return 1;
   if (L->readyNext == 1 && H->readyNext != NOT_ASKED && H->readyNext != 1) return 1;
@@ -239,6 +242,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 7. SAVING PANELS UP (decide.c read: begun topped and short, kept until the list's largest combo is sure): of two breaks under
   // garbage, the one whose board has more life by its panels -- before the list's entry: the board's life is its next breaks
   if (x->saving && y->saving && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
+  // 7b. A FULL BOARD (more panels than the measured life peaks at, outcome.c lifePeakOf): of two lines, the one whose board has more life
+  // by its panels, when one of them clears -- before the list's entry: there a panel cleared is life, as on a short board a panel kept is
+  if (rankFull && (clears(x) || clears(y)) && x->o.lifeLeft >= 0 && y->o.lifeLeft >= 0 && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held, or a defence, is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }

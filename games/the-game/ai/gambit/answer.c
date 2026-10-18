@@ -317,7 +317,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (P.deferred) L_s(" deferred=1");
   if (R.saving) L_s(" saving=1");
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
-  { static int32_t peak = -1; if (peak < 0) { peak = 0; for (int p = 1; p <= LIFEMAX; p++) if (LIFE[p] > LIFE[peak]) peak = p; } L_s(" lifePeak="); L_i(peak); }
+  L_s(" lifePeak="); L_i(lifePeakOf());
+  if (R.full) L_s(" full=1");
   if (P.line && P.line->k.grown) L_s(" grown=1");
   if (P.line && P.line->k.drop) L_s(" drop=1");
   if (cappedN) { L_s(" capped="); L_i(cappedN); }

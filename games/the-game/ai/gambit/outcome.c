@@ -87,6 +87,8 @@ static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Out
 // THE LIFE A BOARD HAS WITH `panels` ON IT, in frames (core/material.h: measured on Gambit's own games, made by material.c: ./build.sh material)
 #include "core/material.h"
 static int32_t lifeOf(int32_t panels) { return LIFE[panels < 0 ? 0 : panels > LIFEMAX ? LIFEMAX : panels]; }
+// the panels a board lives longest with (the table's peak): more than that, a panel cleared is life
+static int32_t lifePeakOf(void) { static int32_t peak = -1; if (peak < 0) { peak = 0; for (int p = 1; p <= LIFEMAX; p++) if (LIFE[p] > LIFE[peak]) peak = p; } return peak; }
 // THE OUTCOME. With garbage on its way, a line that breaks nothing lives only when a break is there once everything has landed --
 // ready, however long the stop it stands on lasts; a break, or a board with nothing coming, lives by standing to the horizon and past
 // the stop and shake it ends on (lifeStop), or by a break in reach once it is over: a board a stop holds up is ready for the next break
