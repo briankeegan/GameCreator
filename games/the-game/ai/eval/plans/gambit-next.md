@@ -92,6 +92,23 @@ list, its aims, under garbage, topped), so a mode that changes, a mode added, or
 - **Held by** the tests above run once per mode's profile (`survivor-profiles/gambit-*.json`): the test's verdict follows that
   mode's list -- the grown four played where the list takes it, outside where it does not.
 
+## 4. A perched block let down
+
+A garbage block held up by one column, or a few, over a hollow is perched: taking its support out from under it drops the block and the
+stack's height at once -- what a full board, where every loss of the fair runs ended, needs.
+
+- **The fact** (`search/break.c`, beside the board's other readers): the columns under each block's bottom row that hold it up.
+- **One proposer for lowering the stack** (`propose.c`, `PLAY_LEVEL`): the tallest column's top walked onto a lower column, and a
+  perched block's top support walked along its row past the block's edge -- offered whenever the board is topped or under garbage.
+- **Judged as any line**: a drop that lowers the stack is a later loss, which the order already takes; a block held by more than one
+  column comes down over the decisions after, the line in progress carried.
+- **Logged**: `drop=1` on a decision that plays one.
+
+## Kept for when it is needed
+
+- **The board as bits** (a mask a colour a row; occupied, garbage, held): `breakNear`, `breakBuildable`, `fill.c` and the counts read
+  it, built once a board. Speed only; taken up when the time `breakNear` takes shows beside a decision's 8 ms.
+
 ## The order
 
 0, 1, 2, then 3: the order of the rank first, then the cheapest. Each is one push, then 24 games per mode (`run24.sh`), reported per garbage type with the
