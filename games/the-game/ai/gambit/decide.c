@@ -200,7 +200,8 @@ static Played playOf(const Read *R, int n) {
       firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
     const Judge *L = P.line;
     Outcome d = outcomeOf(L->k.seq, L->k.nseq, L->settled, 0, L->apAts[1] - rankReact);
-    double dl = lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
+    // (the line pressed later must be known to last as long: a loss it was not judged for never licenses waiting)
+    double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
