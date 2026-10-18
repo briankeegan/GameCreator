@@ -72,10 +72,10 @@ static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Out
 }
 
 // THE OUTCOME. With garbage on its way, a line that breaks nothing lives only when a break is there once everything has landed --
-// ready, however long the stop it stands on lasts; a break, or a board with nothing coming, lives by standing to the horizon too.
-// Topped out, readiness counts only for a line that buys stop: the board always has to have some stop. A line that lives only by being
-// ready lives as its readiness break does, played where the readiness found it and judged as any break is (waitTo): a break kept
-// for later is worth no more than the break played.
+// ready, however long the stop it stands on lasts; a break, or a board with nothing coming, lives by standing to the horizon and past
+// the stop and shake it ends on (lifeStop), or by a break in reach once it is over: a board a stop holds up is ready for the next break
+// or it dies when the stop runs out. A line that lives only by being ready lives as its readiness break does, played where the
+// readiness found it and judged as any break is (waitTo): a break kept for later is worth no more than the break played.
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo);
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
@@ -83,16 +83,14 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   if (hit) return *hit;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
-  JudgeOpts jo = { settled, decQ.tight, timeLeft && coming ? decF.land : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo };
+  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
   o.late = o.j.late;
   o.dead = 1; o.lostAt = o.j.lostAt; o.lives = 0; o.ready = NOT_ASKED;
   if (!o.j.dead) {
-    const Board *b = decQ.b;
-    int32_t stopNow = imax(b->stopTime + b->preStopTime, b->shakeTime);
-    int32_t ready = decF.topped && !(o.j.dropAt > stopNow) ? 0 : o.j.ready;
+    int32_t ready = o.j.ready;
     int breaks = o.j.made.broke > 0, stands = o.j.lostAt == FOREVER;
     o.dead = 0; o.ready = ready;
     o.lives = breaks || !coming ? (stands || ready == 1) : (ready == 1 || (ready == NOT_ASKED && stands));
@@ -109,6 +107,8 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   if (!o.late && !waitTo) keep(seq, n, settled, 0, &o);
   return o;
 }
+// THE BOARD LEFT ALONE, as the proposers read it: its readiness, a break search of its own, is the ranking's to ask (decide.c ranked)
+static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o = outcome(0, 0, 0); readyDefer = d; return o; }
 // READY FOR THE NEXT BLOCK: after the line, a break in reach once the next block shown has landed -- what a board that cannot be ready
 // for everything (the queue outlasts it) can still be ready for. 1, 0, or NOT_ASKED (nothing coming, or out of time).
 static int32_t readyNextOf(const int32_t *seq, int n, int settled) {

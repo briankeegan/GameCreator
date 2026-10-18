@@ -183,6 +183,7 @@ typedef struct {
 static Answer theAnswer;
 static int32_t lastA, lastB, pairRuns, blockA, blockB, blockUntil, emptyAt = NUL;
 
+static double readMs;   // (the board's reading, for the log)
 static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t allowance, int32_t lineFrom, int32_t linePressed) {
   Answer *A = &theAnswer;
   memset(A, 0, sizeof *A);
@@ -202,6 +203,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   backBoard = decQ.b;
   theBack.at = at;
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
+  readMs = nowMs() - tStart;
   double brMs;
   int ran = breakSearch(&R, lineFrom, linePressed, &brMs);
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
@@ -311,7 +313,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
-  L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart));
+  L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   // (THE BOARD THE BREAK SEARCH CAME UP EMPTY ON, under garbage, for the reach report: at most one every 30 frames)
   if (R.under && !(ran && theBr.depth) && (emptyAt == NUL || at - emptyAt >= 30 || at < emptyAt)) { emptyAt = at; A->dumpBoard = 1; }

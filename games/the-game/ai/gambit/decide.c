@@ -60,7 +60,7 @@ static int readBoard_(Read *R) {
   R->pop = popLeft(decQ.b) > 0;
   // (what the board left alone makes while a chain falls or a slab pops, as the game counts it: outside the list, holding is outside it too)
   if (cascadeLive(decQ.b) || R->pop) {
-    Outcome a = outcome(0, 0, 0);
+    Outcome a = leftAlone();
     if (!a.dead) { R->aloneChain = a.j.chainAll; Made z = { 0, 0, 0, 0 }; R->aloneOut = !fitsList(&R->list, z, &a.j); }
   }
   return 1;

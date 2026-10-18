@@ -21,6 +21,8 @@ typedef struct {
   int32_t why;                       // keep the line the readiness found (readyLine)
   int32_t waitAt, waitTo;            // (waitTo > 0) before swap waitAt, the board run to frame waitTo and let settle -- a readiness break
                                      // played where the readiness found it
+  int32_t lifeStop;                  // lostAt asked past the stop and shake the line ends on too (dropAt + lifeRest): a board held up by a
+                                     // stop stands only if it outlives it
 } JudgeOpts;
 typedef struct {
   Made made;                    // beyond the board left alone: { combo, chain, broke }
@@ -172,7 +174,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->endNode = n;
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
-  if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, lastAt + o->lifeRest));
+  if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));
   // (readiness, the dearer check, only when the board left alone does not stand to lifeTo -- always, or for a line that breaks)
   int standsOut = j->lostAt == FOREVER && (o->readyIfLost || (o->readyIfBreak && j->made.broke > 0));
   if (o->readyAt != NOT_ASKED && !j->dead && !standsOut) {

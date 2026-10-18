@@ -106,7 +106,7 @@ static void searchAll(const Read *R, Found *S) {
   if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->aims)) startChains(R, S, leftMs() / 2);
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
   double usual = leftMs() / 2;
-  int idle = C2.idle && outcome(0, 0, 0).lives;
+  int idle = C2.idle && leftAlone().lives;
   double ms = idle ? (usual > leftMs() ? usual : leftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
   if (ms >= 20) {
     S->tried++;
@@ -121,7 +121,7 @@ static void searchAll(const Read *R, Found *S) {
   // (the board left alone with no plan once everything shown has landed: a line of one or two swaps that leaves one)
   int32_t lastLand = NOT_ASKED;
   for (int i = 0; i < decQ.narr; i++) if (lastLand == NOT_ASKED || decQ.arr[i].at > lastLand) lastLand = decQ.arr[i].at;
-  if (lastLand != NOT_ASKED && !outcome(0, 0, 0).lives) {
+  if (lastLand != NOT_ASKED && !leftAlone().lives) {
     double m3 = leftMs() / 2 < READY_LINE_MS ? leftMs() / 2 : READY_LINE_MS;
     S->haveRl = readyLines(&decQ, lastLand, m3 > 1 ? m3 : 1, S->rl, &S->rlN, &S->rlAt);
   }
@@ -216,10 +216,11 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   if (S->haveRd && !S->rd.ready && S->rd.setup) { int32_t one = S->rd.setup; ADD(PLAY_READY, &one, 1, -1, 0); }
   if (S->haveRl) { int m0 = n; ADD(PLAY_READY, S->rl, S->rlN, -1, 0); if (n > m0) out[m0].xDone = S->rlAt; }
   // LEVEL: the swap that flattens the stack, under garbage or before a block lands
-  if (S->lvU) { int32_t one = S->lvU; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
-  if (S->lvG) { int32_t one = S->lvG; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
+  // (a swap that clears nothing and brings back a board this dig has stood on goes nowhere: not offered)
+  if (S->lvU && !seenDigHas(decQ.b, S->lvU)) { int32_t one = S->lvU; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
+  if (S->lvG && !seenDigHas(decQ.b, S->lvG)) { int32_t one = S->lvG; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
   // SET UP: the planner's swap toward the ask, with no block on its way; CLEAR: the line that leaves the lowest stack
-  if (S->haveAp && S->ap.setup && R->readyAt == NOT_ASKED) { int32_t one = S->ap.setup; ADD(PLAY_SETUP, &one, 1, -1, 0); }
+  if (S->haveAp && S->ap.setup && R->readyAt == NOT_ASKED && !seenDigHas(decQ.b, S->ap.setup)) { int32_t one = S->ap.setup; ADD(PLAY_SETUP, &one, 1, -1, 0); }
   if (S->haveAp && S->ap.lowest.set) { int m0 = n; ADD(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.lowest); }
   #undef ADD
   return n;
