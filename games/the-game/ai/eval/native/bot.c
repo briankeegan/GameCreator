@@ -2707,7 +2707,7 @@ static JLOCAL double sitNodeLeft;   // the time the line just offered to the acc
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-#define SITKEEPS 4   // searches that go on from one frame to the next: each keeps a set of memory of its own
+#define SITKEEPS 5   // searches that go on from one frame to the next: each keeps a set of memory of its own
 typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; int cap, kids, hash; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS + SITKEEPS];
 static JLOCAL int sitLevel;
@@ -3743,8 +3743,7 @@ static void breakLines(const int32_t *st, int cr, int cc, double t0, double limi
 // THE TIME THERE IS: topped, the drain; else the judge's horizon -- a line
 // whose last press comes later is one the engine never finishes playing, so
 // it can never be judged to live
-static double linesExtra;   // frames a pop's end is met with beyond the board's own: the plain clear one swap away (breakFirst)
-static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft() - 2 + linesExtra : LINEHORIZON; }
+static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft() - 2 : LINEHORIZON; }
 // NO LINE IN THE TIME THERE IS STAYS SO WHILE THE POSITION STANDS (raPos): the search goes soonest first, so one that found none by `limit`
 // found none by any less, and a pop holds one position for hundreds of frames -- the same question is not put again with less time
 static int raPos;   // the position (defined with the lineup's refusals)
@@ -4842,27 +4841,59 @@ static int roomForBreak(const int32_t *st);
 static int oneSwapClear(const int32_t *st);
 static int popUninsured(void);
 static int lineKeepsClear(const int32_t *sw, int n);
+int lineStatePop(int32_t *masks, uint32_t *can, Wait (*wait)[WMAX], int32_t *cur, int32_t *t);
 static void prepFind(void) {
+  extern PATLS double paWork;
+  static int nonePos;   // the position (raPos) in which no break was planned through the pop: none is planned again while it stands
   if (prepStage.pos == raPos && prepStage.n > 0) return;   // found for this position: kept while it stands
   prepStage.pos = 0; prepStage.n = 0;
-  if (!(linesExtra > 0) || !(BIN[IN_POPPING] == 1) || !aloneOnEngine() || BT->nLine) return;
-  LineC *best = 0;
-  for (int i = 0; i < nLines; i++) { LineC *l = &LINES[i]; if (l->brk && l->n >= 2 && (!best || lineBefore(l, best))) best = l; }
-  if (!best) return;
-  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
-  if (lineState(0, 0, st, can, w, cur, &t) != 0) return;
-  double pop = timeLeft() - 4;
-  int k = 0;
-  while (k < best->n - 1) { int r = best->sw[2 * k], c = best->sw[2 * k + 1]; if (r < 1 || r > 31 || c < 1 || c >= WMAX || (double)w[r][c] >= pop) break; k++; }
-  if (k < 1) return;
-  int v = lineJudge(best->sw, k, 0);
-  if (!(v & LV_LIVES) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) return;
-  if (popUninsured() && oneSwapClear(DBASE) && !lineKeepsClear(best->sw, k)) return;
+  if (nonePos == raPos || BT->nLine || paWork >= optLine()) return;
+  // the plain clear one swap away meets the pop's end: the break may begin after it
+  static int coverPos = -1, cover; if (coverPos != raPos) { cover = oneSwapClear(DBASE); coverPos = raPos; }
+  if (!cover) return;
+  static ST post, now; int32_t pc[2], pt, nc[2], nt; uint32_t pcan[WMAX], ncan[WMAX]; Wait pw[32][WMAX], nw[32][WMAX];
+  if (lineStatePop(post, pcan, pw, pc, &pt) != 0 || lineState(0, 0, now, ncan, nw, nc, &nt) != 0) return;
+  // the break there is on the board the pop leaves, searched as breakDeeper searches (best-first by the contact column's distance), the search going on from
+  // frame to frame while the position stands
+  static int32_t bsw[2 * LINEMAX]; static int bn; static double bat;
+  u64 pk = ((u64)(unsigned)raPos << 3) | 6;
+  double share = optLine() - paWork; if (share > 12000) share = 12000;
+  double limit = timeLeft() - 2 + resolveFramesOf(3, 0), w0 = paWork;
+  bn = 0;
+  sitGuide = readyGuide;
+  sitKeepSlot = 5; sitKeepKey = pk;
+  int got = searchInTime(post, pc[0], pc[1], pt, 0, limit, 1, pcan, pw, share, sitBreaks, 0, bsw, &bn, &bat);
+  sitGuide = 0;
+  struct { int n; int32_t sw[2 * LINEMAX]; } bl; bl.n = got ? bn : 0;
+  for (int q = 0; q < 2 * bl.n; q++) bl.sw[q] = bsw[q];
+  LineC *best = bl.n >= 2 ? (LineC *)&bl : 0;
+  int k = 0, found = got != 0; int bestn = bl.n;
+  if (best) {
+    double pop = timeLeft() - 4;
+    // the swaps made now: the pair swappable now before the pop ends, the same two cells on the board the pop leaves
+    while (k < bestn - 1) {
+      int r = bl.sw[2 * k], c = bl.sw[2 * k + 1];
+      if (r < 1 || r > 31 || c < 1 || c >= WMAX || !(ncan[c] & (1u << (r - 1))) || (double)nw[r][c] >= pop) break;
+      uint32_t bit = 1u << (r - 1); int same = 1;
+      for (int cc = c; cc <= c + 1; cc++)
+        same &= (U(now, OCC + cc) & bit) == (U(post, OCC + cc) & bit) && (U(now, GARB + cc) & bit) == (U(post, GARB + cc) & bit)
+                && (!(U(now, OCC + cc) & bit) || colourFirst(now, cc, bit) == colourFirst(post, cc, bit));
+      if (!same) break;
+      k++;
+    }
+  }
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PREP %d of %d swaps now, line to %g, pop ends in %g\n", k, best->n, best->est, timeLeft()); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; int gp = 0, op = 0, gn = 0, on_ = 0; for (int c = 1; c <= BW; c++) { gp += popc(U(post, GARB + c)); op += popc(U(post, OCC + c)); gn += popc(U(now, GARB + c)); on_ += popc(U(now, OCC + c)); } fprintf(BLOG, "PREP break %d prefix %d of %d, work %.0f, pop ends in %g | post t %d garb %d occ %d | now garb %d occ %d\n", found, k, bestn, paWork - w0, timeLeft(), pt, gp, op, gn, on_); }
 #endif
-  prepStage.pos = raPos; prepStage.n = k;
-  for (int q = 0; q < 2 * k; q++) prepStage.sw[q] = best->sw[q];
+  if (k >= 1) {
+    int v = lineJudge(bl.sw, k, 0);
+    if ((v & LV_LIVES) && !(LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) && HOLLOW(LNO) <= HOLLOW(LNA)
+        && !(popUninsured() && !lineKeepsClear(bl.sw, k))) {
+      prepStage.pos = raPos; prepStage.n = k;
+      for (int q = 0; q < 2 * k; q++) prepStage.sw[q] = bl.sw[q];
+    }
+  }
+  if (!prepStage.n && !got && paWork - w0 < 0.9 * share) nonePos = raPos;
 }
 static Dec breakFirst(Dec d) {
   bbHasDeferred = 0; bbWinWait = 0;
@@ -4882,19 +4913,13 @@ static Dec breakFirst(Dec d) {
   { growRootMs = growKidMs = growStateMs = 0; growKids = 0;
     double lf0 = NOWMS2();
     workTrace("breakFirst before linesFind");
-    linesExtra = 0;
-    if (BIN[IN_POPPING] == 1 && BIN[IN_TOPPED] && aloneOnEngine()) {
-      static int coverPos = -1, cover; if (coverPos != raPos) { cover = oneSwapClear(DBASE); coverPos = raPos; }
-      if (cover) linesExtra = resolveFramesOf(3, 0);
-    }
     linesFind(REROOTS, 1);
     workTrace("breakFirst after linesFind");
 #ifndef __wasm__
     if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
 #endif
     l = bestBreak();
-    if (!l && linesExtra > 0) prepFind();
-    linesExtra = 0; }
+    if (!l && BIN[IN_POPPING] == 1 && BIN[IN_TOPPED] && aloneOnEngine()) prepFind(); }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; int g = 0, live = 0;
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
