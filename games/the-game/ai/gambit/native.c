@@ -125,6 +125,7 @@ static int frameOut(void) {
   if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) return 1;
   return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
 }
+static void ringKeep(int32_t at);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
@@ -164,6 +165,28 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   // (a line the break search said breaks and the judge says does not: its board, rate-limited, for replaying both on it -- GAMBITU)
   static int32_t lastU = NUL;
   if (unbroken.set && (lastU == NUL || q->at - lastU >= 120 || q->at < lastU)) { lastU = q->at; dumpBoard("GAMBITU", q->at, hostBoard, hostQ.arr, hostQ.narr); }
+  ringKeep(q->at);
+}
+// THE LAST BOARDS: every question's board and garbage on its way, the last RINGN kept, written out when the match ends (GAMBITL lines,
+// oldest first) -- what a loss is replayed from.
+#define RINGN 32
+static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
+static void ringKeep(int32_t at) {
+  hostLock();
+  int k = ringHead;
+  if (!ring[k]) ring[k] = nb_new();
+  if (ring[k]) {
+    cloneBoard(ring[k], hostBoard); ringAt[k] = at; ringNarr[k] = hostQ.narr;
+    for (int i = 0; i < hostQ.narr; i++) ringArr[k][i] = hostQ.arr[i];
+    ringHead = (ringHead + 1) % RINGN; if (ringCount < RINGN) ringCount++;
+  }
+  hostUnlock();
+}
+static void ringOut(void) {
+  hostLock();
+  for (int i = 0; i < ringCount; i++) { int k = (ringHead - ringCount + i + RINGN) % RINGN; dumpBoard("GAMBITL", ringAt[k], ring[k], ringArr[k], ringNarr[k]); }
+  ringCount = 0;
+  hostUnlock();
 }
 static void *workerMain(void *arg) {
   (void)arg;
@@ -173,7 +196,7 @@ static void *workerMain(void *arg) {
   for (;;) {
     hostLock();
     while (!qHas && !qReset) hostWait();
-    if (qReset) { qReset = 0; hostUnlock(); gb_new_game(); continue; }
+    if (qReset) { qReset = 0; ringCount = 0; hostUnlock(); gb_new_game(); continue; }
     q = qSlot; copyBoard(b, qSlotBoard); q.b = b; qHas = 0;
     __atomic_store_n(&curQid, q.id, __ATOMIC_SEQ_CST);
     hostUnlock();
@@ -257,6 +280,6 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   if (++gnFrames % 600 == 0 || F.truth->gameOverClock > 0) statsOut();
   return bits;
 }
-void gn_end(void) { statsOut(); }
+void gn_end(void) { statsOut(); ringOut(); }
 // A line from the host into the run's log (a slow frame's parts, say)
 void gn_log(const char *s) { flog(s); }
