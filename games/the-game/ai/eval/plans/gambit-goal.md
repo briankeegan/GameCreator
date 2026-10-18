@@ -33,6 +33,8 @@ engine at level 10, the game's own think and input budgets.
 - Raise in the opening.
 - Every answer arrives in time for its move; a decision may think across frames.
 - Every number comes from the engine -- no invented constants.
+- **Gambit sees only what the screen shows.** A colour a break converts garbage into is unseen until the client draws it
+  (`gambit/lua/board.lua` `shown`, held by `board.test.lua` in every run).
 - **Everything runs on GitHub Actions** -- the games, the reports, any experiment. Nothing is run in the sandbox: it edits code and
   pushes.
 

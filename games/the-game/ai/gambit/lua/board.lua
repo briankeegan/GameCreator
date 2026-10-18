@@ -1,6 +1,6 @@
 -- THE STACK AS THE C ENGINE'S BOARD (eval/native/pa.h), as the player sees it: every field by pa.c's own name, every panel's fields
--- in pa.h's order, the garbage queued, the stall log. Nothing the player cannot see goes in: the rows not dealt yet and the colours
--- garbage breaks into are left to the engine's unseen colours, which match nothing.
+-- in pa.h's order, the garbage queued, the stall log. Nothing the player cannot see goes in: the rows not dealt yet, and the colours
+-- garbage breaks into until the screen draws each one (shown), are left to the engine's unseen colours, which match nothing.
 local M = {}
 M.NUL = -2147483648
 local NUL = M.NUL
@@ -43,10 +43,21 @@ end
 
 local STATES = { normal = 0, dimmed = 1, swapping = 2, matched = 3, popping = 4, popped = 5, hovering = 6, falling = 7,
                  landing = 8, dead = 9 }
--- A panel's fields, in pa.h's order.
-function M.panel(p, v)
+-- A panel's colour as the screen shows it. A garbage panel a break converts is drawn with its colour only once its flash is over and its
+-- pop has come (client/src/graphics/PanelCellRender.lua: flash_time >= FLASH and timer <= pop_time); before that the player sees the
+-- garbage's face, so it is one of the engine's unseen break colours (pa.c UNSEEN_COLOUR, 130..219: distinct beside each other, matching
+-- nothing).
+local function shown(p, width, flash)
+  if p.isGarbage and p.state == "matched" and p.y_offset == -1 and
+     not (flash and p.initial_time and p.pop_time and p.initial_time - p.timer >= flash and p.timer <= p.pop_time) then
+    return 130 + (width * p.row + p.column - 1) % 90
+  end
+  return p.color
+end
+-- A panel's fields, in pa.h's order (width, flash: the stack's, for the colour shown).
+function M.panel(p, v, width, flash)
   v = v or {}
-  v[1], v[2], v[3], v[4], v[5], v[6], v[7] = p.row, p.column, p.id, p.color, nbool(p.chaining), nbool(p.matching), p.timer
+  v[1], v[2], v[3], v[4], v[5], v[6], v[7] = p.row, p.column, p.id, shown(p, width or 6, flash), nbool(p.chaining), nbool(p.matching), p.timer
   v[8], v[9], v[10], v[11], v[12] = nint(p.initial_time), nint(p.pop_time), nint(p.pop_index), nint(p.x_offset), nint(p.y_offset)
   v[13], v[14], v[15], v[16], v[17] = nint(p.width), nint(p.height), nint(p.shake_time), b01(p.isGarbage), STATES[p.state]
   v[18], v[19], v[20], v[21] = nint(p.combo_index), nint(p.combo_size), nbool(p.isSwappingFromLeft), nbool(p.dont_swap)

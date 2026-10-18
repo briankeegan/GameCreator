@@ -56,12 +56,15 @@ jobs:
         timeout-minutes: 15
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
-          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang && break; sleep 10; done
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang luajit && break; sleep 10; done
           mkdir -p ~/love2d
           for i in 1 2 3; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep 10; done
           tar -xzf /tmp/love.tar.gz -C ~/love2d
           mv ~/love2d/*.AppImage ~/love2d/love.AppImage
           chmod +x ~/love2d/love.AppImage
+      - name: Gambit sees only what the screen shows
+        timeout-minutes: 2
+        run: luajit games/the-game/ai/gambit/lua/board.test.lua
       - name: Play
         timeout-minutes: 340
         env:

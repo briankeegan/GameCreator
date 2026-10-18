@@ -116,10 +116,10 @@ function GambitNative:load(a)
   self.nrows, self.nqueued = #a.panels + 1, #inc
   put("nrows", #a.panels + 1); put("ninc", #inc - from + 1); put("nstall", #stall); put("nlanded", #landed); put("err", 0)
   put("unseenRows", 0); put("unseenBreaks", 0); put("nextInput", 0); put("pressSwap", 0); put("swapDeniedThisFrame", 0)
-  local x = 0
+  local x, flash = 0, a.levelData.frameConstants.FLASH
   for r = 0, #a.panels do
     for c = 1, a.width do
-      B.panel(a.panels[r][c], pv)
+      B.panel(a.panels[r][c], pv, a.width, flash)
       for i = 1, B.NF do Bd[x] = pv[i]; x = x + 1 end
     end
   end
