@@ -285,9 +285,12 @@ static int keysOf(const Board *b, int32_t holdLeft, int32_t holdStarted, const A
   tape = buf; tapeN = 0; tapeCap = MAXKEYS;
   // (a swap whose pair still moves is pressed as the judge presses it: core/nodes.h pressWalk -- the frames before its walk waited, nothing pressed)
   int from = root, r = kind == MK_SWAP ? pressWalk(keyCtx, root, kind, mr, mc, advance, &from) : advance(keyCtx, root, kind, mr, mc, 0);
+  // (a swap whose walk cannot begin within a reaction -- its pair held up by a pop, say -- is no keys: waited for in the plan, no question
+  // is asked until its keys are done, and the board goes on moving undecided; refused, the next question is asked at once)
+  int32_t waited = from >= 0 ? NODE(keyCtx, from)->t - NODE(keyCtx, root)->t : 0;
   tape = 0;
   ns_reset(keyCtx);
-  if (r == STEP_NULL || r == STEP_ERR || from < 0) return 0;
+  if (r == STEP_NULL || r == STEP_ERR || from < 0 || waited > F.reaction) return 0;
   k->n = tapeN; k->held = 0;
   for (int i = 0; i < tapeN; i++) { k->ins[i] = buf[3 * i]; k->hl[i] = buf[3 * i + 1]; k->hs[i] = buf[3 * i + 2]; }
   return 1;
@@ -442,7 +445,7 @@ static void take(void) {
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
     if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
       F.st.refused++;
-      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
+      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
       continue;
     }
     // (a raise held down: the button stays down for the frames it takes to bring the rows in, and raiseAfter after them)
