@@ -54,6 +54,8 @@ engine at level 10, the game's own think and input budgets.
 
 ## Where it stands
 
+What is done next, and in what order: `plans/gambit-next.md` -- the one plan.
+
 | mode | survived | runs |
 |---|---|---|
 | finish them | **24/24 twice** (`5bacb738d0`, `51b51405f5`) | ... 24, 18, 24, 18, 17, 18, 18, 21, 21, 16, 17, 19, 18, 16, 19, 20, 18, **22**, 18, 17, 21 |

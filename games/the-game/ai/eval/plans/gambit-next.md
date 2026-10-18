@@ -1,4 +1,4 @@
-# Gambit: breaks that leave the next break
+# Gambit: what is done next
 
 **The board's life under garbage is its next break.** Three changes aim every break at the material and the stop time the next one
 needs: a line is weighed by how near a break the board it leaves is; a plain three is offered grown into a combo; and the panels a
