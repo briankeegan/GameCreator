@@ -11,10 +11,11 @@ if [ "${1:-}" = native ]; then
     -Wno-ignored-attributes native.c host.c -lm -o libgambit.so
   exit
 fi
-# ./build.sh test: the C checks, natively (test/: the board as bits held to the cells it replaced, on boards of Gambit's own games).
+# ./build.sh test [golden]: the C checks, natively (test/main.c: the board as bits, perched blocks, the decisions replayed against the
+# golden; "golden" writes it from this build).
 if [ "${1:-}" = test ]; then
   clang -O2 -pthread -DPA_HEAP -DGB_TEST -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes \
-    native.c host.c test/bits_test.c -lm -o /tmp/gambit-test && /tmp/gambit-test test/boards.txt
+    native.c host.c test/main.c -lm -lz -o /tmp/gambit-test && /tmp/gambit-test test "${2:-}"
   exit
 fi
 # ./build.sh material DIR...: core/material.h, the life a board has by its panels, measured on the games in DIR... (material.c, on the

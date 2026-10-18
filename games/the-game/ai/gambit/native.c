@@ -310,4 +310,5 @@ void gn_log(const char *s) { flog(s); }
 #ifdef GB_TEST
 #include "test/cells_ref.c"
 #include "test/bits_check.c"
+#include "test/decide_check.c"
 #endif
