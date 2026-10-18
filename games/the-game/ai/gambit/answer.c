@@ -127,7 +127,7 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
   static Paths resume;
   int have = carriedPaths(decQ.b, lineFrom, linePressed, &resume);
   double by = C2.due ? (t + (BREAK_MIN_MS > (C2.due - C2.t0) * share ? BREAK_MIN_MS : (C2.due - C2.t0) * share)) : t + BREAK_MAX_MS;
-  if (C2.due && by > C2.due - C2.margin - judgeReserve()) by = C2.due - C2.margin - judgeReserve();
+  if (C2.due && by > C2.due - C2.margin) by = C2.due - C2.margin;
   double old = clockShareBegin(by);
   // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
   // is searched first, quick to find, so a break to play is in hand however long the list's own takes; the rest of the share then goes
@@ -191,7 +191,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   pressTight = decQ.tight; pressMemoClear();
   towardRestLen = 0;
   carryFrom = lineFrom; carryPressed = linePressed;
-  judgeKeep = 1;   // (the judges' time kept until the candidates are judged: decide.c ranked)
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)
   int32_t gid = digTargetOf(decQ.b);
   if (gid == NUL) { digOn = 0; digN = 0; digGid = NUL; }
