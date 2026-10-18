@@ -372,6 +372,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
   waiting and boards seen in memory of their own and grow them further each frame while the position (`raPos`) stands. A search with
   a table of boards seen counts them and is full at three parts in four. Compare two builds on the fixed-budget scan (the same games
   every time); read the think budget on the ordinary one -- the fixed scan has no wall-clock guard.
+- **Thinking beyond the frame is a thread's work, not the frame's.** `bot_background` (the break search a decision could not finish,
+  `BG`, searched on with no guide) and `front_think` (the decision made again with `GC_THINK` frames' work on the board as it stands,
+  nothing played, the front and the bot put back as they were) run after the frame's decision and are not charged to its 8 ms, as a
+  thread of the bot's own would not be; what counts is the frame's own response time. What they leave is what the searches keep
+  (`sitKeepSlot`: lines, steps waiting, boards seen), which the next frame's decision goes on from while the position (`raPos`) stands,
+  and the line `bot_background` found, which the next `breakDeeper` judges on its own board before it plays it. `train.lua` calls both
+  after `front_frame` and leaves them out of `ThinkBudget`; `GC_BG` and `GC_THINK` are their work, `0` turns each off.
 - **The input budget is kept for the break, and a break takes its block's time.** A break pops its block in 38 + 7 x (3 + cells)
   frames (`pa.c matchGarbagePanels`, level 10: FLASH 28, FACE 10, POP 7), and blocks arrive about as fast as one pops, so the idle
   frames between pops decide the game. A break line takes about ten actions of the 76 a window allows, so the front (`front.c`,
