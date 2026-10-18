@@ -5503,17 +5503,17 @@ static int oneSwapClear(const int32_t *st) {
   return 0;
 }
 typedef struct { int n; int32_t sw[2 * LINEMAX]; } InsureCtx;
+// the soonest line that clears: the swaps before its last are the staging (they clear nothing, or the line would have ended there)
 static int sitInsure(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   InsureCtx *x = ctx; (void)at;
-  if (res[R_SCOPE] != SC_OK || res[R_TOTAL] > 0) return SIT_END;   // a line that clears has fired what it staged
-  if (n <= LINEMAX && oneSwapClear(res + R_INTS)) { x->n = n; for (int k = 0; k < 2 * n; k++) x->sw[k] = sw[k]; return SIT_TAKE; }
-  return SIT_GROW;
+  if (res[R_TOTAL] > 0 || res[R_SCOPE] == SC_BROKE) { if (n <= LINEMAX) { x->n = n; for (int k = 0; k < 2 * n; k++) x->sw[k] = sw[k]; } return SIT_TAKE; }
+  return res[R_SCOPE] == SC_OK ? SIT_GROW : SIT_END;
 }
-// a topped board that loses health within the judge's reach is held by a pop, a landing's shake or a stop that ends with less than INSURESTOP of stop time
-// running
+// a topped board that loses health within the judge's reach: held by a pop, a landing's shake or a stop, each of which ends with less than
+// INSURESTOP of stop time running when the board left alone dies (a pop's end banks what its combos bought, LNA[22])
 static int popUninsured(void) {
   if (!BIN[IN_TOPPED] || !aloneOnEngine() || !LNA[0] || LNA[0] > LINEHORIZON) return 0;
-  return BIN[IN_POPPING] > 0 ? LNA[22] >= 0 && LNA[22] < INSURESTOP : BIN[IN_STOP] < INSURESTOP;
+  return BIN[IN_POPPING] > 0 ? LNA[22] >= 0 && LNA[22] < INSURESTOP : 1;
 }
 static int lineKeepsClear(const int32_t *sw, int n) {
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
@@ -5521,19 +5521,22 @@ static int lineKeepsClear(const int32_t *sw, int n) {
 }
 static Dec insureClear(Dec d) {
   extern PATLS double paWork;
-  if (!popUninsured() || paWork >= optLine()) return d;
+  static int noneAt;   // the position (raPos) in which no staging was found: none is found again while it stands
+  if (!popUninsured() || paWork >= optLine() || noneAt == raPos) return d;
   static ST st1; int32_t cur1[2], t1; uint32_t can1[WMAX]; Wait waits1[32][WMAX];
   if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0 || oneSwapClear(st1)) return d;
   InsureCtx x; x.n = 0;
   double work = optLine() - paWork; if (work > SETUPWORK) work = SETUPWORK;
+  double w0 = paWork;
   searchInTime(st1, cur1[0], cur1[1], t1, 0, timeLeft(), 1, can1, waits1, work, sitInsure, &x, 0, 0, 0);
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE stop at the pop's end %d, staged in %d swaps\n", LNA[22], x.n); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE die %d pop-end stop %d: the soonest clear is %d swaps, work %.0f of %.0f\n", LNA[0], LNA[22], x.n, paWork - w0, work); }
 #endif
-  if (!x.n) return d;
-  int v = lineJudge(x.sw, x.n, 0);
+  if (x.n < 2) { if (!x.n && paWork - w0 < 0.9 * work) noneAt = raPos; return d; }   // 1: already a swap away
+  int n = x.n - 1;
+  int v = lineJudge(x.sw, n, 0);
   if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) return d;
-  if (x.n > 1) lineSet(x.sw, x.n, LINE_PLAN, 0);
+  if (n > 1) lineSet(x.sw, n, LINE_PLAN, 0);
   return mkSwap(x.sw[0], x.sw[1], V_SETUP, d.mode, d.alive);
 }
 static Dec setupTwos(Dec d) {
