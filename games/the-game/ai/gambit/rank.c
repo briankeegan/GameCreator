@@ -152,7 +152,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   // (of two that do not live, one that breaks garbage before one that does not, while it outlives the next decision: the panels a break
   // converts are what the next break is made from, and a later loss bought with clears spends them)
-  if (!lx) { int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact; if (bx != by) return bx ? -1 : 1; }
+  if (!lx) {
+    int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact;
+    if (bx != by) return bx ? -1 : 1;
+    // (and of two such breaks, the one that leaves a break to build: the material the next one needs)
+    if (bx && x->o.nextBuild >= 0 && y->o.nextBuild >= 0 && x->o.nextBuild != y->o.nextBuild) return x->o.nextBuild ? -1 : 1;
+  }
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
