@@ -255,7 +255,7 @@ exports.LEVEL = LEVEL;
 
 exports.SCENARIOS = SCENARIOS;
 // The burst schedule itself, so another harness runs THE SAME DRILL rather than a
-// copy of it that can drift. drill.js uses this to put bitbot on these scenarios.
+// copy of it that can drift.
 exports.burstFires = burstFires;
 
 // One run. `weights` null means the SHIPPED scoring, untouched — that is

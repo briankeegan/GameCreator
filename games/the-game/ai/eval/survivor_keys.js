@@ -13,7 +13,7 @@
 var REPEAT_FIRST = 10;   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
 var TAP_GAP = 4;         // frames between taps (cursorMoveFrames)
 var MIN_LEG = 3;         // the shortest walk a held key can be no later on
-var HOLDTIGHT = 40;      // the actions short of the limit at which every walk of two cells or more is held, later than taps (native/front.c HOLDTIGHT)
+var HOLDTIGHT = 40;      // the actions short of the limit at which every walk of two cells or more is held, later than taps
 
 function holdWalks(inputs, minLeg) {
   var out = inputs.slice(), min = minLeg || MIN_LEG, held = 0, i = 0;
@@ -38,7 +38,7 @@ function holdWalks(inputs, minLeg) {
 // THE SAME WALKS, HELD FROM TWO CELLS, when the allowance is tight: a held key is one action however far the cursor
 // goes, and two cells of it arrive 6 frames after taps would, three 3 (the first cell on the press, the second after
 // the engine's repeat delay, then one a frame). The frames the cursor is late by are put in before the next key, as
-// native/front.c walkEnds counts them, so a plan made with held walks is played as it was judged. `holds` is the
+// the frame loop counts them, so a plan made with held walks is played as it was judged. `holds` is the
 // raise held after each frame; the frames put in carry the state of the frame they follow.
 function slowWalks(inputs, holds, minLeg) {
   var out = [], oh = [], held = 0, min = minLeg || 2, i = 0;

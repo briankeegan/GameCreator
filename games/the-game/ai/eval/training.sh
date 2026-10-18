@@ -9,7 +9,7 @@
 # result a line `training lost|survived frames=F` in $OUT_DIR/pa_out.txt, then the client quits.
 #
 # BOT is gambit (Gambit, in the client's own process: ../gambit/lua/GambitNative.lua on libgambit.so; PROFILE picks the profile,
-# relative to this directory), wasm (WasmSurvivor, survivor.js; PROFILE too) or bitbot (BitBot, in the client's own process). The client runs under xvfb, driven through its own menus by its e2e
+# relative to this directory), wasm (WasmSurvivor, survivor.js; PROFILE too) The client runs under xvfb, driven through its own menus by its e2e
 # harness (client/src/debug/AppDriver.lua, PA_CMD_FILE, `trainingloop`); the local player's stack takes its keys
 # from the bot (PA_SURVIVOR=1, PA_BOT).
 #
@@ -23,7 +23,7 @@ OUT_DIR=${OUT_DIR:-$PWD/training-out}; PORT=${PORT:-47777}; MINUTES=${MINUTES:-3
 mkdir -p "$OUT_DIR"; OUT_DIR=$(cd "$OUT_DIR" && pwd)
 CMD="$OUT_DIR/pa_cmd.txt" OUT="$OUT_DIR/pa_out.txt"
 : > "$OUT"
-case "$BOT" in gambit|wasm|bitbot) ;; *) echo "training.sh: BOT is gambit, wasm or bitbot, not $BOT" >&2; exit 2 ;; esac
+case "$BOT" in gambit|wasm) ;; *) echo "training.sh: BOT is gambit or wasm, not $BOT" >&2; exit 2 ;; esac
 # the block each pattern sends (TrainingMenu.lua), checked against what the menu reports before a game starts
 case "$PATTERN" in combo_storm) SIZE=4x1 ;; factory) SIZE=6x2 ;; large_garbage) SIZE=6x12 ;; *) echo "training.sh: PATTERN is combo_storm, factory or large_garbage, not $PATTERN" >&2; exit 2 ;; esac
 
@@ -51,9 +51,6 @@ elif [ "$BOT" = gambit ]; then
   GC_SURVIVOR_PROFILE="$EVAL/${PROFILE:-survivor-profiles/gambit-finish.json}" node "$EVAL/../gambit/words.js" > "$OUT_DIR/gambit.words" || exit 1
   export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$MIND_CPUS"
   : > "$OUT_DIR/survivor.log"
-else
-  # BitBot's library, built for this machine (native/build.sh's line for it)
-  (cd "$EVAL/native" && clang -O3 -march=native -pthread -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so) || exit 1
 fi
 
 send() { printf '%s\n' "$@" >> "$CMD"; }
