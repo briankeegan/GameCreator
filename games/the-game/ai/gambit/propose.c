@@ -89,10 +89,10 @@ static void searchAll(const Read *R, Found *S) {
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
   double xMs = leftMs() / 2;
   // (a slab popping is lined up as the list is written -- the pop is the break; with garbage left, the entries that break again first)
-  S->xAims = !R->pop ? R->guides : R->listAims;
+  S->xAims = !R->pop ? R->guides : R->list;
   if (R->pop && R->under) {
     S->xAims = R->guides;
-    for (int i = 0; i < R->listAims.n && S->xAims.n < MAXAIMS; i++) S->xAims.aim[S->xAims.n++] = R->listAims.aim[i];
+    for (int i = 0; i < R->list.n && S->xAims.n < MAXAIMS; i++) S->xAims.aim[S->xAims.n++] = R->list.aim[i];
     if (S->xAims.n < MAXAIMS) { Aim brk; memset(&brk, 0, sizeof brk); brk.brk = 1; S->xAims.aim[S->xAims.n++] = brk; }
   }
   double xm = xMs < leftMs() ? xMs : leftMs();

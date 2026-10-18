@@ -40,7 +40,7 @@ static struct { int32_t set, play, nseq, seq[MAXLINE], said, judged; } unbroken;
 // the decision's reading of the board, which every candidate is judged by (decide.c read)
 typedef struct {
   FactSet F; int32_t enemyTopped;
-  List list, asked, guides, listAims; int32_t end;
+  List list, asked, guides; int32_t end;
   // (list: the rule's; asked: the list as the board asks it -- every entry a break under garbage -- the rank's; guides: asked and the
   // defence's entry, the searches' -- a proposal's aim indexes it)
   int32_t by;                      // NOT_ASKED: none

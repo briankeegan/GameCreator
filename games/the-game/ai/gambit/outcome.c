@@ -13,6 +13,7 @@ typedef struct {
   int32_t topped;      // the board is topped out
   int32_t timeLeft;    // the decision's searches still have time (c.left() > 0): readiness is asked only then
   int32_t belowFloor;  // below the rule's material floor: a line that clears panels and breaks nothing is no candidate
+  int32_t under;       // garbage on the board, as the decision reads it (decide.c read: R->under) -- the one under-garbage test
   int32_t next;        // frames until the next block shown lands (NOT_ASKED: none coming)
 } Facts;
 typedef struct {
@@ -125,12 +126,12 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
       if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
-      if (eb && garbageOn(decQ.b)) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
+      if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
       if (breaks) o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1;
     }
     // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board had
     // one has spent what the next break needs -- it is lost the frame it is done)
-    if (n > 0 && !breaks && !stands && !waitTo && garbageOn(decQ.b)) {
+    if (n > 0 && !breaks && !stands && !waitTo && decF.under) {
       if (rootBuildable == NOT_ASKED) rootBuildable = breakBuildable(decQ.b);
       const Board *eb = rootBuildable ? ensureBoard(judgeCtx, o.j.endNode) : 0;
       if (eb && !breakBuildable(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }

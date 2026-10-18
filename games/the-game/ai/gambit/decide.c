@@ -35,7 +35,7 @@ static int readBoard_(Read *R) {
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
-  R->guides = R->list; R->listAims = R->list;
+  R->guides = R->list;
   R->by = deadlineOf(F, rule);
   // (below the material floor a step that clears and breaks nothing is out, as the judge drops it)
   R->belowFloor = R->keepOn && R->keep.t[KEEP_MATERIAL].op && !test(F->v[FACT_US_MATERIAL], R->keep.t[KEEP_MATERIAL]);
@@ -44,6 +44,7 @@ static int readBoard_(Read *R) {
   // the board dies; the rule's `by` is an attack's)
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];
   if (R->under) { for (int i = 0; i < R->guides.n; i++) R->guides.aim[i].brk = 1; R->end = 1; }
+  decF.under = R->under;
   R->asked = R->guides;   // (the list as the board asks it, the rank's: before the defence's entry is added for the searches)
   // (and after its own entries, THE DEFENCE: a combo of four or more that breaks -- the clear that buys stop as it breaks, within every
   // list -- so every mode's searches look for the breaks that keep a board alive, whatever its list asks)
