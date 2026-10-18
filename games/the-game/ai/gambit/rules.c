@@ -98,7 +98,9 @@ typedef struct { int32_t lastA, lastB, runs, blockA, blockB, blockUntil, at; } B
 static Back theBack;   // ids 0: none
 static const Board *backBoard;
 static int samePair(int32_t a, int32_t b, int32_t x, int32_t y) { return (a == x && b == y) || (a == y && b == x); }
+// clears: 0 nothing, 1 a clear, 2 a break -- a swap that breaks garbage is the board's defence, never refused as a swap back
 static int swapBack(int r, int c, int clears) {
+  if (clears == 2) return 0;
   if (!backBoard || r < 0 || r >= backBoard->nrows || c < 1 || c + 1 > W) return 0;
   int32_t a = backBoard->p[r][c].f[ID], b = backBoard->p[r][c + 1].f[ID];
   if (a == NUL || b == NUL) return 0;

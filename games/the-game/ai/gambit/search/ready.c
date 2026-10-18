@@ -63,7 +63,7 @@ static int readyLines(const Question *q, int32_t land, double ms, int32_t *seq, 
   for (int i = 0; i < nf && !clockOut() && !found; i++) {
     judge(q, &firsts[i], 1, &jo, &j);
     if (j.dead || j.late) continue;
-    if (!firstOk(CR(firsts[i]), CC(firsts[i]), j.made.combo > 0 || j.made.chain > 0 || j.made.broke > 0)) continue;
+    if (!firstOk(CR(firsts[i]), CC(firsts[i]), j.made.broke > 0 ? 2 : j.made.combo > 0 || j.made.chain > 0)) continue;
     if (j.ready == 1 && lineFits(&firsts[i], 1, 0)) { seq[0] = firsts[i]; *nseq = 1; *at = j.done; found = 1; break; }
     live[nl++] = firsts[i];
   }
@@ -76,7 +76,7 @@ static int readyLines(const Question *q, int32_t land, double ms, int32_t *seq, 
     for (int k = 0; k < ns && !clockOut(); k++) {
       int32_t two[2] = { live[i], seconds[k] };
       judge(q, two, 2, &jo, &j);
-      if (!j.dead && !j.late && j.ready == 1 && firstOk(CR(live[i]), CC(live[i]), j.made.combo > 0 || j.made.chain > 0 || j.made.broke > 0) && lineFits(two, 2, 0)) {
+      if (!j.dead && !j.late && j.ready == 1 && firstOk(CR(live[i]), CC(live[i]), j.made.broke > 0 ? 2 : j.made.combo > 0 || j.made.chain > 0) && lineFits(two, 2, 0)) {
         seq[0] = two[0]; seq[1] = two[1]; *nseq = 2; *at = j.done; found = 1; break;
       }
     }

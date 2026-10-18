@@ -184,7 +184,7 @@ static void markStep(BS *s, int par, int kind, int mv, int o) {
   int fromRoot = par == s->root, firstBad = 0;
   if (fromRoot && kind == MK_SWAP) {
     Stats st; statsOf(x, o, &st);
-    firstBad = !firstOk(CR(mv), CC(mv), st.cleared > 0 || NODE(x, o)->brk > stillAt(s, NODE(x, o)->t));
+    firstBad = !firstOk(CR(mv), CC(mv), NODE(x, o)->brk > stillAt(s, NODE(x, o)->t) ? 2 : st.cleared > 0);
   }
   s->outside[o] = (par >= 0 && par < (1 << 20) && s->outside[par]) || firstBad || !stepFitsAt(x, o);
 }

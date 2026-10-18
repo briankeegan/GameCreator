@@ -160,7 +160,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         }
         continue;
       }
-      if (!it->nseq && !firstOk(CR(m), CC(m), st.cleared > 0 || NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t))) continue;
+      if (!it->nseq && !firstOk(CR(m), CC(m), NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) continue;
       if (st.cleared > 0) {
         int32_t fire = NODE(x, it->n)->t, chain = chainOfStats(&st), bigC = biggestOf(&st), done = NODE(x, out)->t;
         int32_t seqTmp[PLAN_SEQ + 1], ns = 0;

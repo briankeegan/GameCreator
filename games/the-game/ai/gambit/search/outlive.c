@@ -32,7 +32,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
       for (int j = 0; j < nm && nk < PLAN_KIDS; j++) {
         int out = step(x, level[i].n, MK_SWAP, CR(ms1[j]), CC(ms1[j]), 0);
         if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
-        if (d == 1) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(ms1[j]), CC(ms1[j]), st.cleared > 0 || NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t))) continue; }
+        if (d == 1) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(ms1[j]), CC(ms1[j]), NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) continue; }
         Node *on = NODE(x, out);
         int dup = 0;
         for (int q2 = 0; q2 < nk && !dup; q2++) { Node *kn = NODE(x, kids[q2].n); dup = kn->hash == on->hash && kn->keyn == on->keyn && !memcmp(kn->key, on->key, sizeof(int32_t) * on->keyn); }
