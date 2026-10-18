@@ -52,7 +52,9 @@ list, its aims, under garbage, topped), so a mode that changes, a mode added, or
 - **The list decides what is made.** A grown combo and a converted-row chain are judged by the one list check (`fitsList`: what the
   line makes, the chain the game counts, every clear of its own). A mode whose list does not take a four, or a chain, gets those
   lines ranked outside it, after every line within it that lives -- never in its place. The defence (a break made by one clear is
-  within every list) does not stretch to them: a chain is an attack, and the list rules it.
+  within every list) does not stretch to them: a chain is an attack, and the list rules it. The defence is still ordered by the
+  list: of two breaks, the one that meets an earlier entry comes first (`rank.c` `aim`), the defence's own entry (a combo of four or
+  more that breaks) after the list's, and a break that meets none last among them -- within the list, so before any line outside it.
 - **The list's own order comes first.** The nearest break, like the panels spent, is weighed only after the list's own keys
   (`Tier.nlist`), so what a list asks for in what order is never reordered.
 - **Survival first, in every mode.** A line that lives comes before one that does not, whatever it makes; these change only the
