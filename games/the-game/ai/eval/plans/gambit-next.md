@@ -132,42 +132,74 @@ read by all of them:
   -- then the cell-scanning ones are deleted. Under three seconds.
 - **The engine is not touched**: the bits are read off the board the engine makes, never a second engine.
 
-## 6. One of each: the audit's fixes
+## 6. One of each: the audit's fixes, in one batch
 
 Every question the decision asks is asked once, in one function every caller uses; every rule is one key of the one order; every fact
-is the engine's, never a search's claim. In this order -- the first three decide games, the rest keep the first three true.
+is the engine's, never a search's claim. All of it lands in one push and is measured by one run per mode -- so it is proved, before
+the push, on Gambit's own recorded decisions, which change and why.
 
-1. **One material measure.** `panelsOn` (the bits) is the board's material for every reader: the material fact (`facts.c endFacts`),
-   the rule's keep floor, the saving band, the life table, the log (`mat=` and `pan=` become one). What counts as garbage is the
-   game's flag (`gridCell`), everywhere -- a shock panel or an unseen colour is a panel that matches nothing, never garbage.
-2. **One material policy, measured.** The saving band's thresholds come from the life table, not rows typed in: it saves while the
-   board's life rises with each panel and spends once it falls (the table's peak), so the band and the table can no longer disagree.
-   The table is measured again on the current build (`./build.sh material`), every bin given the frames and losses it saw.
-3. **No candidate dropped unseen.** The candidates are ranked into the cap, not cut at it: when the proposers offer more than
-   `MAXCANDS`, the ones dropped are the lowest by the proposer's own claim, counted in the log (`capped=`), and every proposer gets
-   its share before any gets a second.
+### 6a. The proof, built first (no behaviour changes)
+
+- **The decision replay** (`test/decide_test.c`, run by `./build.sh test`): 400 questions Gambit met in its own games -- 100 a mode, from
+  the fair-board runs' `GAMBITB` lines, their arrivals beside them, gzipped in `test/decisions.txt.gz` -- each loaded
+  (`gb_question_bytes`), answered with no deadline (`answerQuestion` with `due` 0: every search runs to its own bounds, so the same
+  board gives the same answer, every time), the mode's rules from `gambit.words`, a new game before each (`gb_new_game`).
+- **What it records** a question: the move, the play, the top three of the order with each one's keys, and the facts the order read
+  (lives, lost, outside, material, saving, met, tier) -- `test/decisions.golden`.
+- **Held by**: run twice, the same record (it is deterministic, or the replay is no proof); the record of the build before the batch
+  committed as the golden.
+- **Every changed decision is named**: the replay prints each question whose move differs from the golden, with the first key of the
+  order that decided differently. A change no fix below explains is a bug, found before a run is spent on it.
+
+### 6b. The restructuring -- every decision the same as the golden
+
 4. **One defence rule** (`rules.c defends`): a break made by one clear, no chain, is within every list -- asked by `fits`, `fitsList`
-   and `stepFitsAt` alike; the defence entry added in `decide.c read` is that rule's search side, named so. And a topped board without
-   garbage gets the clear that buys stop time as the same defence.
-5. **Every rank rule in the one order.** The carried line's place, a waiting line's place (two places in `decide.c ranked`) and the
-   topped board's tier become keys of `compareJudged`, read off fields the judging sets -- no tier edited after the judging.
-6. **The engine's answer, never the claim.** The material key's floor is the judged board's (`keepsFloor` on the board the judge ends
-   on); the tier's aim is the judged entry (`metOf`), as the list key's is. A claim only orders what the proposers offer.
-7. **One replayer.** The carried line is judged by the judge (`replay` deleted), so "what a line makes" is counted one way; the cells
-   a clear sends are `sentCells`, everywhere.
-8. **One reading of shape.** Evenness, height and hollow come from the bits, one function each, read by the facts, the planner's shape
-   and the tier.
-9. **An outcome keeps its end board.** The cache holds the board a line ends on (or the means to replay it), so no reader asks the
-   judge's context for a node it may no longer hold; `lineEnd` and its cache bypass go.
-10. **Every loop charged.** The board readers on the bits charge their work to the clock, as the engine's steps do.
-11. **No number typed where the engine has one.** The garbage timings in `front.c` (STAGING, LAND) read from the engine; the
-    duplicated key constants (`TAP_GAP`, `REPEAT_FIRST`, `HOLDTIGHT`) defined once.
-12. **Gated.** `./build.sh test` runs in `gambit-24.yml` beside `board.test.lua`; each fix above adds its case there (a board, the
-    answer), under three seconds in all.
+   and `stepFitsAt` alike; the defence entry added in `decide.c read` named as that rule's search side.
+5. **Every rank rule in the one order.** The carried line's place and a waiting line's place (`decide.c ranked`, two places) and the
+   topped board's tier become keys of `compareJudged`, read off fields the judging sets; no tier is edited after the judging.
+9. **An outcome keeps its end board** (or the means to replay it): no reader asks the judge's context for a node it may no longer
+   hold; `lineEnd` and its cache bypass go.
+10. **Every loop charged**: the board readers on the bits charge their work to the clock, as the engine's steps do (no deadline in the
+    replay, so the decisions there do not move; in a game the charge is what keeps them in time).
+11. **One of each constant**: `TAP_GAP`, `REPEAT_FIRST`, `HOLDTIGHT` defined once; `front.c`'s garbage timings (`STAGING`, `LAND`) read
+    from the engine -- the same numbers, so the same decisions.
 
-Not in this step, kept with a reason: the searches capped by count (the touch beam, the planner, extend, the survival search) are made
-time-bounded once the clock-cut count says they are short of time; the perched drop's walk learns that a walked panel falls once the
-drop rate says it matters.
+### 6c. The fixes that change decisions -- each change explained by one of these
+
+1. **Two named material measures, one function each, on the bits**: the panels on the board (`panelsOn`) and the panels under the
+   lowest garbage (the material the rule's keep floor tests, `>=24` in `gambit-rules.json`: its meaning kept). Every reader names
+   which it asks; the log carries both. Garbage is the game's flag everywhere (`gridCell`): a shock panel or an unseen colour is a
+   panel that matches nothing, never garbage. The decisions that change: where a shock panel or an unseen colour sat.
+3. **No candidate dropped unseen**: past `MAXCANDS`, every proposer keeps its share, the lowest by the proposer's own claim go first,
+   and the log counts them (`capped=`). The decisions that change: busy boards, where the new moves were cut.
+4. **The defence on a topped board without garbage**: the clear that buys stop time (a combo of four or more, or a chain) is within
+   every list there too. The decisions that change: topped boards with no garbage.
+6. **The engine's answer, never the claim**: the material key's floor is the judged board's (`keepsFloor` on the board the line ends
+   on); the tier's aim is the judged entry (`metOf`), as the list key's is. The decisions that change: where the claim and the engine
+   disagreed.
+7. **One replayer**: the carried line is judged by the judge (`replay` deleted) -- what a line makes counted one way; the cells a clear
+   sends are `sentCells`, everywhere. The decisions that change: carried lines whose earlier step broke.
+8. **One reading of shape** on the bits: height, evenness and hollow, one function each, read by the facts, the planner's shape and
+   the tier -- the definitions that differ made one, the one the facts use. The decisions that change: where two evennesses disagreed.
+
+### 6d. Data and rules
+
+- **The life table measured again** on the run before the batch (`./build.sh material`), every bin its frames and losses.
+- **The saving band is the owner's** (begun topped at four rows' worth of panels or fewer, kept to eight rows' worth): unchanged. The
+  life table's peak is logged beside it (`lifePeak=`), for the owner to read.
+
+### 6e. Gated, then one run
+
+- **`./build.sh test` runs in `gambit-24.yml`** beside `board.test.lua`: the bits, the perched blocks, the decision replay's
+  determinism and its golden. A change that moves a decision commits the new golden with it, its changes named in the commit.
+- **Each fix adds its case** to the replay or the bits test: a board and the answer -- under three seconds in all, or the test is cut
+  down until it is.
+- **One push, one run per mode.** Read per mode as each lands; a regression is read in its games and fixed forward, through the shared
+  function that decides it.
+
+Not in this step, each with what brings it back: the searches capped by count (the touch beam, the planner, extend, the survival
+search) made time-bounded once the clock-cut count says they are short of time; the perched drop's walk taught that a walked panel
+falls once the drop rate says it matters; the shared prefix's replay once the judge is short of time.
 
 ## Kept for when it is needed
 
