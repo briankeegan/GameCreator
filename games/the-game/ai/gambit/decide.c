@@ -35,7 +35,7 @@ static int readBoard_(Read *R) {
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
-  R->aims = R->list; R->listAims = R->list;
+  R->guides = R->list; R->listAims = R->list;
   R->by = deadlineOf(F, rule);
   // (below the material floor a step that clears and breaks nothing is out, as the judge drops it)
   R->belowFloor = R->keepOn && R->keep.t[KEEP_MATERIAL].op && !test(F->v[FACT_US_MATERIAL], R->keep.t[KEEP_MATERIAL]);
@@ -43,10 +43,11 @@ static int readBoard_(Read *R) {
   // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's -- before
   // the board dies; the rule's `by` is an attack's)
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];
-  if (R->under) { for (int i = 0; i < R->aims.n; i++) R->aims.aim[i].brk = 1; R->end = 1; }
+  if (R->under) { for (int i = 0; i < R->guides.n; i++) R->guides.aim[i].brk = 1; R->end = 1; }
+  R->asked = R->guides;   // (the list as the board asks it, the rank's: before the defence's entry is added for the searches)
   // (and after its own entries, THE DEFENCE: a combo of four or more that breaks -- the clear that buys stop as it breaks, within every
   // list -- so every mode's searches look for the breaks that keep a board alive, whatever its list asks)
-  if (R->under && R->aims.n < MAXAIMS) { Aim d; memset(&d, 0, sizeof d); d.combo.op = OP_GE; d.combo.n = 4; d.brk = 1; R->aims.aim[R->aims.n++] = d; }
+  if (R->under && R->guides.n < MAXAIMS) { Aim d; memset(&d, 0, sizeof d); d.combo.op = OP_GE; d.combo.n = 4; d.brk = 1; R->guides.aim[R->guides.n++] = d; }
   // (A LIST ENDED BY "default" -- every list under garbage -- falls back to the default's own move when none of it can be made: the
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)
@@ -130,7 +131,7 @@ static int ranked(const Read *R, const Found *S) {
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0;
-  if (R->aims.n && carriedCand(R, &ck, &cwait) && judgeCand(R, &ck, &theJudged[n])) {
+  if (R->guides.n && carriedCand(R, &ck, &cwait) && judgeCand(R, &ck, &theJudged[n])) {
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else cj->first = 1;   // (its place: rank.c tierView)
@@ -231,7 +232,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid) {
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - 1;
   for (int i = 1; i < k->k.nseq; i++) theCarry.rest[i - 1] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0;
-  if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->aims.aim[k->aim]; }
+  if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
@@ -276,7 +277,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   if (C->broke && !(x.broke > 0)) { carryDrop = 3; return 0; }
   if (C->hasAim && !meets(&C->aim, x)) { carryDrop = 4; return 0; }
   int aim = -1;
-  if (C->hasAim) for (int i = 0; i < R->aims.n && aim < 0; i++) if (!memcmp(&R->aims.aim[i], &C->aim, sizeof(Aim))) aim = i;
+  if (C->hasAim) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;
   if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, nrest, aim, 0)) return 0;
   k->settled = C->settled;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;

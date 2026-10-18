@@ -52,12 +52,11 @@ static int fits(const List *L, Made m) {
 }
 // A MOVE'S PLACE IN THE LIST: the first entry it meets, its break as the entry asks it (under garbage every entry asks one), as the
 // searches ask it (meets); -1 for one that clears nothing or meets none. The rank's one question of the list's order.
-static int metOfN(const List *L, Made m, int n) {
+static int metOf(const List *L, Made m) {
   if (!(m.combo > 0 || m.chain > 0)) return -1;
-  for (int i = 0; i < L->n && i < n; i++) if (meets(&L->aim[i], m)) return i;
+  for (int i = 0; i < L->n; i++) if (meets(&L->aim[i], m)) return i;
   return -1;
 }
-static int metOf(const List *L, Made m) { return metOfN(L, m, L->n); }
 // THE LIST FOR ONE STEP ON THE ENGINE (JUDGE.stepFits): each of its own clears fits as a clear of its own, and the chain it reaches
 // fits and is within MAXCHAIN. sizes: the step's clears that are no link of a chain.
 static int stepFits(const List *L, const int32_t *sizes, int32_t nsizes, int32_t chain) {

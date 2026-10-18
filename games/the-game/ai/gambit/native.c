@@ -102,6 +102,7 @@ static int b64(const unsigned char *p, int n, char *out) {
   out[k] = 0;
   return k;
 }
+#define SAMPLEQ 32   // (a board is about 20 KB of log: one in 32 decisions keeps a game's log under a megabyte of them)
 static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr) {
   static unsigned char bytes[sizeof(Board)];
   static char line[sizeof(Board) * 2];
@@ -178,6 +179,10 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0);
   flog(line);
   if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr);
+  // (A SAMPLE OF EVERY DECISION: one question in SAMPLEQ, whatever it is, its board -- GAMBITQ, what test/decisions.txt.gz is drawn from,
+  // so the replay holds the decisions a game makes and not only the ones some search came up empty on)
+  static uint32_t asked;
+  if (++asked % SAMPLEQ == 0) dumpBoard("GAMBITQ", q->at, hostBoard, hostQ.arr, hostQ.narr);
   // (a line the break search said breaks and the judge says does not: its board, rate-limited, for replaying both on it -- GAMBITU)
   static int32_t lastU = NUL;
   if (unbroken.set && (lastU == NUL || q->at - lastU >= 120 || q->at < lastU)) { lastU = q->at; dumpBoard("GAMBITU", q->at, hostBoard, hostQ.arr, hostQ.narr); }

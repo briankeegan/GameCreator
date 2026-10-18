@@ -40,7 +40,9 @@ static struct { int32_t set, play, nseq, seq[MAXLINE], said, judged; } unbroken;
 // the decision's reading of the board, which every candidate is judged by (decide.c read)
 typedef struct {
   FactSet F; int32_t enemyTopped;
-  List list, aims, listAims; int32_t end;
+  List list, asked, guides, listAims; int32_t end;
+  // (list: the rule's; asked: the list as the board asks it -- every entry a break under garbage -- the rank's; guides: asked and the
+  // defence's entry, the searches' -- a proposal's aim indexes it)
   int32_t by;                      // NOT_ASKED: none
   int32_t under, topped, breakWaits, belowFloor;
   int32_t saving;                  // saving panels up: breaks that leave the most come before the list (decide.c read)
@@ -82,10 +84,11 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
-  int entry = metOf(&R->aims, m);
-  // (the list's key reads the mode's own entries -- the defence's entry under garbage, a combo of four or more that breaks, guides the
-  // searches and is no entry of the list: of two breaks it never puts the larger before the life the smaller leaves)
-  J->met = j ? metOfN(&R->aims, m, R->list.n) : -1;
+  // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- the
+  // defence's entry guides the searches and is no entry of the list: of two breaks it never puts the larger before the life the smaller
+  // leaves)
+  int entry = metOf(&R->asked, m);
+  J->met = j ? entry : -1;
   J->saving = R->saving && R->under && m.broke > 0;
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
   J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;

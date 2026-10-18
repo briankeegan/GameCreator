@@ -68,7 +68,7 @@ static void startChains(const Read *R, Found *S, double ms) {
     if (!q.b) continue;
     double left = t0 + ms - nowMs();
     if (left < 2) break;
-    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &R->aims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0,
+    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &R->guides, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0,
                    left / (ns - j) };
     Ext E;
     extend(&q, &eo, &E);
@@ -82,16 +82,16 @@ static void startChains(const Read *R, Found *S, double ms) {
 }
 static void searchAll(const Read *R, Found *S) {
   memset(S, 0, sizeof *S);
-  if (!R->aims.n) return;
+  if (!R->guides.n) return;
   Profile *GP = &C2.GP;
   Board *board = decQ.b;
   // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
   double xMs = leftMs() / 2;
   // (a slab popping is lined up as the list is written -- the pop is the break; with garbage left, the entries that break again first)
-  S->xAims = !R->pop ? R->aims : R->listAims;
+  S->xAims = !R->pop ? R->guides : R->listAims;
   if (R->pop && R->under) {
-    S->xAims = R->aims;
+    S->xAims = R->guides;
     for (int i = 0; i < R->listAims.n && S->xAims.n < MAXAIMS; i++) S->xAims.aim[S->xAims.n++] = R->listAims.aim[i];
     if (S->xAims.n < MAXAIMS) { Aim brk; memset(&brk, 0, sizeof brk); brk.brk = 1; S->xAims.aim[S->xAims.n++] = brk; }
   }
@@ -103,14 +103,14 @@ static void searchAll(const Read *R, Found *S) {
   }
   // (A CHAIN IS BEGUN AND CONTINUED: on a board at rest, each swap that starts a clear, then the links its fall is continued by -- the
   // extension's own search, from the board the swap leaves falling; a beginning whose chain ends in the list is a line)
-  if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->aims)) startChains(R, S, leftMs() / 2);
+  if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->guides)) startChains(R, S, leftMs() / 2);
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
   double usual = leftMs() / 2;
   int idle = C2.idle && leftAlone().lives;
   double ms = idle ? (usual > leftMs() ? usual : leftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
   if (ms >= 20) {
     S->tried++;
-    PlanOpts po = { GP->width ? GP->width : 40, GP->depth ? GP->depth : 7, GP->pool ? GP->pool : 250, &R->aims, R->by ? R->by : NOT_ASKED,
+    PlanOpts po = { GP->width ? GP->width : 40, GP->depth ? GP->depth : 7, GP->pool ? GP->pool : 250, &R->guides, R->by ? R->by : NOT_ASKED,
                     R->keepOn ? &R->keep : 0, R->readyAt, R->under, R->F.v[FACT_US_DIES] > 0 ? R->F.v[FACT_US_DIES] : 0, R->under, ms };
     plan(&decQ, &po, &S->ap); S->haveAp = 1;
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
@@ -245,12 +245,12 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
   // AN ENTRY: the planner's line for each entry of the list it found one for
-  if (S->haveAp) for (int i = 0; i < R->aims.n; i++) if (S->ap.perAim[i].set) { int m0 = n; ADD(PLAY_ENTRY, S->ap.perAim[i].seq, S->ap.perAim[i].nseq, i, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.perAim[i]); }
+  if (S->haveAp) for (int i = 0; i < R->guides.n; i++) if (S->ap.perAim[i].set) { int m0 = n; ADD(PLAY_ENTRY, S->ap.perAim[i].seq, S->ap.perAim[i].nseq, i, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.perAim[i]); }
   // THE EXTENSION: links that keep a chain already falling going (or a popping slab lined up), and the nearest of them to the list
   if (S->haveEx) {
     const XLine *ex = &S->ex.best;
     if (ex->nseq && ex->aimIndex >= 0) {
-      int na = R->aims.n, xi = ex->aimIndex, xa = !(R->pop && R->under) ? xi : xi < na ? xi : xi < 2 * na ? xi - na : -1;
+      int na = R->guides.n, xi = ex->aimIndex, xa = !(R->pop && R->under) ? xi : xi < na ? xi : xi < 2 * na ? xi - na : -1;
       int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, ex->seq, ex->nseq, xa, 1); if (n > m0) xFromExt(&out[m0], ex);
     }
     if (S->ex.nearest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.nearest.seq, S->ex.nearest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.nearest); }

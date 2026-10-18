@@ -99,7 +99,8 @@ int main(int argc, char **argv) {
   int nq = 0, unsteady = 0, moved = 0, changed = 0;
   while (gzgets(z, line, sizeof line)) {
     int mode = atoi(line);
-    const char *b = strstr(line, "GAMBITB ");
+    const char *b = strstr(line, "GAMBITQ ");
+    if (!b) b = strstr(line, "GAMBITB ");
     if (!b) continue;
     int narr, n = loadLine(b, &narr);
     if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) { fprintf(stderr, "test: question %d does not load\n", nq); return 1; }

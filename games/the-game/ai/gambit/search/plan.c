@@ -19,7 +19,7 @@ typedef struct {
 } PLine;
 typedef struct {
   int32_t width, depth, pool;
-  const List *aims;          // the list the search plays for (R.aims)
+  const List *aims;          // the list the search plays for (R.guides)
   int32_t by;                // NOT_ASKED: none
   const Keep *keep;          // the floor (R.keepF)
   int32_t readyAt;           // NOT_ASKED: none
