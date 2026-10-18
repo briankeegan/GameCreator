@@ -3,6 +3,7 @@
 //     every perched block the reader finds, its line played on the engine, counted by whether its block came down;
 //   - the decision replayed (test/decisions.txt.gz: questions from runs on the fair board, a mode each): each answered twice, the same
 //     answer both times, and against test/decisions.golden -- every question whose answer moved printed, with what decided it.
+//   the rules every decision is replayed on: test/rules.words (words.js, the finish profile; its mode set a question at a time).
 //   test DIR [golden]: "golden" writes test/decisions.golden from this build.
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,7 +87,7 @@ int main(int argc, char **argv) {
   printf("%s: perched blocks -- %d lines offered, %d let their block down\n", offered && !dropped ? "FAIL" : "ok", offered, dropped);
   fail |= wrong || !boards || (offered && !dropped);
   // ---- the decisions
-  snprintf(path, sizeof path, "%s/../gambit.words", dir);
+  snprintf(path, sizeof path, "%s/rules.words", dir);
   if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
   snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
   gzFile z = gzopen(path, "r");

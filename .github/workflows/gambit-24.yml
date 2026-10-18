@@ -65,9 +65,6 @@ jobs:
       - name: Gambit sees only what the screen shows
         timeout-minutes: 2
         run: luajit games/the-game/ai/gambit/lua/board.test.lua
-      - name: Gambit's C checks (the bits, perched blocks, the decisions replayed against the golden)
-        timeout-minutes: 5
-        run: cd games/the-game/ai/gambit && ./build.sh test
       - name: Play
         timeout-minutes: 340
         env:
@@ -91,6 +88,11 @@ jobs:
             out/survivor.log
           if-no-files-found: warn
           retention-days: 14
+      # (after the games, so a check that fails turns the run red without stopping a game)
+      - name: Gambit's C checks (the bits, perched blocks, the decisions replayed against the golden)
+        if: always()
+        timeout-minutes: 5
+        run: cd games/the-game/ai/gambit && ./build.sh test
 
   report:
     needs: play
