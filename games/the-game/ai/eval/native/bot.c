@@ -4650,6 +4650,8 @@ static int attackOptions(Opt *O, int n, Dec d) {
   }
   return n;
 }
+// the line staged this decision (insureFind), for the setups stage to play on a hold and the arbiter to weigh beside it
+static struct { int dec, n; int32_t sw[2 * LINEMAX]; } insStage = { -1, 0, { 0 } };
 static int setupOptions(Opt *O, int n, Dec d) {
   double base = setupKey(DBASE), key[SETUPOPTS]; int at[SETUPOPTS], na = 0;
   for (int i = 0; i < nPool; i++) {
@@ -4691,7 +4693,7 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
 static Dec arbitrate(Dec d) {
   reachHold = 0;   // the stages before it have left the scramble its work
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[5 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
+  Opt O[6 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
   memset(O, 0, sizeof O);
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
@@ -4753,7 +4755,16 @@ static Dec arbitrate(Dec d) {
 #endif
     // downtime: the board left alone loses no health within the horizon, or between actions: a line that saves the board is kept and the setup must spare it;
     // the setups stand beside the hold wherever the hold is an option, whatever swap the stages proposed
-    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && downtime) { setupAt = n; n = setupOptions(O, n, d); } }
+    if (!breaking && aloneOnEngine() && (aloneDie(1 << 20) > LIVEHORIZON || saSet) && downtime) { setupAt = n; n = setupOptions(O, n, d);
+      // the clear staged for the end of the lock (insureFind), beside the hold and the setups: it ranks above them, for what it buys the lock's end
+      if (insStage.dec == btDecision && insStage.n > 0) {
+        Opt *o = &O[n];
+        o->d = mkSwap(insStage.sw[0], insStage.sw[1], V_SETUP, d.mode, d.alive);
+        o->n = insStage.n; o->wait = 0; o->pri = 2; o->stall = 1;
+        for (int k = 0; k < 2 * o->n; k++) o->sw[k] = insStage.sw[k];
+        o->twos = 1 << 20; o->twosKnown = 1;
+        if (optJudge(o)) n++;
+      } } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
   if (saSet && aloneOnEngine()) {
@@ -5523,12 +5534,13 @@ static int lineKeepsClear(const int32_t *sw, int n) {
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
   return lineState(sw, n, st, can, w, cur, &t) == 0 && oneSwapClear(st);
 }
-static Dec insureClear(Dec d) {
+static void insureFind(void) {
   extern PATLS double paWork;
   static int noneAt;   // the position (raPos) in which no staging was found: none is found again while it stands
-  if (!popUninsured() || paWork >= optLine() || noneAt == raPos) return d;
+  insStage.dec = -1; insStage.n = 0;
+  if (!popUninsured() || paWork >= optLine() || noneAt == raPos) return;
   static ST st1; int32_t cur1[2], t1; uint32_t can1[WMAX]; Wait waits1[32][WMAX];
-  if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0 || oneSwapClear(st1)) return d;
+  if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0 || oneSwapClear(st1)) return;
   // the search goes on from the last frame's while the position stands (sitKeepSlot): a pop holds one for hundreds of frames
   static InsureCtx xKeep; InsureCtx x; u64 pk = ((u64)(unsigned)raPos << 3) | 5;
   if (SITKEEP[3].valid && SITKEEP[3].key == pk) x = xKeep; else x.n = 0;
@@ -5540,15 +5552,22 @@ static Dec insureClear(Dec d) {
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE die %d pop-end stop %d: the soonest clear is %d swaps, work %.0f of %.0f\n", LNA[0], LNA[22], x.n, paWork - w0, work); }
 #endif
-  if (x.n < 2) { if (!x.n && paWork - w0 < 0.9 * work) noneAt = raPos; return d; }   // 1: already a swap away
+  if (x.n < 2) { if (!x.n && paWork - w0 < 0.9 * work) noneAt = raPos; return; }   // 1: already a swap away
   int n = x.n - 1;
   int v = lineJudge(x.sw, n, 0);
-  if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) return d;
-  if (n > 1) lineSet(x.sw, n, LINE_PLAN, 0);
-  return mkSwap(x.sw[0], x.sw[1], V_SETUP, d.mode, d.alive);
+  if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) return;
+  insStage.n = n; insStage.dec = btDecision;
+  for (int k = 0; k < 2 * n; k++) insStage.sw[k] = x.sw[k];
+}
+static Dec insureClear(Dec d) {
+  if (insStage.dec != btDecision || insStage.n < 1) return d;
+  if (insStage.n > 1) lineSet(insStage.sw, insStage.n, LINE_PLAN, 0);
+  return mkSwap(insStage.sw[0], insStage.sw[1], V_SETUP, d.mode, d.alive);
 }
 static Dec setupTwos(Dec d) {
   setupHold = 0;   // the work held for the setups is theirs to spend now
+  insStage.dec = -1;
+  if (BIN[IN_HASPA] && BIN[IN_TOPPED] && !BT->nLine && aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON) insureFind();   // whatever the stages proposed: the arbiter weighs it beside the hold
   if (d.kind != K_HOLD || d.via == V_RAISING || BT->nLine || !BIN[IN_HASPA]) return d;
   // a topped board is held by its pop or its stop: with nothing to save in the time (the board left alone lives past the horizon), the pairs the next break's row will complete are built
   if (BIN[IN_TOPPED] && !(aloneOnEngine() && aloneDie(1 << 20) > LIVEHORIZON)) return d;
