@@ -7,7 +7,6 @@
 // drops every plan and question made before it. So does garbage shown that the plan was not made knowing, and a broken slab's
 // colours shown.
 
-#define MIN_LEG 3          // the shortest walk a held key is no later on
 #define STAGING (45 + 45 + 1)   // a sender stages garbage this long, then it lands LAND frames later
 #define LAND 60
 #define PLANN 4096         // frames of plan kept, by clock
@@ -378,17 +377,6 @@ static void countActions(int32_t bits, int32_t now) {
   F.npress = k;
   if (k > F.st.maxWindow) F.st.maxWindow = k;
   if (k > F.limit) F.st.overInput++;
-}
-// The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be.
-static int actionsFor(int row, int col, int r, int c, int left) {
-  int tight = left <= HOLDTIGHT, legs[2], nl = 0, cost = 1;
-  if (abs(c - col)) legs[nl++] = abs(c - col);
-  if (abs(r - row)) legs[nl++] = abs(r - row);
-  for (int k = 0; k < nl; k++) {
-    int n = legs[k], inner = k < nl - 1;
-    cost += tight ? (n >= 2 ? 1 : n) : (n >= MIN_LEG + 1 || (n == MIN_LEG && inner)) ? 1 : n;
-  }
-  return cost;
 }
 static void walkKeys(Keys *k, int32_t at) { if (allowanceAt(at) <= HOLDTIGHT) fSlowWalks(k); else fHoldWalks(k); }
 

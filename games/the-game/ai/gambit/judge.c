@@ -144,6 +144,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
   j->base = baseBroke;
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 };
+  int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
     if (last && o->settled) break;   // (each step settled already)
@@ -169,6 +170,13 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       if (!legalAt(x, n, mr, mc)) { j->cut = k; break; }
     }
     if (!last && j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
+    // (the allowance this swap is pressed under: the decision's less what the line's swaps before it spent -- core/nodes.h actionsFor)
+    if (!last && pressAllowance >= 0) {
+      Board *bn = ensureBoard(x, n);
+      int left = pressAllowance - spent;
+      pressTight = left <= HOLDTIGHT;
+      if (bn) spent += actionsFor(bn->curRow, bn->curCol, mr, mc, left);
+    }
     int out = step(x, n, last || o->settled ? MK_SETTLE : MK_SWAP, mr, mc, 0);
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
     if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
@@ -182,6 +190,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (!last) lastAt = j->done;
     n = out;
   }
+  pressTight = tight0;
   j->late = j->late || clockOut();
   // (the garbage the line breaks is what it breaks beyond the board left alone: a slab popping converts its panels whatever is pressed)
   j->made.combo = combo > baseCombo ? combo : 0; j->made.chain = chain > baseChain ? chain : 0; j->made.broke = imax(0, broke - baseBroke);

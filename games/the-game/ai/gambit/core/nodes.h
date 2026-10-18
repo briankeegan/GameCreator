@@ -15,6 +15,23 @@ EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 #define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
 #define HOLDTIGHT 40      // the actions short of the input limit at which every walk of two cells or more is held (the search and the frame loop)
 static int32_t pressTight;
+#define MIN_LEG 3          // the shortest walk a held key is no later on
+// The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be
+// (left: the actions the input budget still allows -- tight at HOLDTIGHT or under). The frame loop's and the judge's, the one count.
+static int iabs(int v) { return v < 0 ? -v : v; }
+static int actionsFor(int row, int col, int r, int c, int left) {
+  int tight = left <= HOLDTIGHT, legs[2], nl = 0, cost = 1;
+  if (iabs(c - col)) legs[nl++] = iabs(c - col);
+  if (iabs(r - row)) legs[nl++] = iabs(r - row);
+  for (int k = 0; k < nl; k++) {
+    int n = legs[k], inner = k < nl - 1;
+    cost += tight ? (n >= 2 ? 1 : n) : (n >= MIN_LEG + 1 || (n == MIN_LEG && inner)) ? 1 : n;
+  }
+  return cost;
+}
+// THE ALLOWANCE A JUDGED LINE PRESSES UNDER: the decision's (NOT_ASKED: the host did not say), less what the line's own swaps spend --
+// a line long enough walks held from two cells once its own presses bring the budget to HOLDTIGHT, as the frame loop walks it
+static int32_t pressAllowance = -1;
 static int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
 static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
 // A WALK'S LEG in a line's keys, from key i: a direction tapped a cell at a time, TAP_GAP frames apart (in[i] the direction with the
