@@ -135,10 +135,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
     if (hx != hy) return hx ? 1 : -1;
   }
-  // (of two that do not live, a line that presses something and is ready for the next block -- it lives until that block lands and a
-  // break is in reach then -- before one that is not: a later loss bought with the panels that break would need is no better. A hold is
-  // not first by readiness: the break it waits for is a candidate of its own)
-  if (!lx) { int rx = !x->hold && x->readyNext == 1, ry = !y->hold && y->readyNext == 1; if (rx != ry) return rx ? -1 : 1; }
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;

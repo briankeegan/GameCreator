@@ -54,8 +54,22 @@ engine at level 10, the game's own think and input budgets.
 
 | mode | survived | runs |
 |---|---|---|
-| finish them | best 22 of 24 (`18348913d4`, held at `af1693e8a9`); accepted at 23 of 24 earlier (the owner: close enough) | 19, 19, 17, 17, 17, 17, 22, 21 (C), 22, 23, 21, 22, 23 (C in the client), 17, 20, 17, 20, 16, 20, 17, 23, 19, 18, 20, 18, 21, 19, 17, 22, 22 |
-| pressure | best 22 of 24 (`52a35feccd`) | 0 (no chain begun), 17 (chains begun and continued), 19, 18, 18, 19, 20, 20, 19, 18, 15, 22, 21, 16, 19, 19 |
-| big chain | not yet run | |
-| build | not yet run | |
+| finish them | **24/24 twice** (`5bacb738d0`, `51b51405f5`) | ... 24, 18, 24, 18, 17, 18, 18, 21, 21, 16 |
+| pressure | best 22 of 24 (`52a35feccd`, `5bacb738d0`) | ... 22, 18, 18, 19, 13, 14, 15, 17, 15, 15, 15 |
+| big chain | best 18 of 24 (`f13a5c5966`) | 13, 17, 16, 17, 15, 17, 16, 18, 12 |
+| build | best 19 of 24 (`5bacb738d0`, `db1f1dce3c`) | 19, 17, 19, 16, 14, 15 |
 | switching | not yet built | |
+
+## What the losses share
+
+- **One run is noise.** The same decisions scored finish 24 and 18 (`51b51405f5`, `77fff4d883`): the bot thinks to the wall clock, so
+  no two runs play the same games. A gap of a few games between two builds is not a result.
+- **combo_storm in the chain modes (pressure, big chain, build) is the hole: 1-3 of 8.** The board's material -- the panels under and
+  beside the garbage a break is made from -- drains between blocks: nothing lives (a queue that long is never all ready for), so the
+  later loss ranks first, and the lines that lose later are survival clears that spend 3-6 panels each (49 to 5 in a thousand frames).
+  The block lands on nothing to break it with (`breakNear`: 53 of 55 boards before those losses had no break to build).
+- **Chain building leaves a tower** (heights like 5,7,12,11,8,6 with 49 panels): the board is topped by its own stack with room for a
+  level one. `levelLine` walks it level, judged whole.
+- Tried and taken out, each below the runs above: the judge asking past the stop a line ends on; the chain stopper; the floor for the
+  block on its way; crediting a ready line with where its break leads; a line ready for the next block before a later loss.
+
