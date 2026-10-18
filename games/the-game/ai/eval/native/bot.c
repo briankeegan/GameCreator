@@ -5537,7 +5537,7 @@ static int lineKeepsClear(const int32_t *sw, int n) {
   return lineState(sw, n, st, can, w, cur, &t) == 0 && oneSwapClear(st);
 }
 static void insureFind(void) {
-  extern PATLS double paWork;
+  extern PATLS double paWork; extern int paBudgetOut(void);
   static int noneAt;   // the position (raPos) in which no staging was found: none is found again while it stands
   insStage.dec = -1; insStage.n = 0;
   if (!popUninsured() || paWork >= optLine() || noneAt == raPos) return;
@@ -5548,14 +5548,14 @@ static void insureFind(void) {
   if (SITKEEP[3].valid && SITKEEP[3].key == pk) x = xKeep; else x.n = 0;
   double work = optLine() - paWork; if (work > SETUPWORK) work = SETUPWORK;
   double w0 = paWork;
-  insNodes = insMaxN = insEnd0 = 0;
+  insNodes = insMaxN = insEnd0 = 0; sitRootLegal = sitRootFilt = sitRootCan = sitRootLate = 0;
   sitKeepSlot = 4; sitKeepKey = pk;
   searchInTime(st1, cur1[0], cur1[1], t1, 0, timeLeft(), 1, can1, waits1, work, sitInsure, &x, 0, 0, 0);
   xKeep = x;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE die %d pop-end stop %d: the soonest clear is %d swaps, work %.0f of %.0f | nodes %d depth %d ended %d\n", LNA[0], LNA[22], x.n, paWork - w0, work, insNodes, insMaxN, insEnd0); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE die %d pop-end stop %d: the soonest clear is %d swaps, work %.0f of %.0f | nodes %d depth %d ended %d | root legal %d can %d late %d\n", LNA[0], LNA[22], x.n, paWork - w0, work, insNodes, insMaxN, insEnd0, sitRootLegal, sitRootCan, sitRootLate); }
 #endif
-  if (x.n < 2) { if (!x.n && paWork - w0 < 0.9 * work) noneAt = raPos; return; }   // 1: already a swap away
+  if (x.n < 2) { if (!x.n && paWork - w0 < 0.9 * work && !paBudgetOut()) noneAt = raPos; return; }   // a search the budget cut found nothing about the position   // 1: already a swap away
   int n = x.n - 1;
   int v = lineJudge(x.sw, n, 0);
   if (!(v & LV_LIVES) || (v & LV_PAYS) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) return;
