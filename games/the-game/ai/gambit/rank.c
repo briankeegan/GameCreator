@@ -80,10 +80,14 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   Xs tx = x;
   tx.combo = m.combo; tx.chain = m.chain; tx.broke = m.broke; tx.done = j ? j->done : (k->xDone >= 0 ? k->xDone : 0); tx.dropAt = j ? j->dropAt : 0;
   J->t = tierOf(play, &tx, aim, R->under, R->enemyTopped, R->topped, R->breakWaits);
-  // (topped out, the stop time and the shake are the board's life: a line that keeps it held past what is left now comes first)
+  // (topped out, the stop time and the shake are the board's life: a line that keeps it held past what is left now comes first -- under
+  // garbage one that breaks before one that does not: a break turns garbage into the panels the next one needs)
   const Board *b = decQ.b;
   int32_t stopNow = imax(b->stopTime + b->preStopTime, b->shakeTime);
-  if (R->topped && j && j->dropAt > stopNow) { J->t.tier = 0; J->t.nsub = 2; J->t.sub[0] = aim >= 0 ? aim : 99; J->t.sub[1] = -j->dropAt; }
+  if (R->topped && j && j->dropAt > stopNow) {
+    int brk = R->under && m.broke > 0;
+    J->t.tier = 0; J->t.nsub = 3; J->t.sub[0] = R->under ? (brk ? 0 : 1) : 0; J->t.sub[1] = aim >= 0 ? aim : 99; J->t.sub[2] = -j->dropAt;
+  }
   J->settled = st; J->aim = aim; J->o = oc;
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;
   if (j) { J->apNats = j->nats; for (int i = 0; i < j->nats; i++) J->apAts[i] = j->ats[i]; }

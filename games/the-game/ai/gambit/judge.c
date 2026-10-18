@@ -219,6 +219,19 @@ EXPORT(gb_question_bytes) int gb_question_bytes(int nbytes, int narr) {
   for (int k = 0; k < narr; k++) hostQ.arr[k] = (Arr){ a[3 * k], a[3 * k + 1], a[3 * k + 2], 0, 0 };
   return 0;
 }
+// THE QUESTION'S CELLS, for a tool that reads a logged board: rows, stop, shake, then per row from the bottom each column's colour
+// (0 none), garbage, state
+EXPORT(gb_cells) int gb_cells(void) {
+  const Board *b = hostBoard;
+  if (!b) return 0;
+  int k = 0;
+  gbIo[k++] = b->nrows; gbIo[k++] = b->stopTime + b->preStopTime; gbIo[k++] = b->shakeTime;
+  for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = b->p[r][c].f;
+    gbIo[k++] = f[COLOR] == NUL ? 0 : f[COLOR]; gbIo[k++] = f[ISGARBAGE]; gbIo[k++] = f[STATE];
+  }
+  return k;
+}
 EXPORT(gb_list_on) void gb_list_on(int on) { listOn = on; }
 // The line in the io body (nseq words, r * 8 + c); the answer back into it: dead, deadAt, combo, chain, broke, chainAll, dropAt, done,
 // fire, lostAt, ready, late, nats, ats..., nsingles, singles..., readyN, readyLine...

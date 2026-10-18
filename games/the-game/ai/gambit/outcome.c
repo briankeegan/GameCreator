@@ -17,6 +17,7 @@ typedef struct {
 } Facts;
 typedef struct {
   int32_t dead, lostAt, lives, fits, ready, late;
+  int32_t spent;   // under the material floor (outcomeOf)
   Judged j;
 } Outcome;
 
@@ -77,6 +78,9 @@ static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Out
 // or it dies when the stop runs out. A line that lives only by being ready lives as its readiness break does, played where the
 // readiness found it and judged as any break is (waitTo): a break kept for later is worth no more than the break played.
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo);
+static int breakBuildable(const Board *b);   // (search/break.c: a break the panels touching garbage can be walked into)
+static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
+static int32_t rootBuildable = NOT_ASKED;    // (the question's board, asked once a decision)
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
@@ -95,6 +99,13 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.dead = 0; o.ready = ready;
     o.lives = breaks || !coming ? (stands || ready == 1) : (ready == 1 || (ready == NOT_ASKED && stands));
     o.fits = fitsList(&theList, o.j.made, &o.j) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
+    // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board had
+    // one has spent what the next break needs -- it is lost the frame it is done)
+    if (n > 0 && !breaks && !stands && !waitTo && garbageOn(decQ.b)) {
+      if (rootBuildable == NOT_ASKED) rootBuildable = breakBuildable(decQ.b);
+      const Board *eb = rootBuildable ? ensureBoard(judgeCtx, o.j.endNode) : 0;
+      if (eb && !breakBuildable(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
+    }
     if (o.lives && !breaks && ready == 1 && !(stands && !coming) && !waitTo && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
       int32_t ext[MAXLINE];
       for (int k = 0; k < n; k++) ext[k] = seq[k];
@@ -157,7 +168,7 @@ EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, in
   decQ = hostQ; decQ.b = hostBoard; backBoard = hostBoard;
   Facts f = { land, topped, timeLeft, belowFloor };
   decF = f;
-  ncache = 0;
+  ncache = 0; rootBuildable = NOT_ASKED;
   return 0;
 }
 // The line in the io body (nseq words); back: dead, lostAt, lives, fits, ready, late, then the judge's answer as gb_judge writes it.

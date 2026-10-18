@@ -33,6 +33,7 @@ typedef struct { int32_t n, len[KEEPN]; int32_t path[KEEPN][MAXPATH]; } Paths;
 typedef struct {
   int32_t depth, nmoves, moves[MAXROWS * W];
   int32_t at, touch, carried, wide, lineup;        // lineup: 0 none, 1 the pop's end, 2 a pair, 3 aimed, 4 ready
+  int32_t built;                                    // the line breakNear builds (the nearest break walked to)
   int32_t pathLen, path[MAXPATH];
   int32_t pairs[MAXROWS * W][2];                    // lines, beside moves (lineup 2 and 4)
   int32_t towardLen, toward[MAXPATH];
@@ -92,29 +93,40 @@ static int bring(const Board *b, int top, int q, int k, int32_t want, const int 
   }
   return best;
 }
-static int breakNear(const Board *b) {
+// the swaps that walk the panel at (q, from) to column k along its row
+static int walkTo(int q, int from, int k, int32_t *seq, int n) {
+  if (from > k) for (int c = from - 1; c >= k && n < MAXPATH; c--) seq[n++] = q * 8 + c;
+  else for (int c = from; c < k && n < MAXPATH; c++) seq[n++] = q * 8 + c;
+  return n;
+}
+// (and the line that makes it: seq, *nseq -- each panel walked in turn; 0 for none)
+static int breakNearLine(const Board *b, int32_t *seq, int *nseq) {
   int top = gridLen(b) - 2, best = 1 << 30;
+  if (nseq) *nseq = 0;
   for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
     int32_t k = cellIn(b, top, r, c);
     if (!(k > 0) || !(cellIn(b, top, r + 1, c) < 0 || cellIn(b, top, r - 1, c) < 0 || (c > 1 && cellIn(b, top, r, c - 1) < 0) || (c < W && cellIn(b, top, r, c + 1) < 0))) continue;
     // a column of three through it
     for (int r0 = r - 2; r0 <= r; r0++) {
       if (r0 < 1 || r0 + 2 > top) continue;
-      int dv = 0, none[W + 2] = { 0 }, from;
-      for (int q = r0; q <= r0 + 2 && dv < best; q++) { if (q == r) continue; int d = bring(b, top, q, c, k, none, &from); dv = d >= 0 ? dv + d : 1 << 30; }
-      if (dv < best) best = dv;
+      int dv = 0, none[W + 2] = { 0 }, from, fr[3] = { 0 }, qs[3] = { 0 }, nq = 0;
+      for (int q = r0; q <= r0 + 2 && dv < best; q++) { if (q == r) continue; int d = bring(b, top, q, c, k, none, &from); if (d >= 0) { dv += d; qs[nq] = q; fr[nq++] = from; } else dv = 1 << 30; }
+      if (dv < best) { best = dv; if (seq) { int n = 0; for (int i = 0; i < nq; i++) n = walkTo(qs[i], fr[i], c, seq, n); *nseq = n; } }
     }
     // a row of three through it
     for (int c0 = c - 2; c0 <= c; c0++) {
       if (c0 < 1 || c0 + 2 > W) continue;
-      int used[W + 2] = { 0 }, dh = 0, from;
+      int used[W + 2] = { 0 }, dh = 0, from, fr[3] = { 0 }, ts[3] = { 0 }, nt = 0;
       used[c] = 1;
-      for (int t = c0; t <= c0 + 2 && dh < best; t++) { if (t == c) continue; int d = bring(b, top, r, t, k, used, &from); if (d >= 0) { used[from] = 1; dh += d; } else dh = 1 << 30; }
-      if (dh < best) best = dh;
+      for (int t = c0; t <= c0 + 2 && dh < best; t++) { if (t == c) continue; int d = bring(b, top, r, t, k, used, &from); if (d >= 0) { used[from] = 1; dh += d; ts[nt] = t; fr[nt++] = from; } else dh = 1 << 30; }
+      if (dh < best) { best = dh; if (seq) { int n = 0; for (int i = 0; i < nt; i++) n = walkTo(r, fr[i], ts[i], seq, n); *nseq = n; } }
     }
   }
   return best;
 }
+static int breakNear(const Board *b) { return breakNearLine(b, 0, 0); }
+static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
+static int garbageOn(const Board *b) { return lowestG(b) < gridLen(b); }
 static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) - uneven(b); }
 // How far a board is toward lining up with the converting row `want`: per column, its top panel below the lowest garbage of that colour,
 // and the one under it too
@@ -437,6 +449,15 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   for (int i = 0; i < nfirsts; i++)
     if (breaksAt(&s, firsts[i]->n, firsts[i]->path, 1)) { found(out, firsts[i]->key); int32_t t = NODE(x, firsts[i]->n)->t; if (at1 < 0 || t < at1) at1 = t; }
   if (out->nmoves) { out->depth = 1; out->at = at1; return; }
+  // (THE BREAK BUILT: the nearest break's panels walked to it along their rows -- breakNear's own line -- played on the engine)
+  if (!(wait > 0)) {
+    static int32_t nl[MAXPATH]; int nn = 0;
+    if (breakNearLine(q->b, nl, &nn) < NEAR_MISS && nn > 0) {
+      int node = s.root;
+      for (int i = 0; i < nn && liveNode(x, node); i++) node = stepMarked(&s, node, MK_SWAP, nl[i], 0);
+      if (liveNode(x, node) && breaksAt(&s, node, nl, nn)) { found(out, nl[0]); setPath(out, nl, nn); out->depth = 1; out->at = NODE(x, node)->t; out->built = 1; return; }
+    }
+  }
   if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; return; }
   if (wait > 0) {
     int w0 = step(x, s.root, MK_LONG, 0, 0, wait);
@@ -509,3 +530,5 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   return 1;
 }
 static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN) = readyBreakOf;
+// for a tool that reads a logged board: the fewest swaps to the nearest break on the question's board (NEAR_MISS or more: none)
+EXPORT(gb_break_near) int gb_break_near(void) { return hostBoard ? breakNear(hostBoard) : -1; }
