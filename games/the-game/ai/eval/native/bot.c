@@ -5519,8 +5519,10 @@ static int oneSwapClear(const int32_t *st) {
 }
 typedef struct { int n; int32_t sw[2 * LINEMAX]; } InsureCtx;
 // the soonest line that clears: the swaps before its last are the staging (they clear nothing, or the line would have ended there)
+static int insNodes, insMaxN, insEnd0;
 static int sitInsure(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
   InsureCtx *x = ctx; (void)at;
+  insNodes++; if (n > insMaxN) insMaxN = n; if (res[R_SCOPE] != SC_OK && res[R_TOTAL] <= 0) insEnd0++;
   if (res[R_TOTAL] > 0 || res[R_SCOPE] == SC_BROKE) { if (n <= LINEMAX) { x->n = n; for (int k = 0; k < 2 * n; k++) x->sw[k] = sw[k]; } return SIT_TAKE; }
   return res[R_SCOPE] == SC_OK ? SIT_GROW : SIT_END;
 }
@@ -5546,11 +5548,12 @@ static void insureFind(void) {
   if (SITKEEP[3].valid && SITKEEP[3].key == pk) x = xKeep; else x.n = 0;
   double work = optLine() - paWork; if (work > SETUPWORK) work = SETUPWORK;
   double w0 = paWork;
+  insNodes = insMaxN = insEnd0 = 0;
   sitKeepSlot = 4; sitKeepKey = pk;
   searchInTime(st1, cur1[0], cur1[1], t1, 0, timeLeft(), 1, can1, waits1, work, sitInsure, &x, 0, 0, 0);
   xKeep = x;
 #ifndef __wasm__
-  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE die %d pop-end stop %d: the soonest clear is %d swaps, work %.0f of %.0f\n", LNA[0], LNA[22], x.n, paWork - w0, work); }
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE die %d pop-end stop %d: the soonest clear is %d swaps, work %.0f of %.0f | nodes %d depth %d ended %d\n", LNA[0], LNA[22], x.n, paWork - w0, work, insNodes, insMaxN, insEnd0); }
 #endif
   if (x.n < 2) { if (!x.n && paWork - w0 < 0.9 * work) noneAt = raPos; return; }   // 1: already a swap away
   int n = x.n - 1;
