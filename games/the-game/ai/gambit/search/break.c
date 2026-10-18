@@ -109,6 +109,41 @@ static int nearLineOf(const Bits *B, int32_t *seq, int *nseq) {
 }
 static int breakNearLine(const Board *b, int32_t *seq, int *nseq) { bitsOf(b, &scratchBits); return nearLineOf(&scratchBits, seq, nseq); }
 static int breakNear(const Board *b) { return breakNearLine(b, 0, 0); }
+// A PERCHED BLOCK (perchedDrops): a garbage block whose bottom row is held up by panels in some of the columns under it and by nothing in
+// the others -- a hollow under it. Its supports walked along their row past the block's nearer edge let it down, and the stack's height
+// with it. A block that sits on garbage in any column under it is not perched: there is nothing to walk out. The lines, lowest block
+// first: each support's walk, one after another.
+#define PERCHMAX 4
+typedef struct { int32_t n, len[PERCHMAX], seq[PERCHMAX][MAXPATH]; } Perches;
+static void perchedOf(const Bits *B, Perches *P) {
+  P->n = 0;
+  for (int r = 2; r <= B->top && P->n < PERCHMAX; r++) {
+    unsigned g = B->gar[r];
+    for (int c = 1; c <= W && P->n < PERCHMAX; c++) {
+      if (!(g >> c & 1) || (B->gar[r - 1] >> c & 1)) continue;
+      // (the block's bottom row in this row: its cells from c to R, one block)
+      int32_t id = B->gid[r][c];
+      int L = c, R = c;
+      while (R + 1 <= W && (g >> (R + 1) & 1) && B->gid[r][R + 1] == id) R++;
+      c = R;
+      unsigned span = ((2u << R) - 1u) & ~((1u << L) - 1u), under = r - 1;
+      if (B->gar[under] & span) continue;
+      unsigned holds = B->pan[under] & span;
+      if (!holds || holds == span) continue;
+      int n = 0, ok = 1;
+      for (int k = L; k <= R && ok; k++) {
+        if (!(holds >> k & 1)) continue;
+        int toL = L - 1, toR = R + 1, to = toL >= 1 && (k - toL <= toR - k || toR > W) ? toL : toR <= W ? toR : 0;
+        if (!to) { ok = 0; break; }
+        int was = n;
+        n = walkTo(under, k, to, P->seq[P->n], n);
+        if (n - was != (to > k ? to - k : k - to)) ok = 0;
+      }
+      if (ok && n > 0) { P->len[P->n] = n; P->n++; }
+    }
+  }
+}
+static void perchedDrops(const Board *b, Perches *P) { bitsOf(b, &scratchBits); perchedOf(&scratchBits, P); }
 static int nearOf(const Board *b) { return imin(breakNear(b), NEAR_MISS); }
 static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
 static int garbageOn(const Board *b) { bitsOf(b, &scratchBits); return bitsLowestG(&scratchBits) <= scratchBits.rows; }

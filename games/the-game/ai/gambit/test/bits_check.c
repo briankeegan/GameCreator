@@ -2,6 +2,7 @@
 // swaps from it, each reader on the bits and its cell-by-cell reference (test/cells_ref.c) asked alike; the boards checked and the
 // disagreements, counted.
 static int32_t bitsBoards, bitsWrong;
+static double bitsMs, cellsMs;   // the nearest break asked 50 times a board, on the bits (reading them included) and on the cells
 static int bitsAgreeOn(const Board *b) {
   static Bits B;
   bitsOf(b, &B);
@@ -21,9 +22,38 @@ static int bitsAgreeOn(const Board *b) {
       int f1 = -9, f2 = -9, a = bitsBring(&B, q, k, want, (used << 1) & ALLCOLS, &f1), z = refBring(b, top, q, k, want, ref, &f2);
       if (a != z || (a >= 0 && f1 != f2)) wrong++;
     }
+  { double t0 = nowMs(); volatile int z = 0;
+    for (int i = 0; i < 50; i++) { static Bits T; bitsOf(b, &T); z += nearLineOf(&T, 0, 0); }
+    double t1 = nowMs();
+    for (int i = 0; i < 50; i++) z += refBreakNearLine(b, 0, 0);
+    bitsMs += t1 - t0; cellsMs += nowMs() - t1; (void)z; }
   bitsBoards++; bitsWrong += wrong;
   return wrong;
 }
+// A PERCHED BLOCK LET DOWN, on the engine: each line perchedDrops offers, played and settled; how many let their block's bottom row
+// down a row or more (by its garbage id)
+static int32_t perchOffered, perchDropped;
+static int lowestOf(const Board *b, int32_t id) {
+  for (int r = 1; r <= b->height + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) if (gridCell(b, r, c) < 0 && b->p[r][c].f[GARBAGEID] == id) return r;
+  return 0;
+}
+static void perchOn(Ctx *x, int root) {
+  const Board *b = ensureBoard(x, root);
+  if (!b) return;
+  static Perches P; perchedDrops(b, &P);
+  for (int i = 0; i < P.n; i++) {
+    int r = CR(P.seq[i][0]) + 1, c0 = CC(P.seq[i][0]), id = 0;
+    for (int c = 1; c <= W && !id; c++) if (gridCell(b, r, c) < 0 && (c == c0 || c == c0 + 1)) id = b->p[r][c].f[GARBAGEID];
+    if (!id) for (int c = 1; c <= W && !id; c++) if (gridCell(b, r, c) < 0) id = b->p[r][c].f[GARBAGEID];
+    int before = lowestOf(b, id), n = root;
+    for (int k = 0; k < P.len[i] && liveNode(x, n); k++) n = step(x, n, MK_SWAP, CR(P.seq[i][k]), CC(P.seq[i][k]), 0);
+    if (liveNode(x, n)) n = step(x, n, MK_SETTLE, 0, 0, 0);
+    perchOffered++;
+    const Board *e = liveNode(x, n) ? ensureBoard(x, n) : 0;
+    if (e && before && lowestOf(e, id) && lowestOf(e, id) < before) perchDropped++;
+  }
+}
+EXPORT(gb_perch_counts) int gb_perch_counts(int which) { return which ? perchDropped : perchOffered; }
 static Ctx *bitsCtx;
 EXPORT(gb_bits_agree) int gb_bits_agree(void) {
   if (!hostBoard) return -1;
@@ -32,6 +62,7 @@ EXPORT(gb_bits_agree) int gb_bits_agree(void) {
   Ctx *x = bitsCtx = ctxOf(bitsCtx);
   int root = rootOf(x, &hostQ);
   if (root < 0) return bitsWrong;
+  perchOn(x, root);
   static int32_t ms[MAXROWS * W], ms2[MAXROWS * W];
   int nm = swapsOfNode(x, root, ms);
   for (int i = 0; i < nm; i++) {
@@ -39,6 +70,7 @@ EXPORT(gb_bits_agree) int gb_bits_agree(void) {
     if (!liveNode(x, o)) continue;
     const Board *b = ensureBoard(x, o);
     if (b) bitsAgreeOn(b);
+    perchOn(x, o);
     if (i % 8) continue;
     int nm2 = swapsOfNode(x, o, ms2);
     for (int j = 0; j < nm2; j += 3) {
@@ -49,3 +81,4 @@ EXPORT(gb_bits_agree) int gb_bits_agree(void) {
   return bitsWrong;
 }
 EXPORT(gb_bits_boards) int gb_bits_boards(void) { return bitsBoards; }
+EXPORT(gb_bits_ms) double gb_bits_ms(int cells) { return cells ? cellsMs : bitsMs; }

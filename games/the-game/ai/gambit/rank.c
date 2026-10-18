@@ -8,6 +8,7 @@
 typedef struct {
   int32_t set, play, nseq, seq[MAXLINE], aim, extend, settled;
   int32_t grown;   // a line another proposed, one more panel walked into its match (propose.c growLines)
+  int32_t drop;    // a perched block let down (search/break.c perchedDrops)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
