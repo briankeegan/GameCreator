@@ -6,6 +6,7 @@
 #include "judge.c"
 #include "outcome.c"
 #include "core/sort.h"
+#include "search/bits.c"
 #include "search/break.c"
 #include "facts.c"
 #include "search/plan.c"

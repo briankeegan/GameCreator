@@ -33,7 +33,9 @@ static int runOf(const Land *L, int r, int c, int dr, int dc, int32_t k, int *er
 // hold it up, from none of the run's own cells. Nearest first; one walk a cell.
 static void fillWalks(const Board *B, const Land *L, int minRun, Fills *F) {
   F->n = 0;
-  int top = gridLen(B) - 2;
+  static Bits BB;
+  bitsOf(B, &BB);
+  int top = BB.top;
   static uint8_t done[MAXROWS + 2][W + 2];
   memset(done, 0, sizeof done);
   for (int r = 1; r <= L->top; r++) for (int c = 1; c <= W; c++) {
@@ -53,9 +55,9 @@ static void fillWalks(const Board *B, const Land *L, int minRun, Fills *F) {
         if (made < 3) continue;
         int q = tr - L->d;
         if (q < 1 || q > top) continue;
-        int used[W + 2] = { 0 }, from = 0;
-        if (dir == 0) for (int j = 1; j <= W; j++) if (landAt(L, tr, j) == k && j != tc) used[j] = 1;
-        int dist = bring(B, top, q, tc, k, used, &from);
+        unsigned used = 0; int from = 0;
+        if (dir == 0) for (int j = 1; j <= W; j++) if (landAt(L, tr, j) == k && j != tc) used |= 1u << j;
+        int dist = bitsBring(&BB, q, tc, k, used, &from);
         if (dist <= 0 || F->n >= FILLMAX) continue;
         done[tr][tc] = 1;
         F->len[F->n] = walkTo(q, from, tc, F->seq[F->n], 0);

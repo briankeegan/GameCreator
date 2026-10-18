@@ -306,3 +306,8 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
 void gn_end(void) { statsOut(); ringOut(); }
 // A line from the host into the run's log (a slow frame's parts, say)
 void gn_log(const char *s) { flog(s); }
+// (the C checks, built by ./build.sh test)
+#ifdef GB_TEST
+#include "test/cells_ref.c"
+#include "test/bits_check.c"
+#endif
