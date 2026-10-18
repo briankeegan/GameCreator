@@ -286,7 +286,19 @@ static int keysOf(const Board *b, int32_t holdLeft, int32_t holdStarted, const A
   if (root < 0) return 0;
   static LOCAL int32_t buf[3 * MAXKEYS];
   tape = buf; tapeN = 0; tapeCap = MAXKEYS;
-  int r = advance(keyCtx, root, kind, mr, mc, 0);
+  // (a swap whose pair still moves is pressed once it is still, as the judge presses it: the frames between are waited, nothing pressed)
+  int node = root, r;
+  for (;;) {
+    int32_t mark = tapeN;
+    r = advance(keyCtx, node, kind, mr, mc, 0);
+    if (r != STEP_NULL || kind != MK_SWAP) break;
+    tapeN = mark;
+    Board *bb = ensureBoard(keyCtx, node);
+    if (!bb || !(hasActivePanels(bb) || bb->swappingCount > 0)) break;
+    int w = advance(keyCtx, node, MK_LONG, 0, 0, 1);
+    if (w < 0 || NODE(keyCtx, w)->dead) break;
+    node = w;
+  }
   tape = 0;
   ns_reset(keyCtx);
   if (r == STEP_NULL || r == STEP_ERR) return 0;
