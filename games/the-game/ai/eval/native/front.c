@@ -1488,10 +1488,17 @@ static void frontRestart(Front *F);
 // (train.lua) is the only clock
 EXPORT(front_frame) int front_frame(int fid, Board *b) { return frontFrame(fid, b); }
 // A BREAK IN PROGRESS: a garbage cell matched or popping -- the row it converts is on the board (its colours not yet shown) until the last cell pops
+// 0: no break is popping; else 1 plus the cells of the row it converts that the game has not yet shown (fConv)
 static int garbageBreaking(void) {
+  int breaking = 0, hidden = 0;
   for (int r = 1; r <= FB->height; r++)
-    for (int c = 1; c <= W; c++) { const int32_t *f = fp(r, c); if (f[ISGARBAGE] && (fState(f) == MATCHED || fState(f) == POPPING)) return 1; }
-  return 0;
+    for (int c = 1; c <= W; c++) {
+      const int32_t *f = fp(r, c);
+      if (!f[ISGARBAGE] || (fState(f) != MATCHED && fState(f) != POPPING)) continue;
+      breaking = 1;
+      if (fState(f) == MATCHED && f[COLOR] > 0 && f[COLOR] != 9 && fInt(f[YOFF]) == -1 && !fConv(f)) hidden++;
+    }
+  return breaking ? 1 + hidden : 0;
 }
 // A GARBAGE CELL MATCHED: a break has begun (the pop that takes the block down)
 static int garbageMatched(void) {

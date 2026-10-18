@@ -4940,7 +4940,7 @@ static Dec breakDeeper(Dec d) {
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKDEEPER none: nearest %d swaps guide %.2f of %.2f, work used %.0f\n", nx.bestN, nx.bestG, readyGuide(kroot), paWork - bd0); }
 #endif
     // no break in the time there is: the line that got nearest one is played, and the search made again from where it leaves the board
-    if (nx.bestN > 0 && BIN[IN_POPPING] <= 0 && (lineJudge(nx.sw, nx.bestN, 0), lnoDie(LNO) >= readyBar())) {
+    if (nx.bestN > 0 && BIN[IN_POPPING] <= 1 &&(lineJudge(nx.sw, nx.bestN, 0), lnoDie(LNO) >= readyBar())) {
       lineLast = 8; plansDrop();
       nearLineG = nx.bestG; nearLineN = nx.bestN; for (int k = 0; k < 2 * nx.bestN; k++) nearLineSw[k] = nx.sw[k];
       if (nx.bestN > 1) lineSet(nx.sw, nx.bestN, LINE_PLAN, 0); else BT->nLine = 0;
@@ -5121,8 +5121,8 @@ static Dec lineupFirst(Dec d) {
   lineupLast = 0;
   // a lineup is for a board with time: topped with death in sight, staying alive comes first
   if (lineLast || d.kind == K_RAISE || !(BIN[IN_INCOMING] > 0) || !BIN[IN_HASPA]) { LUWHY(1); return d; }
-  // a pop in progress has converted the row the next break is made on: a board lined up for the stack as it stands is lined up for a row that is not there
-  if (BIN[IN_POPPING] > 0) { LUWHY(10); return d; }
+  // a pop in progress has converted the row the next break is made on: until the game has shown every cell of it, a board lined up for the stack as it stands is lined up for a row that is not there
+  if (BIN[IN_POPPING] > 1) { LUWHY(10); return d; }
   if (BIN[IN_TOPPED] && (!aloneOnEngine() || (LNA[0] && LNA[0] <= LIVEHORIZON))) { LUWHY(2); return d; }
   if (swapBreaks(d)) { LUWHY(3); return d; }
   linesReset();
