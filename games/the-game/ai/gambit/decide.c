@@ -38,6 +38,9 @@ static int readBoard_(Read *R) {
   // the board dies; the rule's `by` is an attack's)
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];
   if (R->under) { for (int i = 0; i < R->aims.n; i++) R->aims.aim[i].brk = 1; R->end = 1; }
+  // (and after its own entries, THE DEFENCE: a combo of four or more that breaks -- the clear that buys stop as it breaks, within every
+  // list -- so every mode's searches look for the breaks that keep a board alive, whatever its list asks)
+  if (R->under && R->aims.n < MAXAIMS) { Aim d; memset(&d, 0, sizeof d); d.combo.op = OP_GE; d.combo.n = 4; d.brk = 1; R->aims.aim[R->aims.n++] = d; }
   // (A LIST ENDED BY "default" -- every list under garbage -- falls back to the default's own move when none of it can be made: the
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)

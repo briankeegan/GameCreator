@@ -24,6 +24,8 @@ typedef struct {
 // WHETHER WHAT A LINE MAKES FITS THE LIST: what it makes, the chain it reaches as the game counts it, and
 // every clear of its own
 static int fitsList(const List *L, Made m, const Judged *j) {
+  // (a break made by one clear -- no chain, as the game counts it -- is the board's own defence, never an attack: within every list)
+  if (m.broke > 0 && chainOf(m) <= 1 && j->chainAll <= 1) return 1;
   if (!fits(L, m)) return 0;
   if (j->chainAll >= 2) { Made c = { 0, j->chainAll, 0, 0 }; if (!fits(L, c)) return 0; }
   for (int i = 0; i < j->nsingles; i++) { Made s = { j->singles[i], 1, 0, 0 }; if (!fits(L, s)) return 0; }
