@@ -40,7 +40,7 @@ void gn_switch(int min, int max);
 int32_t *gn_tele(void);
 int32_t *gn_ages(void);
 void gn_match(void);
-int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop);
+int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop);
 void gn_end(void);
 void gn_log(const char *s);
 void gn_thread_stats(double *out);
@@ -177,12 +177,16 @@ function GambitNative:telegraph(sources)
   T[0] = n
 end
 
--- Whether a stack this one fights is topped out, and the highest row it has a panel in (an attack engine has no panels: 0).
+-- The stack this one fights, as the rules' `when` and `by` read it (gambit-rules.json enemy.*): whether there is one (an attack engine,
+-- Training's, is no stack: none), whether it is topped out, the highest row it has a panel in, and the frames it is held up by -- its
+-- stop and pre-stop, or its shake when longer, as the judge reads a board's (judge.c dropAt).
 local function opponentOf(sources)
-  local out, top = 0, 0
+  local has, out, top, stop = 0, 0, 0, 0
   for _, src in ipairs(sources or {}) do
-    if type(src.game_ended) == "function" and src:game_ended() then return 0, 0, 0 end
+    if type(src.game_ended) == "function" and src:game_ended() then return 0, 0, 0, 0 end
     if type(src.isToppedOut) == "function" and src.panels then
+      has = 1
+      stop = math.max(stop, (src.stop_time or 0) + (src.pre_stop_time or 0), src.shake_time or 0)
       if src:isToppedOut() then out = 1 end
       for row = src.height or 12, 1, -1 do
         local found = false
@@ -194,7 +198,7 @@ local function opponentOf(sources)
       end
     end
   end
-  return 1, out, top
+  return has, out, top, stop
 end
 
 function GambitNative:think(stack, sources)
@@ -206,9 +210,9 @@ function GambitNative:think(stack, sources)
   self:telegraph(sources)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
-  local has, out, top = opponentOf(sources)
+  local has, out, top, stop = opponentOf(sources)
   local t2 = ThinkBudget.now()
-  local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top)
+  local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
   if bits < 0 then error("GambitNative: the engine refused the board at clock " .. tostring(stack.clock)) end
   self.frames = self.frames + 1

@@ -152,7 +152,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   memset(&hostQ, 0, sizeof hostQ);
   hostQ.b = hostBoard; hostQ.holdLeft = q->holdLeft; hostQ.holdStarted = q->holdStarted; hostQ.tight = 0;
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
-  answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, 1, q->oppTop, 0, 0, 1, q->allowance, q->lineFrom, q->linePressed,
+  answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
                  canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
   // (the closing work: from the moment it ran out of time to its answer)
   if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
@@ -274,7 +274,7 @@ void gn_match(void) {
 // budget's limit and window and the frames ago each key inside it went down (gn_ages), and the opponent. The keys to press, or -1.
 // (a clock behind the last frame's is a game begun again without gn_match: begun so. A question asked for a frame sooner than the
 // last one asked is the same game -- the frame loop asks again after it drops its plans.)
-int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop) {
+int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop) {
   static int32_t lastClock = NUL;
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
@@ -297,7 +297,7 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   if (window > 0) F.window = window;
   F.npress = 0;
   for (int i = 0; i < nages && i < 512; i++) F.pressFrames[F.npress++] = clock - ages[i];
-  F.oppHas = oppHas; F.oppOut = oppOut; F.oppTop = oppTop;
+  F.oppHas = oppHas; F.oppOut = oppOut; F.oppTop = oppTop; F.oppStop = oppStop;
   double t0 = clock_ms();
   arrivalsOf(F.truth);
   double t1 = clock_ms();

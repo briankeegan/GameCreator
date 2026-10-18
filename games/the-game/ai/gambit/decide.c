@@ -28,7 +28,10 @@ static int readBoard_(Read *R) {
   // sooner than the rise alone takes, the garbage on its way decides it -- queueKills)
   int32_t alone = diesIn(&decQ, F->v[FACT_US_DIES]);
   if (alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
+  // (the rule: the mode in force, else the first whose `when` the facts hold -- else, with no opponent to read (no `when` can hold),
+  // the first of the rules, so a board with nobody across still plays)
   int ri = modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
+  if (ri < 0 && !theOpp.has && theTables.n > 0) ri = 0;
   if (ri < 0) return 0;
   const Rule *rule = &theTables.r[ri];
   R->rule = ri;

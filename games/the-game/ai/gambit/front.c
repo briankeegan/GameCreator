@@ -21,7 +21,7 @@ typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys
 // what the worker is asked, and what it answers (native.c carries them across)
 typedef struct {
   int32_t id, epoch, at, lead, allowance, topped, lineFrom, linePressed, holdLeft, holdStarted, narr;
-  int32_t oppHas, oppOut, oppTop;
+  int32_t oppHas, oppOut, oppTop, oppStop;   // the opponent's stop: the frames it is held up by at the question's frame
   double ms, posted;
   Arrival arr[MAXARRIVALS];
   Board *b;
@@ -70,7 +70,7 @@ static struct {
   double msPerFrame, wall;
   // the input budget: its limit and window, the frames the keys still inside it were pressed, the keys held last frame
   int32_t limit, window, pressFrames[512], npress, prevBits;
-  int32_t oppHas, oppOut, oppTop;
+  int32_t oppHas, oppOut, oppTop, oppStop;
   int32_t toppedNow;
   // the attacks made, read off the board as it is shown
   int32_t chainMax, pendCombo[16], npendCombo, matchedIds[MAXROWS * W], nmatched, swapSince;
@@ -404,7 +404,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
   q.allowance = allowanceAt(at); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
-  q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop;
+  q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop; q.oppStop = imax(0, F.oppStop - (at - F.now));
   q.b = F.pBoard;
   postQuestion(&q);
   F.st.decisions++;
