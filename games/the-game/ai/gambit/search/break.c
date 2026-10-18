@@ -222,48 +222,6 @@ static int foundAlready(Broke *o, int32_t key) { for (int i = 0; i < o->nmoves; 
 static int found(Broke *o, int32_t key) { int i = foundAlready(o, key); if (i >= 0) return i; o->moves[o->nmoves] = key; return o->nmoves++; }
 static void setPath(Broke *o, const int32_t *path, int len) { o->pathLen = len; for (int k = 0; k < len; k++) o->path[k] = path[k]; }
 
-// THE SWAPS WORTH STEPPING (a filter, never a judge): on a still board, a swap of two panels that clears nothing only exchanges them,
-// so the board it leaves -- and how near a break it is (nearScore) -- is read on a copy without the engine. Every swap that clears,
-// moves an empty cell (a panel falls) or is made on a board still moving is kept; of the others only the `keep` nearest a break,
-// the most a parent can give the beam. The engine still steps every swap kept and judges every break. ms is reordered; the count
-// kept is returned.
-static int makesMatch(const Board *b, int r, int c) {
-  int32_t v = cellAt(b, r, c);
-  if (!(v > 0)) return 0;
-  int h = 1, vt = 1;
-  for (int k = c - 1; k >= 1 && cellAt(b, r, k) == v; k--) h++;
-  for (int k = c + 1; k <= W && cellAt(b, r, k) == v; k++) h++;
-  for (int k = r - 1; k >= 1 && cellAt(b, k, c) == v; k--) vt++;
-  for (int k = r + 1; k < gridLen(b) && cellAt(b, k, c) == v; k++) vt++;
-  return h >= 3 || vt >= 3;
-}
-static int swapsWorthStepping(const Board *b, int32_t *ms, int nm, int keep) {
-  static Board *scratch;
-  static int32_t sc[MAXROWS * W], other[MAXROWS * W];
-  if (!b || hasActivePanels((Board *)b) || b->swappingCount > 0 || nm <= keep) return nm;
-  if (!scratch) scratch = nb_new();
-  if (!scratch) return nm;
-  cloneBoard(scratch, b);
-  int nk = 0, no = 0;
-  for (int j = 0; j < nm; j++) {
-    int r = CR(ms[j]), c = CC(ms[j]);
-    if (!(cellAt(b, r, c) > 0) || !(cellAt(b, r, c + 1) > 0)) { ms[nk++] = ms[j]; continue; }   // (a panel falls)
-    Panel t = scratch->p[r][c]; scratch->p[r][c] = scratch->p[r][c + 1]; scratch->p[r][c + 1] = t;
-    int clears = makesMatch(scratch, r, c) || makesMatch(scratch, r, c + 1);
-    int32_t score = clears ? 0 : nearScore(scratch);
-    t = scratch->p[r][c]; scratch->p[r][c] = scratch->p[r][c + 1]; scratch->p[r][c + 1] = t;
-    if (clears) ms[nk++] = ms[j]; else { other[no] = ms[j]; sc[no++] = score; }
-  }
-  // (of the swaps that only exchange two panels, the `keep` nearest a break)
-  for (int a = 0; a < keep && a < no; a++) {
-    int bi = a;
-    for (int q = a + 1; q < no; q++) if (sc[q] > sc[bi]) bi = q;
-    int32_t tm = other[a]; other[a] = other[bi]; other[bi] = tm; int32_t ts = sc[a]; sc[a] = sc[bi]; sc[bi] = ts;
-    ms[nk++] = other[a];
-  }
-  return nk;
-}
-
 // THE TOUCH BEAM (touchBeam): the carried lines first, then the first swaps, grown a level at a time
 static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   Ctx *x = s->x;
@@ -342,7 +300,6 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       arenaN[ar] = 0;   // (the level before last: its lines are let go)
       for (int i = 0; i < ntl && !tpath; i++) {
         int nm = swapsOfNode(x, tl[i]->n, ms);
-        nm = swapsWorthStepping(ensureBoard(x, tl[i]->n), ms, nm, beam);
         for (int j = 0; j < nm; j++) {
           int t3 = stepMarked(s, tl[i]->n, MK_SWAP, ms[j], 0);
           if (!liveNode(x, t3)) continue;
