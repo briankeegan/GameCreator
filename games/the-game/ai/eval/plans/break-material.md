@@ -44,6 +44,24 @@ make is a link of a chain -- stop time on a topped board, and panels converted k
   lands is late and dropped; a chain that does not happen on the engine is not one.
 - **Held by** a test on a recorded pop with its colours drawn: the walk that makes the chain is proposed and played.
 
+## Every mode's rules, and any mode to come
+
+Nothing here names a mode. Each piece reads only what every decision already reads from the rule in force (`decide.c` read: the
+list, its aims, under garbage, topped), so a mode that changes, a mode added, or a switch mid-game needs nothing of its own.
+
+- **The list decides what is made.** A grown combo and a converted-row chain are judged by the one list check (`fitsList`: what the
+  line makes, the chain the game counts, every clear of its own). A mode whose list does not take a four, or a chain, gets those
+  lines ranked outside it, after every line within it that lives -- never in its place. The defence (a break made by one clear is
+  within every list) does not stretch to them: a chain is an attack, and the list rules it.
+- **The list's own order comes first.** The nearest break, like the panels spent, is weighed only after the list's own keys
+  (`Tier.nlist`), so what a list asks for in what order is never reordered.
+- **Survival first, in every mode.** A line that lives comes before one that does not, whatever it makes; these change only the
+  order among lines that live alike, and the worth of the frames among lines that do not.
+- **Read every decision.** The list is read from the rule in force each decision, so a switch mid-game changes what fits at once;
+  a line in progress is judged again on the next decision's list, as every carried line is.
+- **Held by** the tests above run once per mode's profile (`survivor-profiles/gambit-*.json`): the test's verdict follows that
+  mode's list -- the grown four played where the list takes it, outside where it does not.
+
 ## The order
 
 1, then 2, then 3: the cheapest first. Each is one push, then 24 games per mode (`run24.sh`), reported per garbage type with the
