@@ -2707,7 +2707,7 @@ static JLOCAL double sitNodeLeft;   // the time the line just offered to the acc
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-#define SITKEEPS 3   // searches that go on from one frame to the next: each keeps a set of memory of its own
+#define SITKEEPS 4   // searches that go on from one frame to the next: each keeps a set of memory of its own
 typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; int cap, kids, hash; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS + SITKEEPS];
 static JLOCAL int sitLevel;
@@ -5525,10 +5525,14 @@ static Dec insureClear(Dec d) {
   if (!popUninsured() || paWork >= optLine() || noneAt == raPos) return d;
   static ST st1; int32_t cur1[2], t1; uint32_t can1[WMAX]; Wait waits1[32][WMAX];
   if (lineState(0, 0, st1, can1, waits1, cur1, &t1) != 0 || oneSwapClear(st1)) return d;
-  InsureCtx x; x.n = 0;
+  // the search goes on from the last frame's while the position stands (sitKeepSlot): a pop holds one for hundreds of frames
+  static InsureCtx xKeep; InsureCtx x; u64 pk = ((u64)(unsigned)raPos << 3) | 5;
+  if (SITKEEP[3].valid && SITKEEP[3].key == pk) x = xKeep; else x.n = 0;
   double work = optLine() - paWork; if (work > SETUPWORK) work = SETUPWORK;
   double w0 = paWork;
+  sitKeepSlot = 4; sitKeepKey = pk;
   searchInTime(st1, cur1[0], cur1[1], t1, 0, timeLeft(), 1, can1, waits1, work, sitInsure, &x, 0, 0, 0);
+  xKeep = x;
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "INSURE die %d pop-end stop %d: the soonest clear is %d swaps, work %.0f of %.0f\n", LNA[0], LNA[22], x.n, paWork - w0, work); }
 #endif
