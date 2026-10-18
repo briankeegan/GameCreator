@@ -7,7 +7,7 @@
 var fs = require('fs'), path = require('path');
 var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
-var modes = {}, links = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, starved: 0, inHand: 0 };
+var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, starved: 0, inHand: 0 };
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
   if (!fs.existsSync(rf)) return;
@@ -25,6 +25,15 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     var lines = fs.readFileSync(lf, 'utf8').split('\n');
     // (the decisions the clock cut: what a faster or slower machine would have played differently)
     lines.forEach(function (l) { if (l.indexOf('GAMBITD ') !== 0) return; var c = / out=(\d+)/.exec(l); if (!c) return; budget.decisions++; if (+c[1]) budget.out++; });
+    // (SWITCHING: each switch by its direction -- the mode before it to the mode after -- and the mode a lost game was lost in)
+    var was = null;
+    lines.forEach(function (l) {
+      var d = /^GAMBITD \d+ (.*?) play=/.exec(l);
+      if (!d) return;
+      if (/ switched=1/.test(l) && was && was !== d[1]) { var k = was + ' -> ' + d[1]; turns[k] = (turns[k] || 0) + 1; nturns++; }
+      was = d[1];
+    });
+    if (m[2] === 'lost' && was) lostIn[was] = (lostIn[was] || 0) + 1;
     var over2 = lines.filter(function (l) { return l.indexOf('match over: ') >= 0; }).pop();
     if (over2) {
       var o = JSON.parse(over2.slice(over2.indexOf('match over: ') + 12));
@@ -46,6 +55,10 @@ Object.keys(modes).sort().forEach(function (k) {
               '; combos ' + fmt(t.combo) + '; chains ' + fmt(t.chain));
 });
 console.log('SURVIVED ' + all + '/' + games);
+if (nturns) {
+  console.log('switches: ' + nturns + ' in all, ' + Object.keys(turns).length + ' directions -- ' + Object.keys(turns).sort().map(function (k) { return k + ' x' + turns[k]; }).join(', '));
+  console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
+}
 if (Object.keys(links).length) console.log('chain links past two, by cause: ' + ['garbage', 'swap', 'alone'].map(function (w) { return w + ' ' + fmt(links[w] || {}); }).join('; '));
 console.log('budgets: ' + budget.over + ' frames over the think budget, slowest frame ' + budget.worst + ' ms, ' + budget.dropped + ' keys dropped, ' +
             budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), over ' + budget.games + ' games');

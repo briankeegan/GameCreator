@@ -130,6 +130,7 @@ function Gambit(o) {
   this.rules = o.rules; this.names = []; this.tables = null;
   var gp = o.gambit || {};
   this.mode = gp.mode || null;
+  this.sw = gp.switch || null;
   this.gp = [gp.ms || 0, gp.extendMs || 0, gp.width || 0, gp.depth || 0, gp.pool || 0, gp.extendDepth || 0, gp.extend === false ? 1 : 0, o.reaction, o.swapGap, o.cursorMoveFrames];
   this.lastAt = null;
 }
@@ -143,12 +144,13 @@ Gambit.prototype.useTables = function (opp) {
   this.tables = t;
   var mode = this.mode ? this.names.indexOf(this.mode) : -1;
   this.X.gb_profile.apply(null, [mode].concat(this.gp));
+  this.X.gb_switch(this.sw ? this.sw.min : 0, this.sw ? this.sw.max : 0); this.X.gb_switch_game(Date.now() >>> 0);
 };
 // THE TURN: q { m (the question), board, arrivals, due, t0, margin, canRaise, mem } -- the answer as the frame loop reads it
 Gambit.prototype.answer = function (q) {
   var m = q.m, X = this.X;
   this.useTables(m.opp);
-  if (this.lastAt !== null && m.at < this.lastAt) X.gb_new_game();   // (a clock behind the last: a new game, nothing carried on)
+  if (this.lastAt !== null && m.at < this.lastAt) { X.gb_new_game(); X.gb_switch_game(Date.now() >>> 0); }   // (a clock behind the last: a new game, nothing carried on)
   this.lastAt = m.at;
   this.S.reset();
   var root = this.S.root(q.board.copy(), m.hold, q.arrivals || [], false), opp = m.opp || null;

@@ -182,6 +182,12 @@ typedef struct {
 static Answer theAnswer;
 static int32_t lastA, lastB, pairRuns, blockA, blockB, blockUntil, emptyAt = NUL;
 
+// SWITCHING (plans/gambit-goal.md 5): the profile's `switch` -- the mode changed mid-game as a rule's `when` changes it, after a random
+// stretch of `min` to `max` frames each time. A game's switches walk a circuit through every ordered pair of the attack rules (each
+// rule to each other rule, once a lap), its start, its labels and its stretches drawn from the game's seed (gb_switch_game); every reader
+// asks modeAt (the frame loop drops a line handed it under another mode, front.c). Off: the mode stays the profile's.
+#define MAXSWITCH 256
+static int32_t switchMin, switchMax, nswitch, switchAt[MAXSWITCH], switchMode[MAXSWITCH], switchedNow;
 static double readMs;   // (the board's reading, for the log)
 static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t allowance, int32_t lineFrom, int32_t linePressed) {
   Answer *A = &theAnswer;
@@ -323,6 +329,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
   L_s(" lifePeak="); L_i(lifePeakOf());
   if (R.full) L_s(" full=1");
+  if (switchedNow) L_s(" switched=1");
   if (P.line && P.line->k.grown) L_s(" grown=1");
   if (P.line && P.line->k.drop) L_s(" drop=1");
   if (cappedN) { L_s(" capped="); L_i(cappedN); }
@@ -368,18 +375,65 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
   C2.GP = p; C2.reaction = reaction;
   gb_config(reaction, swapGap, cursor);
 }
-// A new game: nothing of the last one is carried on.
-EXPORT(gb_new_game) void gb_new_game(void) {
+// WHAT A MODE CARRIES from one decision to the next, let go when the mode changes: the break search's lines, the line in progress (begun
+// for the old mode's list), the dig, the line toward a break.
+static void modeLeft(void) {
   memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry);
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
+}
+// A new game: nothing of the last one is carried on.
+EXPORT(gb_new_game) void gb_new_game(void) {
+  modeLeft();
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   gb_back(0, 0, 0, 0, 0, 0, 0);
+}
+EXPORT(gb_switch) void gb_switch(int min, int max) { switchMin = min > 0 ? min : 0; switchMax = max > switchMin ? max : switchMin; nswitch = 0; }
+// (the circuit: Hierholzer's walk of the complete directed graph on n rules -- n(n-1) steps, each ordered pair once)
+static int lapOf(int n, int32_t *lap) {
+  static int32_t used[MAXRULES][MAXRULES], stack[MAXRULES * MAXRULES + 1];
+  for (int a = 0; a < n; a++) for (int b = 0; b < n; b++) used[a][b] = a == b;
+  int sp = 0, k = 0; stack[sp++] = 0;
+  while (sp) {
+    int v = stack[sp - 1], w = -1;
+    for (int b = 0; b < n && w < 0; b++) if (!used[v][b]) w = b;
+    if (w >= 0) { used[v][w] = 1; stack[sp++] = w; } else lap[k++] = stack[--sp];
+  }
+  for (int i = 0; i < k / 2; i++) { int32_t t = lap[i]; lap[i] = lap[k - 1 - i]; lap[k - 1 - i] = t; }
+  return k - 1;   // (the walk ends where it began)
+}
+EXPORT(gb_switch_game) void gb_switch_game(uint32_t seed) {
+  nswitch = 0; modeRule = C2.GP.mode;
+  int32_t rules[MAXRULES], nr = 0;
+  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1) rules[nr++] = theTables.r[i].name;
+  if (!switchMin || nr < 2) return;
+  static int32_t lap[MAXRULES * MAXRULES + 1];
+  int nl = lapOf(nr, lap);
+  uint32_t s = seed * 2654435761u + 1;
+#define NEXT() (s = s * 1664525u + 1013904223u, s >> 8)
+  for (int i = nr - 1; i > 0; i--) { int j = (int)(NEXT() % (uint32_t)(i + 1)); int32_t t = rules[i]; rules[i] = rules[j]; rules[j] = t; }
+  int at0 = (int)(NEXT() % (uint32_t)nl);
+  int32_t t = 0;
+  for (int k = 0; nswitch < MAXSWITCH; k++) {
+    switchAt[nswitch] = t; switchMode[nswitch++] = rules[lap[(at0 + k) % nl]];
+    t += switchMin + (int32_t)(NEXT() % (uint32_t)(switchMax - switchMin + 1));
+  }
+#undef NEXT
+}
+// The mode the game plays at frame `at`: the profile's, or the switch in force then
+static int32_t modeAt(int32_t at) {
+  if (!nswitch) return C2.GP.mode;
+  int k = 0;
+  while (k + 1 < nswitch && switchAt[k + 1] <= at) k++;
+  return switchMode[k];
 }
 // A QUESTION ON THE BOARD IN hostQ (hostBoard, its hold and garbage on its way): the answer into theAnswer, the log line at logBuf
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
   decQ = hostQ; decQ.b = hostBoard;
   ncache = 0;
+  // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
+  switchedNow = 0;
+  if (nswitch) { int32_t m = modeAt(at); if (m != modeRule) { if (modeRule >= 0) { modeLeft(); switchedNow = 1; } modeRule = m; } }
   hostTopped = topped;
   Opp o = { oppHas, oppOut, oppTopKnown, oppTop, oppStopKnown, oppStop }; theOpp = o;
   canRaiseNow = canRaise;

@@ -252,6 +252,8 @@ void gn_rule_name(int i, const char *name) { if (i >= 0 && i < MAXRULES) snprint
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff) {
   gb_profile(mode, ms, extendMs, width, depth, pool, extendDepth, extendOff, cfgReaction, cfgSwapGap, cfgCursor);
 }
+// Switching (answer.c gb_switch): the profile's stretch between switches, in frames; each match draws its own (gn_match)
+void gn_switch(int min, int max) { gb_switch(min, max); }
 void gn_thread_stats(double *out) { hostThreadStats(out); }
 int32_t *gn_tele(void) { return tele; }
 int32_t *gn_ages(void) { return ages; }
@@ -260,6 +262,7 @@ static void statsOut(void) { static char line[4096]; if (!F.st.frames) return; s
 void gn_match(void) {
   statsOut();
   frontNew(gnReaction, gnAhead, gnGap, gnJitter);
+  gb_switch_game((uint32_t)clock_ms());
   gnFrames = 0;
   hostLock();
   qHas = 0; qReset = 1; ansN = 0;

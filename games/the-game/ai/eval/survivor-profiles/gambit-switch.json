@@ -1,0 +1,4 @@
+{
+ "base": "gambit.json",
+ "gambit": { "switch": { "min": 300, "max": 1800 } }
+}

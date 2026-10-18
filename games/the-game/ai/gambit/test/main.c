@@ -17,6 +17,7 @@ int gb_bits_boards(void);
 int gb_perch_counts(int which);
 double gb_bits_ms(int cells);
 int gb_replay(int nbytes, int narr, int mode, int64_t work, char *out, int cap);
+int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath);
 int32_t *gn_io(void);
 int gn_rules(int n);
@@ -119,6 +120,11 @@ int main(int argc, char **argv) {
     nq++;
   }
   gzclose(z); fclose(g);
+  // ---- switching: every direction between the modes, over a run's games (gambit-switch.json's stretch)
+  { int32_t counts[64 * 64]; int nr = 0, missing = gb_switch_check(24, 21600, 300, 1800, counts, &nr), lo = 1 << 30, hi = 0;
+    for (int a = 0; a < nr; a++) for (int b = 0; b < nr; b++) if (a != b) { if (counts[a * nr + b] < lo) lo = counts[a * nr + b]; if (counts[a * nr + b] > hi) hi = counts[a * nr + b]; }
+    printf("%s: switching -- %d modes, %d directions, each switched %d to %d times over 24 games, %d never\n", missing || nr < 2 ? "FAIL" : "ok", nr, nr * (nr - 1), lo, hi, missing);
+    fail |= missing || nr < 2; }
   printf("%s: decisions replayed -- %d questions, %d answered differently on a second asking\n", unsteady ? "FAIL" : "ok", nq, unsteady);
   if (golden) printf("wrote %s/decisions.golden\n", dir);
   else printf("%s: against the golden -- %d moves changed, %d records changed\n", moved ? "CHANGED" : "ok", moved, changed);

@@ -11,6 +11,8 @@ var out = [];
 out.push(['setup', p.reaction, p.swapGap, p.cursorMoveFrames, p.ahead || 90, pace ? pace.gap : -1, pace ? pace.jitter || 0 : 0, p.planHealth || 0].join(' '));
 out.push(['profile', gp.mode ? names.indexOf(gp.mode) : -1, gp.ms || 0, gp.extendMs || 0, gp.width || 0, gp.depth || 0, gp.pool || 0, gp.extendDepth || 0,
           gp.extend === false ? 1 : 0].join(' '));
+// (switching: the stretch between switches, in frames -- answer.c gb_switch)
+if (gp.switch) out.push(['switch', gp.switch.min, gp.switch.max].join(' '));
 names.forEach(function (n, i) { out.push('name ' + i + ' ' + n); });
 out.push(['rules', R.n, R.words.length].concat(R.words).join(' '));
 console.log(out.join('\n'));

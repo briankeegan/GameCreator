@@ -64,6 +64,7 @@ static struct {
   int32_t nextId;
   // the line after the move, pressed as it was decided: its swaps
   int32_t lineN, line[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
+  int32_t lineMode, altMode;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   double thinking[FTHINK]; int32_t nthinking;
   double msPerFrame, wall;
@@ -433,10 +434,11 @@ static void take(void) {
     // line that lives and is no hold, is played on, from the frame it was asked for, each swap checked by the keys it makes)
     if (a.kind == 0 && a.empty) {
       F.st.starved++;
-      if (!F.lineN && F.nalt) { F.lineN = F.nalt; for (int i = 0; i < F.nalt; i++) F.line[i] = F.alt[i]; F.nalt = 0; F.haveLineOf = 0; }
+      if (F.nalt && F.altMode != modeAt(at)) F.nalt = 0;
+      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineN = F.nalt; for (int i = 0; i < F.nalt; i++) F.line[i] = F.alt[i]; F.nalt = 0; F.haveLineOf = 0; }
       if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
     }
-    if (!a.empty) { F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
+    if (!a.empty) { F.altMode = modeAt(a.at); F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
     if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
       F.st.refused++;
@@ -463,7 +465,7 @@ static void take(void) {
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
-    F.lineN = a.nhand; for (int i = 0; i < a.nhand; i++) F.line[i] = a.hand[i];
+    F.lineN = a.nhand; F.lineMode = modeAt(a.at); for (int i = 0; i < a.nhand; i++) F.line[i] = a.hand[i];
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0;
   }
 }
@@ -471,6 +473,7 @@ static void take(void) {
 static int follow(void) {
   static Keys k;
   if (!F.lineN) return 0;
+  if (modeAt(F.nextAt) != F.lineMode) { F.lineN = 0; return 0; }
   int32_t mv = F.line[0], hl, hs;
   if (!predict(F.expect, F.nextAt, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) { F.lineN = 0; return 0; }
   if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) { F.lineN = 0; return 0; }

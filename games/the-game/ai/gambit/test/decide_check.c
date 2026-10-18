@@ -25,3 +25,24 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   }
   return k;
 }
+// SWITCHING'S DIRECTIONS (answer.c gb_switch_game): over `games` games of `frames` frames each, how often each ordered pair of the
+// attack rules is switched between -- into counts (n x n, by the rules' order), the pairs never switched between returned
+EXPORT(gb_switch_check) int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules) {
+  int32_t idx[MAXRULES], nr = 0;
+  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1) idx[nr++] = theTables.r[i].name;
+  *nrules = nr;
+  for (int i = 0; i < nr * nr; i++) counts[i] = 0;
+  gb_switch(min, max);
+  for (int g = 0; g < games; g++) {
+    gb_switch_game((uint32_t)(g * 7919 + 1));
+    for (int k = 1; k < nswitch && switchAt[k] < frames; k++) {
+      int a = -1, b = -1;
+      for (int i = 0; i < nr; i++) { if (idx[i] == switchMode[k - 1]) a = i; if (idx[i] == switchMode[k]) b = i; }
+      if (a >= 0 && b >= 0) counts[a * nr + b]++;
+    }
+  }
+  gb_switch(0, 0); nswitch = 0;
+  int missing = 0;
+  for (int a = 0; a < nr; a++) for (int b = 0; b < nr; b++) if (a != b && !counts[a * nr + b]) missing++;
+  return missing;
+}
