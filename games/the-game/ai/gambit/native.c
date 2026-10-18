@@ -78,19 +78,6 @@ static void abortTo(int32_t id) {
 static int canRaiseOn(Board *b) {
   return !b->preventManualRaise && !b->manualRaise && !isToppedOut(b) && !hasFallingGarbage(b) && !b->riseLock && !hasActivePanels(b) && !(b->shakeTime > 0);
 }
-// (and the raise the frame loop would press there: the engine step its keys are made from -- front.c keysOf -- asked on the question's
-// board, so a raise is offered only where it can be pressed)
-static Ctx *raiseCtx;
-static int raisePresses(const FQuestion *q, Board *b) {
-  raiseCtx = ctxOf(raiseCtx);
-  Question qq; memset(&qq, 0, sizeof qq);
-  qq.b = b; qq.holdLeft = q->holdLeft; qq.holdStarted = q->holdStarted; qq.narr = arrivalsFrom(b, q->arr, q->narr, qq.arr);
-  int root = rootOf(raiseCtx, &qq);
-  if (root < 0) return 0;
-  int r = advance(raiseCtx, root, MK_RAISE, 0, 0, 0);
-  ns_reset(raiseCtx);
-  return r != STEP_NULL && r != STEP_ERR;
-}
 // The board as base64 of its bytes (the head, the queue, the rows), for the reach report (GAMBITB)
 static int b64(const unsigned char *p, int n, char *out) {
   static const char A[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -150,7 +137,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   hostQ.b = hostBoard; hostQ.holdLeft = q->holdLeft; hostQ.holdStarted = q->holdStarted; hostQ.tight = 0;
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, 1, q->oppTop, 0, 0, 1, q->allowance, q->lineFrom, q->linePressed,
-                 canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
+                 canRaiseOn(hostBoard), due, t0, 0);
   // (the closing work: from the moment it ran out of time to its answer)
   if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
   Answer *A = &theAnswer;

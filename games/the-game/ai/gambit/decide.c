@@ -199,8 +199,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
     Judged j;
     judge(&decQ, rest, nrest, &jo, &j);
     if (j.dead || j.nats < nrest) { carryDrop = 2; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
-    // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
-    x = (Made){ j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 }; done = j.done; fire = j.fire; nats = j.nats; for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
+    x = (Made){ j.made.combo, j.made.chain, j.made.broke, 0 }; done = j.done; fire = j.fire; nats = j.nats; for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
   }
   if (C->broke && !(x.broke > 0)) { carryDrop = 3; return 0; }
   if (C->hasAim && !meets(&C->aim, x)) { carryDrop = 4; return 0; }
