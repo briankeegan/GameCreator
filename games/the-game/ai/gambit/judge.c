@@ -180,6 +180,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
       if (out == STEP_NULL) { j->cut = k; break; }
       if (from < 0) { j->dead = 1; j->deadAt = deadAt; break; }
+      // (a swap whose walk cannot begin within a reaction is one the frame loop does not press -- front.c keysOf refuses it: not there)
+      if (NODE(x, from)->t - NODE(x, n)->t > cfgReaction) { j->cut = k; break; }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from;
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;

@@ -311,9 +311,9 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // (LOWERING THE STACK: the tallest column's top walked onto a lower one, each step settled -- on any board with a column two above
   // its neighbour, the move when there is nothing better to do (rank.c markIdle); topped or under garbage, a perched block let down too
   // -- its supports walked out from under it (search/break.c perchedDrops). Each judged as any line: a lower stack is a later loss)
-  // (on a board at rest only, unless topped or under garbage: panels walked while a chain falls or a slab pops spoil what the board
-  // makes alone)
-  if (R->topped || R->under || (!hasActivePanels(decQ.b) && decQ.b->chainCounter == 0 && !R->pop)) {
+  // (never while a slab pops -- its first swap waits out the pop; on a board at rest only, unless topped or under garbage: panels walked
+  // while a chain falls spoil what the board makes alone)
+  if (!R->pop && (R->topped || R->under || (!hasActivePanels(decQ.b) && decQ.b->chainCounter == 0))) {
     static int32_t lv[MAXLINE]; int nl = levelLine(decQ.b, lv, MAXLINE);
     if (nl > 0) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; } }
   if (R->topped || R->under) {
