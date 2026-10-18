@@ -63,7 +63,9 @@ static int readBoard_(Read *R) {
     if (!savingPanels && R->topped && panels <= low) savingPanels = 1;
     else if (savingPanels && panels >= high) savingPanels = 0;
     R->saving = savingPanels;
-    R->full = panels > lifePeakOf();   // (the board fuller than it lives longest with: the life table's peak)
+    // (the board fuller than it lives longest with -- the life table's peak -- and not saving: while the owner's band saves panels up,
+    // the band decides, never the table)
+    R->full = !savingPanels && panels > lifePeakOf();
   }
   if (R->under || R->topped) R->by = NOT_ASKED;
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
