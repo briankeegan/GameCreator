@@ -7,6 +7,7 @@
 // for (aim, -1 none), whether it extends a cascade, how it is judged (settled: -1 as its play is)
 typedef struct {
   int32_t set, play, nseq, seq[MAXLINE], aim, extend, settled;
+  int32_t grown;   // a line another proposed, one more panel walked into its match (propose.c growLines)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -19,6 +20,7 @@ typedef struct {
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
+  int32_t met;         // the entry of the list (with the defence's) the judged line meets, -1 none (entryOf)
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, NDROPS };
@@ -74,6 +76,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
   int entry = entryOf(&R->aims, m);
+  J->met = j ? entry : -1;
   if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
   // (in time: the line's last swap begun by the deadline -- the frame the judge pressed it; the search's own word only when the judge
   // could not play the line out)
@@ -103,9 +106,12 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (WHAT IT SPENDS, in frames of life (outcome.c spentOf): of two in one tier, the one that spends less, right after the list's own
   // keys -- a list orders what the board can afford. SAVING UP PANELS (decide.c read: begun topped and short, kept until the list's
   // largest combo is sure) a break under garbage weighs it before the list: the board's life is its next breaks)
+  // (THE NEAREST BREAK AFTER IT: of two in one tier, the one whose board is nearer its next break, right after the panels spent -- a
+  // line that brings a break nearer climbs, one that takes it further falls)
   if (oc.panelsLeft >= 0) {
-    int saveFirst = R->saving && R->under && m.broke > 0;
-    tierInsert(&J->t, saveFirst ? 0 : J->t.nlist, oc.spentFrames);
+    int saveFirst = R->saving && R->under && m.broke > 0, at = saveFirst ? 0 : J->t.nlist;
+    tierInsert(&J->t, at, oc.spentFrames);
+    if (oc.nearAfter >= 0) tierInsert(&J->t, at + 1, oc.nearAfter);
   }
   // (under garbage, of two breaks, the one that leaves a break to build first: the list orders the breaks the board can afford)
   if (R->under && m.broke > 0 && oc.nextBuild >= 0) tierInsert(&J->t, 0, oc.nextBuild ? 0 : 1);
@@ -170,6 +176,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (of two that do not live, the later loss net of what each spends: a frame bought with a panel the next break needed is no frame)
   if (!lx) { double nx = lostOf(x) - spentAt(x), ny = lostOf(y) - spentAt(y); if (nx != ny) return ny > nx ? 1 : -1; }
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
+  // (THE LIST, AMONG LINES THAT SURVIVE ALIKE: within it before outside it, then the earlier entry the judged line meets (not the one it was found for) -- before the kind of line, so a
+  // line that keeps a topped board held, or a defence, is ordered by the list like every other. Under garbage every entry breaks)
+  if (!lx && x->outside != y->outside) return x->outside ? 1 : -1;
+  { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
   int n = x->t.nsub < y->t.nsub ? x->t.nsub : y->t.nsub;
   for (int q = 0; q < n; q++) if (x->t.sub[q] != y->t.sub[q]) return x->t.sub[q] < y->t.sub[q] ? -1 : 1;

@@ -171,6 +171,76 @@ static int seenDigHas(const Board *b, int32_t mv);   // (answer.c: the boards th
 static int32_t towardRest[MAXPATH], towardRestLen;   // (answer.c: the rest of the line toward a break played last)
 // Every candidate, in the order they are offered: entries, the extension, the nearest, the break line, the break
 // search's breaks, toward a break, ready, level, setup, clear
+// A THREE GROWN (search/fill.c): each line proposed whose last swap makes a match of three, again with one more panel of its colour walked
+// beside the match before that swap -- a combo of four or more buys the stop a three does not (pa.c calculateStopTime). Offered as the
+// play that found the three, so its place in the order is that play's; the engine judges whether the match is made.
+static Ctx *fillCtx;
+static const Board *boardBefore(Ctx *x, const int32_t *seq, int n) {
+  if (n <= 0) return decQ.b;
+  int node = rootOf(x, &decQ);
+  for (int i = 0; i < n && liveNode(x, node); i++) node = step(x, node, MK_SWAP, CR(seq[i]), CC(seq[i]), 0);
+  return liveNode(x, node) ? ensureBoard(x, node) : 0;
+}
+static int growLines(Cand *out, int n, int cap) {
+  Ctx *x = fillCtx = ctxOf(fillCtx);
+  static Land L; static Fills F;
+  for (int i = 0, n0 = n; i < n0 && n < cap && !clockOut(); i++) {
+    const Cand *k = &out[i];
+    if (k->nseq < 1 || k->grown) continue;
+    const Board *B = boardBefore(x, k->seq, k->nseq - 1);
+    if (!B) continue;
+    int32_t last = k->seq[k->nseq - 1];
+    swapLand(B, CR(last), CC(last), &L);
+    fillWalks(B, &L, 3, &F);
+    for (int w = 0; w < F.n && w < 2 && n < cap; w++) {
+      if (k->nseq + F.len[w] > MAXLINE) continue;
+      Cand *g = &out[n];
+      *g = *k; g->grown = 1; g->nseq = 0;
+      for (int j = 0; j < k->nseq - 1; j++) g->seq[g->nseq++] = k->seq[j];
+      for (int j = 0; j < F.len[w]; j++) g->seq[g->nseq++] = F.seq[w][j];
+      g->seq[g->nseq++] = last;
+      g->x.combo = 4; g->xFire = -1; g->xDone = -1; g->xNats = 0;
+      n++;
+    }
+  }
+  return n;
+}
+// THE CONVERTED ROW'S CHAIN (search/fill.c): the panels a break converts fall chaining once its pop is over, so a panel of their colour
+// waiting beside where they land makes a link of a chain. While a pop runs, the land is the board left alone and the colours are the ones
+// the screen has drawn; before a break is pressed, the land is the break line's own end and the colours the board already shows -- the
+// break line and the walk after it, one line. Each a candidate like any other (PLAY_CONVERT), judged on the engine and in time.
+static int convertLines(const Read *R, Cand *out, int n, int cap) {
+  Ctx *x = fillCtx = ctxOf(fillCtx);
+  static Land L; static Fills F;
+  #define ADDC(seq_, n_, aim_) do { if (n < cap && candOf(&out[n], PLAY_CONVERT, seq_, n_, aim_, 1)) { out[n].settled = 0; n++; } } while (0)
+  if (R->pop) {
+    const Board *E = lineEnd(0, 0, 0);
+    if (E && settledLand(decQ.b, E, &L)) { fillWalks(decQ.b, &L, 2, &F); for (int w = 0; w < F.n; w++) ADDC(F.seq[w], F.len[w], -1); }
+  }
+  if (R->under && !R->pop) {
+    for (int i = 0, n0 = n; i < n0 && n < cap && !clockOut(); i++) {
+      const Cand *k = &out[i];
+      if (!(k->x.broke > 0) || k->grown || k->play == PLAY_CONVERT) continue;
+      int st = k->settled >= 0 ? k->settled : settledPlay(k->play);
+      const Board *E0 = lineEnd(k->seq, k->nseq, st);
+      if (!E0) continue;
+      static Board *E; if (!E) E = nb_new(); if (!E) break;
+      cloneBoard(E, E0);
+      const Board *B = boardBefore(x, k->seq, k->nseq);
+      if (!B || !settledLand(B, E, &L)) continue;
+      fillWalks(B, &L, 2, &F);
+      for (int w = 0; w < F.n && w < 2; w++) {
+        if (k->nseq + F.len[w] > MAXLINE) continue;
+        int32_t seq[MAXLINE], m = 0;
+        for (int j = 0; j < k->nseq; j++) seq[m++] = k->seq[j];
+        for (int j = 0; j < F.len[w]; j++) seq[m++] = F.seq[w][j];
+        ADDC(seq, m, k->aim);
+      }
+    }
+  }
+  #undef ADDC
+  return n;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
@@ -249,5 +319,8 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   if (S->haveAp && S->ap.setup && R->readyAt == NOT_ASKED && !seenDigHas(decQ.b, S->ap.setup)) { int32_t one = S->ap.setup; ADD(PLAY_SETUP, &one, 1, -1, 0); }
   if (S->haveAp && S->ap.lowest.set) { int m0 = n; ADD(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.lowest); }
   #undef ADD
+  // (and from the lines above: the converted row's chain, then every three grown -- the converted lines' own among them)
+  n = convertLines(R, out, n, cap);
+  n = growLines(out, n, cap);
   return n;
 }

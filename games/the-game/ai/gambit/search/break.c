@@ -125,6 +125,7 @@ static int breakNearLine(const Board *b, int32_t *seq, int *nseq) {
   return best;
 }
 static int breakNear(const Board *b) { return breakNearLine(b, 0, 0); }
+static int nearOf(const Board *b) { return imin(breakNear(b), NEAR_MISS); }
 static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
 static int garbageOn(const Board *b) { return lowestG(b) < gridLen(b); }
 // the panels on the board, garbage not counted -- the material every break is made from

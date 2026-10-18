@@ -13,6 +13,7 @@
 #include "search/ready.c"
 #include "search/level.c"
 #include "search/outlive.c"
+#include "search/fill.c"
 #include "rank.c"
 #include "propose.c"
 #include "decide.c"

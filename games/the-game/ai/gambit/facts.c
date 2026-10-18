@@ -186,9 +186,9 @@ static double leadOf(const List *L, Made m, int under) { return nearList(L, m) +
 // (nlist: the leading sub-keys that are the list's order -- what a line spends is weighed after them, never before: rank.c)
 typedef struct { int32_t tier, nsub, nlist; double sub[MAXSUB]; } Tier;
 enum { PLAY_ENTRY, PLAY_NEAREST, PLAY_BREAKLINE, PLAY_CARRY, PLAY_CARRYWAIT, PLAY_CLEAR, PLAY_EXTEND, PLAY_LINEUP, PLAY_BREAKSEARCH,
-       PLAY_LINEUPBREAK, PLAY_TOWARD, PLAY_READY, PLAY_LEVEL, PLAY_SETUP, PLAY_SURVIVE, PLAY_HOLD, NPLAYS };
+       PLAY_LINEUPBREAK, PLAY_TOWARD, PLAY_READY, PLAY_LEVEL, PLAY_SETUP, PLAY_SURVIVE, PLAY_CONVERT, PLAY_HOLD, NPLAYS };
 static const char *PLAY_NAME[NPLAYS] = { "entry", "nearest", "break line", "carry", "carry wait", "clear", "extend", "lineup", "break search",
-                                         "lineup break", "toward", "ready", "level", "setup", "survive", "hold" };
+                                         "lineup break", "toward", "ready", "level", "setup", "survive", "convert", "hold" };
 // the plays judged settle by settle; the set-ups (SETUPS)
 static int settledPlay(int p) { return p == PLAY_ENTRY || p == PLAY_NEAREST || p == PLAY_BREAKLINE || p == PLAY_CARRY || p == PLAY_CARRYWAIT || p == PLAY_CLEAR; }
 static int setupPlay(int p) { return p == PLAY_SETUP || p == PLAY_LEVEL || p == PLAY_READY || p == PLAY_TOWARD; }

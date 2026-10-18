@@ -21,6 +21,7 @@ typedef struct {
   int32_t nextBuild; // a line that breaks: the board it leaves has a break to build, or no garbage left (outcomeOf); -1 not asked
   int32_t panelsLeft; // the panels on the board the line leaves (outcomeOf); -1 not asked
   double spentFrames;  // what the panels it takes off the board now are worth, in frames of life (spentOf); a line that leaves more is credited
+  int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   Judged j;
 } Outcome;
 
@@ -46,8 +47,9 @@ static uint32_t lineHash(const int32_t *seq, int n, int settled, int kind) {
   return h;
 }
 static int readyFresh;   // (the readiness asked now: an outcome kept without it is judged again, and replaced)
+static int endWanted;    // (lineEnd: the line is judged again and the board it ends on kept)
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
-  if (readyFresh && kind == 0) return 0;
+  if ((readyFresh || endWanted) && kind == 0) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
   for (int i = 0; i < ncache; i++) {
     Cached *c = &cache[i];
@@ -99,7 +101,9 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
 static int breakBuildable(const Board *b);   // (search/break.c: a break the panels touching garbage can be walked into)
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on the board)
+static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
 static int32_t rootBuildable = NOT_ASKED;    // (the question's board, asked once a decision)
+static Board *endBoard;                      // (lineEnd's board)
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
@@ -120,10 +124,13 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.fits = fitsList(&theList, o.j.made, &o.j) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1;
+    o.panelsLeft = -1; o.nearAfter = -1;
     if (!waitTo) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
       if (eb) { o.panelsLeft = panelsOn(eb); o.spentFrames = spentOf(o.panelsLeft, panelsOn(decQ.b)); }
+      if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
+      // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
+      if (eb && garbageOn(decQ.b)) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
       if (breaks) o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1;
     }
     // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board had
@@ -149,6 +156,14 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   // (a judging the clock stopped is no answer: it is not kept, and the next asking judges it again)
   if (!o.late && !waitTo) keep(seq, n, settled, 0, &o);
   return o;
+}
+// THE BOARD A LINE ENDS ON, as the judge plays it (the land a proposer reads what falls from: search/fill.c), judged as the proposers
+// judge it (readiness deferred to the rank); 0 when the judge could not play the line out. Kept until the next asking.
+static Board *lineEnd(const int32_t *seq, int n, int settled) {
+  int d = readyDefer; readyDefer = 1; endWanted = 1;
+  outcome(seq, n, settled);
+  int got = endWanted == 2; endWanted = 0; readyDefer = d;
+  return got ? endBoard : 0;
 }
 // THE BOARD LEFT ALONE, as the proposers read it: its readiness, a break search of its own, is the ranking's to ask (decide.c ranked)
 static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o = outcome(0, 0, 0); readyDefer = d; return o; }
