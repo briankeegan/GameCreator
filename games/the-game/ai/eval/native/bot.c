@@ -7035,6 +7035,11 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
       int playsLine = BT->nLine && BT->line[0] == d.sr && BT->line[1] == d.sc;
       judgeRefused = 0;
       idle = !clearDue(playsLine ? BT->line : one, playsLine ? BT->nLine : 1, 0);
+      // a setup, a lineup or a readying that clears nothing buys no time, dying or not: it waits for the window like any press that could
+      if (!idle && (d.via == V_SETUP || d.via == V_LINEUP || d.via == V_READYFIRST)) {
+        int v = lineJudge(playsLine ? BT->line : one, playsLine ? BT->nLine : 1, 0);
+        if (v >= 0 && !(v & LV_PAYS) && !(v & LV_BREAKS)) idle = 1;
+      }
     }
     o[99] = idle; }
   double ew = INF;
