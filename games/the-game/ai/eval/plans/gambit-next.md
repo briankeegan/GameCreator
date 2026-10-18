@@ -166,6 +166,11 @@ the push, on Gambit's own recorded decisions, which change and why.
 
 ### 6c. The fixes that change decisions -- each change explained by one of these
 
+0. **A move must beat doing nothing.** Of two lines that both live, a line that clears nothing (a level, a perched drop, a setup, a
+   walk toward a break) comes before the hold only when the engine says it does better than holding: a later loss, more life by its
+   panels, a nearer break, or ready for the next block where the hold is not. Otherwise the hold. One key of `compareJudged`, read for
+   every proposer there is or will be -- being offered is never a reason to be played. The decisions that change: every living
+   no-clear line that only tied the hold.
 1. **Two named material measures, one function each, on the bits**: the panels on the board (`panelsOn`) and the panels under the
    lowest garbage (the material the rule's keep floor tests, `>=24` in `gambit-rules.json`: its meaning kept). Every reader names
    which it asks; the log carries both. Garbage is the game's flag everywhere (`gridCell`): a shock panel or an unseen colour is a
