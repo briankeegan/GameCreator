@@ -83,7 +83,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
   int entry = metOf(&R->aims, m);
-  J->met = j ? entry : -1;
+  // (the list's key reads the mode's own entries -- the defence's entry under garbage, a combo of four or more that breaks, guides the
+  // searches and is no entry of the list: of two breaks it never puts the larger before the life the smaller leaves)
+  J->met = j ? metOfN(&R->aims, m, R->list.n) : -1;
   J->saving = R->saving && R->under && m.broke > 0;
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
   J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;
