@@ -2707,7 +2707,7 @@ static JLOCAL double sitNodeLeft;   // the time the line just offered to the acc
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-#define SITKEEPS 6   // searches that go on from one frame to the next: each keeps a set of memory of its own
+#define SITKEEPS 7   // searches that go on from one frame to the next: each keeps a set of memory of its own
 typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; int cap, kids, hash; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS + SITKEEPS];
 static JLOCAL int sitLevel;
@@ -4923,6 +4923,7 @@ static BgJob BG; static ST BGROOT;
 #define BGKEEP 5   // its kept slot
 #define BIKEEP 6
 static double biBackground(double units);
+static double brBackground(double units);
 static void bgOffer(const int32_t *root, int live, const int32_t *cur, int32_t t0, const uint32_t *can, Wait (*wt)[WMAX], double left, int frozen) {
   if (BG.valid && BG.pos == (u64)(unsigned)raPos) return;   // the same position: the search goes on
   BG.valid = 1; BG.done = 0; BG.found = 0; BG.n = 0; BG.pos = (u64)(unsigned)raPos; BG.left = left; BG.frozen = frozen;
@@ -4934,7 +4935,7 @@ static void bgOffer(const int32_t *root, int live, const int32_t *cur, int32_t t
 __attribute__((export_name("bot_background"))) double bot_background(double units) {
   extern PATLS double paWork, paWorkEnd;
   if (!(units > 0) || inWorker) return 0;
-  double usedI = biBackground(units);
+  double usedI = biBackground(units) + brBackground(units);
   if (!BG.valid || BG.done || BG.found) return usedI;
   double keep = paWork, keepEnd = paWorkEnd; extern int paBudgetOut(void);
   probeOn = 1; paWorkEnd = 1e300;
@@ -5612,6 +5613,43 @@ static double biBackground(double units) {
   else if (used < 0.9 * units) BI.done = 1;
   return used;
 }
+// THE READINESS SEARCHED ON BETWEEN FRAMES: the line that readies the landing (a board from which a break is in reach once the slab is down),
+// best-first by readyGuide, asked of the masks only; the frame that plays it confirms it on the engine (readiesLine)
+#define BRKEEP 7
+static BgJob BR; static ST BRROOT; static double brG0;
+static int slabReadyBoard(const int32_t *st);
+static int slabReadyOne(const int32_t *st);
+static int sitBgReady(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) {
+  (void)sw; (void)at; (void)n; double g0 = *(double *)ctx;
+  if (res[R_SCOPE] != SC_OK) return SIT_END;
+  double gd = readyGuide(res + R_INTS);
+  if (gd >= g0) return SIT_GROW;
+  return (gd < 2 ? slabReadyBoard(res + R_INTS) : slabReadyOne(res + R_INTS)) ? SIT_TAKE : SIT_GROW;
+}
+static void brOffer(const int32_t *root, const int32_t *cur, int32_t t0, const uint32_t *can, Wait (*wt)[WMAX], double left, double g0, int frozen) {
+  if (BR.valid && BR.pos == (u64)(unsigned)raPos) return;
+  BR.valid = 1; BR.done = 0; BR.found = 0; BR.n = 0; BR.pos = (u64)(unsigned)raPos; BR.left = left; BR.frozen = frozen; brG0 = g0;
+  stcpy(BRROOT, root);
+  BR.cur[0] = cur[0]; BR.cur[1] = cur[1]; BR.t0 = t0;
+  for (int c = 0; c < WMAX; c++) BR.can[c] = can[c];
+  for (int r = 0; r < 32; r++) for (int c = 0; c < WMAX; c++) BR.wt[r][c] = wt[r][c];
+}
+static double brBackground(double units) {
+  extern PATLS double paWork, paWorkEnd;
+  if (!BR.valid || BR.done || BR.found || !(units > 0) || inWorker) return 0;
+  double keep = paWork, keepEnd = paWorkEnd;
+  probeOn = 1; paWorkEnd = 1e300;
+  int32_t sw[2 * LINEMAX]; int n = 0; double w0 = paWork;
+  sitKeepSlot = BRKEEP; sitKeepKey = (BR.pos << 3) | 2; sitGuide = readyGuide;
+  int got = searchInTime(BRROOT, BR.cur[0], BR.cur[1], BR.t0, 0, BR.left, BR.frozen, BR.can, BR.wt, units, sitBgReady, &brG0, sw, &n, 0);
+  sitGuide = 0;
+  double used = paWork - w0;
+  probeOn = 0; paWork = keep; paWorkEnd = keepEnd;
+  { extern int fprintf(void *, const char *, ...); extern void *stderr; static int dbg; if (getenv("GC_BRDBG") && dbg++ < 400 && (dbg % 20 == 1 || got)) fprintf(stderr, "BRBG pos %u got %d n %d used %.0f of %.0f left %.0f g0 %.2f\n", (unsigned)BR.pos, got, n, used, units, BR.left, brG0); }
+  if (got && n >= 1 && n <= LINEMAX) { BR.found = 1; BR.n = n; for (int k = 0; k < 2 * n; k++) BR.sw[k] = sw[k]; }
+  else if (used < 0.9 * units) BR.done = 1;
+  return used;
+}
 static void insureFind(void) {
   extern PATLS double paWork; extern int paBudgetOut(void);
   static int noneAt;   // the position (raPos) in which no staging was found: none is found again while it stands
@@ -5890,6 +5928,17 @@ static int readiesLine(Dec d, int dieRef, int spare, int partial, int32_t *sw, i
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "READIES root: legal %d filtered %d not swappable %d late %d\n", sitRootLegal, sitRootFilt, sitRootCan, sitRootLate); fprintf(BLOG, "READIES lines: %d ready on the masks, %d asked, %d seen, %d die, %d die sooner, %d nearer (guide now %.0f), %s", x.masks, x.tried, x.seen, x.dies, x.sooner, x.near, x.g0, x.ok ? "ready:" : "none");
     if (x.ok) { for (int k = 0; k < *n; k++) fprintf(BLOG, " %d,%d", sw[2 * k], sw[2 * k + 1]); fprintf(BLOG, " break %d,%d", x.r, x.c); } fprintf(BLOG, "\n"); }
 #endif
+  if (!x.ok) brOffer(rq0, cur0, t0, can0, wt0, dmin(tLand, timeLeft()), x.g0, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0);
+  if (!x.ok && BR.found && BR.n >= 1) {   // the line the background pass found: confirmed here as a line of the search is
+    int bn = BR.n, br_ = 0, bc_ = 0; int32_t bsw[2 * LINEMAX]; for (int k = 0; k < 2 * bn; k++) bsw[k] = BR.sw[k];
+    BR.found = 0;
+    if ((lineJudge(bsw, bn, 0) & LV_LIVES) && lnoDie(LNO) >= dieRef && (x.wave || readyInTime(bsw, bn, &br_, &bc_))) {
+      for (int k = 0; k < 2 * bn; k++) sw[k] = bsw[k];
+      *n = bn; *r = br_; *c = bc_; BR.valid = 0;
+      return 1;
+    }
+    BR.done = 1;
+  }
   if (x.ok) { *r = x.r; *c = x.c; return 1; }
   // none readies in the time there is: the line that got nearest a break is the preparation, played on and the search made again from where it leaves the board
 #ifndef __wasm__
