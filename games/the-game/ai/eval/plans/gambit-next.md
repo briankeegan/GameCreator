@@ -14,10 +14,15 @@ Not dying comes first; of lines that survive alike, the one that makes the list 
 defence included. One order (`rank.c` compareJudged), keys in turn:
 
 1. lives before does not;
-2. of two that do not, the later loss;
+2. of two that do not, a break while it outlives the next decision, then the later loss, then readiness for the next block;
 3. within the list before outside it;
-4. the earlier entry of the list met (`aim`; under garbage every entry breaks, so a break is never put behind for it);
-5. the tier and its keys -- the kind of line, the life its panels leave, the nearest break, the rest.
+4. of two breaks under garbage, the one that leaves a break to build and keeps the floor (`nextBuild`, the floor);
+5. while the board saves panels up (`decide.c read`), of two breaks under garbage, the one whose panels leave more life;
+6. the earlier entry of the list met (`rules.c metOf`: its break as the entry asks it);
+7. the tier and its keys -- the kind of line, the life its panels leave, the nearest break, the rest.
+
+Every rule that guards the next break's material (4, 5) comes before the list: the list orders the breaks the board can afford. Each
+key is in `rank.c compareJudged` once, in this order.
 
 The topped rule (a line that keeps the board held past the stop now) is a tier key under the list, not a tier above it. Held by a test
 on a topped board where a line that meets the list and a plain clear that only lengthens the stop both live: the list's line is

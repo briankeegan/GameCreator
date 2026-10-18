@@ -22,6 +22,8 @@ typedef struct {
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t met;         // the entry of the list (with the defence's) the judged line meets, -1 none (rules.c metOf)
+  int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
+  int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, NDROPS };
@@ -76,8 +78,11 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
+  int x0floor = k->x.floor;
   int entry = metOf(&R->aims, m);
   J->met = j ? entry : -1;
+  J->saving = R->saving && R->under && m.broke > 0;
+  J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (x0floor == 0) : -1;
   if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
   // (in time: the line's last swap begun by the deadline -- the frame the judge pressed it; the search's own word only when the judge
   // could not play the line out)
@@ -104,18 +109,12 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
     int brk = R->under && m.broke > 0;
     J->t.tier = 0; J->t.nsub = 3; J->t.nlist = 2; J->t.sub[0] = R->under ? (brk ? 0 : 1) : 0; J->t.sub[1] = aim >= 0 ? aim : 99; J->t.sub[2] = -j->dropAt;
   }
-  // (THE LIFE ITS PANELS LEAVE (outcome.c lifeOf, measured): of two in one tier, the one whose board has more life by the panels left on
-  // it, right after the list's own keys -- short, a panel kept is life; full, a panel cleared is. SAVING UP PANELS (decide.c read: begun
-  // topped and short, kept until the list's largest combo is sure) a break under garbage weighs it before the list)
-  // (THE NEAREST BREAK AFTER IT: of two in one tier, the one whose board is nearer its next break, right after that life -- a
-  // line that brings a break nearer climbs, one that takes it further falls)
+  // (THE LIFE ITS PANELS LEAVE (outcome.c lifeOf, measured), then THE NEAREST BREAK AFTER IT: of two in one tier, the one whose board has
+  // more life by the panels left on it, then the one nearer its next break -- right after the list's own keys)
   if (oc.panelsLeft >= 0) {
-    int saveFirst = R->saving && R->under && m.broke > 0, at = saveFirst ? 0 : J->t.nlist;
-    tierInsert(&J->t, at, -(double)oc.lifeLeft);
-    if (oc.nearAfter >= 0) tierInsert(&J->t, at + 1, oc.nearAfter);
+    tierInsert(&J->t, J->t.nlist, -(double)oc.lifeLeft);
+    if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, oc.nearAfter);
   }
-  // (under garbage, of two breaks, the one that leaves a break to build first: the list orders the breaks the board can afford)
-  if (R->under && m.broke > 0 && oc.nextBuild >= 0) tierInsert(&J->t, 0, oc.nextBuild ? 0 : 1);
   J->settled = st; J->aim = aim; J->o = oc;
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;
   if (j) { J->apNats = j->nats; for (int i = 0; i < j->nats; i++) J->apAts[i] = j->ats[i]; }
@@ -160,25 +159,40 @@ static double lostOf(const Judge *x) {
   double ext = lostAtOf(x->extLost, 0);
   return ext > own ? ext : own;
 }
+// THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
+// then the kind of line (plans/gambit-next.md 0).
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
+  // 1. lives before does not
   if (lx != ly) return lx ? -1 : 1;
-  if (lx && x->outside != y->outside) return x->outside ? 1 : -1;   // (of two that live, the one within the list)
-  // (of two that live, a hold that lives by the break it waits for is that break played later: a line that breaks and lives now comes
-  // before it)
   if (lx) {
+    // 2. (both live) within the list before outside it
+    if (x->outside != y->outside) return x->outside ? 1 : -1;
+    // 3. (both live) a hold that lives by the break it waits for is that break played later: a line that breaks and lives now first
     int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
     if (hx != hy) return hx ? 1 : -1;
+  } else {
+    // 2. (neither lives) one that breaks garbage, while it outlives the next decision: the panels a break converts are what the next is
+    // made from
+    int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact;
+    if (bx != by) return bx ? -1 : 1;
+    // 3. (neither lives) the later loss
+    if (lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
+    // 4. (neither lives) a break in reach once the next block lands
+    if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
+    // 5. (neither lives) within the list before outside it
+    if (x->outside != y->outside) return x->outside ? 1 : -1;
   }
-  // (of two that do not live, one that breaks garbage before one that does not, while it outlives the next decision: the panels a break
-  // converts are what the next break is made from, and a later loss bought with clears spends them)
-  if (!lx) { int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact; if (bx != by) return bx ? -1 : 1; }
-  if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
-  if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
-  // (THE LIST, AMONG LINES THAT SURVIVE ALIKE: within it before outside it, then the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf; not the one it was found for) -- before the kind of line, so a
-  // line that keeps a topped board held, or a defence, is ordered by the list like every other. Under garbage every entry breaks)
-  if (!lx && x->outside != y->outside) return x->outside ? 1 : -1;
+  // 6. THE NEXT BREAK'S MATERIAL: of two breaks under garbage, the one that leaves a break to build (outcome.c nextBuild) and keeps the
+  // board's floor -- before the list's entry: the list orders the breaks the board can afford
+  if (x->material >= 0 && y->material >= 0 && x->material != y->material) return x->material - y->material;
+  // 7. SAVING PANELS UP (decide.c read: begun topped and short, kept until the list's largest combo is sure): of two breaks under
+  // garbage, the one whose board has more life by its panels -- before the list's entry: the board's life is its next breaks
+  if (x->saving && y->saving && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
+  // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
+  // line that keeps a topped board held, or a defence, is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }
+  // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
   int n = x->t.nsub < y->t.nsub ? x->t.nsub : y->t.nsub;
   for (int q = 0; q < n; q++) if (x->t.sub[q] != y->t.sub[q]) return x->t.sub[q] < y->t.sub[q] ? -1 : 1;
