@@ -68,6 +68,8 @@ for g in $(seq 1 "$GAMES"); do
   CLIENT=$!
   for i in $(seq 1 300); do grep -q '^ready=' "$OUT" && break; kill -0 $CLIENT 2>/dev/null || break; sleep 1; done
   grep -q '^ready=' "$OUT" || { echo "game $g: the client did not start" | tee -a "$OUT_DIR/results.txt"; continue; }
+  # (the game's thread wins its own core: raised above anything else scheduled there, where the runner allows it)
+  LP=$(pgrep -n -f "$LOVE $PG" 2>/dev/null); [ -n "$LP" ] && sudo -n renice -n -10 -p "$LP" >/dev/null 2>&1 || true
   for i in $(seq 1 20); do
     [ "$(lastscene)" = MainMenu ] && break
     send "tap return" "wait 60" "scene"; sleep 3

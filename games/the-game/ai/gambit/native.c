@@ -143,7 +143,9 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
   dueFrame = q->at - 1; clockFrameOut = frameOut;
-  double due = moveStartMs(q->at) - closeWorst();
+  // (the searches' deadline is the frame loop's own: the start of the frame the decision is cut at -- the one before its move, sooner by
+  // the burst -- less its closing work)
+  double due = moveStartMs(dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) - closeWorst();
   if (!hostBoard) hostBoard = nb_new();
   cloneBoard(hostBoard, b);
   memset(&hostQ, 0, sizeof hostQ);
@@ -276,7 +278,12 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
     static int32_t run;
     __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
     run = last && t - last < per / 2 ? run + 1 : 0;
-    if (run > __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) __atomic_store_n(&gameBurst, run, __ATOMIC_SEQ_CST);
+    // (the longest burst within the input window just past, not the longest ever: a hiccup long gone takes no frames from a decision)
+    static int32_t burstAt[64], burstRun[64], nb;
+    if (run > 0) { int k = nb < 64 ? nb++ : 0; if (k == 0 && nb == 64) { for (int i = 1; i < 64; i++) { burstAt[i - 1] = burstAt[i]; burstRun[i - 1] = burstRun[i]; } k = 63; } burstAt[k] = clock; burstRun[k] = run; }
+    int32_t worst = 0, win = F.window > 0 ? F.window : 600;
+    for (int i = 0; i < nb; i++) if (clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
+    __atomic_store_n(&gameBurst, worst, __ATOMIC_SEQ_CST);
     __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST); }
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
