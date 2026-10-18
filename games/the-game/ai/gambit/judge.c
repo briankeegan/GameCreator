@@ -106,7 +106,7 @@ static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int
 static int32_t lostAlone(Ctx *x, int n, int32_t to) {
   int w = step(x, n, MK_LONG, 0, 0, imax(1, to - NODE(x, n)->t));
   if (w == STEP_DEAD) return deadAt;
-  if (w < 0) return 0;
+  if (w < 0) return NOT_ASKED;   // (the clock stopped it, or the step was refused: no answer -- never a loss at 0)
   return NODE(x, w)->dead ? NODE(x, w)->t : FOREVER;
 }
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
@@ -127,6 +127,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (last && o->settled) break;   // (each step settled already)
     if (o->waitTo > 0 && k == o->waitAt) {
       int w = step(x, n, MK_LONG, 0, 0, imax(1, o->waitTo - NODE(x, n)->t));
+      if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
       if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
       int calm = settleOf(x, w);
       n = liveNode(x, calm) ? calm : w;
@@ -134,6 +135,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (!last && !legalAt(x, n, mr, mc)) { j->cut = k; break; }
     if (!last && j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
     int out = step(x, n, last || o->settled ? MK_SETTLE : MK_SWAP, mr, mc, 0);
+    // (a step the clock stopped is no answer: the judging is late, the line not lost)
+    if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
     if (!liveNode(x, out)) { j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
     Stats st;
     statsOf(x, out, &st);
@@ -144,7 +147,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (!last) lastAt = j->done;
     n = out;
   }
-  j->late = clockOut();
+  j->late = j->late || clockOut();
   // (the garbage the line breaks is what it breaks beyond the board left alone: a slab popping converts its panels whatever is pressed)
   j->made.combo = combo > baseCombo ? combo : 0; j->made.chain = chain > baseChain ? chain : 0; j->made.broke = imax(0, broke - baseBroke);
   j->chainAll = imax(chain, q->b->chainCounter);

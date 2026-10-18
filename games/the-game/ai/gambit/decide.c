@@ -97,6 +97,9 @@ static int ranked(const Read *R, const Found *S) {
   Judge *H = &theJudged[n];
   holdCand(0, H);
   if (!R->aloneOut) { order[n] = H; n++; }
+  // (judged: the judges' time measured, and given back to what comes after)
+  if (!clockOut()) judgeTook(nowMs() - t1);
+  judgeKeep = 0;
   if (!R->aloneOut) for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) { order[i]->wait = 1; order[i]->t.tier = HOLD_TIER; order[i]->t.nsub = 1; order[i]->t.sub[0] = -1; }
   sortJudged(order, n);
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each

@@ -14,8 +14,19 @@ typedef struct {
   int32_t brMs;
 } Ctx2;
 static Ctx2 C2;
-// what the searches may take: the decision's time less the answer's margin and a quarter of it kept for judging what they found
-static double leftMs(void) { if (!C2.due) return 1e9; double span = C2.due - C2.t0; return C2.due - nowMs() - C2.margin - span / 4; }
+// THE JUDGES' TIME: what judging the candidates took, the slowest of the last JUDGEN decisions whose judging the clock did not cut -- kept
+// for it while the searches run (judgeKeep), so what they find is judged whole; before any is measured, a quarter of the decision.
+#define JUDGEN 32
+static double judgeMs[JUDGEN]; static int judgeMsN, judgeMsK, judgeKeep;
+static double judgeReserve(void) {
+  if (!judgeKeep || !C2.due) return 0;
+  if (!judgeMsN) return (C2.due - C2.t0) / 4;
+  double w = 0; for (int i = 0; i < judgeMsN; i++) if (judgeMs[i] > w) w = judgeMs[i];
+  return w;
+}
+static void judgeTook(double ms) { judgeMs[judgeMsK] = ms; judgeMsK = (judgeMsK + 1) % JUDGEN; if (judgeMsN < JUDGEN) judgeMsN++; }
+// what the searches may take: the decision's time less the answer's margin and the judges' time
+static double leftMs(void) { if (!C2.due) return 1e9; return C2.due - nowMs() - C2.margin - judgeReserve(); }
 static double leftMsOf(void) { return leftMs(); }
 
 // ---- the board's state the proposers read
