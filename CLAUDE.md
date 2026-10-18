@@ -317,7 +317,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   while a pop holds a topped board. A setup must spare
   every saved line (`sparesSetups`: the kept line, target, plan and attack play
   out as well after it), must get back in time to stayAlive's line
-  (`getsBackInTime`), and is credited no time for the rise it locks (`stall`). A pop that would end with under `INSURESTOP` of stop time running stages a clear one swap away (`insureClear`, `oneSwapClear`): a plain three holds the rise 38 + 7 x 3 frames for three panels, pressed when it is due (`clearDue`), and no setup takes it apart.
+  (`getsBackInTime`), and is credited no time for the rise it locks (`stall`). A topped board whose pop, landing shake or stop ends with under `INSURESTOP` of stop time running stages a clear one swap away (`insureClear`, `oneSwapClear`): a plain three holds the rise 38 + 7 x 3 frames for three panels, pressed when it is due (`clearDue`), and no setup takes it apart.
   Among options that clear nothing (the hold, the setups) the one that leaves the
   better attack within reach wins (`optAhead`: the best attack any line reaches
   from the board it settles to in the time there is, by `searchInTime` and

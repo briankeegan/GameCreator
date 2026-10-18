@@ -5482,8 +5482,8 @@ static int setupLines(SetupCtx *x, double left) {
   searchInTime(st1, cur1[0], cur1[1], t1, 0, left, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can1, waits1, work, sitSetup, x, 0, 0, 0);
   return 1;
 }
-// COVER FOR THE END OF A POP: a pop locks the rise while it runs and the stop time is frozen under it, so a topped board whose pop ends with no stop time
-// running loses health the frame its last panels land. A plain three holds the rise for its flash, face and pops (38 + 7 x 3 frames) for the price of
+// COVER FOR THE END OF A LOCK: a pop or a landing's shake holds the rise while it runs, so a topped board whose lock ends with no stop time
+// running loses health the frame it ends. A plain three holds the rise for its flash, face and pops (38 + 7 x 3 frames) for the price of
 // three panels -- as good as 60 frames of stop time -- but only a swap away: the board is staged for one in the pop's idle frames, and pressed when it is due
 // (clearDue), so its lock runs on from the pop's.
 #define INSURESTOP 40   // the stop time a pop's end must be met with, else a clear is staged
@@ -5509,9 +5509,11 @@ static int sitInsure(const int32_t *res, const int32_t *sw, int n, double at, vo
   if (n <= LINEMAX && oneSwapClear(res + R_INTS)) { x->n = n; for (int k = 0; k < 2 * n; k++) x->sw[k] = sw[k]; return SIT_TAKE; }
   return SIT_GROW;
 }
-// a pop is under way on a topped board that would meet its end with less than INSURESTOP of stop time
+// a topped board that loses health within the judge's reach is held by a pop, a landing's shake or a stop that ends with less than INSURESTOP of stop time
+// running
 static int popUninsured(void) {
-  return BIN[IN_TOPPED] && BIN[IN_POPPING] > 0 && aloneOnEngine() && LNA[22] >= 0 && LNA[22] < INSURESTOP;
+  if (!BIN[IN_TOPPED] || !aloneOnEngine() || !LNA[0] || LNA[0] > LINEHORIZON) return 0;
+  return BIN[IN_POPPING] > 0 ? LNA[22] >= 0 && LNA[22] < INSURESTOP : BIN[IN_STOP] < INSURESTOP;
 }
 static int lineKeepsClear(const int32_t *sw, int n) {
   static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
