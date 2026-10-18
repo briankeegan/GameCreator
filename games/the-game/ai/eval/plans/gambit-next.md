@@ -94,28 +94,51 @@ list, its aims, under garbage, topped), so a mode that changes, a mode added, or
 
 ## 4. A perched block let down
 
-A garbage block held up by one column, or a few, over a hollow is perched: taking its support out from under it drops the block and the
-stack's height at once -- what a full board, where every loss of the fair runs ended, needs.
+A garbage block held up by panels in some of the columns under its bottom row and by nothing in the others is perched over a hollow.
+Walking the panels that hold it out from under it lets the block down, and the stack's height with it -- what a full board needs, where
+every loss of the fair runs ended (57-67 panels of 72, the hold chosen, nothing that lives).
 
-- **The fact** (`search/break.c`, beside the board's other readers): the columns under each block's bottom row that hold it up.
-- **One proposer for lowering the stack** (`propose.c`, `PLAY_LEVEL`): the tallest column's top walked onto a lower column, and a
-  perched block's top support walked along its row past the block's edge -- offered whenever the board is topped or under garbage.
-- **Judged as any line**: a drop that lowers the stack is a later loss, which the order already takes; a block held by more than one
-  column comes down over the decisions after, the line in progress carried.
-- **Logged**: `drop=1` on a decision that plays one.
+- **It takes panels out from under the block; it never fills under it.** A fill spends panels into the hollow and leaves the block where
+  it is; letting it down spends none.
+- **It has no place of its own in the order.** It is a candidate, judged on the engine like any other, ranked by what the engine says it
+  does: lives before dies, then the later loss -- a lower stack is a later loss -- then the list, then the tier's keys. It never ranks
+  before the hold for being a drop.
+- **The fact** (`search/break.c perchedDrops`, beside the board's other readers): for each block's bottom row, the columns under it that
+  hold it (a panel), that are open (nothing), or that sit on garbage (not perched: nothing to walk out). For each perched block, the
+  line: each support walked along its row past the block's nearer edge, lowest block first.
+- **One proposer for lowering the stack** (`propose.c`, `PLAY_LEVEL`): the tallest column's top walked onto a lower column (`levelLine`,
+  now offered under garbage too), and a perched block's supports walked out -- offered whenever the board is topped or under garbage.
+  A block held by several columns comes down over the decisions after, the line in progress carried as every line is.
+- **Logged**: `drop=1` on a decision that plays one, so a run shows how often it is played and whether the full-board losses fall.
+- **Held by** a test on a recorded full board with a perched block: the drop is proposed, judged, and played when it lives longer.
+
+## 5. The board as bits
+
+Every reader of a settled board -- the nearest break (`breakNear`, `breakBuildable`, the material floor, the nearest-break key), the
+panel a match is one short of (`fill.c`), a perched block, the panel and garbage counts -- scans cells its own way. One representation
+read by all of them:
+
+- **The bits** (`search/bits.c`): per row, a mask a colour (bit = column), and masks for panels, garbage, open cells and the cells that
+  hold a panel up; per column the same transposed. Built once a board, from `gridCell`, and kept with the board it was built from.
+- **The readers on it**: the cells that can start a break are the panels beside garbage, one mask expression; bringing a panel of a
+  colour along its row is the nearest set bit of that colour in the run of held cells around the target; a run of a colour is a shift
+  and an AND. `breakNear` asks the same six shapes a starting cell as now, so its answer is the same.
+- **Held by** a test that runs the cell-scanning readers and the bit readers on every board of recorded games and finds no difference
+  -- then the cell-scanning ones are deleted. Under three seconds.
+- **The engine is not touched**: the bits are read off the board the engine makes, never a second engine.
 
 ## Kept for when it is needed
 
-- **The board as bits** (a mask a colour a row; occupied, garbage, held): `breakNear`, `breakBuildable`, `fill.c` and the counts read
-  it, built once a board. Speed only; taken up when the time `breakNear` takes shows beside a decision's 8 ms.
+- **A shared prefix's replay**: the lines a judge plays from one root often begin with the same swaps (a grown three, a break and the
+  walk after it); the board after their common swaps judged once. Speed only; taken up when the decisions' clock-cut counts say the
+  judge runs out of time.
 
 ## The order
 
-0, 1, 2, then 3: the order of the rank first, then the cheapest. Each is one push, then 24 games per mode (`run24.sh`), reported per garbage type with the
-combos and chains, against the last run on the fair board.
+0-3 are in (the run at `e5db6b32dd`). Then 5, then 4 on it: the bits first, so the perched block's reader is written on them. One push,
+then 24 games per mode (`run24.sh`), reported per garbage type with the combos and chains, against the last run.
 
 ## Done when
 
 - Each change is kept only where its run is no worse than the last by more than the noise in any mode.
-- The losses where the board ran out of material (no break to build on the boards before the loss) are fewer than on the fair
-  board's first run.
+- The losses on a full board (the hold chosen, nothing that lives) are fewer than on the fair board's first run.
