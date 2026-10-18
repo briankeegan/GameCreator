@@ -43,6 +43,7 @@ typedef struct {
   int32_t tried; double idleMs, searchMs;
 } Found;
 #define READY_LINE_MS 120
+#define STOPS 6   // the swaps a chain past the list is stopped by, offered at most
 // whether a list asks for a chain at all
 static int wantsChain(const List *L) { for (int i = 0; i < L->n; i++) if (L->aim[i].chain.op && listWantsLonger(L, 1)) return 1; return 0; }
 static Ctx *startCtx;
@@ -215,6 +216,15 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // READY: the swap that leaves the next block breakable when it lands, and the line that leaves a plan once everything has landed
   if (S->haveRd && !S->rd.ready && S->rd.setup) { int32_t one = S->rd.setup; ADD(PLAY_READY, &one, 1, -1, 0); }
   if (S->haveRl) { int m0 = n; ADD(PLAY_READY, S->rl, S->rlN, -1, 0); if (n > m0) out[m0].xDone = S->rlAt; }
+  // STOP: the chain the board makes alone runs past the list -- the swaps nearest the cursor whose line, as the game counts it, keeps it
+  // within (lineFits): the link that would land is moved away, and the break comes after
+  if (R->aloneOut) {
+    static int32_t ms[MAXROWS * W], dist[MAXROWS * W];
+    int nm = legalSwaps(decQ.b, ms), added = 0;
+    for (int i = 0; i < nm; i++) { int dr = CR(ms[i]) - decQ.b->curRow, dc = CC(ms[i]) - decQ.b->curCol; dist[i] = (dr < 0 ? -dr : dr) + (dc < 0 ? -dc : dc); }
+    for (int i = 1; i < nm; i++) for (int k = i; k > 0 && dist[k] < dist[k - 1]; k--) { int32_t t = ms[k]; ms[k] = ms[k - 1]; ms[k - 1] = t; t = dist[k]; dist[k] = dist[k - 1]; dist[k - 1] = t; }
+    for (int i = 0; i < nm && added < STOPS && !clockOut(); i++) if (lineFits(&ms[i], 1, 0)) { ADD(PLAY_STOP, &ms[i], 1, -1, 0); added++; }
+  }
   // LEVEL: the swap that flattens the stack, under garbage or before a block lands
   // (a swap that clears nothing and brings back a board this dig has stood on goes nowhere: not offered)
   if (S->lvU && !seenDigHas(decQ.b, S->lvU)) { int32_t one = S->lvU; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
