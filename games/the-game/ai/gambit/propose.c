@@ -128,6 +128,27 @@ static void searchAll(const Read *R, Found *S) {
   S->lvG = !R->under && R->readyAt != NOT_ASKED && !(S->haveRd && !S->rd.ready && S->rd.setup) ? level(&decQ, R->readyAt ? R->readyAt : NOT_ASKED) : 0;
 }
 
+// THE LEVEL BUILT: topped by its own stack with no garbage on it, the line that walks the tallest column's top panel onto a lower
+// column beside it, panel after panel, until the stack is level (no column more than one above another) -- each step settled, the
+// whole line judged on the engine. Its length into seq; 0 for none
+static int levelLine(const Board *b, int32_t *seq, int cap) {
+  int h[W + 2], top = gridLen(b) - 2, n = 0;
+  for (int c = 1; c <= W; c++) { h[c] = 0; for (int r = 1; r <= top; r++) if (cellAt(b, r, c) > 0) h[c] = r; }
+  while (n < cap) {
+    int best = 0, to = 0;
+    for (int c = 1; c <= W; c++)
+      for (int d = -1; d <= 1; d += 2) {
+        int nb = c + d;
+        if (nb < 1 || nb > W || h[nb] >= h[c] - 1) continue;
+        if (!best || h[c] > h[best] || (h[c] == h[best] && h[nb] < h[to])) { best = c; to = nb; }
+      }
+    if (!best) break;
+    seq[n++] = h[best] * 8 + (to > best ? best : to);
+    h[best]--; h[to]++;
+  }
+  return n;
+}
+
 // ---- the candidates
 static int candOf(Cand *k, int play, const int32_t *seq, int n, int aim, int extend) {
   memset(k, 0, sizeof *k);
@@ -215,6 +236,11 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // READY: the swap that leaves the next block breakable when it lands, and the line that leaves a plan once everything has landed
   if (S->haveRd && !S->rd.ready && S->rd.setup) { int32_t one = S->rd.setup; ADD(PLAY_READY, &one, 1, -1, 0); }
   if (S->haveRl) { int m0 = n; ADD(PLAY_READY, S->rl, S->rlN, -1, 0); if (n > m0) out[m0].xDone = S->rlAt; }
+  // THE LEVEL BUILT: topped by its own stack with no garbage on it, the stack walked level, each step settled
+  if (R->topped && !R->under) {
+    static int32_t lv[MAXLINE]; int nl = levelLine(decQ.b, lv, MAXLINE);
+    if (nl > 0) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; }
+  }
   // LEVEL: the swap that flattens the stack, under garbage or before a block lands
   // (a swap that clears nothing and brings back a board this dig has stood on goes nowhere: not offered)
   if (S->lvU && !seenDigHas(decQ.b, S->lvU)) { int32_t one = S->lvU; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
