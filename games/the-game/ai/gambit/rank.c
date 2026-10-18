@@ -95,6 +95,13 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (R->under && m.broke > 0 && oc.nextBuild >= 0 && J->t.nsub < MAXSUB) {
     for (int q = J->t.nsub; q > 0; q--) J->t.sub[q] = J->t.sub[q - 1];
     J->t.sub[0] = oc.nextBuild ? 0 : 1; J->t.nsub++;
+    // (TOPPED AND SHORT OF PANELS -- fewer than twice the colours and one, the least that is sure to hold three of one colour -- the
+    // board's life is its next breaks: of two that leave one to build, the one that leaves more panels to make them from, before the
+    // list. With panels to spare the list orders them)
+    if (R->topped && panelsOn(decQ.b) < 2 * decQ.b->colors + 1 && oc.panelsLeft >= 0 && J->t.nsub < MAXSUB) {
+      for (int q = J->t.nsub; q > 1; q--) J->t.sub[q] = J->t.sub[q - 1];
+      J->t.sub[1] = -oc.panelsLeft; J->t.nsub++;
+    }
   }
   J->settled = st; J->aim = aim; J->o = oc;
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;

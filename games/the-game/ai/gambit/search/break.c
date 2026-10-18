@@ -127,6 +127,8 @@ static int breakNearLine(const Board *b, int32_t *seq, int *nseq) {
 static int breakNear(const Board *b) { return breakNearLine(b, 0, 0); }
 static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
 static int garbageOn(const Board *b) { return lowestG(b) < gridLen(b); }
+// the panels on the board, garbage not counted -- the material every break is made from
+static int32_t panelsOn(const Board *b) { int32_t n = 0, R = gridLen(b); for (int r = 1; r < R; r++) for (int c = 1; c <= W; c++) if (cellAt(b, r, c) > 0) n++; return n; }
 static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) - uneven(b); }
 // How far a board is toward lining up with the converting row `want`: per column, its top panel below the lowest garbage of that colour,
 // and the one under it too
