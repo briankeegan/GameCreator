@@ -2707,7 +2707,7 @@ static JLOCAL double sitNodeLeft;   // the time the line just offered to the acc
 // (is this board ready?), so each level of nesting has its own memory, the
 // current level's set in place on entry and the caller's put back on exit
 #define SITLEVELS 4
-#define SITKEEPS 4   // searches that go on from one frame to the next: each keeps a set of memory of its own
+#define SITKEEPS 5   // searches that go on from one frame to the next: each keeps a set of memory of its own
 typedef struct { ST *st; SitNode *nd; SitKid *kd; SitHeap *hp; u64 *hk; uint32_t *hg, gen; int32_t *t, *r, *l; double left; int cap, kids, hash; } SitMem;
 static JLOCAL SitMem SITM[SITLEVELS + SITKEEPS];
 static JLOCAL int sitLevel;
@@ -4910,6 +4910,36 @@ static int sitNear(const int32_t *res, const int32_t *sw, int n, double at, void
   if (n <= LINEMAX) { double g = readyGuide(res + R_INTS); if (g < x->bestG) { x->bestG = g; x->bestN = n; for (int k = 0; k < 2 * n; k++) x->sw[k] = sw[k]; } }
   return SIT_GROW;
 }
+// THE BREAK SEARCHED ON BETWEEN FRAMES: the break search a decision could not finish is handed on, with the board it was made on, to
+// bot_background -- work the host gives the bot beside the frame's, as a thread of its own would (the frame's thinking is what the game
+// holds to its budget). It searches soonest press first with no guide; the line it finds is judged on the board of the frame that plays it.
+typedef struct { int valid, done, found, n; u64 pos; double left; int frozen; int32_t cur[2], t0; uint32_t can[WMAX]; Wait wt[32][WMAX]; int32_t sw[2 * LINEMAX]; } BgJob;
+static BgJob BG; static ST BGROOT;
+#define BGKEEP 5   // its kept slot
+static void bgOffer(const int32_t *root, int live, const int32_t *cur, int32_t t0, const uint32_t *can, Wait (*wt)[WMAX], double left, int frozen) {
+  if (BG.valid && BG.pos == (u64)(unsigned)raPos) return;   // the same position: the search goes on
+  BG.valid = 1; BG.done = 0; BG.found = 0; BG.n = 0; BG.pos = (u64)(unsigned)raPos; BG.left = left; BG.frozen = frozen;
+  stcpy(BGROOT, root);
+  BG.cur[0] = cur[0]; BG.cur[1] = cur[1]; BG.t0 = live ? t0 : 0;
+  for (int c = 0; c < WMAX; c++) BG.can[c] = live ? can[c] : ~0u;
+  for (int r = 0; r < 32; r++) for (int c = 0; c < WMAX; c++) BG.wt[r][c] = live ? wt[r][c] : 0;
+}
+__attribute__((export_name("bot_background"))) double bot_background(double units) {
+  extern PATLS double paWork, paWorkEnd;
+  if (!BG.valid || BG.done || BG.found || !(units > 0) || inWorker) return 0;
+  double keep = paWork, keepEnd = paWorkEnd; extern int paBudgetOut(void);
+  probeOn = 1; paWorkEnd = 1e300;
+  int32_t sw[2 * LINEMAX]; int n = 0; double at = 0;
+  u64 pk = (BG.pos << 3) | 6;
+  sitKeepSlot = BGKEEP; sitKeepKey = pk; sitGuide = 0;
+  double w0 = paWork;
+  int got = searchInTime(BGROOT, BG.cur[0], BG.cur[1], BG.t0, 0, BG.left, BG.frozen, BG.can, BG.wt, units, sitBreaks, 0, sw, &n, &at);
+  double used = paWork - w0;
+  probeOn = 0; paWork = keep; paWorkEnd = keepEnd;
+  if (got && n >= 1 && n <= LINEMAX) { BG.found = 1; BG.n = n; for (int k = 0; k < 2 * n; k++) BG.sw[k] = sw[k]; }
+  else if (used < 0.9 * units) BG.done = 1;   // the frontier was spent, not the work: there is no break in the time there is from this board
+  return used;
+}
 static Dec breakDeeper(Dec d) {
   if (!BIN[IN_HASPA]) return d;
   resolve(DBASE, KBR, 1);
@@ -4920,6 +4950,18 @@ static Dec breakDeeper(Dec d) {
   static ST kl0; int32_t kcur[2], kt0 = 0; uint32_t kcan[WMAX]; Wait kwt[32][WMAX];
   int klive = lineState(0, 0, kl0, kcan, kwt, kcur, &kt0) == 0;
   const int32_t *kroot = klive ? kl0 : kb0;
+  // the break the host's background work found (bot_background): judged on this frame's board, played if it lives and breaks
+  if (BG.found && BG.n >= 1) {
+    int v = lineJudge(BG.sw, BG.n, 0);
+    BG.found = 0;
+    if ((v & (LV_LIVES | LV_BREAKS)) == (LV_LIVES | LV_BREAKS)) {
+      LineC l = { 0 }; l.n = BG.n; l.brk = 1; for (int k = 0; k < 2 * BG.n; k++) l.sw[k] = BG.sw[k];
+      lineLast = 3; plansDrop(); lineKeep(&l, LINE_BREAK);
+      BG.valid = 0;
+      return mkSwap(l.sw[0], l.sw[1], V_BREAKREACH, d.mode, d.alive);
+    }
+    BG.done = 1;   // on this position it breaks no more than the engine says
+  }
   kbEnd = stageLeaves(2);
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKDEEPER work %.0f of end %.0f spent %.0f none %d same %d\n", paWork - rdW0, kbEnd - rdW0, paWork - rdW0, bdNone, bdPos == raPos); }
@@ -4951,6 +4993,7 @@ static Dec breakDeeper(Dec d) {
   if (got || (!flat && nx.bestN > 0)) bdFlat = 0; else if (!flat) bdFlat++;   // flat stays so while the position stands
   if (!got) {
     bdNone = paWork - bd0 < 0.9 * (kbEnd - bd0); bdPos = raPos; bdTime = bdT;
+    { int32_t bcur[2] = { klive ? kcur[0] : (int)BIN[IN_CROW], klive ? kcur[1] : (int)BIN[IN_CCOL] }; bgOffer(kroot, klive, bcur, kt0, kcan, kwt, bdT, BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0); }
 #ifndef __wasm__
     if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "BREAKDEEPER none: nearest %d swaps guide %.2f of %.2f, work used %.0f\n", nx.bestN, nx.bestG, readyGuide(kroot), paWork - bd0); }
 #endif
