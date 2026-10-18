@@ -163,6 +163,7 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 // (a line ready for the next block is lost where its readiness break leads, when that is later; a hold is not credited for the break
 // it waits for -- that break is a candidate of its own)
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
+static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
@@ -219,8 +220,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // made from
     int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact;
     if (bx != by) return bx ? -1 : 1;
-    // 3. (neither lives) the later loss
-    if (lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
+    // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
+    // the material, the saving and the list decide between them before the later loss does (10)
+    int alike = lostOf(x) >= rankSave && lostOf(y) >= rankSave;
+    if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
     // 5. (neither lives) within the list before outside it
@@ -236,6 +239,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // line that keeps a topped board held, or a defence, is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
+  // (two that do not live and survive alike: the later loss, before the kind of line)
+  if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   Tier tx = tierView(x), ty = tierView(y);
   if (tx.tier != ty.tier) return tx.tier - ty.tier;
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
