@@ -11,6 +11,13 @@ if [ "${1:-}" = native ]; then
     -Wno-ignored-attributes native.c host.c -lm -o libgambit.so
   exit
 fi
+# ./build.sh material DIR...: core/material.h, the life a board has by its panels, measured on the games in DIR... (material.c, on the
+# system's libc). Not part of the bot; run when the bot changes enough to move it.
+if [ "${1:-}" = material ]; then
+  shift
+  clang -O2 -Wall material.c -o /tmp/gambit-material && /tmp/gambit-material core/material.h "$@"
+  exit
+fi
 FLAGS="--target=wasm32 -O3 -matomics -mbulk-memory -nostdlib -Wall -Wno-unused-function -Wl,--no-entry -Wl,--allow-undefined"
 clang $FLAGS gambit.c -o gambit.wasm
 node -e '

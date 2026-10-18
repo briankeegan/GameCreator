@@ -14,21 +14,34 @@ Not dying comes first; of lines that survive alike, the one that makes the list 
 defence included. One order (`rank.c` compareJudged), keys in turn:
 
 1. lives before does not;
-2. of two that do not, the later loss (net of the panels spent);
+2. of two that do not, the later loss;
 3. within the list before outside it;
 4. the earlier entry of the list met (`aim`; under garbage every entry breaks, so a break is never put behind for it);
-5. the tier and its keys -- the kind of line, the panels spent, the nearest break, the rest.
+5. the tier and its keys -- the kind of line, the life its panels leave, the nearest break, the rest.
 
 The topped rule (a line that keeps the board held past the stop now) is a tier key under the list, not a tier above it. Held by a test
 on a topped board where a line that meets the list and a plain clear that only lengthens the stop both live: the list's line is
 played.
+
+## The life a board's panels leave, measured
+
+A board short of panels dies for want of material; a full one dies of its height. The life a board has by the panels on it is measured
+on Gambit's own games (`gambit/material.c`, `./build.sh material DIR...`: frames spent at each count over the games lost there, a
+row's worth a bin) into `gambit/core/material.h`, and a line's board is ranked by it (`outcome.c lifeOf`) after the list's keys: short,
+the line that keeps panels; full, the line that clears them. Made again from new runs when the bot changes enough to move it.
+
+## A chain begun toward the list
+
+A chain shorter than the list asks is a beginning of one it asks for (`judge.c chainBegins`): the decisions after carry it on (`extend`),
+so it is within the list -- after every line that meets an entry, its own clears held to the list as ever. The step check and the
+whole line's check ask the one function.
 
 ## 1. The nearest break after the line
 
 - **The fact** (`outcome.c`): every line judged under garbage carries the swaps to the nearest break on the board it leaves
   (`o.nearAfter`, from `breakNear` -- the search the material floor and the touch beam already ask), set where `panelsLeft` is. Its
   time is charged to the decision's clock like every search.
-- **The rank** (`rank.c`): of two in one tier, the nearer break first, after the list's own keys and the panels spent
+- **The rank** (`rank.c`): of two in one tier, the nearer break first, after the list's own keys and the life its panels leave
   (`Tier.nlist`). A line that brings a break nearer climbs; one that pushes it away falls. The list's order is never crossed.
 - **Held by** a test on a real board: of two fills that both live, the one that leaves a break one swap away is ranked first.
 
@@ -70,7 +83,7 @@ list, its aims, under garbage, topped), so a mode that changes, a mode added, or
   within every list) does not stretch to them: a chain is an attack, and the list rules it. The defence is still ordered by the
   list: of two breaks, the one that meets an earlier entry comes first (`rank.c` `aim`), the defence's own entry (a combo of four or
   more that breaks) after the list's, and a break that meets none last among them -- within the list, so before any line outside it.
-- **The list's own order comes first.** The nearest break, like the panels spent, is weighed only after the list's own keys
+- **The list's own order comes first.** The nearest break, like the life the panels leave, is weighed only after the list's own keys
   (`Tier.nlist`), so what a list asks for in what order is never reordered.
 - **Survival first, in every mode.** A line that lives comes before one that does not, whatever it makes; these change only the
   order among lines that live alike, and the worth of the frames among lines that do not.

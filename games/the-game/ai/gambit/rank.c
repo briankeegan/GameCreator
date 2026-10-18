@@ -103,14 +103,14 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
     int brk = R->under && m.broke > 0;
     J->t.tier = 0; J->t.nsub = 3; J->t.nlist = 2; J->t.sub[0] = R->under ? (brk ? 0 : 1) : 0; J->t.sub[1] = aim >= 0 ? aim : 99; J->t.sub[2] = -j->dropAt;
   }
-  // (WHAT IT SPENDS, in frames of life (outcome.c spentOf): of two in one tier, the one that spends less, right after the list's own
-  // keys -- a list orders what the board can afford. SAVING UP PANELS (decide.c read: begun topped and short, kept until the list's
-  // largest combo is sure) a break under garbage weighs it before the list: the board's life is its next breaks)
-  // (THE NEAREST BREAK AFTER IT: of two in one tier, the one whose board is nearer its next break, right after the panels spent -- a
+  // (THE LIFE ITS PANELS LEAVE (outcome.c lifeOf, measured): of two in one tier, the one whose board has more life by the panels left on
+  // it, right after the list's own keys -- short, a panel kept is life; full, a panel cleared is. SAVING UP PANELS (decide.c read: begun
+  // topped and short, kept until the list's largest combo is sure) a break under garbage weighs it before the list)
+  // (THE NEAREST BREAK AFTER IT: of two in one tier, the one whose board is nearer its next break, right after that life -- a
   // line that brings a break nearer climbs, one that takes it further falls)
   if (oc.panelsLeft >= 0) {
     int saveFirst = R->saving && R->under && m.broke > 0, at = saveFirst ? 0 : J->t.nlist;
-    tierInsert(&J->t, at, oc.spentFrames);
+    tierInsert(&J->t, at, -(double)oc.lifeLeft);
     if (oc.nearAfter >= 0) tierInsert(&J->t, at + 1, oc.nearAfter);
   }
   // (under garbage, of two breaks, the one that leaves a break to build first: the list orders the breaks the board can afford)
@@ -159,7 +159,6 @@ static double lostOf(const Judge *x) {
   double ext = lostAtOf(x->extLost, 0);
   return ext > own ? ext : own;
 }
-static double spentAt(const Judge *x) { return x->o.panelsLeft >= 0 ? x->o.spentFrames : 0; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   if (lx != ly) return lx ? -1 : 1;
@@ -173,8 +172,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (of two that do not live, one that breaks garbage before one that does not, while it outlives the next decision: the panels a break
   // converts are what the next break is made from, and a later loss bought with clears spends them)
   if (!lx) { int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact; if (bx != by) return bx ? -1 : 1; }
-  // (of two that do not live, the later loss net of what each spends: a frame bought with a panel the next break needed is no frame)
-  if (!lx) { double nx = lostOf(x) - spentAt(x), ny = lostOf(y) - spentAt(y); if (nx != ny) return ny > nx ? 1 : -1; }
+  if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   // (THE LIST, AMONG LINES THAT SURVIVE ALIKE: within it before outside it, then the earlier entry the judged line meets (not the one it was found for) -- before the kind of line, so a
   // line that keeps a topped board held, or a defence, is ordered by the list like every other. Under garbage every entry breaks)

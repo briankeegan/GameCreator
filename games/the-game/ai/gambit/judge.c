@@ -59,6 +59,10 @@ static int listWantsLonger(const List *L, int32_t chain) {
   }
   return 0;
 }
+// A CHAIN BEGUN TOWARD THE LIST: a chain the list wants longer than (within MAXCHAIN) is a beginning of one it asks for -- a chain is
+// carried on by the decisions after (extend), so one short of the ask is on its way to it, not outside it. A step's (stepFitsAt) and a
+// whole line's (outcome.c fitsList) the same.
+static int chainBegins(const List *L, int32_t chain) { return chain >= 2 && chain <= MAXCHAIN && listWantsLonger(L, chain); }
 // A STEP BEGINS A CHAIN, OR ENDS ONE: on a board still falling, its chain so far -- and a plain three, its first link -- is a beginning
 // while the list wants a longer chain, held to the list as it ends, on the whole line (lineFits); a combo of its own fits as itself.
 static int stepFitsAt(Ctx *x, int i) {
@@ -73,7 +77,7 @@ static int stepFitsAt(Ctx *x, int i) {
   if (stepFits(&theList, own, n, chain)) return 1;
   Board *b = ensureBoard(x, i);
   if (!b || !(b->chainCounter > 0 || hasChainingPanels(b) || hasActivePanels(b))) return 0;
-  if (chain > MAXCHAIN || !listWantsLonger(&theList, chain > 1 ? chain : 1)) return 0;
+  if (chain > MAXCHAIN || !(chain <= 1 ? listWantsLonger(&theList, 1) : chainBegins(&theList, chain))) return 0;
   for (int k = 0; k < n; k++) if (own[k] > 3) { Made m = { own[k], 1, 0, 0 }; if (!fits(&theList, m)) return 0; }
   return 1;
 }

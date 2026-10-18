@@ -20,7 +20,7 @@ typedef struct {
   int32_t spent;   // under the material floor (outcomeOf)
   int32_t nextBuild; // a line that breaks: the board it leaves has a break to build, or no garbage left (outcomeOf); -1 not asked
   int32_t panelsLeft; // the panels on the board the line leaves (outcomeOf); -1 not asked
-  double spentFrames;  // what the panels it takes off the board now are worth, in frames of life (spentOf); a line that leaves more is credited
+  int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   Judged j;
 } Outcome;
@@ -30,8 +30,12 @@ typedef struct {
 static int fitsList(const List *L, Made m, const Judged *j) {
   // (a break made by one clear -- no chain, as the game counts it -- is the board's own defence, never an attack: within every list)
   if (m.broke > 0 && chainOf(m) <= 1 && j->chainAll <= 1) return 1;
-  if (!fits(L, m)) return 0;
-  if (j->chainAll >= 2) { Made c = { 0, j->chainAll, 0, 0 }; if (!fits(L, c)) return 0; }
+  // (a chain shorter than the list asks is begun toward it (judge.c chainBegins): within the list, its own clears held to it as ever;
+  // ranked after every line that meets an entry, as it meets none)
+  int32_t chain = imax(chainOf(m), j->chainAll);
+  int begun = chainBegins(L, chain);
+  if (!begun && !fits(L, m)) return 0;
+  if (!begun && j->chainAll >= 2) { Made c = { 0, j->chainAll, 0, 0 }; if (!fits(L, c)) return 0; }
   for (int i = 0; i < j->nsingles; i++) { Made s = { j->singles[i], 1, 0, 0 }; if (!fits(L, s)) return 0; }
   return 1;
 }
@@ -79,19 +83,9 @@ static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Out
   return &c->o;
 }
 
-// WHAT A PANEL IS WORTH, in frames of life, on a board left with `panels`: measured on 1,334 pop-to-pop cycles over ten scans (native/bot.c
-// panelWorth) -- the board was lost 0.39 in 1,000 frames when a pop began on under 18 panels, 0.20 on 18-23, 0.10-0.16 on 24-35, 0.03-0.06
-// on 36 and more; a panel moves that by 0.008-0.03 for the 400 frames a cycle lasts, against 6,500 frames of life
-static double panelWorth(int32_t panels) { return panels >= 36 ? 20 : panels >= 30 ? 25 : panels >= 24 ? 30 : panels >= 18 ? 40 : 85; }
-// WHAT A LINE SPENDS: each panel it takes off the board now at the worth of the board it is taken to, from the panels it leaves up to the
-// panels there are; a line that leaves more (garbage converted) is credited the same way. Measured from the board now, so between two
-// lines -- the hold among them -- it is what one spends against the other.
-static double spentOf(int32_t left, int32_t now) {
-  double s = 0;
-  for (int32_t p = left; p < now; p++) s += panelWorth(p);
-  for (int32_t p = now; p < left; p++) s -= panelWorth(p);
-  return s;
-}
+// THE LIFE A BOARD HAS WITH `panels` ON IT, in frames (core/material.h: measured on Gambit's own games, made by material.c: ./build.sh material)
+#include "core/material.h"
+static int32_t lifeOf(int32_t panels) { return LIFE[panels < 0 ? 0 : panels > LIFEMAX ? LIFEMAX : panels]; }
 // THE OUTCOME. With garbage on its way, a line that breaks nothing lives only when a break is there once everything has landed --
 // ready, however long the stop it stands on lasts; a break, or a board with nothing coming, lives by standing to the horizon and past
 // the stop and shake it ends on (lifeStop), or by a break in reach once it is over: a board a stop holds up is ready for the next break
@@ -124,10 +118,10 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.fits = fitsList(&theList, o.j.made, &o.j) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1;
+    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1;
     if (!waitTo) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
-      if (eb) { o.panelsLeft = panelsOn(eb); o.spentFrames = spentOf(o.panelsLeft, panelsOn(decQ.b)); }
+      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && garbageOn(decQ.b)) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
