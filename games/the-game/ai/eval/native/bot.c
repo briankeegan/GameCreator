@@ -4477,7 +4477,11 @@ static int reachOption(Opt *O, int n, Dec d, int frozen) {
   o->d = mkSwap(rx.sw[0], rx.sw[1], V_BESTATTACK, d.mode, d.alive);
   o->n = rx.n; o->wait = 0; o->pri = 2;
   for (int q = 0; q < 2 * rx.n; q++) o->sw[q] = rx.sw[q];
-  if (!optJudge(o)) return gScramble && n == nIn ? outliveOption(O, n, d, frozen, st, cur, t, can, w) : n;
+  int okj = optJudge(o);
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "REACH option judged %d lives %d die %d alone %d last %d size %d chain %d swaps %d |", okj, o->lives, o->die, aloneDie(1 << 20), LNO[1], o->size, o->chain, o->n); for (int k = 0; k < o->n; k++) fprintf(BLOG, " %d,%d", o->sw[2 * k], o->sw[2 * k + 1]); fprintf(BLOG, " | LNO 0:%d 5:%d 6:%d 8:%d cur %d,%d\n", LNO[0], LNO[5], LNO[6], LNO[8], (int)BIN[IN_CROW], (int)BIN[IN_CCOL]); }
+#endif
+  if (!okj) return gScramble && n == nIn ? outliveOption(O, n, d, frozen, st, cur, t, can, w) : n;
   if (gScramble && aloneOnEngine() && aloneDie(1 << 20) > LNO[1] + LIVEHORIZON) return n;   // the latest start, as the planner's option
   return n + 1;
 }

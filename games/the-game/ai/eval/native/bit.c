@@ -1364,9 +1364,9 @@ static LOCAL int HELDR, HELDC, HELDDIR;
 // A WALK OF HOLDLEG CELLS OR MORE ON ONE AXIS IS HELD, NOT TAPPED: a held
 // direction is one action however far the cursor goes -- the first cell on the
 // press, the second after the engine's repeat delay (HOLDFIRST frames), then
-// one a frame -- which from four cells up is no later than taps MOVE_FRAMES
+// one a frame -- which from three cells up costs three frames at most against taps MOVE_FRAMES
 // apart. The front (front.c padStepToward) and the lines it plays walk the same.
-#define HOLDLEG 4
+#define HOLDLEG 3
 #define HOLDFIRST 10
 // the frame the last cell of an axis's walk is reached, its first key pressed at p
 static int HOLDMIN = HOLDLEG;   // the shortest walk the front holds this decision (front.c frontCalm): the clock walks as it does
