@@ -149,7 +149,11 @@ static Played playOf(const Read *R, int n) {
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
   // does as well with that swap pressed later -- the next decision plans it again, so a first swap pressed early is undone by the next
   // plan's)
-  if (P.line && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
+  // (held only while the board left alone lasts to the frame the swap would be pressed)
+  double holdLost = -1;
+  for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.dead) holdLost = lostAtOf(order[i]->o.lostAt, 0);
+  if (P.line && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
+      firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
     const Judge *L = P.line;
     Outcome d = outcomeOf(L->k.seq, L->k.nseq, L->settled, 0, L->apAts[1] - rankReact);
     double dl = lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
