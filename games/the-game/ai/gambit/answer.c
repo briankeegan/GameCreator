@@ -317,6 +317,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   // (THE BOARD THE BREAK SEARCH CAME UP EMPTY ON, under garbage, for the reach report: at most one every 30 frames)
   if (R.under && !(ran && theBr.depth) && (emptyAt == NUL || at - emptyAt >= 30 || at < emptyAt)) { emptyAt = at; A->dumpBoard = 1; }
+  // (THE BOARD TOPPED WITH NO GARBAGE ON IT, for reading the stalls: at most one every 30 frames)
+  else if (R.topped && !R.under && (emptyAt == NUL || at - emptyAt >= 30 || at < emptyAt)) { emptyAt = at; A->dumpBoard = 2; }
   // THE RAISE HELD DOWN: the steps the row has left, and the rows on to the rule's `to`
   if (d.kind == 2) { A->raiseNow = imax(1, (decQ.b->displacement ? decQ.b->displacement : ROW_STEPS) - 1); A->raiseAfter = imax(0, R.to - fullTop(decQ.b) - 1) * ROW_STEPS; }
 }

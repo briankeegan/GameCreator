@@ -177,7 +177,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   }
   snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0);
   flog(line);
-  if (A->dumpBoard) dumpBoard("GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr);
+  if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr);
   // (a line the break search said breaks and the judge says does not: its board, rate-limited, for replaying both on it -- GAMBITU)
   static int32_t lastU = NUL;
   if (unbroken.set && (lastU == NUL || q->at - lastU >= 120 || q->at < lastU)) { lastU = q->at; dumpBoard("GAMBITU", q->at, hostBoard, hostQ.arr, hostQ.narr); }
