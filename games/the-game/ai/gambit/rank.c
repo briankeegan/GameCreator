@@ -143,6 +143,8 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static void holdCand(int wait, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
+  // (the hold makes nothing: it meets no entry of the list and is no break -- never the list's first entry nor a break's best material)
+  J->met = -1; J->material = -1;
   J->o = outcome(0, 0, 0);
   J->k.play = PLAY_HOLD; J->k.aim = -1; J->hold = 1; J->wait = wait; J->aim = -1;
   J->t.tier = HOLD_TIER; J->t.nsub = 1; J->t.sub[0] = wait ? -1 : 0;
@@ -203,12 +205,19 @@ static int beatsHold(const Judge *L, const Judge *H) {
   return 0;
 }
 static double lostOf(const Judge *x);
+// (FLATTENING WHEN THERE IS NOTHING TO DO: a level line -- the stack walked flatter, nothing cleared -- known to do no worse than
+// holding beats holding; it is still the last of the lines that do something, tier 4's last)
+static int levelsFree(const Judge *L, const Judge *H) {
+  if (L->k.play != PLAY_LEVEL || L->o.dead) return 0;
+  if (L->o.lives) return 1;
+  return !H->o.lives && L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED && lostOf(L) >= lostOf(H);
+}
 static void markIdle(Judge **a, int n) {
   const Judge *H = 0;
   for (int i = 0; i < n && !H; i++) if (a[i]->hold) H = a[i];
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   double holdLost = H ? lostOf(H) : 0;
-  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
