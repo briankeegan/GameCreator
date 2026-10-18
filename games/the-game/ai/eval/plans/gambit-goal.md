@@ -54,10 +54,10 @@ engine at level 10, the game's own think and input budgets.
 
 | mode | survived | runs |
 |---|---|---|
-| finish them | **24/24 twice** (`5bacb738d0`, `51b51405f5`) | ... 24, 18, 24, 18, 17, 18, 18, 21, 21, 16, 17, 19, 18, 16, 19, 20, 18 |
-| pressure | best 22 of 24 (`52a35feccd`, `5bacb738d0`) | ... 22, 18, 18, 19, 13, 14, 15, 17, 15, 15, 15, 17, 16, 18, 13, 18, 20, 19 |
-| big chain | best 18 of 24 (`f13a5c5966`, `2046956eb5`, `01adb88203`) | 13, 17, 16, 17, 15, 17, 16, 18, 12, 14, 14, 17, 14, 16, 18, 18 |
-| build | best 23 of 24 (`01adb88203`) | 19, 17, 19, 16, 14, 15, 12, 18, 16, 16, 16, 18, 20, 23 |
+| finish them | **24/24 twice** (`5bacb738d0`, `51b51405f5`) | ... 24, 18, 24, 18, 17, 18, 18, 21, 21, 16, 17, 19, 18, 16, 19, 20, 18, **22**, 18, 17 |
+| pressure | best 22 of 24 (`52a35feccd`, `5bacb738d0`) | ... 22, 18, 18, 19, 13, 14, 15, 17, 15, 15, 15, 17, 16, 18, 13, 18, 20, 19, 21, **22**, 18 |
+| big chain | best 20 of 24 (`c9be30dcdb`, `11a9511ccb`) | 13, 17, 16, 17, 15, 17, 16, 18, 12, 14, 14, 17, 14, 16, 18, 18, 20, 20, 18 |
+| build | best 23 of 24 (`01adb88203`) | 19, 17, 19, 16, 14, 15, 12, 18, 16, 16, 16, 18, 20, 23, 21, 17, 20 |
 | switching | not yet built | |
 
 ## What the losses share
@@ -75,6 +75,10 @@ engine at level 10, the game's own think and input budgets.
   is made from.
 - **Just in time**: a line whose next swap is far off is held while it does as well with its first swap pressed later (`deferred=1`),
   so each decision's plan no longer undoes the last one's first swap.
+- **Under garbage, of two breaks, the one that leaves a break to build first** (`nextBuild`, from `breakBuildable`): a big combo
+  spends more panels than the row it converts gives back; the list orders the breaks the board can afford. The best build so far,
+  `c9be30dcdb`: 22, 21, 20, 21. Its remaining losses: 7 of 12 with nothing left to build a break from, 5 with a break in hand not
+  completed.
 - **Chain building leaves a tower** (heights like 5,7,12,11,8,6 with 49 panels): the board is topped by its own stack with room for a
   level one. `levelLine` walks it level, judged whole.
 - Tried and taken out, each below the runs above: the judge asking past the stop a line ends on; the chain stopper; the floor for the
