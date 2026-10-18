@@ -7129,6 +7129,8 @@ __attribute__((export_name("bot_decide"))) int32_t bot_decide(int32_t id) {
         int v = lineJudge(playsLine ? BT->line : one, playsLine ? BT->nLine : 1, 0);
         if (v >= 0 && !(v & LV_PAYS) && !(v & LV_BREAKS)) idle = 1;
       }
+      // the swaps of the break planned through the pop are the break's own actions, made early: never held for the window the break needs
+      if (prepStage.n > 0 && prepStage.pos == raPos && prepStage.sw[0] == d.sr && prepStage.sw[1] == d.sc) idle = 0;
     }
     o[99] = idle; }
   double ew = INF;
