@@ -21,7 +21,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   if (!fs.existsSync(rf) || !fs.existsSync(lf)) return;
   var m = /(\w+) training lost frames=(\d+)/.exec(fs.readFileSync(rf, 'utf8'));
   if (!m) return;
-  var lostAt = +m[2], lines = played(fs.readFileSync(lf, 'utf8').split('\n')).filter(function (l) { return l.indexOf('GAMBITB ') === 0; });
+  // (the boards its break search came up empty on, and the last boards it decided on, written at the match's end: GAMBITL)
+  var lostAt = +m[2], lines = played(fs.readFileSync(lf, 'utf8').split('\n')).filter(function (l) { return l.indexOf('GAMBITB ') === 0 || l.indexOf('GAMBITL ') === 0; });
   // (the match's own: the last run of boards before the loss, clock forward)
   var bs = lines.map(function (l) { var p = l.split(' '); return { at: +p[1], b64: p[2], arr: JSON.parse(p[3] || '[]') }; }).filter(function (x) { return x.at <= lostAt && x.at >= lostAt - LAST; });
   var out = [];

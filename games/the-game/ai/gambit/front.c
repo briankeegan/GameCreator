@@ -52,7 +52,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
-  int32_t holdLeft, holdStarted, overLogged;
+  int32_t holdLeft, holdStarted, overLogged, loggedAskNow, loggedRefused;
   Planned plan[PLANN]; int32_t planAt[PLANN];
   Board *truth, *expect, *pr, *scratch;
   int32_t haveExpect;
@@ -427,7 +427,11 @@ static void take(void) {
     }
     int32_t at = a.at;
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
-    if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) { F.st.refused++; continue; }
+    if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
+      F.st.refused++;
+      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
+      continue;
+    }
     // (a raise held down: the button stays down for the frames it takes to bring the rows in, and raiseAfter after them)
     if (a.kind == 2 && a.raiseNow > k.n) {
       k.n = imin(a.raiseNow, MAXKEYS);
@@ -435,7 +439,11 @@ static void take(void) {
     }
     F.st.played++;
     walkKeys(&k, at);
-    if (!keysFit(at, &k)) { F.st.guarded++; continue; }
+    if (!keysFit(at, &k)) {
+      F.st.guarded++;
+      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "GUARDED answer for %d taken at %d: its %d keys do not fit the input allowance", a.at, F.now, k.n); flog(l); F.loggedRefused++; }
+      continue;
+    }
     F.st.heldWalks += k.held;
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
@@ -576,11 +584,18 @@ static void afterFrame(int32_t bits) {
   if (at - now > aheadOf()) return;
   int32_t hl, hs;
   int ok = predict(next, at, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs);
-  for (int32_t soonAt = imin(at - 1, now + 3); ok && F.pr->gameOverClock > 0 && soonAt > now + 1; soonAt--) {
-    ok = predict(next, soonAt, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs);
-    if (ok && F.pr->gameOverClock <= 0) at = soonAt;
+  // (the board predicted lost by then: asked for the last frame it is still alive -- the game over is where the plan's board ends, so
+  // the frame before it -- which leaves the question all the time there is)
+  if (ok && F.pr->gameOverClock > 0) {
+    int32_t alive = F.pr->gameOverClock - 1;
+    ok = alive > now + 1 && predict(next, alive, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs) && F.pr->gameOverClock <= 0;
+    if (ok) at = alive;
   }
   if (!ok || F.pr->gameOverClock > 0) {
+    if (F.loggedAskNow < 40) {
+      char l[160]; snprintf(l, sizeof l, "ASKNOW clock %d: the board for frame %d %s", now, at, !ok ? "could not be predicted" : "is lost by then");
+      flog(l); F.loggedAskNow++;
+    }
     at = now + 1; copyBoard(F.pr, next); hl = F.holdLeft; hs = F.holdStarted;
     memcpy(F.prPend, F.nextPend, sizeof(Arrival) * (unsigned long)F.nnextPend); F.nprPend = F.nnextPend;
   }
