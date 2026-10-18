@@ -1,0 +1,56 @@
+# Gambit: breaks that leave the next break
+
+**The board's life under garbage is its next break.** Three changes aim every break at the material and the stop time the next one
+needs: a line is weighed by how near a break the board it leaves is; a plain three is offered grown into a combo; and the panels a
+break converts are made into a chain. None of them decides anything on its own: each is a fact the one outcome reads or a candidate
+the proposers offer, judged on the engine and ranked in the one order (`plans/gambit-goal.md`, "One of each").
+
+Gambit sees only what the screen shows (`gambit/lua/board.lua` `shown`): a colour a break converts garbage into is unseen until the
+client draws it. Everything below plans on that board.
+
+## 1. The nearest break after the line
+
+- **The fact** (`outcome.c`): every line judged under garbage carries the swaps to the nearest break on the board it leaves
+  (`o.nearAfter`, from `breakNear` -- the search the material floor and the touch beam already ask), set where `panelsLeft` is. Its
+  time is charged to the decision's clock like every search.
+- **The rank** (`rank.c`): of two in one tier, the nearer break first, after the list's own keys and the panels spent
+  (`Tier.nlist`). A line that brings a break nearer climbs; one that pushes it away falls. The list's order is never crossed.
+- **Held by** a test on a real board: of two fills that both live, the one that leaves a break one swap away is ranked first.
+
+## 2. A three grown into a combo
+
+- **The candidates** (`propose.c`, a pass after the proposers): for each line whose clear is a plain three, the same line with one
+  more panel of the match's colour walked beside it before the clear begins -- a match of four or five. Offered as a candidate of the
+  play that found the three, so its place in the order is that play's.
+- **Judged as any line**: on the engine, within the list, in time. A grown line that does not make the larger match on the engine is
+  not one; a combo of four or more buys stop time (`pa.c calculateStopTime`), so the existing order takes it before the three when it
+  lives as long.
+- **Held by** a test on a real board where a three and its grown four both live: the four is played.
+
+## 3. The converted row's chain
+
+A break turns a row of garbage into panels; when the pop ends they hover and fall chaining (`pa.c updateMatched`), so a match they
+make is a link of a chain -- stop time on a topped board, and panels converted kept as panels.
+
+- **Where they land**: the board left alone, played on the engine through the pop and the fall (the hold, already judged every
+  decision). The landing cells, and the colour each is one panel short of, are read off that board.
+- **Before the break is pressed**: only the colours the board already shows. The candidate is the break line followed by the walk
+  that puts a panel of the colour beside a landing cell, judged as one line.
+- **During the pop**: each converted panel's colour as the screen draws it. The candidate is the walk that brings a panel of that
+  colour beside where it lands, timed to finish before the row falls (`PLAY_CONVERT`).
+- **The search behind it**: `extend` (`search/extend.c`) is seeded with these lines and searches on from them, as it searches from a
+  cascade now.
+- **Judged as any line**: on the engine, timed from where the cursor is, within the list. A walk that cannot finish before the row
+  lands is late and dropped; a chain that does not happen on the engine is not one.
+- **Held by** a test on a recorded pop with its colours drawn: the walk that makes the chain is proposed and played.
+
+## The order
+
+1, then 2, then 3: the cheapest first. Each is one push, then 24 games per mode (`run24.sh`), reported per garbage type with the
+combos and chains, against the last run on the fair board.
+
+## Done when
+
+- Each change is kept only where its run is no worse than the last by more than the noise in any mode.
+- The losses where the board ran out of material (no break to build on the boards before the loss) are fewer than on the fair
+  board's first run.
