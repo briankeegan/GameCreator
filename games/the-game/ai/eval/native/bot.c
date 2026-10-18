@@ -3743,7 +3743,8 @@ static void breakLines(const int32_t *st, int cr, int cc, double t0, double limi
 // THE TIME THERE IS: topped, the drain; else the judge's horizon -- a line
 // whose last press comes later is one the engine never finishes playing, so
 // it can never be judged to live
-static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft() - 2 : LINEHORIZON; }
+static double linesExtra;   // frames a pop's end is met with beyond the board's own: the plain clear one swap away (breakFirst)
+static double linesLimit(int breaks) { (void)breaks; return lsTopped ? timeLeft() - 2 + linesExtra : LINEHORIZON; }
 // NO LINE IN THE TIME THERE IS STAYS SO WHILE THE POSITION STANDS (raPos): the search goes soonest first, so one that found none by `limit`
 // found none by any less, and a pop holds one position for hundreds of frames -- the same question is not put again with less time
 static int raPos;   // the position (defined with the lineup's refusals)
@@ -4652,6 +4653,7 @@ static int attackOptions(Opt *O, int n, Dec d) {
 }
 // the line staged this decision (insureFind), for the setups stage to play on a hold and the arbiter to weigh beside it
 static struct { int dec, n; int32_t sw[2 * LINEMAX]; } insStage = { -1, 0, { 0 } };
+static struct { int pos, n; int32_t sw[2 * LINEMAX]; } prepStage = { 0, 0, { 0 } };
 static int setupOptions(Opt *O, int n, Dec d) {
   double base = setupKey(DBASE), key[SETUPOPTS]; int at[SETUPOPTS], na = 0;
   for (int i = 0; i < nPool; i++) {
@@ -4693,7 +4695,7 @@ static int getsBackInTime(const Opt *o, const int32_t *line, int n) {
 static Dec arbitrate(Dec d) {
   reachHold = 0;   // the stages before it have left the scramble its work
   if (!((d.kind == K_SWAP && d.hasMove) || d.kind == K_HOLD)) return d;   // a raise: raiseMode's own rules
-  Opt O[6 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
+  Opt O[7 + ATTACKOPTS + SETUPOPTS]; int n = 0, at = -1, ra = -1;
   memset(O, 0, sizeof O);
   // the target the walk was on, still ahead of the decision
   int hasT = d.kind == K_SWAP && BT->tgtN && BT->nNotes == BT->tgtPresses && !(d.sr == BT->tgt[0] && d.sc == BT->tgt[1]);
@@ -4764,6 +4766,15 @@ static Dec arbitrate(Dec d) {
         for (int k = 0; k < 2 * o->n; k++) o->sw[k] = insStage.sw[k];
         o->twos = 1 << 20; o->twosKnown = 1;
         if (optJudge(o)) n++;
+      }
+      // the swaps of the break planned through the pop that need nothing the pop holds (prepFind): beside the hold, below the clear staged for the pop's end
+      if (prepStage.pos == raPos && prepStage.n > 0) {
+        Opt *o = &O[n];
+        o->d = mkSwap(prepStage.sw[0], prepStage.sw[1], V_LINEUP, d.mode, d.alive);
+        o->n = prepStage.n; o->wait = 0; o->pri = 2; o->stall = 1;
+        for (int k = 0; k < 2 * o->n; k++) o->sw[k] = prepStage.sw[k];
+        o->twos = 1 << 19; o->twosKnown = 1;
+        if (optJudge(o)) n++;
       } } }
   // the line that saves the board: what an option must still be able to play after it (getsBackInTime)
   int32_t sv[2 * LINEMAX]; int sn = 0;
@@ -4826,6 +4837,33 @@ static Dec arbitrate(Dec d) {
 static Dec breakDeeper(Dec d);
 static Dec makeRoom(Dec d);
 static int roomForBreak(const int32_t *st);
+// THE BREAK PLANNED THROUGH THE POP: the pop's end is met with the clear one swap away, so a break line that begins after it is in time. Its swaps that
+// need nothing the pop holds -- the lower stack, pairs that settle before the pop ends -- are made now, and the rest is the gap after the pop.
+static int oneSwapClear(const int32_t *st);
+static int popUninsured(void);
+static int lineKeepsClear(const int32_t *sw, int n);
+static void prepFind(void) {
+  if (prepStage.pos == raPos && prepStage.n > 0) return;   // found for this position: kept while it stands
+  prepStage.pos = 0; prepStage.n = 0;
+  if (!(linesExtra > 0) || !(BIN[IN_POPPING] == 1) || !aloneOnEngine() || BT->nLine) return;
+  LineC *best = 0;
+  for (int i = 0; i < nLines; i++) { LineC *l = &LINES[i]; if (l->brk && l->n >= 2 && (!best || lineBefore(l, best))) best = l; }
+  if (!best) return;
+  static ST st; int32_t cur[2], t; uint32_t can[WMAX]; Wait w[32][WMAX];
+  if (lineState(0, 0, st, can, w, cur, &t) != 0) return;
+  double pop = timeLeft() - 4;
+  int k = 0;
+  while (k < best->n - 1) { int r = best->sw[2 * k], c = best->sw[2 * k + 1]; if (r < 1 || r > 31 || c < 1 || c >= WMAX || (double)w[r][c] >= pop) break; k++; }
+  if (k < 1) return;
+  int v = lineJudge(best->sw, k, 0);
+  if (!(v & LV_LIVES) || (LNA[0] ? (LNO[0] && LNO[0] < LNA[0]) : LNO[0] != 0) || HOLLOW(LNO) > HOLLOW(LNA)) return;
+  if (popUninsured() && oneSwapClear(DBASE) && !lineKeepsClear(best->sw, k)) return;
+#ifndef __wasm__
+  if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "PREP %d of %d swaps now, line to %g, pop ends in %g\n", k, best->n, best->est, timeLeft()); }
+#endif
+  prepStage.pos = raPos; prepStage.n = k;
+  for (int q = 0; q < 2 * k; q++) prepStage.sw[q] = best->sw[q];
+}
 static Dec breakFirst(Dec d) {
   bbHasDeferred = 0; bbWinWait = 0;
   // a line played on is kept only if it is itself a break
@@ -4844,12 +4882,19 @@ static Dec breakFirst(Dec d) {
   { growRootMs = growKidMs = growStateMs = 0; growKids = 0;
     double lf0 = NOWMS2();
     workTrace("breakFirst before linesFind");
+    linesExtra = 0;
+    if (BIN[IN_POPPING] == 1 && BIN[IN_TOPPED] && aloneOnEngine()) {
+      static int coverPos = -1, cover; if (coverPos != raPos) { cover = oneSwapClear(DBASE); coverPos = raPos; }
+      if (cover) linesExtra = resolveFramesOf(3, 0);
+    }
     linesFind(REROOTS, 1);
     workTrace("breakFirst after linesFind");
 #ifndef __wasm__
     if (0) { extern int fprintf(void *, const char *, ...); extern void *stderr; fprintf(BLOG, "LINESFIND %.2f ms | root %.2f kids %d %.2f states %.2f | lines %d\n", NOWMS2() - lf0, growRootMs, growKids, growKidMs, growStateMs, nLines); }
 #endif
-    l = bestBreak(); }
+    l = bestBreak();
+    if (!l && linesExtra > 0) prepFind();
+    linesExtra = 0; }
 #ifndef __wasm__
   if (botTraceOn) { extern int fprintf(void *, const char *, ...); extern void *stderr; int g = 0, live = 0;
     for (int i = 0; i < nLines; i++) { if (LINES[i].grown) g++; if (LINES[i].verdict != 0) live++; }
