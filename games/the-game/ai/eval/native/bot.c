@@ -5486,7 +5486,7 @@ static int setupLines(SetupCtx *x, double left) {
 // running loses health the frame its last panels land. A plain three holds the rise for its flash, face and pops (38 + 7 x 3 frames) for the price of
 // three panels -- as good as 60 frames of stop time -- but only a swap away: the board is staged for one in the pop's idle frames, and pressed when it is due
 // (clearDue), so its lock runs on from the pop's.
-#define INSURESTOP 40   // the stop time a pop's end must be met with, else a clear is staged
+#define INSURESTOP 100   // the stop time a pop's end must be met with, else a clear is staged (the most a chain buys topped: 90)
 static int oneSwapClear(const int32_t *st) {
   static JLOCAL ST sc; static JLOCAL int32_t rr[R_INTS + ST_INTS];
   int W = st[O_W], H = st[O_H] < 30 ? st[O_H] : 30;
