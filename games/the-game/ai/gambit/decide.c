@@ -193,7 +193,9 @@ static Played playOf(const Read *R, int n) {
   // plan's)
   // (held only while the board left alone lasts to the frame the swap would be pressed)
   double holdLost = -1;
-  for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.dead) holdLost = lostAtOf(order[i]->o.lostAt, 0);
+  // (the hold's loss as the order reads it, rank.c lostOf: a hold whose loss was not judged is lost now, never 'never' -- an unknown
+  // never licenses waiting)
+  for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.dead) holdLost = lostOf(order[i]);
   if (P.line && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
       firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
     const Judge *L = P.line;
