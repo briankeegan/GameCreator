@@ -175,6 +175,8 @@ typedef struct {
   Move d; int32_t raiseNow, raiseAfter, nhand, hand[MAXLINE];
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
+  int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
+  int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
   int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
   double idleMs, brMs;
 } Answer;
@@ -207,12 +209,23 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   static Found S;
   searchAll(&R, &S);
   S.searchMs = nowMs() - ts;
+  int starved = clockOut();   // (out of time before anything was judged)
   int n = ranked(&R, &S);
   Played P = playOf(&R, n);
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   // THE MOVE
   Move d = R.up ? (Move){ 2, 0 } : P.line ? (Move){ 1, P.line->k.seq[0] } : (Move){ 0, 0 };
   A->d = d;
+  A->empty = starved && d.kind == 0;
+  // (THE MOVE IN HAND: of the lines that live and are no hold -- a ready one first -- the best ranked, kept by the frame loop for a
+  // decision the clock leaves no time)
+  A->nalt = 0;
+  for (int pass = 0; pass < 2 && !A->nalt; pass++)
+    for (int i = 0; i < n && !A->nalt; i++) {
+      const Judge *J = order[i];
+      if (J->hold || J->wait || !J->o.lives || J->k.nseq < 1 || (pass == 0 && J->o.ready != 1)) continue;
+      A->nalt = imin(J->k.nseq, MAXLINE); for (int q = 0; q < A->nalt; q++) A->alt[q] = J->k.seq[q];
+    }
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
   A->holdLives = d.kind == 0 && top && top->o.lives;

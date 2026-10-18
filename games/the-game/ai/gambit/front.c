@@ -32,6 +32,8 @@ typedef struct {
 } FQuestion;
 typedef struct {
   int32_t id, epoch, at, kind, move, raiseNow, raiseAfter, nhand, hand[MAXLINE], holdLives, brk, urgent, error;
+  int32_t empty;               // a hold the clock left no time to judge anything for
+  int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
   double ms, idleMs, closeMs;
 } FAnswer;
 static void postQuestion(FQuestion *q);   // native.c
@@ -42,7 +44,7 @@ static void flog(const char *s);          // native.c: a line into the run's log
 
 typedef struct {
   int32_t frames, decisions, played, late, diverged, refused, guarded, unasked, idle, followed, noLine, unforeseen, reasked, revealed,
-          raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps;
+          raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps, starved, inHand;
   int32_t combo[64], chain[32];
   // each chain link past the list's two, by its cause: panels out of garbage (colours not shown when it was decided), a swap pressed
   // since the link before it, or neither (the stack alone)
@@ -52,7 +54,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
-  int32_t holdLeft, holdStarted, overLogged;
+  int32_t holdLeft, holdStarted, overLogged, loggedAskNow, loggedRefused, nalt, alt[MAXLINE];
   Planned plan[PLANN]; int32_t planAt[PLANN];
   Board *truth, *expect, *pr, *scratch;
   int32_t haveExpect;
@@ -97,21 +99,26 @@ static void arrivalsOf(const Board *b) {
   int32_t mine = b->stopWatch, nsrc = *w++;
   F.narr = 0;
   for (int s = 0; s < nsrc; s++) {
-    int32_t sw = *w++, capped = *w++, offset = mine - sw, floor = mine + 1, nt = *w++;
+    int32_t sw = *w++, capped = *w++, offset = mine - sw, floor = mine + 1, nt = *w++, free = floor;
     for (int t = 0; t < nt; t++) {
       int32_t at = *w++ + offset, np = *w++;
-      if (at < floor) at = floor;
+      // (a held-back source delivers a transit a frame, in order: its transits are given frames one apart, none before the next free)
+      if (capped) { if (at < free) at = free; free = at + 1; }
+      else if (at < floor) at = floor;
       for (int k = 0; k < np; k++, w += 6)
         if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = at; a->capped = capped; a->g = (Incoming){ w[0], w[1], w[2], w[3], w[4], w[5] }; }
     }
-    int32_t ns = *w++, ship = sw;
+    int32_t ns = *w++, ship = sw, lastRaw = NUL, lastAt = NUL;
     const int32_t *g0 = w;
     w += 6 * ns;
     for (int i = ns - 1; i >= 0; i--) {
       const int32_t *g = g0 + 6 * i;
       int32_t chainGoing = g[2] && g[5] != 1 ? sw + 1 : 0;
       ship = imax(ship, imax((g[4] == NUL ? sw : g[4]) + STAGING, chainGoing));
-      if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = imax(ship + LAND + offset, floor); a->capped = capped; a->g = (Incoming){ g[0], g[1], g[2], g[3], g[4], g[5] }; }
+      // (pieces shipped together are one transit, landing together)
+      int32_t raw = ship + LAND + offset, at = imax(raw, capped ? free : floor);
+      if (capped) { if (raw == lastRaw) at = lastAt; else free = at + 1; lastRaw = raw; lastAt = at; }
+      if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = at; a->capped = capped; a->g = (Incoming){ g[0], g[1], g[2], g[3], g[4], g[5] }; }
     }
   }
   // (sorted by when they arrive, the order they came in kept between equals)
@@ -136,6 +143,23 @@ static int unforeseenBy(const Arrival *knew, int nk, const Arrival *now, int nn,
 }
 // Garbage due by the frame just reached, received as the server receives it; what lands is taken out of `pend`.
 // (garbage held back lands as the search lands it, search.h runFrame: only while fewer than CAPPED_AT are queued, the earliest due a frame)
+// THE QUEUE A BOARD HOLDS: fuller than MAXINC, the board keeps the pieces that drop soonest, as the host loads it -- the piece to drop
+// last is let go; a board asked of the search keeps MAXINC - MAXARR of them, room for the MAXARR the search lands (keepQueue).
+static void receiveKept(Board *b, const Arrival *a) {
+  Incoming g = { a->g.width, a->g.height, a->g.isChain ? 1 : 0, a->g.isMetal ? 1 : 0, a->g.frameEarned == NUL ? b->stopWatch : a->g.frameEarned, a->g.finalized };
+  if (b->ninc >= MAXINC) {
+    if (orderBefore(&g, &b->inc[0])) return;
+    for (int i = 1; i < b->ninc; i++) b->inc[i - 1] = b->inc[i];
+    b->ninc--;
+  }
+  nb_receive(b, g.width, g.height, g.isChain, g.isMetal, g.frameEarned, g.finalized);
+}
+static void keepQueue(Board *b, int keep) {
+  if (b->ninc <= keep) return;
+  int drop = b->ninc - keep;
+  for (int i = drop; i < b->ninc; i++) b->inc[i - drop] = b->inc[i];
+  b->ninc = keep;
+}
 static void landOn(Board *b, Arrival *pend, int32_t *n) {
   int k = 0, first = 0x7fffffff;
   for (int i = 0; i < *n; i++) if (pend[i].capped && pend[i].at <= b->stopWatch && pend[i].at < first) first = pend[i].at;
@@ -143,7 +167,7 @@ static void landOn(Board *b, Arrival *pend, int32_t *n) {
   for (int i = 0; i < *n; i++) {
     Arrival *a = &pend[i];
     if (a->at > b->stopWatch || (a->capped && !(open && a->at == first))) { pend[k++] = *a; continue; }
-    nb_receive(b, a->g.width, a->g.height, a->g.isChain ? 1 : 0, a->g.isMetal ? 1 : 0, a->g.frameEarned == NUL ? b->stopWatch : a->g.frameEarned, a->g.finalized);
+    receiveKept(b, a);
   }
   *n = k;
 }
@@ -395,6 +419,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   F.pending = 1; F.pId = F.nextId++; F.pEpoch = F.epoch; F.pAt = at; F.pPaced = 0; F.pHoldLeft = hl; F.pHoldStarted = hs;
   if (!F.pBoard) F.pBoard = nb_new();
   copyBoard(F.pBoard, b);
+  keepQueue(F.pBoard, MAXINC - MAXARR);
   F.pNarr = 0;
   for (int i = 0; i < npend; i++) if (pend[i].at > b->stopWatch) F.pArr[F.pNarr++] = pend[i];
   memcpy(F.pKnew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.pNknew = F.narr;
@@ -408,6 +433,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
 }
 // The answers: an answer's keys go in the plan, and the next decision is due on the frame they end on. One that came after its frame is
 // not played (a swap is pressed only on the board it was judged on); the next question is asked of the board as it is.
+static int follow(void);
 static void take(void) {
   static FAnswer a;
   static Keys k;
@@ -426,8 +452,20 @@ static void take(void) {
       continue;
     }
     int32_t at = a.at;
+    // (THE MOVE IN HAND: a hold the clock left no time to judge for is no answer -- the line already in hand, or else the last answer's
+    // line that lives and is no hold, is played on, from the frame it was asked for, each swap checked by the keys it makes)
+    if (a.kind == 0 && a.empty) {
+      F.st.starved++;
+      if (!F.lineN && F.nalt) { F.lineN = F.nalt; for (int i = 0; i < F.nalt; i++) F.line[i] = F.alt[i]; F.nalt = 0; F.haveLineOf = 0; }
+      if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
+    }
+    if (!a.empty) { F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
-    if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) { F.st.refused++; continue; }
+    if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
+      F.st.refused++;
+      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
+      continue;
+    }
     // (a raise held down: the button stays down for the frames it takes to bring the rows in, and raiseAfter after them)
     if (a.kind == 2 && a.raiseNow > k.n) {
       k.n = imin(a.raiseNow, MAXKEYS);
@@ -435,7 +473,11 @@ static void take(void) {
     }
     F.st.played++;
     walkKeys(&k, at);
-    if (!keysFit(at, &k)) { F.st.guarded++; continue; }
+    if (!keysFit(at, &k)) {
+      F.st.guarded++;
+      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "GUARDED answer for %d taken at %d: its %d keys do not fit the input allowance", a.at, F.now, k.n); flog(l); F.loggedRefused++; }
+      continue;
+    }
     F.st.heldWalks += k.held;
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
@@ -526,7 +568,9 @@ static int frontFrame(void) {
       flog(l); F.loggedDiffer++;
     }
   }
-  if (!diverged && F.haveExpect && revealed(F.expect, t)) { dropAll(); F.st.revealed++; }
+  // (colours dealt into the row not yet risen: no planned swap touches it, so the plan stands -- a board it does change is caught as one
+  // that differs -- and only the question out, asked without them, is asked again)
+  if (!diverged && F.haveExpect && revealed(F.expect, t)) { if (F.pending) { abortTo(F.pId); F.pending = 0; } F.st.revealed++; }
   int32_t off = t->clock - t->stopWatch;
   if (F.nextAt > now && unforeseenBy(F.knew, F.nknew, F.arr, F.narr, F.nextAt - off)) { dropAll(); F.st.unforeseen++; }
   if (F.pending && unforeseenBy(F.pKnew, F.pNknew, F.arr, F.narr, F.pAt - off)) { abortTo(F.pId); F.pending = 0; F.st.reasked++; }
@@ -576,11 +620,17 @@ static void afterFrame(int32_t bits) {
   if (at - now > aheadOf()) return;
   int32_t hl, hs;
   int ok = predict(next, at, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs);
-  for (int32_t soonAt = imin(at - 1, now + 3); ok && F.pr->gameOverClock > 0 && soonAt > now + 1; soonAt--) {
-    ok = predict(next, soonAt, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs);
-    if (ok && F.pr->gameOverClock <= 0) at = soonAt;
+  // (the board predicted lost by then: asked for the last frame it is still alive, which leaves the question all the time there is)
+  if (ok && F.pr->gameOverClock > 0) {
+    int32_t alive = F.pr->gameOverClock - 1;
+    ok = alive > now + 1 && predict(next, alive, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs) && F.pr->gameOverClock <= 0;
+    if (ok) at = alive;
   }
   if (!ok || F.pr->gameOverClock > 0) {
+    if (F.loggedAskNow < 40) {
+      char l[160]; snprintf(l, sizeof l, "ASKNOW clock %d: the board for frame %d %s", now, at, !ok ? "could not be predicted" : "is lost by then");
+      flog(l); F.loggedAskNow++;
+    }
     at = now + 1; copyBoard(F.pr, next); hl = F.holdLeft; hs = F.holdStarted;
     memcpy(F.prPend, F.nextPend, sizeof(Arrival) * (unsigned long)F.nnextPend); F.nprPend = F.nnextPend;
   }
@@ -592,10 +642,10 @@ static void afterFrame(int32_t bits) {
 static void statsLine(char *out, int cap) {
   int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
-                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"attacks\":{\"combo\":{",
+                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"attacks\":{\"combo\":{",
                    F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
-                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps);
+                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand);
   int first = 1;
   for (int z = 0; z < 64 && k < cap; z++) if (F.st.combo[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.combo[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");

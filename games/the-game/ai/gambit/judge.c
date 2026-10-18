@@ -132,7 +132,20 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       int calm = settleOf(x, w);
       n = liveNode(x, calm) ? calm : w;
     }
-    if (!last && !legalAt(x, n, mr, mc)) { j->cut = k; break; }
+    // (a swap not there to press while the board still moves -- its pair still swapping or falling -- is pressed once it is, as the
+    // frame loop presses it; one not there on a still board is not there)
+    if (!last && !legalAt(x, n, mr, mc)) {
+      while (!legalAt(x, n, mr, mc)) {
+        Board *bn = ensureBoard(x, n);
+        if (!bn || !(hasActivePanels(bn) || bn->swappingCount > 0)) break;
+        int w = step(x, n, MK_LONG, 0, 0, 1);
+        if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
+        if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+        n = w;
+      }
+      if (j->late || j->dead) break;
+      if (!legalAt(x, n, mr, mc)) { j->cut = k; break; }
+    }
     if (!last && j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
     int out = step(x, n, last || o->settled ? MK_SETTLE : MK_SWAP, mr, mc, 0);
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
