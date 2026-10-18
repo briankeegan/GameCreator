@@ -8,6 +8,21 @@ the proposers offer, judged on the engine and ranked in the one order (`plans/ga
 Gambit sees only what the screen shows (`gambit/lua/board.lua` `shown`): a colour a break converts garbage into is unseen until the
 client draws it. Everything below plans on that board.
 
+## 0. The list first among lines that survive alike
+
+Not dying comes first; of lines that survive alike, the one that makes the list comes next -- in every case, survival lines and
+defence included. One order (`rank.c` compareJudged), keys in turn:
+
+1. lives before does not;
+2. of two that do not, the later loss (net of the panels spent);
+3. within the list before outside it;
+4. the earlier entry of the list met (`aim`; under garbage every entry breaks, so a break is never put behind for it);
+5. the tier and its keys -- the kind of line, the panels spent, the nearest break, the rest.
+
+The topped rule (a line that keeps the board held past the stop now) is a tier key under the list, not a tier above it. Held by a test
+on a topped board where a line that meets the list and a plain clear that only lengthens the stop both live: the list's line is
+played.
+
 ## 1. The nearest break after the line
 
 - **The fact** (`outcome.c`): every line judged under garbage carries the swaps to the nearest break on the board it leaves
@@ -66,7 +81,7 @@ list, its aims, under garbage, topped), so a mode that changes, a mode added, or
 
 ## The order
 
-1, then 2, then 3: the cheapest first. Each is one push, then 24 games per mode (`run24.sh`), reported per garbage type with the
+0, 1, 2, then 3: the order of the rank first, then the cheapest. Each is one push, then 24 games per mode (`run24.sh`), reported per garbage type with the
 combos and chains, against the last run on the fair board.
 
 ## Done when
