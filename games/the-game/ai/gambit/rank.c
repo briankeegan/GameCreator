@@ -17,6 +17,7 @@ typedef struct {
   Outcome o;
   int32_t apDone, apFire, apNats, apAts[MAXLINE], apChain, apChainAll, apCombo, apBroke, apPlayed;
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
+  int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken)
@@ -42,7 +43,7 @@ typedef struct {
 
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -101,7 +102,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 #define HOLD_TIER 5
 static void holdCand(int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
   J->o = outcome(0, 0, 0);
   J->k.play = PLAY_HOLD; J->k.aim = -1; J->hold = 1; J->wait = wait; J->aim = -1;
   J->t.tier = HOLD_TIER; J->t.nsub = 1; J->t.sub[0] = wait ? -1 : 0;
@@ -112,7 +113,7 @@ static void holdCand(int wait, Judge *J) {
 // more decision (react frames)
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
-  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled);
+  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
 }
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
@@ -124,7 +125,15 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 // sub-key in turn
 // (a line whose judging the clock cut is not known to die: it ranks after every board that stands and before every known loss -- a
 // death known is never chosen over a line that may live)
-static double lostOf(const Judge *x) { return x->o.lostAt == FOREVER ? 1e300 : x->o.lostAt == NOT_ASKED ? (x->hold ? -1 : 1e299) : x->o.lostAt; }
+// (a line ready for the next block is lost where its readiness break leads, when that is later; a hold is not credited for the break
+// it waits for -- that break is a candidate of its own)
+static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
+static double lostOf(const Judge *x) {
+  double own = lostAtOf(x->o.lostAt, x->hold);
+  if (x->hold || x->extLost == NOT_ASKED) return own;
+  double ext = lostAtOf(x->extLost, 0);
+  return ext > own ? ext : own;
+}
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   if (lx != ly) return lx ? -1 : 1;

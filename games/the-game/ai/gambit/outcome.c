@@ -121,18 +121,30 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
 // THE BOARD LEFT ALONE, as the proposers read it: its readiness, a break search of its own, is the ranking's to ask (decide.c ranked)
 static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o = outcome(0, 0, 0); readyDefer = d; return o; }
 // READY FOR THE NEXT BLOCK: after the line, a break in reach once the next block shown has landed -- what a board that cannot be ready
-// for everything (the queue outlasts it) can still be ready for. 1, 0, or NOT_ASKED (nothing coming, or out of time).
-static int32_t readyNextOf(const int32_t *seq, int n, int settled) {
+// for everything (the queue outlasts it) can still be ready for. 1, 0, or NOT_ASKED (nothing coming, or out of time). A line that
+// presses something and is ready is worth what its readiness break leads to: the line and the break played on the engine, where the
+// readiness found it (extLost: the frame that board is lost, FOREVER, or NOT_ASKED)
+static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extLost) {
+  *extLost = NOT_ASKED;
   if (decF.next == NOT_ASKED) return NOT_ASKED;
   Outcome *hit = cached(seq, n, settled, 2);
-  if (hit) return hit->ready;
+  if (hit) { *extLost = hit->lostAt; return hit->ready; }
   if (clockOut()) return NOT_ASKED;
-  JudgeOpts jo = { settled, decQ.tight, decF.next, 1, 1, -1, 0, 0 };
+  JudgeOpts jo = { settled, decQ.tight, decF.next, 1, 1, -1, 0, 1 };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
   if (o.j.late) return NOT_ASKED;
   o.ready = !o.j.dead && o.j.ready == 1;
+  o.lostAt = NOT_ASKED;
+  if (o.ready && n > 0 && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
+    int32_t ext[MAXLINE];
+    for (int k = 0; k < n; k++) ext[k] = seq[k];
+    for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
+    Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
+    if (!e.late) o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
+  }
+  *extLost = o.lostAt;
   keep(seq, n, settled, 2, &o);
   return o.ready;
 }
