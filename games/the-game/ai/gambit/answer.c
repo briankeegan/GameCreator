@@ -261,7 +261,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   A->rule = theTables.r[R.rule].name; A->nlive = P.nlive; A->ncands = P.ncands;
 
   // (urgent: a cascade or a pop, an extension, or the line done within a pace gap of its deadline -- the frame loop's pace)
-  A->urgent = (P.line && P.line->k.extend) || popLeft(decQ.b) > 0 || cascadeLive(decQ.b);
+  // (and a hold that lives only by the break it waits for: that break has its frame, so the frame loop asks again at its own pace, never
+  // the calm board's)
+  A->urgent = (P.line && P.line->k.extend) || popLeft(decQ.b) > 0 || cascadeLive(decQ.b) ||
+              (d.kind == 0 && top && top->hold && top->o.lives && top->o.lostAt != FOREVER);
   // THE LOG LINE
   const Rule *rule = &theTables.r[R.rule];
   L_s("GAMBITD "); L_i(at); L_s(" @"); L_i(rule->name); L_s(" play="); L_play(P.name);
