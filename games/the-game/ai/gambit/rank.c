@@ -57,10 +57,12 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
     if (!unbroken.set) { unbroken.set = 1; unbroken.play = play; unbroken.nseq = k->nseq; for (int i = 0; i < k->nseq; i++) unbroken.seq[i] = k->seq[i]; unbroken.said = k->x.broke; unbroken.judged = j->made.broke; }
   }
   if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), m.combo > 0 || m.chain > 0 || m.broke > 0)) { dropAs(play, DROP_BACK); return 0; }
-  // (it fits the list, or it is no candidate -- the chain as the game counts it)
-  if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) { if (R->end != 1 || m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; } J->outside = 1; }
-  // (below the rule's material floor a line that clears panels and breaks no garbage spends what the board needs)
-  if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) { dropAs(play, DROP_FLOOR); return 0; }
+  // (it fits the list -- the chain as the game counts it -- or it is outside it: ranked after every line within it that lives, and kept,
+  // so a list never chooses a death. Below the rule's material floor a line that clears panels and breaks no garbage spends what the
+  // board needs: outside too)
+  if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
+  if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
+  if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
   int entry = entryOf(&R->aims, m);
   if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
   // (in time: the line's last swap begun by the deadline -- the frame the judge pressed it; the search's own word only when the judge
