@@ -34,6 +34,7 @@ typedef struct {
   List list, aims, listAims; int32_t end;
   int32_t by;                      // NOT_ASKED: none
   int32_t under, topped, breakWaits, belowFloor;
+  int32_t saving;                  // saving panels up: breaks that leave the most come before the list (decide.c read)
   Keep keep; int32_t keepOn;
   int32_t readyAt;                 // NOT_ASKED: none
   int32_t pop, to, low, up;
@@ -95,10 +96,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (R->under && m.broke > 0 && oc.nextBuild >= 0 && J->t.nsub < MAXSUB) {
     for (int q = J->t.nsub; q > 0; q--) J->t.sub[q] = J->t.sub[q - 1];
     J->t.sub[0] = oc.nextBuild ? 0 : 1; J->t.nsub++;
-    // (TOPPED AND SHORT OF PANELS -- fewer than twice the colours and one, the least that is sure to hold three of one colour -- the
-    // board's life is its next breaks: of two that leave one to build, the one that leaves more panels to make them from, before the
-    // list. With panels to spare the list orders them)
-    if (R->topped && panelsOn(decQ.b) < 2 * decQ.b->colors + 1 && oc.panelsLeft >= 0 && J->t.nsub < MAXSUB) {
+    // (SAVING UP PANELS (decide.c read: begun topped and short, kept until the list's largest combo is sure) the board's life is its
+    // next breaks: of two that leave one to build, the one that leaves more panels to make them from, before the list)
+    if (R->saving && oc.panelsLeft >= 0 && J->t.nsub < MAXSUB) {
       for (int q = J->t.nsub; q > 1; q--) J->t.sub[q] = J->t.sub[q - 1];
       J->t.sub[1] = -oc.panelsLeft; J->t.nsub++;
     }

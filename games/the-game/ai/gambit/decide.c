@@ -7,6 +7,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
+static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -45,6 +46,17 @@ static int readBoard_(Read *R) {
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)
   R->topped = !!F->v[FACT_US_TOPPED]; R->breakWaits = !!F->v[FACT_US_BREAKWAITS];
+  // (SAVING UP PANELS, as the raise holds a band: begun topped with fewer panels than twice the colours and one -- the least sure to
+  // hold three of one colour -- and kept until the board holds the panels sure to make the list's largest combo ((size - 1) x colours
+  // and one), at least two breaks' worth (twice the colours and four); then it spends again)
+  {
+    int32_t colours = decQ.b->colors > 0 ? decQ.b->colors : 1, panels = panelsOn(decQ.b), big = 3;
+    for (int i = 0; i < R->list.n; i++) { const Test *t = &R->list.aim[i].combo; if (t->op == OP_GE || t->op == OP_EQ || t->op == OP_GT) big = imax(big, t->n + (t->op == OP_GT)); }
+    int32_t low = 2 * colours + 1, high = imax((big - 1) * colours + 1, 2 * colours + 4);
+    if (!savingPanels && R->topped && panels < low) savingPanels = 1;
+    else if (savingPanels && panels >= high) savingPanels = 0;
+    R->saving = savingPanels;
+  }
   if (R->under || R->topped) R->by = NOT_ASKED;
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
   R->readyAt = NOT_ASKED;

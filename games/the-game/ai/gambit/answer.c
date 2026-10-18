@@ -316,6 +316,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
+  if (R.saving) L_s(" saving=1");
   // (THE BOARD THE BREAK SEARCH CAME UP EMPTY ON, under garbage, for the reach report: at most one every 30 frames)
   if (R.under && !(ran && theBr.depth) && (emptyAt == NUL || at - emptyAt >= 30 || at < emptyAt)) { emptyAt = at; A->dumpBoard = 1; }
   // (THE BOARD TOPPED WITH NO GARBAGE ON IT, for reading the stalls: at most one every 30 frames)
@@ -362,7 +363,7 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 EXPORT(gb_new_game) void gb_new_game(void) {
   memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry);
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
-  lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0;
+  lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   gb_back(0, 0, 0, 0, 0, 0, 0);
 }
 // A QUESTION ON THE BOARD IN hostQ (hostBoard, its hold and garbage on its way): the answer into theAnswer, the log line at logBuf
