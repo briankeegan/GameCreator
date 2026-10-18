@@ -548,9 +548,10 @@ static int frontFrame(void) {
       flog(l); F.loggedDiffer++;
     }
   }
-  // (colours dealt into the row not yet risen: no planned swap touches it, so the plan stands -- a board it does change is caught as one
-  // that differs -- and only the question out, asked without them, is asked again)
-  if (!diverged && F.haveExpect && revealed(F.expect, t)) { if (F.pending) { abortTo(F.pId); F.pending = 0; } F.st.revealed++; }
+  // (colours shown where the board had them unseen -- a broken slab's, a cell at a time as it pops: the plan stands and so does the
+  // question out -- a swap is where it is whatever the colour, and a board the colour does change is caught as one that differs. Asked
+  // again on every colour shown, a slab popping would leave no question answered until it is done.)
+  if (!diverged && F.haveExpect && revealed(F.expect, t)) F.st.revealed++;
   int32_t off = t->clock - t->stopWatch;
   if (F.nextAt > now && unforeseenBy(F.knew, F.nknew, F.arr, F.narr, F.nextAt - off)) { dropAll(); F.st.unforeseen++; }
   if (F.pending && unforeseenBy(F.pKnew, F.pNknew, F.arr, F.narr, F.pAt - off)) { abortTo(F.pId); F.pending = 0; F.st.reasked++; }

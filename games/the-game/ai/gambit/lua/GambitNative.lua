@@ -178,14 +178,15 @@ function GambitNative:telegraph(sources)
 end
 
 -- The stack this one fights, as the rules' `when` and `by` read it (gambit-rules.json enemy.*): whether there is one (an attack engine,
--- Training's, is no stack: none), whether it is topped out, the highest row it has a panel in, and the frames it is held up by. Read
+-- Training's, is no stack: none), whether it is topped out -- garbage above its top row, a board that can die (a stack that only
+-- reaches the top row is tall, not topped out) -- the highest row it has a panel in, and the frames it is held up by. Read
 -- off the opponent's own board as its client shipped it (view: BotClient's oppView, from the snapshots it paints from) when one came
 -- within VIEW_FRESH frames -- its stop counted down since; else off the copy of its stack played here from its relayed keys: its stop
 -- and pre-stop, or its shake when longer, as the judge reads a board's (judge.c dropAt).
 local VIEW_FRESH = 90
 local function opponentOf(sources, view, clock)
   if view and clock and view.seen and clock - view.seen <= VIEW_FRESH then
-    return 1, view.out and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
+    return 1, view.over and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
   end
   local has, out, top, stop = 0, 0, 0, 0
   for _, src in ipairs(sources or {}) do
@@ -193,7 +194,8 @@ local function opponentOf(sources, view, clock)
     if type(src.isToppedOut) == "function" and src.panels then
       has = 1
       stop = math.max(stop, (src.stop_time or 0) + (src.pre_stop_time or 0), src.shake_time or 0)
-      if src:isToppedOut() then out = 1 end
+      local above = src.panels[(src.height or 12) + 1]
+      for col = 1, src.width or 6 do local p = above and above[col]; if p and p.isGarbage then out = 1 end end
       for row = src.height or 12, 1, -1 do
         local found = false
         for col = 1, src.width or 6 do
