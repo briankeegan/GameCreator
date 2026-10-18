@@ -2977,12 +2977,15 @@ static int sitRun(const int32_t *st0, int cr, int cc, double t0, double notBefor
 }
 // the line wanted: one that breaks
 static int sitBreaks(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) { (void)sw; (void)n; (void)at; (void)ctx; return res[R_SCOPE] == SC_BROKE ? SIT_TAKE : SIT_GROW; }
+// the line wanted: one that chains (a clear whose falling panels clear again)
+static int sitChains(const int32_t *res, const int32_t *sw, int n, double at, void *ctx) { (void)sw; (void)n; (void)at; (void)ctx; return res[R_CHAIN] >= 2 && (res[R_SCOPE] == SC_BROKE || !ctx) ? SIT_TAKE : SIT_GROW; }
 #ifndef __wasm__
 // GC_PROBE=C: every 10th stack clock from C for GC_PROBE_SPAN frames (300), the soonest break any line reaches on the board as it stands, searched
 // without a work bound (storage only), beside what the decision found -- a diagnostic for the log, never the decision
 static void linesFind(int depth, int breaks);
 static LineC *bestBreak(void);
 static void traceMasks(const int32_t *st);
+static SitAccept probeAccept; static void *probeCtx;
 static void probeBreaks(void) {
   extern char *getenv(const char *); extern int atoi(const char *);
   static int want = -2, span = 300; if (want == -2) { const char *e = getenv("GC_PROBE"), *g = getenv("GC_PROBE_SPAN"); want = e ? atoi(e) : -1; if (g) span = atoi(g); }
@@ -2995,7 +2998,8 @@ static void probeBreaks(void) {
     int32_t sw[2 * LINEMAX]; int n = 0; double at = 0;
     const char *ptv = getenv("GC_PROBE_TIME"); double ptime = ptv ? atoi(ptv) : 0;   // another horizon than the board's: how far is a break at all
     { const char *pb = getenv("GC_PROBE_BIG"); if (pb && atoi(pb)) { sitKeepSlot = 5; sitKeepKey = (u64)clk * 8 + 7; } }   // the kept set's storage: four times a search's
-    int got = searchInTime(st, cur[0], cur[1], t, 0, ptime > 0 ? ptime : timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, 1e9, sitBreaks, 0, sw, &n, &at);
+    { const char *pc = getenv("GC_PROBE_CHAIN"); if (pc && atoi(pc)) { probeAccept = sitChains; probeCtx = atoi(pc) == 2 ? (void *)1 : 0; } }
+    int got = searchInTime(st, cur[0], cur[1], t, 0, ptime > 0 ? ptime : timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, 1e9, probeAccept ? probeAccept : sitBreaks, probeCtx, sw, &n, &at);
     extern int fprintf(void *, const char *, ...); extern void *stderr;
     fprintf(stderr, "PROBE clock %d break %d swaps %d at %.0f left %.0f work %.0f", clk, got, n, at, timeLeft(), paWork - keep);
     for (int q = 0; q < n; q++) fprintf(stderr, " %d,%d", sw[2 * q], sw[2 * q + 1]);
