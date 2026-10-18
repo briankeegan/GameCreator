@@ -113,8 +113,9 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
          k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react;
 }
 // THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own (a
-// list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one with a break in reach
-// once the next block lands, then the one whose board is lost later; then the tier, then each sub-key in turn
+// list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one whose board is lost later,
+// then the one with a break in reach once the next block lands (a death sooner is never taken for readiness); then the tier, then each
+// sub-key in turn
 // (a line whose judging the clock cut is not known to die: it ranks after every board that stands and before every known loss -- a
 // death known is never chosen over a line that may live)
 static double lostOf(const Judge *x) { return x->o.lostAt == FOREVER ? 1e300 : x->o.lostAt == NOT_ASKED ? (x->hold ? -1 : 1e299) : x->o.lostAt; }
@@ -128,8 +129,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
     if (hx != hy) return hx ? 1 : -1;
   }
-  if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
+  if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
   int n = x->t.nsub < y->t.nsub ? x->t.nsub : y->t.nsub;
   for (int q = 0; q < n; q++) if (x->t.sub[q] != y->t.sub[q]) return x->t.sub[q] < y->t.sub[q] ? -1 : 1;
