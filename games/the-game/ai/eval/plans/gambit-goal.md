@@ -54,8 +54,8 @@ engine at level 10, the game's own think and input budgets.
 
 | mode | survived | runs |
 |---|---|---|
-| finish them | accepted at 23 of 24 (the owner: close enough; checked again as the infra changes) | 19, 19, 17, 17, 17, 17, 22, 21 (C), 22, 23, 21, 22, 23 (C in the client), 17, 20, 17, 20, 16, 20 |
-| pressure | 20 of 24 | 0 (no chain begun), 17 (chains begun and continued), 19, 18, 18, 19, 20 |
+| finish them | best 22 of 24 (`18348913d4`, held at `af1693e8a9`); accepted at 23 of 24 earlier (the owner: close enough) | 19, 19, 17, 17, 17, 17, 22, 21 (C), 22, 23, 21, 22, 23 (C in the client), 17, 20, 17, 20, 16, 20, 17, 23, 19, 18, 20, 18, 21, 19, 17, 22, 22 |
+| pressure | best 22 of 24 (`52a35feccd`) | 0 (no chain begun), 17 (chains begun and continued), 19, 18, 18, 19, 20, 20, 19, 18, 15, 22, 21, 16, 19, 19 |
 | big chain | not yet run | |
 | build | not yet run | |
 | switching | not yet built | |
