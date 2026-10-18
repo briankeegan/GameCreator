@@ -136,6 +136,16 @@ static int unforeseenBy(const Arrival *knew, int nk, const Arrival *now, int nn,
 }
 // Garbage due by the frame just reached, received as the server receives it; what lands is taken out of `pend`.
 // (garbage held back lands as the search lands it, search.h runFrame: only while fewer than CAPPED_AT are queued, the earliest due a frame)
+// (a queue fuller than the board holds keeps the MAXINC that drop soonest, as the host loads it: the piece to drop last is let go)
+static void receiveKept(Board *b, const Arrival *a) {
+  Incoming g = { a->g.width, a->g.height, a->g.isChain ? 1 : 0, a->g.isMetal ? 1 : 0, a->g.frameEarned == NUL ? b->stopWatch : a->g.frameEarned, a->g.finalized };
+  if (b->ninc >= MAXINC) {
+    if (orderBefore(&g, &b->inc[0])) return;
+    for (int i = 1; i < b->ninc; i++) b->inc[i - 1] = b->inc[i];
+    b->ninc--;
+  }
+  nb_receive(b, g.width, g.height, g.isChain, g.isMetal, g.frameEarned, g.finalized);
+}
 static void landOn(Board *b, Arrival *pend, int32_t *n) {
   int k = 0, first = 0x7fffffff;
   for (int i = 0; i < *n; i++) if (pend[i].capped && pend[i].at <= b->stopWatch && pend[i].at < first) first = pend[i].at;
@@ -143,7 +153,7 @@ static void landOn(Board *b, Arrival *pend, int32_t *n) {
   for (int i = 0; i < *n; i++) {
     Arrival *a = &pend[i];
     if (a->at > b->stopWatch || (a->capped && !(open && a->at == first))) { pend[k++] = *a; continue; }
-    nb_receive(b, a->g.width, a->g.height, a->g.isChain ? 1 : 0, a->g.isMetal ? 1 : 0, a->g.frameEarned == NUL ? b->stopWatch : a->g.frameEarned, a->g.finalized);
+    receiveKept(b, a);
   }
   *n = k;
 }
@@ -534,7 +544,9 @@ static int frontFrame(void) {
       flog(l); F.loggedDiffer++;
     }
   }
-  if (!diverged && F.haveExpect && revealed(F.expect, t)) { dropAll(); F.st.revealed++; }
+  // (colours dealt into the row not yet risen: no planned swap touches it, so the plan stands -- a board it changes is caught as one
+  // that differs -- and only the question out, asked without them, is asked again)
+  if (!diverged && F.haveExpect && revealed(F.expect, t)) { if (F.pending) { abortTo(F.pId); F.pending = 0; } F.st.revealed++; }
   int32_t off = t->clock - t->stopWatch;
   if (F.nextAt > now && unforeseenBy(F.knew, F.nknew, F.arr, F.narr, F.nextAt - off)) { dropAll(); F.st.unforeseen++; }
   if (F.pending && unforeseenBy(F.pKnew, F.pNknew, F.arr, F.narr, F.pAt - off)) { abortTo(F.pId); F.pending = 0; F.st.reasked++; }
