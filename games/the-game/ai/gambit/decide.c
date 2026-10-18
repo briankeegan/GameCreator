@@ -140,12 +140,21 @@ static int ranked(const Read *R, const Found *S) {
 
 // 5. PLAY: the raise when the opening calls for it, a hold while the raise waits for a busy board, else the first candidate in the one
 // order -- a line's first swap, or the hold
-typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait; } Played;
+typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred; } Played;
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   P.wait = R->low && !R->up && !(n && order[0]->k.extend);
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
   P.line = P.top && !P.top->hold && !P.top->wait ? P.top : 0;
+  // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
+  // does as well with that swap pressed later -- the next decision plans it again, so a first swap pressed early is undone by the next
+  // plan's)
+  if (P.line && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
+    const Judge *L = P.line;
+    Outcome d = outcomeOf(L->k.seq, L->k.nseq, L->settled, 0, L->apAts[1] - rankReact);
+    double dl = lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
+    if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
+  }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
   P.ncands = n;
