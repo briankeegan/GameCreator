@@ -86,14 +86,14 @@ static int ranked(const Read *R, const Found *S) {
   for (int i = 0; i < nc; i++) offered[theCands[i].play]++;
   readyDefer = 1;   // (the proposers above ask readiness whole; the judging below ranks first)
   for (int i = 0; i < nc; i++) if (judgeCand(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
-  // (the line in progress: first of its tier, whether its next step is due now or must wait for the board -- one that waits is held
-  // until then, its place kept, so a fresh line no better than it never takes it over half done)
+  // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
+  // until then -- it ranks with the hold)
   Cand ck; int cwait = 0;
   if (R->aims.n && carriedCand(R, &ck, &cwait) && judgeCand(R, &ck, &theJudged[n])) {
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
-    for (int q = imin(cj->t.nsub, MAXSUB - 1); q > 0; q--) cj->t.sub[q] = cj->t.sub[q - 1];
-    cj->t.sub[0] = -1e300; cj->t.nsub = imin(cj->t.nsub + 1, MAXSUB);
+    if (cwait) { cj->t.tier = imax(cj->t.tier, HOLD_TIER); cj->t.nsub = 1; cj->t.sub[0] = -1; }
+    else { for (int q = imin(cj->t.nsub, MAXSUB - 1); q > 0; q--) cj->t.sub[q] = cj->t.sub[q - 1]; cj->t.sub[0] = -1e300; cj->t.nsub = imin(cj->t.nsub + 1, MAXSUB); }
     order[n] = cj; n++; carriedJ = cj;
   }
   // (the hold: never while the chain the board makes alone runs past the list)
