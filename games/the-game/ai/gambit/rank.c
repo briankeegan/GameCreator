@@ -91,6 +91,11 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
     int brk = R->under && m.broke > 0;
     J->t.tier = 0; J->t.nsub = 3; J->t.sub[0] = R->under ? (brk ? 0 : 1) : 0; J->t.sub[1] = aim >= 0 ? aim : 99; J->t.sub[2] = -j->dropAt;
   }
+  // (under garbage, of two breaks, the one that leaves a break to build first: the list orders the breaks the board can afford)
+  if (R->under && m.broke > 0 && oc.nextBuild >= 0 && J->t.nsub < MAXSUB) {
+    for (int q = J->t.nsub; q > 0; q--) J->t.sub[q] = J->t.sub[q - 1];
+    J->t.sub[0] = oc.nextBuild ? 0 : 1; J->t.nsub++;
+  }
   J->settled = st; J->aim = aim; J->o = oc;
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;
   if (j) { J->apNats = j->nats; for (int i = 0; i < j->nats; i++) J->apAts[i] = j->ats[i]; }

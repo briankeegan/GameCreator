@@ -18,6 +18,7 @@ typedef struct {
 typedef struct {
   int32_t dead, lostAt, lives, fits, ready, late;
   int32_t spent;   // under the material floor (outcomeOf)
+  int32_t nextBuild; // a line that breaks: the board it leaves has a break to build, or no garbage left (outcomeOf); -1 not asked
   Judged j;
 } Outcome;
 
@@ -101,6 +102,9 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.dead = 0; o.ready = ready;
     o.lives = breaks || !coming ? (stands || ready == 1) : (ready == 1 || (ready == NOT_ASKED && stands));
     o.fits = fitsList(&theList, o.j.made, &o.j) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
+    // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
+    o.nextBuild = -1;
+    if (breaks && !waitTo) { const Board *eb = ensureBoard(judgeCtx, o.j.endNode); o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1; }
     // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board had
     // one has spent what the next break needs -- it is lost the frame it is done)
     if (n > 0 && !breaks && !stands && !waitTo && garbageOn(decQ.b)) {

@@ -54,10 +54,10 @@ engine at level 10, the game's own think and input budgets.
 
 | mode | survived | runs |
 |---|---|---|
-| finish them | **24/24 twice** (`5bacb738d0`, `51b51405f5`) | ... 24, 18, 24, 18, 17, 18, 18, 21, 21, 16 |
-| pressure | best 22 of 24 (`52a35feccd`, `5bacb738d0`) | ... 22, 18, 18, 19, 13, 14, 15, 17, 15, 15, 15 |
-| big chain | best 18 of 24 (`f13a5c5966`) | 13, 17, 16, 17, 15, 17, 16, 18, 12 |
-| build | best 19 of 24 (`5bacb738d0`, `db1f1dce3c`) | 19, 17, 19, 16, 14, 15 |
+| finish them | **24/24 twice** (`5bacb738d0`, `51b51405f5`) | ... 24, 18, 24, 18, 17, 18, 18, 21, 21, 16, 17, 19, 18, 16, 19, 20, 18 |
+| pressure | best 22 of 24 (`52a35feccd`, `5bacb738d0`) | ... 22, 18, 18, 19, 13, 14, 15, 17, 15, 15, 15, 17, 16, 18, 13, 18, 20, 19 |
+| big chain | best 18 of 24 (`f13a5c5966`, `2046956eb5`, `01adb88203`) | 13, 17, 16, 17, 15, 17, 16, 18, 12, 14, 14, 17, 14, 16, 18, 18 |
+| build | best 23 of 24 (`01adb88203`) | 19, 17, 19, 16, 14, 15, 12, 18, 16, 16, 16, 18, 20, 23 |
 | switching | not yet built | |
 
 ## What the losses share
@@ -68,6 +68,13 @@ engine at level 10, the game's own think and input budgets.
   beside the garbage a break is made from -- drains between blocks: nothing lives (a queue that long is never all ready for), so the
   later loss ranks first, and the lines that lose later are survival clears that spend 3-6 panels each (49 to 5 in a thousand frames).
   The block lands on nothing to break it with (`breakNear`: 53 of 55 boards before those losses had no break to build).
+- **The defence**: a break made by one clear (no chain) is within every list, and under garbage every mode's planner also searches the
+  combos of four or more that break -- the step check (`stepFitsAt`) and the line check (`fitsList`) take it alike. combo_storm in the
+  chain modes went from 1-3 of 8 to 4-8 of 8.
+- **Of two lines that do not live, a break first** while it outlives the next decision: the panels it converts are what the next break
+  is made from.
+- **Just in time**: a line whose next swap is far off is held while it does as well with its first swap pressed later (`deferred=1`),
+  so each decision's plan no longer undoes the last one's first swap.
 - **Chain building leaves a tower** (heights like 5,7,12,11,8,6 with 49 panels): the board is topped by its own stack with room for a
   level one. `levelLine` walks it level, judged whole.
 - Tried and taken out, each below the runs above: the judge asking past the stop a line ends on; the chain stopper; the floor for the
