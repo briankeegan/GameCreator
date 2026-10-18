@@ -20,7 +20,7 @@ typedef struct {
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
-  int32_t met;         // the entry of the list (with the defence's) the judged line meets, -1 none (entryOf)
+  int32_t met;         // the entry of the list (with the defence's) the judged line meets, -1 none (rules.c metOf)
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, NDROPS };
@@ -75,7 +75,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
-  int entry = entryOf(&R->aims, m);
+  int entry = metOf(&R->aims, m);
   J->met = j ? entry : -1;
   if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
   // (in time: the line's last swap begun by the deadline -- the frame the judge pressed it; the search's own word only when the judge
@@ -174,7 +174,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx) { int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact; if (bx != by) return bx ? -1 : 1; }
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
-  // (THE LIST, AMONG LINES THAT SURVIVE ALIKE: within it before outside it, then the earlier entry the judged line meets (not the one it was found for) -- before the kind of line, so a
+  // (THE LIST, AMONG LINES THAT SURVIVE ALIKE: within it before outside it, then the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf; not the one it was found for) -- before the kind of line, so a
   // line that keeps a topped board held, or a defence, is ordered by the list like every other. Under garbage every entry breaks)
   if (!lx && x->outside != y->outside) return x->outside ? 1 : -1;
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }

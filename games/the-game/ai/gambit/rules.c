@@ -50,10 +50,11 @@ static int fits(const List *L, Made m) {
   for (int i = 0; i < L->n; i++) { Aim plain = L->aim[i]; plain.brk = -1; if (meets(&plain, m)) return 1; }
   return 0;
 }
-// A MOVE'S PLACE IN THE LIST: the first entry its clears match (its break aside); -1 for one that clears nothing, or a plain three
-static int entryOf(const List *L, Made m) {
+// A MOVE'S PLACE IN THE LIST: the first entry it meets, its break as the entry asks it (under garbage every entry asks one), as the
+// searches ask it (meets); -1 for one that clears nothing or meets none. The rank's one question of the list's order.
+static int metOf(const List *L, Made m) {
   if (!(m.combo > 0 || m.chain > 0)) return -1;
-  for (int i = 0; i < L->n; i++) { Aim plain = L->aim[i]; plain.brk = -1; if (meets(&plain, m)) return i; }
+  for (int i = 0; i < L->n; i++) if (meets(&L->aim[i], m)) return i;
   return -1;
 }
 // THE LIST FOR ONE STEP ON THE ENGINE (JUDGE.stepFits): each of its own clears fits as a clear of its own, and the chain it reaches
@@ -88,7 +89,7 @@ EXPORT(gb_list) int gb_list(int n) {
 }
 // (for a host's check: what fits and meets say of a made line)
 EXPORT(gb_fits) int gb_fits(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return fits(&theList, m); }
-EXPORT(gb_entry_of) int gb_entry_of(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return entryOf(&theList, m); }
+EXPORT(gb_entry_of) int gb_entry_of(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return metOf(&theList, m); }
 EXPORT(gb_meets) int gb_meets(int i, int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return i >= 0 && i < theList.n && meets(&theList.aim[i], m); }
 
 // A SWAP BACK: the same two panels the last swap swapped, which puts the board back as it was -- no play,
