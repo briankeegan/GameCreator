@@ -127,6 +127,7 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 // death known is never chosen over a line that may live)
 // (a line ready for the next block is lost where its readiness break leads, when that is later; a hold is not credited for the break
 // it waits for -- that break is a candidate of its own)
+static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
 static double lostOf(const Judge *x) {
   double own = lostAtOf(x->o.lostAt, x->hold);
@@ -144,6 +145,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
     if (hx != hy) return hx ? 1 : -1;
   }
+  // (of two that do not live, one that breaks garbage before one that does not, while it outlives the next decision: the panels a break
+  // converts are what the next break is made from, and a later loss bought with clears spends them)
+  if (!lx) { int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact; if (bx != by) return bx ? -1 : 1; }
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
