@@ -250,6 +250,7 @@ static void dropAll(void) {
 }
 
 // The board at `at`, from `b` now, pressing what is planned till then, and the garbage still to land after it (from).
+static int32_t predictErr;   // (the engine's error flags the last prediction failed on, for the log)
 static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdStarted, const Arrival *from, int32_t nfrom, Board *out,
                    int32_t *hL, int32_t *hS) {
   copyBoard(out, b);
@@ -267,7 +268,7 @@ static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdSta
     out->input = bits & ~IN_SWAP;
     if (bits & IN_SWAP) out->pressSwap = 1;
     run(out);
-    if (out->err) return 0;
+    if (out->err) { predictErr = out->err; return 0; }
     landOn(out, F.prPend, &F.nprPend);
   }
   *hL = hl; *hS = hs;
@@ -628,7 +629,7 @@ static void afterFrame(int32_t bits) {
   }
   if (!ok || F.pr->gameOverClock > 0) {
     if (F.loggedAskNow < 40) {
-      char l[160]; snprintf(l, sizeof l, "ASKNOW clock %d: the board for frame %d %s", now, at, !ok ? "could not be predicted" : "is lost by then");
+      char l[200]; snprintf(l, sizeof l, "ASKNOW clock %d: the board for frame %d %s (engine error %d, queued %d)", now, at, !ok ? "could not be predicted" : "is lost by then", predictErr, next->ninc);
       flog(l); F.loggedAskNow++;
     }
     at = now + 1; copyBoard(F.pr, next); hl = F.holdLeft; hs = F.holdStarted;

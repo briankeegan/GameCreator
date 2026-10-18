@@ -115,7 +115,9 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 // THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own (a
 // list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one with a break in reach
 // once the next block lands, then the one whose board is lost later; then the tier, then each sub-key in turn
-static double lostOf(const Judge *x) { return x->o.lostAt == FOREVER ? 1e300 : x->o.lostAt == NOT_ASKED ? -1 : x->o.lostAt; }
+// (a line whose judging the clock cut is not known to die: it ranks after every board that stands and before every known loss -- a
+// death known is never chosen over a line that may live)
+static double lostOf(const Judge *x) { return x->o.lostAt == FOREVER ? 1e300 : x->o.lostAt == NOT_ASKED ? (x->hold ? -1 : 1e299) : x->o.lostAt; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   if (lx != ly) return lx ? -1 : 1;
