@@ -8,6 +8,10 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
+// THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
+// board every line ends on
+static Keep floorKeep; static int32_t floorKeepOn;
+static int decisionFloor(const Board *b) { return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1; }
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -29,6 +33,7 @@ static int readBoard_(Read *R) {
   const Rule *rule = &theTables.r[ri];
   R->rule = ri;
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on;
+  floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
   R->aims = R->list; R->listAims = R->list;
   R->by = deadlineOf(F, rule);
@@ -46,6 +51,7 @@ static int readBoard_(Read *R) {
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)
   R->topped = !!F->v[FACT_US_TOPPED]; R->breakWaits = !!F->v[FACT_US_BREAKWAITS];
+  defendStop = R->topped && !R->under;   // (judge.c defends: topped with no garbage, the clear that buys stop time is the defence)
   // (SAVING UP PANELS, as the raise holds a band: begun topped with four rows' worth of panels or fewer, and kept until the board holds
   // eight rows' worth and the panels sure to make the list's largest combo ((size - 1) x colours and one); then it spends again)
   {
@@ -83,7 +89,30 @@ static int readBoard_(Read *R) {
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered -- the hold among them -- judged by its outcome and put in the one order. With
 // none that lives and time left, the survival search proposes its line too.
 #define MAXCANDS 128
-static Cand theCands[MAXCANDS];
+#define PROPOSED (2 * MAXCANDS)   // what the proposers may offer; past MAXCANDS, every play keeps its share (fairShare)
+static Cand theCands[PROPOSED];
+static int32_t cappedN;   // the candidates left unjudged past MAXCANDS, a decision (the log's capped=)
+// EVERY PROPOSER ITS SHARE: past MAXCANDS, the candidates are taken a play at a time -- each play's first, then each play's second, in the
+// order each offered them -- so a proposer offering last is never the one cut; how many are left, counted
+static int fairShare(Cand *c, int n, int cap) {
+  cappedN = n > cap ? n - cap : 0;
+  if (n <= cap) return n;
+  static Cand kept[MAXCANDS]; static uint8_t taken[PROPOSED];
+  memset(taken, 0, sizeof taken);
+  int k = 0;
+  while (k < cap) {   // (a round: each play's next)
+    int seen[NPLAYS] = { 0 }, any = 0;
+    for (int i = 0; i < n && k < cap; i++) {
+      if (taken[i]) continue;
+      int p = c[i].play;
+      if (seen[p]++ != 0) continue;
+      kept[k++] = c[i]; taken[i] = 1; any = 1;
+    }
+    if (!any) break;
+  }
+  for (int i = 0; i < k; i++) c[i] = kept[i];
+  return k;
+}
 static Judge theJudged[MAXCANDS + 4], *order[MAXCANDS + 4];
 static int32_t phaseMs[3];
 static int carriedCand(const Read *R, Cand *k, int *wait);
@@ -92,7 +121,7 @@ static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered);
   carriedJ = 0; unbroken.set = 0;
   double t0 = nowMs();
-  int nc = proposeAll(R, S, theCands, MAXCANDS), n = 0;
+  int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
   double t1 = nowMs();
   for (int i = 0; i < nc; i++) offered[theCands[i].play]++;
   readyDefer = 1;   // (the proposers above ask readiness whole; the judging below ranks first)
@@ -233,20 +262,17 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
   int32_t rest[MAXLINE], nrest = C->nrest - skip;
   for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
-  Made x; int32_t done, fire, nats = 0, ats[MAXLINE];
-  if (C->settled) {
-    Replayed rp;
-    if (!replay(&decQ, rest, nrest, 1, &rp)) { carryDrop = 2; return 0; }
-    *wait = rp.wait > 1;
-    x = (Made){ rp.combo, rp.chain, rp.broke, rp.cells }; done = rp.done; fire = rp.fire; nats = rp.nats; for (int i = 0; i < nats; i++) ats[i] = rp.ats[i];
-  } else {
-    JudgeOpts jo = { 0, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
-    Judged j;
-    judge(&decQ, rest, nrest, &jo, &j);
-    if (j.dead || j.nats < nrest) { carryDrop = 2; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
-    // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
-    x = (Made){ j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 }; done = j.done; fire = j.fire; nats = j.nats; for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
-  }
+  // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
+  // settled line waits while the board still moves)
+  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  Judged j;
+  judge(&decQ, rest, nrest, &jo, &j);
+  if (j.dead || j.nats < nrest) { carryDrop = 2; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
+  *wait = C->settled && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
+  // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
+  Made x = { j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
+  int32_t done = j.done, fire = j.fire, nats = j.nats, ats[MAXLINE];
+  for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
   if (C->broke && !(x.broke > 0)) { carryDrop = 3; return 0; }
   if (C->hasAim && !meets(&C->aim, x)) { carryDrop = 4; return 0; }
   int aim = -1;

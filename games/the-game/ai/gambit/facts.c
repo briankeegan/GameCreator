@@ -58,18 +58,10 @@ static void lowestGroupTop(const Board *b, int H, int32_t *top, int32_t *onScree
 }
 // THE FACTS OF OUR BOARD: the garbage on its way as the question gives it (arrivals), topped as the game says
 static void factsOf(const Board *b, const Arr *arr, int narr, int topped, FactSet *F) {
-  int H = b->nrows - 1, top = 0, material = 0, contact = 0, garb = 0, peaks[W + 1];
-  for (int c = 1; c <= W; c++) {
-    int pk = 0, g = 0;
-    for (int r = 1; r <= H; r++) {
-      int32_t v = cellOfB(b, r, c);
-      if (v == -1) { if (!g) g = r; garb = 1; }
-      else if (v > 0 && !g) { pk = r; material++; }
-      if (v != 0 && r > top) top = r;
-    }
-    peaks[c] = pk;
-    if (g && pk == g - 1) contact++;
-  }
+  // (the board's shape, the one reading of it: search/bits.c bitsShape)
+  static Bits FB; static BoardShape FS;
+  bitsOf(b, &FB); bitsShape(&FB, &FS);
+  int H = b->nrows - 1, top = FS.top, material = FS.material, contact = FS.contact, garb = FS.garbage, *peaks = FS.peak;
   int32_t stop = b->stopTime + b->preStopTime, coming = 0, next = NUL;
   for (int i = 0; i < narr; i++) { coming += arr[i].height; if (next == NUL || arr[i].at < next) next = arr[i].at; }
   // (a block queued for the board drops once the stop time runs out: its landing is the stop time left)
@@ -127,20 +119,12 @@ static int32_t deadlineOf(const FactSet *F, const Rule *r) {
   return r->byFrames >= 0 ? r->byFrames : NOT_ASKED;
 }
 
-// ---- THE FLOOR (keeps, gridFacts): a line's board keeps it -- unless the line breaks garbage
+// ---- THE FLOOR (keeps, gridFacts): a line's board keeps it -- unless the line breaks garbage; its height, material and evenness the
+// board's shape (search/bits.c bitsShape), as the facts read them
 static void endFacts(const Board *b, int32_t *height, int32_t *material, int32_t *evenness) {
-  int R = gridLen(b), top = 0, mat = 0, hi = 0, lo = 1 << 30;
-  for (int c = 1; c <= W; c++) {
-    int pk = 0, g = 0;
-    for (int r = 1; r < R - 1; r++) {
-      int32_t v = cellAt(b, r, c), garbage = v >= 8 || v < 0;
-      if (garbage) { if (!g) g = r; }
-      else if (v > 0 && !g) { pk = r; mat++; }
-      if (v && r > top) top = r;
-    }
-    if (pk > hi) hi = pk; if (pk < lo) lo = pk;
-  }
-  *height = top; *material = mat; *evenness = hi - lo;
+  static Bits EB; static BoardShape ES;
+  bitsOf(b, &EB); bitsShape(&EB, &ES);
+  *height = ES.top; *material = ES.material; *evenness = ES.even;
 }
 static int keepsFloor(const Keep *k, const Board *b, int32_t broke) {
   if (!k || !k->on) return 1;
@@ -207,7 +191,7 @@ static Tier tierOf(int play, const Xs *x, int aim, int under, int enemyOut, int 
   if (play == PLAY_CLEAR) { t.tier = 6; SUB(-stop); return t; }
   if (aim >= 0 && !under) { t.tier = 2; SUB(aim, -x->dropAt, x->done); t.nlist = 1; return t; }
   if (clears && (buys || cells > 0) && (!under || (topped && buys))) { t.tier = 3; SUB(-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -x->near); return t; }
-  if (!clears) { t.tier = 4; SUB(play == PLAY_READY ? 0 : play == PLAY_TOWARD ? 1 : play == PLAY_LEVEL ? 2 : play == PLAY_SETUP ? 3 : 4); return t; }
+  if (!clears) { t.tier = 4; SUB(play == PLAY_READY ? 0 : play == PLAY_TOWARD ? 1 : play == PLAY_SETUP ? 2 : play == PLAY_LEVEL ? 4 : 3); return t; }   // (levelling last)
   t.tier = 6; SUB(-stop);
   return t;
   #undef SUB

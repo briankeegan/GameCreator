@@ -42,25 +42,13 @@ static int32_t connectedOf(const Board *b) {
   }
   return n;
 }
-// THE SHAPE of a settled board: its top row, evenness (tallest panel column less lowest), hollow (empty cells under garbage)
+// THE SHAPE of a settled board: its top row, evenness, hollow (empty cells under garbage) -- the board's shape as the facts read it
+// (search/bits.c bitsShape)
 typedef struct { int32_t top, even, hollow; } Shape;
 static Shape shapeOf(const Board *b) {
-  int R = gridLen(b), top = 0, hollow = 0, peaks[W + 1];
-  for (int c = 1; c <= W; c++) {
-    int pk = 0, seenG = 0;
-    for (int r = R - 2; r >= 1; r--) {
-      int32_t v = cellAt(b, r, c);
-      if (v >= 8 || v < 0) seenG = 1;
-      else if (!v) { if (seenG) hollow++; }
-      else if (!pk && !seenG) pk = r;
-      if (v && r > top) top = r;
-    }
-    if (!pk) for (int r = R - 2; r >= 1; r--) { int32_t v2 = cellAt(b, r, c); if (v2 > 0 && v2 < 8) { pk = r; break; } }
-    peaks[c] = pk;
-  }
-  int hi = peaks[1], lo = peaks[1];
-  for (int c = 2; c <= W; c++) { if (peaks[c] > hi) hi = peaks[c]; if (peaks[c] < lo) lo = peaks[c]; }
-  Shape s = { top, hi - lo, hollow };
+  static Bits PB; static BoardShape PS;
+  bitsOf(b, &PB); bitsShape(&PB, &PS);
+  Shape s = { PS.top, PS.even, PS.hollow };
   return s;
 }
 // the garbage a step's clears send: each clear's combo garbage and a slab for every link past the first (attacker sent)

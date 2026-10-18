@@ -23,6 +23,8 @@ typedef struct {
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t met;         // the entry of the list (with the defence's) the judged line meets, -1 none (rules.c metOf)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
+  int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
+  double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
   int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
@@ -80,12 +82,13 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
-  int x0floor = k->x.floor;
   int entry = metOf(&R->aims, m);
   J->met = j ? entry : -1;
   J->saving = R->saving && R->under && m.broke > 0;
-  J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (x0floor == 0) : -1;
-  if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
+  // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
+  J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;
+  // (the entry a line is ranked for is the one the judged line meets; the search's word only where the judge could not play it out)
+  if (j) aim = entry; else if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
   // (in time: the line's last swap begun by the deadline -- the frame the judge pressed it; the search's own word only when the judge
   // could not play the line out)
   int32_t fire = j && j->fire >= 0 ? j->fire : (k->xFire >= 0 ? k->xFire : k->xDone);
@@ -101,6 +104,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   k->play = play;
   // (ranked on the judge's count and time)
   Xs tx = x;
+  tx.floor = oc.floorKept >= 0 ? oc.floorKept : tx.floor;   // (the floor the judged board keeps, the claim only where it was not asked)
   tx.combo = m.combo; tx.chain = m.chain; tx.broke = m.broke; tx.done = j ? j->done : (k->xDone >= 0 ? k->xDone : 0); tx.dropAt = j ? j->dropAt : 0;
   J->t = tierOf(play, &tx, aim, R->under, R->enemyTopped, R->topped, R->breakWaits);
   // (topped out, the stop time and the shake are the board's life: a line that keeps it held past what is left now comes first -- under
@@ -156,19 +160,42 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
 static double lostOf(const Judge *x) {
+  if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
   if (x->hold || x->extLost == NOT_ASKED) return own;
   double ext = lostAtOf(x->extLost, 0);
   return ext > own ? ext : own;
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
-// is lower for the line in progress, waitMax), before the hold itself; the line in progress whose next step is due now is first of its
-// tier. The only place a line's tier is read otherwise than tierOf made it.
+// is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding
+// (idle) right after the hold; the line in progress whose next step is due now is first of its tier. The only place a line's tier is read otherwise than tierOf made it.
 static Tier tierView(const Judge *J) {
   Tier t = J->t;
   if (J->wait && !J->hold) { t.tier = J->waitMax ? imax(t.tier, HOLD_TIER) : HOLD_TIER; t.nsub = 1; t.sub[0] = -1; }
+  else if (J->idle) { t.tier = HOLD_TIER; t.nsub = 1; t.sub[0] = 1; }
   else if (J->first) { for (int q = imin(t.nsub, MAXSUB - 1); q > 0; q--) t.sub[q] = t.sub[q - 1]; t.sub[0] = -1e300; t.nsub = imin(t.nsub + 1, MAXSUB); }
   return t;
+}
+// A MOVE MUST BEAT DOING NOTHING: a line that clears nothing comes before the hold only when the engine says it does better than holding
+// -- a later loss, more life by its panels, a nearer break, or ready for the next block where the hold is not. Being offered is never a
+// reason to be played. (markIdle, before every sort of the order: idle lines rank after the hold, tierView)
+static int clearsNothing(const Judge *J) { return !J->hold && !(J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0); }
+static int beatsHold(const Judge *L, const Judge *H) {
+  int32_t l = L->o.lostAt, h = H->o.lostAt;
+  if (l != NOT_ASKED && !L->o.dead && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
+  if (L->o.lifeLeft > H->o.lifeLeft) return 1;
+  if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
+  if (L->o.ready == 1 && H->o.ready != 1) return 1;
+  if (L->readyNext == 1 && H->readyNext != NOT_ASKED && H->readyNext != 1) return 1;
+  return 0;
+}
+static double lostOf(const Judge *x);
+static void markIdle(Judge **a, int n) {
+  const Judge *H = 0;
+  for (int i = 0; i < n && !H; i++) if (a[i]->hold) H = a[i];
+  for (int i = 0; i < n; i++) a[i]->idle = 0;
+  double holdLost = H ? lostOf(H) : 0;
+  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
@@ -213,6 +240,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
 // sorted stably by the one order
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
+  markIdle(a, n);
   for (int w = 1; w < n; w *= 2)
     for (int lo = 0; lo < n; lo += 2 * w) {
       int mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n, i = lo, j = mid, k = lo;

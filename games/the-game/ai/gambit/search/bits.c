@@ -6,17 +6,18 @@
 #define ALLCOLS ((unsigned)((1u << (W + 1)) - 2u))   // bits 1..W
 #define BITCOLOURS 30                                 // the colours a board shows (an unseen one, pa.c UNSEEN_COLOUR, is 30 and up)
 typedef struct {
-  int32_t top, rows;                                  // top: the rows a break is looked for in (1..height); rows: every row read
+  int32_t top, rows, all;                             // top: the rows a break is looked for in (1..height); rows: those and the one over
+                                                      // them; all: every row the board holds (garbage above the screen)
   uint8_t pan[MAXROWS + 2], gar[MAXROWS + 2], held[MAXROWS + 2];
   uint8_t col[BITCOLOURS][MAXROWS + 2];
   int32_t code[MAXROWS + 2][W + 2];                   // each cell as gridCell reads it (0 empty, < 0 garbage, a colour)
   int32_t gid[MAXROWS + 2][W + 2];                    // a garbage cell's block (GARBAGEID)
 } Bits;
 static void bitsOf(const Board *b, Bits *B) {
-  B->top = b->height; B->rows = b->height + 1;
+  B->top = b->height; B->rows = b->height + 1; B->all = imax(B->rows, imin(b->nrows - 1, MAXROWS));
   memset(B->pan, 0, sizeof B->pan); memset(B->gar, 0, sizeof B->gar); memset(B->held, 0, sizeof B->held); memset(B->col, 0, sizeof B->col);
-  for (int r = 0; r <= B->rows + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) { B->code[r][c] = 0; B->gid[r][c] = 0; }
-  for (int r = 1; r <= B->rows; r++) for (int c = 1; c <= W; c++) {
+  for (int r = 0; r <= B->all + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) { B->code[r][c] = 0; B->gid[r][c] = 0; }
+  for (int r = 1; r <= B->all; r++) for (int c = 1; c <= W; c++) {
     int32_t v = r < b->nrows ? gridCell(b, r, c) : 0;
     B->code[r][c] = v;
     if (v > 0) { B->pan[r] |= (uint8_t)(1u << c); if (v < BITCOLOURS) B->col[v][r] |= (uint8_t)(1u << c); }
@@ -61,4 +62,27 @@ static int bitsLowestG(const Bits *B) { for (int r = 1; r <= B->rows; r++) if (B
 static unsigned bitsStarts(const Bits *B, int r) {
   unsigned g = B->gar[r], up = r + 1 <= B->top ? B->gar[r + 1] : 0, dn = r - 1 >= 1 ? B->gar[r - 1] : 0;
   return B->pan[r] & (up | dn | ((g << 1) & ALLCOLS) | (g >> 1)) & ALLCOLS;
+}
+// THE BOARD'S SHAPE, the one reading of it (the facts, the keep floor, the planner's and the levelling's shape): each column's first
+// garbage from the floor and its top panel under it (a column with none: its top panel); the stack's top row (a panel or garbage); the
+// material -- the panels under each column's first garbage, what a break is built from; evenness -- the highest of those tops less
+// the lowest; hollow -- the empty cells under garbage; contact -- the columns whose top panel touches their garbage. Garbage is the
+// game's flag (gridCell): a shock panel or a colour not shown is a panel.
+typedef struct { int32_t top, material, even, hollow, contact, garbage, peak[W + 1], firstG[W + 1]; } BoardShape;
+static void bitsShape(const Bits *B, BoardShape *S) {
+  memset(S, 0, sizeof *S);
+  int hi = 0, lo = 1 << 30;
+  for (int c = 1; c <= W; c++) {
+    int g = 0, pk = 0, hg = 0;
+    for (int r = 1; r <= B->all; r++) {
+      if (B->gar[r] >> c & 1) { if (!g) g = r; hg = r; S->garbage = 1; }
+      else if (B->pan[r] >> c & 1) { if (!g) { pk = r; S->material++; } }
+      if (((B->gar[r] | B->pan[r]) >> c & 1) && r > S->top) S->top = r;
+    }
+    for (int r = 1; r < hg; r++) if (!((B->gar[r] | B->pan[r]) >> c & 1)) S->hollow++;
+    S->peak[c] = pk; S->firstG[c] = g;
+    if (g && pk == g - 1) S->contact++;
+    if (pk > hi) hi = pk; if (pk < lo) lo = pk;
+  }
+  S->even = hi - lo;
 }

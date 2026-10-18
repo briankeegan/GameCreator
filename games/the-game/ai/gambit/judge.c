@@ -62,7 +62,13 @@ static int listWantsLonger(const List *L, int32_t chain) {
 // THE DEFENCE: a break made by one clear -- no chain, as the game counts it (chainAll: the chain the board is in) -- is the board's own
 // defence, never an attack: within every list. The one rule; the step check (stepFitsAt) and the line's (outcome.c fitsList) ask it, and
 // the list under garbage carries its search side (decide.c read: the defence's entry).
-static int defends(Made m, int32_t chainAll) { return m.broke > 0 && chainOf(m) <= 1 && chainAll <= 1; }
+// (and topped with no garbage on the board -- defendStop, set as the decision reads the board -- the clear that buys stop time, a combo of
+// four or more or a chain, is the board's defence the same way: it is what keeps a topped stack alive)
+static int32_t defendStop;
+static int defends(Made m, int32_t chainAll) {
+  if (m.broke > 0 && chainOf(m) <= 1 && chainAll <= 1) return 1;
+  return defendStop && (m.combo >= 4 || imax(chainOf(m), chainAll) >= 2);
+}
 // A CHAIN BEGUN TOWARD THE LIST: a chain the list wants longer than (within MAXCHAIN) is a beginning of one it asks for -- a chain is
 // carried on by the decisions after (extend), so one short of the ask is on its way to it, not outside it. A step's (stepFitsAt) and a
 // whole line's (outcome.c fitsList) the same.
@@ -76,7 +82,9 @@ static int stepFitsAt(Ctx *x, int i) {
   int32_t own[MAXCOMBOS], n = 0;
   for (int j = 0; j < s.n; j++) if (!(s.chainAt[j] > 1)) own[n++] = s.size[j];
   int32_t chain = chainOfStats(&s);
-  if (defends((Made){ 0, chain, s.broke, 0 }, chain)) return 1;   // (the defence)
+  int32_t biggest = 0;
+  for (int k = 0; k < n; k++) if (own[k] > biggest) biggest = own[k];
+  if (defends((Made){ biggest, chain, s.broke, 0 }, chain)) return 1;   // (the defence)
   if (stepFits(&theList, own, n, chain)) return 1;
   Board *b = ensureBoard(x, i);
   if (!b || !(b->chainCounter > 0 || hasChainingPanels(b) || hasActivePanels(b))) return 0;
@@ -276,39 +284,4 @@ static int firstClear(const Question *q, const int32_t *seq, int nseq) {
     n = out;
   }
   return -1;
-}
-// A LINE PLAYED ON (the rest of a line begun): each step played to the board's settle, as the planner plays a line,
-// the next step pressed once the board has settled from the last (settleFirst); what its last step makes, or 0 when a step is not
-// legal or the board dies. wait: the frames until the board has settled first.
-typedef struct { int32_t combo, chain, broke, cells, earned, done, fire, wait, nats, ats[MAXLINE]; } Replayed;
-static int replay(const Question *q, const int32_t *seq, int nseq, int settleFirst, Replayed *r) {
-  memset(r, 0, sizeof *r);
-  Ctx *x = judgeCtx = ctxOf(judgeCtx);
-  int root = rootOf(x, q), n = root, got = 0;
-  if (root < 0) return 0;
-  int baseOut = settleOf(x, root);
-  int32_t base = 0;
-  Stats bs;
-  if (liveNode(x, baseOut) && statsOf(x, baseOut, &bs) && bs.cleared > 0) {
-    int32_t cells = 0, ch = chainOfStats(&bs);
-    for (int j = 0; j < bs.n; j++) cells += comboCells(bs.size[j]);
-    base = cells + (ch > 1 ? W * (ch - 1) : 0);
-  }
-  if (settleFirst) { if (!liveNode(x, baseOut)) return 0; n = baseOut; r->wait = NODE(x, baseOut)->t; }
-  for (int k = 0; k < nseq; k++) {
-    if (!legalAt(x, n, CR(seq[k]), CC(seq[k]))) break;
-    if (r->nats < MAXLINE) r->ats[r->nats++] = NODE(x, n)->t;
-    int out = step(x, n, MK_SETTLE, CR(seq[k]), CC(seq[k]), 0);
-    if (!liveNode(x, out)) break;
-    if (k == nseq - 1) {
-      Stats st; statsOf(x, out, &st);
-      int32_t ch = chainOfStats(&st), cells = 0;
-      for (int j = 0; j < st.n; j++) cells += comboCells(st.size[j]);
-      if (ch > 1) cells += W * (ch - 1);
-      r->combo = biggestOf(&st); r->chain = ch; r->broke = st.broke; r->cells = imax(0, cells - base); r->earned = st.earned;
-      r->done = NODE(x, out)->t; r->fire = r->ats[k]; got = 1;
-    }
-    n = out;
-  }
-  return got;
 }

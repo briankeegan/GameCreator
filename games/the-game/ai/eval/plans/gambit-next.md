@@ -187,6 +187,19 @@ the push, on Gambit's own recorded decisions, which change and why.
 8. **One reading of shape** on the bits: height, evenness and hollow, one function each, read by the facts, the planner's shape and
    the tier -- the definitions that differ made one, the one the facts use. The decisions that change: where two evennesses disagreed.
 
+### 6b and 6c as built
+
+- In: 0 (a move must beat doing nothing -- a no-clear line that is not shown better than holding, an unknown included, ranks right
+  after the hold; levelling last among them), 1 and 8 as one shape (`search/bits.c bitsShape`: the facts, the keep floor, the planner
+  and the levelling read it; garbage is the game's flag), 3 (`decide.c fairShare`, `capped=`), 4 (`judge.c defends`, topped with no
+  garbage too), 5 (`rank.c tierView`), 6 (`outcome.c floorKept`; the judged entry), 7 (the judge plays the carried line; `replay` gone),
+  11 (one `TAP_GAP`, `REPEAT_FIRST`, `HOLDTIGHT`; one walk leg, `core/nodes.h walkLeg`, for the search and the frame loop).
+- The replay: the restructuring changed none of 207 decisions; the batch moved 55, every one a level that only tied the hold, now
+  the hold.
+- Not in, each with what brings it back: 9 (an outcome keeping its end board) and 10 (the board readers charged) wait for a
+  calibration of a board reader's work against an engine frame -- no number is typed for it; `front.c`'s garbage timings are the
+  attack engine's (the Lua's staging), not this engine's, and stay until the telegraph carries them.
+
 ### 6d. Data and rules
 
 - **The life table measured again** on the run before the batch (`./build.sh material`), every bin its frames and losses.

@@ -21,6 +21,7 @@ typedef struct {
   int32_t nextBuild; // a line that breaks: the board it leaves has a break to build, or no garbage left (outcomeOf); -1 not asked
   int32_t panelsLeft; // the panels on the board the line leaves (outcomeOf); -1 not asked
   int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
+  int32_t floorKept;   // the board the line leaves keeps the rule's floor, as the floor is tested (floorOf), the line's breaks aside; -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   Judged j;
 } Outcome;
@@ -97,6 +98,7 @@ static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on t
 static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
 static int32_t rootBuildable = NOT_ASKED;    // (the question's board, asked once a decision)
 static Board *endBoard;                      // (lineEnd's board)
+static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
@@ -117,10 +119,10 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.fits = fitsList(&theList, o.j.made, &o.j) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1;
+    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1;
     if (!waitTo) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
-      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); }
+      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && garbageOn(decQ.b)) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
