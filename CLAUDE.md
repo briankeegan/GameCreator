@@ -337,7 +337,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   ms less the frame's own work) is a decision's budget. `front.c`'s key model
   (`Pad`: `padAllowed`, `padStepToward`) is the front's and every judged
   line's alike: no key past the allowance (the walk waits for the frame it
-  is), and a walk held, one action however far, from four cells, or from two
+  is), and a walk held, one action however far, from three cells, or from two
   on a calm board or a nearly spent window (`travelCost` walks the same).
   `lua/train.lua` charges the game's own `ThinkBudget` and `InputBudget` every
   frame and the scan reports both. In a game the clock cuts a decision past it and the game
