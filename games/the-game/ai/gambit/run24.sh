@@ -4,14 +4,14 @@
 # prints when it finished and the run's summary.
 #
 #   bash run24.sh [PROFILE] [wait]     PROFILE relative to games/the-game/ai/eval (default survivor-profiles/gambit-finish.json)
-# Env: GC_BOT (gambit), GC_PANEL_REF (claude/newsey-game-ask-qa8u5e).
+# Env: GC_BOT (gambit), GC_PANEL_REF (claude/newsey-game-ask-qa8u5e), GC_REF (the GameCreator ref played: main).
 set -u
 REPO=briankeegan/GameCreator WF=gambit-24.yml
 PROFILE=${1:-survivor-profiles/gambit-finish.json} WAIT=${2:-}
 edt() { TZ=America/New_York date -d "@$1" '+%H:%M ET'; }
 T0=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 for n in 1 2 3 4; do
-  gh api -X POST repos/$REPO/actions/workflows/$WF/dispatches -f ref=main -f "inputs[profile]=$PROFILE" \
+  gh api -X POST repos/$REPO/actions/workflows/$WF/dispatches -f ref=${GC_REF:-main} -f "inputs[profile]=$PROFILE" \
     -f "inputs[bot]=${GC_BOT:-gambit}" -f "inputs[panel_ref]=${GC_PANEL_REF:-claude/newsey-game-ask-qa8u5e}" >/dev/null && break
   sleep $((2 ** n))
 done
