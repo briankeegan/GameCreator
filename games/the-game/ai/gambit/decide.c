@@ -175,30 +175,34 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid) {
 // CARRIED ON: the rest of the line in progress, found again on this board by its bottom-row panel and
 // played on as it is pressed, while every step is legal and it still makes what it was begun for. wait: its next step must wait for
 // the board to settle.
+// (why the line in progress was not carried on, for the log: 0 carried or none, 1 its anchor panel gone, 2 a step no longer there to
+// press or the board lost on it, 3 it no longer breaks, 4 it no longer makes what it was begun for)
+static int carryDrop;
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
-  *wait = 0;
+  *wait = 0; carryDrop = 0;
   int skip = C->id == carryFrom ? carryPressed : 0;
   if (!C->set || C->nrest <= skip) return 0;
   int dr = NOT_ASKED;
   for (int r = 1; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][C->anchorCol].f[ID] == C->anchorId) dr = r - C->anchorRow;
-  if (dr == NOT_ASKED) return 0;
+  if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
   int32_t rest[MAXLINE], nrest = C->nrest - skip;
   for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
   Made x; int32_t done, fire, nats = 0, ats[MAXLINE];
   if (C->settled) {
     Replayed rp;
-    if (!replay(&decQ, rest, nrest, 1, &rp)) return 0;
+    if (!replay(&decQ, rest, nrest, 1, &rp)) { carryDrop = 2; return 0; }
     *wait = rp.wait > 1;
     x = (Made){ rp.combo, rp.chain, rp.broke, rp.cells }; done = rp.done; fire = rp.fire; nats = rp.nats; for (int i = 0; i < nats; i++) ats[i] = rp.ats[i];
   } else {
     JudgeOpts jo = { 0, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
     Judged j;
     judge(&decQ, rest, nrest, &jo, &j);
-    if (j.dead || j.nats < nrest) return 0;   // (a step no longer legal: the judge pressed fewer than the line has)
+    if (j.dead || j.nats < nrest) { carryDrop = 2; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
     x = (Made){ j.made.combo, j.made.chain, j.made.broke, 0 }; done = j.done; fire = j.fire; nats = j.nats; for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
   }
-  if ((C->broke && !(x.broke > 0)) || (C->hasAim && !meets(&C->aim, x))) return 0;
+  if (C->broke && !(x.broke > 0)) { carryDrop = 3; return 0; }
+  if (C->hasAim && !meets(&C->aim, x)) { carryDrop = 4; return 0; }
   int aim = -1;
   if (C->hasAim) for (int i = 0; i < R->aims.n && aim < 0; i++) if (!memcmp(&R->aims.aim[i], &C->aim, sizeof(Aim))) aim = i;
   if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, nrest, aim, 0)) return 0;

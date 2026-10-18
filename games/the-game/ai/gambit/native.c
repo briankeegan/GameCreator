@@ -167,18 +167,20 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   if (unbroken.set && (lastU == NUL || q->at - lastU >= 120 || q->at < lastU)) { lastU = q->at; dumpBoard("GAMBITU", q->at, hostBoard, hostQ.arr, hostQ.narr); }
   ringKeep(q->at);
 }
-// THE LAST BOARDS: every question's board and garbage on its way, the last RINGN kept, written out when the match ends (GAMBITL lines,
+// THE LAST BOARDS: every question's board and garbage on its way, the last RINGN decisions kept, written out when the match ends (GAMBITL lines,
 // oldest first) -- what a loss is replayed from.
 #define RINGN 32
 static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
 static void ringKeep(int32_t at) {
   hostLock();
-  int k = ringHead;
+  // (a question asked again for a frame no later than the last kept replaces it: the ring holds the last RINGN decisions forward)
+  int last = (ringHead - 1 + RINGN) % RINGN, again = ringCount && at <= ringAt[last];
+  int k = again ? last : ringHead;
   if (!ring[k]) ring[k] = nb_new();
   if (ring[k]) {
     cloneBoard(ring[k], hostBoard); ringAt[k] = at; ringNarr[k] = hostQ.narr;
     for (int i = 0; i < hostQ.narr; i++) ringArr[k][i] = hostQ.arr[i];
-    ringHead = (ringHead + 1) % RINGN; if (ringCount < RINGN) ringCount++;
+    if (!again) { ringHead = (ringHead + 1) % RINGN; if (ringCount < RINGN) ringCount++; }
   }
   hostUnlock();
 }
