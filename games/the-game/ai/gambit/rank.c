@@ -120,6 +120,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   if (lx != ly) return lx ? -1 : 1;
   if (lx && x->outside != y->outside) return x->outside ? 1 : -1;   // (of two that live, the one within the list)
+  // (of two that live, a hold that lives by the break it waits for is that break played later: a line that breaks and lives now comes
+  // before it)
+  if (lx) {
+    int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
+    if (hx != hy) return hx ? 1 : -1;
+  }
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
