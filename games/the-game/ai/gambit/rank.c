@@ -61,7 +61,10 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // so a list never chooses a death. Below the rule's material floor a line that clears panels and breaks no garbage spends what the
   // board needs: outside too)
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
-  if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
+  // (a break made by a plain clear -- three, no chain, as the game counts it -- is the board's own defence, never an attack: within every
+  // list. The list chooses among the attacks)
+  int plainBreak = m.broke > 0 && m.combo <= 3 && m.chain <= 1 && (!j || (j->chainAll <= 1 && !j->nsingles));
+  if (!plainBreak && !(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
   int entry = entryOf(&R->aims, m);
   if (entry >= 0 && (aim < 0 || entry < aim)) aim = entry;
