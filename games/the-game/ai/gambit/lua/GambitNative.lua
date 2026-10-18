@@ -5,7 +5,7 @@
 --   local G = dofile(<GameCreator>/games/the-game/ai/gambit/lua/GambitNative.lua)   -- once per process
 --   local bot = G.new({})
 --   bot:startMatch(stack)                 -- once per match
---   local char = bot:input(stack, sources)   -- every frame, before it is run
+--   local char = bot:input(stack, sources, view)   -- every frame, before it is run (view: the opponent's shipped board, or nil)
 --
 -- Env: GC_GAMBIT_DIR (the gambit directory; default: this file's), GC_GAMBIT_WORDS (the profile as numbers, words.js; default
 -- GC_GAMBIT_DIR/gambit.words), GC_GAMBIT_LOG (the run's log: GAMBITD lines and the match's stats).
@@ -178,9 +178,15 @@ function GambitNative:telegraph(sources)
 end
 
 -- The stack this one fights, as the rules' `when` and `by` read it (gambit-rules.json enemy.*): whether there is one (an attack engine,
--- Training's, is no stack: none), whether it is topped out, the highest row it has a panel in, and the frames it is held up by -- its
--- stop and pre-stop, or its shake when longer, as the judge reads a board's (judge.c dropAt).
-local function opponentOf(sources)
+-- Training's, is no stack: none), whether it is topped out, the highest row it has a panel in, and the frames it is held up by. Read
+-- off the opponent's own board as its client shipped it (view: BotClient's oppView, from the snapshots it paints from) when one came
+-- within VIEW_FRESH frames -- its stop counted down since; else off the copy of its stack played here from its relayed keys: its stop
+-- and pre-stop, or its shake when longer, as the judge reads a board's (judge.c dropAt).
+local VIEW_FRESH = 90
+local function opponentOf(sources, view, clock)
+  if view and clock and view.seen and clock - view.seen <= VIEW_FRESH then
+    return 1, view.out and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
+  end
   local has, out, top, stop = 0, 0, 0, 0
   for _, src in ipairs(sources or {}) do
     if type(src.game_ended) == "function" and src:game_ended() then return 0, 0, 0, 0 end
@@ -201,7 +207,7 @@ local function opponentOf(sources)
   return has, out, top, stop
 end
 
-function GambitNative:think(stack, sources)
+function GambitNative:think(stack, sources, view)
   local idle = KeyDataEncoding.base64encode[1]
   if counting(stack) or not stack.stopWatchIsRunning or stack:game_ended() then return idle end
   local t0 = ThinkBudget.now()
@@ -210,7 +216,7 @@ function GambitNative:think(stack, sources)
   self:telegraph(sources)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
-  local has, out, top, stop = opponentOf(sources)
+  local has, out, top, stop = opponentOf(sources, view, stack.clock)
   local t2 = ThinkBudget.now()
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
@@ -232,11 +238,11 @@ function GambitNative:press(key, clock)
 end
 
 -- The frame's work, charged to the thinking budget, its key pressed on the input budget -- the game's own.
-function GambitNative:input(stack, sources)
+function GambitNative:input(stack, sources, view)
   collectgarbage("stop")
   C.gn_thread_stats(self.ts0)
   local began = ThinkBudget.now()
-  local ok, key = pcall(self.think, self, stack, sources)
+  local ok, key = pcall(self.think, self, stack, sources, view)
   if ok and self.ownInputs then key = self:press(key, stack.clock) end
   local took = ThinkBudget.now() - began
   collectgarbage("restart")
