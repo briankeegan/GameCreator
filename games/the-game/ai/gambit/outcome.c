@@ -115,12 +115,17 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
       const Board *eb = rootBuildable ? ensureBoard(judgeCtx, o.j.endNode) : 0;
       if (eb && !breakBuildable(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
     }
-    if (o.lives && !breaks && ready == 1 && !(stands && !coming) && !waitTo && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
-      int32_t ext[MAXLINE];
-      for (int k = 0; k < n; k++) ext[k] = seq[k];
-      for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
-      Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
-      if (e.late) o.late = 1; else if (!e.lives) o.lives = 0;
+    // (A PROMISED BREAK IS A REAL ONE: a line that lives only by being ready lives only when its readiness break, played where the
+    // readiness found it, lives too -- one that cannot be played out (no line kept, too long, the clock) promises nothing)
+    if (o.lives && !breaks && ready == 1 && !(stands && !coming) && !waitTo) {
+      if (o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
+        int32_t ext[MAXLINE];
+        for (int k = 0; k < n; k++) ext[k] = seq[k];
+        for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
+        Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
+        if (e.late) o.late = 1;
+        if (e.late || !e.lives) o.lives = 0;
+      } else o.lives = 0;
     }
   }
   // (a judging the clock stopped is no answer: it is not kept, and the next asking judges it again)

@@ -46,14 +46,13 @@ static int readBoard_(Read *R) {
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)
   R->topped = !!F->v[FACT_US_TOPPED]; R->breakWaits = !!F->v[FACT_US_BREAKWAITS];
-  // (SAVING UP PANELS, as the raise holds a band: begun topped with fewer panels than twice the colours and one -- the least sure to
-  // hold three of one colour -- and kept until the board holds the panels sure to make the list's largest combo ((size - 1) x colours
-  // and one), at least two breaks' worth (twice the colours and four); then it spends again)
+  // (SAVING UP PANELS, as the raise holds a band: begun topped with four rows' worth of panels or fewer, and kept until the board holds
+  // eight rows' worth and the panels sure to make the list's largest combo ((size - 1) x colours and one); then it spends again)
   {
     int32_t colours = decQ.b->colors > 0 ? decQ.b->colors : 1, panels = panelsOn(decQ.b), big = 3;
     for (int i = 0; i < R->list.n; i++) { const Test *t = &R->list.aim[i].combo; if (t->op == OP_GE || t->op == OP_EQ || t->op == OP_GT) big = imax(big, t->n + (t->op == OP_GT)); }
-    int32_t low = 2 * colours + 1, high = imax((big - 1) * colours + 1, 2 * colours + 4);
-    if (!savingPanels && R->topped && panels < low) savingPanels = 1;
+    int32_t low = 4 * W, high = imax((big - 1) * colours + 1, 8 * W);
+    if (!savingPanels && R->topped && panels <= low) savingPanels = 1;
     else if (savingPanels && panels >= high) savingPanels = 0;
     R->saving = savingPanels;
   }
