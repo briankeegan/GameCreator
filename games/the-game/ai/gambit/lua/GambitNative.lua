@@ -3,7 +3,7 @@
 -- garbage the senders' telegraphs show and the input budget's window, and the frame loop gives the keys. Nothing is decided here.
 --
 --   local G = dofile(<GameCreator>/games/the-game/ai/gambit/lua/GambitNative.lua)   -- once per process
---   local bot = G.new({})
+--   local bot = G.new({})   -- opts.network: online, the opponent and the garbage on its way read only as the server sends them
 --   bot:startMatch(stack)                 -- once per match
 --   local char = bot:input(stack, sources, view)   -- every frame, before it is run (view: the opponent's shipped board, or nil)
 --
@@ -88,6 +88,7 @@ function GambitNative.new(opts)
   self.inputs = opts.inputBudget or InputBudget.standard()
   self.ownInputs = opts.inputBudget == nil
   self.dropped, self.frames, self.ages, self.pv = 0, 0, {}, {}
+  self.network = opts.network
   self.ts0, self.ts1 = ffi.new("double[4]"), ffi.new("double[4]")
   return self
 end
@@ -144,9 +145,13 @@ local function piece(T, x, g)
   T[x + 5] = g.finalized == nil and NUL or b01(g.finalized)
   return x + 6
 end
+-- (online -- opts.network -- the garbage on its way is the stack's own queue, what the server delivered, and nothing else: the copy of
+-- the opponent played here sends from its own outgoing queue, which is never delivered here, so read it would be garbage that never
+-- comes)
 function GambitNative:telegraph(sources)
   local T, x = C.gn_tele(), 1
   local n = 0
+  if self.network then sources = EMPTY end
   for _, src in ipairs(sources or EMPTY) do
     local q = src.outgoingGarbage
     if q and src.stopWatch ~= nil then
@@ -184,10 +189,13 @@ end
 -- within VIEW_FRESH frames -- its stop counted down since; else off the copy of its stack played here from its relayed keys: its stop
 -- and pre-stop, or its shake when longer, as the judge reads a board's (judge.c dropAt).
 local VIEW_FRESH = 90
-local function opponentOf(sources, view, clock)
-  if view and clock and view.seen and clock - view.seen <= VIEW_FRESH then
+-- Online (network) only the shipped board is read, however old the last one -- the copy played here is no source of the opponent's
+-- board -- and before the first, the board a match begins with: not topped out, low, no stop.
+local function opponentOf(sources, view, clock, network)
+  if view and clock and view.seen and (network or clock - view.seen <= VIEW_FRESH) then
     return 1, view.over and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
   end
+  if network then return 1, 0, 0, 0 end
   local has, out, top, stop = 0, 0, 0, 0
   for _, src in ipairs(sources or {}) do
     if type(src.game_ended) == "function" and src:game_ended() then return 0, 0, 0, 0 end
@@ -218,7 +226,7 @@ function GambitNative:think(stack, sources, view)
   self:telegraph(sources)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
-  local has, out, top, stop = opponentOf(sources, view, stack.clock)
+  local has, out, top, stop = opponentOf(sources, view, stack.clock, self.network)
   local t2 = ThinkBudget.now()
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
