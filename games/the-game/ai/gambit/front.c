@@ -97,21 +97,26 @@ static void arrivalsOf(const Board *b) {
   int32_t mine = b->stopWatch, nsrc = *w++;
   F.narr = 0;
   for (int s = 0; s < nsrc; s++) {
-    int32_t sw = *w++, capped = *w++, offset = mine - sw, floor = mine + 1, nt = *w++;
+    int32_t sw = *w++, capped = *w++, offset = mine - sw, floor = mine + 1, nt = *w++, free = floor;
     for (int t = 0; t < nt; t++) {
       int32_t at = *w++ + offset, np = *w++;
-      if (at < floor) at = floor;
+      // (a held-back source delivers a transit a frame, in order: its transits are given frames one apart, none before the next free one)
+      if (capped) { if (at < free) at = free; free = at + 1; }
+      else if (at < floor) at = floor;
       for (int k = 0; k < np; k++, w += 6)
         if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = at; a->capped = capped; a->g = (Incoming){ w[0], w[1], w[2], w[3], w[4], w[5] }; }
     }
-    int32_t ns = *w++, ship = sw;
+    int32_t ns = *w++, ship = sw, lastRaw = NUL, lastAt = NUL;
     const int32_t *g0 = w;
     w += 6 * ns;
     for (int i = ns - 1; i >= 0; i--) {
       const int32_t *g = g0 + 6 * i;
       int32_t chainGoing = g[2] && g[5] != 1 ? sw + 1 : 0;
       ship = imax(ship, imax((g[4] == NUL ? sw : g[4]) + STAGING, chainGoing));
-      if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = imax(ship + LAND + offset, floor); a->capped = capped; a->g = (Incoming){ g[0], g[1], g[2], g[3], g[4], g[5] }; }
+      // (pieces that ship together are one transit, landing together)
+      int32_t raw = ship + LAND + offset, at = imax(raw, capped ? free : floor);
+      if (capped) { if (raw == lastRaw) at = lastAt; else free = at + 1; lastRaw = raw; lastAt = at; }
+      if (F.narr < MAXARRIVALS) { Arrival *a = &F.arr[F.narr++]; a->at = at; a->capped = capped; a->g = (Incoming){ g[0], g[1], g[2], g[3], g[4], g[5] }; }
     }
   }
   // (sorted by when they arrive, the order they came in kept between equals)
