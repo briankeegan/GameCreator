@@ -19,7 +19,8 @@ typedef struct {
   int32_t dead, lostAt, lives, fits, ready, late;
   int32_t spent;   // under the material floor (outcomeOf)
   int32_t nextBuild; // a line that breaks: the board it leaves has a break to build, or no garbage left (outcomeOf); -1 not asked
-  int32_t panelsLeft; // a line that breaks: the panels on the board it leaves (outcomeOf); -1 not asked
+  int32_t panelsLeft; // the panels on the board the line leaves (outcomeOf); -1 not asked
+  double spentFrames;  // what the panels it takes off the board now are worth, in frames of life (spentOf); a line that leaves more is credited
   Judged j;
 } Outcome;
 
@@ -76,6 +77,19 @@ static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Out
   return &c->o;
 }
 
+// WHAT A PANEL IS WORTH, in frames of life, on a board left with `panels`: measured on 1,334 pop-to-pop cycles over ten scans (native/bot.c
+// panelWorth) -- the board was lost 0.39 in 1,000 frames when a pop began on under 18 panels, 0.20 on 18-23, 0.10-0.16 on 24-35, 0.03-0.06
+// on 36 and more; a panel moves that by 0.008-0.03 for the 400 frames a cycle lasts, against 6,500 frames of life
+static double panelWorth(int32_t panels) { return panels >= 36 ? 20 : panels >= 30 ? 25 : panels >= 24 ? 30 : panels >= 18 ? 40 : 85; }
+// WHAT A LINE SPENDS: each panel it takes off the board now at the worth of the board it is taken to, from the panels it leaves up to the
+// panels there are; a line that leaves more (garbage converted) is credited the same way. Measured from the board now, so between two
+// lines -- the hold among them -- it is what one spends against the other.
+static double spentOf(int32_t left, int32_t now) {
+  double s = 0;
+  for (int32_t p = left; p < now; p++) s += panelWorth(p);
+  for (int32_t p = now; p < left; p++) s -= panelWorth(p);
+  return s;
+}
 // THE OUTCOME. With garbage on its way, a line that breaks nothing lives only when a break is there once everything has landed --
 // ready, however long the stop it stands on lasts; a break, or a board with nothing coming, lives by standing to the horizon and past
 // the stop and shake it ends on (lifeStop), or by a break in reach once it is over: a board a stop holds up is ready for the next break
@@ -107,7 +121,11 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
     o.panelsLeft = -1;
-    if (breaks && !waitTo) { const Board *eb = ensureBoard(judgeCtx, o.j.endNode); o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1; o.panelsLeft = eb ? panelsOn(eb) : -1; }
+    if (!waitTo) {
+      const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
+      if (eb) { o.panelsLeft = panelsOn(eb); o.spentFrames = spentOf(o.panelsLeft, panelsOn(decQ.b)); }
+      if (breaks) o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1;
+    }
     // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board had
     // one has spent what the next break needs -- it is lost the frame it is done)
     if (n > 0 && !breaks && !stands && !waitTo && garbageOn(decQ.b)) {

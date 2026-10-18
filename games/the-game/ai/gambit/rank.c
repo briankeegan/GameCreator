@@ -42,6 +42,14 @@ typedef struct {
   int32_t rule;
 } Read;
 
+// a sub-key put in at `pos`, the keys from there on after it (one that does not fit is dropped from the end)
+static void tierInsert(Tier *t, int pos, double v) {
+  if (pos > t->nsub) pos = t->nsub;
+  for (int q = imin(t->nsub, MAXSUB - 1); q > pos; q--) t->sub[q] = t->sub[q - 1];
+  if (pos < MAXSUB) t->sub[pos] = v;
+  t->nsub = imin(t->nsub + 1, MAXSUB);
+  if (pos <= t->nlist) t->nlist++;
+}
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
@@ -90,19 +98,17 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   int32_t stopNow = imax(b->stopTime + b->preStopTime, b->shakeTime);
   if (R->topped && j && j->dropAt > stopNow) {
     int brk = R->under && m.broke > 0;
-    J->t.tier = 0; J->t.nsub = 3; J->t.sub[0] = R->under ? (brk ? 0 : 1) : 0; J->t.sub[1] = aim >= 0 ? aim : 99; J->t.sub[2] = -j->dropAt;
+    J->t.tier = 0; J->t.nsub = 3; J->t.nlist = 2; J->t.sub[0] = R->under ? (brk ? 0 : 1) : 0; J->t.sub[1] = aim >= 0 ? aim : 99; J->t.sub[2] = -j->dropAt;
+  }
+  // (WHAT IT SPENDS, in frames of life (outcome.c spentOf): of two in one tier, the one that spends less, right after the list's own
+  // keys -- a list orders what the board can afford. SAVING UP PANELS (decide.c read: begun topped and short, kept until the list's
+  // largest combo is sure) a break under garbage weighs it before the list: the board's life is its next breaks)
+  if (oc.panelsLeft >= 0) {
+    int saveFirst = R->saving && R->under && m.broke > 0;
+    tierInsert(&J->t, saveFirst ? 0 : J->t.nlist, oc.spentFrames);
   }
   // (under garbage, of two breaks, the one that leaves a break to build first: the list orders the breaks the board can afford)
-  if (R->under && m.broke > 0 && oc.nextBuild >= 0 && J->t.nsub < MAXSUB) {
-    for (int q = J->t.nsub; q > 0; q--) J->t.sub[q] = J->t.sub[q - 1];
-    J->t.sub[0] = oc.nextBuild ? 0 : 1; J->t.nsub++;
-    // (SAVING UP PANELS (decide.c read: begun topped and short, kept until the list's largest combo is sure) the board's life is its
-    // next breaks: of two that leave one to build, the one that leaves more panels to make them from, before the list)
-    if (R->saving && oc.panelsLeft >= 0 && J->t.nsub < MAXSUB) {
-      for (int q = J->t.nsub; q > 1; q--) J->t.sub[q] = J->t.sub[q - 1];
-      J->t.sub[1] = -oc.panelsLeft; J->t.nsub++;
-    }
-  }
+  if (R->under && m.broke > 0 && oc.nextBuild >= 0) tierInsert(&J->t, 0, oc.nextBuild ? 0 : 1);
   J->settled = st; J->aim = aim; J->o = oc;
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;
   if (j) { J->apNats = j->nats; for (int i = 0; i < j->nats; i++) J->apAts[i] = j->ats[i]; }
@@ -147,6 +153,7 @@ static double lostOf(const Judge *x) {
   double ext = lostAtOf(x->extLost, 0);
   return ext > own ? ext : own;
 }
+static double spentAt(const Judge *x) { return x->o.panelsLeft >= 0 ? x->o.spentFrames : 0; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   if (lx != ly) return lx ? -1 : 1;
@@ -160,7 +167,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (of two that do not live, one that breaks garbage before one that does not, while it outlives the next decision: the panels a break
   // converts are what the next break is made from, and a later loss bought with clears spends them)
   if (!lx) { int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact; if (bx != by) return bx ? -1 : 1; }
-  if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
+  // (of two that do not live, the later loss net of what each spends: a frame bought with a panel the next break needed is no frame)
+  if (!lx) { double nx = lostOf(x) - spentAt(x), ny = lostOf(y) - spentAt(y); if (nx != ny) return ny > nx ? 1 : -1; }
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
   int n = x->t.nsub < y->t.nsub ? x->t.nsub : y->t.nsub;

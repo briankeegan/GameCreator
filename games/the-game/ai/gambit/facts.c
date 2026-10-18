@@ -182,8 +182,9 @@ static double nearList(const List *L, Made m) {
 static double leadOf(const List *L, Made m, int under) { return nearList(L, m) + (under && m.broke > 0 ? 0.5 : 0); }
 
 // ---- THE PICK'S TIERS, lower first, and the order within one
-#define MAXSUB 7
-typedef struct { int32_t tier, nsub; double sub[MAXSUB]; } Tier;
+#define MAXSUB 9
+// (nlist: the leading sub-keys that are the list's order -- what a line spends is weighed after them, never before: rank.c)
+typedef struct { int32_t tier, nsub, nlist; double sub[MAXSUB]; } Tier;
 enum { PLAY_ENTRY, PLAY_NEAREST, PLAY_BREAKLINE, PLAY_CARRY, PLAY_CARRYWAIT, PLAY_CLEAR, PLAY_EXTEND, PLAY_LINEUP, PLAY_BREAKSEARCH,
        PLAY_LINEUPBREAK, PLAY_TOWARD, PLAY_READY, PLAY_LEVEL, PLAY_SETUP, PLAY_SURVIVE, PLAY_HOLD, NPLAYS };
 static const char *PLAY_NAME[NPLAYS] = { "entry", "nearest", "break line", "carry", "carry wait", "clear", "extend", "lineup", "break search",
@@ -199,12 +200,12 @@ static Tier tierOf(int play, const Xs *x, int aim, int under, int enemyOut, int 
   double rate = (double)broke / (double)imax(1, x->done ? x->done : 1);
   #define SUB(...) do { double s_[] = { __VA_ARGS__ }; t.nsub = (int)(sizeof s_ / sizeof s_[0]); for (int q_ = 0; q_ < t.nsub; q_++) t.sub[q_] = s_[q_]; } while (0)
   if (under && waits) {
-    if (aim >= 0 && !(broke > 0)) { t.tier = 2; SUB(aim, x->done); return t; }
-    if (broke > 0) { t.tier = 6; SUB(-1e300, x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke); return t; }
+    if (aim >= 0 && !(broke > 0)) { t.tier = 2; SUB(aim, x->done); t.nlist = 1; return t; }
+    if (broke > 0) { t.tier = 6; SUB(-1e300, x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke); t.nlist = 3; return t; }
   }
-  if (broke > 0) { t.tier = 1; SUB(x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -x->dropAt, -rate, buys ? 0 : 1, -broke); return t; }
+  if (broke > 0) { t.tier = 1; SUB(x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -x->dropAt, -rate, buys ? 0 : 1, -broke); t.nlist = 2; return t; }
   if (play == PLAY_CLEAR) { t.tier = 6; SUB(-stop); return t; }
-  if (aim >= 0 && !under) { t.tier = 2; SUB(aim, -x->dropAt, x->done); return t; }
+  if (aim >= 0 && !under) { t.tier = 2; SUB(aim, -x->dropAt, x->done); t.nlist = 1; return t; }
   if (clears && (buys || cells > 0) && (!under || (topped && buys))) { t.tier = 3; SUB(-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -x->near); return t; }
   if (!clears) { t.tier = 4; SUB(play == PLAY_READY ? 0 : play == PLAY_TOWARD ? 1 : play == PLAY_LEVEL ? 2 : play == PLAY_SETUP ? 3 : 4); return t; }
   t.tier = 6; SUB(-stop);

@@ -273,7 +273,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" want="); if (R.up) L_s("raise"); else if (P.wait) L_s("hold"); else if (!n) L_s("-"); else if (order[0]->hold || order[0]->wait) L_s("hold"); else L_mv(order[0]->k.seq[0]);
   L_s(" got="); if (d.kind == 1) L_mv(d.move); else L_s(d.kind == 2 ? "raise" : "hold");
   L_s(" src=gambit v="); L_s(A->verdict == 1 ? "lives" : A->verdict == 2 ? "dies" : A->verdict == 3 ? "raise" : "none");
-  L_s(" under="); L_i(R.under); L_s(" mat="); L_d(R.F.v[FACT_US_MATERIAL]); L_s(" chain="); L_i(A->chain); L_s(" combo="); L_i(A->combo); L_s(" broke="); L_i(A->broke);
+  L_s(" under="); L_i(R.under); L_s(" mat="); L_d(R.F.v[FACT_US_MATERIAL]); L_s(" pan="); L_i(panelsOn(decQ.b)); L_s(" chain="); L_i(A->chain); L_s(" combo="); L_i(A->combo); L_s(" broke="); L_i(A->broke);
   L_s(" tier="); L_i(P.line ? P.line->t.tier : d.kind == 0 ? HOLD_TIER : 0);
   L_s(" by="); if (R.by != NOT_ASKED && R.by) L_i(R.by); else L_s("-");
   L_s(" done="); if (P.line && A->done >= 0) L_i(A->done); else L_s("-");
