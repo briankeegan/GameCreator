@@ -81,6 +81,16 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
 static int breakBuildable(const Board *b);   // (search/break.c: a break the panels touching garbage can be walked into)
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t rootBuildable = NOT_ASKED;    // (the question's board, asked once a decision)
+static int32_t rootComing = NOT_ASKED;       // (the question's board left alone, once the next block has landed: asked once a decision)
+// a break to build on the board at node, run to `at` frames from the root and let settle -- the next block landed
+static int buildableAt(Ctx *x, int node, int32_t at) {
+  int w = step(x, node, MK_LONG, 0, 0, imax(1, at - NODE(x, node)->t));
+  if (!liveNode(x, w)) return 0;
+  int z = settleOf(x, w);
+  if (liveNode(x, z)) w = z;
+  Board *b = ensureBoard(x, w);
+  return b && breakBuildable(b);
+}
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
@@ -105,6 +115,14 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
       if (rootBuildable == NOT_ASKED) rootBuildable = breakBuildable(decQ.b);
       const Board *eb = rootBuildable ? ensureBoard(judgeCtx, o.j.endNode) : 0;
       if (eb && !breakBuildable(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
+    }
+    // (AND FOR THE BLOCK ON ITS WAY: a line that breaks nothing, does not stand and leaves no break to build once the next block has
+    // landed, where the board left alone would have one, has spent what that block's break needs -- lost the frame it is done)
+    else if (n > 0 && !breaks && !stands && !waitTo && decF.next != NOT_ASKED && !garbageOn(decQ.b)) {
+      if (!buildableAt(judgeCtx, o.j.endNode, decF.next)) {
+        if (rootComing == NOT_ASKED) { int r = rootOf(judgeCtx, &decQ); rootComing = r >= 0 ? buildableAt(judgeCtx, r, decF.next) : 0; }
+        if (rootComing) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
+      }
     }
     if (o.lives && !breaks && ready == 1 && !(stands && !coming) && !waitTo && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
       int32_t ext[MAXLINE];
@@ -180,7 +198,7 @@ EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, in
   decQ = hostQ; decQ.b = hostBoard; backBoard = hostBoard;
   Facts f = { land, topped, timeLeft, belowFloor };
   decF = f;
-  ncache = 0; rootBuildable = NOT_ASKED;
+  ncache = 0; rootBuildable = NOT_ASKED; rootComing = NOT_ASKED;
   return 0;
 }
 // The line in the io body (nseq words); back: dead, lostAt, lives, fits, ready, late, then the judge's answer as gb_judge writes it.

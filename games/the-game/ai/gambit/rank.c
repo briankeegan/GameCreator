@@ -120,13 +120,11 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
          k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react;
 }
 // THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own (a
-// list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one within the rules while it
-// outlives the next decision, then the one whose board is lost later,
+// list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one whose board is lost later,
 // then the one with a break in reach once the next block lands (a death sooner is never taken for readiness); then the tier, then each
 // sub-key in turn
 // (a line whose judging the clock cut is not known to die: it ranks after every board that stands and before every known loss -- a
 // death known is never chosen over a line that may live)
-static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
 static double lostOf(const Judge *x) { return lostAtOf(x->o.lostAt, x->hold); }
 static int compareJudged(const Judge *x, const Judge *y) {
@@ -139,9 +137,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
     if (hx != hy) return hx ? 1 : -1;
   }
-  // (of two that do not live, the one within the rules first while it outlives the next decision: a rule gives way only to save the
-  // board from a death that comes before the bot can act again)
-  if (!lx && x->outside != y->outside) { const Judge *in = x->outside ? y : x; if (lostOf(in) > rankReact) return x->outside ? 1 : -1; }
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
   if (x->t.tier != y->t.tier) return x->t.tier - y->t.tier;
