@@ -132,6 +132,43 @@ read by all of them:
   -- then the cell-scanning ones are deleted. Under three seconds.
 - **The engine is not touched**: the bits are read off the board the engine makes, never a second engine.
 
+## 6. One of each: the audit's fixes
+
+Every question the decision asks is asked once, in one function every caller uses; every rule is one key of the one order; every fact
+is the engine's, never a search's claim. In this order -- the first three decide games, the rest keep the first three true.
+
+1. **One material measure.** `panelsOn` (the bits) is the board's material for every reader: the material fact (`facts.c endFacts`),
+   the rule's keep floor, the saving band, the life table, the log (`mat=` and `pan=` become one). What counts as garbage is the
+   game's flag (`gridCell`), everywhere -- a shock panel or an unseen colour is a panel that matches nothing, never garbage.
+2. **One material policy, measured.** The saving band's thresholds come from the life table, not rows typed in: it saves while the
+   board's life rises with each panel and spends once it falls (the table's peak), so the band and the table can no longer disagree.
+   The table is measured again on the current build (`./build.sh material`), every bin given the frames and losses it saw.
+3. **No candidate dropped unseen.** The candidates are ranked into the cap, not cut at it: when the proposers offer more than
+   `MAXCANDS`, the ones dropped are the lowest by the proposer's own claim, counted in the log (`capped=`), and every proposer gets
+   its share before any gets a second.
+4. **One defence rule** (`rules.c defends`): a break made by one clear, no chain, is within every list -- asked by `fits`, `fitsList`
+   and `stepFitsAt` alike; the defence entry added in `decide.c read` is that rule's search side, named so. And a topped board without
+   garbage gets the clear that buys stop time as the same defence.
+5. **Every rank rule in the one order.** The carried line's place, a waiting line's place (two places in `decide.c ranked`) and the
+   topped board's tier become keys of `compareJudged`, read off fields the judging sets -- no tier edited after the judging.
+6. **The engine's answer, never the claim.** The material key's floor is the judged board's (`keepsFloor` on the board the judge ends
+   on); the tier's aim is the judged entry (`metOf`), as the list key's is. A claim only orders what the proposers offer.
+7. **One replayer.** The carried line is judged by the judge (`replay` deleted), so "what a line makes" is counted one way; the cells
+   a clear sends are `sentCells`, everywhere.
+8. **One reading of shape.** Evenness, height and hollow come from the bits, one function each, read by the facts, the planner's shape
+   and the tier.
+9. **An outcome keeps its end board.** The cache holds the board a line ends on (or the means to replay it), so no reader asks the
+   judge's context for a node it may no longer hold; `lineEnd` and its cache bypass go.
+10. **Every loop charged.** The board readers on the bits charge their work to the clock, as the engine's steps do.
+11. **No number typed where the engine has one.** The garbage timings in `front.c` (STAGING, LAND) read from the engine; the
+    duplicated key constants (`TAP_GAP`, `REPEAT_FIRST`, `HOLDTIGHT`) defined once.
+12. **Gated.** `./build.sh test` runs in `gambit-24.yml` beside `board.test.lua`; each fix above adds its case there (a board, the
+    answer), under three seconds in all.
+
+Not in this step, kept with a reason: the searches capped by count (the touch beam, the planner, extend, the survival search) are made
+time-bounded once the clock-cut count says they are short of time; the perched drop's walk learns that a walked panel falls once the
+drop rate says it matters.
+
 ## Kept for when it is needed
 
 - **A shared prefix's replay**: the lines a judge plays from one root often begin with the same swaps (a grown three, a break and the
