@@ -68,6 +68,8 @@ static int stepFitsAt(Ctx *x, int i) {
   int32_t own[MAXCOMBOS], n = 0;
   for (int j = 0; j < s.n; j++) if (!(s.chainAt[j] > 1)) own[n++] = s.size[j];
   int32_t chain = chainOfStats(&s);
+  // (a step whose clear breaks garbage with no chain is the board's own defence: within every list, as fitsList takes the line)
+  if (s.broke > 0 && chain <= 1) return 1;
   if (stepFits(&theList, own, n, chain)) return 1;
   Board *b = ensureBoard(x, i);
   if (!b || !(b->chainCounter > 0 || hasChainingPanels(b) || hasActivePanels(b))) return 0;
