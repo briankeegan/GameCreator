@@ -2994,6 +2994,7 @@ static void probeBreaks(void) {
   if (lineState(0, 0, st, can, w, cur, &t) == 0) {
     int32_t sw[2 * LINEMAX]; int n = 0; double at = 0;
     const char *ptv = getenv("GC_PROBE_TIME"); double ptime = ptv ? atoi(ptv) : 0;   // another horizon than the board's: how far is a break at all
+    { const char *pb = getenv("GC_PROBE_BIG"); if (pb && atoi(pb)) { sitKeepSlot = 5; sitKeepKey = (u64)clk * 8 + 7; } }   // the kept set's storage: four times a search's
     int got = searchInTime(st, cur[0], cur[1], t, 0, ptime > 0 ? ptime : timeLeft(), BIN[IN_TOPPED] != 0 || BIN[IN_STOP] > 0, can, w, 1e9, sitBreaks, 0, sw, &n, &at);
     extern int fprintf(void *, const char *, ...); extern void *stderr;
     fprintf(stderr, "PROBE clock %d break %d swaps %d at %.0f left %.0f work %.0f", clk, got, n, at, timeLeft(), paWork - keep);

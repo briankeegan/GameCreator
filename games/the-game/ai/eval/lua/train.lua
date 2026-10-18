@@ -90,6 +90,7 @@ void front_telegraph(int fid, int width, int height, int eta);
 int front_plan(int fid, Board *b, int frames);
 void bot_time(double ceilingMs, double lastMs, double leftMs);
 double bot_background(double units);
+int front_think(int fid, Board *b, double mult);
 int botTraceOn;
 void *botLogTo;
 typedef struct FILE FILE;
@@ -249,6 +250,7 @@ local function report()
                       ThinkBudget.ceilingMillis(), think:overruns(), think:worst() * 1000, think:charged() * 1000 / math.max(f, 1)))
   print(string.format("input budget %d in %d frames: most %d, %d frames over", inputs.limit, inputs.window, mostInWindow, overInput))
 end
+local THINKMULT = tonumber(os.getenv("GC_THINK") or "0")
 local BGUNITS = tonumber(os.getenv("GC_BG") or "150000")
 local FIXED_BUDGET = (os.getenv("GC_FIXED_BUDGET") or "") ~= ""   -- a scan for comparing builds: the bot is not told the time, so a game repeats exactly
 while f < FRAMES do
@@ -274,6 +276,7 @@ while f < FRAMES do
   end
   -- the work the host gives the bot beside the frame's (a thread's): not charged to the frame's thinking
   if BGUNITS > 0 then C.bot_background(BGUNITS) end
+  if THINKMULT > 0 then C.front_think(fid, board, THINKMULT) end
   if bits < 0 then
     -- the failing frame's own log first: what failed is in it
     if blog ~= "" then io.stderr:write("@ " .. f .. "\n", blog) end

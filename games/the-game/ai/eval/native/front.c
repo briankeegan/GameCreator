@@ -1482,6 +1482,25 @@ EXPORT(front_plan) int front_plan(int fid, Board *b, int frames) {
   return rc;
 }
 
+// THINKING BEYOND THE FRAME: the decision made again on the board as it stands with `mult` frames' work, as a thread of the bot's own would
+// between frames (the game holds the frame's thinking to its budget, not a thread's). Nothing it decides is played and the front and the bot
+// are put back as they were; what stays is what the searches keep -- their lines, steps waiting and boards seen (sitKeepSlot) -- which the next
+// frame's decision, on the same position, goes on from.
+EXPORT(front_think) int front_think(int fid, Board *b, double mult) {
+  if (mult <= 0) return 0;
+  Front *F = &FRONTS[fid];
+  static Front sF; static Bot sB;
+  FB = b;
+  sF = *F; sB = BOTS[F->id];
+  double opt = gOptWork, bud = gWorkBudget, left = tkLeft, lastW = tkLastWork, decMs = tkDecMs;
+  gOptWork = OPTWORK0 * mult; gWorkBudget = gOptWork + UNDERWAY; tkLeft = 0;
+  FDec d;
+  int rc = fDecide(F, &d);
+  gOptWork = opt; gWorkBudget = bud; tkLeft = left; tkLastWork = lastW; tkDecMs = decMs;
+  *F = sF; BOTS[F->id] = sB;
+  return rc;
+}
+
 // One frame: the keys to press (the server's bits), the swap queued on the
 // board itself as the walk arrives. -1: the bot failed.
 static int frontFrame(int fid, Board *b);
