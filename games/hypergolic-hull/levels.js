@@ -486,9 +486,31 @@
   // Which locale a sector is depends on the depth AND the gate you came
   // through, so the same depth reached two ways is two different places —
   // and so a gate can honestly advertise where it goes (see localeAhead).
+  // HOW FAR OUT A PLACE IS. The crawl runs outward from traffic and open
+  // country into the places nobody comes back from, and what a sector is made
+  // of follows from WHERE it is rather than from a rule about depth: a lane
+  // that didn't make it is rock wherever you meet it, and the Cold Yard is a
+  // minefield the first time you see it or the last. The shallow end is
+  // simple because the near places are simple, and the deep end mixes because
+  // the far ones are complicated.
+  const LOCALE_FROM = {
+    shallows: 1, // a world's limb, traffic, nothing strange
+    void: 1,     // nothing out here, and nothing to hide behind
+    belt: 1,     // a shipping lane that didn't make it: rock
+    rings: 2,    // ice worth money, and plenty of it
+    shoals: 3,   // thick with dust
+    graveyard: 4, // someone else's war, still live
+    storm: 4,    // the whole sky charged
+    nursery: 5,  // stars being made
+    binary: 6,   // two suns, no shade, nowhere unseen
+    maw: 7,      // something out here eats light
+  };
+
   function localeFor(depth, variantId, runSeed) {
     const rng = seededRandom(depth * 6151 + (variantId ? variantId.length * 977 : 0) + (variantId || "x").charCodeAt(0) * 31 + runMix(runSeed));
-    return LOCALES[Math.floor(rng() * LOCALES.length)];
+    const open = LOCALES.filter((l) => (LOCALE_FROM[l.id] || 1) <= depth);
+    const pool = open.length ? open : LOCALES;
+    return pool[Math.floor(rng() * pool.length)];
   }
 
   // What lies through a given gate of a given sector — the Map and the
@@ -1020,29 +1042,22 @@
     // here, which is a statement too: the Deep has nothing to hide behind,
     // and under two suns there is no shade.
     const ZONE_GROUND = {
-      shoals: { rock: 0.6, cloud: 3, mines: 0.5 },   // thick with dust
-      shallows: { rock: 1, cloud: 1, mines: 1 },
-      void: { rock: 0.4, cloud: 0, mines: 0.5 },     // nothing to hide behind
-      belt: { rock: 2.2, cloud: 0.5, mines: 1 },     // a lane that didn't make it
-      storm: { rock: 0.6, cloud: 2.5, mines: 0.5 },  // the sky is charged
-      rings: { rock: 2, cloud: 0.5, mines: 0.5 },    // ice worth money
-      nursery: { rock: 0.8, cloud: 2, mines: 0.5 },  // stars being made
-      binary: { rock: 1, cloud: 0, mines: 1 },       // no shade, nowhere unseen
-      maw: { rock: 1.2, cloud: 1.5, mines: 1 },
-      graveyard: { rock: 1.2, cloud: 0.5, mines: 2.5 }, // someone else's war
+      shallows: { rock: 1, cloud: 2, mines: 0.4 },   // traffic, and things that prey on it
+      void: { rock: 0.4, cloud: 0, mines: 0.3 },     // nothing to hide behind
+      belt: { rock: 2.2, cloud: 1, mines: 0.8 },     // a lane that didn't make it
+      rings: { rock: 2.4, cloud: 1, mines: 0 },      // ice worth money, nobody fought here
+      shoals: { rock: 0.6, cloud: 9, mines: 0.4 },   // thick with dust
+      graveyard: { rock: 1.4, cloud: 2, mines: 2.6 }, // someone else's war, still live
+      storm: { rock: 0.6, cloud: 8, mines: 0.4 },    // the whole sky charged
+      nursery: { rock: 0.8, cloud: 6, mines: 0.3 },  // stars being made
+      binary: { rock: 1.2, cloud: 0, mines: 0.8 },   // no shade, nowhere unseen
+      maw: { rock: 1.4, cloud: 4, mines: 1.4 },      // it eats light, and it is crowded
     };
     const zone = { ...(ZONE_GROUND[locale.id] || { rock: 1, cloud: 1, mines: 1 }) };
     // WEATHER BEATS THE ZONE. A nebula rolling through the Deep is still a
     // nebula; a zone that normally has nothing to hide behind does not get to
     // cancel it, or the condition would silently do nothing in half of them.
     if (condition === "nebula") zone.cloud = Math.max(1, zone.cloud);
-
-    // ONE KIND AT A TIME. A first sector that deals rock, dust and live
-    // ordnance at once is three rules to learn before the second turn; rock
-    // is the one that explains itself (it is in the way, and it breaks), so
-    // it is the one the shallow end gets. Each later kind arrives on its own
-    // sector, the way the enemy ladder introduces a shape.
-    const GROUND_FROM = { mines: 3, cloud: 5 };
 
     const ROCK_SHARE = envNumber("GC_ROCK", condition === "debrisField" ? 0.2 : 0.09);
     const CLOUD_SHARE = envNumber("GC_CLOUD", condition === "nebula" ? 0.09 : 0);
@@ -1096,16 +1111,20 @@
     // eleven of a thirty-five hex board under terrain, which drew a band right
     // across the middle: passable ground that reads as a wall is worse than a
     // wall, because the player routes around something that was never there.
-    const CLOUD_PATCHES =
-      depth < GROUND_FROM.cloud && condition !== "nebula"
-        ? 0
-        : Math.round((Math.max(0, envNumber("GC_IONCLOUD", 1)) + nebulaPatches) * zone.cloud);
+    // Counted in HEXES, then laid down as patches. A zone's share used to be a
+    // multiplier on whole patches, so anything above a quarter rounded up to a
+    // full one and every place on the ladder carried the same three hexes of
+    // dust whatever its sky said.
+    const CLOUD_HEXES = Math.max(
+      0,
+      Math.round(zone.cloud * envNumber("GC_IONCLOUD", 1)) + nebulaPatches * 3
+    );
     // A nebula is THICK, not merely patchier: a small board has room for one
     // patch however many are asked for, so the condition grows the patch as
     // well as the count or a cramped sector reads exactly like a clear one.
     const CLOUD_SIZE =
       Math.max(1, Math.round(envNumber("GC_IONCLOUD_SIZE", 3))) + (condition === "nebula" ? 3 : 0);
-    const MINE_SHARE = depth < GROUND_FROM.mines ? 0 : envNumber("GC_MINES", 0.035) * zone.mines;
+    const MINE_SHARE = envNumber("GC_MINES", 0.035) * zone.mines;
     // GROUND NEVER COSTS THE BOARD ITS SHIPS. Hostiles are placed later from
     // the same candidate list and skip any hex holding a hazard, so terrain
     // laid down greedily simply spawns fewer of them — a sector quietly
@@ -1123,19 +1142,20 @@
 
     // Patches, not a sprinkle — the point is somewhere to duck INTO, and a
     // scatter of single blind hexes is only a tax on everyone's firing lines.
-    let patches = 0;
+    let laid = 0;
     for (const hex of candidates) {
-      if (patches >= CLOUD_PATCHES || !roomLeft()) break;
+      if (laid >= CLOUD_HEXES || !roomLeft()) break;
       if (takenHex(hex)) continue;
       // Grown outward until it is the size asked for, not taken from the one
       // ring around the seed: near an edge that ring holds two or three free
       // hexes, so every patch came out the same small size however thick the
       // sector was supposed to be.
       const free = (at) => candidates.some((c) => c.q === at.q && c.r === at.r) && !takenHex(at);
+      const want = Math.min(CLOUD_SIZE, CLOUD_HEXES - laid);
       const patch = [];
       const queue = [hex];
       const seenHex = new Set([`${hex.q},${hex.r}`]);
-      while (queue.length && patch.length < CLOUD_SIZE) {
+      while (queue.length && patch.length < want) {
         const at = queue.shift();
         if (!free(at)) continue;
         patch.push(at);
@@ -1146,9 +1166,9 @@
           queue.push(n);
         }
       }
-      if (patch.length < 3) continue;
+      if (!patch.length) continue;
       for (const at of patch) hazards.push({ type: "ionCloud", q: at.q, r: at.r });
-      patches++;
+      laid += patch.length;
     }
 
     // Scattered, because area denial that clumps is just a wall with a

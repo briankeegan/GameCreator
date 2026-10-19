@@ -2779,41 +2779,37 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
   assert.ok(Engine.canFlyInto(st, boulder, "player"), "and the lane is open afterwards");
 }
 
-// ONE KIND OF GROUND AT A TIME, and a zone is made of something.
+// A ZONE IS MADE OF SOMETHING, and the crawl runs outward from plain country.
 //
-// The shallow end gets rock and nothing else: it is the kind that explains
-// itself, since it is visibly in the way and visibly breaks. Live ordnance and
-// charged dust each arrive on their own sector rather than all three landing
-// before the second turn.
+// What a sector carries follows from WHERE it is, never from a rule about
+// depth: a lane that didn't make it is rock the first time you see it, and the
+// Cold Yard is a minefield whenever you meet it. The shallow end is simple
+// because the near places are simple, and the far ones mix because they are
+// complicated.
 {
-  const groundAt = (depth) => {
-    const kinds = new Set();
+  const localesAt = (depth) => {
+    const ids = new Set();
     for (const variant of ["aggressive", "quiet", "drift"]) {
       const level = generateLevel(depth, variant);
-      if (level.isBoss) continue;
-      for (const h of level.hazards || []) kinds.add(h.type);
+      if (!level.isBoss && level.locale) ids.add(level.locale.id);
     }
-    return kinds;
+    return ids;
   };
+  // The places nobody comes back from are not where a run starts.
   for (const depth of [1, 2]) {
-    const kinds = groundAt(depth);
-    assert.ok(
-      !kinds.has("mineDrift") && !kinds.has("ionCloud"),
-      `sector ${depth} deals rock and nothing else (saw ${[...kinds].join(", ") || "none"})`
-    );
+    const here = localesAt(depth);
+    for (const far of ["maw", "binary", "nursery", "storm", "graveyard"]) {
+      assert.ok(!here.has(far), `sector ${depth} is near country, not ${far}`);
+    }
   }
   const deep = new Set();
-  for (let depth = 5; depth <= 12; depth++) for (const k of groundAt(depth)) deep.add(k);
-  assert.ok(deep.has("mineDrift"), "live ordnance shows up by the deep crawl");
-  assert.ok(deep.has("ionCloud"), "charged dust shows up by the deep crawl");
+  for (let depth = 6; depth <= 12; depth++) for (const id of localesAt(depth)) deep.add(id);
+  assert.ok(deep.size >= 4, `the deep crawl opens up more places (saw ${deep.size})`);
 
-  // A LOCALE IS MADE OF SOMETHING. Every sector dealing the same mix made a
-  // place nothing but a sky: the Breakers and the Ion Front have to differ in
-  // what is actually on the board, not only in what is painted behind it.
   const mixOf = (id) => {
     const tally = { asteroid: 0, ionCloud: 0, mineDrift: 0 };
     let seen = 0;
-    for (let depth = 5; depth <= 12; depth++) {
+    for (let depth = 1; depth <= 14; depth++) {
       for (const variant of ["aggressive", "quiet", "drift"]) {
         const level = generateLevel(depth, variant);
         if (level.isBoss || !level.locale || level.locale.id !== id) continue;
@@ -2821,17 +2817,23 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
         for (const h of level.hazards || []) if (tally[h.type] !== undefined) tally[h.type] += 1;
       }
     }
-    return seen ? { ...tally, seen } : null;
+    return seen ? { rock: tally.asteroid / seen, dust: tally.ionCloud / seen, mines: tally.mineDrift / seen } : null;
   };
-  const dusty = mixOf("storm") || mixOf("shoals");
-  const bare = mixOf("void") || mixOf("binary");
-  if (dusty && bare) {
-    assert.ok(
-      dusty.ionCloud / dusty.seen > bare.ionCloud / bare.seen,
-      `a charged sky carries more dust than one with nothing to hide behind ` +
-        `(${(dusty.ionCloud / dusty.seen).toFixed(1)} vs ${(bare.ionCloud / bare.seen).toFixed(1)})`
-    );
-  }
+  // Each of these is the claim its own blurb makes.
+  const bare = mixOf("void");
+  const dusty = mixOf("shoals") || mixOf("storm");
+  const icy = mixOf("rings");
+  const war = mixOf("graveyard");
+  if (bare) assert.strictEqual(bare.dust, 0, "the Deep has nothing to hide behind");
+  if (bare && icy) assert.ok(icy.rock > bare.rock, "the Ringworks is made of rock and the Deep is not");
+  if (dusty && bare) assert.ok(dusty.dust > bare.dust + 2, "a dust sky actually carries dust");
+  if (war && icy) assert.ok(war.mines > icy.mines, "the Cold Yard is the minefield, not the ice");
+  // And somewhere out there a place is made of more than one thing.
+  const mixed = ["graveyard", "maw", "shallows"].map(mixOf).filter(Boolean);
+  assert.ok(
+    mixed.some((m) => m.rock > 0.5 && m.dust > 0.5 && m.mines > 0.5),
+    "the far country carries a mixture, not one kind of ground"
+  );
 }
 
 // The dock moves. It used to be nailed to hex (0,0) on every single board
