@@ -42,6 +42,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       found = !!(j && !j.dead && j.made.broke > 0);
     }
     totals.boards++; if (found) totals.missed++; else totals.impossible++;
+    // (a break the search's own first step finds is one the live search could not have missed on this board: the board, whole, for a replay)
+    if (found && line.how === 'first' && (totals.shown = (totals.shown || 0) + 1) <= 12) console.log('MISSEDB ' + g + ' ' + x.at + ' ' + x.b64 + ' ' + JSON.stringify(x.arr));
     if (found && line.how) { how[line.how] = (how[line.how] || 0) + 1; var bk = bucketOf(line.ms); took[bk] = (took[bk] || 0) + 1; }
     out.push(x.at + (found ? ' MISSED(' + line.length + (line.how ? ' ' + line.how + ' ' + line.ms + 'ms' : '') + ')' : ' none'));
   });
