@@ -15,7 +15,7 @@ var walk = { n: 0, cells: 0, far: 0 };   // the cells from one swap the decision
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 // AGGRESSION: the blocks of garbage thrown a minute (a combo's pieces of combo garbage, a chain's slab for every link past the first),
 // with the attacks that threw them and their cells, over the frames played
-var aggr = { blocks: 0, attacks: 0, cells: 0, frames: 0 };
+var aggr = { blocks: 0, attacks: 0, cells: 0, frames: 0 }, rule = {};
 // (blocks left on the table: decisions where an option that lives throws more blocks than the one played -- the log's opts, first the
 // one played, each :L when it lives and :bN for the blocks it throws)
 var forgone = { decisions: 0, missed: 0, blocks: 0 };
@@ -49,6 +49,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var wm = / wallMs=([\d.]+)/.exec(l), bm = / brMs=([\d.]+)/.exec(l);
       // (the board's state: decisions under garbage, and the material and panels there)
       var um = / under=(\d)/.exec(l), mm = / mat=([\d.]+)/.exec(l), pm = / pan=(\d+)/.exec(l);
+      var ru = / rule=([etl])/.exec(l);
+      if (ru) { rule[ru[1]] = (rule[ru[1]] || 0) + 1; rule.n = (rule.n || 0) + 1; }
       if (um) { t.dec++; if (+um[1] && mm) { t.under++; t.mat += +mm[1]; t.pan += pm ? +pm[1] : 0; } }
       if (wm) think.wall.push(+wm[1]);
       if (bm) (/ under=1/.test(l) ? think.brUnder : think.br).push(+bm[1]);
@@ -119,6 +121,7 @@ if (nturns) {
   console.log('switches: ' + nturns + ' in all, ' + Object.keys(turns).length + ' directions -- ' + Object.keys(turns).sort().map(function (k) { return k + ' x' + turns[k]; }).join(', '));
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
 }
+if (rule.n) console.log('the one rule: of ' + rule.n + ' lines played that met a part of it, ' + Math.round(100 * (rule.e || 0) / rule.n) + '% an entry of the list, ' + Math.round(100 * (rule.t || 0) / rule.n) + '% a three that breaks, ' + Math.round(100 * (rule.l || 0) / rule.n) + '% a last resort');
 if (aggr.frames) console.log('aggression: ' + (aggr.blocks * 3600 / aggr.frames).toFixed(1) + ' blocks thrown a minute (' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute; ' + Math.round(aggr.frames / 3600) + ' minutes)');
 if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed + ' of ' + forgone.decisions + ' decisions offered a line that lives and throws more than the one played (' + forgone.blocks + ' blocks)');
 if (walk.n) console.log('walk: ' + (walk.cells / walk.n).toFixed(1) + ' cells from one swap to the next, ' + Math.round(100 * walk.far / walk.n) + '% of ' + walk.n + ' jumps 6 or more');

@@ -291,6 +291,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // could not play out, or the hold, shows the board's own)
   if (aloneChain > 1 && P.line) { L_s(" own="); L_i(aloneChain); L_s("/"); L_i(A->whole >= 0 ? A->whole : aloneChain); }
   L_s(" tier="); L_i(P.line ? P.line->t.tier : d.kind == 0 ? HOLD_TIER : 0);
+  // (the part of the one rule the line played is (judge.c): e an entry of the list, t the three that breaks, l a last resort, - none)
+  L_s(" rule="); L_s(!P.line || P.line->met < 0 ? (P.line && P.line->outside ? "l" : "-") : P.line->met < R.list.n ? "e" : "t");
   L_s(" by="); if (R.by != NOT_ASKED && R.by) L_i(R.by); else L_s("-");
   L_s(" done="); if (P.line && A->done >= 0) L_i(A->done); else L_s("-");
   L_s(" fire="); if (P.line && A->fire >= 0) L_i(A->fire); else L_s("-");
