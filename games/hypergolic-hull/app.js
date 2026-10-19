@@ -316,6 +316,10 @@ function cancelRoute() {
 // tapping anywhere else dismisses the pending choice. Actions execute
 // immediately on confirm — no batch queue, no separate commit button.
 let targetedEnemyId = null;
+// A hex of wreckage or rock the player has marked to shoot. Separate from the
+// contact lock because it is not a ship: nothing about it moves, shields or
+// shoots back.
+let targetedGround = null;
 // Tapping a piece of equipment that can't act right now shows what it
 // covers instead of doing nothing: {hexes: Set<hexKey>, kind} washed over
 // the board until the next tap/action. Color language is consistent
@@ -3542,6 +3546,19 @@ function draw() {
   // tap stands it down). Every OTHER contact the volley would strike
   // (multi-hit weapons) gets a smaller steady crosshair, so "where it'll
   // hit" is fully visible before committing.
+  // A marked piece of ground wears the same ring a marked contact does, or
+  // there is no way to tell the gun is pointed at anything.
+  if (targetedGround && groundTargetAt(targetedGround) && state.status === "playing") {
+    const c = hexToPixel(targetedGround);
+    ctx.save();
+    ctx.strokeStyle = "#e0533f";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, geom.sx * 0.44, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   if (targetedEnemyId && state.status === "playing") {
     const drawReticle = (pos, r, pulseAlpha) => {
       const c = hexToPixel(pos);
@@ -3926,10 +3943,15 @@ function updateSystems() {
   // buttons stay here regardless, for the reach preview and for overriding
   // the auto-pick by hand.
   const locked = targetedEnemyId ? state.enemies.find((e) => e.id === targetedEnemyId && e.alive) : null;
+  const ground = !locked && targetedGround && groundTargetAt(targetedGround) ? targetedGround : null;
+  const marked = Boolean(locked) || Boolean(ground);
   weaponBtnsEl.innerHTML = "";
   for (const key of armedWeaponKeys()) {
     const weapon = Engine.WEAPONS[key];
-    const bears = Boolean(locked) && weaponBears(state, weapon, locked);
+    const bears = locked
+      ? weaponBears(state, weapon, locked)
+      : Boolean(ground) &&
+        Engine.weaponHexes(state.playerPos, state.facing, weapon, state).some((h) => Engine.posEq(h, ground));
     const affordable = state.energy >= weapon.energyCost;
     const btn = document.createElement("button");
     btn.className = "hold-btn weapon-btn";
@@ -3942,10 +3964,10 @@ function updateSystems() {
     // it costs nothing: no AP, no energy, just the wash on the board.
     // Tap again (or tap the board) to put it away.
     const previewing = reachPreview && reachPreview.weaponKey === key;
-    btn.disabled = busy || !affordable || (Boolean(locked) && !bears);
+    btn.disabled = busy || !affordable || (marked && !bears);
     btn.classList.toggle("active", (bears && affordable && !busy) || previewing);
     btn.addEventListener("click", () => {
-      if (!locked) {
+      if (!marked) {
         if (previewing) {
           reachPreview = null;
           pushMessage("Fire plot down.");
@@ -3965,9 +3987,11 @@ function updateSystems() {
         return;
       }
       const target = targetedEnemyId;
+      const at = ground ? { ...ground } : null;
       targetedEnemyId = null;
+      targetedGround = null;
       reachPreview = null;
-      handleAction(() => Engine.applyFire(state, target, key));
+      handleAction(() => Engine.applyFire(state, target, key, at ? { groundHex: at } : undefined));
     });
     weaponBtnsEl.appendChild(btn);
   }
@@ -5471,6 +5495,7 @@ function render() {
   window.__hhPlannedPath = plannedPath;
   window.__hhAutoRoute = autoRoute;
   window.__hhTargetedEnemy = targetedEnemyId;
+  window.__hhTargetedGround = targetedGround; // test hook: the wreck or rock under the gun
   window.__hhReachPreview = reachPreview;
   window.__hhShipAngle = shipAngle; // test hook: where the sprite is actually pointing
   window.__hhDirAngles = DIR_ANGLES; // test hook: the angle each facing should draw at
@@ -5517,6 +5542,26 @@ function faceEnemyIfPossible(enemy) {
 // Which fitted guns actually bear on this contact and have the charge to
 // fire. One means there's nothing to decide; more than one means the
 // player picks, which is the whole point of a weapon per button.
+// What is standing on this hex that a gun can be pointed at, named the way the
+// player will see it named. Null when there is nothing to shoot.
+function groundTargetAt(hex) {
+  const wreck = Engine.wreckAt(state, hex);
+  if (wreck) return "WRECK";
+  const hazard = Engine.hazardAt(state, hex);
+  if (hazard && hazard.type === "asteroid") return "ROCK";
+  return null;
+}
+
+// Which fitted guns reach that hex and can be paid for. Same question
+// bearingWeapons asks of a contact, asked of a piece of ground.
+function groundBearingWeapons(s, hex) {
+  return armedWeaponKeys().filter((k) => {
+    const weapon = Engine.WEAPONS[k];
+    if (s.energy < weapon.energyCost) return false;
+    return Engine.weaponHexes(s.playerPos, s.facing, weapon, s).some((h) => Engine.posEq(h, hex));
+  });
+}
+
 function bearingWeapons(s, enemy) {
   return armedWeaponKeys().filter((k) => {
     const weapon = Engine.WEAPONS[k];
@@ -5873,6 +5918,7 @@ scanBtn.addEventListener("click", () => {
   }
   legendVisible = !legendVisible;
   if (!legendVisible) inspectedHex = null; // closing Scan mode clears whatever was inspected
+  if (legendVisible) targetedGround = null; // Scan is inspect-only; it holds no firing mark
   render(); // full refresh — every button/toggle's disabled state depends on legendVisible now
 });
 
@@ -6136,6 +6182,42 @@ canvas.addEventListener("click", (evt) => {
 
   reachPreview = null; // any board tap moves on from an equipment preview
   const enemy = Engine.enemyAt(state, hex);
+
+  // WRECKAGE AND ROCK ARE TARGETS TOO. Targeting only ever meant a living
+  // hull, so a gun could never be pointed at the two things it is most often
+  // wanted for: cutting a hull open for its salvage, which is the only way
+  // salvage is banked at all, and breaking a lane through rock. Both are
+  // marked and fired exactly the way a contact is — first tap marks, second
+  // tap fires.
+  if (!enemy) {
+    const ground = groundTargetAt(hex);
+    if (ground) {
+      plannedPath = null;
+      const already = targetedGround && Engine.posEq(targetedGround, hex);
+      const bearing = groundBearingWeapons(state, hex);
+      if (already && bearing.length) {
+        const auto = bearing.length === 1 ? bearing[0] : Engine.dominantWeapon(bearing);
+        if (auto) {
+          const at = targetedGround;
+          targetedGround = null;
+          handleAction(() => Engine.applyFire(state, undefined, auto, { groundHex: at }));
+          return;
+        }
+      }
+      targetedEnemyId = null;
+      targetedGround = { q: hex.q, r: hex.r };
+      pushMessage(
+        bearing.length
+          ? `${ground} marked — ${bearing.length === 1 ? "fire again to cut it" : "pick a gun"}.`
+          : `${ground} marked — nothing aboard reaches it from here.`
+      );
+      render();
+      return;
+    }
+    if (targetedGround) targetedGround = null;
+  } else {
+    targetedGround = null;
+  }
 
   // Tap-tap firing: the first tap on a hostile swings the flagship to
   // bring its weapons to bear (aiming is free and automatic — no separate

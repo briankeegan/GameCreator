@@ -594,6 +594,70 @@ async function freshPage(browser, url, errors) {
   }
   s = await getState(page);
   assert.ok(fired, "the kill went through the tap-to-target, tap-to-fire flow");
+
+  // WRECKAGE AND ROCK CAN BE SHOT AT. Marking only ever worked on a living
+  // hull, so the gun could not be pointed at the two things it is most wanted
+  // for — cutting a wreck open, which is the only way salvage is ever banked,
+  // and breaking a lane through rock. Both go through the same tap-to-mark,
+  // tap-to-fire flow a contact does.
+  {
+    const put = await page.evaluate(() => {
+      const st = window.__hhState;
+      const ring = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
+        .map(([dq, dr]) => ({ q: st.playerPos.q + dq, r: st.playerPos.r + dr }))
+        .filter((h) => st.boardHexes.some((b) => b.q === h.q && b.r === h.r))
+        .filter(
+          (h) =>
+            !st.enemies.some((e) => e.alive && e.q === h.q && e.r === h.r) &&
+            !st.hazards.some((z) => z.q === h.q && z.r === h.r) &&
+            !(st.wrecks || []).some((w) => w.q === h.q && w.r === h.r)
+        );
+      if (ring.length < 2) return null;
+      st.hazards.push({ type: "asteroid", q: ring[0].q, r: ring[0].r });
+      st.wrecks = st.wrecks || [];
+      st.wrecks.push({ id: "w-probe", type: "interceptor", q: ring[1].q, r: ring[1].r });
+      st.energy = st.maxEnergy;
+      return { rock: ring[0], wreck: ring[1], salvage: st.salvage };
+    });
+    if (put) {
+      await clickHex(page, "sublight", put.wreck);
+      assert.deepStrictEqual(
+        await page.evaluate(() => {
+          const g = window.__hhTargetedGround;
+          return g ? { q: g.q, r: g.r } : null;
+        }),
+        { q: put.wreck.q, r: put.wreck.r },
+        "tapping wreckage marks it"
+      );
+      await page.click(".weapon-btn:not([disabled])");
+      await page.waitForTimeout(200);
+      const afterWreck = await getState(page);
+      assert.ok(
+        !(afterWreck.wrecks || []).some((w) => w.id === "w-probe"),
+        "firing on the marked wreck cuts it open"
+      );
+      assert.ok(afterWreck.salvage > put.salvage, "and the salvage is actually banked");
+
+      const rockLeft = () =>
+        page.evaluate(
+          (at) => window.__hhState.hazards.filter((h) => h.q === at.q && h.r === at.r).length,
+          put.rock
+        );
+      assert.strictEqual(await rockLeft(), 1, "the boulder is still there to shoot");
+      for (let shot = 0; shot < 2 && (await rockLeft()); shot++) {
+        await page.evaluate(() => {
+          window.__hhState.energy = window.__hhState.maxEnergy;
+          window.__hhState.ap = window.__hhState.maxAp;
+        });
+        await clickHex(page, "sublight", put.rock);
+        const live = await page.$(".weapon-btn:not([disabled])");
+        if (!live) break;
+        await live.click();
+        await page.waitForTimeout(200);
+      }
+      assert.strictEqual(await rockLeft(), 0, "two shots on marked rock open the lane");
+    }
+  }
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the confirmed volley kills the Interceptor");
   assert.strictEqual(s.exitUnlocked, true);
 

@@ -4569,8 +4569,26 @@
   // speed order inside applyFire's volley, so targets are computed at
   // fire time (a faster weapon's kill or push in this same volley genuinely
   // removes them from a slower weapon's list).
-  function firePlayerWeapon(state, weapon, onHit, preferredTargetId) {
+  function firePlayerWeapon(state, weapon, onHit, preferredTargetId, groundHex) {
     const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon, state).map(hexKey));
+    // A SHOT AIMED AT THE GROUND HITS THE GROUND. Rock and wreckage are
+    // targets a player picks deliberately — opening a lane, or cutting a hull
+    // for its salvage — and a volley that silently went to a ship standing
+    // nearby instead would take the turn and do the other thing. Live hulls
+    // still come first when nothing was aimed at.
+    if (groundHex && hexKeys.has(hexKey(groundHex))) {
+      const key = new Set([hexKey(groundHex)]);
+      const rock = state.hazards.some((h) => hazardRule(h).hp && key.has(hexKey(h)));
+      const wreck = liveWrecks(state).some((w) => key.has(hexKey(w)));
+      if (rock || wreck) {
+        state.energy = Math.max(0, state.energy - weapon.energyCost);
+        const spread = weapon.targets === "all";
+        const reach = spread ? hexKeys : key;
+        if (rock) breakRockIn(state, reach, weapon.damage || 1);
+        if (wreck) clearWrecksIn(state, reach);
+        return;
+      }
+    }
     let targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
     // SWATTING ORDNANCE COSTS THE SHOT, and only counts when the ordnance
     // IS the shot. Clearing it incidentally — hitting the ship you were
@@ -5311,7 +5329,7 @@
     return null;
   }
 
-  function applyFire(state, targetEnemyId, weaponKey) {
+  function applyFire(state, targetEnemyId, weaponKey, opts) {
     assertPlaying(state);
     if (inScrambler(state, state.playerPos)) throw new Error("Systems scrambled — no firing solution from in here");
     const bearing = weaponsWithTargets(state);
@@ -5338,7 +5356,7 @@
       throw new Error(`${firing.weapon.label}: charge at ${state.energy} of ${firing.weapon.energyCost}`);
     }
     state.events = [];
-    firePlayerWeapon(state, firing.weapon, firing.onHit, targetEnemyId);
+    firePlayerWeapon(state, firing.weapon, firing.onHit, targetEnemyId, opts && opts.groundHex);
     spendAp(state);
   }
 
