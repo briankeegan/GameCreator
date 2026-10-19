@@ -105,6 +105,17 @@ far while the search goes on.
   proposers' fresh lines beside the repaired plan, all ranked in the one order, so a large block sent cannot hold the board to a plan
   made before it.
 
+### E, measured (`build.sh test speed`: 60 questions, each the wall clock's 150 ms, 4 cores)
+
+The workers are in (`native.c` gn_setup, `host.c` hostWorkers; GC_GAMBIT_WORKERS, else the cores less two), and the planner's
+levels, the break search's beam (its swaps and the settles that score it) and the survival search's levels are stepped on them all
+and taken in order (`core/nodes.h` stepBatch / stepTake): the same answers with 3 workers as with none, on the replay's work clock.
+The engine work a decision does: 165k frames with none, 176k with 3 -- 7%. A profile says why: 77% of a decision is the judge, and
+72% is one call, the readiness check (`judge.c` breaksAfterLanding), which runs a whole break search on each candidate's landed board,
+one candidate after another. Batching the steps inside a search cannot reach it. What can: whole candidates judged on their own
+threads (the break search made reentrant: its state a thread's own), and the searches as a portfolio -- coarse-grained, as lazy SMP
+is. That is E's next step, and it comes with F: a kept plan asks readiness of the few lines that changed, not of every line again.
+
 ## Build order
 
 1. E, the threads: no behaviour of its own -- the same decisions, searched deeper in the same time.

@@ -27,10 +27,20 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     // (a level is begun only while what the last took a step, over this one's steps, is left)
     if (nowMs() - t0 + perStep * nsteps > ms) break;
     int nk = 0;
+    // (the level's swaps stepped on every thread first, then taken in this order: core/nodes.h stepBatch)
+    static int32_t bPar[PLAN_KIDS], bMv[PLAN_KIDS], bAt[PLAN_KIDS + 1];
+    int nb = 0;
     for (int i = 0; i < nlev; i++) {
+      bAt[i] = nb;
       int nm = swapsOfNode(x, level[i].n, ms1);
-      for (int j = 0; j < nm && nk < PLAN_KIDS; j++) {
-        int out = step(x, level[i].n, MK_SWAP, CR(ms1[j]), CC(ms1[j]), 0);
+      for (int j = 0; j < nm && nb < PLAN_KIDS; j++) { bPar[nb] = level[i].n; bMv[nb++] = ms1[j]; }
+    }
+    bAt[nlev] = nb;
+    stepBatch(x, bPar, bMv, MK_SWAP, nb);
+    for (int i = 0; i < nlev; i++) {
+      for (int b = bAt[i], j = 0; b < bAt[i + 1] && nk < PLAN_KIDS; b++, j++) {
+        ms1[j] = bMv[b];
+        int out = stepTake(x, b, level[i].n, MK_SWAP, bMv[b]);
         if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
         if (d == 1) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(ms1[j]), CC(ms1[j]), NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) continue; }
         Node *on = NODE(x, out);
@@ -44,6 +54,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
         k->room = ensureBoard(x, out)->height - on->top; k->h = heldOf(x, out); k->g = on->garb;
       }
     }
+    batchDone();
     // the boards held longest, then with the most room, then the least garbage; each run on alone to the frame it is lost
     for (int i = 0; i < nk; i++) { idx[i] = i; kh[i] = kids[i].h; kr[i] = kids[i].room; kg[i] = -kids[i].g; }
     sortByKeyDesc(idx, nk, kg, tmpI); sortByKeyDesc(idx, nk, kr, tmpI); sortByKeyDesc(idx, nk, kh, tmpI);

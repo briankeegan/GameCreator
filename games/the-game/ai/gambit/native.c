@@ -5,9 +5,10 @@
 //
 //   clang -O3 -march=native -pthread -fPIC -shared -DPA_HEAP native.c host.c -lm -o libgambit.so      (build.sh)
 
-// (the default bot's thread pool in search.h waits on wasm's atomics; Gambit never starts it, and natively it has no workers)
-#define __builtin_wasm_memory_atomic_notify(p, n) ((void)(p), 0)
-#define __builtin_wasm_memory_atomic_wait32(p, v, t) ((void)(p), 0)
+// (the engine's thread pool, search.h, waits on wasm's atomics: natively a futex, host.c -- the workers gn_setup starts)
+int hostFutexWait(int *p, int v), hostFutexWake(int *p, int n);
+#define __builtin_wasm_memory_atomic_notify(p, n) hostFutexWake((int *)(p), (int)(n))
+#define __builtin_wasm_memory_atomic_wait32(p, v, t) hostFutexWait((int *)(p), (int)(v))
 #include "gambit.c"
 
 // ---------------------------------------------------------------- host.c
@@ -16,6 +17,7 @@ double hostNowMs(void);
 void hostThreadStats(double *out);
 void hostLock(void), hostUnlock(void), hostWait(void), hostSignal(void);
 int hostThread(void *(*fn)(void *));
+int hostWorkers(void *(*fn)(void *), int most);
 int hostOpenLog(const char *path);
 void hostLog(const char *s);
 int snprintf(char *s, unsigned long n, const char *fmt, ...);
@@ -239,10 +241,20 @@ static void *workerMain(void *arg) {
 static int32_t gnAhead = 90, gnGap = 20, gnJitter = 16, gnFrames;
 static int32_t ages[512];
 // The bot's hands and pacing, level 10's health, and the run's log.
+// THE WORKERS: one a spare core (host.c hostWorkers: GC_GAMBIT_WORKERS, else the cores less the game's and Gambit's), each the
+// engine's pool's (search.h workerLoop) -- every batch of steps a search hands the pool (core/nodes.h stepMany) is played on them all.
+static void *gnWorker(void *arg) { paThreadId((int)(long)arg); workerLoop(); return 0; }
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {
   gnReaction = reaction; gnAhead = ahead; gnGap = gap; gnJitter = jitter; gnPlanHealth = planHealth;
   gb_config(reaction, swapGap, cursor);
   if (logPath && *logPath) hostOpenLog(logPath);
+  static int started;
+  if (!started) {
+    started = 1;
+    int n = hostWorkers(gnWorker, MAXTHREADS - 1);
+    while (__atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST) < n) {}
+    static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
+  }
   return 0;
 }
 // The rules, as the loader encodes them (gambit.js rulesWords), in gn_io; set before the first question.

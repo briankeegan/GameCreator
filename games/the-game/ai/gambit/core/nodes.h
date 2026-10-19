@@ -105,6 +105,44 @@ static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   return r;
 }
 
+// MANY STEPS AT ONCE: a batch of steps (each a parent and a move) played on every thread the host gave the engine's pool (search.h
+// runPhase: native.c's workers), then TAKEN one at a time in the batch's order (stepTake): each charged to the clock as step() charges
+// it, and none taken once the clock is out -- so a search that takes its batch in order, and stops where it would have stopped, makes
+// the same children and spends the same clock as one step at a time. With no workers, a batch too small to share, or a swap whose press
+// waits its walk first (pressDelay), the step is made when it is taken.
+#define UNBATCHED (-97)
+static Vec batchTasks, batchRes, batchDead;
+static int batchN;
+static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int kind, int n) {
+  batchN = 0;
+  if (pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
+  batchTasks.n = 0;
+  for (int j = 0; j < n; j++) {
+    int mr = CR(moves[j]), mc = CC(moves[j]);
+    batchRes.a[j] = UNBATCHED;
+    if ((pressTight && mr && pressDelay(x, parents[j], mr, mc) > 0) || !ensureBoard(x, parents[j])) continue;
+    batchTasks.a[batchTasks.n++] = parents[j]; batchTasks.a[batchTasks.n++] = ADVANCE_TASK - ((((mr << 3) | mc) << 3) | kind);
+    batchTasks.a[batchTasks.n++] = 0; batchTasks.a[batchTasks.n++] = j;
+    batchRes.a[j] = PENDING;
+  }
+  pool.deadAt = batchDead.a; pool.moves = 0;
+  int ok = runPhase(x, &batchTasks, batchRes.a);
+  pool.deadAt = 0;
+  if (!ok) return;
+  batchN = n;
+}
+// the batch's step j (its parent pi, its move), as step() would make it now
+static int stepTake(Ctx *x, int j, int pi, int kind, int32_t mv) {
+  if (j >= batchN || batchRes.a[j] == UNBATCHED || batchRes.a[j] == PENDING) return clockOut() ? STEP_NULL : step(x, pi, kind, CR(mv), CC(mv), 0);
+  if (clockOut()) return STEP_NULL;
+  int32_t r = batchRes.a[j], t0 = NODE(x, pi)->t;
+  clockCharge(r >= 0 ? NODE(x, r)->t - t0 : r == STEP_DEAD ? batchDead.a[j] - t0 : 1);
+  if (r == STEP_DEAD) deadAt = batchDead.a[j];
+  return r;
+}
+// (the batch let go: a search's later steps are made one at a time)
+static void batchDone(void) { batchN = 0; }
+
 // THE BOT'S HANDS, as the host has them (gb_config): the frames it waits after a decision, after a swap, and a cursor step. Every
 // context a search makes is set so (surviveFrames and surviveRest 0).
 static int32_t cfgReaction = 12, cfgSwapGap = 12, cfgCursor = 4;

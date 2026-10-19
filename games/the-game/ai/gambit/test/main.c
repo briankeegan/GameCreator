@@ -6,7 +6,7 @@
 //   - the answers: every mode answered, and when any candidate lives, what is played lives (or is the raise);
 //   - the raise: each mode's boards cut to a low stack with nothing on it or on its way are raised, and the raise held down.
 //   the rules every decision is replayed on: test/rules.words (words.js, the finish profile; its mode set a question at a time).
-//   test DIR [golden]: "golden" writes test/decisions.golden from this build.
+//   test DIR [golden|speed]: "golden" writes test/decisions.golden from this build; "speed" is the wall-clock check (speed()).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +21,7 @@ double gb_bits_ms(int cells);
 int gb_replay(int nbytes, int narr, int mode, int64_t work, char *out, int cap);
 void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
+int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath);
 int32_t *gn_io(void);
@@ -69,8 +70,33 @@ static int loadWords(const char *path) {
   gn_profile(profile[0], profile[1], profile[2], profile[3], profile[4], profile[5], profile[6], profile[7]);
   return 1;
 }
+// THE SPEED (test DIR speed): the first SPEEDQ questions answered each in the wall clock's REPLAY_MS, as a game gives it -- the engine's
+// work done a decision (frames stepped), on the threads the host started (GC_GAMBIT_WORKERS)
+#define SPEEDQ 60
+static int speed(const char *dir) {
+  char path[4096]; static char line[1 << 17], rec[4096];
+  snprintf(path, sizeof path, "%s/rules.words", dir);
+  if (!loadWords(path)) return 1;
+  snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
+  gzFile z = gzopen(path, "r");
+  if (!z) return 2;
+  long long work = 0; int nq = 0;
+  while (nq < SPEEDQ && gzgets(z, line, sizeof line)) {
+    int mode = atoi(line);
+    const char *b = strstr(line, "GAMBITQ ");
+    if (!b) b = strstr(line, "GAMBITB ");
+    if (!b) continue;
+    int narr, n = loadLine(b, &narr);
+    if (n < 0 || gb_replay(n, narr, mode, 0, rec, sizeof rec) < 0) continue;
+    work += gb_clock_work(); nq++;
+  }
+  gzclose(z);
+  printf("speed: %d decisions in the wall clock's time, %lld frames stepped a decision\n", nq, nq ? work / nq : 0);
+  return 0;
+}
 int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
+  if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   int golden = argc > 2 && !strcmp(argv[2], "golden"), fail = 0;
   char path[4096];
   static char line[1 << 17];

@@ -33,9 +33,11 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   gb_new_game();
   modeRule = mode;
   curQid = abortId + 1;
-  replayWork = work; clockNowOf = replayNow; clockFrameOut = 0; clockWork = 0;
+  replayWork = work; clockNowOf = work > 0 ? replayNow : 0; clockFrameOut = 0; clockWork = 0;
   int topped = fullTop(hostBoard) >= hostBoard->height;
-  answerQuestion(1, 0, topped, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, replayLow && canRaiseOn(hostBoard), REPLAY_MS, 0, 0);   // (the raise asked of a low stack only)
+  // (work 0: the wall clock's REPLAY_MS, as a game gives it -- the speed check's; else the work's, the same answer every time)
+  double t0 = work > 0 ? 0 : clock_ms(), due = t0 + REPLAY_MS;
+  answerQuestion(1, 0, topped, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, replayLow && canRaiseOn(hostBoard), due, t0, 0);   // (the raise asked of a low stack only)
   clockNowOf = 0;
   const Answer *A = &theAnswer;
   replayLast[0] = A->d.kind; replayLast[1] = A->verdict; replayLast[2] = A->nlive; replayLast[3] = garbageOn(hostBoard);

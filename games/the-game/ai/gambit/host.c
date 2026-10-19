@@ -27,7 +27,7 @@ void hostSignal(void) { pthread_cond_signal(&cv); }
 // GAMBIT'S THREAD: the room the main thread has for its stack (the searches keep their scratch there), and the cores GC_GAMBIT_CPUS
 // names ("1-3", "2,3"), so it thinks beside the game rather than on the game's own core.
 static void *(*threadFn)(void *);
-static void *threadStart(void *arg) {
+static void pinned(void) {
   const char *cpus = getenv("GC_GAMBIT_CPUS");
   if (cpus && *cpus) {
     cpu_set_t set; CPU_ZERO(&set);
@@ -40,8 +40,8 @@ static void *threadStart(void *arg) {
     }
     if (CPU_COUNT(&set)) pthread_setaffinity_np(pthread_self(), sizeof set, &set);
   }
-  return threadFn(arg);
 }
+static void *threadStart(void *arg) { pinned(); return threadFn(arg); }
 int hostThread(void *(*fn)(void *)) {
   pthread_t t; pthread_attr_t at;
   threadFn = fn;
@@ -51,6 +51,33 @@ int hostThread(void *(*fn)(void *)) {
   return r;
 }
 
+// THE ENGINE'S WAITS (search.h's pool, natively): a futex on the word.
+#include <linux/futex.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <limits.h>
+int hostFutexWait(int *p, int v) { return (int)syscall(SYS_futex, p, FUTEX_WAIT_PRIVATE, v, NULL, NULL, 0); }
+int hostFutexWake(int *p, int n) { return (int)syscall(SYS_futex, p, FUTEX_WAKE_PRIVATE, n < 0 ? INT_MAX : n, NULL, NULL, 0); }
+// THE WORKERS: GC_GAMBIT_WORKERS of them, else one for every core past the game's and Gambit's own (at most `most`), each started
+// with its id (1, 2, ...) and pinned where Gambit is (GC_GAMBIT_CPUS). The number started.
+static void *(*workerFn)(void *);
+static void *workerStart(void *arg) { pinned(); return workerFn(arg); }
+int hostWorkers(void *(*fn)(void *), int most) {
+  const char *e = getenv("GC_GAMBIT_WORKERS");
+  long cores = sysconf(_SC_NPROCESSORS_ONLN);
+  int n = e && *e ? atoi(e) : (int)(cores - 2);
+  if (n > most) n = most;
+  if (n < 0) n = 0;
+  workerFn = fn;
+  for (int i = 0; i < n; i++) {
+    pthread_t t; pthread_attr_t at;
+    pthread_attr_init(&at); pthread_attr_setstacksize(&at, 64ul << 20);
+    int r = pthread_create(&t, &at, workerStart, (void *)(long)(i + 1));
+    pthread_attr_destroy(&at);
+    if (r) return i;
+  }
+  return n;
+}
 static FILE *logFile;
 static pthread_mutex_t logMu = PTHREAD_MUTEX_INITIALIZER;
 int hostOpenLog(const char *path) { if (!logFile) logFile = fopen(path, "a"); return logFile ? 0 : -1; }

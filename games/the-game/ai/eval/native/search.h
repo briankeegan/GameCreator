@@ -847,18 +847,9 @@ static void runTasks(void) {
     runTask(i);
   }
 }
-#ifdef THREADS
-extern void __wasm_init_tls(void *);
-// Every instance, the searching one included, before anything else.
-EXPORT(ns_thread_init) void ns_thread_init(int id) {
-  void *tls = grab(__builtin_wasm_tls_size() + __builtin_wasm_tls_align());
-  unsigned long a = __builtin_wasm_tls_align();
-  __wasm_init_tls((void *)(((unsigned long)tls + a - 1) & ~(a - 1)));
-  thId = id;
-}
-EXPORT(ns_grab) void *ns_grab(int n) { return grab((unsigned long)n); }
-// A worker's life: wait for a phase, take steps until there are none, say so.
-EXPORT(ns_worker_loop) void ns_worker_loop(void) {
+// A worker's life: wait for a phase, take steps until there are none, say so. The wait and the wake are wasm's atomics, or a native
+// host's own (gambit/native.c: a futex).
+static void workerLoop(void) {
   int32_t last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
   __atomic_add_fetch(&pool.nworkers, 1, __ATOMIC_SEQ_CST);
   __builtin_wasm_memory_atomic_notify(&pool.nworkers, 1);
@@ -872,6 +863,17 @@ EXPORT(ns_worker_loop) void ns_worker_loop(void) {
     __builtin_wasm_memory_atomic_notify(&pool.ack, 1);
   }
 }
+#ifdef THREADS
+extern void __wasm_init_tls(void *);
+// Every instance, the searching one included, before anything else.
+EXPORT(ns_thread_init) void ns_thread_init(int id) {
+  void *tls = grab(__builtin_wasm_tls_size() + __builtin_wasm_tls_align());
+  unsigned long a = __builtin_wasm_tls_align();
+  __wasm_init_tls((void *)(((unsigned long)tls + a - 1) & ~(a - 1)));
+  thId = id;
+}
+EXPORT(ns_grab) void *ns_grab(int n) { return grab((unsigned long)n); }
+EXPORT(ns_worker_loop) void ns_worker_loop(void) { workerLoop(); }
 EXPORT(ns_workers) int ns_workers(void) { return __atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST); }
 #endif
 static int reserveNodes(Ctx *x, int32_t more) {

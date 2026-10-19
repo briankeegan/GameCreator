@@ -215,6 +215,12 @@ static int stepMarked(BS *s, int par, int kind, int mv, int32_t frames) {
   markStep(s, par, kind, mv, o);
   return o;
 }
+// (the same, the swap taken from a batch the search stepped on every thread: core/nodes.h stepBatch)
+static int swapTaken(BS *s, int j, int par, int32_t mv) {
+  int o = stepTake(s->x, j, par, MK_SWAP, mv);
+  markStep(s, par, MK_SWAP, mv, o);
+  return o;
+}
 // THE BREAK: more broken than standing still by then, within the rules, played through its settle within the list,
 // and its whole line through the shared line check. Past the clock no check is asked, and nothing breaks.
 static int allowedAt(Ctx *x, int o) {
@@ -287,14 +293,19 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     for (int td = 2; td <= TOUCH_DEPTH && ntl && !tpath && !SEARCH_OUT(); td++) {
       // (how near a break each line's board is, read on the board once what the line cleared has fallen -- settled a batch at a
       // time while the clock allows: past it the rest are scored as they stand)
+      // (the settles stepped on every thread first, then taken in this order: core/nodes.h stepBatch)
+      static int32_t sPar[LINEPOOL], sMv[LINEPOOL], sAt[LINEPOOL];
+      int nsb = 0;
+      for (int i = 0; i < ntl; i++) { Stats st; sAt[i] = -1; if (statsOf(x, tl[i]->n, &st) && st.cleared > 0) { sAt[i] = nsb; sPar[nsb] = tl[i]->n; sMv[nsb++] = 0; } }
+      stepBatch(x, sPar, sMv, MK_SETTLE, nsb);
       for (int i = 0; i < ntl; i++) {
         Line *l = tl[i];
         int32_t sc = nearScore(ensureBoard(x, l->n));
-        Stats st;
-        if (statsOf(x, l->n, &st) && st.cleared > 0) { int w = settleOf(x, l->n); if (liveNode(x, w)) { int32_t s2 = nearScore(ensureBoard(x, w)); if (s2 > sc) sc = s2; } }
+        if (sAt[i] >= 0) { int w = stepTake(x, sAt[i], l->n, MK_SETTLE, 0); if (liveNode(x, w)) { int32_t s2 = nearScore(ensureBoard(x, w)); if (s2 > sc) sc = s2; } }
         l->s = sc; l->h = (int32_t)NODE(x, l->n)->hash;
         idx[i] = i; keyS[i] = sc;
       }
+      batchDone();
       sortByKeyDesc(idx, ntl, keyS, tmp);
       for (int i = 0; i < ntl; i++) tn[i] = tl[idx[i]];
       for (int i = 0; i < ntl; i++) tl[i] = tn[i];
@@ -318,17 +329,28 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       for (int i = 0; i < nk; i++) tl[i] = kept[i];
       int ntn = 0, ar = td & 1;
       arenaN[ar] = 0;   // (the level before last: its lines are let go)
-      for (int i = 0; i < ntl && !tpath; i++) {
+      // (the level's swaps stepped on every thread first, then taken in this order: core/nodes.h stepBatch)
+      static int32_t bPar[LINEPOOL * MAXROWS * W / 4], bMv[LINEPOOL * MAXROWS * W / 4], bAt[LINEPOOL + 1];
+      int nb = 0;
+      for (int i = 0; i < ntl; i++) {
+        bAt[i] = nb;
         int nm = swapsOfNode(x, tl[i]->n, ms);
-        for (int j = 0; j < nm; j++) {
-          int t3 = stepMarked(s, tl[i]->n, MK_SWAP, ms[j], 0);
+        for (int j = 0; j < nm && nb < (int)(sizeof bPar / sizeof bPar[0]); j++) { bPar[nb] = tl[i]->n; bMv[nb++] = ms[j]; }
+      }
+      bAt[ntl] = nb;
+      stepBatch(x, bPar, bMv, MK_SWAP, nb);
+      for (int i = 0; i < ntl && !tpath; i++) {
+        for (int b = bAt[i]; b < bAt[i + 1]; b++) {
+          int32_t mv = bMv[b];
+          int t3 = swapTaken(s, b, tl[i]->n, mv);
           if (!liveNode(x, t3)) continue;
           Line *nl = lineIn(ar); if (!nl) break;
-          *nl = *tl[i]; nl->n = t3; if (nl->len < MAXPATH) nl->path[nl->len++] = ms[j];
+          *nl = *tl[i]; nl->n = t3; if (nl->len < MAXPATH) nl->path[nl->len++] = mv;
           if (breaksAt(s, t3, nl->path, nl->len)) { found(o, tl[i]->key); setPath(o, nl->path, nl->len); o->at = NODE(x, t3)->t; tpath = 1; break; }
           if (within(s, t3)) tn[ntn++] = nl;
         }
       }
+      batchDone();
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)
       if (ntn) keepPaths(&o->keepOut, tn, ntn < KEEPN ? ntn : KEEPN);
       for (int i = 0; i < ntn; i++) tl[i] = tn[i];
