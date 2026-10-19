@@ -10,6 +10,7 @@ typedef struct {
   int32_t grown;   // a line another proposed, one more panel walked into its match (propose.c growLines)
   int32_t drop;    // a perched block let down (search/break.c perchedDrops)
   int32_t kept;    // an intention the last decision kept, found again (decide.c keptJudged)
+  int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
@@ -232,6 +233,12 @@ static void markIdle(Judge **a, int n) {
 // played it makes a shorter one
 static int cutsShort(const Judge *J) { return !J->hold && J->apPlayed && aloneChain > 1 && J->apWhole < aloneChain; }
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
+// (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
+static int lineWalk(const Judge *J) {
+  int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
+  for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
+  return n;
+}
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
@@ -268,7 +275,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (x->saving && y->saving && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
-  { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }
+  { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay;
+    // 8b. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk
+    if (ax < MAXAIMS) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return wx - wy; } }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
   // (two that do not live and survive alike: the later loss, before the kind of line)
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;

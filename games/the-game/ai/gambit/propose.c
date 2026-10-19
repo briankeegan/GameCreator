@@ -243,6 +243,82 @@ static int convertLines(const Read *R, Cand *out, int n, int cap) {
   #undef ADDC
   return n;
 }
+// WORK ON THE WAY (plans/gambit-infra.md B, D): a settled line whose first swap is a walk away, again with a swap made first on a cell
+// the cursor passes anyway (a step aside at most) that does something there -- it clears, or it sets up: the board it settles to has the
+// nearest break nearer (search/break.c nearOf, under garbage) or its colours more connected (search/plan.c connectedOf, the planner's own
+// setup measure). Only the swaps on some line's way are stepped (on every thread: core/nodes.h stepBatch), the most useful first: a
+// clear, then the break brought nearer, then the colours joined. Offered as the play it was made from, every swap pressed once the board
+// settles; the engine judges the whole of it, so a swap that spoils the line or leaves the board no better is ranked by what it does.
+#define WAY_MIN 4     // the cursor's actions to a line's first swap before its way is searched
+#define WAY_PER 2     // lines on the way, a line
+#define WAY_LINES 6   // the lines whose way is searched, in the order offered
+static int32_t wayOffered, wayPlayed;   // (the lines on the way this decision offered, and whether one was played: the log's)
+static int waySharesCell(int32_t a, int32_t b) { return CR(a) == CR(b) && iabs(CC(a) - CC(b)) <= 1; }
+static int onWay(int r0, int c0, int32_t s, int32_t first, int d) {
+  return actionsFor(r0, c0, CR(s), CC(s), HOLDTIGHT + 1) + actionsFor(CR(s), CC(s), CR(first), CC(first), HOLDTIGHT + 1) <= d + 1;
+}
+static int wayLines(Cand *out, int n, int cap) {
+  wayOffered = 0;
+  if (hasActivePanels(decQ.b) || clockOut()) return n;
+  Ctx *x = fillCtx = ctxOf(fillCtx);
+  int root = rootOf(x, &decQ);
+  if (root < 0) return n;
+  int r0 = decQ.b->curRow, c0 = decQ.b->curCol;
+  // (the lines whose way is searched, and the swaps on any of their ways)
+  static int32_t want[WAY_LINES], wantD[WAY_LINES], ms[MAXROWS * W], on[MAXROWS * W], par[MAXROWS * W], score[MAXROWS * W], idx[MAXROWS * W], tmp[MAXROWS * W];
+  int nw = 0;
+  for (int i = 0; i < n && nw < WAY_LINES; i++) {
+    const Cand *k = &out[i];
+    if (k->nseq < 1 || k->nseq >= MAXLINE || k->way || k->grown || !(k->settled >= 0 ? k->settled : settledPlay(k->play))) continue;
+    int d = actionsFor(r0, c0, CR(k->seq[0]), CC(k->seq[0]), HOLDTIGHT + 1);
+    if (d < WAY_MIN) continue;
+    want[nw] = i; wantD[nw++] = d;
+  }
+  if (!nw) return n;
+  int nm = swapsOfNode(x, root, ms), no = 0;
+  for (int j = 0; j < nm; j++) {
+    int any = 0;
+    for (int w = 0; w < nw && !any; w++) any = onWay(r0, c0, ms[j], out[want[w]].seq[0], wantD[w]);
+    if (any) { on[no] = ms[j]; par[no++] = root; }
+  }
+  if (!no) return n;
+  const Board *b0 = ensureBoard(x, root);
+  int under = garbageOn(decQ.b);
+  int32_t near0 = under ? nearOf(b0) : 0, conn0 = connectedOf(b0);
+  stepBatch(x, par, on, MK_SETTLE, no);
+  int nu = 0;
+  for (int j = 0; j < no; j++) {
+    int o = stepTake(x, j, root, MK_SETTLE, on[j]);
+    Stats st;
+    if (!liveNode(x, o) || !statsOf(x, o, &st)) continue;
+    const Board *b = ensureBoard(x, o);
+    if (!b) continue;
+    int32_t nearer = under ? near0 - nearOf(b) : 0, joined = connectedOf(b) - conn0;
+    int32_t sc = st.cleared > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : joined > 0 ? joined : 0;
+    if (sc > 0) { on[nu] = on[j]; score[nu++] = sc; }
+  }
+  batchDone();
+  for (int q = 0; q < nu; q++) idx[q] = q;
+  sortByKeyDesc(idx, nu, score, tmp);
+  for (int w = 0; w < nw && n < cap; w++) {
+    const Cand k0 = out[want[w]];
+    int32_t first = k0.seq[0];
+    for (int q = 0, added = 0; q < nu && added < WAY_PER && n < cap; q++) {
+      int32_t s = on[idx[q]];
+      if (!onWay(r0, c0, s, first, wantD[w])) continue;
+      int shared = 0;
+      for (int m = 0; m < k0.nseq && !shared; m++) shared = waySharesCell(s, k0.seq[m]);
+      if (shared) continue;
+      int32_t seq[MAXLINE]; seq[0] = s;
+      for (int m = 0; m < k0.nseq; m++) seq[m + 1] = k0.seq[m];
+      Cand *c = &out[n];
+      if (!candOf(c, k0.play, seq, k0.nseq + 1, k0.aim, 0)) continue;
+      c->settled = 1; c->way = 1; c->x = k0.x; c->xFire = -1; c->xDone = -1;
+      n++; added++; wayOffered++;
+    }
+  }
+  return n;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
@@ -331,5 +407,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // (and from the lines above: the converted row's chain, then every three grown -- the converted lines' own among them)
   n = convertLines(R, out, n, cap);
   n = growLines(out, n, cap);
+  n = wayLines(out, n, cap);
   return n;
 }

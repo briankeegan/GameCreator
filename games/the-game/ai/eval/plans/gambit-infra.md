@@ -138,6 +138,13 @@ the lines ranked, the best four that make something and are pressed settled are 
 apart (one's clears cannot move the other's panels): one line, in walking order, judged whole and ranked with the rest. Logged as
 `kept=N[/played]` and `route=N[/played]`.
 
+### B and D, built: work on the way, and the nearer line (`propose.c` wayLines, `rank.c` key 8b)
+
+A settled line whose first swap is four or more cursor actions away is offered again with a swap made first on a cell the cursor
+passes anyway (a step aside at most) that does something: it clears, or it brings the nearest break nearer (under garbage), or it joins
+the colours (the planner's connectedness). Only the swaps on some line's way are stepped, on every thread. And of two lines that meet
+the same entry of the list, the one the cursor walks less comes first: a far line earns its walk. Logged as `way=N[/played]`.
+
 ## Build order
 
 1. E, the threads: no behaviour of its own -- the same decisions, searched deeper in the same time.

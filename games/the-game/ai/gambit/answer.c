@@ -252,7 +252,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
   if (!(d.kind == 0 && P.top && P.top->wait)) carryOf(&R, P.line, qid);
-  keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route;
+  keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
   keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
   if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
@@ -307,6 +307,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
   if (routeOffered) { L_s(" route="); L_i(routeOffered); if (routePlayed) L_s("/played"); }
+  if (wayOffered) { L_s(" way="); L_i(wayOffered); if (wayPlayed) L_s("/played"); }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight);
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
