@@ -103,13 +103,26 @@ static int breakBuildable(const Board *b);   // (search/break.c: a break the pan
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on the board)
 static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
-static int32_t rootBuildable = NOT_ASKED;    // (the question's board, asked once a decision)
+// (THE BOARD LEFT ALONE, settled as a line is: whether it still has a break to build -- or no garbage to break. Asked once a decision:
+// what a line is measured against when it spends the next break's material)
+static int32_t rootBuildable = NOT_ASKED;
+static int32_t aloneBuildable(void) {
+  if (rootBuildable != NOT_ASKED) return rootBuildable;
+  JudgeOpts jo = { 0, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0 };
+  Judged a;
+  judge(&decQ, 0, 0, &jo, &a);
+  const Board *eb = a.dead || a.late ? 0 : ensureBoard(judgeCtx, a.endNode);
+  if (!eb) return 0;   // (no answer: nothing measured, nothing spent -- asked again)
+  return rootBuildable = !garbageOn(eb) || breakBuildable(eb);
+}
 static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
   if (hit) return *hit;
+  // (the board left alone asked first: its judging is the judge's own nodes, which the line's end board is read from below)
+  int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
   JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
@@ -135,11 +148,10 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
       if (breaks) o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1;
     }
-    // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board had
-    // one has spent what the next break needs -- it is lost the frame it is done)
+    // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board left
+    // alone keeps one has spent what the next break needs -- it is lost the frame it is done)
     if (n > 0 && !breaks && !stands && !waitTo && decF.under) {
-      if (rootBuildable == NOT_ASKED) rootBuildable = breakBuildable(decQ.b);
-      const Board *eb = rootBuildable ? ensureBoard(judgeCtx, o.j.endNode) : 0;
+      const Board *eb = alone ? ensureBoard(judgeCtx, o.j.endNode) : 0;
       if (eb && !breakBuildable(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
     }
     // (A PROMISED BREAK IS A REAL ONE: a line that lives only by being ready lives only when its readiness break, played where the

@@ -160,7 +160,11 @@ At `f9a30f5c` (the intentions and routes taken out): finish 19 (7, 7, 5), the be
 searched again with more time, 58 of 60 had no break to find (run 374): the board is lost at the turn, by the line played there.
 Of two lines that do not live, the one leaving the nearer next break before the list's entry (`1659fda8`): finish 14 (2, 8, 4) --
 the last resorts from 16% to 38% of the lines played, the material under garbage 25 to 22. Reverted: the list orders what the board
-can afford, and a nearer break bought with a last resort is paid for in panels, as the narrower alike was. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+can afford, and a nearer break bought with a last resort is paid for in panels, as the narrower alike was.
+The material floor (outcome.c) judged a line that leaves no break to build lost the frame it is done -- measured against the board
+as it was asked, once a game: never asked again after the game's first decision under garbage, and blind to a board that loses its
+break by itself (a slab's pop ending). In 384's large_garbage-2 it held through 14 decisions of a 424-frame stop, every walk toward
+the break judged lost 41 frames before the hold. It is now measured against the board left alone, asked every decision. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 
