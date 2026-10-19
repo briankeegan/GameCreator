@@ -108,11 +108,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   if (hit) return *hit;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
-  // (the profile's save: a board stands when it outlives the next decision's reaction and the break it can then play -- the
-  // reaction, a frame, and a slab's flash, face and pops, from the engine -- after now and after the line's last swap)
-  int32_t save = cfgReaction + 1 + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);
-  int32_t lifeTo = (gbFlags & FLAG_SAVE) ? save : HORIZON + REST, lifeRest = (gbFlags & FLAG_SAVE) ? save : REST;
-  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, lifeTo, lifeRest, !waitTo, waitAt, waitTo, 1 };
+  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);

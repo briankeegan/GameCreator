@@ -17,8 +17,7 @@ typedef struct { Test combo, chain, send; int32_t brk; } Aim;
 typedef struct { Aim aim[MAXAIMS]; int32_t n; } List;
 // THE PROFILE'S FLAGS (its `flags`, by name -- words.js FLAGS, answer.c gb_flags), each a way of play measured before it is anyone's:
 //   keep    of two lines that do not live and outlive the next decision alike, the one whose panels leave the board more life first
-//   save    a board stands when it outlives the next decision's reaction and the break it can then play (off: HORIZON and REST)
-enum { FLAG_KEEP = 2, FLAG_SAVE = 4 };
+enum { FLAG_KEEP = 2 };
 static int32_t gbFlags;
 typedef struct { int32_t combo, chain, broke, cells; } Made;
 
