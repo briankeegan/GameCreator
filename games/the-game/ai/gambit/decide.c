@@ -158,12 +158,15 @@ static int ranked(const Read *R, const Found *S) {
   { int n0 = n; n = routeJudged(R, n); if (n > n0) sortJudged(order, n); }
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
-  // part of the time left each -- and the order is made again)
+  // part of the time left each of those still to be asked -- and the order is made again)
   readyDefer = 0; readyFresh = 1;
+  #define READY_ASKS(J_) (!(J_)->o.lives && !(J_)->o.dead && (J_)->o.ready == NOT_ASKED && (J_) != carriedJ)
+  int toAsk = 0;
+  for (int i = 0; i < n; i++) toAsk += READY_ASKS(order[i]);
   for (int i = 0; i < n && leftMs() > 0; i++) {
     Judge *J = order[i];
-    if (J->o.lives || J->o.dead || J->o.ready != NOT_ASKED || J == carriedJ) continue;
-    readyShare(n - i);
+    if (!READY_ASKS(J)) continue;
+    readyShare(toAsk--);
     if (J->hold) holdCand(R, J->wait, J);
     else {
       static Judge again; Cand kc = J->k;
@@ -300,6 +303,15 @@ static void keepIntents(int n, const Judge *played) {
     k++;
   }
 }
+// (a line judged already this decision -- the same swaps, pressed the same way -- is the same answer: never judged twice)
+static int judgedHas(int n, const Cand *k) {
+  int st = k->settled >= 0 ? k->settled : settledPlay(k->play);
+  for (int i = 0; i < n; i++) {
+    const Judge *J = order[i];
+    if (!J->hold && J->settled == st && J->k.nseq == k->nseq && !memcmp(J->k.seq, k->seq, sizeof k->seq[0] * k->nseq)) return 1;
+  }
+  return 0;
+}
 static int keptJudged(const Read *R, int n) {
   keptOffered = 0;
   for (int i = 0; i < NINTENT && !clockOut(); i++) {
@@ -313,6 +325,7 @@ static int keptJudged(const Read *R, int n) {
     Cand k;
     if (!candOf(&k, I->play, seq, I->nseq, -1, 0)) continue;
     k.settled = I->settled; k.kept = 1;
+    if (judgedHas(n, &k)) continue;
     keptOffered++;
     if (judgeWalked(R, &k, &theJudged[n]) && clearsSomething(&theJudged[n])) { order[n] = &theJudged[n]; n++; }
   }
@@ -341,6 +354,7 @@ static int routeJudged(const Read *R, int n) {
       Cand k;
       if (!candOf(&k, A->k.play, seq, m, -1, 0)) continue;
       k.settled = 1; k.route = 1;
+      if (judgedHas(n, &k)) continue;
       routeOffered++;
       if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; }
     }

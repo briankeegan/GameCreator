@@ -137,6 +137,9 @@ with a bottom-row panel it does not touch; the next decision finds each again by
 the lines ranked, the best four that make something and are pressed settled are made into routes two at a time when they touch columns
 apart (one's clears cannot move the other's panels): one line, in walking order, judged whole and ranked with the rest. Logged as
 `kept=N[/played]` and `route=N[/played]`.
+Measured (`c9638fca`, runs 370-372): 53 of 72 where the same three modes made 61. Every option added is one more readiness check
+splitting the same time, so each break search got less. A line judged already this decision is not judged again (`judgedHas`), and
+the time is split over the options still to be asked, not over every option ranked.
 
 ### B and D, built: work on the way, and the nearer line (`propose.c` wayLines, `rank.c` key 8b)
 
