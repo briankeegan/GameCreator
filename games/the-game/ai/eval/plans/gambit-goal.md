@@ -189,5 +189,8 @@ this close have run 17 to 22: one run of 24 games has a deviation near two, so a
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 
+TWO DEATHS ARE TWO FRAMES: in large_garbage (run 393, games 6 and 7) the hold was played over a toward line known to die 61 and
+53 frames later -- every line on the board a known death, and a dead line never beat the hold (rank.c beatsHold), so the later one
+was marked idle and ranked under it. A known death beats holding now when the hold's is a death too, and later.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

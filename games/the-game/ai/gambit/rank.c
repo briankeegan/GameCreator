@@ -206,7 +206,8 @@ static int clears(const Judge *J) { return J->apCombo > 0 || J->apChain > 0 || J
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
-  if (l != NOT_ASKED && !L->o.dead && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
+  // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
+  if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
   if (L->o.ready == 1 && H->o.ready != 1) return 1;
   if (L->readyNext == 1 && H->readyNext != NOT_ASKED && H->readyNext != 1) return 1;
