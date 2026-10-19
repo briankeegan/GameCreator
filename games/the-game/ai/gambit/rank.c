@@ -13,6 +13,7 @@ typedef struct {
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
+  int32_t hasNb, nb[MAXLINE];   // the line in progress: the frame from now each swap may be pressed from, as it was judged (decide.c carriedCand)
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
 typedef struct {
@@ -67,7 +68,14 @@ static void tierInsert(Tier *t, int pos, double v) {
   t->nsub = imin(t->nsub + 1, MAXSUB);
   if (pos <= t->nlist) t->nlist++;
 }
+static int judgeCandAs(const Read *R, const Cand *k0, Judge *J);
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
+  lineNb = k0->hasNb ? k0->nb : 0;
+  int ok = judgeCandAs(R, k0, J);
+  lineNb = 0;
+  return ok;
+}
+static int judgeCandAs(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
   J->k = *k0;
@@ -164,7 +172,9 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 // more decision (react frames)
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
+  lineNb = J->k.hasNb ? J->k.nb : 0;
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
+  lineNb = 0;
 }
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&

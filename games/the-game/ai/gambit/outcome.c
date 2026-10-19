@@ -57,7 +57,11 @@ static uint32_t lineHash(const int32_t *seq, int n, int settled, int kind) {
 }
 static int readyFresh;   // (the readiness asked now: an outcome kept without it is judged again, and replaced)
 static int endWanted;    // (lineEnd: the line is judged again and the board it ends on kept)
+// (THE LINE IN PROGRESS'S FRAMES: while it is judged, each swap pressed no sooner than it was judged pressed when it was begun -- rank.c
+// judgeCand sets it; its outcomes are kept apart from the same swaps pressed as soon as they can be)
+static const int32_t *lineNb;
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
+  if (lineNb) kind |= 8;
   if ((readyFresh || endWanted) && kind == 0) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
   for (int i = 0; i < ncache; i++) {
@@ -70,6 +74,7 @@ static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
   return 0;
 }
 static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Outcome *o) {
+  if (lineNb) kind |= 8;
   if (!cache) cache = (Cached *)grab(sizeof(Cached) * CACHEN);
   if (!cache || n > MAXLINE) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
@@ -125,7 +130,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
-  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
+  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1, lineNb };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
@@ -191,7 +196,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
   Outcome *hit = cached(seq, n, settled, 2);
   if (hit) { *extLost = hit->lostAt; return hit->ready; }
   if (clockOut()) return NOT_ASKED;
-  JudgeOpts jo = { settled, decQ.tight, decF.next, 1, 1, -1, 0, 1 };
+  JudgeOpts jo = { settled, decQ.tight, decF.next, 1, 1, -1, 0, 1, 0, 0, 0, lineNb };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
@@ -215,7 +220,7 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   Outcome *hit = cached(seq, n, settled, 1);
   if (hit) return hit->fits;
   if (clockOut()) return 0;
-  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0, lineNb };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);

@@ -237,7 +237,9 @@ static Played playOf(const Read *R, int n) {
   if (P.line && holdLives && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
       firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
     const Judge *L = P.line;
+    lineNb = L->k.hasNb ? L->k.nb : 0;
     Outcome d = outcomeOf(L->k.seq, L->k.nseq, L->settled, 0, L->apAts[1] - rankReact);
+    lineNb = 0;
     // (the line pressed later must be known to last as long: a loss it was not judged for never licenses waiting)
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
@@ -252,9 +254,10 @@ static Played playOf(const Read *R, int n) {
 // found again once the stack has risen. A line handed to the frame loop is the line in progress too: the next decision judges what is
 // left of it once the swaps the frame loop pressed of it since (carryFrom, carryPressed: the question's lineFrom, linePressed) are
 // played, so a line begun is played on unless something ranks above it.
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], restAt[MAXLINE], settled, hasAim, broke, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
 static Carry theCarry;
 static int32_t carryFrom = -1, carryPressed;
+static int32_t decAt;   // (the frame the decision is for: answer.c answerTurn)
 // THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
 // into theCarry; 0 when every one is touched. carryOf and carryReady ask it.
 static int anchorOf(const int32_t *row1, const int32_t *seq, int n) {
@@ -267,6 +270,7 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) {
   return 0;
 }
 // (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
+// (each swap kept with the frame the judge pressed it from, restAt: carried on, the line is pressed as it was judged -- 0 not known)
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   memset(&theCarry, 0, sizeof theCarry);
   if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1 || k->t.tier > 4) return;
@@ -274,7 +278,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   for (int c = 1; c <= W; c++) row1[c] = decQ.b->p[1][c].f[ID];
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
-  for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
+  for (int i = first; i < k->k.nseq; i++) { theCarry.rest[i - first] = k->k.seq[i]; theCarry.restAt[i - first] = i < k->apNats ? decAt + k->apAts[i] : 0; }
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }
@@ -419,11 +423,11 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // (from the row not yet risen: the board a waited-for break was found on may have risen past this one)
   for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][C->anchorCol].f[ID] == C->anchorId) dr = r - C->anchorRow;
   if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
-  int32_t rest[MAXLINE], nrest = C->nrest - skip;
-  for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
+  int32_t rest[MAXLINE], nb[MAXLINE] = { 0 }, nrest = C->nrest - skip;
+  for (int i = 0; i < nrest; i++) { rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]); nb[i] = C->restAt[skip + i] ? imax(0, C->restAt[skip + i] - decAt) : 0; }
   // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
   // settled line waits while the board still moves)
-  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0, nb };
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
   if (j.dead || j.nats < nrest) { carryDrop = 2; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
@@ -440,5 +444,6 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   k->settled = C->settled;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;
   k->xNats = nats; for (int i = 0; i < nats; i++) k->xAts[i] = ats[i];
+  k->hasNb = 1; for (int i = 0; i < nrest; i++) k->nb[i] = nb[i];
   return 1;
 }
