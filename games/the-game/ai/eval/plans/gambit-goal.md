@@ -100,7 +100,11 @@ Those runs were not at level 10: nothing set the level, so the client's default,
 | switching | | |
 
 At `01290f76` (no assumed garbage; the board's own chain this decision's): finish them 19 (combo_storm 7, factory 5, large_garbage 7),
-aim 83%; pressure 18 (6, 7, 5), aim 16%; big chain 13 (1, 6, 6), aim 3%. Walk 3.5-3.6 cells, 19-20% of jumps 6 or more.
+aim 83%; pressure 18 (6, 7, 5), aim 16%; big chain 13 (1, 6, 6), aim 3%; build 14 (1, 6, 7), aim 10%; switching 16 (4, 4, 8), 376
+switches over all 12 directions. Walk 3.5-3.6 cells, 19-20% of jumps 6 or more.
+
+Flags, one run each against it: keep -- big chain 16, build 16; attack -- finish 15, pressure 17 (Training has no enemy to hurt: the
+attack only spends material; it is a fight's to judge).
 
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
