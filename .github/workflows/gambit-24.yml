@@ -124,6 +124,8 @@ jobs:
           sed 's/^/::notice title=summary::/' report/summary.txt
           tail -3 report/losses.txt | sed 's/^/::notice title=losses::/'
           grep -h "boards searched again\|moves at the turn" report/reach.txt | sed 's/^/::notice title=reach::/' || true
+          # (the reports whole, in the job's log: readable where the artifact is not)
+          for f in summary losses reach; do echo "===== $f"; cat report/$f.txt; done
           { echo '## Gambit 24'; echo '```'; cat report/summary.txt; echo; tail -3 report/losses.txt; grep -h "boards searched again\|moves at the turn" report/reach.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
