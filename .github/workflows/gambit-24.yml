@@ -22,8 +22,8 @@ on:
         description: 'A past run of this workflow: its games written up again, nothing played'
         default: ''
       workers:
-        description: "Gambit's worker threads (GC_GAMBIT_WORKERS; 0 none)"
-        default: '0'
+        description: "Gambit's worker threads (GC_GAMBIT_WORKERS; 0 none, empty the cores less two)"
+        default: ''
       bot:
         description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
         default: 'gambit'
@@ -77,7 +77,7 @@ jobs:
           PROFILE: ${{ inputs.profile }}
           FRAMES: ${{ inputs.frames }}
           MINUTES: '60'
-          GC_GAMBIT_WORKERS: ${{ inputs.workers || '0' }}
+          GC_GAMBIT_WORKERS: ${{ inputs.workers }}
         run: |
           echo "::notice title=cores::$(nproc) cores, GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
           bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1

@@ -215,7 +215,7 @@ static void ringOut(void) {
 }
 static void *workerMain(void *arg) {
   (void)arg;
-  paThreadId(1);
+  paThreadId(0);   // (the engine's thread 0, the searching one: the phases hand boards out of its pool, the workers are 1..n)
   static FQuestion q;
   Board *b = nb_new();
   for (;;) {

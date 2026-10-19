@@ -15,7 +15,7 @@ fi
 # golden; "golden" writes it from this build; "speed" answers questions on the wall clock and prints the engine work a decision does).
 if [ "${1:-}" = test ]; then
   clang -O2 -pthread -DPA_HEAP -DGB_TEST -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes \
-    native.c host.c test/main.c -lm -lz -o /tmp/gambit-test && /tmp/gambit-test test "${2:-}"
+    native.c host.c test/main.c -lm -lz -o /tmp/gambit-test && GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-0} /tmp/gambit-test test "${2:-}"
   exit
 fi
 # ./build.sh material DIR...: core/material.h, the life a board has by its panels, measured on the games in DIR... (material.c, on the
