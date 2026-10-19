@@ -262,6 +262,69 @@ static int compareJudged(const Judge *x, const Judge *y) {
   for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return tx.sub[q] < ty.sub[q] ? -1 : 1;
   return 0;
 }
+// A LINE IN WALKING ORDER: its swaps pressed in the order the cursor reaches them soonest -- from where the cursor is, each swap's walk
+// counted as the frame loop walks it (core/nodes.h actionsFor) -- two swaps on a shared cell kept in the line's own order. Every order
+// for a short line (WALK_ALL swaps or fewer), the nearest swap next for a longer one; of two orders that walk alike, the line's own first.
+// 0 when the line's own order walks least.
+#define WALK_ALL 6
+static int32_t walkSeq[MAXLINE], walkBest[MAXLINE], walkCost;
+static int walkUsed[MAXLINE];
+static int sharesCell(int32_t a, int32_t b) { return CR(a) == CR(b) && iabs(CC(a) - CC(b)) <= 1; }
+static int walkFree(const Cand *k, int i) {
+  for (int p = 0; p < i; p++) if (!walkUsed[p] && sharesCell(k->seq[p], k->seq[i])) return 0;
+  return 1;
+}
+static int walkStep(int row, int col, int32_t s) { return actionsFor(row, col, CR(s), CC(s), HOLDTIGHT + 1); }
+static void walkAll(const Cand *k, int d, int row, int col, int cost) {
+  if (cost >= walkCost) return;
+  if (d == k->nseq) { walkCost = cost; for (int i = 0; i < d; i++) walkBest[i] = walkSeq[i]; return; }
+  for (int i = 0; i < k->nseq; i++) {
+    if (walkUsed[i] || !walkFree(k, i)) continue;
+    walkUsed[i] = 1; walkSeq[d] = k->seq[i];
+    walkAll(k, d + 1, CR(k->seq[i]), CC(k->seq[i]), cost + walkStep(row, col, k->seq[i]));
+    walkUsed[i] = 0;
+  }
+}
+static int walkOrder(const Cand *k, Cand *out) {
+  if (k->nseq < 2) return 0;
+  int row = decQ.b->curRow, col = decQ.b->curCol, own = 0;
+  for (int i = 0, r = row, c = col; i < k->nseq; i++) { own += walkStep(r, c, k->seq[i]); r = CR(k->seq[i]); c = CC(k->seq[i]); }
+  memset(walkUsed, 0, sizeof walkUsed);
+  walkCost = own;
+  if (k->nseq <= WALK_ALL) walkAll(k, 0, row, col, 0);
+  else {
+    int cost = 0, r = row, c = col;
+    for (int d = 0; d < k->nseq; d++) {
+      int best = -1, bc = 0;
+      for (int i = 0; i < k->nseq; i++) {
+        if (walkUsed[i] || !walkFree(k, i)) continue;
+        int s = walkStep(r, c, k->seq[i]);
+        if (best < 0 || s < bc) { best = i; bc = s; }
+      }
+      walkUsed[best] = 1; walkSeq[d] = k->seq[best]; cost += bc; r = CR(k->seq[best]); c = CC(k->seq[best]);
+    }
+    if (cost < walkCost) { walkCost = cost; for (int i = 0; i < k->nseq; i++) walkBest[i] = walkSeq[i]; }
+  }
+  if (walkCost >= own) return 0;
+  *out = *k;
+  for (int i = 0; i < k->nseq; i++) out->seq[i] = walkBest[i];
+  return 1;
+}
+static int compareJudged(const Judge *x, const Judge *y);
+// A CANDIDATE JUDGED, and in walking order too when that walks less: the walking order is played when the one order puts it no lower --
+// what it makes is the engine's, as for every line; only the drops and the log's count are the line's own order's
+static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
+  int ok = judgeCand(R, k, J);
+  static Cand w; static Judge JW;
+  if (clockOut() || !walkOrder(k, &w)) return ok;
+  int32_t keepDrops[NPLAYS][NDROPS]; memcpy(keepDrops, dropped, sizeof dropped);
+  int keepUnbroken = unbroken.set;
+  int wok = judgeCand(R, &w, &JW);
+  memcpy(dropped, keepDrops, sizeof dropped); unbroken.set = keepUnbroken;
+  if (!wok || (ok && compareJudged(&JW, J) > 0)) return ok;
+  *J = JW;
+  return 1;
+}
 // sorted stably by the one order
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
