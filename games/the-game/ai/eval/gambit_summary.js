@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // THE RUN, SUMMED: every game of a 24-game run (gambit-24.yml), read from each game's own results.txt and survivor.log -- per mode, how
 // many survived and the frames the rest were lost at; the combos and chains made; the budgets (frames over the think budget, the
-// slowest frame, keys dropped, late moves). One directory per game (DIR/<name>/results.txt, survivor.log).
+// slowest frame, keys dropped, late moves); and each mode's aim -- of the attacks a game played in one mode fired (combos of four or more,
+// chains of two or more, as the game counts them), the share that met one of the mode's aims (gambit-rules.json). One directory per
+// game (DIR/<name>/results.txt, survivor.log).
 //
 //   node gambit_summary.js DIR
 var fs = require('fs'), path = require('path');
 var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
+var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
+var aims = {};   // by the mode a game played throughout: { met, all }
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, starved: 0, inHand: 0 };
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
@@ -26,11 +30,12 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     // (the decisions the clock cut: what a faster or slower machine would have played differently)
     lines.forEach(function (l) { if (l.indexOf('GAMBITD ') !== 0) return; var c = / out=(\d+)/.exec(l); if (!c) return; budget.decisions++; if (+c[1]) budget.out++; });
     // (SWITCHING: each switch by its direction -- the mode before it to the mode after -- and the mode a lost game was lost in)
-    var was = null;
+    var was = null, one = null, switched = false;
     lines.forEach(function (l) {
       var d = /^GAMBITD \d+ (.*?) play=/.exec(l);
       if (!d) return;
       if (/ switched=1/.test(l) && was && was !== d[1]) { var k = was + ' -> ' + d[1]; turns[k] = (turns[k] || 0) + 1; nturns++; }
+      if (one === null) one = d[1]; else if (one !== d[1]) switched = true;
       was = d[1];
     });
     if (m[2] === 'lost' && was) lostIn[was] = (lostIn[was] || 0) + 1;
@@ -42,11 +47,30 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       budget.starved += o.starved || 0; budget.inHand += o.inHand || 0;
       var a = o.attacks || {};
       ['combo', 'chain'].forEach(function (k) { Object.keys(a[k] || {}).forEach(function (z) { t[k][z] = (t[k][z] || 0) + a[k][z]; }); });
+      if (one && !switched) aimOf(one, a);
       // (every chain link past two, by its cause: garbage's colours, a swap since the link before, or the stack alone)
       Object.keys(o.linkBy || {}).forEach(function (w) { Object.keys(o.linkBy[w]).forEach(function (z) { var m = links[w] || (links[w] = {}); m[z] = (m[z] || 0) + o.linkBy[w][z]; }); });
     }
   }
 });
+// (a test from the rules file: ">=8", "==5", "<=3")
+function test(v, s) { var m = /^(>=|<=|==|>|<)(\d+)$/.exec(s); if (!m) return false; var n = +m[2];
+  return m[1] === '>=' ? v >= n : m[1] === '<=' ? v <= n : m[1] === '==' ? v === n : m[1] === '>' ? v > n : v < n; }
+// (an attack against an aim, as rules.c meets reads it: an aim naming a combo and no chain is one clear of that size)
+function meetsAim(aim, combo, chain) {
+  if (aim.combo && !aim.chain && chain > 1) return false;
+  if (aim.combo && !test(combo, aim.combo)) return false;
+  if (aim.chain && !test(chain, aim.chain)) return false;
+  return !!(aim.combo || aim.chain);
+}
+function aimOf(mode, a) {
+  var rule = RULES.filter(function (r) { return r.name === mode; })[0];
+  if (!rule) return;
+  var t = aims[mode] || (aims[mode] = { met: 0, all: 0 });
+  var count = function (n, combo, chain) { t.all += n; if ((rule.aims || []).some(function (x) { return meetsAim(x, combo, chain); })) t.met += n; };
+  Object.keys(a.combo || {}).forEach(function (z) { count(a.combo[z], +z, 1); });
+  Object.keys(a.chain || {}).forEach(function (z) { count(a.chain[z], 0, +z); });
+}
 var all = 0, games = 0, fmt = function (o) { return Object.keys(o).sort(function (a, b) { return a - b; }).map(function (z) { return z + 'x' + o[z]; }).join(', ') || '-'; };
 Object.keys(modes).sort().forEach(function (k) {
   var t = modes[k];
@@ -55,6 +79,7 @@ Object.keys(modes).sort().forEach(function (k) {
               '; combos ' + fmt(t.combo) + '; chains ' + fmt(t.chain));
 });
 console.log('SURVIVED ' + all + '/' + games);
+Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '')); });
 if (nturns) {
   console.log('switches: ' + nturns + ' in all, ' + Object.keys(turns).length + ' directions -- ' + Object.keys(turns).sort().map(function (k) { return k + ' x' + turns[k]; }).join(', '));
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
