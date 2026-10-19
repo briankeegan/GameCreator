@@ -23,7 +23,15 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   var m = /(\w+) training lost frames=(\d+)/.exec(fs.readFileSync(rf, 'utf8'));
   if (!m) return;
   // (the boards its break search came up empty on, and the last boards it decided on, written at the match's end: GAMBITL)
-  var lostAt = +m[2], lines = played(fs.readFileSync(lf, 'utf8').split('\n')).filter(function (l) { return l.indexOf('GAMBITB ') === 0 || l.indexOf('GAMBITL ') === 0; });
+  // (a last board is searched again only when its own decision -- the one asked on its frame -- found no break: GAMBITL holds the last
+  // boards whatever the live search found, GAMBITB only those it came up empty on; one board a frame)
+  var all = played(fs.readFileSync(lf, 'utf8').split('\n')), broke = {};
+  all.forEach(function (l) { if (l.indexOf('GAMBITD ') !== 0) return; var b = / br=(\S+)/.exec(l); if (b && /^[1-9]/.test(b[1])) broke[l.split(' ')[1]] = 1; });
+  var lostAt = +m[2], seenAt = {}, lines = all.filter(function (l) {
+    var at = l.split(' ')[1];
+    if (!(l.indexOf('GAMBITB ') === 0 || (l.indexOf('GAMBITL ') === 0 && !broke[at])) || seenAt[at]) return false;
+    return (seenAt[at] = 1);
+  });
   // (the match's own: the last run of boards before the loss, clock forward)
   var bs = lines.map(function (l) { var p = l.split(' '); return { at: +p[1], b64: p[2], arr: JSON.parse(p[3] || '[]') }; }).filter(function (x) { return x.at <= lostAt && x.at >= lostAt - LAST; });
   var out = [];
