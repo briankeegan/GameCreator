@@ -15,6 +15,8 @@ out.push(['profile', gp.mode ? names.indexOf(gp.mode) : -1, gp.ms || 0, gp.exten
 if (gp.switch) out.push(['switch', gp.switch.min, gp.switch.max].join(' '));
 // (the break search's share of the searches' time, in percent: under garbage, otherwise -- answer.c gb_share)
 if (gp.share) out.push(['share', gp.share.under || 0, gp.share.otherwise || 0].join(' '));
+// (of two breaks, the one that sends garbage first -- answer.c gb_attack)
+if (gp.attack) out.push('attack 1');
 names.forEach(function (n, i) { out.push('name ' + i + ' ' + n); });
 out.push(['rules', R.n, R.words.length].concat(R.words).join(' '));
 console.log(out.join('\n'));
