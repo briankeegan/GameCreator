@@ -11,14 +11,18 @@ var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 // GC_SURVIVOR_PROFILE names another file.
 function profile() {
   var file = process.env.GC_SURVIVOR_PROFILE || path.join(__dirname, 'survivor.profile.json');
-  var p = JSON.parse(fs.readFileSync(file, 'utf8'));
-  // (base: another profile, relative to this one's folder, that this one changes -- its keys over the base's, an object key merged a level)
-  if (p.base) {
-    var b = JSON.parse(fs.readFileSync(path.resolve(path.dirname(file), p.base), 'utf8')), own = p;
-    p = Object.assign({}, b);
-    Object.keys(own).forEach(function (k) { p[k] = own[k] && typeof own[k] === 'object' && !Array.isArray(own[k]) && b[k] && typeof b[k] === 'object' ? Object.assign({}, b[k], own[k]) : own[k]; });
-    delete p.base;
-  }
+  // (base: another profile, relative to this one's folder, that this one changes -- its keys over the base's, an object key merged a
+  // level; a base may have a base of its own)
+  var read = function (f, depth) {
+    var own = JSON.parse(fs.readFileSync(f, 'utf8'));
+    if (!own.base) return own;
+    if (depth > 8) throw new Error('survivor profile ' + file + ': bases nested past 8');
+    var b = read(path.resolve(path.dirname(f), own.base), depth + 1), q = Object.assign({}, b);
+    Object.keys(own).forEach(function (k) { q[k] = own[k] && typeof own[k] === 'object' && !Array.isArray(own[k]) && b[k] && typeof b[k] === 'object' ? Object.assign({}, b[k], own[k]) : own[k]; });
+    delete q.base;
+    return q;
+  };
+  var p = read(file, 0);
   // (a Gambit profile decides by its own rules: it has no modes)
   ['name', 'weights', 'reaction', 'cursorMoveFrames', 'depth', 'ahead'].concat(p.gambit ? [] : ['modes']).forEach(function (k) {
     if (p[k] === undefined) throw new Error('survivor profile ' + file + ': no ' + k);

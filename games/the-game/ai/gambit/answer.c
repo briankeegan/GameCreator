@@ -4,6 +4,8 @@
 
 #define BREAK_SHARE 0.4    // of the searches' time (propose.c leftMs), for the break search
 #define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
+// (the profile's own, in percent, where it gives one: gb_share)
+static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
 #define BREAK_MIN_MS 5
 #define BREAK_MAX_MS 400
 #define ROW_STEPS 16
@@ -117,7 +119,7 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
 static Broke theBr;
 static int32_t brCut, brResumed;
 static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  double share = R->under ? UNDER_SHARE : BREAK_SHARE;
+  double share = R->under ? underShare : breakShare;
   *ms = 0; brCut = 0; brResumed = 0;
   // (no break search on a question due sooner than it could take: the answer would come late)
   if (C2.due && leftMs() < BREAK_MIN_MS) return 0;
@@ -374,6 +376,11 @@ EXPORT(gb_rules) int gb_rules(int n) {
 }
 // The profile: the mode played the whole game (the rule's name, -1: chosen by the facts each decision), the gambit's numbers, the
 // bot's hands.
+// THE BREAK SEARCH'S SHARE of the searches' time, in percent, under garbage and otherwise (the profile's `share`); 0 keeps the default
+EXPORT(gb_share) void gb_share(int under, int otherwise) {
+  underShare = under > 0 && under <= 100 ? under / 100.0 : UNDER_SHARE;
+  breakShare = otherwise > 0 && otherwise <= 100 ? otherwise / 100.0 : BREAK_SHARE;
+}
 EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff, int reaction, int swapGap, int cursor) {
   modeRule = mode;
   // (the opening raise is held through every row it is asked for -- search.h HOLD_THROUGH -- not let go at each row's end and asked
