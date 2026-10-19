@@ -230,6 +230,7 @@ static void markIdle(Judge **a, int n) {
 // A LINE THAT CUTS THE BOARD'S OWN CHAIN SHORT: the board left alone makes a chain (the hold's judging, aloneChain) and with the line
 // played it makes a shorter one
 static int cutsShort(const Judge *J) { return !J->hold && J->apPlayed && aloneChain > 1 && J->apWhole < aloneChain; }
+static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
@@ -274,6 +275,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (tx.tier != ty.tier) return tx.tier - ty.tier;
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
   for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return tx.sub[q] < ty.sub[q] ? -1 : 1;
+  // 10. THE NEARER FIRST SWAP: of two lines every key leaves equal, the one whose first swap the cursor reaches in fewer actions
+  // (core/nodes.h actionsFor, as the frame loop walks) -- the hold presses nothing, nearest of all
+  { int nx = firstWalk(x), ny = firstWalk(y); if (nx != ny) return nx - ny; }
   return 0;
 }
 // A LINE IN WALKING ORDER: its swaps pressed in the order the cursor reaches them soonest -- from where the cursor is, each swap's walk
