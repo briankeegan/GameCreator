@@ -30,7 +30,7 @@ typedef struct {
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
   double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
-  int32_t saving;      // under garbage while the board saves panels up (decide.c read): its panels weighed before the list
+  int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
@@ -99,7 +99,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // and leaving it alone -- the hold -- meets what it makes)
   int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
   J->met = j ? entry : -1;
-  J->saving = R->saving && R->under;
+  J->saving = R->saving && R->under && m.broke > 0;
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
   J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;
   // (the entry a line is ranked for is the one the judged line meets; the search's word only where the judge could not play it out)
@@ -156,7 +156,6 @@ static void holdCand(const Read *R, int wait, Judge *J) {
   J->met = J->o.dead ? -1 : metOf(&R->asked, (Made){ J->o.j.whole.combo, J->o.j.whole.chain, 0, 0 });
   aloneChain = J->o.dead ? 0 : J->o.j.whole.chain;
   J->k.play = PLAY_HOLD; J->k.aim = -1; J->hold = 1; J->wait = wait; J->aim = -1;
-  J->saving = R->saving && R->under;
   J->t.tier = HOLD_TIER; J->t.nsub = 1; J->t.sub[0] = wait ? -1 : 0;
   const Judged *j = J->o.dead ? 0 : &J->o.j;
   J->apDone = j ? j->done : -1; J->apFire = -1; J->apChainAll = j ? j->chainAll : 0; J->apPlayed = !!j;
@@ -272,10 +271,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 6. THE NEXT BREAK'S MATERIAL: of two breaks under garbage, the one that leaves a break to build (outcome.c nextBuild) and keeps the
   // board's floor -- before the list's entry: the list orders the breaks the board can afford
   if (x->material >= 0 && y->material >= 0 && x->material != y->material) return x->material - y->material;
-  // 7. SAVING PANELS UP (decide.c read: begun topped and short, kept until the list's largest combo is sure): of two lines under
-  // garbage, the hold among them, the one whose board has more life by its panels -- before the list's entry: the board's life is its
-  // next breaks, and a line that clears panels and breaks nothing spends them
-  if (x->saving && y->saving && x->o.lifeLeft >= 0 && y->o.lifeLeft >= 0 && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
+  // 7. SAVING PANELS UP (decide.c read: begun topped and short, kept until the list's largest combo is sure): of two breaks under
+  // garbage, the one whose board has more life by its panels -- before the list's entry: the board's life is its next breaks
+  if (x->saving && y->saving && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay;
