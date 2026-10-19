@@ -86,5 +86,15 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan.
 
-Last at level 10 (`0a43cf2cb2`, `2d8a3259fd`): finish them 23, pressure 24, big chain 24, build 24, switching 24 (475 switches over
-all 12 directions). Not yet run at level 11.
+Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
+
+| mode | level 11 | runs |
+|---|---|---|
+| finish them | 14/24 (combo_storm 2, factory 7, large_garbage 5) | `7ab7a861` |
+| pressure | 18/24 (combo_storm 4, factory 8, large_garbage 6) | `7ab7a861` |
+| big chain | | |
+| build | | |
+| switching | | |
+
+Both with 0 divergences and 0 late moves. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
+of 118).
