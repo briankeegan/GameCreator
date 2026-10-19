@@ -10,6 +10,7 @@
  "nativeCands": true,
  "gambit": {
   "rules": "survivor-profiles/gambit-rules.json",
+  "expect": true,
   "ms": 80,
   "width": 40,
   "depth": 7,
