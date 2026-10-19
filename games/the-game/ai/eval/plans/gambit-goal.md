@@ -144,7 +144,9 @@ pressure 22/55/23; big chain 2/71/27; build 13/63/24. Blocks thrown a minute 15.
 two runs, 8 before) is where it loses.
 Under garbage, 15-25% of decisions played a line that loses 60 frames or more before another offered (a carry or the three's break,
 where a line breaking the same garbage and ending in a combo -- a last resort -- outlasted it by 100-180 frames): both outlived the
-next decision, so they ranked alike and the list chose. Alike is now within a break's time of each other (`rank.c` key 3).
+next decision, so they ranked alike and the list chose. Alike within a break's time of each other (`fa3305e0`): finish 14, pressure
+13, big chain 14, build 17 -- 58 against 70, the last resorts up from 15-27% to 20-41% of the lines played. The frames a last resort
+buys now the board pays for later: reverted.
 
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
