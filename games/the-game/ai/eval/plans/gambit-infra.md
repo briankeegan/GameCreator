@@ -116,6 +116,13 @@ one candidate after another. Batching the steps inside a search cannot reach it.
 threads (the break search made reentrant: its state a thread's own), and the searches as a portfolio -- coarse-grained, as lazy SMP
 is. That is E's next step, and it comes with F: a kept plan asks readiness of the few lines that changed, not of every line again.
 
+### F, its first piece: the breaks already found, kept (`search/break.c` readyKept)
+
+The readiness check -- 72% of a decision -- asks the break search of each line's landed board. The board a line lands on next decision
+is the same board whenever nothing new was told, so a break found on it is kept, keyed by the whole board as it plays on, the blocks
+still on their way, the hold and the press; a board that differs anywhere is searched afresh. Only a break found is kept. The log's
+`rdy=hit/asked`, the summary's "kept plan".
+
 ## Build order
 
 1. E, the threads: no behaviour of its own -- the same decisions, searched deeper in the same time.

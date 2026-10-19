@@ -547,10 +547,59 @@ EXPORT(gb_break) int gb_break(int wait, int nresume) {
 static int32_t popLeft(const Board *b);   // (propose.c: the frames a popping slab has left)
 static double readyShareMs = -1;
 static void readyShare(int asks) { readyShareMs = asks > 0 ? leftMsOf() / (2.0 * asks) : -1; }
+// THE BREAKS ALREADY FOUND, kept across decisions (the kept plan's first piece, plans/gambit-infra.md F): a board a line lands on is
+// the same board the next decision's line lands on whenever nothing new was told -- the engine predicts every frame -- so the break
+// found on it is found again. Keyed by the whole board as it plays on (its state, the garbage queued, the rows it is fed: the step's
+// counts and the caches that are no part of it left out), the blocks still on their way, the hold and the press: a board that differs
+// anywhere is a board searched afresh. Only a break found is kept -- "none" is the time the search had, not the board.
+#define READYN 128
+typedef struct { uint32_t h; int32_t nbytes, whyN, at; int32_t why[MAXLINE]; unsigned char *bytes; } ReadyKept;
+static ReadyKept readyKept[READYN];
+static unsigned char *readyKeyBuf;
+static int32_t readyClock, readyAsked, readyHit;   // (the log's: asked and found kept, this decision)
+static int readyKey(const Board *b, const Node *nd, int32_t tight, uint32_t *h) {
+  static Board canon;
+  unsigned long head = BOARD_HEAD, inc = (unsigned long)b->ninc * sizeof(Incoming), rows = (unsigned long)b->nrows * sizeof(Panel) * (W + 1);
+  unsigned long extra = sizeof(int32_t) * (4 + 5 * MAXARR), need = head + inc + rows + extra;
+  if (!readyKeyBuf) readyKeyBuf = (unsigned char *)grab(sizeof(Board) + extra);
+  if (!readyKeyBuf || need > sizeof(Board) + extra) return 0;
+  memcpy(&canon, b, head);
+  canon.quiet = canon.noQuiet = canon.hi = canon.cdLeft = canon.popSeen = 0; memset(canon.rowActive, 0, sizeof canon.rowActive);
+  memset(canon.sCombo, 0, sizeof canon.sCombo); memset(canon.sChainAt, 0, sizeof canon.sChainAt);
+  canon.sNCombo = canon.sCleared = canon.sBroke = canon.sEarned = canon.sFell = canon.sHollow = 0; canon.score = 0;
+  unsigned char *k = readyKeyBuf;
+  memcpy(k, &canon, head); k += head;
+  memcpy(k, b->inc, inc); k += inc;
+  memcpy(k, b->p, rows); k += rows;
+  int32_t q[4 + 5 * MAXARR], nq = 0;
+  q[nq++] = nd->holdLeft; q[nq++] = nd->holdStarted; q[nq++] = tight; q[nq++] = nd->narr;
+  for (int i = 0; i < nd->narr; i++) { q[nq++] = nd->arr[i].at; q[nq++] = nd->arr[i].width; q[nq++] = nd->arr[i].height; q[nq++] = nd->arr[i].isChain; q[nq++] = nd->arr[i].isMetal; }
+  memcpy(k, q, sizeof(int32_t) * (unsigned long)nq); k += sizeof(int32_t) * (unsigned long)nq;
+  int32_t nb = (int32_t)(k - readyKeyBuf);
+  uint32_t hh = 2166136261u;
+  for (int32_t i = 0; i < nb; i++) hh = (hh ^ readyKeyBuf[i]) * 16777619u;
+  *h = hh;
+  return nb;
+}
+static ReadyKept *readyFind(uint32_t h, int32_t nb) {
+  ReadyKept *e = &readyKept[h % READYN];
+  return e->bytes && e->h == h && e->nbytes == nb && !memcmp(e->bytes, readyKeyBuf, (unsigned long)nb) ? e : 0;
+}
+static void readyKeep(uint32_t h, int32_t nb, const int32_t *why, int32_t whyN) {
+  ReadyKept *e = &readyKept[h % READYN];
+  if (!e->bytes) e->bytes = (unsigned char *)grab(sizeof(Board) + sizeof(int32_t) * (4 + 5 * MAXARR));
+  if (!e->bytes) return;
+  memcpy(e->bytes, readyKeyBuf, (unsigned long)nb); e->h = h; e->nbytes = nb; e->whyN = whyN;
+  for (int i = 0; i < whyN && i < MAXLINE; i++) e->why[i] = why[i];
+}
 static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   if (breakBusy) return NOT_ASKED;
   Board *b = ensureBoard(x, n);
   if (!b) return NOT_ASKED;
+  uint32_t kh = 0;
+  int32_t kn = readyKey(b, NODE(x, n), decQ.tight, &kh);
+  readyAsked++;
+  if (kn) { ReadyKept *e = readyFind(kh, kn); if (e) { readyHit++; if (why) { for (int i = 0; i < e->whyN; i++) why[i] = e->why[i]; *whyN = e->whyN; } return 1; } }
   static Question q;
   memset(&q, 0, sizeof q);
   q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;
@@ -565,12 +614,12 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   listDefault = saved;
   clockShareEnd(old);
   if (!rb.depth) return clockOut() ? NOT_ASKED : 0;
-  if (why) {
-    int k = 0;
-    if (rb.pathLen) for (; k < rb.pathLen && k < MAXLINE; k++) why[k] = rb.path[k];
-    else if (rb.nmoves) why[k++] = rb.moves[0];
-    *whyN = k;
-  }
+  { int32_t line[MAXLINE], k = 0;
+    if (rb.pathLen) for (; k < rb.pathLen && k < MAXLINE; k++) line[k] = rb.path[k];
+    else if (rb.nmoves) line[k++] = rb.moves[0];
+    if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }
+    // (the board as keyed before the search: the break search plays it, so it is keyed again from the node)
+    if (kn && readyKey(ensureBoard(x, n), NODE(x, n), decQ.tight, &kh) == kn) readyKeep(kh, kn, line, k); }
   return 1;
 }
 static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN) = readyBreakOf;

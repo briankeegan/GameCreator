@@ -212,6 +212,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   backBoard = decQ.b;
   theBack.at = at;
   aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
+  readyAsked = readyHit = 0;
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   readMs = nowMs() - tStart;
   double brMs;
@@ -301,6 +302,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   L_s(" casc="); L_i(cascadeLive(decQ.b)); L_s(" pop="); L_i(popLeft(decQ.b)); L_s(" hp="); L_i(decQ.b->health); L_s(" stop="); L_d(R.F.v[FACT_US_STOP]);
+  if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight);
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
@@ -405,6 +407,7 @@ static void modeLeft(void) {
 EXPORT(gb_new_game) void gb_new_game(void) {
   modeLeft();
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
+  for (int i = 0; i < READYN; i++) readyKept[i].h = 0, readyKept[i].nbytes = 0;   // (a new game's boards are its own)
   gb_back(0, 0, 0, 0, 0, 0, 0);
 }
 EXPORT(gb_switch) void gb_switch(int min, int max) { switchMin = min > 0 ? min : 0; switchMax = max > switchMin ? max : switchMin; nswitch = 0; }
