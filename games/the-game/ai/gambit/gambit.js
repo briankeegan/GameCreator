@@ -209,13 +209,17 @@ Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms, listOn) {
 };
 Gambit.prototype.breakPath = function (ms) {
   var X = this.X;
-  X.gb_clock_start(Date.now() + ms);
-  var w = this.G.body(X.gb_break(0, 0)), depth = w[0], k = 7, nm = w[k++];
+  var t0 = Date.now();
+  X.gb_clock_start(t0 + ms);
+  var w = this.G.body(X.gb_break(0, 0)), depth = w[0], k = 7, nm = w[k++], took = Date.now() - t0;
   if (!depth) return null;
   var first = nm ? [w[k] >> 3, w[k] & 7] : null; k += 3 * nm;
   var pl = w[k++], path = [];
   for (var i = 0; i < pl; i++) path.push([w[k + i] >> 3, w[k + i] & 7]);
-  return pl ? path : [first];
+  // (how it was found -- the first swap, the break built, the touch beam, its wider beam, a slab's line-up -- and the ms it took)
+  var line = pl ? path : [first];
+  line.how = w[5] ? 'lineup' : w[4] ? 'wide' : w[2] ? 'touch' : pl ? 'built' : 'first'; line.ms = took;
+  return line;
 };
 
 module.exports = { load: load, bind: bind, aimWords: aimWords, testOf: testOf, rulesWords: rulesWords, aimsOf: aimsOf, checked: checked, parse: parse, Rules: Rules, rulesFor: rulesFor, FACTS: FACTS, Gambit: Gambit };
