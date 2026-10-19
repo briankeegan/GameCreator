@@ -78,7 +78,9 @@ jobs:
           FRAMES: ${{ inputs.frames }}
           MINUTES: '60'
           GC_GAMBIT_WORKERS: ${{ inputs.workers || '0' }}
-        run: bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
+        run: |
+          echo "::notice title=cores::$(nproc) cores, GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
+          bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
         if: always()
         run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }}::/' || true

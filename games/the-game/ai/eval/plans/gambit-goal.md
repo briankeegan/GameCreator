@@ -147,6 +147,9 @@ where a line breaking the same garbage and ending in a combo -- a last resort --
 next decision, so they ranked alike and the list chose. Alike within a break's time of each other (`fa3305e0`): finish 14, pressure
 13, big chain 14, build 17 -- 58 against 70, the last resorts up from 15-27% to 20-41% of the lines played. The frames a last resort
 buys now the board pays for later: reverted.
+At `e19b1870` (the breaks already found, kept across decisions -- plans/gambit-infra.md F): finish 19 (5, 7, 7), pressure 20 (6, 8,
+6), big chain 22 (6, 8, 8), build 19 (6, 7, 6) -- 80 of 96 against 70, the best yet. 9% of the readiness checks answered by a break
+already found; think 300 ms a decision; 0 divergences, 0 late moves.
 
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

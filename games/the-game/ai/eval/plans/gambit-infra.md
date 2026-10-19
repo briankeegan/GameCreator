@@ -128,6 +128,15 @@ The readiness check -- 72% of a decision -- asks the break search of each line's
 is the same board whenever nothing new was told, so a break found on it is kept, keyed by the whole board as it plays on, the blocks
 still on their way, the hold and the press; a board that differs anywhere is searched afresh. Only a break found is kept. The log's
 `rdy=hit/asked`, the summary's "kept plan".
+Measured (`e19b1870`, runs 366-369): 80 of 96 against 70; 9% of the checks answered by a break already found.
+
+### A and B, built: the intentions and the route (`decide.c` keepIntents, keptJudged, routeJudged)
+
+Each decision keeps up to four of its best lines that make something (a clear, a chain, a combo, a break) besides the one it plays, each
+with a bottom-row panel it does not touch; the next decision finds each again by it and judges it on the engine like any line. And of
+the lines ranked, the best four that make something and are pressed settled are made into routes two at a time when they touch columns
+apart (one's clears cannot move the other's panels): one line, in walking order, judged whole and ranked with the rest. Logged as
+`kept=N[/played]` and `route=N[/played]`.
 
 ## Build order
 
