@@ -204,5 +204,9 @@ handed on behind a hold and never pressed: the frame loop followed a hand only w
 after a hold is paced. A swap with its judged frame is now pressed on it, paced or not, and a line the frame loop cannot press on is
 logged with why ("LINE dropped").
 Measured (`595d88f3`): finish 21 (5, 8, 8) -- large_garbage 8 of 8; the three losses combo_storm, a life kept 90% of 644.
+THE LINE IN PROGRESS AT ITS FIRST FRAMES (`9dc31485`, backed out): of the lives not kept, the line in progress judged again at the
+next decision pressed its swaps as soon as it could, not when the decision that began it did, and could stop breaking
+(carryDrop=3). Judging each carried swap no sooner than its first frame: finish 7 (2, 2, 3), a life kept 82% -- the carried line
+judged to live to 559 while the game was lost at 1525 (factory-8), so the line judged and the line pressed parted.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
