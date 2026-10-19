@@ -37,7 +37,9 @@ typedef struct {
   int32_t ready;                // 1, 0, or NOT_ASKED
   int32_t readyLine[MAXLINE], readyN; // the swaps the readiness found (why), as r * 8 + c
   int32_t readyWait;            // the frame from the root the readiness looked from (its waitTo)
-  int32_t readyPend;            // the landed board kept to be searched ahead, its index + 1 (search/break.c readyPendOf); 0 none
+  int32_t readyPend;            // the landed board kept for the decision's readiness, its index + 1 (search/break.c readyPendOf); 0 none
+  int32_t readyNear;            // the swaps to the nearest break on that board by the shape math (breakNear, NEAR_MISS none; 0 no
+                                // garbage), -1 not asked
   int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
   int32_t late;                 // the clock stopped it: no answer
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
@@ -112,17 +114,24 @@ static int settles(Ctx *x, int o) { int z = settleOf(x, o); return liveNode(x, z
 static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN);
 static int32_t readyPendOf(Ctx *x, int n);
 static int readyDefer;
-// readyCollect: and while it is deferred, the landed board kept to be searched ahead on every thread (readyPendLast: which)
-static int32_t readyCollect, readyPendLast;
+// readyCollect: and while it is deferred, the landed board kept -- searched once a decision, by whichever thread begins it
+// (readyPendLast: which) -- and how near a break it is by the shape math (readyNearLast), what the decision asks it in the order of
+static int32_t readyCollect, readyPendLast, readyNearLast;
+static int nearOf(const Board *b); static int garbageOn(const Board *b);   // (search/break.c)
 static int32_t readyRow1Buf[W + 1];
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
-  readyPendLast = 0;
+  readyPendLast = 0; readyNearLast = -1;
   int land = step(x, n, MK_LONG, 0, 0, imax(1, wait - NODE(x, n)->t));
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   if (readyDefer && !readyCollect) return NOT_ASKED;
   int calm = settleOf(x, land);
   if (liveNode(x, calm)) land = calm;
-  if (readyDefer) { readyPendLast = readyPendOf(x, land); return NOT_ASKED; }
+  if (readyDefer) {
+    Board *lb = ensureBoard(x, land);
+    readyNearLast = lb ? (garbageOn(lb) ? nearOf(lb) : 0) : -1;
+    readyPendLast = readyPendOf(x, land);
+    return NOT_ASKED;
+  }
   { Board *lb = ensureBoard(x, land); for (int c = 1; c <= W; c++) readyRow1Buf[c] = lb && lb->nrows > 1 ? lb->p[1][c].f[ID] : NUL; }
   if (clockOut()) return NOT_ASKED;
   return readyBreak(x, land, why, whyN);
@@ -146,7 +155,7 @@ static int stepTapped(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) 
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->fire = -1; j->cut = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->fire = -1; j->cut = -1; j->readyNear = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -224,7 +233,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     int32_t from = nseq ? 0 : cfgReaction;
     j->readyWait = imax(1, imax(o->readyAt, from) + 2);
     j->ready = breaksAfterLanding(x, n, j->readyWait, o->why ? j->readyLine : 0, &j->readyN);
-    j->readyPend = readyPendLast;
+    j->readyPend = readyPendLast; j->readyNear = readyNearLast;
     memcpy(j->readyRow1, readyRow1Buf, sizeof j->readyRow1);
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
   }

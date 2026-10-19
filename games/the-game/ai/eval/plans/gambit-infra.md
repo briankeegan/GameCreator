@@ -155,7 +155,16 @@ workers are off unless GC_GAMBIT_WORKERS is set.
   with no plan kept -- what cost them before was every extra line cutting every break search's share. A line judged already is never
   judged twice.
 - STABLE (`rank.c` key 10): of two lines every key leaves equal, the one the last decision kept.
-- The workers are on by default (the cores less two: on a GitHub runner's four, two). Logged `pre=`, `seed=`, `kept=`, `route=`.
+- Measured (`feac20d4`, two workers, finish): 9 of 24 against 22 with none -- the decision's checks fell from 11 to 8, the decisions
+  the clock cut from 12 to 74. On a runner's four threads (two cores, as its own log now shows) a worker takes what Gambit and the
+  game run on: the workers are off unless asked for. Logged `pre=`, `seed=`, `kept=`, `route=`.
+
+### The readiness by its yield (`decide.c` ranked, `judge.c` readyNear)
+
+Measured on three headless games, 8,000 readiness checks: a landed board with a break in reach by the shape math (breakNear, the
+swaps to the nearest line-up) has one found for it 22-55% of the time; a settled board with none in reach once in fifty -- in 96% of
+the time readiness took. So the decision asks those in reach first, best-ranked first, then the rest in the time left; and every
+landed board is searched once a decision (the kept boards, `readyPendOf`), the second line landing on it reading the first's answer.
 
 ### F, its first piece: the breaks already found, kept (`search/break.c` readyKept)
 

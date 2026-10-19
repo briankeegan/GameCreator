@@ -136,7 +136,7 @@ static int ranked(const Read *R, const Found *S) {
   double t1 = nowMs();
   for (int i = 0; i < nc; i++) offered[theCands[i].play]++;
   readyDefer = 1;   // (the proposers above ask readiness whole; the judging below ranks first)
-  readyStop(); readyPendClear(); readyCollect = pool.nworkers > 0;   // (and with workers, keeps each landed board to search them all at once)
+  readyStop(); readyPendClear(); readyCollect = 1;   // (and keeps each landed board: searched once, its nearest break measured)
   rankReact = C2.reaction + 1;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
@@ -169,9 +169,13 @@ static int ranked(const Read *R, const Found *S) {
   readySpread(n);
   int toAsk = 0;
   for (int i = 0; i < n; i++) toAsk += READY_ASKS(order[i]) && !EXTRA(order[i]);
+  // (BY YIELD: a board with a break in reach by the shape math has one found for it half the time; one with none, settled, once in
+  // fifty, in nearly all of the time a decision spends on readiness -- so those in reach are asked first, best-ranked first, and the
+  // rest in the time left)
+  for (int pass = 0; pass < 2; pass++)
   for (int i = 0; i < n && leftMs() > 0; i++) {
     Judge *J = order[i];
-    if (!READY_ASKS(J)) continue;
+    if (!READY_ASKS(J) || (J->o.j.readyNear < NEAR_MISS) != (pass == 0)) continue;
     readyKnownOnly = EXTRA(J);
     if (!readyKnownOnly) readyShare(toAsk--);
     if (J->hold) holdCand(R, J->wait, J);

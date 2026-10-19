@@ -22,7 +22,7 @@ on:
         description: 'A past run of this workflow: its games written up again, nothing played'
         default: ''
       workers:
-        description: "Gambit's worker threads (GC_GAMBIT_WORKERS; 0 none, empty the cores less two)"
+        description: "Gambit's worker threads (GC_GAMBIT_WORKERS; none when empty)"
         default: ''
       bot:
         description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
@@ -79,7 +79,7 @@ jobs:
           MINUTES: '60'
           GC_GAMBIT_WORKERS: ${{ inputs.workers }}
         run: |
-          echo "::notice title=cores::$(nproc) cores, GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
+          echo "::notice title=cores::$(nproc) threads, $(lscpu | awk -F: '/^Core\(s\) per socket|^Thread\(s\) per core/ {gsub(/ +/, " ", $2); printf "%s:%s, ", $1, $2}')GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
           bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
         if: always()
