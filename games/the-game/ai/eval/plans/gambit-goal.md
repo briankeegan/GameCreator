@@ -180,7 +180,10 @@ many queued), the next decision had a line that lived 79% of the time (run 389) 
 all. One cause: readiness looked from a frame on past a line's end, the hold the next decision asked from where the board settled --
 one trajectory, two boards a frame apart, so the break found on one was never found again by its key. Now a line past the landing is
 ready from where it ends. The summary counts it ("a life kept"). The most of the rest (7 of 17): the line in progress itself -- it was
-never asked readiness, so a line that lived by a break in reach lost it the moment it was carried on. It is asked now, as any line. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+never asked readiness, so a line that lived by a break in reach lost it the moment it was carried on. It is asked now, as any line.
+Measured: `284b3a33` finish 19 (5, 8, 6), a life kept 82% of 422; `2a8a1f38` finish 19 (4, 8, 7), a life kept 88% of 672 -- lines
+that live half again as many. Two combo_storm games lost in the first wave (frames 387, 551): the opening raise toward the rules' ten
+rows, then the rest of the wave shown after it -- new information, not a prediction gone wrong. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 
