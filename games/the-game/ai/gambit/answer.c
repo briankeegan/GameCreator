@@ -60,6 +60,9 @@ static int seenDigHas(const Board *b, int32_t mv) {
 // on after it, a bottom-row panel none of them touches, and the line toward a break played
 typedef struct { int32_t set, gid, anchorRow, anchorCol, anchorId, id, playedHold, played, nhanded, handed[MAXLINE], ntoward, toward[MAXPATH]; Paths paths; } Kept;
 static Kept theKept;
+// (a life not kept: the last decision's verdict under garbage, its next landing frame and queue -- answerTurn's log)
+#define LIFEDUMPS 20
+static int32_t lifeLived, lifeLand, lifeQk, lifeDumps;
 static int32_t towardPlayedN, towardPlayed[MAXPATH];
 static int32_t riseSince(const Board *b, int row, int col, int32_t id) {
   for (int r = 1; r < b->nrows; r++) if (b->p[r][col].f[ID] == id) return r - row;
@@ -405,6 +408,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (R.under && !(ran && theBr.depth) && (emptyAt == NUL || at - emptyAt >= 30 || at < emptyAt)) { emptyAt = at; A->dumpBoard = 1; }
   // (THE BOARD TOPPED WITH NO GARBAGE ON IT, for reading the stalls: at most one every 30 frames)
   else if (R.topped && !R.under && (emptyAt == NUL || at - emptyAt >= 30 || at < emptyAt)) { emptyAt = at; A->dumpBoard = 2; }
+  // (A LIFE NOT KEPT: the last decision's line lived under garbage, nothing new was told since -- the next block lands on the same frame,
+  // as many queued -- and no line lives now. The engine predicts every frame, so this is a fault: this board and the last are logged,
+  // GAMBITK, to be replayed side by side. At most LIFEDUMPS a game.)
+  { int32_t landAbs = R.F.known[FACT_US_NEXTLANDS] ? at + (int32_t)R.F.v[FACT_US_NEXTLANDS] : NUL, qk = R.F.v[FACT_US_QUEUEKILLS] ? 1 : 0;
+    if (lifeLived && landAbs != NUL && landAbs == lifeLand && qk == lifeQk && !P.nlive && lifeDumps < LIFEDUMPS) { A->dumpBoard = 3; lifeDumps++; }
+    lifeLived = A->verdict == 1 && R.under; lifeLand = landAbs; lifeQk = qk; }
   // THE RAISE HELD DOWN: the steps the row has left, and the rows on to the rule's `to`
   if (d.kind == 2) { A->raiseNow = imax(1, (decQ.b->displacement ? decQ.b->displacement : ROW_STEPS) - 1); A->raiseAfter = imax(0, R.to - fullTop(decQ.b) - 1) * ROW_STEPS; }
 }
@@ -454,12 +463,13 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 // WHAT A MODE CARRIES from one decision to the next, let go when the mode changes: the break search's lines, the line in progress (begun
 // for the old mode's list), the dig, the line toward a break.
 static void modeLeft(void) {
+  lifeLived = 0;
   memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry);
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft();
+  modeLeft(); lifeDumps = 0;
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
   memset(theIntents, 0, sizeof theIntents);

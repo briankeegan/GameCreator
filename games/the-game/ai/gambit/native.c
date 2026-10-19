@@ -93,6 +93,9 @@ static int raisePresses(const FQuestion *q, Board *b) {
   ns_reset(raiseCtx);
   return r != STEP_NULL && r != STEP_ERR;
 }
+// (THE LAST BOARDS, ringKeep below)
+#define RINGN 32
+static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
 // The board as base64 of its bytes (the head, the queue, the rows), for the reach report (GAMBITB)
 static int b64(const unsigned char *p, int n, char *out) {
   static const char A[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -180,7 +183,9 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   }
   snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0);
   flog(line);
-  if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr);
+  // (a life not kept: the last decision's board, then this one -- GAMBITK)
+  if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last]); hostUnlock(); }
+  if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : A->dumpBoard == 3 ? "GAMBITK" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr);
   // (A SAMPLE OF EVERY DECISION: one question in SAMPLEQ, whatever it is, its board -- GAMBITQ, what test/decisions.txt.gz is drawn from,
   // so the replay holds the decisions a game makes and not only the ones some search came up empty on)
   static uint32_t asked;
@@ -192,8 +197,6 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
 }
 // THE LAST BOARDS: every question's board and garbage on its way, the last RINGN decisions kept, written out when the match ends (GAMBITL lines,
 // oldest first) -- what a loss is replayed from.
-#define RINGN 32
-static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
 static void ringKeep(int32_t at) {
   hostLock();
   // (a question asked again for a frame no later than the last kept replaces it: the ring holds the last RINGN decisions forward)
