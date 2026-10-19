@@ -177,10 +177,6 @@ static const char *PLAY_NAME[NPLAYS] = { "entry", "nearest", "break line", "carr
 static int settledPlay(int p) { return p == PLAY_ENTRY || p == PLAY_NEAREST || p == PLAY_BREAKLINE || p == PLAY_CARRY || p == PLAY_CARRYWAIT || p == PLAY_CLEAR; }
 static int setupPlay(int p) { return p == PLAY_SETUP || p == PLAY_LEVEL || p == PLAY_READY || p == PLAY_TOWARD; }
 typedef struct { int32_t combo, chain, broke, cells, earned, done, near100, dropAt, floor; double near; } Xs;   // floor: -1 not said, 0, 1
-// THE PROFILE'S FLAGS (its `flags`, by name -- words.js FLAGS, answer.c gb_flags), each a way of play measured before it is anyone's:
-//   keep    of two lines that do not live and outlive the next decision alike, the one whose panels leave the board more life first
-enum { FLAG_KEEP = 2 };
-static int32_t gbFlags;
 static Tier tierOf(int play, const Xs *x, int aim, int under, int enemyOut, int topped, int waits) {
   Tier t; memset(&t, 0, sizeof t);
   int32_t combo = x->combo, chain = x->chain, broke = x->broke, cells = x->cells, stop = x->earned;
