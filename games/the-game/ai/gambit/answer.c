@@ -327,6 +327,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_play(j->hold ? PLAY_HOLD : j->k.play); if (j == carriedJ) L_s("*"); if (j->outside) L_s("~");
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
     L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
+    { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);

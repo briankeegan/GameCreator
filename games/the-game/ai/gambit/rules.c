@@ -77,6 +77,11 @@ static int32_t comboCells(int32_t size) {
   if (size < 16) return CELLS[size];
   return size < 20 ? 24 : size < 27 ? 36 : 48;
 }
+// THE BLOCKS A LINE THROWS: its combo's pieces of combo garbage (the same table, a piece a row) and a slab for every link past the first
+static int32_t blocksOf(int32_t combo, int32_t chain) {
+  int32_t pieces = combo < 4 ? 0 : combo < 8 ? 1 : combo < 13 ? 2 : combo < 14 ? 3 : combo < 20 ? 4 : combo < 27 ? 6 : 8;
+  return pieces + (chain > 1 ? chain - 1 : 0);
+}
 
 // THE LIST FROM THE HOST: n entries, each ten words -- combo, chain and send (each op, n, near) and break -- in the io body (the loader
 // writes them from the rules file).
