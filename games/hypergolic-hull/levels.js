@@ -1012,13 +1012,45 @@
     // knobs turned up. That is deliberate: terrain applies to both sides
     // without anybody writing a rule for it, so a Debris Field cannot
     // become the game quietly cheating the way a combat modifier can.
+    // WHAT A PLACE IS MADE OF. Every sector dealt the same mix, so the only
+    // thing a locale changed was the sky — a shipping lane that didn't make
+    // it and a stretch where the whole sky is charged carried the same three
+    // boulders and the same patch of dust. The blurbs already say what the
+    // ground should be; this is them, as numbers. 0 means none of that kind
+    // here, which is a statement too: the Deep has nothing to hide behind,
+    // and under two suns there is no shade.
+    const ZONE_GROUND = {
+      shoals: { rock: 0.6, cloud: 3, mines: 0.5 },   // thick with dust
+      shallows: { rock: 1, cloud: 1, mines: 1 },
+      void: { rock: 0.4, cloud: 0, mines: 0.5 },     // nothing to hide behind
+      belt: { rock: 2.2, cloud: 0.5, mines: 1 },     // a lane that didn't make it
+      storm: { rock: 0.6, cloud: 2.5, mines: 0.5 },  // the sky is charged
+      rings: { rock: 2, cloud: 0.5, mines: 0.5 },    // ice worth money
+      nursery: { rock: 0.8, cloud: 2, mines: 0.5 },  // stars being made
+      binary: { rock: 1, cloud: 0, mines: 1 },       // no shade, nowhere unseen
+      maw: { rock: 1.2, cloud: 1.5, mines: 1 },
+      graveyard: { rock: 1.2, cloud: 0.5, mines: 2.5 }, // someone else's war
+    };
+    const zone = { ...(ZONE_GROUND[locale.id] || { rock: 1, cloud: 1, mines: 1 }) };
+    // WEATHER BEATS THE ZONE. A nebula rolling through the Deep is still a
+    // nebula; a zone that normally has nothing to hide behind does not get to
+    // cancel it, or the condition would silently do nothing in half of them.
+    if (condition === "nebula") zone.cloud = Math.max(1, zone.cloud);
+
+    // ONE KIND AT A TIME. A first sector that deals rock, dust and live
+    // ordnance at once is three rules to learn before the second turn; rock
+    // is the one that explains itself (it is in the way, and it breaks), so
+    // it is the one the shallow end gets. Each later kind arrives on its own
+    // sector, the way the enemy ladder introduces a shape.
+    const GROUND_FROM = { mines: 3, cloud: 5 };
+
     const ROCK_SHARE = envNumber("GC_ROCK", condition === "debrisField" ? 0.2 : 0.09);
     const CLOUD_SHARE = envNumber("GC_CLOUD", condition === "nebula" ? 0.09 : 0);
     // The cap exists so an ordinary sector never turns into a maze; a
     // Debris Field is allowed to be one.
     const rockCap = condition === "debrisField" ? 26 : 14;
     const rockSpacing = condition === "debrisField" ? 1 : 2;
-    const rockCount = Math.max(0, Math.min(Math.round(area * ROCK_SHARE), rockCap));
+    const rockCount = Math.max(0, Math.min(Math.round(area * ROCK_SHARE * zone.rock), rockCap));
     const cloudCount = Math.max(0, Math.round(area * CLOUD_SHARE));
     const hazards = [];
     for (const hex of candidates) {
@@ -1064,13 +1096,16 @@
     // eleven of a thirty-five hex board under terrain, which drew a band right
     // across the middle: passable ground that reads as a wall is worse than a
     // wall, because the player routes around something that was never there.
-    const CLOUD_PATCHES = Math.max(0, Math.round(envNumber("GC_IONCLOUD", 1))) + nebulaPatches;
+    const CLOUD_PATCHES =
+      depth < GROUND_FROM.cloud && condition !== "nebula"
+        ? 0
+        : Math.round((Math.max(0, envNumber("GC_IONCLOUD", 1)) + nebulaPatches) * zone.cloud);
     // A nebula is THICK, not merely patchier: a small board has room for one
     // patch however many are asked for, so the condition grows the patch as
     // well as the count or a cramped sector reads exactly like a clear one.
     const CLOUD_SIZE =
       Math.max(1, Math.round(envNumber("GC_IONCLOUD_SIZE", 3))) + (condition === "nebula" ? 3 : 0);
-    const MINE_SHARE = envNumber("GC_MINES", 0.035);
+    const MINE_SHARE = depth < GROUND_FROM.mines ? 0 : envNumber("GC_MINES", 0.035) * zone.mines;
     // GROUND NEVER COSTS THE BOARD ITS SHIPS. Hostiles are placed later from
     // the same candidate list and skip any hex holding a hazard, so terrain
     // laid down greedily simply spawns fewer of them — a sector quietly
