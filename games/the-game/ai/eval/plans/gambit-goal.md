@@ -153,7 +153,9 @@ already found; think 300 ms a decision; 0 divergences, 0 late moves.
 At `c9638fca` (intentions kept across decisions, and routes -- gambit-infra.md A, B): finish 17 (5, 6, 6), pressure 16 (5, 6, 5), big
 chain 20, build 15 (5, 7, 3) -- 68 of 96 against 80.
 At `fd23d88f` (no line judged twice, the readiness time split over the checks still to ask, work on the way): finish 17 (4, 7, 6).
-From here one mode at a time, finish first, on the latest build only; every mode again once finish holds, for regressions. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+From here one mode at a time, finish first, on the latest build only; every mode again once finish holds, for regressions.
+At `880cca5b` (the readiness searched on every thread, two workers): finish 14 (5, 5, 4) -- the readiness checks fell from 12 a
+decision to 8, and two games died before frame 1400. The workers are off by default again. Next: the intentions and routes taken out. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 

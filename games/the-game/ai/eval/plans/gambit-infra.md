@@ -133,8 +133,9 @@ press memo); a search run as a job steps alone, never in a batch. With no worker
 golden's. Logged `pre=answered/kept`.
 The workers took the client down a second time (runs 378-382: no game had a result): Gambit's thinking thread (`native.c`
 workerMain) took the engine's thread id 1, the first worker's, so the two shared a pool of boards. It is thread 0 now, the workers
-1..n, and they are on by default: the cores less two (`host.c` hostWorkers). Found by playing the client's training headless
-(`lua/check.lua`) under gdb.
+1..n. Found by playing the client's training headless (`lua/check.lua`) under gdb.
+Measured (`880cca5b`, two workers, finish): 14 of 24 against 17 with none; the readiness checks fell from 12 a decision to 8. The
+workers are off unless GC_GAMBIT_WORKERS is set.
 
 ### F, its first piece: the breaks already found, kept (`search/break.c` readyKept)
 
@@ -144,7 +145,7 @@ still on their way, the hold and the press; a board that differs anywhere is sea
 `rdy=hit/asked`, the summary's "kept plan".
 Measured (`e19b1870`, runs 366-369): 80 of 96 against 70; 9% of the checks answered by a break already found.
 
-### A and B, built: the intentions and the route (`decide.c` keepIntents, keptJudged, routeJudged)
+### A and B, built, measured and taken out: the intentions and the route
 
 Each decision keeps up to four of its best lines that make something (a clear, a chain, a combo, a break) besides the one it plays, each
 with a bottom-row panel it does not touch; the next decision finds each again by it and judges it on the engine like any line. And of
@@ -153,7 +154,7 @@ apart (one's clears cannot move the other's panels): one line, in walking order,
 `kept=N[/played]` and `route=N[/played]`.
 Measured (`c9638fca`, runs 370-373): 68 of 96 against 80. Every option added is one more readiness check
 splitting the same time, so each break search got less. A line judged already this decision is not judged again (`judgedHas`), and
-the time is split over the options still to be asked, not over every option ranked.
+the time is split over the options still to be asked, not over every option ranked. Both are taken out.
 
 ### B and D, built: work on the way, and the nearer line (`propose.c` wayLines, `rank.c` key 8b)
 

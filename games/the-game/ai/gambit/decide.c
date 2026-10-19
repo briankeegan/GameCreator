@@ -96,8 +96,6 @@ static int readBoard_(Read *R) {
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered -- the hold among them -- judged by its outcome and put in the one order. With
 // none that lives and time left, the survival search proposes its line too.
 #define MAXCANDS 128
-#define NINTENT 4   // the intentions a decision keeps (keepIntents)
-#define NROUTE 6    // the routes a decision judges (routeJudged)
 #define PROPOSED (2 * MAXCANDS)   // what the proposers may offer; past MAXCANDS, every play keeps its share (fairShare)
 static Cand theCands[PROPOSED];
 static int32_t cappedN;   // the candidates left unjudged past MAXCANDS, a decision (the log's capped=)
@@ -122,10 +120,9 @@ static int fairShare(Cand *c, int n, int cap) {
   for (int i = 0; i < k; i++) c[i] = kept[i];
   return k;
 }
-static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 4 + NINTENT + NROUTE];
+static Judge theJudged[MAXCANDS + 4], *order[MAXCANDS + 4];
 static int32_t phaseMs[3];
 static int carriedCand(const Read *R, Cand *k, int *wait);
-static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static void readyAhead(int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 static int ranked(const Read *R, const Found *S) {
@@ -140,7 +137,6 @@ static int ranked(const Read *R, const Found *S) {
   rankReact = C2.reaction + 1;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
-  n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0;
@@ -156,8 +152,6 @@ static int ranked(const Read *R, const Found *S) {
   order[n] = H; n++;
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);
-  // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)
-  { int n0 = n; n = routeJudged(R, n); if (n > n0) sortJudged(order, n); }
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
   // part of the time left each of those still to be asked -- and the order is made again)
@@ -292,94 +286,6 @@ static void readyAhead(int n) {
   if (!jobCtx) jobCtx = ctxOf(0);
   readyJobsLeft = nj; readyJobThreads = pool.nworkers + 1; readyJobWork = clockWork;
   if (runJobs(jobCtx, readyJob, nj)) readyJobsKept(nj);
-}
-// THE INTENTIONS (plans/gambit-infra.md A, F): besides the line in progress, the best lines a decision ranked that make something -- a
-// clear, a chain, a combo, a break -- each kept with a bottom-row panel it does not touch (found again by it once the stack has risen,
-// as the line in progress is) and what it made; the next decision offers each as it is, judged on the engine like every line, so what
-// one decision found the next need not search for again. A kept line that no longer makes something is let go.
-typedef struct { int32_t set, play, nseq, seq[MAXLINE], settled, anchorRow, anchorCol, anchorId; } Intent;
-static Intent theIntents[NINTENT];
-static int32_t keptOffered, keptPlayed, routeOffered, routePlayed;   // (the log's, this decision)
-static int clearsSomething(const Judge *J) { return !J->hold && (J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0); }
-static int anchorFor(const int32_t *row1, const int32_t *seq, int n, int32_t *row, int32_t *col, int32_t *id) {
-  for (int c = 1; c <= W; c++) {
-    if (row1[c] == NUL) continue;
-    int touched = 0;
-    for (int i = 0; i < n; i++) if (CR(seq[i]) == 1 && (CC(seq[i]) == c || CC(seq[i]) + 1 == c)) touched = 1;
-    if (!touched) { *row = 1; *col = c; *id = row1[c]; return 1; }
-  }
-  return 0;
-}
-static void keepIntents(int n, const Judge *played) {
-  memset(theIntents, 0, sizeof theIntents);
-  int32_t row1[W + 1];
-  for (int c = 1; c <= W; c++) row1[c] = decQ.b->p[1][c].f[ID];
-  for (int i = 0, k = 0; i < n && k < NINTENT; i++) {
-    const Judge *J = order[i];
-    if (J == played || J->wait || J->o.dead || !clearsSomething(J) || J->k.nseq < 1) continue;
-    Intent *I = &theIntents[k];
-    if (!anchorFor(row1, J->k.seq, J->k.nseq, &I->anchorRow, &I->anchorCol, &I->anchorId)) continue;
-    I->set = 1; I->play = J->k.play; I->nseq = J->k.nseq; I->settled = J->settled;
-    for (int q = 0; q < J->k.nseq; q++) I->seq[q] = J->k.seq[q];
-    k++;
-  }
-}
-// (a line judged already this decision -- the same swaps, pressed the same way -- is the same answer: never judged twice)
-static int judgedHas(int n, const Cand *k) {
-  int st = k->settled >= 0 ? k->settled : settledPlay(k->play);
-  for (int i = 0; i < n; i++) {
-    const Judge *J = order[i];
-    if (!J->hold && J->settled == st && J->k.nseq == k->nseq && !memcmp(J->k.seq, k->seq, sizeof k->seq[0] * k->nseq)) return 1;
-  }
-  return 0;
-}
-static int keptJudged(const Read *R, int n) {
-  keptOffered = 0;
-  for (int i = 0; i < NINTENT && !clockOut(); i++) {
-    const Intent *I = &theIntents[i];
-    if (!I->set) continue;
-    int dr = NOT_ASKED;
-    for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][I->anchorCol].f[ID] == I->anchorId) dr = r - I->anchorRow;
-    if (dr == NOT_ASKED) continue;
-    int32_t seq[MAXLINE];
-    for (int q = 0; q < I->nseq; q++) seq[q] = (CR(I->seq[q]) + dr) * 8 + CC(I->seq[q]);
-    Cand k;
-    if (!candOf(&k, I->play, seq, I->nseq, -1, 0)) continue;
-    k.settled = I->settled; k.kept = 1;
-    if (judgedHas(n, &k)) continue;
-    keptOffered++;
-    if (judgeWalked(R, &k, &theJudged[n]) && clearsSomething(&theJudged[n])) { order[n] = &theJudged[n]; n++; }
-  }
-  return n;
-}
-// THE ROUTE (plans/gambit-infra.md B): of the lines ranked so far, the best that make something and are pressed settled, two at a time
-// on columns apart -- one's clears cannot move the panels the other swaps -- made one line, pressed in the order the cursor reaches its
-// swaps soonest (rank.c judgeWalked), judged whole on the engine and ranked with the rest: one walk that does both.
-#define ROUTE_TOP 4
-static int routeCols(const Judge *J) { int m = 0; for (int q = 0; q < J->k.nseq; q++) m |= 3 << CC(J->k.seq[q]); return m; }
-static int routeJudged(const Read *R, int n) {
-  routeOffered = 0;
-  const Judge *top[ROUTE_TOP]; int nt = 0;
-  for (int i = 0; i < n && nt < ROUTE_TOP; i++) {
-    const Judge *J = order[i];
-    if (J->wait || J->o.dead || !clearsSomething(J) || !J->settled || J->k.route) continue;
-    top[nt++] = J;
-  }
-  for (int a = 0; a < nt && routeOffered < NROUTE && !clockOut(); a++)
-    for (int b = a + 1; b < nt && routeOffered < NROUTE && !clockOut(); b++) {
-      const Judge *A = top[a], *B = top[b];
-      if ((routeCols(A) & routeCols(B)) || A->k.nseq + B->k.nseq > MAXLINE) continue;
-      int32_t seq[MAXLINE], m = 0;
-      for (int q = 0; q < A->k.nseq; q++) seq[m++] = A->k.seq[q];
-      for (int q = 0; q < B->k.nseq; q++) seq[m++] = B->k.seq[q];
-      Cand k;
-      if (!candOf(&k, A->k.play, seq, m, -1, 0)) continue;
-      k.settled = 1; k.route = 1;
-      if (judgedHas(n, &k)) continue;
-      routeOffered++;
-      if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; }
-    }
-  return n;
 }
 // CARRIED ON: the rest of the line in progress, found again on this board by its bottom-row panel and
 // played on as it is pressed, while every step is legal and it still makes what it was begun for. wait: its next step must wait for

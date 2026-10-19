@@ -58,13 +58,13 @@ int hostThread(void *(*fn)(void *)) {
 #include <limits.h>
 int hostFutexWait(int *p, int v) { return (int)syscall(SYS_futex, p, FUTEX_WAIT_PRIVATE, v, NULL, NULL, 0); }
 int hostFutexWake(int *p, int n) { return (int)syscall(SYS_futex, p, FUTEX_WAKE_PRIVATE, n < 0 ? INT_MAX : n, NULL, NULL, 0); }
-// THE WORKERS: GC_GAMBIT_WORKERS of them (at most `most`; when it is not set, the cores less two -- the game's and Gambit's own), each
-// started with its id (1, 2, ...) and pinned where Gambit is (GC_GAMBIT_CPUS). The number started.
+// THE WORKERS: GC_GAMBIT_WORKERS of them (at most `most`; none when it is not set), each started with its id (1, 2, ...) and pinned
+// where Gambit is (GC_GAMBIT_CPUS). The number started.
 static void *(*workerFn)(void *);
 static void *workerStart(void *arg) { pinned(); return workerFn(arg); }
 int hostWorkers(void *(*fn)(void *), int most) {
   const char *e = getenv("GC_GAMBIT_WORKERS");
-  int n = e && *e ? atoi(e) : (int)sysconf(_SC_NPROCESSORS_ONLN) - 2;
+  int n = e && *e ? atoi(e) : 0;
   if (n > most) n = most;
   if (n < 0) n = 0;
   workerFn = fn;
