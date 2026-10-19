@@ -213,5 +213,7 @@ spans at least 17 to 21 on the same code, so a single run tells nothing under ab
 A LIFE NOT KEPT, LOOKED AT (GAMBITK, both boards logged): the four pairs of large_garbage-5 (run 398) are the horizon, not a fault --
 a line lives when its board stands HORIZON + REST (360) frames past now, and a decision later the same lines are judged lost at 411
 to 684: past where the last one looked. The engine did not disagree with itself.
+THE HORIZON, LONGER: a board stands when it is alive HORIZON + REST past now; HORIZON 240 -> 360, so a line that only outlasts 360
+frames no longer reads as one that lives. Measured on two runs.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
