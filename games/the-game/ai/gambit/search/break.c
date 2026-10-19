@@ -671,6 +671,7 @@ static int32_t readyPendOf(Ctx *x, int n) {
   readyPendN++;
   return readyPendN;
 }
+static int32_t readyKnownOnly;   // (a check answered only from what is known -- the kept breaks, the workers' -- never searched here)
 static int pendClaim(ReadyPend *p) { int32_t w = PEND_WAITING; return __atomic_compare_exchange_n(&p->state, &w, PEND_BUSY, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE); }
 static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   if (breakBusy) return NOT_ASKED;
@@ -685,8 +686,10 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
     int32_t st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE);
     if (st == PEND_NONE) { readyPre++; return 0; }
     if (st == PEND_FOUND) { readyPre++; if (why) { for (int i = 0; i < p->whyN; i++) why[i] = p->why[i]; *whyN = p->whyN; } return 1; }
+    if (readyKnownOnly) return NOT_ASKED;
     if (!(st == PEND_WAITING && pendClaim(p))) p = 0;   // (begun beside the decision: searched here too, as it would be alone)
   }
+  if (readyKnownOnly) return NOT_ASKED;
   static Question q;
   memset(&q, 0, sizeof q);
   q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;

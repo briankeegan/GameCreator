@@ -163,13 +163,17 @@ static int ranked(const Read *R, const Found *S) {
   // part of the time left each of those still to be asked -- and the order is made again)
   readyDefer = 0; readyCollect = 0; readyFresh = 1;
   #define READY_ASKS(J_) (!(J_)->o.lives && !(J_)->o.dead && (J_)->o.ready == NOT_ASKED && (J_) != carriedJ)
+  // (THE KEPT PLAN'S LINES -- intentions and routes -- take none of the decision's own search: their readiness is what the workers or
+  // the kept breaks already hold, so the time is shared only over the lines the decision would ask with no plan kept)
+  #define EXTRA(J_) ((J_)->k.kept || (J_)->k.route)
   readySpread(n);
   int toAsk = 0;
-  for (int i = 0; i < n; i++) toAsk += READY_ASKS(order[i]);
+  for (int i = 0; i < n; i++) toAsk += READY_ASKS(order[i]) && !EXTRA(order[i]);
   for (int i = 0; i < n && leftMs() > 0; i++) {
     Judge *J = order[i];
     if (!READY_ASKS(J)) continue;
-    readyShare(toAsk--);
+    readyKnownOnly = EXTRA(J);
+    if (!readyKnownOnly) readyShare(toAsk--);
     if (J->hold) holdCand(R, J->wait, J);
     else {
       static Judge again; Cand kc = J->k;
@@ -180,10 +184,14 @@ static int ranked(const Read *R, const Found *S) {
       }
     }
   }
-  readyShare(0); readyFresh = 0;
+  readyShare(0); readyFresh = 0; readyKnownOnly = 0;
   sortJudged(order, n);
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
-  if (!(n && order[0]->o.lives)) { for (int i = 0; i < n; i++) { readyShare(n - i); readyNextFor(order[i]); } readyShare(0); sortJudged(order, n); }
+  if (!(n && order[0]->o.lives)) {
+    int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
+    for (int i = 0; i < n; i++) if (!EXTRA(order[i])) { readyShare(own--); readyNextFor(order[i]); }
+    readyShare(0); sortJudged(order, n);
+  }
   double t2 = nowMs();
   surviveAsked = 0;
   if (!(n && order[0]->o.lives) && leftMs() > 0) {

@@ -150,8 +150,10 @@ workers are off unless GC_GAMBIT_WORKERS is set.
   a bottom-row anchor, as the break search's are; the next decision takes off the swaps played since, adds the rows risen, and begins
   its beam from them beside its root -- the subtree under the move played searched on, deeper. Each seed is played again, every step
   within the rules, so one the new board no longer allows is let go.
-- THE INTENTIONS AND ROUTES back (`decide.c` keptJudged, routeJudged), measured before on a build whose material floor marked lines lost
-  early; a line judged already is never judged twice.
+- THE INTENTIONS AND ROUTES back (`decide.c` keptJudged, routeJudged), and taking none of the decision's own search: their readiness
+  is only what the workers or the kept breaks hold (`readyKnownOnly`), and the time is shared over the lines the decision would ask
+  with no plan kept -- what cost them before was every extra line cutting every break search's share. A line judged already is never
+  judged twice.
 - STABLE (`rank.c` key 10): of two lines every key leaves equal, the one the last decision kept.
 - The workers are on by default (the cores less two: on a GitHub runner's four, two). Logged `pre=`, `seed=`, `kept=`, `route=`.
 
