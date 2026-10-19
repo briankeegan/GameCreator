@@ -1,0 +1,79 @@
+{
+ "keep": {
+  "material": ">=24"
+ },
+ "raise": {
+  "to": 10
+ },
+ "underGarbage": "break",
+ "attack": [
+  {
+   "name": "finish them",
+   "when": {
+    "enemy.topped": true
+   },
+   "aims": [
+    {
+     "combo": ">=8"
+    },
+    {
+     "combo": "==5"
+    },
+    {
+     "combo": "==6"
+    },
+    {
+     "chain": "==2"
+    },
+    {
+     "combo": "<=3",
+     "chain": "==1"
+    }
+   ],
+   "by": "enemy.stop",
+   "keep": {
+    "material": ">=30"
+   }
+  },
+  {
+   "name": "big chain",
+   "when": {
+    "enemy.height": "<5"
+   },
+   "aims": [
+    {
+     "chain": ">=8"
+    }
+   ],
+   "by": 600
+  },
+  {
+   "name": "pressure",
+   "when": {
+    "enemy.height": ">=9"
+   },
+   "aims": [
+    {
+     "chain": "==4"
+    }
+   ],
+   "by": 240,
+   "keep": {
+    "material": ">=30"
+   }
+  },
+  {
+   "name": "build",
+   "when": {
+    "enemy.height": "<9"
+   },
+   "aims": [
+    {
+     "chain": "==5"
+    }
+   ],
+   "by": 600
+  }
+ ],
+ "opponents": {}
+}
