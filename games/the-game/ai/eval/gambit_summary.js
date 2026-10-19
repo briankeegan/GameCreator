@@ -130,7 +130,7 @@ if (nturns) {
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
 }
 if (rule.n) console.log('the one rule: of ' + rule.n + ' lines played that met a part of it, ' + Math.round(100 * (rule.e || 0) / rule.n) + '% an entry of the list, ' + Math.round(100 * (rule.t || 0) / rule.n) + '% a three that breaks, ' + Math.round(100 * (rule.l || 0) / rule.n) + '% a last resort');
-if (rule.preKept) console.log('beside the decision: ' + rule.preHit + ' readiness checks answered by the workers, of ' + rule.preKept + ' boards handed them');
+if (rule.preKept) console.log('boards searched once: ' + rule.preHit + ' readiness checks answered by a board this decision had searched already (or a worker), of ' + rule.preKept + ' boards kept');
 if (rule.rdyAsked) console.log('kept plan: ' + rule.rdyHit + ' of ' + rule.rdyAsked + ' readiness checks answered by a break already found (' + Math.round(100 * rule.rdyHit / rule.rdyAsked) + '%)');
 if (rule.keptOff || rule.routeOff || rule.wayOff) console.log('intentions: ' + (rule.keptOff || 0) + ' kept lines offered again, ' + (rule.keptPlayed || 0) + ' played; routes: ' + (rule.routeOff || 0) + ' judged, ' + (rule.routePlayed || 0) + ' played; on the way: ' + (rule.wayOff || 0) + ' offered, ' + (rule.wayPlayed || 0) + ' played');
 if (aggr.frames) console.log('aggression: ' + (aggr.blocks * 3600 / aggr.frames).toFixed(1) + ' blocks thrown a minute (' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute; ' + Math.round(aggr.frames / 3600) + ' minutes)');

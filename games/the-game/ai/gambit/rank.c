@@ -180,6 +180,7 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 // it waits for -- that break is a candidate of its own)
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
 static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
+static int32_t rankHope = 1;    // (a break in reach on the decision's board -- found, or near by the shape math: the next decision can still find one)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
@@ -258,7 +259,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (bx != by) return bx ? -1 : 1;
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
     // the material, the saving and the list decide between them before the later loss does (10)
-    int alike = lostOf(x) >= rankSave && lostOf(y) >= rankSave;
+    // -- and only while the board has a break in reach (rankHope): with none, the next decision finds none either, and the later loss
+    // decides
+    int alike = rankHope && lostOf(x) >= rankSave && lostOf(y) >= rankSave;
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;

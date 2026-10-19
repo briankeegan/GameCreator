@@ -168,7 +168,11 @@ the break judged lost 41 frames before the hold. It is now measured against the 
 At `e4aa58dc`: finish 22 (6, 8, 8) -- the best yet; one of its two losses 24 frames from the end. The other's turn played an entry
 lost at 128 over a break lost at 371: the narrower alike measured again, now that the floor no longer marks lines lost early.
 Narrower alike at `778441d5`: finish 18 (5, 8, 5), last resorts 25% -- reverted for good. At `f2edda00` the incremental infra whole
-(plans/gambit-infra.md "E and F, built whole"), measured as one. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+(plans/gambit-infra.md "E and F, built whole"), measured as one: with two workers 9 -- on a runner's two cores (its log: two threads a
+core) a worker takes Gambit's own -- so the workers are off. At `145d58a5` (no workers, the readiness asked by its yield, every
+landed board searched once a decision): finish 20 (6, 6, 8); 54,000 of 250,000 checks were a board searched already that decision.
+Its early loss (factory, frame 723): 190 frames with no break in reach, every decision a line within the list lost 58 frames before a
+last resort, the two "alike". Next: alike only while a break is in reach. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 
