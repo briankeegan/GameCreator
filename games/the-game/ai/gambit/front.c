@@ -248,6 +248,14 @@ static void dropAll(void) {
 
 // The board at `at`, from `b` now, pressing what is planned till then, and the garbage still to land after it (from).
 static int32_t predictErr;   // (the engine's error flags the last prediction failed on, for the log)
+// A RAISE HELD, a frame of it: the engine's own step (search.h raiseStep, its hold-through as Gambit sets it), so the frame loop
+// presses what every search and the judge plan with
+static void holdRaise(Board *b, int32_t *hl, int32_t *hs, int32_t *bits) {
+  Bot h; memset(&h, 0, sizeof h);
+  h.raiseFrames = *hl; h.raiseStarted = *hs;
+  raiseStep(&h, b, bits);
+  *hl = h.raiseFrames; *hs = h.raiseStarted;
+}
 static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdStarted, const Arrival *from, int32_t nfrom, Board *out,
                    int32_t *hL, int32_t *hS) {
   copyBoard(out, b);
@@ -257,11 +265,7 @@ static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdSta
     Planned *p = planOf(out->clock);
     int32_t bits = 0;
     if (p) { bits = p->bits; hl = p->holdLeft; hs = p->holdStarted; }
-    else if (hl > 0) {
-      int started = hs || out->manualRaise;
-      if (out->preventManualRaise || (started && !out->manualRaise)) { hl = 0; hs = started; }
-      else { hl--; hs = started; bits = IN_RAISE; }
-    }
+    else if (hl > 0) holdRaise(out, &hl, &hs, &bits);
     out->input = bits & ~IN_SWAP;
     if (bits & IN_SWAP) out->pressSwap = 1;
     run(out);
@@ -564,11 +568,7 @@ static int frontFrame(void) {
   if (p) { bits = p->bits; F.holdLeft = p->holdLeft; F.holdStarted = p->holdStarted; planDrop(now); }
   else {
     bits = 0;
-    if (F.holdLeft > 0) {
-      int started = F.holdStarted || t->manualRaise;
-      if (t->preventManualRaise || (started && !t->manualRaise)) { F.holdLeft = 0; F.holdStarted = started; }
-      else { bits = IN_RAISE; F.holdLeft--; F.holdStarted = started; }
-    }
+    if (F.holdLeft > 0) holdRaise(t, &F.holdLeft, &F.holdStarted, &bits);
     F.st.idle++;
   }
   // (never raised while topped out: the raise is let go, and what was planned with it dropped)

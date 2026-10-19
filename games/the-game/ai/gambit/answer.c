@@ -373,6 +373,9 @@ EXPORT(gb_rules) int gb_rules(int n) {
 // bot's hands.
 EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff, int reaction, int swapGap, int cursor) {
   modeRule = mode;
+  // (the opening raise is held through every row it is asked for -- search.h HOLD_THROUGH -- not let go at each row's end and asked
+  // again a decision later)
+  HOLD_THROUGH = 1;
   Profile p = { mode, ms, extendMs, width, depth, pool, extendDepth, extendOff };
   C2.GP = p; C2.reaction = reaction;
   gb_config(reaction, swapGap, cursor);

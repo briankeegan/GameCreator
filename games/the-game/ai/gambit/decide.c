@@ -191,7 +191,11 @@ static int ranked(const Read *R, const Found *S) {
 typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred; } Played;
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
-  P.wait = R->low && !R->up && !(n && order[0]->k.extend);
+  // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
+  // is never passed over for a raise to come)
+  int holdLivesNow = 0;
+  for (int i = 0; i < n; i++) if (order[i]->hold && order[i]->o.lives) holdLivesNow = 1;
+  P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
   P.line = P.top && !P.top->hold && !P.top->wait ? P.top : 0;
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
