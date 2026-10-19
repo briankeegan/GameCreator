@@ -1,4 +1,6 @@
 {
  "base": "gambit.json",
- "gambit": { "mode": "big chain", "flags": ["keep"] }
+ "gambit": {
+  "mode": "big chain"
+ }
 }

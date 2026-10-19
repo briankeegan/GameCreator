@@ -132,7 +132,6 @@ function Gambit(o) {
   this.mode = gp.mode || null;
   this.sw = gp.switch || null;
   this.share = gp.share || null;
-  this.flags = flagsOf(gp.flags);
   this.gp = [gp.ms || 0, gp.extendMs || 0, gp.width || 0, gp.depth || 0, gp.pool || 0, gp.extendDepth || 0, gp.extend === false ? 1 : 0, o.reaction, o.swapGap, o.cursorMoveFrames];
   this.lastAt = null;
 }
@@ -148,7 +147,6 @@ Gambit.prototype.useTables = function (opp) {
   this.X.gb_profile.apply(null, [mode].concat(this.gp));
   this.X.gb_switch(this.sw ? this.sw.min : 0, this.sw ? this.sw.max : 0); this.X.gb_switch_game(Date.now() >>> 0);
   this.X.gb_share(this.share ? this.share.under || 0 : 0, this.share ? this.share.otherwise || 0 : 0);
-  this.X.gb_flags(this.flags);
 };
 // THE TURN: q { m (the question), board, arrivals, due, t0, margin, canRaise, mem } -- the answer as the frame loop reads it
 Gambit.prototype.answer = function (q) {
@@ -222,9 +220,4 @@ Gambit.prototype.breakPath = function (ms) {
   return line;
 };
 
-// THE PROFILE'S FLAGS by name, as the bits facts.c reads (FLAG_*); a name not known is refused
-var FLAGS = { keep: 2 };
-function flagsOf(names) {
-  return (names || []).reduce(function (bits, n) { if (!FLAGS[n]) throw new Error('gambit: no flag ' + n); return bits | FLAGS[n]; }, 0);
-}
-module.exports = { flagsOf: flagsOf, load: load, bind: bind, aimWords: aimWords, testOf: testOf, rulesWords: rulesWords, aimsOf: aimsOf, checked: checked, parse: parse, Rules: Rules, rulesFor: rulesFor, FACTS: FACTS, Gambit: Gambit };
+module.exports = { load: load, bind: bind, aimWords: aimWords, testOf: testOf, rulesWords: rulesWords, aimsOf: aimsOf, checked: checked, parse: parse, Rules: Rules, rulesFor: rulesFor, FACTS: FACTS, Gambit: Gambit };

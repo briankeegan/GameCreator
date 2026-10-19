@@ -253,8 +253,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
-    // (neither lives, lost alike, the profile's keep) the life the line's panels leave the board, before the later loss
-    if ((gbFlags & FLAG_KEEP) && alike && x->o.panelsLeft >= 0 && y->o.panelsLeft >= 0 && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
     // 5. (neither lives) within the list before outside it

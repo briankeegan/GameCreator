@@ -130,6 +130,9 @@ almost no break the board can make.
 At `0a332d80` (the one rule: the list's entries, then a three that breaks, then the last resort; no defence entries): finish 16 (4, 7,
 5), aim 81%; pressure 20 (6, 8, 6), aim 17%; big chain 16 (4, 7, 5), aim 1%; build 14 (4, 4, 6), aim 6%. Blocks thrown a minute 15.9,
 17.2, 17.8, 18.3. combo_storm in the chain modes 4 of 8 against 1-4 before; build's factory 4 of 8 against 8.
+The chain modes' early deaths (game 6 of combo_storm, frames 680-840, in four runs) were the keep flag: before the first volley lands
+nothing lives, and keep put the line that spends fewest panels before the later loss -- big chain held where finish broke the volley
+as it landed. A mode is only its list: the flags are gone.
 
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

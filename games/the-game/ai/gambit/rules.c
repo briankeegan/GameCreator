@@ -15,10 +15,6 @@ typedef struct { int32_t op, n, near; } Test;
 // brk: -1 not asked, 0 a line that breaks nothing, 1 a line that breaks
 typedef struct { Test combo, chain, send; int32_t brk; } Aim;
 typedef struct { Aim aim[MAXAIMS]; int32_t n; } List;
-// THE PROFILE'S FLAGS (its `flags`, by name -- words.js FLAGS, answer.c gb_flags), each a way of play measured before it is anyone's:
-//   keep    of two lines that do not live and outlive the next decision alike, the one whose panels leave the board more life first
-enum { FLAG_KEEP = 2 };
-static int32_t gbFlags;
 typedef struct { int32_t combo, chain, broke, cells; } Made;
 
 static int test(double v, Test t) {
