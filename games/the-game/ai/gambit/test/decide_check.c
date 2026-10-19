@@ -18,6 +18,8 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   const Answer *A = &theAnswer;
   int k = snprintf(out, (unsigned long)cap, "move %d %d,%d play %d live %d/%d |", A->d.kind, A->d.move ? CR(A->d.move) : 0, A->d.move ? CC(A->d.move) : 0,
                    A->play, A->nlive, A->ncands);
+  // (the chain the board makes left alone and the one it makes with the line played, where the board is making one)
+  if (aloneChain > 1) k += snprintf(out + k, (unsigned long)(cap - k), " own %d/%d", aloneChain, A->whole >= 0 ? A->whole : aloneChain);
   for (int i = 0; i < 3 && i < A->ncands && k < cap - 160; i++) {
     const Judge *J = order[i];
     k += snprintf(out + k, (unsigned long)(cap - k), " %d:%d,%d,%d,%d,%d,%d,%d,t%d", J->hold ? PLAY_HOLD : J->k.play, J->o.lives, J->o.lostAt, J->outside,

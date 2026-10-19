@@ -86,7 +86,7 @@ static int readBoard_(Read *R) {
   }
   R->to = to;
   R->pop = popLeft(decQ.b) > 0;
-  // (what the board left alone makes while a chain falls or a slab pops, as the game counts it: outside the list, holding is outside it too)
+  // (what the board left alone makes while a chain falls or a slab pops, as the game counts it -- for the log)
   if (cascadeLive(decQ.b) || R->pop) {
     Outcome a = leftAlone();
     if (!a.dead) { R->aloneChain = a.j.chainAll; Made z = { 0, 0, 0, 0 }; R->aloneOut = !fitsList(&R->list, z, &a.j); }
@@ -145,11 +145,11 @@ static int ranked(const Read *R, const Found *S) {
     if (cwait) cj->waitMax = 1; else cj->first = 1;   // (its place: rank.c tierView)
     order[n] = cj; n++; carriedJ = cj;
   }
-  // (the hold: never while the chain the board makes alone runs past the list)
+  // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
-  holdCand(0, H);
-  if (!R->aloneOut) { order[n] = H; n++; }
-  if (!R->aloneOut) for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
+  holdCand(R, 0, H);
+  order[n] = H; n++;
+  for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
@@ -159,7 +159,7 @@ static int ranked(const Read *R, const Found *S) {
     Judge *J = order[i];
     if (J->o.lives || J->o.dead || J->o.ready != NOT_ASKED || J == carriedJ) continue;
     readyShare(n - i);
-    if (J->hold) holdCand(J->wait, J);
+    if (J->hold) holdCand(R, J->wait, J);
     else {
       static Judge again; Cand kc = J->k;
       if (judgeCand(R, &kc, &again)) {

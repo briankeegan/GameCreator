@@ -18,6 +18,7 @@ typedef struct {
   Tier t;
   Outcome o;
   int32_t apDone, apFire, apNats, apAts[MAXLINE], apChain, apChainAll, apCombo, apBroke, apPlayed;
+  int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
@@ -92,7 +93,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- the
   // defence's entry guides the searches and is no entry of the list: of two breaks it never puts the larger before the life the smaller
   // leaves)
-  int entry = metOf(&R->asked, m);
+  // (read off what the board ends up making, the chain already under way included: a swap that cuts it short meets what is left of it,
+  // and leaving it alone -- the hold -- meets what it makes)
+  int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
   J->met = j ? entry : -1;
   J->saving = R->saving && R->under && m.broke > 0;
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
@@ -136,16 +139,20 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (j) { J->apNats = j->nats; for (int i = 0; i < j->nats; i++) J->apAts[i] = j->ats[i]; }
   else { J->apNats = k->xNats; for (int i = 0; i < k->xNats; i++) J->apAts[i] = k->xAts[i]; }
   J->apChain = m.chain; J->apChainAll = j ? j->chainAll : 0; J->apCombo = m.combo; J->apBroke = m.broke; J->apPlayed = !!j;
+  J->apWhole = j ? j->whole.chain : 0;
   return 1;
 }
 // THE HOLD, a candidate like any other: nothing pressed, its outcome the board's own -- below every play that fits, above a clear
 #define HOLD_TIER 5
-static void holdCand(int wait, Judge *J) {
+static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
+static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
-  // (the hold makes nothing: it meets no entry of the list and is no break -- never the list's first entry nor a break's best material)
-  J->met = -1; J->material = -1;
+  // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
+  J->material = -1;
+  J->met = J->o.dead ? -1 : metOf(&R->asked, (Made){ J->o.j.whole.combo, J->o.j.whole.chain, 0, 0 });
+  aloneChain = J->o.dead ? 0 : J->o.j.whole.chain;
   J->k.play = PLAY_HOLD; J->k.aim = -1; J->hold = 1; J->wait = wait; J->aim = -1;
   J->t.tier = HOLD_TIER; J->t.nsub = 1; J->t.sub[0] = wait ? -1 : 0;
   const Judged *j = J->o.dead ? 0 : &J->o.j;
@@ -220,11 +227,16 @@ static void markIdle(Judge **a, int n) {
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
+// A LINE THAT CUTS THE BOARD'S OWN CHAIN SHORT: the board left alone makes a chain (the hold's judging, aloneChain) and with the line
+// played it makes a shorter one
+static int cutsShort(const Judge *J) { return !J->hold && J->apPlayed && aloneChain > 1 && J->apWhole < aloneChain; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
   if (lx != ly) return lx ? -1 : 1;
   if (lx) {
+    // 2. (both live) the board's own chain kept before cut short: a chain the board is making is never stopped by a line that need not
+    if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
     // 2. (both live) within the list before outside it
     if (x->outside != y->outside) return x->outside ? 1 : -1;
     // 3. (both live) a hold that lives by the break it waits for is that break played later: a line that breaks and lives now first
@@ -239,6 +251,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // the material, the saving and the list decide between them before the later loss does (10)
     int alike = lostOf(x) >= rankSave && lostOf(y) >= rankSave;
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
+    // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
+    if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
     // 5. (neither lives) within the list before outside it

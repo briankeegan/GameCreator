@@ -26,6 +26,9 @@ typedef struct {
 } JudgeOpts;
 typedef struct {
   Made made;                    // beyond the board left alone: { combo, chain, broke }
+  Made whole;                   // what the board ends up making with the line played, the chain already under way included (garbage
+                                // broken still counted beyond the board left alone): a line that cuts a chain short makes the shorter one
+  int32_t aloneChain;           // the chain the board left alone makes
   int32_t chainAll;             // the chain the line reaches as the game counts it (the chain already falling and every link after it)
   int32_t singles[MAXCOMBOS], nsingles;   // sizes of 4 or more the line clears as a clear of its own, no link of a chain
   int32_t dropAt;               // the frame garbage can next drop once the line is over
@@ -203,6 +206,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->late = j->late || clockOut();
   // (the garbage the line breaks is what it breaks beyond the board left alone: a slab popping converts its panels whatever is pressed)
   j->made.combo = combo > baseCombo ? combo : 0; j->made.chain = chain > baseChain ? chain : 0; j->made.broke = imax(0, broke - baseBroke);
+  j->whole = (Made){ combo, chain, j->made.broke, 0 }; j->aloneChain = baseChain;
   j->chainAll = imax(chain, q->b->chainCounter);
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);

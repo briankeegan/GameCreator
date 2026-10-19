@@ -177,6 +177,7 @@ typedef struct {
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
   int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
   int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
+  int32_t whole;   // the chain the board ends up making with the line played (-1: held)
   double idleMs, brMs;
 } Answer;
 static Answer theAnswer;
@@ -262,9 +263,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // what the answer and the audit read
   if (P.line) {
     const Judge *l = P.line;
-    A->play = l->k.play; A->combo = l->apCombo; A->chain = l->apChain; A->chainAll = l->apChainAll; A->broke = l->apBroke;
+    A->play = l->k.play; A->combo = l->apCombo; A->chain = l->apChain; A->chainAll = l->apChainAll; A->broke = l->apBroke; A->whole = l->hold ? -1 : l->apWhole;
     A->done = l->apDone; A->fire = l->apFire; A->nseq = l->k.nseq; for (int i = 0; i < l->k.nseq; i++) A->seq[i] = l->k.seq[i];
-  } else A->play = P.name;
+  } else { A->play = P.name; A->whole = -1; }
   A->clears = d.kind == 1 && (A->combo > 0 || A->broke > 0);
   A->brk = ran && theBr.depth; A->offered = ran ? theBr.depth : 0; A->lineup = ran && theBr.lineup; A->touch = ran && theBr.touch;
   if (ran && theBr.depth && d.kind == 1) for (int i = 0; i < theBr.nmoves; i++) if (theBr.moves[i] == d.move) A->took = 1;
@@ -283,6 +284,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" got="); if (d.kind == 1) L_mv(d.move); else L_s(d.kind == 2 ? "raise" : "hold");
   L_s(" src=gambit v="); L_s(A->verdict == 1 ? "lives" : A->verdict == 2 ? "dies" : A->verdict == 3 ? "raise" : "none");
   L_s(" under="); L_i(R.under); L_s(" mat="); L_d(R.F.v[FACT_US_MATERIAL]); L_s(" pan="); L_i(panelsOn(decQ.b)); L_s(" chain="); L_i(A->chain); L_s(" combo="); L_i(A->combo); L_s(" broke="); L_i(A->broke);
+  // (the chain the board makes left alone, and the one it makes with the line played: own=4/2 is a chain cut short)
+  if (aloneChain > 1) { L_s(" own="); L_i(aloneChain); L_s("/"); L_i(A->whole >= 0 ? A->whole : aloneChain); }
   L_s(" tier="); L_i(P.line ? P.line->t.tier : d.kind == 0 ? HOLD_TIER : 0);
   L_s(" by="); if (R.by != NOT_ASKED && R.by) L_i(R.by); else L_s("-");
   L_s(" done="); if (P.line && A->done >= 0) L_i(A->done); else L_s("-");
