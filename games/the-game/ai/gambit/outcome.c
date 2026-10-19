@@ -5,7 +5,7 @@
 // What the decision knows of the board (Facts) comes from its reading of it.
 
 static double leftMsOf(void);   // (propose.c leftMs: the time the decision's searches have left)
-#define HORIZON 360   // a board stands when it is alive this long after now
+#define HORIZON 240   // a board stands when it is alive this long after now
 #define REST 120      // and this long after the line's last swap
 
 typedef struct {
