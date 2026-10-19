@@ -132,6 +132,7 @@ function Gambit(o) {
   this.mode = gp.mode || null;
   this.sw = gp.switch || null;
   this.share = gp.share || null;
+  this.expect = gp.expect ? 1 : 0;
   this.gp = [gp.ms || 0, gp.extendMs || 0, gp.width || 0, gp.depth || 0, gp.pool || 0, gp.extendDepth || 0, gp.extend === false ? 1 : 0, o.reaction, o.swapGap, o.cursorMoveFrames];
   this.lastAt = null;
 }
@@ -147,6 +148,7 @@ Gambit.prototype.useTables = function (opp) {
   this.X.gb_profile.apply(null, [mode].concat(this.gp));
   this.X.gb_switch(this.sw ? this.sw.min : 0, this.sw ? this.sw.max : 0); this.X.gb_switch_game(Date.now() >>> 0);
   this.X.gb_share(this.share ? this.share.under || 0 : 0, this.share ? this.share.otherwise || 0 : 0);
+  this.X.gb_expect(this.expect);
 };
 // THE TURN: q { m (the question), board, arrivals, due, t0, margin, canRaise, mem } -- the answer as the frame loop reads it
 Gambit.prototype.answer = function (q) {
