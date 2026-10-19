@@ -24,7 +24,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   if (!fs.existsSync(rf)) return;
   var res = fs.readFileSync(rf, 'utf8'), m = /(\w+) training (lost|survived) frames=(\d+)/.exec(res);
   if (!m) return;
-  var t = modes[m[1]] || (modes[m[1]] = { survived: 0, games: 0, lost: [], combo: {}, chain: {} });
+  var t = modes[m[1]] || (modes[m[1]] = { survived: 0, games: 0, lost: [], combo: {}, chain: {}, dec: 0, under: 0, mat: 0, pan: 0 });
   t.games++;
   if (m[2] === 'survived') t.survived++; else t.lost.push(+m[3]);
   var over = /thinkOver=(\d+)/.exec(res), worst = /thinkWorstMs=([\d.]+)/.exec(res), drop = /inputDropped=(\d+)/.exec(res);
@@ -44,6 +44,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (w) { var r = +w[1], c = +w[2]; if (last) { var d = Math.abs(r - last[0]) + Math.abs(c - last[1]); walk.n++; walk.cells += d; if (d >= 6) walk.far++; } last = [r, c]; }
       else last = null;
       var wm = / wallMs=([\d.]+)/.exec(l), bm = / brMs=([\d.]+)/.exec(l);
+      // (the board's state: decisions under garbage, and the material and panels there)
+      var um = / under=(\d)/.exec(l), mm = / mat=([\d.]+)/.exec(l), pm = / pan=(\d+)/.exec(l);
+      if (um) { t.dec++; if (+um[1] && mm) { t.under++; t.mat += +mm[1]; t.pan += pm ? +pm[1] : 0; } }
       if (wm) think.wall.push(+wm[1]);
       if (bm) (/ under=1/.test(l) ? think.brUnder : think.br).push(+bm[1]);
       var o = / own=(\d+)\/(\d+)/.exec(l);
@@ -97,7 +100,8 @@ Object.keys(modes).sort().forEach(function (k) {
   var t = modes[k];
   all += t.survived; games += t.games;
   console.log(k + ': survived ' + t.survived + '/' + t.games + '; lost at ' + (t.lost.sort(function (a, b) { return a - b; }).join(', ') || '-') +
-              '; combos ' + fmt(t.combo) + '; chains ' + fmt(t.chain));
+              '; combos ' + fmt(t.combo) + '; chains ' + fmt(t.chain) +
+              (t.dec ? '; under garbage ' + Math.round(100 * t.under / t.dec) + '% of decisions, material there ' + (t.under ? (t.mat / t.under).toFixed(1) : '-') : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
 Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '')); });
