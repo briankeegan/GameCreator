@@ -172,7 +172,9 @@ Narrower alike at `778441d5`: finish 18 (5, 8, 5), last resorts 25% -- reverted 
 core) a worker takes Gambit's own -- so the workers are off. At `145d58a5` (no workers, the readiness asked by its yield, every
 landed board searched once a decision): finish 20 (6, 6, 8); 54,000 of 250,000 checks were a board searched already that decision.
 Its early loss (factory, frame 723): 190 frames with no break in reach, every decision a line within the list lost 58 frames before a
-last resort, the two "alike". Next: alike only while a break is in reach. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+last resort, the two "alike". Alike only while a break is in reach (`727c7248`): finish 14 (4, 7, 3), last resorts 27%, material
+22.9 -- the third measure of the same thing (with the narrower alike twice): a later loss bought with a last resort is paid for in
+panels. Reverted; the alike rule stands as it is. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 
