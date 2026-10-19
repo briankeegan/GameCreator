@@ -215,5 +215,8 @@ a line lives when its board stands HORIZON + REST (360) frames past now, and a d
 to 684: past where the last one looked. The engine did not disagree with itself.
 THE HORIZON, LONGER (`dbdb4b3c`, backed out): HORIZON 240 -> 360, so a line that only outlasts 360 frames no longer reads as one
 that lives: finish 20 and 18 against the same code's 21 and 17 at 240 -- no better, and the clock cut up to 152 decisions a run.
+SAVING WEIGHS EVERY LINE: while the board saves panels up under garbage, the panels a line leaves were weighed before the list only
+between two breaks; a clear that breaks nothing spent them unweighed (combo_storm-6, run 400: 22, 19, 16 panels, then lost). Key 7
+now weighs every line, the hold among them. Measured on two runs.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
