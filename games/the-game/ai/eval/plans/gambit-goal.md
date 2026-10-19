@@ -203,5 +203,6 @@ Measured (`5c374828`): finish 16 (4, 8, 4). In large_garbage-2 the line in progr
 handed on behind a hold and never pressed: the frame loop followed a hand only while the question out was unpaced, and the question
 after a hold is paced. A swap with its judged frame is now pressed on it, paced or not, and a line the frame loop cannot press on is
 logged with why ("LINE dropped").
+Measured (`595d88f3`): finish 21 (5, 8, 8) -- large_garbage 8 of 8; the three losses combo_storm, a life kept 90% of 644.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
