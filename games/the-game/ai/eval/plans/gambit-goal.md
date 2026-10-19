@@ -208,5 +208,10 @@ THE LINE IN PROGRESS AT ITS FIRST FRAMES (`9dc31485`, backed out): of the lives 
 next decision pressed its swaps as soon as it could, not when the decision that began it did, and could stop breaking
 (carryDrop=3). Judging each carried swap no sooner than its first frame: finish 7 (2, 2, 3), a life kept 82% -- the carried line
 judged to live to 559 while the game was lost at 1525 (factory-8), so the line judged and the line pressed parted.
+NOISE, MEASURED: `da1c30e7` decides exactly as `595d88f3` (it only logs more) and scored 17 (4, 8, 5) against 21. One run of 24
+spans at least 17 to 21 on the same code, so a single run tells nothing under about five games; a change is judged on two or more.
+A LIFE NOT KEPT, LOOKED AT (GAMBITK, both boards logged): the four pairs of large_garbage-5 (run 398) are the horizon, not a fault --
+a line lives when its board stands HORIZON + REST (360) frames past now, and a decision later the same lines are judged lost at 411
+to 684: past where the last one looked. The engine did not disagree with itself.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
