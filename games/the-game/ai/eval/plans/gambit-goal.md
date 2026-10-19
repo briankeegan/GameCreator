@@ -108,5 +108,9 @@ for the attack modes. Attack first (of two breaks, the one that sends garbage) -
 (finish 13.2 against 13.5, pressure 10.9 against 10.7): gone. Aggression at the baseline: finish 13.5 attacks and 83 garbage cells a
 minute, pressure 10.7 and 98.
 
+A second run at `3250be09` (keep on in the chain modes): finish 17 (6, 5, 6), pressure 18 (6, 5, 7), big chain 12 (1, 6, 5), build 14
+(2, 5, 7). The spread of one condition is about 2 games a run; keep is +1 over three runs in each chain mode, within it. combo_storm in
+the chain modes (1-2 of 8) is where the games are lost. Aggression holds at 10-13 attacks and 83-102 garbage cells a minute.
+
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
