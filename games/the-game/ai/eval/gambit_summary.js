@@ -13,9 +13,9 @@ var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/g
 var aims = {};   // by the mode a game played throughout: { met, all }
 var walk = { n: 0, cells: 0, far: 0 };   // the cells from one swap the decisions played to the next (want=r,c), and the jumps of 6 or more
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
-// AGGRESSION: the attacks fired and the garbage cells they send (a combo its combo garbage, a chain a slab the width of the board for
-// every link past the first), over the frames played
-var aggr = { attacks: 0, cells: 0, frames: 0 };
+// AGGRESSION: the blocks of garbage thrown a minute (a combo's pieces of combo garbage, a chain's slab for every link past the first),
+// with the attacks that threw them and their cells, over the frames played
+var aggr = { blocks: 0, attacks: 0, cells: 0, frames: 0 };
 var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wallMs=) and the break search's (brMs=), under garbage apart
 var cutShort = { boards: 0, cut: 0 };     // decisions where the board was making a chain of its own (own=A/B), and those that cut it short
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, starved: 0, inHand: 0 };
@@ -70,8 +70,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       ['combo', 'chain'].forEach(function (k) { Object.keys(a[k] || {}).forEach(function (z) { t[k][z] = (t[k][z] || 0) + a[k][z]; }); });
       if (one && !switched) aimOf(one, a);
       aggr.frames += o.frames || 0;
-      Object.keys(a.combo || {}).forEach(function (z) { aggr.attacks += a.combo[z]; aggr.cells += a.combo[z] * PA.comboGarbage(+z).reduce(function (s, w) { return s + w; }, 0); });
-      Object.keys(a.chain || {}).forEach(function (z) { aggr.attacks += a.chain[z]; aggr.cells += a.chain[z] * 6 * (+z - 1); });
+      Object.keys(a.combo || {}).forEach(function (z) { var g = PA.comboGarbage(+z); aggr.attacks += a.combo[z]; aggr.blocks += a.combo[z] * g.length; aggr.cells += a.combo[z] * g.reduce(function (s, w) { return s + w; }, 0); });
+      Object.keys(a.chain || {}).forEach(function (z) { aggr.attacks += a.chain[z]; aggr.blocks += a.chain[z] * (+z - 1); aggr.cells += a.chain[z] * 6 * (+z - 1); });
       // (every chain link past two, by its cause: garbage's colours, a swap since the link before, or the stack alone)
       Object.keys(o.linkBy || {}).forEach(function (w) { Object.keys(o.linkBy[w]).forEach(function (z) { var m = links[w] || (links[w] = {}); m[z] = (m[z] || 0) + o.linkBy[w][z]; }); });
     }
@@ -109,7 +109,7 @@ if (nturns) {
   console.log('switches: ' + nturns + ' in all, ' + Object.keys(turns).length + ' directions -- ' + Object.keys(turns).sort().map(function (k) { return k + ' x' + turns[k]; }).join(', '));
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
 }
-if (aggr.frames) console.log('aggression: ' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks a minute, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute (' + aggr.attacks + ' attacks over ' + Math.round(aggr.frames / 3600) + ' minutes)');
+if (aggr.frames) console.log('aggression: ' + (aggr.blocks * 3600 / aggr.frames).toFixed(1) + ' blocks thrown a minute (' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute; ' + Math.round(aggr.frames / 3600) + ' minutes)');
 if (walk.n) console.log('walk: ' + (walk.cells / walk.n).toFixed(1) + ' cells from one swap to the next, ' + Math.round(100 * walk.far / walk.n) + '% of ' + walk.n + ' jumps 6 or more');
 var pct = function (a, q) { if (!a.length) return '-'; var s = a.slice().sort(function (x, y) { return x - y; }); return String(Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))])); };
 if (think.wall.length) console.log('think: a decision ' + pct(think.wall, 0.5) + ' ms (90% under ' + pct(think.wall, 0.9) + '); the break search ' + pct(think.brUnder, 0.5) + ' ms under garbage (90% under ' + pct(think.brUnder, 0.9) + '), ' + pct(think.br, 0.5) + ' otherwise');
