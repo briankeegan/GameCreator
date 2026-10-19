@@ -122,6 +122,16 @@ unless GC_GAMBIT_WORKERS is set (gambit-24.yml's `workers`). The cause found: th
 (`front.c` keyCtx) as the engine's thread 0 -- Gambit's own, the pool the workers' phases hand boards out of. The game's thread is now
 the engine's last (`native.c` gn_setup), its own pool.
 
+### E, its next step: the readiness asked on every thread (`search/break.c` readyPendOf, readyJob; `decide.c` readyAhead)
+
+While a decision first judges its options, the readiness check is deferred; with workers, each landed board it will be asked of is
+kept, keyed as the breaks already found are. Before the order asks them, every one is searched at once (`search.h` runJobs: a whole
+piece of work a task), best-ranked first, each on whichever thread takes it, in the share one thread's checks would give it times
+the threads (at most half the time left). The checks then read the answers; a break found is kept across decisions as one found
+alone is. The break search's state is each thread's own (`LOCAL`: its nodes, its lines, its scratch, the clock's share and work, the
+press memo); a search run as a job steps alone, never in a batch. With no workers nothing changes: the C checks' answers are the
+golden's. Logged `pre=answered/kept`.
+
 ### F, its first piece: the breaks already found, kept (`search/break.c` readyKept)
 
 The readiness check -- 72% of a decision -- asks the break search of each line's landed board. The board a line lands on next decision

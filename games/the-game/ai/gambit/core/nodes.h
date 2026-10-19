@@ -14,7 +14,7 @@ EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 #define TAP_GAP 4         // frames between taps (cursorMoveFrames)
 #define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
 #define HOLDTIGHT 40      // the actions short of the input limit at which every walk of two cells or more is held (the search and the frame loop)
-static int32_t pressTight;
+static LOCAL int32_t pressTight;
 #define MIN_LEG 3          // the shortest walk a held key is no later on
 // The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be
 // (left: the actions the input budget still allows -- tight at HOLDTIGHT or under). The frame loop's and the judge's, the one count.
@@ -32,7 +32,7 @@ static int actionsFor(int row, int col, int r, int c, int left) {
 // THE ALLOWANCE A JUDGED LINE PRESSES UNDER: the decision's (NOT_ASKED: the host did not say), less what the line's own swaps spend --
 // a line long enough walks held from two cells once its own presses bring the budget to HOLDTIGHT, as the frame loop walks it
 static int32_t pressAllowance = -1;
-static int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
+static LOCAL int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
 static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
 // A WALK'S LEG in a line's keys, from key i: a direction tapped a cell at a time, TAP_GAP frames apart (in[i] the direction with the
 // frame's other keys, in[i + 1] those keys alone). 0 when key i begins none; else its cells (*cells), its last tap (*p), the last frame of
@@ -68,19 +68,22 @@ static int32_t pressDelayOf(Ctx *x, int pi, int mr, int mc) {
   tape = 0;
   if (r == STEP_NULL || r == STEP_ERR) return 0;
   int n = tapeN;
-  static int32_t in[4096];
+  static LOCAL int32_t in[4096];
   for (int i = 0; i < n; i++) in[i] = keyBuf[3 * i];
   int tap = firstSwap(in, n), slow = firstSwap(walkBuf, slowWalks(in, n, walkBuf, (int)(sizeof walkBuf / sizeof walkBuf[0])));
   return tap >= 0 && slow > tap ? slow - tap : 0;
 }
-// (the delay is the walk's -- where the cursor is and where the swap is -- kept per decision: pressMemoClear at its start)
+// (the delay is the walk's -- where the cursor is and where the swap is -- kept per decision: pressMemoClear at its start; each thread
+// keeps its own, let go once the decision is another)
 #define PRESS_MEMO (MAXROWS * 8 * MAXROWS * 8)
-static short pressMemo[PRESS_MEMO];
-static void pressMemoClear(void) { for (int i = 0; i < PRESS_MEMO; i++) pressMemo[i] = -1; }
+static LOCAL short pressMemo[PRESS_MEMO];
+static int32_t pressMemoGen; static LOCAL int32_t pressMemoAt = -1;
+static void pressMemoClear(void) { for (int i = 0; i < PRESS_MEMO; i++) pressMemo[i] = -1; pressMemoAt = ++pressMemoGen; }
 static int32_t pressDelay(Ctx *x, int pi, int mr, int mc) {
   if (!pressTight || !mr) return 0;
   Board *b = ensureBoard(x, pi);
   if (!b || b->curRow < 0 || b->curRow >= MAXROWS || b->curCol < 0 || b->curCol > 7) return 0;
+  if (pressMemoAt != pressMemoGen) { for (int i = 0; i < PRESS_MEMO; i++) pressMemo[i] = -1; pressMemoAt = pressMemoGen; }
   int key = ((b->curRow * 8 + b->curCol) * MAXROWS + mr) * 8 + mc;
   if (key < 0 || key >= PRESS_MEMO) return pressDelayOf(x, pi, mr, mc);
   if (pressMemo[key] < 0) pressMemo[key] = (short)pressDelayOf(x, pi, mr, mc);
@@ -110,12 +113,14 @@ static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 // it, and none taken once the clock is out -- so a search that takes its batch in order, and stops where it would have stopped, makes
 // the same children and spends the same clock as one step at a time. With no workers, a batch too small to share, or a swap whose press
 // waits its walk first (pressDelay), the step is made when it is taken.
+// A search run as a job on the threads (decide.c readyJob) is a thread's whole: its steps are its own, never a batch.
 #define UNBATCHED (-97)
 static Vec batchTasks, batchRes, batchDead;
-static int batchN;
+static LOCAL int batchN;
+static LOCAL int inJob;
 static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int kind, int n) {
   batchN = 0;
-  if (pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
+  if (inJob || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
   batchTasks.n = 0;
   for (int j = 0; j < n; j++) {
     int mr = CR(moves[j]), mc = CC(moves[j]);
@@ -173,7 +178,7 @@ static int rootOf(Ctx *x, const Question *q) {
 static int liveNode(Ctx *x, int i) { return i >= 0 && !NODE(x, i)->dead; }
 // Whether the swap at (r, c) is one of node i's legal swaps.
 static int legalAt(Ctx *x, int i, int r, int c) {
-  static int32_t ms[MAXROWS * W];
+  static LOCAL int32_t ms[MAXROWS * W];
   Board *b = ensureBoard(x, i);
   if (!b) return 0;
   int n = legalSwaps(b, ms);

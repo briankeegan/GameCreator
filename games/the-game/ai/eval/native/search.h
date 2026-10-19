@@ -785,10 +785,12 @@ static struct {
   int32_t gen, next, ntasks, ack, nworkers;
   Ctx *ctx; int32_t *tasks, *res, *deadAt;   // deadAt: per step, the frame a death was (settles only)
   const int32_t *moves;   // SWAPS_TASK's moves, by slot
+  void (*job)(int32_t);   // JOB_TASK's: a whole piece of work, by its index (a host's own, on its own nodes)
 } pool;
 #ifndef SPIN
 #define SPIN 200000
 #endif
+#define JOB_TASK (-5)      // a task's move: pool.job(t[0]), a whole piece of work on the thread that takes it (runJobs)
 #define REPLAY_TASK (-3)   // a task's move: play node t[0]'s board again from its parent (replayBoard)
 #define SWAPS_TASK (-4)    // a task's move: node t[0]'s t[2] swaps, moves and slots from t[3] (advanceSwaps)
 // The most swaps one SWAPS_TASK takes, of a phase of n steps: few enough that
@@ -803,6 +805,7 @@ static void runTask(int32_t i) {
   const int32_t *t = pool.tasks + 4 * i;
   int32_t mv = t[1];
   if (mv == REPLAY_TASK) { PUT(t[3], replayBoard(x, t[0]) ? 0 : -1); return; }
+  if (mv == JOB_TASK) { pool.job(t[0]); PUT(t[3], 0); return; }
 #ifdef SHARED_WALK
   if (mv == SWAPS_TASK) {
     int32_t outs[MAXWALK], deads[MAXWALK], o = t[3];
@@ -951,6 +954,19 @@ static int32_t awaitSlot(int32_t *slot) {
     if (i < pool.ntasks) runTask(i);
   }
   return v;
+}
+// JOBS ON EVERY THREAD: n whole pieces of work, job(0) .. job(n - 1), taken by the threads in that order, this one joining in; back when
+// all are done. Each job works on nodes of its own thread's (none of x's), so no task count is reserved.
+static int runJobs(Ctx *x, void (*job)(int32_t), int32_t n) {
+  static Vec tasks, res;
+  if (n <= 0) return 1;
+  if (!vreserve(&tasks, 4 * n) || !vreserve(&res, n)) return 0;
+  tasks.n = 0;
+  for (int32_t i = 0; i < n; i++) { tasks.a[tasks.n++] = i; tasks.a[tasks.n++] = JOB_TASK; tasks.a[tasks.n++] = 0; tasks.a[tasks.n++] = i; res.a[i] = PENDING; }
+  pool.job = job;
+  int ok = runPhase(x, &tasks, res.a);
+  pool.job = 0;
+  return ok;
 }
 // Steps on every thread: the io body holds n records (parent, kind, row,
 // col, frames), each the step ns_advance would make from them. Out, in the io

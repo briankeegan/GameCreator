@@ -126,6 +126,7 @@ static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 4 + N
 static int32_t phaseMs[3];
 static int carriedCand(const Read *R, Cand *k, int *wait);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
+static void readyAhead(int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered);
@@ -135,6 +136,7 @@ static int ranked(const Read *R, const Found *S) {
   double t1 = nowMs();
   for (int i = 0; i < nc; i++) offered[theCands[i].play]++;
   readyDefer = 1;   // (the proposers above ask readiness whole; the judging below ranks first)
+  readyPendClear(); readyCollect = pool.nworkers > 0;   // (and with workers, keeps each landed board to search them all at once)
   rankReact = C2.reaction + 1;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
@@ -159,8 +161,9 @@ static int ranked(const Read *R, const Found *S) {
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
   // part of the time left each of those still to be asked -- and the order is made again)
-  readyDefer = 0; readyFresh = 1;
+  readyDefer = 0; readyCollect = 0; readyFresh = 1;
   #define READY_ASKS(J_) (!(J_)->o.lives && !(J_)->o.dead && (J_)->o.ready == NOT_ASKED && (J_) != carriedJ)
+  readyAhead(n);
   int toAsk = 0;
   for (int i = 0; i < n; i++) toAsk += READY_ASKS(order[i]);
   for (int i = 0; i < n && leftMs() > 0; i++) {
@@ -271,6 +274,24 @@ static void carryReady(const Judge *H, int32_t qid) {
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
   theCarry.settled = 0; theCarry.broke = 1;
+}
+// THE READINESS AHEAD, on every thread (search/break.c readyJob): the options the order asks readiness of, best-ranked first, each landed
+// board searched once on whichever thread takes it; the checks the order then asks read the answers (readyBreakOf).
+static Ctx *jobCtx;   // (the phase's own: the jobs make nodes only on their threads' contexts)
+static void readyAhead(int n) {
+  if (pool.nworkers <= 0 || !readyPendN || leftMs() <= 0) return;
+  uint8_t queued[READYPEND] = { 0 };
+  int nj = 0;
+  for (int i = 0; i < n && nj < READYPEND; i++) {
+    const Judge *J = order[i];
+    int32_t p = J->o.j.readyPend - 1;
+    if (!READY_ASKS(J) || p < 0 || p >= readyPendN || queued[p] || readyPend[p].gen != readyPendGen || readyPend[p].state != PEND_WAITING) continue;
+    queued[p] = 1; readyJobs[nj++] = p;
+  }
+  if (!nj) return;
+  if (!jobCtx) jobCtx = ctxOf(0);
+  readyJobsLeft = nj; readyJobThreads = pool.nworkers + 1; readyJobWork = clockWork;
+  if (runJobs(jobCtx, readyJob, nj)) readyJobsKept(nj);
 }
 // THE INTENTIONS (plans/gambit-infra.md A, F): besides the line in progress, the best lines a decision ranked that make something -- a
 // clear, a chain, a combo, a break -- each kept with a bottom-row panel it does not touch (found again by it once the stack has risen,

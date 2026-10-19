@@ -41,12 +41,12 @@ typedef struct {
   Paths keepOut;                                    // what the next decision carries on
 } Broke;
 
-static Ctx *breakCtx;
+static LOCAL Ctx *breakCtx;
 // THE LINES' ROOM: a line carries its own path, so a level's lines are let go once the next level is made -- two arenas a level at a time
 // (arena 0 and 1, in turn), and one for what lives through the whole search (the carried lines, the first swaps, the line-ups). A line
 // that finds no room ends the search where it is, and says so (Broke.full).
 #define LINEARENA 8192
-static Line *arena[3]; static int32_t arenaN[3], linesFull;
+static LOCAL Line *arena[3]; static LOCAL int32_t arenaN[3], linesFull;
 static Line *lineIn(int a) {
   if (!arena[a]) arena[a] = (Line *)grab(sizeof(Line) * LINEARENA);
   if (!arena[a] || arenaN[a] >= LINEARENA) { linesFull = 1; return 0; }
@@ -60,7 +60,7 @@ static Line *lineNew(void) { return lineIn(KEEPS); }
 static int32_t cellAt(const Board *b, int r, int c) { return r < 0 || r > b->height + 1 || c < 1 || c > W ? 0 : gridCell(b, r, c); }
 static int32_t gridLen(const Board *b) { return b->height + 2; }
 // the lowest row with garbage, from row 1 (G = grid length when none)
-static Bits scratchBits;
+static LOCAL Bits scratchBits;
 static int lowestG(const Board *b) { bitsOf(b, &scratchBits); return bitsLowestG(&scratchBits); }
 // How uneven the stack under the lowest garbage is: each column's shortfall from the tallest, squared
 static int32_t unevenOf(const Bits *B) {
@@ -187,7 +187,7 @@ typedef struct {
   int32_t towardS, haveToward, towardLen, toward[MAXPATH];
   int32_t tries;
 } BS;
-static int32_t outsideBuf[1 << 20];
+static LOCAL int32_t outsideBuf[1 << 20];
 // A break is one standing still would not have made by the same frame (still): the root left alone, its breaks at frame t.
 static int32_t stillAt(BS *s, int32_t t) {
   for (int i = 0; i < s->nIdle; i++) if (s->idleT[i] == t) return s->idleB[i];
@@ -252,8 +252,8 @@ static void setPath(Broke *o, const int32_t *path, int len) { o->pathLen = len; 
 static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   Ctx *x = s->x;
   Broke *o = s->out;
-  static Line *seeds[LINEPOOL], *act[LINEPOOL], *nxt[LINEPOOL], *tl0[LINEPOOL], *tl[LINEPOOL], *tn[LINEPOOL], *kept[LINEPOOL];
-  static int32_t idx[LINEPOOL], tmp[LINEPOOL], keyS[LINEPOOL], ms[MAXROWS * W];
+  static LOCAL Line *seeds[LINEPOOL], *act[LINEPOOL], *nxt[LINEPOOL], *tl0[LINEPOOL], *tl[LINEPOOL], *tn[LINEPOOL], *kept[LINEPOOL];
+  static LOCAL int32_t idx[LINEPOOL], tmp[LINEPOOL], keyS[LINEPOOL], ms[MAXROWS * W];
   // (the search carried on: the lines the last decision's beam was growing, played again swap by swap within the rules)
   int nseeds = 0, nact = 0;
   for (int i = 0; s->resume && i < s->resume->n; i++) {
@@ -294,7 +294,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       // (how near a break each line's board is, read on the board once what the line cleared has fallen -- settled a batch at a
       // time while the clock allows: past it the rest are scored as they stand)
       // (the settles stepped on every thread first, then taken in this order: core/nodes.h stepBatch)
-      static int32_t sPar[LINEPOOL], sMv[LINEPOOL], sAt[LINEPOOL];
+      static LOCAL int32_t sPar[LINEPOOL], sMv[LINEPOOL], sAt[LINEPOOL];
       int nsb = 0;
       for (int i = 0; i < ntl; i++) { Stats st; sAt[i] = -1; if (statsOf(x, tl[i]->n, &st) && st.cleared > 0) { sAt[i] = nsb; sPar[nsb] = tl[i]->n; sMv[nsb++] = 0; } }
       stepBatch(x, sPar, sMv, MK_SETTLE, nsb);
@@ -330,7 +330,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       int ntn = 0, ar = td & 1;
       arenaN[ar] = 0;   // (the level before last: its lines are let go)
       // (the level's swaps stepped on every thread first, then taken in this order: core/nodes.h stepBatch)
-      static int32_t bPar[LINEPOOL * MAXROWS * W / 4], bMv[LINEPOOL * MAXROWS * W / 4], bAt[LINEPOOL + 1];
+      static LOCAL int32_t bPar[LINEPOOL * MAXROWS * W / 4], bMv[LINEPOOL * MAXROWS * W / 4], bAt[LINEPOOL + 1];
       int nb = 0;
       for (int i = 0; i < ntl; i++) {
         bAt[i] = nb;
@@ -377,7 +377,7 @@ typedef struct { int32_t key, n, m; } Parent;
 static void inTurn(BS *s, const Parent *ps, int np, int cap, int hits, int32_t end) {
   Ctx *x = s->x;
   Broke *o = s->out;
-  static int32_t ms[MAXROWS * W];
+  static LOCAL int32_t ms[MAXROWS * W];
   for (int k = 0; k < np && s->tries < cap && !SEARCH_OUT(); k++) {
     int nm = swapsOfNode(x, ps[k].n, ms);
     for (int j = 0; j < nm && s->tries < cap; j++) {
@@ -394,8 +394,8 @@ static int lineups(BS *s, Line **firsts, int nfirsts) {
   Ctx *x = s->x;
   Broke *o = s->out;
   int32_t end = NODE(x, s->root)->t + s->wait;
-  static int ns[MAXROWS * W], hit[MAXROWS * W];
-  static Parent ps[MAXROWS * W];
+  static LOCAL int ns[MAXROWS * W], hit[MAXROWS * W];
+  static LOCAL Parent ps[MAXROWS * W];
   for (int q = 0; q < nfirsts; q++) ns[q] = firsts[q]->n;
   linedAll(s, ns, nfirsts, end, hit);
   for (int q = 0; q < nfirsts; q++) if (hit[q]) found(o, firsts[q]->key);
@@ -408,8 +408,8 @@ static int lineups(BS *s, Line **firsts, int nfirsts) {
   // further, aimed: the colours the row turns into, met by pairs on top of their columns
   int32_t want[W + 1];
   if (converting(ensureBoard(x, s->root), want)) {
-    static Line *level[LINEPOOL], *next[LINEPOOL];
-    static int32_t idx[LINEPOOL], tmp[LINEPOOL], keyS[LINEPOOL], ms[MAXROWS * W], n3s[LINEPOOL], scs[LINEPOOL], l3[LINEPOOL], m3[LINEPOOL], from[LINEPOOL];
+    static LOCAL Line *level[LINEPOOL], *next[LINEPOOL];
+    static LOCAL int32_t idx[LINEPOOL], tmp[LINEPOOL], keyS[LINEPOOL], ms[MAXROWS * W], n3s[LINEPOOL], scs[LINEPOOL], l3[LINEPOOL], m3[LINEPOOL], from[LINEPOOL];
     int nl = 0, found3 = 0;
     for (int q = 0; q < nfirsts; q++) if (liveNode(x, firsts[q]->n) && NODE(x, firsts[q]->n)->t < end) level[nl++] = firsts[q];
     for (int dpt = 2; dpt <= LINEUP_DEPTH && nl && !found3 && !SEARCH_OUT(); dpt++) {
@@ -462,9 +462,9 @@ static int lineups(BS *s, Line **firsts, int nfirsts) {
 // decision's beam was growing, on this board. Answers into out.
 static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, Broke *out);
 // (the marks of the last search's nodes are let go before the next: every node of a search starts within the rules)
-static int breakBusy;
+static LOCAL int breakBusy;
 static void breakMoves(const Question *q, int32_t wait, const Paths *resume, Broke *out) {
-  static int32_t high;
+  static LOCAL int32_t high;
   memset(outsideBuf, 0, sizeof(int32_t) * (unsigned long)high);
   breakBusy = 1;
   breakMovesIn(q, wait, resume, out);
@@ -481,8 +481,8 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   s.x = x; s.out = out; s.wait = wait; s.resume = resume; s.outside = outsideBuf;
   s.root = rootOf(x, q);
   if (s.root < 0) return;
-  static int32_t ms[MAXROWS * W];
-  static Line *firsts[MAXROWS * W];
+  static LOCAL int32_t ms[MAXROWS * W];
+  static LOCAL Line *firsts[MAXROWS * W];
   int nf = swapsOfNode(x, s.root, ms), nfirsts = 0, at1 = -1;
   for (int i = 0; i < nf; i++) {
     Line *l = lineNew(); if (!l) break;
@@ -495,7 +495,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   if (out->nmoves) { out->depth = 1; out->at = at1; return; }
   // (THE BREAK BUILT: the nearest break's panels walked to it along their rows -- breakNear's own line -- played on the engine)
   if (!(wait > 0)) {
-    static int32_t nl[MAXPATH]; int nn = 0;
+    static LOCAL int32_t nl[MAXPATH]; int nn = 0;
     if (breakNearLine(q->b, nl, &nn) < NEAR_MISS && nn > 0) {
       int node = s.root;
       for (int i = 0; i < nn && liveNode(x, node); i++) node = stepMarked(&s, node, MK_SWAP, nl[i], 0);
@@ -558,7 +558,7 @@ static ReadyKept readyKept[READYN];
 static unsigned char *readyKeyBuf;
 static int32_t readyClock, readyAsked, readyHit;   // (the log's: asked and found kept, this decision)
 static int readyKey(const Board *b, const Node *nd, int32_t tight, uint32_t *h) {
-  static Board canon;
+  static LOCAL Board canon;
   unsigned long head = BOARD_HEAD, inc = (unsigned long)b->ninc * sizeof(Incoming), rows = (unsigned long)b->nrows * sizeof(Panel) * (W + 1);
   unsigned long extra = sizeof(int32_t) * (4 + 5 * MAXARR), need = head + inc + rows + extra;
   if (!readyKeyBuf) readyKeyBuf = (unsigned char *)grab(sizeof(Board) + extra);
@@ -592,6 +592,67 @@ static void readyKeep(uint32_t h, int32_t nb, const int32_t *why, int32_t whyN) 
   memcpy(e->bytes, readyKeyBuf, (unsigned long)nb); e->h = h; e->nbytes = nb; e->whyN = whyN;
   for (int i = 0; i < whyN && i < MAXLINE; i++) e->why[i] = why[i];
 }
+// THE BREAK SEARCH ASKED FOR READINESS, on question q until `by`: 1 a break (its line in line, *k), 0 none in the time, NOT_ASKED the
+// decision's time out. Every thread's: what it reads is the question and its own nodes.
+static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t *k) {
+  int32_t pop = popLeft(q->b), saved = listDefault;
+  static LOCAL Broke rb;
+  if (clockShare && clockShare < by) by = clockShare;   // (never past the share of the search that asks)
+  double old = clockShareBegin(by);
+  listDefault = 1;
+  breakMoves(q, pop ? pop + LINEUP_AFTER : 0, 0, &rb);
+  listDefault = saved;
+  clockShareEnd(old);
+  *k = 0;
+  if (!rb.depth) return clockOut() ? NOT_ASKED : 0;
+  if (rb.pathLen) for (; *k < rb.pathLen && *k < MAXLINE; (*k)++) line[*k] = rb.path[*k];
+  else if (rb.nmoves) line[(*k)++] = rb.moves[0];
+  return 1;
+}
+// THE READINESS ASKED ON EVERY THREAD (plans/gambit-infra.md E): while a decision first judges its options (readyDefer), each landed
+// board a readiness check will be asked of is kept here (readyPendOf), keyed as the breaks already found are; decide.c readyAhead then
+// searches them all at once, one a thread at a time, best-ranked first (readyJob), and the checks that follow read the answers here --
+// a break found, or none in the time it had. Only with workers: on one thread the checks are asked one after another, as they always
+// were.
+#define READYPEND 48
+typedef struct { int32_t gen, h, nb, tight, state, whyN, why[MAXLINE]; Node nd; Question q; unsigned char *key; } ReadyPend;
+#define PEND_WAITING 0
+#define PEND_FOUND 1
+#define PEND_NONE 2
+#define PEND_OUT 3
+static ReadyPend readyPend[READYPEND];
+static int32_t readyPendN, readyPendGen, readyPre;   // (readyPre: the checks answered here, this decision -- the log's)
+static void readyPendClear(void) { readyPendN = 0; readyPendGen++; readyPre = 0; }
+static ReadyPend *readyPendFind(uint32_t h, int32_t nb) {
+  for (int i = 0; i < readyPendN; i++) {
+    ReadyPend *p = &readyPend[i];
+    if (p->h == (int32_t)h && p->nb == nb && !memcmp(p->key, readyKeyBuf, (unsigned long)nb)) return p;
+  }
+  return 0;
+}
+// (node n's board kept to be searched ahead: its index + 1, 0 when it is not -- no room, a break already found, or no key)
+static int32_t readyPendOf(Ctx *x, int n) {
+  Board *b = ensureBoard(x, n);
+  if (!b) return 0;
+  uint32_t kh = 0;
+  int32_t kn = readyKey(b, NODE(x, n), decQ.tight, &kh);
+  if (!kn || readyFind(kh, kn)) return 0;
+  ReadyPend *p = readyPendFind(kh, kn);
+  if (p) return (int32_t)(p - readyPend) + 1;
+  if (readyPendN >= READYPEND) return 0;
+  p = &readyPend[readyPendN];
+  if (!p->key) p->key = (unsigned char *)grab(sizeof(Board) + sizeof(int32_t) * (4 + 5 * MAXARR));
+  if (!p->q.b) p->q.b = (Board *)grab(sizeof(Board));
+  if (!p->key || !p->q.b) return 0;
+  memcpy(p->key, readyKeyBuf, (unsigned long)kn); p->h = (int32_t)kh; p->nb = kn;
+  cloneBoard(p->q.b, b);
+  p->nd = *NODE(x, n);
+  p->q.holdLeft = p->nd.holdLeft; p->q.holdStarted = p->nd.holdStarted; p->q.tight = decQ.tight;
+  p->q.narr = p->nd.narr; for (int i = 0; i < p->q.narr; i++) p->q.arr[i] = p->nd.arr[i];
+  p->tight = pressTight; p->state = PEND_WAITING; p->whyN = 0; p->gen = readyPendGen;
+  readyPendN++;
+  return readyPendN;
+}
 static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   if (breakBusy) return NOT_ASKED;
   Board *b = ensureBoard(x, n);
@@ -600,27 +661,48 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   int32_t kn = readyKey(b, NODE(x, n), decQ.tight, &kh);
   readyAsked++;
   if (kn) { ReadyKept *e = readyFind(kh, kn); if (e) { readyHit++; if (why) { for (int i = 0; i < e->whyN; i++) why[i] = e->why[i]; *whyN = e->whyN; } return 1; } }
+  if (kn && readyPendN) {
+    ReadyPend *p = readyPendFind(kh, kn);
+    if (p && p->state == PEND_NONE) { readyPre++; return 0; }
+    if (p && p->state == PEND_FOUND) { readyPre++; if (why) { for (int i = 0; i < p->whyN; i++) why[i] = p->why[i]; *whyN = p->whyN; } return 1; }
+  }
   static Question q;
   memset(&q, 0, sizeof q);
   q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;
   q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
-  int32_t pop = popLeft(b), saved = listDefault;
-  static Broke rb;
-  double by = nowMs() + (readyShareMs >= 0 ? readyShareMs : leftMsOf() / 2);
-  if (clockShare && clockShare < by) by = clockShare;   // (never past the share of the search that asks)
-  double old = clockShareBegin(by);
-  listDefault = 1;
-  breakMoves(&q, pop ? pop + LINEUP_AFTER : 0, 0, &rb);
-  listDefault = saved;
-  clockShareEnd(old);
-  if (!rb.depth) return clockOut() ? NOT_ASKED : 0;
-  { int32_t line[MAXLINE], k = 0;
-    if (rb.pathLen) for (; k < rb.pathLen && k < MAXLINE; k++) line[k] = rb.path[k];
-    else if (rb.nmoves) line[k++] = rb.moves[0];
-    if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }
-    // (the board as keyed before the search: the break search plays it, so it is keyed again from the node)
-    if (kn && readyKey(ensureBoard(x, n), NODE(x, n), decQ.tight, &kh) == kn) readyKeep(kh, kn, line, k); }
+  int32_t line[MAXLINE], k = 0;
+  int32_t r = readySearch(&q, nowMs() + (readyShareMs >= 0 ? readyShareMs : leftMsOf() / 2), line, &k);
+  if (r != 1) return r;
+  if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }
+  // (the board as keyed before the search: the break search plays it, so it is keyed again from the node)
+  if (kn && readyKey(ensureBoard(x, n), NODE(x, n), decQ.tight, &kh) == kn) readyKeep(kh, kn, line, k);
   return 1;
+}
+// THE JOBS: readyAhead's pending boards in the order it hands them (readyJobs), each searched on whichever thread takes it in its share
+// of the time the decision has left -- the time over the jobs not yet begun, as one thread's checks share it, times the threads that
+// share them -- and at most half of it. A worker's clock begins at the work the decision had done (the replay's clock runs on it).
+static int32_t readyJobs[READYPEND], readyJobsLeft, readyJobThreads;
+static int64_t readyJobWork;
+static void readyJob(int32_t i) {
+  ReadyPend *p = &readyPend[readyJobs[i]];
+  int32_t tight = pressTight;
+  if (thId != 0) { clockWork = readyJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0; }
+  inJob = 1; pressTight = p->tight;
+  int32_t left = __atomic_sub_fetch(&readyJobsLeft, 1, __ATOMIC_SEQ_CST) + 1;
+  double ms = leftMsOf(), share = ms * readyJobThreads / (2.0 * left);
+  if (share > ms / 2) share = ms / 2;
+  int32_t r = ms > 0 ? readySearch(&p->q, nowMs() + share, p->why, &p->whyN) : NOT_ASKED;
+  p->state = r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT;
+  inJob = 0; pressTight = tight;
+}
+// (the jobs done: every break found kept across decisions, as one found one at a time is)
+static void readyJobsKept(int n) {
+  for (int i = 0; i < n; i++) {
+    ReadyPend *p = &readyPend[readyJobs[i]];
+    if (p->state != PEND_FOUND) continue;
+    memcpy(readyKeyBuf, p->key, (unsigned long)p->nb);
+    readyKeep((uint32_t)p->h, p->nb, p->why, p->whyN);
+  }
 }
 static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN) = readyBreakOf;
 // for a tool that reads a logged board: the fewest swaps to the nearest break on the question's board (NEAR_MISS or more: none)
