@@ -28,6 +28,7 @@ typedef struct {
 } FQuestion;
 typedef struct {
   int32_t id, epoch, at, kind, move, raiseNow, raiseAfter, nhand, hand[MAXLINE], holdLives, brk, urgent, error;
+  int32_t handAt[MAXLINE];     // the frame each swap handed on was judged pressed from (0: as soon as the one before is done)
   int32_t empty;               // a hold the clock left no time to judge anything for
   int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
   double ms, idleMs, closeMs;
@@ -62,8 +63,9 @@ static struct {
   int32_t pending, pId, pEpoch, pAt, pPaced, pHoldLeft, pHoldStarted, pNarr, pNknew;
   Board *pBoard; Arrival pArr[MAXARRIVALS], pKnew[MAXARRIVALS];
   int32_t nextId;
-  // the line after the move, pressed as it was decided: its swaps
-  int32_t lineN, line[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
+  // the line after the move, pressed as it was decided: its swaps, each from the frame it was judged pressed from (lineAt, 0: as soon as
+  // the one before is done)
+  int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
   int32_t lineMode, altMode;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   double thinking[FTHINK]; int32_t nthinking;
@@ -442,7 +444,7 @@ static void take(void) {
     if (a.kind == 0 && a.empty) {
       F.st.starved++;
       if (F.nalt && F.altMode != modeAt(at)) F.nalt = 0;
-      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineN = F.nalt; for (int i = 0; i < F.nalt; i++) F.line[i] = F.alt[i]; F.nalt = 0; F.haveLineOf = 0; }
+      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineN = F.nalt; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
       if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
     }
     if (!a.empty) { F.altMode = modeAt(a.at); F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
@@ -472,29 +474,32 @@ static void take(void) {
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
-    F.lineN = a.nhand; F.lineMode = modeAt(a.at); for (int i = 0; i < a.nhand; i++) F.line[i] = a.hand[i];
+    F.lineN = a.nhand; F.lineMode = modeAt(a.at); for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0;
   }
 }
-// The line behind the move, its next swap played from where the plan ends, on the board predicted for then.
+// The frame the line's next swap is pressed from: where the plan ends, or later when it was judged pressed later.
+static int32_t lineDue(void) { return imax(F.nextAt, F.lineAt[0]); }
+// The line behind the move, its next swap played from the frame it is due, on the board predicted for then.
 static int follow(void) {
   static Keys k;
   if (!F.lineN) return 0;
-  if (modeAt(F.nextAt) != F.lineMode) { F.lineN = 0; return 0; }
+  int32_t due = imax(lineDue(), F.now + 1);
+  if (modeAt(due) != F.lineMode) { F.lineN = 0; return 0; }
   int32_t mv = F.line[0], hl, hs;
-  if (!predict(F.expect, F.nextAt, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) { F.lineN = 0; return 0; }
+  if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) { F.lineN = 0; return 0; }
   if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) { F.lineN = 0; return 0; }
   if (F.pending) abortTo(F.pId);
   F.pending = 0;
-  walkKeys(&k, F.nextAt);
-  if (!keysFit(F.nextAt, &k)) { F.lineN = 0; F.st.guarded++; return 0; }
-  int left = allowanceAt(F.nextAt);
+  walkKeys(&k, due);
+  if (!keysFit(due, &k)) { F.lineN = 0; F.st.guarded++; return 0; }
+  int left = allowanceAt(due);
   if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) { F.lineN = 0; return 0; }
   F.st.heldWalks += k.held;
-  for (int i = 0; i < k.n; i++) planSet(F.nextAt + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1 });
-  F.nextAt += k.n;
+  for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1 });
+  F.nextAt = due + k.n;
   F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1;
-  memmove(F.line, F.line + 1, sizeof(int32_t) * (unsigned long)(F.lineN - 1)); F.lineN--;
+  memmove(F.line, F.line + 1, sizeof(int32_t) * (unsigned long)(F.lineN - 1)); memmove(F.lineAt, F.lineAt + 1, sizeof(int32_t) * (unsigned long)(F.lineN - 1)); F.lineN--;
   F.lineOfPressed++;
   F.st.followed++;
   return 1;
@@ -593,10 +598,12 @@ static void afterFrame(int32_t bits) {
   F.haveExpect = 1;
   Board *next = F.expect;
   if (next->gameOverClock > 0) return;
-  if (F.pending && !F.pPaced && F.nextAt - now == 1 && !answerWaiting(F.pId)) { if (F.lineN) follow(); else F.st.noLine++; }
+  if (F.pending && !F.pPaced && !answerWaiting(F.pId)) { if (F.lineN) { if (lineDue() - now <= 1) follow(); } else if (F.nextAt - now == 1) F.st.noLine++; }
   if (F.pending) return;
   int gap = calmGap(next);
-  while (gap < 0 && F.lineN && F.nextAt > now && F.nextAt - now < soon() && follow()) {}
+  while (gap < 0 && F.lineN && F.nextAt > now && lineDue() - now < soon() && follow()) {}
+  // (a swap judged pressed later than the plan ends, due before an answer could be had: pressed then, the question asked after it)
+  while (F.lineN && F.lineAt[0] > F.nextAt && lineDue() - now < soon() && follow()) {}
   int lead = F.nextAt > now ? soon() : imax(soon(), imin(aheadOf(), popLeft(next) / 4));
   int32_t at = imax(F.nextAt > now ? F.nextAt : 0, now + lead);
   int paced = 0;

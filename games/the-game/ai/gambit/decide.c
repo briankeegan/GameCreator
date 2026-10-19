@@ -221,7 +221,8 @@ static Played playOf(const Read *R, int n) {
   for (int i = 0; i < n; i++) if (order[i]->hold && order[i]->o.lives) holdLivesNow = 1;
   P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
-  P.line = P.top && !P.top->hold && !P.top->wait ? P.top : 0;
+  // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
+  P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
   // does as well with that swap pressed later -- the next decision plans it again, so a first swap pressed early is undone by the next
   // plan's)
@@ -265,14 +266,15 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) {
   }
   return 0;
 }
-static void carryOf(const Read *R, const Judge *k, int32_t qid) {
+// (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
+static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   memset(&theCarry, 0, sizeof theCarry);
-  if (!k || k->wait || k->k.nseq < 2 || k->t.tier > 4) return;
+  if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1 || k->t.tier > 4) return;
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = decQ.b->p[1][c].f[ID];
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) return;
-  theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - 1;
-  for (int i = 1; i < k->k.nseq; i++) theCarry.rest[i - 1] = k->k.seq[i];
+  theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
+  for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }

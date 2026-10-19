@@ -192,5 +192,12 @@ anything doubled (6-17 to 14-31).
 TWO DEATHS ARE TWO FRAMES: in large_garbage (run 393, games 6 and 7) the hold was played over a toward line known to die 61 and
 53 frames later -- every line on the board a known death, and a dead line never beat the hold (rank.c beatsHold), so the later one
 was marked idle and ranked under it. A known death beats holding now when the hold's is a death too, and later.
+Measured (`22947c95`): finish 20 (6, 8, 6).
+EVERY SWAP ON ITS JUDGED FRAME: combo_storm-3 of that run held four decisions for the line in progress waiting on the board
+(carry_wait, lost at 478), then dropped it as dead -- its next swap was due between two decisions, and a decision takes about as long
+as the gap. The judge presses a settled line's next swap as soon as its pair can be walked to, so the hold played was never the line
+judged. Now the line played is handed to the frame loop whole, each swap with the frame the judge pressed it from (answer.c handAt,
+front.c lineDue): a settled line's swaps after the board settles, a line whose first swap waits a hold with the whole line handed.
+A JavaScript host (gambit.js) presses a hand as soon as it can, so it is handed only what the judge pressed so.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

@@ -167,6 +167,10 @@ Gambit.prototype.answer = function (q) {
   var hand = [], nh = r(); for (var i = 0; i < nh; i++) { var h = r(); hand.push([h >> 3, h & 7]); }
   var seq = [], ns = r(); for (i = 0; i < ns; i++) { var s = r(); seq.push([s >> 3, s & 7]); }
   var rule = r(), nlive = r(), ncands = r(), ruleName = rule >= 0 ? this.names[rule] : null;
+  // (a JavaScript host presses a line handed on as soon as it can, so only a line the judge pressed so is handed to it: not a settled one,
+  // nor one handed on behind a hold)
+  var handSettled = r(); for (i = 0; i < nh; i++) r();
+  if (handSettled || kind !== 1) hand = [];
   var log = Buffer.from(new Uint8Array(X.memory.buffer, X.gb_log() >>> 0, X.gb_log_len())).toString('latin1');
   console.error(log.replace(/^(GAMBITD \d+) @\d+/, '$1 ' + (ruleName || '')) + ' wallMs=' + (Date.now() - (q.t0 || Date.now())));
   if (dump) console.error('GAMBITB ' + m.at + ' ' + require('zlib').gzipSync(require('v8').serialize(q.board)).toString('base64') + ' ' + JSON.stringify((q.arrivals || []).map(function (a) { return [a.at, a.width, a.height]; })));

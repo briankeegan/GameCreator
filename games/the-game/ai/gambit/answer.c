@@ -66,9 +66,8 @@ static int32_t riseSince(const Board *b, int row, int col, int32_t id) {
   return NOT_ASKED;
 }
 static int playedSince(const Kept *K, int32_t lineFrom, int32_t linePressed, int32_t *pre) {
-  if (K->playedHold) return 0;
   int n = lineFrom == K->id && K->nhanded ? imin(linePressed, K->nhanded) : 0, k = 0;
-  pre[k++] = K->played;
+  if (!K->playedHold) pre[k++] = K->played;
   for (int i = 0; i < n; i++) pre[k++] = K->handed[i];
   return k;
 }
@@ -101,10 +100,8 @@ static int anchorKept(Kept *K, const Paths *paths, int kind, int32_t move, const
     int32_t id = b->p[1][col].f[ID];
     if (id == NUL) continue;
     int touched = 0;
-    if (kind == 1) {
-      if (CR(move) == 1 && (CC(move) == col || CC(move) + 1 == col)) touched = 1;
-      for (int i = 0; i < nhanded; i++) if (CR(handed[i]) == 1 && (CC(handed[i]) == col || CC(handed[i]) + 1 == col)) touched = 1;
-    }
+    if (kind == 1 && CR(move) == 1 && (CC(move) == col || CC(move) + 1 == col)) touched = 1;
+    for (int i = 0; i < nhanded; i++) if (CR(handed[i]) == 1 && (CC(handed[i]) == col || CC(handed[i]) + 1 == col)) touched = 1;
     if (touched) continue;
     K->set = 1; K->paths = *paths; K->gid = digTargetOf(b); K->anchorRow = 1; K->anchorCol = col; K->anchorId = id; K->id = qid;
     K->playedHold = kind == 0; K->played = move; K->nhanded = nhanded; for (int i = 0; i < nhanded; i++) K->handed[i] = handed[i];
@@ -144,10 +141,8 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
     int32_t id = b->p[1][col].f[ID];
     if (id == NUL) continue;
     int touched = 0;
-    if (kind == 1) {
-      if (CR(move) == 1 && (CC(move) == col || CC(move) + 1 == col)) touched = 1;
-      for (int i = 0; i < nhanded; i++) if (CR(handed[i]) == 1 && (CC(handed[i]) == col || CC(handed[i]) + 1 == col)) touched = 1;
-    }
+    if (kind == 1 && CR(move) == 1 && (CC(move) == col || CC(move) + 1 == col)) touched = 1;
+    for (int i = 0; i < nhanded; i++) if (CR(handed[i]) == 1 && (CC(handed[i]) == col || CC(handed[i]) + 1 == col)) touched = 1;
     if (touched) continue;
     Kept *K = &theKept;
     K->set = 1; K->paths = br->keepOut; K->gid = digTargetOf(b); K->anchorRow = 1; K->anchorCol = col; K->anchorId = id; K->id = qid;
@@ -215,7 +210,7 @@ static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c' };
 typedef struct { int32_t kind, move; } Move;   // kind: 0 hold, 1 swap, 2 raise
 // THE ANSWER, read by the host (gb_answer): the move, the raise held, the line handed on, and what the log and the audit read
 typedef struct {
-  Move d; int32_t raiseNow, raiseAfter, nhand, hand[MAXLINE];
+  Move d; int32_t raiseNow, raiseAfter, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled;
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
@@ -272,8 +267,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   int n = ranked(&R, &S);
   Played P = playOf(&R, n);
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
-  // THE MOVE
-  Move d = R.up ? (Move){ 2, 0 } : P.line ? (Move){ 1, P.line->k.seq[0] } : (Move){ 0, 0 };
+  // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
+  int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
+  Move d = R.up ? (Move){ 2, 0 } : P.line && !timed ? (Move){ 1, P.line->k.seq[0] } : (Move){ 0, 0 };
   A->d = d;
   A->empty = starved && d.kind == 0;
   // (THE MOVE IN HAND: of the lines that live and are no hold -- a ready one first -- the best ranked, kept by the frame loop for a
@@ -288,14 +284,21 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
   A->holdLives = d.kind == 0 && top && top->o.lives;
-  // (THE LINE PRESSED ON: a line the judge plays swap after swap is handed to the frame loop whole)
-  if (d.kind == 1 && P.line && !P.line->settled && P.line->k.nseq > 1) { A->nhand = P.line->k.nseq - 1; for (int i = 1; i < P.line->k.nseq; i++) A->hand[i - 1] = P.line->k.seq[i]; }
+  // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
+  // settled line's after the board settles -- so the frame loop presses the line that was judged)
+  A->nhand = 0; A->handSettled = P.line && P.line->settled;
+  if (P.line && !R.up) {
+    int first = timed ? 0 : 1;
+    for (int i = first; i < P.line->k.nseq; i++, A->nhand++) {
+      A->hand[A->nhand] = P.line->k.seq[i]; A->handAt[A->nhand] = i < P.line->apNats ? at + P.line->apAts[i] : 0;
+    }
+  }
   towardPlayedN = 0;
   if (d.kind == 1 && P.line && P.line->k.play == PLAY_TOWARD) { towardPlayedN = P.line->k.nseq; for (int i = 0; i < P.line->k.nseq; i++) towardPlayed[i] = P.line->k.seq[i]; }
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
-  if (!(d.kind == 0 && P.top && P.top->wait)) carryOf(&R, P.line, qid);
+  if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
   keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
   if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
@@ -535,6 +538,7 @@ EXPORT(gb_answer) int gb_answer(Ctx *hx, int i, int qid, int at, int topped, int
   w[k++] = A->nhand; for (int q = 0; q < A->nhand; q++) w[k++] = A->hand[q];
   w[k++] = A->nseq; for (int q = 0; q < A->nseq; q++) w[k++] = A->seq[q];
   w[k++] = A->d.kind < 0 ? -1 : A->rule; w[k++] = A->nlive; w[k++] = A->ncands;
+  w[k++] = A->handSettled; for (int q = 0; q < A->nhand; q++) w[k++] = A->handAt[q];
   return k;
 }
 EXPORT(gb_log) const char *gb_log(void) { return logBuf; }
