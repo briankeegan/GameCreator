@@ -13,19 +13,49 @@ EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 // frames later, from node pi -- the search's keys for the swap, walked as the frame loop walks them.
 #define TAP_GAP 4         // frames between taps (cursorMoveFrames)
 #define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
+#define HOLDTIGHT 40      // the actions short of the input limit at which every walk of two cells or more is held (the search and the frame loop)
 static int32_t pressTight;
+#define MIN_LEG 3          // the shortest walk a held key is no later on
+// The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be
+// (left: the actions the input budget still allows -- tight at HOLDTIGHT or under). The frame loop's and the judge's, the one count.
+static int iabs(int v) { return v < 0 ? -v : v; }
+static int actionsFor(int row, int col, int r, int c, int left) {
+  int tight = left <= HOLDTIGHT, legs[2], nl = 0, cost = 1;
+  if (iabs(c - col)) legs[nl++] = iabs(c - col);
+  if (iabs(r - row)) legs[nl++] = iabs(r - row);
+  for (int k = 0; k < nl; k++) {
+    int n = legs[k], inner = k < nl - 1;
+    cost += tight ? (n >= 2 ? 1 : n) : (n >= MIN_LEG + 1 || (n == MIN_LEG && inner)) ? 1 : n;
+  }
+  return cost;
+}
+// THE ALLOWANCE A JUDGED LINE PRESSES UNDER: the decision's (NOT_ASKED: the host did not say), less what the line's own swaps spend --
+// a line long enough walks held from two cells once its own presses bring the budget to HOLDTIGHT, as the frame loop walks it
+static int32_t pressAllowance = -1;
 static int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
 static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
+// A WALK'S LEG in a line's keys, from key i: a direction tapped a cell at a time, TAP_GAP frames apart (in[i] the direction with the
+// frame's other keys, in[i + 1] those keys alone). 0 when key i begins none; else its cells (*cells), its last tap (*p), the last frame of
+// its taps' gap (*end), and the frame a held key reaches its last cell (*last). Every reader of the walks (slowWalks, front.c) asks it.
+typedef struct { int32_t v, base; int cells, p, end, last; } Leg;
+static int walkLeg(const int32_t *in, int n, int i, Leg *L) {
+  int32_t v = in[i], dir = v & 15;
+  if (!dir || (dir & (dir - 1)) || i + 1 >= n || (in[i + 1] & 15) || (v & ~15) != in[i + 1]) return 0;
+  int32_t base = in[i + 1];
+  int cells = 1, p = i;
+  while (p + TAP_GAP < n && in[p + TAP_GAP] == v && in[p + 1] == base && in[p + 2] == base && in[p + 3] == base) { p += TAP_GAP; cells++; }
+  int end = p;
+  while (end + 1 < n && end + 1 <= p + TAP_GAP - 1 && in[end + 1] == base) end++;
+  L->v = v; L->base = base; L->cells = cells; L->p = p; L->end = end; L->last = i + cells + REPEAT_FIRST - 2;
+  return 1;
+}
 // slowWalks' keys: every walk of two cells or more held, the frames it is late by put in before the next key
 static int slowWalks(const int32_t *in, int n, int32_t *out, int cap) {
   int k = 0, i = 0;
   while (i < n && k < cap) {
-    int32_t v = in[i], dir = v & 15;
-    if (!dir || (dir & (dir - 1)) || i + 1 >= n || (in[i + 1] & 15) || (v & ~15) != in[i + 1]) { out[k++] = v; i++; continue; }
-    int32_t base = in[i + 1], cnt = 1, p = i;
-    while (p + TAP_GAP < n && in[p + TAP_GAP] == v && in[p + 1] == base && in[p + 2] == base && in[p + 3] == base) { p += TAP_GAP; cnt++; }
-    int last = i + cnt + REPEAT_FIRST - 2, end = p;
-    while (end + 1 < n && end + 1 <= p + TAP_GAP - 1 && in[end + 1] == base) end++;
+    Leg L;
+    if (!walkLeg(in, n, i, &L)) { out[k++] = in[i]; i++; continue; }
+    int32_t v = L.v, base = L.base, cnt = L.cells, last = L.last, end = L.end;
     if (cnt < 2) { for (int f = i; f <= end && k < cap; f++) out[k++] = in[f]; i = end + 1; continue; }
     for (int g = i; g <= (last > end ? last : end) && k < cap; g++) out[k++] = g <= last ? v : base;
     i = end + 1;
@@ -111,6 +141,27 @@ static int legalAt(Ctx *x, int i, int r, int c) {
   int n = legalSwaps(b, ms);
   for (int k = 0; k < n; k++) if (ms[k] == r * 8 + c) return 1;
   return 0;
+}
+// A SWAP PRESSED AS THE FRAME LOOP PRESSES IT (front.c keysOf and the judge, the one way): the walk to it begun and the swap pressed when
+// the cursor gets there. A press refused there while the board still moves -- its pair swapping or falling -- is walked to again from
+// the frame after, until one is taken or the board stands still: the swap goes in the first frame the walk can put it in, never a walk
+// later. walk: the step that walks (the frame loop's advance writing its keys; the judge's, unheld). Returns the walk taken (a node,
+// STEP_NULL none, STEP_DEAD lost on it, STEP_ERR) and in *from the node it began on -- -1 when the board was lost while it waited.
+#define PRESS_WAIT 240   // the frames a swap is waited for at most
+static int pressWalk(Ctx *x, int n, int kind, int mr, int mc, int (*walk)(Ctx *, int, int, int, int, int32_t), int *from) {
+  for (int k = 0;; k++) {
+    int32_t mark = tapeN;
+    int r = walk(x, n, kind, mr, mc, 0);
+    *from = n;
+    if (r != STEP_NULL) return r;
+    tapeN = mark;
+    Board *b = ensureBoard(x, n);
+    if (k >= PRESS_WAIT || !b || !(hasActivePanels(b) || b->swappingCount > 0)) return STEP_NULL;
+    int w = walk(x, n, MK_LONG, 0, 0, 1);
+    if (w == STEP_NULL || w == STEP_ERR) return w;
+    if (w == STEP_DEAD || NODE(x, w)->dead) { if (w >= 0) deadAt = NODE(x, w)->t; *from = -1; return STEP_DEAD; }
+    n = w;
+  }
 }
 // WHAT A STEP DID (pa.c ns_step_stats), read off the board it made: each clear's size and the chain counter it reached, panels
 // cleared, garbage cells converted, the most stop one clear paid.

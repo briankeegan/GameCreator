@@ -60,75 +60,95 @@ static Line *lineNew(void) { return lineIn(KEEPS); }
 static int32_t cellAt(const Board *b, int r, int c) { return r < 0 || r > b->height + 1 || c < 1 || c > W ? 0 : gridCell(b, r, c); }
 static int32_t gridLen(const Board *b) { return b->height + 2; }
 // the lowest row with garbage, from row 1 (G = grid length when none)
-static int lowestG(const Board *b) {
-  int R = gridLen(b);
-  for (int r = 1; r < R; r++) for (int c = 1; c <= W; c++) if (cellAt(b, r, c) < 0) return r;
-  return R;
-}
+static Bits scratchBits;
+static int lowestG(const Board *b) { bitsOf(b, &scratchBits); return bitsLowestG(&scratchBits); }
 // How uneven the stack under the lowest garbage is: each column's shortfall from the tallest, squared
-static int32_t uneven(const Board *b) {
-  int G = lowestG(b), hi = 0, tops[W + 1];
-  for (int c = 1; c <= W; c++) { int t = 0; for (int r = 1; r < G; r++) if (cellAt(b, r, c) > 0) t = r; tops[c] = t; if (t > hi) hi = t; }
+static int32_t unevenOf(const Bits *B) {
+  int G = bitsLowestG(B), hi = 0, tops[W + 1];
+  for (int c = 1; c <= W; c++) { int t = 0; for (int r = 1; r < G; r++) if (B->pan[r] >> c & 1) t = r; tops[c] = t; if (t > hi) hi = t; }
   int32_t u = 0;
   for (int c = 1; c <= W; c++) u += (hi - tops[c]) * (hi - tops[c]);
   return u;
 }
-// HOW MANY SWAPS AWAY THE NEAREST BREAK IS (breakNear): the fewest swaps that line up a match of three with a panel touching garbage --
-// each other panel of the match brought along its own row, over cells that hold it up and are not garbage. NEAR_MISS when none.
-static int heldAt(const Board *b, int top, int q, int k) {
-  int32_t v = q >= 1 && q <= top ? cellAt(b, q, k) : 0, under = q - 1 >= 1 && q - 1 <= top ? cellAt(b, q - 1, k) : 0;
-  return v >= 0 && (q == 1 || under != 0);
-}
-static int32_t cellIn(const Board *b, int top, int q, int k) { return q >= 1 && q <= top ? cellAt(b, q, k) : 0; }
-// the swaps that bring a panel of colour want in row q to column k, not taking a column in used: { d, from }, d < 0 for none
-static int bring(const Board *b, int top, int q, int k, int32_t want, const int *used, int *from) {
-  if (cellIn(b, top, q, k) == want && !used[k]) { *from = k; return 0; }
-  int best = -1;
-  for (int dir = -1; dir <= 1; dir += 2) {
-    int ok = heldAt(b, top, q, k);
-    for (int j = k + dir; j >= 1 && j <= W && ok; j += dir) {
-      if (cellIn(b, top, q, j) == want && !used[j]) { int d = j > k ? j - k : k - j; if (best < 0 || d < best) { best = d; *from = j; } break; }
-      if (!heldAt(b, top, q, j)) ok = 0;
-    }
-  }
-  return best;
-}
+static int32_t uneven(const Board *b) { bitsOf(b, &scratchBits); return unevenOf(&scratchBits); }
 // the swaps that walk the panel at (q, from) to column k along its row
 static int walkTo(int q, int from, int k, int32_t *seq, int n) {
   if (from > k) for (int c = from - 1; c >= k && n < MAXPATH; c--) seq[n++] = q * 8 + c;
   else for (int c = from; c < k && n < MAXPATH; c++) seq[n++] = q * 8 + c;
   return n;
 }
-// (and the line that makes it: seq, *nseq -- each panel walked in turn; 0 for none)
-static int breakNearLine(const Board *b, int32_t *seq, int *nseq) {
-  int top = gridLen(b) - 2, best = 1 << 30;
+// HOW MANY SWAPS AWAY THE NEAREST BREAK IS (breakNear): the fewest swaps that line up a match of three with a panel touching garbage --
+// each other panel of the match brought along its own row, over cells that hold it up and are not garbage (bitsBring). NEAR_MISS when
+// none. (And the line that makes it: seq, *nseq -- each panel walked in turn; 0 for none.)
+static int nearLineOf(const Bits *B, int32_t *seq, int *nseq) {
+  int top = B->top, best = 1 << 30;
   if (nseq) *nseq = 0;
-  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
-    int32_t k = cellIn(b, top, r, c);
-    if (!(k > 0) || !(cellIn(b, top, r + 1, c) < 0 || cellIn(b, top, r - 1, c) < 0 || (c > 1 && cellIn(b, top, r, c - 1) < 0) || (c < W && cellIn(b, top, r, c + 1) < 0))) continue;
-    // a column of three through it
-    for (int r0 = r - 2; r0 <= r; r0++) {
-      if (r0 < 1 || r0 + 2 > top) continue;
-      int dv = 0, none[W + 2] = { 0 }, from, fr[3] = { 0 }, qs[3] = { 0 }, nq = 0;
-      for (int q = r0; q <= r0 + 2 && dv < best; q++) { if (q == r) continue; int d = bring(b, top, q, c, k, none, &from); if (d >= 0) { dv += d; qs[nq] = q; fr[nq++] = from; } else dv = 1 << 30; }
-      if (dv < best) { best = dv; if (seq) { int n = 0; for (int i = 0; i < nq; i++) n = walkTo(qs[i], fr[i], c, seq, n); *nseq = n; } }
-    }
-    // a row of three through it
-    for (int c0 = c - 2; c0 <= c; c0++) {
-      if (c0 < 1 || c0 + 2 > W) continue;
-      int used[W + 2] = { 0 }, dh = 0, from, fr[3] = { 0 }, ts[3] = { 0 }, nt = 0;
-      used[c] = 1;
-      for (int t = c0; t <= c0 + 2 && dh < best; t++) { if (t == c) continue; int d = bring(b, top, r, t, k, used, &from); if (d >= 0) { used[from] = 1; dh += d; ts[nt] = t; fr[nt++] = from; } else dh = 1 << 30; }
-      if (dh < best) { best = dh; if (seq) { int n = 0; for (int i = 0; i < nt; i++) n = walkTo(r, fr[i], ts[i], seq, n); *nseq = n; } }
+  for (int r = 1; r <= top; r++) {
+    unsigned starts = bitsStarts(B, r);
+    for (int c = 1; c <= W; c++) {
+      if (!(starts >> c & 1)) continue;
+      int32_t k = B->code[r][c];
+      // a column of three through it
+      for (int r0 = r - 2; r0 <= r; r0++) {
+        if (r0 < 1 || r0 + 2 > top) continue;
+        int dv = 0, from, fr[3] = { 0 }, qs[3] = { 0 }, nq = 0;
+        for (int q = r0; q <= r0 + 2 && dv < best; q++) { if (q == r) continue; int d = bitsBring(B, q, c, k, 0, &from); if (d >= 0) { dv += d; qs[nq] = q; fr[nq++] = from; } else dv = 1 << 30; }
+        if (dv < best) { best = dv; if (seq) { int n = 0; for (int i = 0; i < nq; i++) n = walkTo(qs[i], fr[i], c, seq, n); *nseq = n; } }
+      }
+      // a row of three through it
+      for (int c0 = c - 2; c0 <= c; c0++) {
+        if (c0 < 1 || c0 + 2 > W) continue;
+        unsigned used = 1u << c;
+        int dh = 0, from, fr[3] = { 0 }, ts[3] = { 0 }, nt = 0;
+        for (int t = c0; t <= c0 + 2 && dh < best; t++) { if (t == c) continue; int d = bitsBring(B, r, t, k, used, &from); if (d >= 0) { used |= 1u << from; dh += d; ts[nt] = t; fr[nt++] = from; } else dh = 1 << 30; }
+        if (dh < best) { best = dh; if (seq) { int n = 0; for (int i = 0; i < nt; i++) n = walkTo(r, fr[i], ts[i], seq, n); *nseq = n; } }
+      }
     }
   }
   return best;
 }
+static int breakNearLine(const Board *b, int32_t *seq, int *nseq) { bitsOf(b, &scratchBits); return nearLineOf(&scratchBits, seq, nseq); }
 static int breakNear(const Board *b) { return breakNearLine(b, 0, 0); }
+// A PERCHED BLOCK (perchedDrops): a garbage block whose bottom row is held up by panels in some of the columns under it and by nothing in
+// the others -- a hollow under it. Its supports walked along their row past the block's nearer edge let it down, and the stack's height
+// with it. A block that sits on garbage in any column under it is not perched: there is nothing to walk out. The lines, lowest block
+// first: each support's walk, one after another.
+#define PERCHMAX 4
+typedef struct { int32_t n, len[PERCHMAX], seq[PERCHMAX][MAXPATH]; } Perches;
+static void perchedOf(const Bits *B, Perches *P) {
+  P->n = 0;
+  for (int r = 2; r <= B->top && P->n < PERCHMAX; r++) {
+    unsigned g = B->gar[r];
+    for (int c = 1; c <= W && P->n < PERCHMAX; c++) {
+      if (!(g >> c & 1) || (B->gar[r - 1] >> c & 1)) continue;
+      // (the block's bottom row in this row: its cells from c to R, one block)
+      int32_t id = B->gid[r][c];
+      int L = c, R = c;
+      while (R + 1 <= W && (g >> (R + 1) & 1) && B->gid[r][R + 1] == id) R++;
+      c = R;
+      unsigned span = ((2u << R) - 1u) & ~((1u << L) - 1u), under = r - 1;
+      if (B->gar[under] & span) continue;
+      unsigned holds = B->pan[under] & span;
+      if (!holds || holds == span) continue;
+      int n = 0, ok = 1;
+      for (int k = L; k <= R && ok; k++) {
+        if (!(holds >> k & 1)) continue;
+        int toL = L - 1, toR = R + 1, to = toL >= 1 && (k - toL <= toR - k || toR > W) ? toL : toR <= W ? toR : 0;
+        if (!to) { ok = 0; break; }
+        int was = n;
+        n = walkTo(under, k, to, P->seq[P->n], n);
+        if (n - was != (to > k ? to - k : k - to)) ok = 0;
+      }
+      if (ok && n > 0) { P->len[P->n] = n; P->n++; }
+    }
+  }
+}
+static void perchedDrops(const Board *b, Perches *P) { bitsOf(b, &scratchBits); perchedOf(&scratchBits, P); }
+static int nearOf(const Board *b) { return imin(breakNear(b), NEAR_MISS); }
 static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
-static int garbageOn(const Board *b) { return lowestG(b) < gridLen(b); }
+static int garbageOn(const Board *b) { bitsOf(b, &scratchBits); return bitsLowestG(&scratchBits) <= scratchBits.rows; }
 // the panels on the board, garbage not counted -- the material every break is made from
-static int32_t panelsOn(const Board *b) { int32_t n = 0, R = gridLen(b); for (int r = 1; r < R; r++) for (int c = 1; c <= W; c++) if (cellAt(b, r, c) > 0) n++; return n; }
+static int32_t panelsOn(const Board *b) { bitsOf(b, &scratchBits); return bitsPanels(&scratchBits); }
 static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) - uneven(b); }
 // How far a board is toward lining up with the converting row `want`: per column, its top panel below the lowest garbage of that colour,
 // and the one under it too

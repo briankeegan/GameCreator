@@ -84,7 +84,4 @@ assert.strictEqual(K.actionsFor(1, 1, [1, 3], 100), 3, 'two cells across, a tap 
 assert.strictEqual(K.actionsFor(1, 1, [1, 3], K.HOLDTIGHT), 2, 'tight: held, and the swap');
 assert.strictEqual(K.actionsFor(1, 1, [3, 3], K.HOLDTIGHT), 3, 'tight: two held walks and the swap');
 assert.strictEqual(K.actionsFor(1, 1, [1, 2], K.HOLDTIGHT), 2, 'one cell is a tap');
-// native/front.c holds from two cells at the same HOLDTIGHT
-var define = /#define HOLDTIGHT (\d+)/.exec(require('fs').readFileSync(require('path').join(__dirname, 'native', 'front.c'), 'utf8'));
-assert(define && +define[1] === K.HOLDTIGHT, 'native/front.c HOLDTIGHT is ' + (define && define[1]) + ', survivor_keys.js HOLDTIGHT is ' + K.HOLDTIGHT);
 console.log('holdWalk: ok (' + checked + ' walks, ' + saved + ' presses saved; tight: ' + slowChecked + ' walks, ' + slowSaved + ' presses saved)');

@@ -1,4 +1,4 @@
--- THE HOOKUP CHECKED: the server's Lua plays a training match as the game builds it (the player's stack at level 10, a simulated
+-- THE HOOKUP CHECKED: the server's Lua plays a training match as the game builds it (the player's stack at the level the games play -- PA_LEVEL, 11 -- a simulated
 -- opponent sending the pattern) and Gambit plays the stack in this process (GambitNative.lua), for FRAMES frames. It checks the
 -- plumbing -- keys pressed, swaps made, every board the frame loop predicted the one the game made (it exits 1 on any other) -- not how
 -- well Gambit plays.
@@ -22,7 +22,7 @@ local patterns = {}
 for i = 1, 50 do patterns[#patterns + 1] = { width = size[1], height = size[2], startTime = i, metal = false, chain = false, endsChain = false } end
 local mode = GameModes.getPreset(GameModes.IDs.ONE_PLAYER_TRAINING)
 local match = Match(GeneratorSource(SEED, true), mode.matchRules)
-local a = match:createStackWithSettings(LevelPresets.getModern(10), true, "controller")
+local a = match:createStackWithSettings(LevelPresets.getModern(tonumber(os.getenv("PA_LEVEL")) or 11), true, "controller")   -- (the level the games play)
 a:setMaxRunsPerFrame(1)
 local foe = match:createSimulatedStackWithSettings({ delayBeforeStart = 150, delayBeforeRepeat = 900, attackPatterns = patterns })
 foe:setMaxRunsPerFrame(1)

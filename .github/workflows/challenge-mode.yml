@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       bot:
-        description: 'wasm (WasmSurvivor) or bitbot (BitBot)'
+        description: 'wasm (WasmSurvivor)'
         default: 'wasm'
       difficulty:
         description: 'Challenge difficulty, 1-8 (8 = Hurricane)'

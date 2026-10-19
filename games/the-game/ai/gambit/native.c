@@ -102,6 +102,7 @@ static int b64(const unsigned char *p, int n, char *out) {
   out[k] = 0;
   return k;
 }
+#define SAMPLEQ 32   // (a board is about 20 KB of log: one in 32 decisions keeps a game's log under a megabyte of them)
 static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr) {
   static unsigned char bytes[sizeof(Board)];
   static char line[sizeof(Board) * 2];
@@ -151,7 +152,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   memset(&hostQ, 0, sizeof hostQ);
   hostQ.b = hostBoard; hostQ.holdLeft = q->holdLeft; hostQ.holdStarted = q->holdStarted; hostQ.tight = 0;
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
-  answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, 1, q->oppTop, 0, 0, 1, q->allowance, q->lineFrom, q->linePressed,
+  answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
                  canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
   // (the closing work: from the moment it ran out of time to its answer)
   if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
@@ -178,6 +179,10 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0);
   flog(line);
   if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr);
+  // (A SAMPLE OF EVERY DECISION: one question in SAMPLEQ, whatever it is, its board -- GAMBITQ, what test/decisions.txt.gz is drawn from,
+  // so the replay holds the decisions a game makes and not only the ones some search came up empty on)
+  static uint32_t asked;
+  if (++asked % SAMPLEQ == 0) dumpBoard("GAMBITQ", q->at, hostBoard, hostQ.arr, hostQ.narr);
   // (a line the break search said breaks and the judge says does not: its board, rate-limited, for replaying both on it -- GAMBITU)
   static int32_t lastU = NUL;
   if (unbroken.set && (lastU == NUL || q->at - lastU >= 120 || q->at < lastU)) { lastU = q->at; dumpBoard("GAMBITU", q->at, hostBoard, hostQ.arr, hostQ.narr); }
@@ -247,6 +252,12 @@ void gn_rule_name(int i, const char *name) { if (i >= 0 && i < MAXRULES) snprint
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff) {
   gb_profile(mode, ms, extendMs, width, depth, pool, extendDepth, extendOff, cfgReaction, cfgSwapGap, cfgCursor);
 }
+// Switching (answer.c gb_switch): the profile's stretch between switches, in frames; each match draws its own (gn_match)
+void gn_switch(int min, int max) { gb_switch(min, max); }
+// The break search's share in percent, under garbage and otherwise (answer.c gb_share; 0 the default)
+void gn_share(int under, int otherwise) { gb_share(under, otherwise); }
+// The profile's flags, as bits (answer.c gb_flags)
+void gn_flags(int bits) { gb_flags(bits); }
 void gn_thread_stats(double *out) { hostThreadStats(out); }
 int32_t *gn_tele(void) { return tele; }
 int32_t *gn_ages(void) { return ages; }
@@ -255,6 +266,7 @@ static void statsOut(void) { static char line[4096]; if (!F.st.frames) return; s
 void gn_match(void) {
   statsOut();
   frontNew(gnReaction, gnAhead, gnGap, gnJitter);
+  gb_switch_game((uint32_t)clock_ms());
   gnFrames = 0;
   hostLock();
   qHas = 0; qReset = 1; ansN = 0;
@@ -266,7 +278,7 @@ void gn_match(void) {
 // budget's limit and window and the frames ago each key inside it went down (gn_ages), and the opponent. The keys to press, or -1.
 // (a clock behind the last frame's is a game begun again without gn_match: begun so. A question asked for a frame sooner than the
 // last one asked is the same game -- the frame loop asks again after it drops its plans.)
-int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop) {
+int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop) {
   static int32_t lastClock = NUL;
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
@@ -289,7 +301,7 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   if (window > 0) F.window = window;
   F.npress = 0;
   for (int i = 0; i < nages && i < 512; i++) F.pressFrames[F.npress++] = clock - ages[i];
-  F.oppHas = oppHas; F.oppOut = oppOut; F.oppTop = oppTop;
+  F.oppHas = oppHas; F.oppOut = oppOut; F.oppTop = oppTop; F.oppStop = oppStop;
   double t0 = clock_ms();
   arrivalsOf(F.truth);
   double t1 = clock_ms();
@@ -306,3 +318,9 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
 void gn_end(void) { statsOut(); ringOut(); }
 // A line from the host into the run's log (a slow frame's parts, say)
 void gn_log(const char *s) { flog(s); }
+// (the C checks, built by ./build.sh test)
+#ifdef GB_TEST
+#include "test/cells_ref.c"
+#include "test/bits_check.c"
+#include "test/decide_check.c"
+#endif

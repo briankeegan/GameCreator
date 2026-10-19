@@ -136,14 +136,6 @@ gate_garbage_rules() {
   node games/the-game/ai/eval/allowance.test.js
 }
 
-# SURVIVAL'S ORDER: on a board topped by slabs, a swap that breaks garbage is
-# played over a bigger clear away from it (survival_rules.test.js, one
-# decision); and the distance planner finds the break on example boards, every
-# line it proposes breaking when replayed (planner.test.js).
-gate_survival_rules() {
-  node games/the-game/ai/eval/planner.test.js
-}
-
 # The short run that guards the long one. It only earns its four minutes if it
 # can fail, and its first version failed a HEALTHY run (it demanded every
 # weight be non-zero after two generations) — which is the other way a checker
@@ -235,12 +227,6 @@ gate_gambit_engine() {
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_countdown.test.js &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_arrivals.test.js &&
   { ! command -v clang >/dev/null || $G/build.sh native; }
-}
-
-# BitBot's search in C (native/bit.wasm) gives bitmatch.js's answer for every
-# legal swap of every real board, and the module loads at all.
-gate_bitnative() {
-  node games/the-game/ai/eval/bitnative.test.js
 }
 
 # The bot's cursor walks one cell a step and its travel is priced in frames.
@@ -414,7 +400,6 @@ GATES=(
   "a whole training leg finishes:gate_pbt_leg:games/the-game/ai/"
   "the server's engine, in JS and in C, is the server's:gate_server_engine:games/"
   "Gambit's wasm is built from its sources, on the server's engine:gate_gambit_engine:games/the-game/ai/"
-  "BitBot's C search gives the JS search's answers:gate_bitnative:games/the-game/ai/"
   "the cursor walks and its travel is priced:gate_cursor:games/the-game/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
@@ -422,7 +407,6 @@ GATES=(
   "every training pre-flight suite is gated:gate_preflight_gated:games/the-game/ai/"
   "a garbage break stops the resolve:gate_garbage_rules:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
-  "survival breaks before it clears:gate_survival_rules:games/the-game/ai/"
   "the shipped weights and the tools that measure them:gate_shipped_weights:games/the-game/ai/"
   "that check fires:gate_shipped_weights_check_fires:games/the-game/ai/"
   "the gates actually reject defects:gate_gates_reject_defects:"

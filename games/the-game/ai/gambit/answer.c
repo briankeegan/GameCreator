@@ -2,11 +2,12 @@
 // decision, the move. What carries from one decision to the next lives here: the break search's lines, the boards this dig has stood
 // on, the line toward a break begun, the line in progress, the pair the last swap swapped.
 
-#define BREAK_SHARE 0.4    // of the decision's time, for the break search
+#define BREAK_SHARE 0.4    // of the searches' time (propose.c leftMs), for the break search
 #define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
+// (the profile's own, in percent, where it gives one: gb_share)
+static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
 #define BREAK_MIN_MS 5
 #define BREAK_MAX_MS 400
-#define HOLDTIGHT 40       // the actions short of the input limit at which every walk is held
 #define ROW_STEPS 16
 
 
@@ -118,16 +119,16 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
 static Broke theBr;
 static int32_t brCut, brResumed;
 static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  double share = R->under ? UNDER_SHARE : BREAK_SHARE;
+  double share = R->under ? underShare : breakShare;
   *ms = 0; brCut = 0; brResumed = 0;
   // (no break search on a question due sooner than it could take: the answer would come late)
-  if (C2.due && C2.due - nowMs() < C2.margin + BREAK_MIN_MS) return 0;
+  if (C2.due && leftMs() < BREAK_MIN_MS) return 0;
   double t = nowMs();
   int32_t pop = popLeft(decQ.b);
   static Paths resume;
   int have = carriedPaths(decQ.b, lineFrom, linePressed, &resume);
-  double by = C2.due ? (t + (BREAK_MIN_MS > (C2.due - C2.t0) * share ? BREAK_MIN_MS : (C2.due - C2.t0) * share)) : t + BREAK_MAX_MS;
-  if (C2.due && by > C2.due - C2.margin) by = C2.due - C2.margin;
+  // (its share of what the searches have, propose.c leftMs: the other searches the rest, the judging its quarter)
+  double by = C2.due ? t + (BREAK_MIN_MS > leftMs() * share ? BREAK_MIN_MS : leftMs() * share) : t + BREAK_MAX_MS;
   double old = clockShareBegin(by);
   // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
   // is searched first, quick to find, so a break to play is in hand however long the list's own takes; the rest of the share then goes
@@ -166,7 +167,7 @@ static void L_d(double v) {
 }
 static void L_mv(int32_t mv) { L_i(CR(mv)); L_s(","); L_i(CC(mv)); }
 static void L_play(int p) { const char *s = p == -2 ? "raise" : PLAY_NAME[p]; for (; *s; s++) { char c[2] = { *s == ' ' ? '_' : *s, 0 }; L_s(c); } }
-static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u' };
+static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c' };
 
 // THE MOVE: the one order's choice -- the raise the opening called for, a line's first swap, or the hold
 typedef struct { int32_t kind, move; } Move;   // kind: 0 hold, 1 swap, 2 raise
@@ -178,11 +179,18 @@ typedef struct {
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
   int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
   int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
+  int32_t whole;   // the chain the board ends up making with the line played (-1: held)
   double idleMs, brMs;
 } Answer;
 static Answer theAnswer;
 static int32_t lastA, lastB, pairRuns, blockA, blockB, blockUntil, emptyAt = NUL;
 
+// SWITCHING (plans/gambit-goal.md 5): the profile's `switch` -- the mode changed mid-game as a rule's `when` changes it, after a random
+// stretch of `min` to `max` frames each time. A game's switches walk a circuit through every ordered pair of the attack rules (each
+// rule to each other rule, once a lap), its start, its labels and its stretches drawn from the game's seed (gb_switch_game); every reader
+// asks modeAt (the frame loop drops a line handed it under another mode, front.c). Off: the mode stays the profile's.
+#define MAXSWITCH 256
+static int32_t switchMin, switchMax, nswitch, switchAt[MAXSWITCH], switchMode[MAXSWITCH], switchedNow;
 static double readMs;   // (the board's reading, for the log)
 static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t allowance, int32_t lineFrom, int32_t linePressed) {
   Answer *A = &theAnswer;
@@ -192,6 +200,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks)
   decQ.tight = allowanceKnown && allowance <= HOLDTIGHT;
   pressTight = decQ.tight; pressMemoClear();
+  pressAllowance = allowanceKnown ? allowance : -1;
   towardRestLen = 0;
   carryFrom = lineFrom; carryPressed = linePressed;
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)
@@ -202,15 +211,19 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   Read R;
   backBoard = decQ.b;
   theBack.at = at;
+  aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   readMs = nowMs() - tStart;
   double brMs;
+  // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
+  double searchShare = clockShareBegin(searchesEnd());
   int ran = breakSearch(&R, lineFrom, linePressed, &brMs);
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
   double ts = nowMs();
   static Found S;
   searchAll(&R, &S);
   S.searchMs = nowMs() - ts;
+  clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
   int n = ranked(&R, &S);
   Played P = playOf(&R, n);
@@ -253,9 +266,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // what the answer and the audit read
   if (P.line) {
     const Judge *l = P.line;
-    A->play = l->k.play; A->combo = l->apCombo; A->chain = l->apChain; A->chainAll = l->apChainAll; A->broke = l->apBroke;
+    A->play = l->k.play; A->combo = l->apCombo; A->chain = l->apChain; A->chainAll = l->apChainAll; A->broke = l->apBroke; A->whole = l->hold || !l->apPlayed ? -1 : l->apWhole;
     A->done = l->apDone; A->fire = l->apFire; A->nseq = l->k.nseq; for (int i = 0; i < l->k.nseq; i++) A->seq[i] = l->k.seq[i];
-  } else A->play = P.name;
+  } else { A->play = P.name; A->whole = -1; }
   A->clears = d.kind == 1 && (A->combo > 0 || A->broke > 0);
   A->brk = ran && theBr.depth; A->offered = ran ? theBr.depth : 0; A->lineup = ran && theBr.lineup; A->touch = ran && theBr.touch;
   if (ran && theBr.depth && d.kind == 1) for (int i = 0; i < theBr.nmoves; i++) if (theBr.moves[i] == d.move) A->took = 1;
@@ -273,7 +286,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" want="); if (R.up) L_s("raise"); else if (P.wait) L_s("hold"); else if (!n) L_s("-"); else if (order[0]->hold || order[0]->wait) L_s("hold"); else L_mv(order[0]->k.seq[0]);
   L_s(" got="); if (d.kind == 1) L_mv(d.move); else L_s(d.kind == 2 ? "raise" : "hold");
   L_s(" src=gambit v="); L_s(A->verdict == 1 ? "lives" : A->verdict == 2 ? "dies" : A->verdict == 3 ? "raise" : "none");
-  L_s(" under="); L_i(R.under); L_s(" mat="); L_d(R.F.v[FACT_US_MATERIAL]); L_s(" chain="); L_i(A->chain); L_s(" combo="); L_i(A->combo); L_s(" broke="); L_i(A->broke);
+  L_s(" under="); L_i(R.under); L_s(" mat="); L_d(R.F.v[FACT_US_MATERIAL]); L_s(" pan="); L_i(panelsOn(decQ.b)); L_s(" chain="); L_i(A->chain); L_s(" combo="); L_i(A->combo); L_s(" broke="); L_i(A->broke);
+  // (the chain the board makes left alone, and the one it makes with the line played: own=4/2 is a chain cut short -- a line the judge
+  // could not play out, or the hold, shows the board's own)
+  if (aloneChain > 1 && P.line) { L_s(" own="); L_i(aloneChain); L_s("/"); L_i(A->whole >= 0 ? A->whole : aloneChain); }
   L_s(" tier="); L_i(P.line ? P.line->t.tier : d.kind == 0 ? HOLD_TIER : 0);
   L_s(" by="); if (R.by != NOT_ASKED && R.by) L_i(R.by); else L_s("-");
   L_s(" done="); if (P.line && A->done >= 0) L_i(A->done); else L_s("-");
@@ -311,11 +327,22 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_play(j->hold ? PLAY_HOLD : j->k.play); if (j == carriedJ) L_s("*"); if (j->outside) L_s("~");
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
     L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
+    { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
+  if (R.saving) L_s(" saving=1");
+  // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
+  L_s(" lifePeak="); L_i(lifePeakOf());
+  if (R.full) L_s(" full=1");
+  if (switchedNow) L_s(" switched=1");
+  // (the enemy as the rules read it: its height, topped out, the frames of its stop -- what picked the rule)
+  if (theOpp.has) { L_s(" enemy="); L_i(theOpp.top); L_s("/"); L_i(theOpp.out); L_s("/"); L_i(theOpp.stopKnown ? theOpp.stop : -1); }
+  if (P.line && P.line->k.grown) L_s(" grown=1");
+  if (P.line && P.line->k.drop) L_s(" drop=1");
+  if (cappedN) { L_s(" capped="); L_i(cappedN); }
   // (THE BOARD THE BREAK SEARCH CAME UP EMPTY ON, under garbage, for the reach report: at most one every 30 frames)
   if (R.under && !(ran && theBr.depth) && (emptyAt == NUL || at - emptyAt >= 30 || at < emptyAt)) { emptyAt = at; A->dumpBoard = 1; }
   // (THE BOARD TOPPED WITH NO GARBAGE ON IT, for reading the stalls: at most one every 30 frames)
@@ -352,24 +379,81 @@ EXPORT(gb_rules) int gb_rules(int n) {
 }
 // The profile: the mode played the whole game (the rule's name, -1: chosen by the facts each decision), the gambit's numbers, the
 // bot's hands.
+// THE BREAK SEARCH'S SHARE of the searches' time, in percent, under garbage and otherwise (the profile's `share`); 0 keeps the default
+// THE PROFILE'S FLAGS (facts.c gbFlags), as bits
+EXPORT(gb_flags) void gb_flags(int bits) { gbFlags = bits; }
+EXPORT(gb_share) void gb_share(int under, int otherwise) {
+  underShare = under > 0 && under <= 100 ? under / 100.0 : UNDER_SHARE;
+  breakShare = otherwise > 0 && otherwise <= 100 ? otherwise / 100.0 : BREAK_SHARE;
+}
 EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff, int reaction, int swapGap, int cursor) {
   modeRule = mode;
+  // (the opening raise is held through every row it is asked for -- search.h HOLD_THROUGH -- not let go at each row's end and asked
+  // again a decision later)
+  HOLD_THROUGH = 1;
   Profile p = { mode, ms, extendMs, width, depth, pool, extendDepth, extendOff };
   C2.GP = p; C2.reaction = reaction;
   gb_config(reaction, swapGap, cursor);
 }
-// A new game: nothing of the last one is carried on.
-EXPORT(gb_new_game) void gb_new_game(void) {
+// WHAT A MODE CARRIES from one decision to the next, let go when the mode changes: the break search's lines, the line in progress (begun
+// for the old mode's list), the dig, the line toward a break.
+static void modeLeft(void) {
   memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry);
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
-  lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0;
+}
+// A new game: nothing of the last one is carried on.
+EXPORT(gb_new_game) void gb_new_game(void) {
+  modeLeft();
+  lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   gb_back(0, 0, 0, 0, 0, 0, 0);
+}
+EXPORT(gb_switch) void gb_switch(int min, int max) { switchMin = min > 0 ? min : 0; switchMax = max > switchMin ? max : switchMin; nswitch = 0; }
+// (the circuit: Hierholzer's walk of the complete directed graph on n rules -- n(n-1) steps, each ordered pair once)
+static int lapOf(int n, int32_t *lap) {
+  static int32_t used[MAXRULES][MAXRULES], stack[MAXRULES * MAXRULES + 1];
+  for (int a = 0; a < n; a++) for (int b = 0; b < n; b++) used[a][b] = a == b;
+  int sp = 0, k = 0; stack[sp++] = 0;
+  while (sp) {
+    int v = stack[sp - 1], w = -1;
+    for (int b = 0; b < n && w < 0; b++) if (!used[v][b]) w = b;
+    if (w >= 0) { used[v][w] = 1; stack[sp++] = w; } else lap[k++] = stack[--sp];
+  }
+  for (int i = 0; i < k / 2; i++) { int32_t t = lap[i]; lap[i] = lap[k - 1 - i]; lap[k - 1 - i] = t; }
+  return k - 1;   // (the walk ends where it began)
+}
+EXPORT(gb_switch_game) void gb_switch_game(uint32_t seed) {
+  nswitch = 0; modeRule = C2.GP.mode;
+  int32_t rules[MAXRULES], nr = 0;
+  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1) rules[nr++] = theTables.r[i].name;
+  if (!switchMin || nr < 2) return;
+  static int32_t lap[MAXRULES * MAXRULES + 1];
+  int nl = lapOf(nr, lap);
+  uint32_t s = seed * 2654435761u + 1;
+#define NEXT() (s = s * 1664525u + 1013904223u, s >> 8)
+  for (int i = nr - 1; i > 0; i--) { int j = (int)(NEXT() % (uint32_t)(i + 1)); int32_t t = rules[i]; rules[i] = rules[j]; rules[j] = t; }
+  int at0 = (int)(NEXT() % (uint32_t)nl);
+  int32_t t = 0;
+  for (int k = 0; nswitch < MAXSWITCH; k++) {
+    switchAt[nswitch] = t; switchMode[nswitch++] = rules[lap[(at0 + k) % nl]];
+    t += switchMin + (int32_t)(NEXT() % (uint32_t)(switchMax - switchMin + 1));
+  }
+#undef NEXT
+}
+// The mode the game plays at frame `at`: the profile's, or the switch in force then
+static int32_t modeAt(int32_t at) {
+  if (!nswitch) return C2.GP.mode;
+  int k = 0;
+  while (k + 1 < nswitch && switchAt[k + 1] <= at) k++;
+  return switchMode[k];
 }
 // A QUESTION ON THE BOARD IN hostQ (hostBoard, its hold and garbage on its way): the answer into theAnswer, the log line at logBuf
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
   decQ = hostQ; decQ.b = hostBoard;
   ncache = 0;
+  // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
+  switchedNow = 0;
+  if (nswitch) { int32_t m = modeAt(at); if (m != modeRule) { if (modeRule >= 0) { modeLeft(); switchedNow = 1; } modeRule = m; } }
   hostTopped = topped;
   Opp o = { oppHas, oppOut, oppTopKnown, oppTop, oppStopKnown, oppStop }; theOpp = o;
   canRaiseNow = canRaise;

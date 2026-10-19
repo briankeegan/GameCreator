@@ -13,23 +13,30 @@ typedef struct {
   int32_t topped;      // the board is topped out
   int32_t timeLeft;    // the decision's searches still have time (c.left() > 0): readiness is asked only then
   int32_t belowFloor;  // below the rule's material floor: a line that clears panels and breaks nothing is no candidate
+  int32_t under;       // garbage on the board, as the decision reads it (decide.c read: R->under) -- the one under-garbage test
   int32_t next;        // frames until the next block shown lands (NOT_ASKED: none coming)
 } Facts;
 typedef struct {
   int32_t dead, lostAt, lives, fits, ready, late;
   int32_t spent;   // under the material floor (outcomeOf)
   int32_t nextBuild; // a line that breaks: the board it leaves has a break to build, or no garbage left (outcomeOf); -1 not asked
-  int32_t panelsLeft; // a line that breaks: the panels on the board it leaves (outcomeOf); -1 not asked
+  int32_t panelsLeft; // the panels on the board the line leaves (outcomeOf); -1 not asked
+  int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
+  int32_t floorKept;   // the board the line leaves keeps the rule's floor, as the floor is tested (floorOf), the line's breaks aside; -1 not asked
+  int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   Judged j;
 } Outcome;
 
 // WHETHER WHAT A LINE MAKES FITS THE LIST: what it makes, the chain it reaches as the game counts it, and
 // every clear of its own
 static int fitsList(const List *L, Made m, const Judged *j) {
-  // (a break made by one clear -- no chain, as the game counts it -- is the board's own defence, never an attack: within every list)
-  if (m.broke > 0 && chainOf(m) <= 1 && j->chainAll <= 1) return 1;
-  if (!fits(L, m)) return 0;
-  if (j->chainAll >= 2) { Made c = { 0, j->chainAll, 0, 0 }; if (!fits(L, c)) return 0; }
+  if (defends(m, j->chainAll)) return 1;   // (the defence: judge.c defends)
+  // (a chain shorter than the list asks is begun toward it (judge.c chainBegins): within the list, its own clears held to it as ever;
+  // ranked after every line that meets an entry, as it meets none)
+  int32_t chain = imax(chainOf(m), j->chainAll);
+  int begun = chainBegins(L, chain);
+  if (!begun && !fits(L, m)) return 0;
+  if (!begun && j->chainAll >= 2) { Made c = { 0, j->chainAll, 0, 0 }; if (!fits(L, c)) return 0; }
   for (int i = 0; i < j->nsingles; i++) { Made s = { j->singles[i], 1, 0, 0 }; if (!fits(L, s)) return 0; }
   return 1;
 }
@@ -45,8 +52,9 @@ static uint32_t lineHash(const int32_t *seq, int n, int settled, int kind) {
   return h;
 }
 static int readyFresh;   // (the readiness asked now: an outcome kept without it is judged again, and replaced)
+static int endWanted;    // (lineEnd: the line is judged again and the board it ends on kept)
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
-  if (readyFresh && kind == 0) return 0;
+  if ((readyFresh || endWanted) && kind == 0) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
   for (int i = 0; i < ncache; i++) {
     Cached *c = &cache[i];
@@ -76,6 +84,11 @@ static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Out
   return &c->o;
 }
 
+// THE LIFE A BOARD HAS WITH `panels` ON IT, in frames (core/material.h: measured on Gambit's own games, made by material.c: ./build.sh material)
+#include "core/material.h"
+static int32_t lifeOf(int32_t panels) { return LIFE[panels < 0 ? 0 : panels > LIFEMAX ? LIFEMAX : panels]; }
+// the panels a board lives longest with (the table's peak): more than that, a panel cleared is life
+static int32_t lifePeakOf(void) { static int32_t peak = -1; if (peak < 0) { peak = 0; for (int p = 1; p <= LIFEMAX; p++) if (LIFE[p] > LIFE[peak]) peak = p; } return peak; }
 // THE OUTCOME. With garbage on its way, a line that breaks nothing lives only when a break is there once everything has landed --
 // ready, however long the stop it stands on lasts; a break, or a board with nothing coming, lives by standing to the horizon and past
 // the stop and shake it ends on (lifeStop), or by a break in reach once it is over: a board a stop holds up is ready for the next break
@@ -85,7 +98,10 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
 static int breakBuildable(const Board *b);   // (search/break.c: a break the panels touching garbage can be walked into)
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on the board)
+static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
 static int32_t rootBuildable = NOT_ASKED;    // (the question's board, asked once a decision)
+static Board *endBoard;                      // (lineEnd's board)
+static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
@@ -106,26 +122,46 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.fits = fitsList(&theList, o.j.made, &o.j) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1;
-    if (breaks && !waitTo) { const Board *eb = ensureBoard(judgeCtx, o.j.endNode); o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1; o.panelsLeft = eb ? panelsOn(eb) : -1; }
+    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1;
+    if (!waitTo) {
+      const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
+      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; }
+      if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
+      // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
+      if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
+      if (breaks) o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1;
+    }
     // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board had
     // one has spent what the next break needs -- it is lost the frame it is done)
-    if (n > 0 && !breaks && !stands && !waitTo && garbageOn(decQ.b)) {
+    if (n > 0 && !breaks && !stands && !waitTo && decF.under) {
       if (rootBuildable == NOT_ASKED) rootBuildable = breakBuildable(decQ.b);
       const Board *eb = rootBuildable ? ensureBoard(judgeCtx, o.j.endNode) : 0;
       if (eb && !breakBuildable(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
     }
-    if (o.lives && !breaks && ready == 1 && !(stands && !coming) && !waitTo && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
-      int32_t ext[MAXLINE];
-      for (int k = 0; k < n; k++) ext[k] = seq[k];
-      for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
-      Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
-      if (e.late) o.late = 1; else if (!e.lives) o.lives = 0;
+    // (A PROMISED BREAK IS A REAL ONE: a line that lives only by being ready lives only when its readiness break, played where the
+    // readiness found it, lives too -- one that cannot be played out (no line kept, too long, the clock) promises nothing)
+    if (o.lives && !breaks && ready == 1 && !(stands && !coming) && !waitTo) {
+      if (o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
+        int32_t ext[MAXLINE];
+        for (int k = 0; k < n; k++) ext[k] = seq[k];
+        for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
+        Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
+        if (e.late) o.late = 1;
+        if (e.late || !e.lives) o.lives = 0;
+      } else o.lives = 0;
     }
   }
   // (a judging the clock stopped is no answer: it is not kept, and the next asking judges it again)
   if (!o.late && !waitTo) keep(seq, n, settled, 0, &o);
   return o;
+}
+// THE BOARD A LINE ENDS ON, as the judge plays it (the land a proposer reads what falls from: search/fill.c), judged as the proposers
+// judge it (readiness deferred to the rank); 0 when the judge could not play the line out. Kept until the next asking.
+static Board *lineEnd(const int32_t *seq, int n, int settled) {
+  int d = readyDefer; readyDefer = 1; endWanted = 1;
+  outcome(seq, n, settled);
+  int got = endWanted == 2; endWanted = 0; readyDefer = d;
+  return got ? endBoard : 0;
 }
 // THE BOARD LEFT ALONE, as the proposers read it: its readiness, a break search of its own, is the ranking's to ask (decide.c ranked)
 static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o = outcome(0, 0, 0); readyDefer = d; return o; }

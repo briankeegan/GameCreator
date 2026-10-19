@@ -11,12 +11,15 @@ double clock_ms(void) __attribute__((import_module("env"), import_name("clock_ms
 static double clockDue = 0, clockShare = 0;   // the decision's deadline and the share in force (ms since the epoch; 0: none)
 static int64_t clockWork;
 static int32_t clockAborted;
-static double nowMs(void) { return clock_ms(); }
+// (the time a decision reads: the host's, or a replay's, which runs on the work done -- test/decide_check.c)
+static double (*clockNowOf)(void);
+static double nowMs(void) { return clockNowOf ? clockNowOf() : clock_ms(); }
 // A decision begun: its deadline (0: none).
 static double clockWentOut;   // when the decision first ran out of time (0: not yet), for the host to time its closing work
 static void clockStart(double due) { clockDue = due; clockShare = 0; clockWork = 0; clockAborted = 0; clockWentOut = 0; }
-// A SEARCH'S SHARE: within the decision's deadline, a search may stop sooner -- at `by`. Shares nest; the old one comes back after.
-static double clockShareBegin(double by) { double old = clockShare; clockShare = by; return old; }
+// A SEARCH'S SHARE: within the decision's deadline, a search may stop sooner -- at `by`. Shares nest, a share never past the one it is
+// taken in (0: none); the old one comes back after.
+static double clockShareBegin(double by) { double old = clockShare; clockShare = old && (!by || old < by) ? old : by; return old; }
 static void clockShareEnd(double old) { clockShare = old; }
 static int64_t clockPoll;
 // A host that knows the game's frame (native.c) stops a decision on it: out once the frame before its move has begun.

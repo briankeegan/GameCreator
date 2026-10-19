@@ -63,25 +63,9 @@ exports.decideWinner = function (aDead, bDead, scores) {
 function makeCpu(stack, weights, opts) {
     // WHICH BOT. Absent means PuyoCpu, so every existing caller is unchanged.
     //
-    // BitBot is a SECOND BOT, not a switch on the first: it reads a different
-    // weight vector, over features PuyoCpu does not have. So a duel with `bot`
-    // set on one side only compares two DECISION PROCEDURES, and the weights
-    // handed to each side are not comparable numbers -- which is exactly why
-    // optsB exists and why a mixed duel must pass each side its own vector.
     // WasmSurvivor (survivor_bot.js): its own frame loop and thinking, these weights.
     if (opts.bot === 'survivor') {
         return require('./survivor_bot.js')(stack, weights, { profile: opts.profile });
-    }
-    if (opts.bot === 'bitbot') {
-        // Loaded only for a duel that asks for it: a duel of two PuyoCpus
-        // does not depend on BitBot's build.
-        var BitBot = require('./bitbot.js');
-        return new BitBot(stack, {
-            weights: weights || {},
-            reaction: opts.reaction || 12,
-            reveal: opts.reveal !== false,
-            allowRaise: opts.allowRaise === true
-        });
     }
     return new PuyoCpu(stack, {
         weights: weights || {},

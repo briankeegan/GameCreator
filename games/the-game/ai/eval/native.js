@@ -587,7 +587,7 @@
     return left;
   };
 
-  // A module that links this engine in (bit.wasm links pa.c): boards load
+  // A module that links this engine in (gambit.wasm links pa.c): boards load
   // into its memory through the same nb_ exports.
   function bind(exports) {
     if (X === exports) return Native;

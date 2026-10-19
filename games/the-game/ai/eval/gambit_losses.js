@@ -5,14 +5,14 @@
 //   node gambit_losses.js DIR [LAST]       LAST: the decisions shown before each loss (default 12)
 //
 // Per lost game: the mode, the frame it was lost, then its decisions up to the last one with the board still having frames left --
-// the frame and the frames since the decision before it, what Gambit's ranking wanted, what was played, how it was chosen (why), how many of the moves judged lived (live), the stop time, the frames the board had left (dies), the frames
+// the frame and the frames since the decision before it, what Gambit's ranking wanted, what was played, how it was chosen (why), how many of the moves judged lived (live), the board's material and panels (mat, pan), the stop time, the frames the board had left (dies), the frames
 // until the next block lands (land), and every proposer's candidates with why each was dropped (o outside the list, t too late, r not
 // ready, b swap back, f below the floor, u the judge broke nothing). Across every loss: how the moves of the last LAST decisions were
 // chosen, and the drop codes counted.
 var fs = require('fs'), path = require('path');
 var DIR = process.argv[2], LAST = Number(process.argv[3]) || 12;
 if (!DIR) { console.error('usage: node gambit_losses.js DIR [LAST]'); process.exit(2); }
-var FIELDS = ['play', 'want', 'got', 'why', 'live', 'under', 'stop', 'dies', 'land', 'br', 'cands', 'opts'];
+var FIELDS = ['play', 'want', 'got', 'why', 'live', 'under', 'mat', 'pan', 'stop', 'dies', 'land', 'br', 'cands', 'opts'];
 function parse(line) {
   var o = {}, parts = line.split(' ');
   o.at = +parts[1];

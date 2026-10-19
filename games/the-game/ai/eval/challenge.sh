@@ -4,7 +4,7 @@
 #   PG=<panel-game checkout> LOVE=<love binary> challenge.sh [BOT [DIFFICULTY [CONTINUES]]]
 #
 # BOT is wasm (WasmSurvivor, survivor.js; PROFILE picks the profile, relative
-# to this directory) or bitbot (BitBot, in the client's own process). DIFFICULTY
+# to this directory). DIFFICULTY
 # is 1-8 (8 = Hurricane, the default); CONTINUES the continues after which it
 # stops (default 10).
 #
@@ -28,7 +28,7 @@ OUT_DIR=${OUT_DIR:-$PWD/challenge-out}; PORT=${PORT:-47777}; MINUTES=${MINUTES:-
 mkdir -p "$OUT_DIR"; OUT_DIR=$(cd "$OUT_DIR" && pwd)
 CMD="$OUT_DIR/pa_cmd.txt" OUT="$OUT_DIR/pa_out.txt"
 : > "$OUT"
-case "$BOT" in wasm|bitbot) ;; *) echo "challenge.sh: BOT is wasm or bitbot, not $BOT" >&2; exit 2 ;; esac
+case "$BOT" in wasm) ;; *) echo "challenge.sh: BOT is wasm, not $BOT" >&2; exit 2 ;; esac
 
 # THE BOT HAS THE MACHINE THE DRILLS GIVE IT. The client draws every frame in
 # software (llvmpipe), which spreads over every core it is given; it is held
@@ -46,9 +46,6 @@ if [ "$BOT" = wasm ]; then
   MIND=$!
   for i in $(seq 1 300); do grep -q listening "$OUT_DIR/survivor.log" && break; sleep 0.2; done
   grep -q listening "$OUT_DIR/survivor.log" || { cat "$OUT_DIR/survivor.log"; echo "challenge.sh: WasmSurvivor did not start" >&2; exit 1; }
-else
-  # BitBot's library, built for this machine (native/build.sh's line for it)
-  (cd "$EVAL/native" && clang -O3 -march=native -pthread -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so) || exit 1
 fi
 
 (cd "$PG" && XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp} PA_CMD_FILE="$CMD" PA_OUT_FILE="$OUT" \

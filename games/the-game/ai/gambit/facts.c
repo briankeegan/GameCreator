@@ -58,18 +58,10 @@ static void lowestGroupTop(const Board *b, int H, int32_t *top, int32_t *onScree
 }
 // THE FACTS OF OUR BOARD: the garbage on its way as the question gives it (arrivals), topped as the game says
 static void factsOf(const Board *b, const Arr *arr, int narr, int topped, FactSet *F) {
-  int H = b->nrows - 1, top = 0, material = 0, contact = 0, garb = 0, peaks[W + 1];
-  for (int c = 1; c <= W; c++) {
-    int pk = 0, g = 0;
-    for (int r = 1; r <= H; r++) {
-      int32_t v = cellOfB(b, r, c);
-      if (v == -1) { if (!g) g = r; garb = 1; }
-      else if (v > 0 && !g) { pk = r; material++; }
-      if (v != 0 && r > top) top = r;
-    }
-    peaks[c] = pk;
-    if (g && pk == g - 1) contact++;
-  }
+  // (the board's shape, the one reading of it: search/bits.c bitsShape)
+  static Bits FB; static BoardShape FS;
+  bitsOf(b, &FB); bitsShape(&FB, &FS);
+  int H = b->nrows - 1, top = FS.top, material = FS.material, contact = FS.contact, garb = FS.garbage, *peaks = FS.peak;
   int32_t stop = b->stopTime + b->preStopTime, coming = 0, next = NUL;
   for (int i = 0; i < narr; i++) { coming += arr[i].height; if (next == NUL || arr[i].at < next) next = arr[i].at; }
   // (a block queued for the board drops once the stop time runs out: its landing is the stop time left)
@@ -127,20 +119,12 @@ static int32_t deadlineOf(const FactSet *F, const Rule *r) {
   return r->byFrames >= 0 ? r->byFrames : NOT_ASKED;
 }
 
-// ---- THE FLOOR (keeps, gridFacts): a line's board keeps it -- unless the line breaks garbage
+// ---- THE FLOOR (keeps, gridFacts): a line's board keeps it -- unless the line breaks garbage; its height, material and evenness the
+// board's shape (search/bits.c bitsShape), as the facts read them
 static void endFacts(const Board *b, int32_t *height, int32_t *material, int32_t *evenness) {
-  int R = gridLen(b), top = 0, mat = 0, hi = 0, lo = 1 << 30;
-  for (int c = 1; c <= W; c++) {
-    int pk = 0, g = 0;
-    for (int r = 1; r < R - 1; r++) {
-      int32_t v = cellAt(b, r, c), garbage = v >= 8 || v < 0;
-      if (garbage) { if (!g) g = r; }
-      else if (v > 0 && !g) { pk = r; mat++; }
-      if (v && r > top) top = r;
-    }
-    if (pk > hi) hi = pk; if (pk < lo) lo = pk;
-  }
-  *height = top; *material = mat; *evenness = hi - lo;
+  static Bits EB; static BoardShape ES;
+  bitsOf(b, &EB); bitsShape(&EB, &ES);
+  *height = ES.top; *material = ES.material; *evenness = ES.even;
 }
 static int keepsFloor(const Keep *k, const Board *b, int32_t broke) {
   if (!k || !k->on) return 1;
@@ -182,12 +166,13 @@ static double nearList(const List *L, Made m) {
 static double leadOf(const List *L, Made m, int under) { return nearList(L, m) + (under && m.broke > 0 ? 0.5 : 0); }
 
 // ---- THE PICK'S TIERS, lower first, and the order within one
-#define MAXSUB 7
-typedef struct { int32_t tier, nsub; double sub[MAXSUB]; } Tier;
+#define MAXSUB 9
+// (nlist: the leading sub-keys that are the list's order -- what a line spends is weighed after them, never before: rank.c)
+typedef struct { int32_t tier, nsub, nlist; double sub[MAXSUB]; } Tier;
 enum { PLAY_ENTRY, PLAY_NEAREST, PLAY_BREAKLINE, PLAY_CARRY, PLAY_CARRYWAIT, PLAY_CLEAR, PLAY_EXTEND, PLAY_LINEUP, PLAY_BREAKSEARCH,
-       PLAY_LINEUPBREAK, PLAY_TOWARD, PLAY_READY, PLAY_LEVEL, PLAY_SETUP, PLAY_SURVIVE, PLAY_HOLD, NPLAYS };
+       PLAY_LINEUPBREAK, PLAY_TOWARD, PLAY_READY, PLAY_LEVEL, PLAY_SETUP, PLAY_SURVIVE, PLAY_CONVERT, PLAY_HOLD, NPLAYS };
 static const char *PLAY_NAME[NPLAYS] = { "entry", "nearest", "break line", "carry", "carry wait", "clear", "extend", "lineup", "break search",
-                                         "lineup break", "toward", "ready", "level", "setup", "survive", "hold" };
+                                         "lineup break", "toward", "ready", "level", "setup", "survive", "convert", "hold" };
 // the plays judged settle by settle; the set-ups (SETUPS)
 static int settledPlay(int p) { return p == PLAY_ENTRY || p == PLAY_NEAREST || p == PLAY_BREAKLINE || p == PLAY_CARRY || p == PLAY_CARRYWAIT || p == PLAY_CLEAR; }
 static int setupPlay(int p) { return p == PLAY_SETUP || p == PLAY_LEVEL || p == PLAY_READY || p == PLAY_TOWARD; }
@@ -199,14 +184,14 @@ static Tier tierOf(int play, const Xs *x, int aim, int under, int enemyOut, int 
   double rate = (double)broke / (double)imax(1, x->done ? x->done : 1);
   #define SUB(...) do { double s_[] = { __VA_ARGS__ }; t.nsub = (int)(sizeof s_ / sizeof s_[0]); for (int q_ = 0; q_ < t.nsub; q_++) t.sub[q_] = s_[q_]; } while (0)
   if (under && waits) {
-    if (aim >= 0 && !(broke > 0)) { t.tier = 2; SUB(aim, x->done); return t; }
-    if (broke > 0) { t.tier = 6; SUB(-1e300, x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke); return t; }
+    if (aim >= 0 && !(broke > 0)) { t.tier = 2; SUB(aim, x->done); t.nlist = 1; return t; }
+    if (broke > 0) { t.tier = 6; SUB(-1e300, x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke); t.nlist = 3; return t; }
   }
-  if (broke > 0) { t.tier = 1; SUB(x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -x->dropAt, -rate, buys ? 0 : 1, -broke); return t; }
+  if (broke > 0) { t.tier = 1; SUB(x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -x->dropAt, -rate, buys ? 0 : 1, -broke); t.nlist = 2; return t; }
   if (play == PLAY_CLEAR) { t.tier = 6; SUB(-stop); return t; }
-  if (aim >= 0 && !under) { t.tier = 2; SUB(aim, -x->dropAt, x->done); return t; }
+  if (aim >= 0 && !under) { t.tier = 2; SUB(aim, -x->dropAt, x->done); t.nlist = 1; return t; }
   if (clears && (buys || cells > 0) && (!under || (topped && buys))) { t.tier = 3; SUB(-cells, enemyOut ? -combo : -chain, enemyOut ? -chain : -combo, -stop, -x->near); return t; }
-  if (!clears) { t.tier = 4; SUB(play == PLAY_READY ? 0 : play == PLAY_TOWARD ? 1 : play == PLAY_LEVEL ? 2 : play == PLAY_SETUP ? 3 : 4); return t; }
+  if (!clears) { t.tier = 4; SUB(play == PLAY_READY ? 0 : play == PLAY_TOWARD ? 1 : play == PLAY_SETUP ? 2 : play == PLAY_LEVEL ? 4 : 3); return t; }   // (levelling last)
   t.tier = 6; SUB(-stop);
   return t;
   #undef SUB

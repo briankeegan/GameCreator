@@ -1,4 +1,4 @@
 {
  "base": "gambit.json",
- "gambit": { "mode": "build" }
+ "gambit": { "mode": "build", "flags": ["keep"] }
 }

@@ -7,6 +7,11 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
+static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
+// THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
+// board every line ends on
+static Keep floorKeep; static int32_t floorKeepOn;
+static int decisionFloor(const Board *b) { return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1; }
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -23,13 +28,17 @@ static int readBoard_(Read *R) {
   // sooner than the rise alone takes, the garbage on its way decides it -- queueKills)
   int32_t alone = diesIn(&decQ, F->v[FACT_US_DIES]);
   if (alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
+  // (the rule: the mode in force, else the first whose `when` the facts hold -- else, with no opponent to read (no `when` can hold),
+  // the first of the rules, so a board with nobody across still plays)
   int ri = modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
+  if (ri < 0 && !theOpp.has && theTables.n > 0) ri = 0;
   if (ri < 0) return 0;
   const Rule *rule = &theTables.r[ri];
   R->rule = ri;
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on;
+  floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
-  R->aims = R->list; R->listAims = R->list;
+  R->guides = R->list;
   R->by = deadlineOf(F, rule);
   // (below the material floor a step that clears and breaks nothing is out, as the judge drops it)
   R->belowFloor = R->keepOn && R->keep.t[KEEP_MATERIAL].op && !test(F->v[FACT_US_MATERIAL], R->keep.t[KEEP_MATERIAL]);
@@ -37,14 +46,30 @@ static int readBoard_(Read *R) {
   // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's -- before
   // the board dies; the rule's `by` is an attack's)
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];
-  if (R->under) { for (int i = 0; i < R->aims.n; i++) R->aims.aim[i].brk = 1; R->end = 1; }
+  if (R->under) { for (int i = 0; i < R->guides.n; i++) R->guides.aim[i].brk = 1; R->end = 1; }
+  decF.under = R->under;
+  R->asked = R->guides;   // (the list as the board asks it, the rank's: before the defence's entry is added for the searches)
   // (and after its own entries, THE DEFENCE: a combo of four or more that breaks -- the clear that buys stop as it breaks, within every
   // list -- so every mode's searches look for the breaks that keep a board alive, whatever its list asks)
-  if (R->under && R->aims.n < MAXAIMS) { Aim d; memset(&d, 0, sizeof d); d.combo.op = OP_GE; d.combo.n = 4; d.brk = 1; R->aims.aim[R->aims.n++] = d; }
+  if (R->under && R->guides.n < MAXAIMS) { Aim d; memset(&d, 0, sizeof d); d.combo.op = OP_GE; d.combo.n = 4; d.brk = 1; R->guides.aim[R->guides.n++] = d; }
   // (A LIST ENDED BY "default" -- every list under garbage -- falls back to the default's own move when none of it can be made: the
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)
   R->topped = !!F->v[FACT_US_TOPPED]; R->breakWaits = !!F->v[FACT_US_BREAKWAITS];
+  defendStop = R->topped && !R->under;   // (judge.c defends: topped with no garbage, the clear that buys stop time is the defence)
+  // (SAVING UP PANELS, as the raise holds a band: begun topped with four rows' worth of panels or fewer, and kept until the board holds
+  // eight rows' worth and the panels sure to make the list's largest combo ((size - 1) x colours and one); then it spends again)
+  {
+    int32_t colours = decQ.b->colors > 0 ? decQ.b->colors : 1, panels = panelsOn(decQ.b), big = 3;
+    for (int i = 0; i < R->list.n; i++) { const Test *t = &R->list.aim[i].combo; if (t->op == OP_GE || t->op == OP_EQ || t->op == OP_GT) big = imax(big, t->n + (t->op == OP_GT)); }
+    int32_t low = 4 * W, high = imax((big - 1) * colours + 1, 8 * W);
+    if (!savingPanels && R->topped && panels <= low) savingPanels = 1;
+    else if (savingPanels && panels >= high) savingPanels = 0;
+    R->saving = savingPanels;
+    // (the board fuller than it lives longest with -- the life table's peak -- and not saving: while the owner's band saves panels up,
+    // the band decides, never the table)
+    R->full = !savingPanels && panels > lifePeakOf();
+  }
   if (R->under || R->topped) R->by = NOT_ASKED;
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
   R->readyAt = NOT_ASKED;
@@ -61,7 +86,7 @@ static int readBoard_(Read *R) {
   }
   R->to = to;
   R->pop = popLeft(decQ.b) > 0;
-  // (what the board left alone makes while a chain falls or a slab pops, as the game counts it: outside the list, holding is outside it too)
+  // (what the board left alone makes while a chain falls or a slab pops, as the game counts it -- for the log)
   if (cascadeLive(decQ.b) || R->pop) {
     Outcome a = leftAlone();
     if (!a.dead) { R->aloneChain = a.j.chainAll; Made z = { 0, 0, 0, 0 }; R->aloneOut = !fitsList(&R->list, z, &a.j); }
@@ -72,7 +97,30 @@ static int readBoard_(Read *R) {
 // 2-4. PROPOSE, JUDGE AND RANK: every candidate offered -- the hold among them -- judged by its outcome and put in the one order. With
 // none that lives and time left, the survival search proposes its line too.
 #define MAXCANDS 128
-static Cand theCands[MAXCANDS];
+#define PROPOSED (2 * MAXCANDS)   // what the proposers may offer; past MAXCANDS, every play keeps its share (fairShare)
+static Cand theCands[PROPOSED];
+static int32_t cappedN;   // the candidates left unjudged past MAXCANDS, a decision (the log's capped=)
+// EVERY PROPOSER ITS SHARE: past MAXCANDS, the candidates are taken a play at a time -- each play's first, then each play's second, in the
+// order each offered them -- so a proposer offering last is never the one cut; how many are left, counted
+static int fairShare(Cand *c, int n, int cap) {
+  cappedN = n > cap ? n - cap : 0;
+  if (n <= cap) return n;
+  static Cand kept[MAXCANDS]; static uint8_t taken[PROPOSED];
+  memset(taken, 0, sizeof taken);
+  int k = 0;
+  while (k < cap) {   // (a round: each play's next)
+    int seen[NPLAYS] = { 0 }, any = 0;
+    for (int i = 0; i < n && k < cap; i++) {
+      if (taken[i]) continue;
+      int p = c[i].play;
+      if (seen[p]++ != 0) continue;
+      kept[k++] = c[i]; taken[i] = 1; any = 1;
+    }
+    if (!any) break;
+  }
+  for (int i = 0; i < k; i++) c[i] = kept[i];
+  return k;
+}
 static Judge theJudged[MAXCANDS + 4], *order[MAXCANDS + 4];
 static int32_t phaseMs[3];
 static int carriedCand(const Read *R, Cand *k, int *wait);
@@ -81,27 +129,27 @@ static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered);
   carriedJ = 0; unbroken.set = 0;
   double t0 = nowMs();
-  int nc = proposeAll(R, S, theCands, MAXCANDS), n = 0;
+  int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
   double t1 = nowMs();
   for (int i = 0; i < nc; i++) offered[theCands[i].play]++;
   readyDefer = 1;   // (the proposers above ask readiness whole; the judging below ranks first)
   rankReact = C2.reaction + 1;
-  for (int i = 0; i < nc; i++) if (judgeCand(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+  rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
+  for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0;
-  if (R->aims.n && carriedCand(R, &ck, &cwait) && judgeCand(R, &ck, &theJudged[n])) {
+  if (R->guides.n && carriedCand(R, &ck, &cwait) && judgeCand(R, &ck, &theJudged[n])) {
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
-    if (cwait) { cj->t.tier = imax(cj->t.tier, HOLD_TIER); cj->t.nsub = 1; cj->t.sub[0] = -1; }
-    else { for (int q = imin(cj->t.nsub, MAXSUB - 1); q > 0; q--) cj->t.sub[q] = cj->t.sub[q - 1]; cj->t.sub[0] = -1e300; cj->t.nsub = imin(cj->t.nsub + 1, MAXSUB); }
+    if (cwait) cj->waitMax = 1; else cj->first = 1;   // (its place: rank.c tierView)
     order[n] = cj; n++; carriedJ = cj;
   }
-  // (the hold: never while the chain the board makes alone runs past the list)
+  // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
-  holdCand(0, H);
-  if (!R->aloneOut) { order[n] = H; n++; }
-  if (!R->aloneOut) for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) { order[i]->wait = 1; order[i]->t.tier = HOLD_TIER; order[i]->t.nsub = 1; order[i]->t.sub[0] = -1; }
+  holdCand(R, 0, H);
+  order[n] = H; n++;
+  for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
@@ -111,11 +159,11 @@ static int ranked(const Read *R, const Found *S) {
     Judge *J = order[i];
     if (J->o.lives || J->o.dead || J->o.ready != NOT_ASKED || J == carriedJ) continue;
     readyShare(n - i);
-    if (J->hold) holdCand(J->wait, J);
+    if (J->hold) holdCand(R, J->wait, J);
     else {
       static Judge again; Cand kc = J->k;
       if (judgeCand(R, &kc, &again)) {
-        if (J->wait) { again.wait = J->wait; again.t.tier = HOLD_TIER; again.t.nsub = 1; again.t.sub[0] = -1; }
+        again.wait = J->wait;
         again.outside = again.outside || J->outside;
         *J = again;
       }
@@ -143,7 +191,11 @@ static int ranked(const Read *R, const Found *S) {
 typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred; } Played;
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
-  P.wait = R->low && !R->up && !(n && order[0]->k.extend);
+  // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
+  // is never passed over for a raise to come)
+  int holdLivesNow = 0;
+  for (int i = 0; i < n; i++) if (order[i]->hold && order[i]->o.lives) holdLivesNow = 1;
+  P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
   P.line = P.top && !P.top->hold && !P.top->wait ? P.top : 0;
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
@@ -151,12 +203,18 @@ static Played playOf(const Read *R, int n) {
   // plan's)
   // (held only while the board left alone lasts to the frame the swap would be pressed)
   double holdLost = -1;
-  for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.dead) holdLost = lostAtOf(order[i]->o.lostAt, 0);
-  if (P.line && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
+  // (the hold's loss as the order reads it, rank.c lostOf: a hold whose loss was not judged is lost now, never 'never' -- an unknown
+  // never licenses waiting)
+  // (and only while the hold lives: on a board left alone that is lost, a swap put off is put off again by the next plan until the board
+  // is gone -- a line that saves it is played now)
+  int holdLives = 0;
+  for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.dead) { holdLost = lostOf(order[i]); holdLives = !!order[i]->o.lives; }
+  if (P.line && holdLives && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
       firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
     const Judge *L = P.line;
     Outcome d = outcomeOf(L->k.seq, L->k.nseq, L->settled, 0, L->apAts[1] - rankReact);
-    double dl = lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
+    // (the line pressed later must be known to last as long: a loss it was not judged for never licenses waiting)
+    double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
@@ -172,22 +230,27 @@ static Played playOf(const Read *R, int n) {
 typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
 static Carry theCarry;
 static int32_t carryFrom = -1, carryPressed;
+// THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
+// into theCarry; 0 when every one is touched. carryOf and carryReady ask it.
+static int anchorOf(const int32_t *row1, const int32_t *seq, int n) {
+  for (int c = 1; c <= W; c++) {
+    if (row1[c] == NUL) continue;
+    int touched = 0;
+    for (int i = 0; i < n; i++) if (CR(seq[i]) == 1 && (CC(seq[i]) == c || CC(seq[i]) + 1 == c)) touched = 1;
+    if (!touched) { theCarry.anchorRow = 1; theCarry.anchorCol = c; theCarry.anchorId = row1[c]; return 1; }
+  }
+  return 0;
+}
 static void carryOf(const Read *R, const Judge *k, int32_t qid) {
   memset(&theCarry, 0, sizeof theCarry);
   if (!k || k->wait || k->k.nseq < 2 || k->t.tier > 4) return;
-  int col = 0;
-  for (int c = 1; c <= W && !col; c++) {
-    int32_t id = decQ.b->p[1][c].f[ID];
-    if (id == NUL) continue;
-    int touched = 0;
-    for (int i = 0; i < k->k.nseq; i++) if (CR(k->k.seq[i]) == 1 && (CC(k->k.seq[i]) == c || CC(k->k.seq[i]) + 1 == c)) touched = 1;
-    if (!touched) { col = c; theCarry.anchorRow = 1; theCarry.anchorCol = c; theCarry.anchorId = id; }
-  }
-  if (!col) return;
+  int32_t row1[W + 1];
+  for (int c = 1; c <= W; c++) row1[c] = decQ.b->p[1][c].f[ID];
+  if (!anchorOf(row1, k->k.seq, k->k.nseq)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - 1;
   for (int i = 1; i < k->k.nseq; i++) theCarry.rest[i - 1] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0;
-  if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->aims.aim[k->aim]; }
+  if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
@@ -196,15 +259,7 @@ static void carryReady(const Judge *H, int32_t qid) {
   const Judged *j = &H->o.j;
   if (!H->hold || H->o.ready != 1 || j->readyN < 1) return;
   memset(&theCarry, 0, sizeof theCarry);
-  int col = 0;
-  for (int c = 1; c <= W && !col; c++) {
-    int32_t id = j->readyRow1[c];
-    if (id == NUL) continue;
-    int touched = 0;
-    for (int i = 0; i < j->readyN; i++) if (CR(j->readyLine[i]) == 1 && (CC(j->readyLine[i]) == c || CC(j->readyLine[i]) + 1 == c)) touched = 1;
-    if (!touched) { col = c; theCarry.anchorRow = 1; theCarry.anchorCol = c; theCarry.anchorId = id; }
-  }
-  if (!col) return;
+  if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
   theCarry.settled = 0; theCarry.broke = 1;
@@ -226,24 +281,21 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
   int32_t rest[MAXLINE], nrest = C->nrest - skip;
   for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
-  Made x; int32_t done, fire, nats = 0, ats[MAXLINE];
-  if (C->settled) {
-    Replayed rp;
-    if (!replay(&decQ, rest, nrest, 1, &rp)) { carryDrop = 2; return 0; }
-    *wait = rp.wait > 1;
-    x = (Made){ rp.combo, rp.chain, rp.broke, rp.cells }; done = rp.done; fire = rp.fire; nats = rp.nats; for (int i = 0; i < nats; i++) ats[i] = rp.ats[i];
-  } else {
-    JudgeOpts jo = { 0, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
-    Judged j;
-    judge(&decQ, rest, nrest, &jo, &j);
-    if (j.dead || j.nats < nrest) { carryDrop = 2; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
-    // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
-    x = (Made){ j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 }; done = j.done; fire = j.fire; nats = j.nats; for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
-  }
+  // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
+  // settled line waits while the board still moves)
+  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  Judged j;
+  judge(&decQ, rest, nrest, &jo, &j);
+  if (j.dead || j.nats < nrest) { carryDrop = 2; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
+  *wait = C->settled && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
+  // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
+  Made x = { j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
+  int32_t done = j.done, fire = j.fire, nats = j.nats, ats[MAXLINE];
+  for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
   if (C->broke && !(x.broke > 0)) { carryDrop = 3; return 0; }
   if (C->hasAim && !meets(&C->aim, x)) { carryDrop = 4; return 0; }
   int aim = -1;
-  if (C->hasAim) for (int i = 0; i < R->aims.n && aim < 0; i++) if (!memcmp(&R->aims.aim[i], &C->aim, sizeof(Aim))) aim = i;
+  if (C->hasAim) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;
   if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, nrest, aim, 0)) return 0;
   k->settled = C->settled;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;

@@ -5,7 +5,7 @@
 --   local G = dofile(<GameCreator>/games/the-game/ai/gambit/lua/GambitNative.lua)   -- once per process
 --   local bot = G.new({})
 --   bot:startMatch(stack)                 -- once per match
---   local char = bot:input(stack, sources)   -- every frame, before it is run
+--   local char = bot:input(stack, sources, view)   -- every frame, before it is run (view: the opponent's shipped board, or nil)
 --
 -- Env: GC_GAMBIT_DIR (the gambit directory; default: this file's), GC_GAMBIT_WORDS (the profile as numbers, words.js; default
 -- GC_GAMBIT_DIR/gambit.words), GC_GAMBIT_LOG (the run's log: GAMBITD lines and the match's stats).
@@ -36,10 +36,13 @@ int32_t *gn_io(void);
 int gn_rules(int n);
 void gn_rule_name(int i, const char *name);
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff);
+void gn_switch(int min, int max);
+void gn_share(int under, int otherwise);
+void gn_flags(int bits);
 int32_t *gn_tele(void);
 int32_t *gn_ages(void);
 void gn_match(void);
-int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop);
+int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop);
 void gn_end(void);
 void gn_log(const char *s);
 void gn_thread_stats(double *out);
@@ -54,13 +57,13 @@ for i = 0, NH - 1 do HI[ffi.string(C.nb_head_name(i))] = i end
 do
   local file = os.getenv("GC_GAMBIT_WORDS") or (DIR .. "/gambit.words")
   local f = assert(io.open(file), "GambitNative: no " .. file .. " (words.js writes it)")
-  local setup, profile, rules
+  local setup, profile, rules, switch, share, flags
   for line in f:lines() do
     local kind, rest = line:match("^(%S+) (.*)$")
-    if kind == "setup" or kind == "profile" or kind == "rules" then
+    if kind == "setup" or kind == "profile" or kind == "rules" or kind == "switch" or kind == "share" or kind == "flags" then
       local v = {}
       for n in rest:gmatch("%S+") do v[#v + 1] = tonumber(n) end
-      if kind == "setup" then setup = v elseif kind == "profile" then profile = v else rules = v end
+      if kind == "setup" then setup = v elseif kind == "profile" then profile = v elseif kind == "switch" then switch = v elseif kind == "share" then share = v elseif kind == "flags" then flags = v else rules = v end
     elseif kind == "name" then
       local i, name = rest:match("^(%d+) (.*)$")
       C.gn_rule_name(tonumber(i), name)
@@ -73,6 +76,9 @@ do
   for i = 1, len do io[i - 1] = rules[2 + i] end
   assert(C.gn_rules(n) == n, "GambitNative: the rules were refused")
   C.gn_profile(profile[1], profile[2], profile[3], profile[4], profile[5], profile[6], profile[7], profile[8])
+  C.gn_switch(switch and switch[1] or 0, switch and switch[2] or 0)
+  C.gn_share(share and share[1] or 0, share and share[2] or 0)
+  C.gn_flags(flags and flags[1] or 0)
 end
 
 local GambitNative = {}
@@ -116,10 +122,10 @@ function GambitNative:load(a)
   self.nrows, self.nqueued = #a.panels + 1, #inc
   put("nrows", #a.panels + 1); put("ninc", #inc - from + 1); put("nstall", #stall); put("nlanded", #landed); put("err", 0)
   put("unseenRows", 0); put("unseenBreaks", 0); put("nextInput", 0); put("pressSwap", 0); put("swapDeniedThisFrame", 0)
-  local x = 0
+  local x, flash = 0, a.levelData.frameConstants.FLASH
   for r = 0, #a.panels do
     for c = 1, a.width do
-      B.panel(a.panels[r][c], pv)
+      B.panel(a.panels[r][c], pv, a.width, flash)
       for i = 1, B.NF do Bd[x] = pv[i]; x = x + 1 end
     end
   end
@@ -142,12 +148,21 @@ local function piece(T, x, g)
   T[x + 5] = g.finalized == nil and NUL or b01(g.finalized)
   return x + 6
 end
+-- A SOURCE WHOSE GARBAGE COMES OVER THE WIRE: the engine's own routing (common/engine/GarbageDelivery.lua looseSyncActive) -- loose
+-- sync on and connected, the source not this client's: the server's relayed garbage is what lands, and the copy of the source played
+-- here is no word on it (its outgoing queue is never delivered here). Anywhere else -- lockstep, Training, a local match -- the source
+-- is played here exactly and delivers here, so its outgoing garbage is the garbage on its way and its board the opponent's own.
+local function wired(src)
+  return LOOSE_SYNC_GARBAGE and GAME and GAME.netClient and GAME.netClient.isConnected and GAME.netClient:isConnected()
+    and not src.is_local and true or false
+end
+-- (a wired source's garbage is read off this stack's own queue only, what the server delivered: board.lua loads it)
 function GambitNative:telegraph(sources)
   local T, x = C.gn_tele(), 1
   local n = 0
   for _, src in ipairs(sources or EMPTY) do
     local q = src.outgoingGarbage
-    if q and src.stopWatch ~= nil then
+    if q and src.stopWatch ~= nil and not wired(src) then
       n = n + 1
       T[x], T[x + 1] = src.stopWatch, b01(q.illegalStuffIsAllowed); x = x + 2
       -- (every transit not yet delivered: one whose time has come waits while the stack has CAPPED_AT queued, GarbageDelivery; its count
@@ -175,27 +190,43 @@ function GambitNative:telegraph(sources)
   T[0] = n
 end
 
--- Whether a stack this one fights is topped out, and the highest row it has a panel in (an attack engine has no panels: 0).
-local function opponentOf(sources)
-  local out, top = 0, 0
-  for _, src in ipairs(sources or {}) do
-    if type(src.game_ended) == "function" and src:game_ended() then return 0, 0, 0 end
+-- The stack this one fights, as the rules' `when` and `by` read it (gambit-rules.json enemy.*): whether there is one (an attack engine,
+-- Training's, is no stack: none), whether it is topped out -- garbage above its top row, a board that can die (a stack that only
+-- reaches the top row is tall, not topped out) -- the highest row it has a panel in, and the frames it is held up by. Read
+-- off the opponent's own board as its client shipped it (view: BotClient's oppView, from the snapshots it paints from) when one came
+-- within VIEW_FRESH frames -- its stop counted down since; else off the copy of its stack played here from its relayed keys: its stop
+-- and pre-stop, or its shake when longer, as the judge reads a board's (judge.c dropAt).
+-- An opponent whose garbage comes over the wire (wired) is read off its shipped board only, however old the last one -- the copy played
+-- here is no source of its board -- and before the first, the board a match begins with: not topped out, low, no stop. One played here
+-- exactly is read off its own stack. (A panel counts as the engine's Panel:dangerous counts it: garbage still falling is not the
+-- stack's height, and does not top it out.)
+local function counts(p) if not p then return false end if p.isGarbage then return p.state ~= "falling" end return (p.color or 0) ~= 0 end
+local function opponentOf(sources, view, clock)
+  local anyWired = false
+  for _, src in ipairs(sources or EMPTY) do if src.panels and wired(src) then anyWired = true end end
+  if view and clock and view.seen and (anyWired or clock - view.seen <= VIEW_FRESH) then
+    return 1, view.over and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
+  end
+  if anyWired then return 1, 0, 0, 0 end
+  local has, out, top, stop = 0, 0, 0, 0
+  for _, src in ipairs(sources or EMPTY) do
+    if type(src.game_ended) == "function" and src:game_ended() then return 0, 0, 0, 0 end
     if type(src.isToppedOut) == "function" and src.panels then
-      if src:isToppedOut() then out = 1 end
+      has = 1
+      stop = math.max(stop, (src.stop_time or 0) + (src.pre_stop_time or 0), src.shake_time or 0)
+      local above = src.panels[(src.height or 12) + 1]
+      for col = 1, src.width or 6 do local p = above and above[col]; if p and p.isGarbage and p.state ~= "falling" then out = 1 end end
       for row = src.height or 12, 1, -1 do
         local found = false
-        for col = 1, src.width or 6 do
-          local p = src.panels[row] and src.panels[row][col]
-          if p and p.color and p.color ~= 0 then found = true break end
-        end
+        for col = 1, src.width or 6 do if counts(src.panels[row] and src.panels[row][col]) then found = true break end end
         if found then if row > top then top = row end break end
       end
     end
   end
-  return 1, out, top
+  return has, out, top, stop
 end
 
-function GambitNative:think(stack, sources)
+function GambitNative:think(stack, sources, view)
   local idle = KeyDataEncoding.base64encode[1]
   if counting(stack) or not stack.stopWatchIsRunning or stack:game_ended() then return idle end
   local t0 = ThinkBudget.now()
@@ -204,9 +235,9 @@ function GambitNative:think(stack, sources)
   self:telegraph(sources)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
-  local has, out, top = opponentOf(sources)
+  local has, out, top, stop = opponentOf(sources, view, stack.clock)
   local t2 = ThinkBudget.now()
-  local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top)
+  local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
   if bits < 0 then error("GambitNative: the engine refused the board at clock " .. tostring(stack.clock)) end
   self.frames = self.frames + 1
@@ -226,11 +257,11 @@ function GambitNative:press(key, clock)
 end
 
 -- The frame's work, charged to the thinking budget, its key pressed on the input budget -- the game's own.
-function GambitNative:input(stack, sources)
+function GambitNative:input(stack, sources, view)
   collectgarbage("stop")
   C.gn_thread_stats(self.ts0)
   local began = ThinkBudget.now()
-  local ok, key = pcall(self.think, self, stack, sources)
+  local ok, key = pcall(self.think, self, stack, sources, view)
   if ok and self.ownInputs then key = self:press(key, stack.clock) end
   local took = ThinkBudget.now() - began
   collectgarbage("restart")

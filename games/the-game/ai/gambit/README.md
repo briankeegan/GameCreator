@@ -10,7 +10,7 @@ differ. Its only imports are the host's abort flag and clock (`abort_poll`, `clo
 - `rules.c` -- the mode's list: fits, meets, entries, the swap back.
 - `judge.c` -- a line played as the game presses it; `outcome.c` -- the whole line judged once a decision, cached.
 - `facts.c` -- the facts read off both boards, the rule they pick, the floor, how near a line comes, the tiers.
-- `search/` -- `break.c` (the break search), `plan.c`, `extend.c`, `ready.c`, `level.c`, `outlive.c` (the survival search).
+- `search/` -- `break.c` (the break search), `plan.c`, `extend.c`, `ready.c`, `level.c`, `outlive.c` (the survival search), `fill.c` (the panel a match is one short of, and the walk that brings it: grown threes, the converted row's chain).
 - `propose.c` -- every kind of move, one proposer each; `rank.c` -- each candidate judged, filtered and put in the one order.
 - `decide.c` -- read, propose, judge, rank, play; `answer.c` -- a question from the frame loop answered, and the log line.
 - `gambit.js` -- the wasm's loader: reads the rules file, writes the board in, reads the answer out (`Gambit.answer`, `Gambit.breakOn`).

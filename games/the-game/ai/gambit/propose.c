@@ -14,8 +14,10 @@ typedef struct {
   int32_t brMs;
 } Ctx2;
 static Ctx2 C2;
-// what the searches may take: the decision's time less the answer's margin and a quarter of it kept for judging what they found
-static double leftMs(void) { if (!C2.due) return 1e9; double span = C2.due - C2.t0; return C2.due - nowMs() - C2.margin - span / 4; }
+// what the searches may take: the decision's time less the answer's margin and a quarter of it kept for judging what they found --
+// searchesEnd, the share every search runs in (answer.c answerTurn), so no search runs into the judging's quarter
+static double searchesEnd(void) { return C2.due ? C2.due - C2.margin - (C2.due - C2.t0) / 4 : 0; }
+static double leftMs(void) { return C2.due ? searchesEnd() - nowMs() : 1e9; }
 static double leftMsOf(void) { return leftMs(); }
 
 // ---- the board's state the proposers read
@@ -68,7 +70,7 @@ static void startChains(const Read *R, Found *S, double ms) {
     if (!q.b) continue;
     double left = t0 + ms - nowMs();
     if (left < 2) break;
-    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &R->aims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0,
+    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &R->guides, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0,
                    left / (ns - j) };
     Ext E;
     extend(&q, &eo, &E);
@@ -82,17 +84,17 @@ static void startChains(const Read *R, Found *S, double ms) {
 }
 static void searchAll(const Read *R, Found *S) {
   memset(S, 0, sizeof *S);
-  if (!R->aims.n) return;
+  if (!R->guides.n) return;
   Profile *GP = &C2.GP;
   Board *board = decQ.b;
   // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
   double xMs = leftMs() / 2;
   // (a slab popping is lined up as the list is written -- the pop is the break; with garbage left, the entries that break again first)
-  S->xAims = !R->pop ? R->aims : R->listAims;
+  S->xAims = !R->pop ? R->guides : R->list;
   if (R->pop && R->under) {
-    S->xAims = R->aims;
-    for (int i = 0; i < R->listAims.n && S->xAims.n < MAXAIMS; i++) S->xAims.aim[S->xAims.n++] = R->listAims.aim[i];
+    S->xAims = R->guides;
+    for (int i = 0; i < R->list.n && S->xAims.n < MAXAIMS; i++) S->xAims.aim[S->xAims.n++] = R->list.aim[i];
     if (S->xAims.n < MAXAIMS) { Aim brk; memset(&brk, 0, sizeof brk); brk.brk = 1; S->xAims.aim[S->xAims.n++] = brk; }
   }
   double xm = xMs < leftMs() ? xMs : leftMs();
@@ -103,14 +105,14 @@ static void searchAll(const Read *R, Found *S) {
   }
   // (A CHAIN IS BEGUN AND CONTINUED: on a board at rest, each swap that starts a clear, then the links its fall is continued by -- the
   // extension's own search, from the board the swap leaves falling; a beginning whose chain ends in the list is a line)
-  if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->aims)) startChains(R, S, leftMs() / 2);
+  if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->guides)) startChains(R, S, leftMs() / 2);
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
   double usual = leftMs() / 2;
   int idle = C2.idle && leftAlone().lives;
   double ms = idle ? (usual > leftMs() ? usual : leftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
   if (ms >= 20) {
     S->tried++;
-    PlanOpts po = { GP->width ? GP->width : 40, GP->depth ? GP->depth : 7, GP->pool ? GP->pool : 250, &R->aims, R->by ? R->by : NOT_ASKED,
+    PlanOpts po = { GP->width ? GP->width : 40, GP->depth ? GP->depth : 7, GP->pool ? GP->pool : 250, &R->guides, R->by ? R->by : NOT_ASKED,
                     R->keepOn ? &R->keep : 0, R->readyAt, R->under, R->F.v[FACT_US_DIES] > 0 ? R->F.v[FACT_US_DIES] : 0, R->under, ms };
     plan(&decQ, &po, &S->ap); S->haveAp = 1;
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
@@ -128,7 +130,7 @@ static void searchAll(const Read *R, Found *S) {
   S->lvG = !R->under && R->readyAt != NOT_ASKED && !(S->haveRd && !S->rd.ready && S->rd.setup) ? level(&decQ, R->readyAt ? R->readyAt : NOT_ASKED) : 0;
 }
 
-// THE LEVEL BUILT: topped by its own stack with no garbage on it, the line that walks the tallest column's top panel onto a lower
+// THE LEVEL BUILT: topped or under garbage, the line that walks the tallest column's top panel onto a lower
 // column beside it, panel after panel, until the stack is level (no column more than one above another) -- each step settled, the
 // whole line judged on the engine. Its length into seq; 0 for none
 static int levelLine(const Board *b, int32_t *seq, int cap) {
@@ -171,16 +173,86 @@ static int seenDigHas(const Board *b, int32_t mv);   // (answer.c: the boards th
 static int32_t towardRest[MAXPATH], towardRestLen;   // (answer.c: the rest of the line toward a break played last)
 // Every candidate, in the order they are offered: entries, the extension, the nearest, the break line, the break
 // search's breaks, toward a break, ready, level, setup, clear
+// A THREE GROWN (search/fill.c): each line proposed whose last swap makes a match of three, again with one more panel of its colour walked
+// beside the match before that swap -- a combo of four or more buys the stop a three does not (pa.c calculateStopTime). Offered as the
+// play that found the three, so its place in the order is that play's; the engine judges whether the match is made.
+static Ctx *fillCtx;
+static const Board *boardBefore(Ctx *x, const int32_t *seq, int n) {
+  if (n <= 0) return decQ.b;
+  int node = rootOf(x, &decQ);
+  for (int i = 0; i < n && liveNode(x, node); i++) node = step(x, node, MK_SWAP, CR(seq[i]), CC(seq[i]), 0);
+  return liveNode(x, node) ? ensureBoard(x, node) : 0;
+}
+static int growLines(Cand *out, int n, int cap) {
+  Ctx *x = fillCtx = ctxOf(fillCtx);
+  static Land L; static Fills F;
+  for (int i = 0, n0 = n; i < n0 && n < cap && !clockOut(); i++) {
+    const Cand *k = &out[i];
+    if (k->nseq < 1 || k->grown) continue;
+    const Board *B = boardBefore(x, k->seq, k->nseq - 1);
+    if (!B) continue;
+    int32_t last = k->seq[k->nseq - 1];
+    swapLand(B, CR(last), CC(last), &L);
+    fillWalks(B, &L, 3, &F);
+    for (int w = 0; w < F.n && w < 2 && n < cap; w++) {
+      if (k->nseq + F.len[w] > MAXLINE) continue;
+      Cand *g = &out[n];
+      *g = *k; g->grown = 1; g->nseq = 0;
+      for (int j = 0; j < k->nseq - 1; j++) g->seq[g->nseq++] = k->seq[j];
+      for (int j = 0; j < F.len[w]; j++) g->seq[g->nseq++] = F.seq[w][j];
+      g->seq[g->nseq++] = last;
+      g->x.combo = 4; g->xFire = -1; g->xDone = -1; g->xNats = 0;
+      n++;
+    }
+  }
+  return n;
+}
+// THE CONVERTED ROW'S CHAIN (search/fill.c): the panels a break converts fall chaining once its pop is over, so a panel of their colour
+// waiting beside where they land makes a link of a chain. While a pop runs, the land is the board left alone and the colours are the ones
+// the screen has drawn; before a break is pressed, the land is the break line's own end and the colours the board already shows -- the
+// break line and the walk after it, one line. Each a candidate like any other (PLAY_CONVERT), judged on the engine and in time.
+static int convertLines(const Read *R, Cand *out, int n, int cap) {
+  Ctx *x = fillCtx = ctxOf(fillCtx);
+  static Land L; static Fills F;
+  #define ADDC(seq_, n_, aim_) do { if (n < cap && candOf(&out[n], PLAY_CONVERT, seq_, n_, aim_, 1)) { out[n].settled = 0; n++; } } while (0)
+  if (R->pop) {
+    const Board *E = lineEnd(0, 0, 0);
+    if (E && settledLand(decQ.b, E, &L)) { fillWalks(decQ.b, &L, 2, &F); for (int w = 0; w < F.n; w++) ADDC(F.seq[w], F.len[w], -1); }
+  }
+  if (R->under && !R->pop) {
+    for (int i = 0, n0 = n; i < n0 && n < cap && !clockOut(); i++) {
+      const Cand *k = &out[i];
+      if (!(k->x.broke > 0) || k->grown || k->play == PLAY_CONVERT) continue;
+      int st = k->settled >= 0 ? k->settled : settledPlay(k->play);
+      const Board *E0 = lineEnd(k->seq, k->nseq, st);
+      if (!E0) continue;
+      static Board *E; if (!E) E = nb_new(); if (!E) break;
+      cloneBoard(E, E0);
+      const Board *B = boardBefore(x, k->seq, k->nseq);
+      if (!B || !settledLand(B, E, &L)) continue;
+      fillWalks(B, &L, 2, &F);
+      for (int w = 0; w < F.n && w < 2; w++) {
+        if (k->nseq + F.len[w] > MAXLINE) continue;
+        int32_t seq[MAXLINE], m = 0;
+        for (int j = 0; j < k->nseq; j++) seq[m++] = k->seq[j];
+        for (int j = 0; j < F.len[w]; j++) seq[m++] = F.seq[w][j];
+        ADDC(seq, m, k->aim);
+      }
+    }
+  }
+  #undef ADDC
+  return n;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
   // AN ENTRY: the planner's line for each entry of the list it found one for
-  if (S->haveAp) for (int i = 0; i < R->aims.n; i++) if (S->ap.perAim[i].set) { int m0 = n; ADD(PLAY_ENTRY, S->ap.perAim[i].seq, S->ap.perAim[i].nseq, i, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.perAim[i]); }
+  if (S->haveAp) for (int i = 0; i < R->guides.n; i++) if (S->ap.perAim[i].set) { int m0 = n; ADD(PLAY_ENTRY, S->ap.perAim[i].seq, S->ap.perAim[i].nseq, i, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.perAim[i]); }
   // THE EXTENSION: links that keep a chain already falling going (or a popping slab lined up), and the nearest of them to the list
   if (S->haveEx) {
     const XLine *ex = &S->ex.best;
     if (ex->nseq && ex->aimIndex >= 0) {
-      int na = R->aims.n, xi = ex->aimIndex, xa = !(R->pop && R->under) ? xi : xi < na ? xi : xi < 2 * na ? xi - na : -1;
+      int na = R->guides.n, xi = ex->aimIndex, xa = !(R->pop && R->under) ? xi : xi < na ? xi : xi < 2 * na ? xi - na : -1;
       int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, ex->seq, ex->nseq, xa, 1); if (n > m0) xFromExt(&out[m0], ex);
     }
     if (S->ex.nearest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.nearest.seq, S->ex.nearest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.nearest); }
@@ -236,10 +308,17 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // READY: the swap that leaves the next block breakable when it lands, and the line that leaves a plan once everything has landed
   if (S->haveRd && !S->rd.ready && S->rd.setup) { int32_t one = S->rd.setup; ADD(PLAY_READY, &one, 1, -1, 0); }
   if (S->haveRl) { int m0 = n; ADD(PLAY_READY, S->rl, S->rlN, -1, 0); if (n > m0) out[m0].xDone = S->rlAt; }
-  // THE LEVEL BUILT: topped by its own stack with no garbage on it, the stack walked level, each step settled
-  if (R->topped && !R->under) {
+  // (LOWERING THE STACK: the tallest column's top walked onto a lower one, each step settled -- on any board with a column two above
+  // its neighbour, the move when there is nothing better to do (rank.c markIdle); topped or under garbage, a perched block let down too
+  // -- its supports walked out from under it (search/break.c perchedDrops). Each judged as any line: a lower stack is a later loss)
+  // (never while a slab pops -- its first swap waits out the pop; on a board at rest only, unless topped or under garbage: panels walked
+  // while a chain falls spoil what the board makes alone)
+  if (!R->pop && (R->topped || R->under || (!hasActivePanels(decQ.b) && decQ.b->chainCounter == 0))) {
     static int32_t lv[MAXLINE]; int nl = levelLine(decQ.b, lv, MAXLINE);
-    if (nl > 0) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; }
+    if (nl > 0) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; } }
+  if (R->topped || R->under) {
+    static Perches pd; perchedDrops(decQ.b, &pd);
+    for (int i = 0; i < pd.n; i++) { int m0 = n; ADD(PLAY_LEVEL, pd.seq[i], pd.len[i], -1, 0); if (n > m0) out[m0].drop = 1; }
   }
   // LEVEL: the swap that flattens the stack, under garbage or before a block lands
   // (a swap that clears nothing and brings back a board this dig has stood on goes nowhere: not offered)
@@ -249,5 +328,8 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   if (S->haveAp && S->ap.setup && R->readyAt == NOT_ASKED && !seenDigHas(decQ.b, S->ap.setup)) { int32_t one = S->ap.setup; ADD(PLAY_SETUP, &one, 1, -1, 0); }
   if (S->haveAp && S->ap.lowest.set) { int m0 = n; ADD(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.lowest); }
   #undef ADD
+  // (and from the lines above: the converted row's chain, then every three grown -- the converted lines' own among them)
+  n = convertLines(R, out, n, cap);
+  n = growLines(out, n, cap);
   return n;
 }

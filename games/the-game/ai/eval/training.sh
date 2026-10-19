@@ -9,21 +9,22 @@
 # result a line `training lost|survived frames=F` in $OUT_DIR/pa_out.txt, then the client quits.
 #
 # BOT is gambit (Gambit, in the client's own process: ../gambit/lua/GambitNative.lua on libgambit.so; PROFILE picks the profile,
-# relative to this directory), wasm (WasmSurvivor, survivor.js; PROFILE too) or bitbot (BitBot, in the client's own process). The client runs under xvfb, driven through its own menus by its e2e
+# relative to this directory), wasm (WasmSurvivor, survivor.js; PROFILE too) The client runs under xvfb, driven through its own menus by its e2e
 # harness (client/src/debug/AppDriver.lua, PA_CMD_FILE, `trainingloop`); the local player's stack takes its keys
 # from the bot (PA_SURVIVOR=1, PA_BOT).
 #
-# Env: OUT_DIR (default ./training-out), PORT (47777), MINUTES (330, each client's limit), PROFILE, FRAMES.
+# Env: OUT_DIR (default ./training-out), PORT (47777), MINUTES (330, each client's limit), PROFILE, FRAMES, LEVEL (the modern level
+# the player's stack plays, 11; set on the character select and checked before Ready).
 # $OUT_DIR/results.txt holds a line per game.
 set -u
 EVAL="$(cd "$(dirname "$0")" && pwd)"
-BOT=${1:-wasm}; PATTERN=${2:-large_garbage}; GAMES=${3:-10}
+BOT=${1:-wasm}; PATTERN=${2:-large_garbage}; GAMES=${3:-10}; LEVEL=${LEVEL:-11}
 : "${PG:?PG: a panel-game checkout}" "${LOVE:?LOVE: the love binary (or the AppRun of an extracted AppImage)}"
 OUT_DIR=${OUT_DIR:-$PWD/training-out}; PORT=${PORT:-47777}; MINUTES=${MINUTES:-330}
 mkdir -p "$OUT_DIR"; OUT_DIR=$(cd "$OUT_DIR" && pwd)
 CMD="$OUT_DIR/pa_cmd.txt" OUT="$OUT_DIR/pa_out.txt"
 : > "$OUT"
-case "$BOT" in gambit|wasm|bitbot) ;; *) echo "training.sh: BOT is gambit, wasm or bitbot, not $BOT" >&2; exit 2 ;; esac
+case "$BOT" in gambit|wasm) ;; *) echo "training.sh: BOT is gambit or wasm, not $BOT" >&2; exit 2 ;; esac
 # the block each pattern sends (TrainingMenu.lua), checked against what the menu reports before a game starts
 case "$PATTERN" in combo_storm) SIZE=4x1 ;; factory) SIZE=6x2 ;; large_garbage) SIZE=6x12 ;; *) echo "training.sh: PATTERN is combo_storm, factory or large_garbage, not $PATTERN" >&2; exit 2 ;; esac
 
@@ -51,9 +52,6 @@ elif [ "$BOT" = gambit ]; then
   GC_SURVIVOR_PROFILE="$EVAL/${PROFILE:-survivor-profiles/gambit-finish.json}" node "$EVAL/../gambit/words.js" > "$OUT_DIR/gambit.words" || exit 1
   export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$MIND_CPUS"
   : > "$OUT_DIR/survivor.log"
-else
-  # BitBot's library, built for this machine (native/build.sh's line for it)
-  (cd "$EVAL/native" && clang -O3 -march=native -pthread -fPIC -shared -DPA_LIB -Wno-unknown-attributes -Wno-ignored-attributes -Wno-unused-function bit.c pa.c -lm -o libbit.so) || exit 1
 fi
 
 send() { printf '%s\n' "$@" >> "$CMD"; }
@@ -80,16 +78,21 @@ for g in $(seq 1 "$GAMES"); do
   for i in $(seq 1 60); do grep -q '^trainingpattern ' "$OUT" && break; sleep 1; done
   got=$(grep -h '^trainingpattern ' "$OUT" | tail -1 | awk '{print $NF}')
   [ "$got" = "$SIZE" ] || { echo "game $g: the pattern is $got, not $PATTERN ($SIZE)" | tee -a "$OUT_DIR/results.txt"; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null; continue; }
-  send "menusel go_" "waitscene CharacterSelectVsSelf 600" "hold z 40" "wait 30" "trainingloop"
+  send "menusel go_" "waitscene CharacterSelectVsSelf 600" "level $LEVEL"
+  # (the level set on the character select, and checked: a level not set plays the client's saved one)
+  for i in $(seq 1 60); do grep -q '^level ' "$OUT" && break; sleep 1; done
+  lv=$(grep -h '^level ' "$OUT" | tail -1 | awk '{print $2}')
+  [ "$lv" = "$LEVEL" ] || { echo "game $g: the level is ${lv:-unset}, not $LEVEL" | tee -a "$OUT_DIR/results.txt"; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null; continue; }
+  send "hold z 40" "wait 30" "trainingloop"
   while kill -0 $CLIENT 2>/dev/null; do grep -q '^training ' "$OUT" && break; sleep 5; done
   sleep 3; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null
   cp "$OUT" "$OUT_DIR/pa_out-$g.txt"
   r=$(grep -h '^training ' "$OUT" | tail -1); echo "game $g $PATTERN ${r:-no result}" | tee -a "$OUT_DIR/results.txt"
-  # level 10 has one health: the first frame this game's health fell is where a level-10 game is lost
+  # the first frame this game's health fell: where a game of one health (levels 10 and 11) is lost
   [ -s "$OUT_DIR/frames.jsonl.gz" ] && node -e '
     var L = require("zlib").gunzipSync(require("fs").readFileSync(process.argv[1]), { finishFlush: require("zlib").constants.Z_SYNC_FLUSH }).toString().split("\n"), max = 0, at = null;
     for (var i = 0; i < L.length && at === null; i++) { try { var r = JSON.parse(L[i]); } catch (e) { continue; } if (r.health > max) max = r.health; else if (r.health < max) at = r.clock; }
-    console.log("game '"$g"' level10 " + (at === null ? "kept all health" : "lost health at frame " + at));' "$OUT_DIR/frames.jsonl.gz" | tee -a "$OUT_DIR/results.txt"
+    console.log("game '"$g"' level'"$LEVEL"' " + (at === null ? "kept all health" : "lost health at frame " + at));' "$OUT_DIR/frames.jsonl.gz" | tee -a "$OUT_DIR/results.txt"
   grep -h 'not in\|no menu\|TIMEOUT' "$OUT" | sed "s/^/game $g: /" >> "$OUT_DIR/results.txt"
 done
 CLIENT=

@@ -17,7 +17,7 @@ on:
         default: '21600'
       panel_ref:
         description: 'The panel-game branch with AppDriver PA_SURVIVOR and trainingloop'
-        default: 'bramp/multi-player'
+        default: 'claude/newsey-game-ask-qa8u5e'
       report_run:
         description: 'A past run of this workflow: its games written up again, nothing played'
         default: ''
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: briankeegan/panel-game
-          ref: ${{ inputs.panel_ref || 'bramp/multi-player' }}
+          ref: ${{ inputs.panel_ref || 'claude/newsey-game-ask-qa8u5e' }}
           path: panel-game
           fetch-depth: 1
       - uses: actions/setup-node@v4
@@ -56,12 +56,15 @@ jobs:
         timeout-minutes: 15
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
-          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang && break; sleep 10; done
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang luajit zlib1g-dev && break; sleep 10; done
           mkdir -p ~/love2d
           for i in 1 2 3; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep 10; done
           tar -xzf /tmp/love.tar.gz -C ~/love2d
           mv ~/love2d/*.AppImage ~/love2d/love.AppImage
           chmod +x ~/love2d/love.AppImage
+      - name: Gambit sees only what the screen shows
+        timeout-minutes: 2
+        run: luajit games/the-game/ai/gambit/lua/board.test.lua
       - name: Play
         timeout-minutes: 340
         env:
@@ -85,6 +88,11 @@ jobs:
             out/survivor.log
           if-no-files-found: warn
           retention-days: 14
+      # (after the games, so a check that fails turns the run red without stopping a game)
+      - name: Gambit's C checks (the bits, perched blocks, the decisions replayed against the golden)
+        if: always()
+        timeout-minutes: 5
+        run: cd games/the-game/ai/gambit && ./build.sh test
 
   report:
     needs: play
@@ -116,6 +124,8 @@ jobs:
           sed 's/^/::notice title=summary::/' report/summary.txt
           tail -3 report/losses.txt | sed 's/^/::notice title=losses::/'
           grep -h "boards searched again\|moves at the turn" report/reach.txt | sed 's/^/::notice title=reach::/' || true
+          # (the reports whole, in the job's log: readable where the artifact is not)
+          for f in summary losses reach; do echo "===== $f"; cat report/$f.txt; done
           { echo '## Gambit 24'; echo '```'; cat report/summary.txt; echo; tail -3 report/losses.txt; grep -h "boards searched again\|moves at the turn" report/reach.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

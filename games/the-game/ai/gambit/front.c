@@ -7,10 +7,6 @@
 // drops every plan and question made before it. So does garbage shown that the plan was not made knowing, and a broken slab's
 // colours shown.
 
-#define TAP_GAP 4          // frames between taps (cursorMoveFrames)
-#define REPEAT_FIRST 10    // frames from a direction's press to its second cell (the engine's repeat delay)
-#define MIN_LEG 3          // the shortest walk a held key is no later on
-#define FHOLDTIGHT 40      // the actions short of the limit at which every walk of two cells or more is held
 #define STAGING (45 + 45 + 1)   // a sender stages garbage this long, then it lands LAND frames later
 #define LAND 60
 #define PLANN 4096         // frames of plan kept, by clock
@@ -25,7 +21,7 @@ typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys
 // what the worker is asked, and what it answers (native.c carries them across)
 typedef struct {
   int32_t id, epoch, at, lead, allowance, topped, lineFrom, linePressed, holdLeft, holdStarted, narr;
-  int32_t oppHas, oppOut, oppTop;
+  int32_t oppHas, oppOut, oppTop, oppStop;   // the opponent's stop: the frames it is held up by at the question's frame
   double ms, posted;
   Arrival arr[MAXARRIVALS];
   Board *b;
@@ -68,12 +64,13 @@ static struct {
   int32_t nextId;
   // the line after the move, pressed as it was decided: its swaps
   int32_t lineN, line[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
+  int32_t lineMode, altMode;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   double thinking[FTHINK]; int32_t nthinking;
   double msPerFrame, wall;
   // the input budget: its limit and window, the frames the keys still inside it were pressed, the keys held last frame
   int32_t limit, window, pressFrames[512], npress, prevBits;
-  int32_t oppHas, oppOut, oppTop;
+  int32_t oppHas, oppOut, oppTop, oppStop;
   int32_t toppedNow;
   // the attacks made, read off the board as it is shown
   int32_t chainMax, pendCombo[16], npendCombo, matchedIds[MAXROWS * W], nmatched, swapSince;
@@ -251,6 +248,14 @@ static void dropAll(void) {
 
 // The board at `at`, from `b` now, pressing what is planned till then, and the garbage still to land after it (from).
 static int32_t predictErr;   // (the engine's error flags the last prediction failed on, for the log)
+// A RAISE HELD, a frame of it: the engine's own step (search.h raiseStep, its hold-through as Gambit sets it), so the frame loop
+// presses what every search and the judge plan with
+static void holdRaise(Board *b, int32_t *hl, int32_t *hs, int32_t *bits) {
+  Bot h; memset(&h, 0, sizeof h);
+  h.raiseFrames = *hl; h.raiseStarted = *hs;
+  raiseStep(&h, b, bits);
+  *hl = h.raiseFrames; *hs = h.raiseStarted;
+}
 static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdStarted, const Arrival *from, int32_t nfrom, Board *out,
                    int32_t *hL, int32_t *hS) {
   copyBoard(out, b);
@@ -260,11 +265,7 @@ static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdSta
     Planned *p = planOf(out->clock);
     int32_t bits = 0;
     if (p) { bits = p->bits; hl = p->holdLeft; hs = p->holdStarted; }
-    else if (hl > 0) {
-      int started = hs || out->manualRaise;
-      if (out->preventManualRaise || (started && !out->manualRaise)) { hl = 0; hs = started; }
-      else { hl--; hs = started; bits = IN_RAISE; }
-    }
+    else if (hl > 0) holdRaise(out, &hl, &hs, &bits);
     out->input = bits & ~IN_SWAP;
     if (bits & IN_SWAP) out->pressSwap = 1;
     run(out);
@@ -286,22 +287,14 @@ static int keysOf(const Board *b, int32_t holdLeft, int32_t holdStarted, const A
   if (root < 0) return 0;
   static LOCAL int32_t buf[3 * MAXKEYS];
   tape = buf; tapeN = 0; tapeCap = MAXKEYS;
-  // (a swap whose pair still moves is pressed once it is still, as the judge presses it: the frames between are waited, nothing pressed)
-  int node = root, r;
-  for (;;) {
-    int32_t mark = tapeN;
-    r = advance(keyCtx, node, kind, mr, mc, 0);
-    if (r != STEP_NULL || kind != MK_SWAP) break;
-    tapeN = mark;
-    Board *bb = ensureBoard(keyCtx, node);
-    if (!bb || !(hasActivePanels(bb) || bb->swappingCount > 0)) break;
-    int w = advance(keyCtx, node, MK_LONG, 0, 0, 1);
-    if (w < 0 || NODE(keyCtx, w)->dead) break;
-    node = w;
-  }
+  // (a swap whose pair still moves is pressed as the judge presses it: core/nodes.h pressWalk -- the frames before its walk waited, nothing pressed)
+  int from = root, r = kind == MK_SWAP ? pressWalk(keyCtx, root, kind, mr, mc, advance, &from) : advance(keyCtx, root, kind, mr, mc, 0);
+  // (a swap whose walk cannot begin within a reaction -- its pair held up by a pop, say -- is no keys: waited for in the plan, no question
+  // is asked until its keys are done, and the board goes on moving undecided; refused, the next question is asked at once)
+  int32_t waited = from >= 0 ? NODE(keyCtx, from)->t - NODE(keyCtx, root)->t : 0;
   tape = 0;
   ns_reset(keyCtx);
-  if (r == STEP_NULL || r == STEP_ERR) return 0;
+  if (r == STEP_NULL || r == STEP_ERR || from < 0 || waited > F.reaction) return 0;
   k->n = tapeN; k->held = 0;
   for (int i = 0; i < tapeN; i++) { k->ins[i] = buf[3 * i]; k->hl[i] = buf[3 * i + 1]; k->hs[i] = buf[3 * i + 2]; }
   return 1;
@@ -312,15 +305,10 @@ static void fHoldWalks(Keys *k) {
   Keys o = *k;
   int held = 0, i = 0, n0 = k->n;
   while (i < n0) {
-    int32_t v = k->ins[i], dir = v & 15;
-    if (!dir || (dir & (dir - 1)) || i + 1 >= n0 || (k->ins[i + 1] & 15) || (v & ~15) != k->ins[i + 1]) { i++; continue; }
-    int32_t base = k->ins[i + 1];
-    int n = 1, p = i;
-    while (p + TAP_GAP < n0 && k->ins[p + TAP_GAP] == v && k->ins[p + 1] == base && k->ins[p + 2] == base && k->ins[p + 3] == base) { p += TAP_GAP; n++; }
-    int last = i + n + REPEAT_FIRST - 2, end = p;
-    while (end + 1 < n0 && end + 1 <= p + TAP_GAP - 1 && k->ins[end + 1] == base) end++;
-    if (n >= MIN_LEG && last <= end) { for (int f = i; f <= end; f++) o.ins[f] = f <= last ? v : base; held++; }
-    i = p + 1;
+    Leg L;
+    if (!walkLeg(k->ins, n0, i, &L)) { i++; continue; }
+    if (L.cells >= MIN_LEG && L.last <= L.end) { for (int f = i; f <= L.end; f++) o.ins[f] = f <= L.last ? L.v : L.base; held++; }
+    i = L.p + 1;
   }
   o.held = held;
   *k = o;
@@ -333,17 +321,12 @@ static void fSlowWalks(Keys *k) {
   o.n = 0;
 #define PUSH(v, f) do { if (o.n < MAXKEYS) { o.ins[o.n] = (v); o.hl[o.n] = k->hl[f]; o.hs[o.n] = k->hs[f]; o.n++; } } while (0)
   while (i < n0) {
-    int32_t v = k->ins[i], dir = v & 15;
-    if (!dir || (dir & (dir - 1)) || i + 1 >= n0 || (k->ins[i + 1] & 15) || (v & ~15) != k->ins[i + 1]) { PUSH(v, i); i++; continue; }
-    int32_t base = k->ins[i + 1];
-    int n = 1, p = i;
-    while (p + TAP_GAP < n0 && k->ins[p + TAP_GAP] == v && k->ins[p + 1] == base && k->ins[p + 2] == base && k->ins[p + 3] == base) { p += TAP_GAP; n++; }
-    int last = i + n + REPEAT_FIRST - 2, end = p;
-    while (end + 1 < n0 && end + 1 <= p + TAP_GAP - 1 && k->ins[end + 1] == base) end++;
-    if (n < 2) { for (int f = i; f <= end; f++) PUSH(k->ins[f], f); i = end + 1; continue; }
-    for (int g = i; g <= imax(last, end); g++) PUSH(g <= last ? v : base, imin(g, end));
+    Leg L;
+    if (!walkLeg(k->ins, n0, i, &L)) { PUSH(k->ins[i], i); i++; continue; }
+    if (L.cells < 2) { for (int f = i; f <= L.end; f++) PUSH(k->ins[f], f); i = L.end + 1; continue; }
+    for (int g = i; g <= imax(L.last, L.end); g++) PUSH(g <= L.last ? L.v : L.base, imin(g, L.end));
     held++;
-    i = end + 1;
+    i = L.end + 1;
   }
 #undef PUSH
   o.held = held;
@@ -392,18 +375,7 @@ static void countActions(int32_t bits, int32_t now) {
   if (k > F.st.maxWindow) F.st.maxWindow = k;
   if (k > F.limit) F.st.overInput++;
 }
-// The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be.
-static int actionsFor(int row, int col, int r, int c, int left) {
-  int tight = left <= FHOLDTIGHT, legs[2], nl = 0, cost = 1;
-  if (abs(c - col)) legs[nl++] = abs(c - col);
-  if (abs(r - row)) legs[nl++] = abs(r - row);
-  for (int k = 0; k < nl; k++) {
-    int n = legs[k], inner = k < nl - 1;
-    cost += tight ? (n >= 2 ? 1 : n) : (n >= MIN_LEG + 1 || (n == MIN_LEG && inner)) ? 1 : n;
-  }
-  return cost;
-}
-static void walkKeys(Keys *k, int32_t at) { if (allowanceAt(at) <= FHOLDTIGHT) fSlowWalks(k); else fHoldWalks(k); }
+static void walkKeys(Keys *k, int32_t at) { if (allowanceAt(at) <= HOLDTIGHT) fSlowWalks(k); else fHoldWalks(k); }
 
 // ---------------------------------------------------------------- pacing
 // How soon an answer can be had, in frames: half again the slowest of the last few.
@@ -439,7 +411,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
   q.allowance = allowanceAt(at); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
-  q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop;
+  q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop; q.oppStop = imax(0, F.oppStop - (at - F.now));
   q.b = F.pBoard;
   postQuestion(&q);
   F.st.decisions++;
@@ -469,14 +441,15 @@ static void take(void) {
     // line that lives and is no hold, is played on, from the frame it was asked for, each swap checked by the keys it makes)
     if (a.kind == 0 && a.empty) {
       F.st.starved++;
-      if (!F.lineN && F.nalt) { F.lineN = F.nalt; for (int i = 0; i < F.nalt; i++) F.line[i] = F.alt[i]; F.nalt = 0; F.haveLineOf = 0; }
+      if (F.nalt && F.altMode != modeAt(at)) F.nalt = 0;
+      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineN = F.nalt; for (int i = 0; i < F.nalt; i++) F.line[i] = F.alt[i]; F.nalt = 0; F.haveLineOf = 0; }
       if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
     }
-    if (!a.empty) { F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
+    if (!a.empty) { F.altMode = modeAt(a.at); F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
     if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
       F.st.refused++;
-      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
+      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
       continue;
     }
     // (a raise held down: the button stays down for the frames it takes to bring the rows in, and raiseAfter after them)
@@ -499,7 +472,7 @@ static void take(void) {
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
-    F.lineN = a.nhand; for (int i = 0; i < a.nhand; i++) F.line[i] = a.hand[i];
+    F.lineN = a.nhand; F.lineMode = modeAt(a.at); for (int i = 0; i < a.nhand; i++) F.line[i] = a.hand[i];
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0;
   }
 }
@@ -507,6 +480,7 @@ static void take(void) {
 static int follow(void) {
   static Keys k;
   if (!F.lineN) return 0;
+  if (modeAt(F.nextAt) != F.lineMode) { F.lineN = 0; return 0; }
   int32_t mv = F.line[0], hl, hs;
   if (!predict(F.expect, F.nextAt, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) { F.lineN = 0; return 0; }
   if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) { F.lineN = 0; return 0; }
@@ -581,9 +555,10 @@ static int frontFrame(void) {
       flog(l); F.loggedDiffer++;
     }
   }
-  // (colours dealt into the row not yet risen: no planned swap touches it, so the plan stands -- a board it does change is caught as one
-  // that differs -- and only the question out, asked without them, is asked again)
-  if (!diverged && F.haveExpect && revealed(F.expect, t)) { if (F.pending) { abortTo(F.pId); F.pending = 0; } F.st.revealed++; }
+  // (colours shown where the board had them unseen -- a broken slab's, a cell at a time as it pops: the plan stands and so does the
+  // question out -- a swap is where it is whatever the colour, and a board the colour does change is caught as one that differs. Asked
+  // again on every colour shown, a slab popping would leave no question answered until it is done.)
+  if (!diverged && F.haveExpect && revealed(F.expect, t)) F.st.revealed++;
   int32_t off = t->clock - t->stopWatch;
   if (F.nextAt > now && unforeseenBy(F.knew, F.nknew, F.arr, F.narr, F.nextAt - off)) { dropAll(); F.st.unforeseen++; }
   if (F.pending && unforeseenBy(F.pKnew, F.pNknew, F.arr, F.narr, F.pAt - off)) { abortTo(F.pId); F.pending = 0; F.st.reasked++; }
@@ -593,11 +568,7 @@ static int frontFrame(void) {
   if (p) { bits = p->bits; F.holdLeft = p->holdLeft; F.holdStarted = p->holdStarted; planDrop(now); }
   else {
     bits = 0;
-    if (F.holdLeft > 0) {
-      int started = F.holdStarted || t->manualRaise;
-      if (t->preventManualRaise || (started && !t->manualRaise)) { F.holdLeft = 0; F.holdStarted = started; }
-      else { bits = IN_RAISE; F.holdLeft--; F.holdStarted = started; }
-    }
+    if (F.holdLeft > 0) holdRaise(t, &F.holdLeft, &F.holdStarted, &bits);
     F.st.idle++;
   }
   // (never raised while topped out: the raise is let go, and what was planned with it dropped)

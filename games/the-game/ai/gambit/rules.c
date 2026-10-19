@@ -15,6 +15,10 @@ typedef struct { int32_t op, n, near; } Test;
 // brk: -1 not asked, 0 a line that breaks nothing, 1 a line that breaks
 typedef struct { Test combo, chain, send; int32_t brk; } Aim;
 typedef struct { Aim aim[MAXAIMS]; int32_t n; } List;
+// THE PROFILE'S FLAGS (its `flags`, by name -- words.js FLAGS, answer.c gb_flags), each a way of play measured before it is anyone's:
+//   keep    of two lines that do not live and outlive the next decision alike, the one whose panels leave the board more life first
+enum { FLAG_KEEP = 2 };
+static int32_t gbFlags;
 typedef struct { int32_t combo, chain, broke, cells; } Made;
 
 static int test(double v, Test t) {
@@ -50,10 +54,11 @@ static int fits(const List *L, Made m) {
   for (int i = 0; i < L->n; i++) { Aim plain = L->aim[i]; plain.brk = -1; if (meets(&plain, m)) return 1; }
   return 0;
 }
-// A MOVE'S PLACE IN THE LIST: the first entry its clears match (its break aside); -1 for one that clears nothing, or a plain three
-static int entryOf(const List *L, Made m) {
+// A MOVE'S PLACE IN THE LIST: the first entry it meets, its break as the entry asks it (under garbage every entry asks one), as the
+// searches ask it (meets); -1 for one that clears nothing or meets none. The rank's one question of the list's order.
+static int metOf(const List *L, Made m) {
   if (!(m.combo > 0 || m.chain > 0)) return -1;
-  for (int i = 0; i < L->n; i++) { Aim plain = L->aim[i]; plain.brk = -1; if (meets(&plain, m)) return i; }
+  for (int i = 0; i < L->n; i++) if (meets(&L->aim[i], m)) return i;
   return -1;
 }
 // THE LIST FOR ONE STEP ON THE ENGINE (JUDGE.stepFits): each of its own clears fits as a clear of its own, and the chain it reaches
@@ -72,6 +77,11 @@ static int32_t comboCells(int32_t size) {
   if (size < 16) return CELLS[size];
   return size < 20 ? 24 : size < 27 ? 36 : 48;
 }
+// THE BLOCKS A LINE THROWS: its combo's pieces of combo garbage (the same table, a piece a row) and a slab for every link past the first
+static int32_t blocksOf(int32_t combo, int32_t chain) {
+  int32_t pieces = combo < 4 ? 0 : combo < 8 ? 1 : combo < 13 ? 2 : combo < 14 ? 3 : combo < 20 ? 4 : combo < 27 ? 6 : 8;
+  return pieces + (chain > 1 ? chain - 1 : 0);
+}
 
 // THE LIST FROM THE HOST: n entries, each ten words -- combo, chain and send (each op, n, near) and break -- in the io body (the loader
 // writes them from the rules file).
@@ -88,7 +98,7 @@ EXPORT(gb_list) int gb_list(int n) {
 }
 // (for a host's check: what fits and meets say of a made line)
 EXPORT(gb_fits) int gb_fits(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return fits(&theList, m); }
-EXPORT(gb_entry_of) int gb_entry_of(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return entryOf(&theList, m); }
+EXPORT(gb_entry_of) int gb_entry_of(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return metOf(&theList, m); }
 EXPORT(gb_meets) int gb_meets(int i, int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return i >= 0 && i < theList.n && meets(&theList.aim[i], m); }
 
 // A SWAP BACK: the same two panels the last swap swapped, which puts the board back as it was -- no play,
