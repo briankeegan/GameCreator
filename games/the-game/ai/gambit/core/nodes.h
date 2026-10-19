@@ -113,14 +113,14 @@ static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 // it, and none taken once the clock is out -- so a search that takes its batch in order, and stops where it would have stopped, makes
 // the same children and spends the same clock as one step at a time. With no workers, a batch too small to share, or a swap whose press
 // waits its walk first (pressDelay), the step is made when it is taken.
-// A search run as a job on the threads (decide.c readyJob) is a thread's whole: its steps are its own, never a batch.
+// A search run as a job on the threads (search/break.c readyJob) is a thread's whole: its steps are its own, never a batch; and while jobs
+// hold the pool (search.h poolBusy) the decision's own steps are made one at a time.
 #define UNBATCHED (-97)
 static Vec batchTasks, batchRes, batchDead;
 static LOCAL int batchN;
-static LOCAL int inJob;
 static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int kind, int n) {
   batchN = 0;
-  if (inJob || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
+  if (inJob || poolBusy || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
   batchTasks.n = 0;
   for (int j = 0; j < n; j++) {
     int mr = CR(moves[j]), mc = CC(moves[j]);

@@ -551,18 +551,23 @@ static void readyShare(int asks) { readyShareMs = asks > 0 ? leftMsOf() / (2.0 *
 // the same board the next decision's line lands on whenever nothing new was told -- the engine predicts every frame -- so the break
 // found on it is found again. Keyed by the whole board as it plays on (its state, the garbage queued, the rows it is fed: the step's
 // counts and the caches that are no part of it left out), the blocks still on their way, the hold and the press: a board that differs
-// anywhere is a board searched afresh. Only a break found is kept -- "none" is the time the search had, not the board.
-#define READYN 128
+// anywhere is a board searched afresh -- new information repairs the table by itself. Only a break found is kept -- "none" is the time
+// the search had, not the board. Shared by every thread (the jobs beside the decision write it), under one lock.
+#define READYN 512
+#define READYKEYMAX (sizeof(Board) + sizeof(int32_t) * (4 + 5 * MAXARR))
 typedef struct { uint32_t h; int32_t nbytes, whyN, at; int32_t why[MAXLINE]; unsigned char *bytes; } ReadyKept;
 static ReadyKept readyKept[READYN];
+static int32_t readyLock;
 static unsigned char *readyKeyBuf;
 static int32_t readyClock, readyAsked, readyHit;   // (the log's: asked and found kept, this decision)
+static void readyLockOn(void) { while (__atomic_exchange_n(&readyLock, 1, __ATOMIC_ACQUIRE)) {} }
+static void readyLockOff(void) { __atomic_store_n(&readyLock, 0, __ATOMIC_RELEASE); }
 static int readyKey(const Board *b, const Node *nd, int32_t tight, uint32_t *h) {
   static LOCAL Board canon;
   unsigned long head = BOARD_HEAD, inc = (unsigned long)b->ninc * sizeof(Incoming), rows = (unsigned long)b->nrows * sizeof(Panel) * (W + 1);
   unsigned long extra = sizeof(int32_t) * (4 + 5 * MAXARR), need = head + inc + rows + extra;
-  if (!readyKeyBuf) readyKeyBuf = (unsigned char *)grab(sizeof(Board) + extra);
-  if (!readyKeyBuf || need > sizeof(Board) + extra) return 0;
+  if (!readyKeyBuf) readyKeyBuf = (unsigned char *)grab(READYKEYMAX);
+  if (!readyKeyBuf || need > READYKEYMAX) return 0;
   memcpy(&canon, b, head);
   canon.quiet = canon.noQuiet = canon.hi = canon.cdLeft = canon.popSeen = 0; memset(canon.rowActive, 0, sizeof canon.rowActive);
   memset(canon.sCombo, 0, sizeof canon.sCombo); memset(canon.sChainAt, 0, sizeof canon.sChainAt);
@@ -581,17 +586,28 @@ static int readyKey(const Board *b, const Node *nd, int32_t tight, uint32_t *h) 
   *h = hh;
   return nb;
 }
-static ReadyKept *readyFind(uint32_t h, int32_t nb) {
+// (the break kept for the key `key` (nb bytes, hash h): 1 and its line in why, else 0)
+static int readyFind(uint32_t h, const unsigned char *key, int32_t nb, int32_t *why, int32_t *whyN) {
+  readyLockOn();
   ReadyKept *e = &readyKept[h % READYN];
-  return e->bytes && e->h == h && e->nbytes == nb && !memcmp(e->bytes, readyKeyBuf, (unsigned long)nb) ? e : 0;
+  int hit = e->bytes && e->h == h && e->nbytes == nb && !memcmp(e->bytes, key, (unsigned long)nb);
+  if (hit && why) { for (int i = 0; i < e->whyN; i++) why[i] = e->why[i]; *whyN = e->whyN; }
+  readyLockOff();
+  return hit;
 }
-static void readyKeep(uint32_t h, int32_t nb, const int32_t *why, int32_t whyN) {
+static void readyKeep(uint32_t h, const unsigned char *key, int32_t nb, const int32_t *why, int32_t whyN) {
+  unsigned char *fresh = 0;
+  if (!readyKept[h % READYN].bytes) fresh = (unsigned char *)grab(READYKEYMAX);
+  readyLockOn();
   ReadyKept *e = &readyKept[h % READYN];
-  if (!e->bytes) e->bytes = (unsigned char *)grab(sizeof(Board) + sizeof(int32_t) * (4 + 5 * MAXARR));
-  if (!e->bytes) return;
-  memcpy(e->bytes, readyKeyBuf, (unsigned long)nb); e->h = h; e->nbytes = nb; e->whyN = whyN;
-  for (int i = 0; i < whyN && i < MAXLINE; i++) e->why[i] = why[i];
+  if (!e->bytes) e->bytes = fresh;
+  if (e->bytes) {
+    memcpy(e->bytes, key, (unsigned long)nb); e->h = h; e->nbytes = nb; e->whyN = whyN;
+    for (int i = 0; i < whyN && i < MAXLINE; i++) e->why[i] = why[i];
+  }
+  readyLockOff();
 }
+static void readyKeptClear(void) { readyLockOn(); for (int i = 0; i < READYN; i++) readyKept[i].h = 0, readyKept[i].nbytes = 0; readyLockOff(); }
 // THE BREAK SEARCH ASKED FOR READINESS, on question q until `by`: 1 a break (its line in line, *k), 0 none in the time, NOT_ASKED the
 // decision's time out. Every thread's: what it reads is the question and its own nodes.
 static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t *k) {
@@ -609,17 +625,19 @@ static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t 
   else if (rb.nmoves) line[(*k)++] = rb.moves[0];
   return 1;
 }
-// THE READINESS ASKED ON EVERY THREAD (plans/gambit-infra.md E): while a decision first judges its options (readyDefer), each landed
-// board a readiness check will be asked of is kept here (readyPendOf), keyed as the breaks already found are; decide.c readyAhead then
-// searches them all at once, one a thread at a time, best-ranked first (readyJob), and the checks that follow read the answers here --
-// a break found, or none in the time it had. Only with workers: on one thread the checks are asked one after another, as they always
-// were.
+// THE READINESS SEARCHED BESIDE THE DECISION (plans/gambit-infra.md E, lazy SMP): while a decision first judges its options (readyDefer),
+// each landed board a readiness check will be asked of is kept here (readyPendOf), keyed as the breaks already found are. The workers
+// then search them beside the decision (decide.c readySpread: worst-ranked first, each the time the searches have left), while the
+// decision asks them best-ranked first in its own shares, exactly as with no workers: whichever thread begins a board first searches
+// it (its state claimed), and the other reads the answer -- a break found, or none in the time it had. A worker's break is kept across
+// decisions as any is. Only with workers.
 #define READYPEND 48
 typedef struct { int32_t gen, h, nb, tight, state, whyN, why[MAXLINE]; Node nd; Question q; unsigned char *key; } ReadyPend;
 #define PEND_WAITING 0
 #define PEND_FOUND 1
 #define PEND_NONE 2
 #define PEND_OUT 3
+#define PEND_BUSY 4   // (being searched)
 static ReadyPend readyPend[READYPEND];
 static int32_t readyPendN, readyPendGen, readyPre;   // (readyPre: the checks answered here, this decision -- the log's)
 static void readyPendClear(void) { readyPendN = 0; readyPendGen++; readyPre = 0; }
@@ -630,18 +648,18 @@ static ReadyPend *readyPendFind(uint32_t h, int32_t nb) {
   }
   return 0;
 }
-// (node n's board kept to be searched ahead: its index + 1, 0 when it is not -- no room, a break already found, or no key)
+// (node n's board kept to be searched beside the decision: its index + 1, 0 when it is not -- no room, a break already found, no key)
 static int32_t readyPendOf(Ctx *x, int n) {
   Board *b = ensureBoard(x, n);
   if (!b) return 0;
   uint32_t kh = 0;
   int32_t kn = readyKey(b, NODE(x, n), decQ.tight, &kh);
-  if (!kn || readyFind(kh, kn)) return 0;
+  if (!kn || readyFind(kh, readyKeyBuf, kn, 0, 0)) return 0;
   ReadyPend *p = readyPendFind(kh, kn);
   if (p) return (int32_t)(p - readyPend) + 1;
   if (readyPendN >= READYPEND) return 0;
   p = &readyPend[readyPendN];
-  if (!p->key) p->key = (unsigned char *)grab(sizeof(Board) + sizeof(int32_t) * (4 + 5 * MAXARR));
+  if (!p->key) p->key = (unsigned char *)grab(READYKEYMAX);
   if (!p->q.b) p->q.b = (Board *)grab(sizeof(Board));
   if (!p->key || !p->q.b) return 0;
   memcpy(p->key, readyKeyBuf, (unsigned long)kn); p->h = (int32_t)kh; p->nb = kn;
@@ -653,6 +671,7 @@ static int32_t readyPendOf(Ctx *x, int n) {
   readyPendN++;
   return readyPendN;
 }
+static int pendClaim(ReadyPend *p) { int32_t w = PEND_WAITING; return __atomic_compare_exchange_n(&p->state, &w, PEND_BUSY, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE); }
 static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   if (breakBusy) return NOT_ASKED;
   Board *b = ensureBoard(x, n);
@@ -660,11 +679,13 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   uint32_t kh = 0;
   int32_t kn = readyKey(b, NODE(x, n), decQ.tight, &kh);
   readyAsked++;
-  if (kn) { ReadyKept *e = readyFind(kh, kn); if (e) { readyHit++; if (why) { for (int i = 0; i < e->whyN; i++) why[i] = e->why[i]; *whyN = e->whyN; } return 1; } }
-  if (kn && readyPendN) {
-    ReadyPend *p = readyPendFind(kh, kn);
-    if (p && p->state == PEND_NONE) { readyPre++; return 0; }
-    if (p && p->state == PEND_FOUND) { readyPre++; if (why) { for (int i = 0; i < p->whyN; i++) why[i] = p->why[i]; *whyN = p->whyN; } return 1; }
+  if (kn && readyFind(kh, readyKeyBuf, kn, why, whyN)) { readyHit++; return 1; }
+  ReadyPend *p = kn && readyPendN ? readyPendFind(kh, kn) : 0;
+  if (p) {
+    int32_t st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE);
+    if (st == PEND_NONE) { readyPre++; return 0; }
+    if (st == PEND_FOUND) { readyPre++; if (why) { for (int i = 0; i < p->whyN; i++) why[i] = p->why[i]; *whyN = p->whyN; } return 1; }
+    if (!(st == PEND_WAITING && pendClaim(p))) p = 0;   // (begun beside the decision: searched here too, as it would be alone)
   }
   static Question q;
   memset(&q, 0, sizeof q);
@@ -672,37 +693,29 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
   int32_t line[MAXLINE], k = 0;
   int32_t r = readySearch(&q, nowMs() + (readyShareMs >= 0 ? readyShareMs : leftMsOf() / 2), line, &k);
+  if (p) { if (r == 1) { for (int i = 0; i < k; i++) p->why[i] = line[i]; p->whyN = k; } __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE); }
   if (r != 1) return r;
   if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }
   // (the board as keyed before the search: the break search plays it, so it is keyed again from the node)
-  if (kn && readyKey(ensureBoard(x, n), NODE(x, n), decQ.tight, &kh) == kn) readyKeep(kh, kn, line, k);
+  if (kn && readyKey(ensureBoard(x, n), NODE(x, n), decQ.tight, &kh) == kn) readyKeep(kh, readyKeyBuf, kn, line, k);
   return 1;
 }
-// THE JOBS: readyAhead's pending boards in the order it hands them (readyJobs), each searched on whichever thread takes it in its share
-// of the time the decision has left -- the time over the jobs not yet begun, as one thread's checks share it, times the threads that
-// share them -- and at most half of it. A worker's clock begins at the work the decision had done (the replay's clock runs on it).
-static int32_t readyJobs[READYPEND], readyJobsLeft, readyJobThreads;
+// THE JOBS: readySpread's boards in the order it hands them (readyJobs), each searched on whichever worker takes it, if no thread has
+// begun it, until its search is done -- or until the next decision takes the pool back (jobStop). A worker's clock begins at the work
+// the decision had done (the replay's clock runs on it).
+static int32_t readyJobs[READYPEND];
 static int64_t readyJobWork;
+static double readyJobEnd;
 static void readyJob(int32_t i) {
   ReadyPend *p = &readyPend[readyJobs[i]];
-  int32_t tight = pressTight;
-  if (thId != 0) { clockWork = readyJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0; }
+  if (!pendClaim(p)) return;
+  clockWork = readyJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
   inJob = 1; pressTight = p->tight;
-  int32_t left = __atomic_sub_fetch(&readyJobsLeft, 1, __ATOMIC_SEQ_CST) + 1;
-  double ms = leftMsOf(), share = ms * readyJobThreads / (2.0 * left);
-  if (share > ms / 2) share = ms / 2;
-  int32_t r = ms > 0 ? readySearch(&p->q, nowMs() + share, p->why, &p->whyN) : NOT_ASKED;
-  p->state = r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT;
-  inJob = 0; pressTight = tight;
-}
-// (the jobs done: every break found kept across decisions, as one found one at a time is)
-static void readyJobsKept(int n) {
-  for (int i = 0; i < n; i++) {
-    ReadyPend *p = &readyPend[readyJobs[i]];
-    if (p->state != PEND_FOUND) continue;
-    memcpy(readyKeyBuf, p->key, (unsigned long)p->nb);
-    readyKeep((uint32_t)p->h, p->nb, p->why, p->whyN);
-  }
+  int32_t line[MAXLINE], k = 0;
+  int32_t r = readySearch(&p->q, readyJobEnd, line, &k);
+  inJob = 0;
+  if (r == 1) { for (int q = 0; q < k; q++) p->why[q] = line[q]; p->whyN = k; readyKeep((uint32_t)p->h, p->key, p->nb, line, k); }
+  __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE);
 }
 static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN) = readyBreakOf;
 // for a tool that reads a logged board: the fewest swaps to the nearest break on the question's board (NEAR_MISS or more: none)

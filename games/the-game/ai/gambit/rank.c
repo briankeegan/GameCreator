@@ -9,7 +9,9 @@ typedef struct {
   int32_t set, play, nseq, seq[MAXLINE], aim, extend, settled;
   int32_t grown;   // a line another proposed, one more panel walked into its match (propose.c growLines)
   int32_t drop;    // a perched block let down (search/break.c perchedDrops)
+  int32_t kept;    // an intention the last decision kept, found again (decide.c keptJudged)
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
+  int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -254,11 +256,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // made from
     int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact;
     if (bx != by) return bx ? -1 : 1;
-    // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave) and neither leaves the
-    // board a break's time more than the other: those survive alike, and the material, the saving and the list decide between them before
-    // the later loss does (10). A line that buys the board another break's time is never given up for the kind of line.
-    double gap = lostOf(x) - lostOf(y); if (gap < 0) gap = -gap;
-    int alike = lostOf(x) >= rankSave && lostOf(y) >= rankSave && gap < rankSave;
+    // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
+    // the material, the saving and the list decide between them before the later loss does (10)
+    int alike = lostOf(x) >= rankSave && lostOf(y) >= rankSave;
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
@@ -285,7 +285,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (tx.tier != ty.tier) return tx.tier - ty.tier;
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
   for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return tx.sub[q] < ty.sub[q] ? -1 : 1;
-  // 10. THE NEARER FIRST SWAP: of two lines every key leaves equal, the one whose first swap the cursor reaches in fewer actions
+  // 10. THE PLAN KEPT (plans/gambit-infra.md F, stable): of two lines every key leaves equal, the one the last decision kept (an
+  // intention) -- a plan that does not thrash is one the cursor does not swing for
+  if (x->k.kept != y->k.kept) return x->k.kept ? -1 : 1;
+  // 11. THE NEARER FIRST SWAP: of two lines every key leaves equal, the one whose first swap the cursor reaches in fewer actions
   // (core/nodes.h actionsFor, as the frame loop walks) -- the hold presses nothing, nearest of all
   { int nx = firstWalk(x), ny = firstWalk(y); if (nx != ny) return nx - ny; }
   return 0;

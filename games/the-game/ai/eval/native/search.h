@@ -790,7 +790,7 @@ static struct {
 #ifndef SPIN
 #define SPIN 200000
 #endif
-#define JOB_TASK (-5)      // a task's move: pool.job(t[0]), a whole piece of work on the thread that takes it (runJobs)
+#define JOB_TASK (-5)      // a task's move: pool.job(t[0]), a whole piece of work on the thread that takes it (startJobs)
 #define REPLAY_TASK (-3)   // a task's move: play node t[0]'s board again from its parent (replayBoard)
 #define SWAPS_TASK (-4)    // a task's move: node t[0]'s t[2] swaps, moves and slots from t[3] (advanceSwaps)
 // The most swaps one SWAPS_TASK takes, of a phase of n steps: few enough that
@@ -955,18 +955,26 @@ static int32_t awaitSlot(int32_t *slot) {
   }
   return v;
 }
-// JOBS ON EVERY THREAD: n whole pieces of work, job(0) .. job(n - 1), taken by the threads in that order, this one joining in; back when
-// all are done. Each job works on nodes of its own thread's (none of x's), so no task count is reserved.
-static int runJobs(Ctx *x, void (*job)(int32_t), int32_t n) {
-  static Vec tasks, res;
-  if (n <= 0) return 1;
-  if (!vreserve(&tasks, 4 * n) || !vreserve(&res, n)) return 0;
-  tasks.n = 0;
-  for (int32_t i = 0; i < n; i++) { tasks.a[tasks.n++] = i; tasks.a[tasks.n++] = JOB_TASK; tasks.a[tasks.n++] = 0; tasks.a[tasks.n++] = i; res.a[i] = PENDING; }
+// JOBS BESIDE THIS THREAD: n whole pieces of work, job(0) .. job(n - 1), handed to the other threads in that order while this one goes on
+// with its own (startJobs); jobsDone takes back every job not begun and waits for those begun. Each job works on its own thread's
+// nodes (none of x's). While they run the pool is theirs: poolBusy, and no phase is started on it (core/nodes.h stepBatch).
+static int32_t poolBusy;
+static Vec jobTasks, jobRes;
+static int startJobs(Ctx *x, void (*job)(int32_t), int32_t n) {
+  if (n <= 0 || pool.nworkers <= 0 || poolBusy) return 0;
+  if (!vreserve(&jobTasks, 4 * n) || !vreserve(&jobRes, n)) return 0;
+  jobTasks.n = 0;
+  for (int32_t i = 0; i < n; i++) { jobTasks.a[jobTasks.n++] = i; jobTasks.a[jobTasks.n++] = JOB_TASK; jobTasks.a[jobTasks.n++] = 0; jobTasks.a[jobTasks.n++] = i; jobRes.a[i] = PENDING; }
   pool.job = job;
-  int ok = runPhase(x, &tasks, res.a);
-  pool.job = 0;
-  return ok;
+  if (!startPhase(x, &jobTasks, jobRes.a, 0)) { pool.job = 0; return 0; }
+  poolBusy = 1;
+  return 1;
+}
+static void jobsDone(Ctx *x) {
+  if (!poolBusy) return;
+  __atomic_store_n(&pool.next, pool.ntasks, __ATOMIC_SEQ_CST);   // (the jobs not begun: begun by no thread)
+  finishPhase(x);
+  pool.job = 0; poolBusy = 0;
 }
 // Steps on every thread: the io body holds n records (parent, kind, row,
 // col, frames), each the step ns_advance would make from them. Out, in the io

@@ -22,7 +22,7 @@ on:
         description: 'A past run of this workflow: its games written up again, nothing played'
         default: ''
       workers:
-        description: "Gambit's worker threads (GC_GAMBIT_WORKERS; none when empty)"
+        description: "Gambit's worker threads (GC_GAMBIT_WORKERS; 0 none, empty the cores less two)"
         default: ''
       bot:
         description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'

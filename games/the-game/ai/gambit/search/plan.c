@@ -27,10 +27,24 @@ typedef struct {
   double dies;               // 0: none
   int32_t breakAtSwap;
   double ms;                 // the planner's share, ms
+  const Paths *seeds;        // the lines the last decision's plan ended with, the swaps played since taken off (answer.c plannedPaths)
 } PlanOpts;
 typedef struct { PLine perAim[MAXAIMS], nearest, quick, lowest, stopBest; int32_t setup; double ms; int32_t base; } Plan;
 
 static Ctx *planCtx;
+// THE PLAN KEPT (plans/gambit-infra.md F, as tree reuse keeps the subtree under the move played): the lines a plan ends with -- each
+// entry's best, the nearest, the quickest break, the lowest, the longest stop, and the beam's last boards -- kept (planOut) for the next
+// decision, which begins its beam from them as well as from its root (the seeds): what was searched is searched on, deeper, not again.
+// Each seed is played again on the new board, every step within the rules, so new information repairs it or lets it go.
+static Paths planOut;
+static int32_t planSeeded;   // (the seeds the plan began from, this decision -- the log's)
+static int32_t planSeedsHave; static Paths planSeeds;   // (this decision's seeds: answer.c plannedPaths)
+static void planKeep(const int32_t *seq, int n) {
+  if (planOut.n >= KEEPN || n <= 0 || n > MAXPATH) return;
+  for (int i = 0; i < planOut.n; i++) if (planOut.len[i] == n && !memcmp(planOut.path[i], seq, sizeof seq[0] * (unsigned long)n)) return;
+  planOut.len[planOut.n] = n; for (int k = 0; k < n; k++) planOut.path[planOut.n][k] = seq[k];
+  planOut.n++;
+}
 // how connected a board is: like colours side by side, and (twice) one above the other
 static int32_t connectedOf(const Board *b) {
   int R = gridLen(b), n = 0;
@@ -103,6 +117,24 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   PItem *pool = poolA, *next = poolB;
   int npool = 1;
   memset(&pool[0], 0, sizeof pool[0]); pool[0].n = root; pool[0].h = rootH;
+  // (THE SEEDS: the kept plan's lines played again from the root, each step to its settle and within the rules, its first no swap back;
+  // a line the new board no longer allows is let go)
+  planSeeded = 0;
+  for (int i = 0; o->seeds && i < o->seeds->n && npool < PLAN_POOL && !clockOut(); i++) {
+    int len = o->seeds->len[i], nd = root, ok = 1;
+    if (len < 1 || len >= PLAN_SEQ) continue;
+    PItem it; memset(&it, 0, sizeof it);
+    for (int k = 0; k < len && ok; k++) {
+      int32_t m = o->seeds->path[i][k], at = NODE(x, nd)->t;
+      int out = step(x, nd, MK_SETTLE, CR(m), CC(m), 0);
+      if (!liveNode(x, out) || !stepFitsAt(x, out)) { ok = 0; break; }
+      if (!k) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(m), CC(m), NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) { ok = 0; break; } }
+      it.seq[k] = m; it.ats[k] = at; nd = out;
+    }
+    if (!ok) continue;
+    it.n = nd; it.nseq = len; it.h = connectedOf(ensureBoard(x, nd));
+    pool[npool++] = it; planSeeded++;
+  }
   int na = o->aims ? o->aims->n : 0;
   for (int d = 1; d <= o->depth && npool && !clockOut(); d++) {
     int nk = 0, nj = 0;
@@ -236,6 +268,11 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     if (P->nearest.set && !readyAfter(x, P->nearest.n, o->readyAt)) P->nearest.set = 0;
   }
   if (!haveSetup) P->setup = 0;
+  // (the plan kept for the next decision: the lines it found, then the beam's last boards, most connected first)
+  planOut.n = 0;
+  for (int ai = 0; ai < na; ai++) if (P->perAim[ai].set) planKeep(P->perAim[ai].seq, P->perAim[ai].nseq);
+  { const PLine *ls[] = { &P->nearest, &P->quick, &P->lowest, &P->stopBest }; for (int q2 = 0; q2 < 4; q2++) if (ls[q2]->set) planKeep(ls[q2]->seq, ls[q2]->nseq); }
+  for (int q2 = 0; q2 < npool; q2++) planKeep(pool[q2].seq, pool[q2].nseq);
   P->ms = nowMs() - t0;
   clockShareEnd(shareOld);
   #undef BROKE_OF

@@ -137,6 +137,24 @@ workerMain) took the engine's thread id 1, the first worker's, so the two shared
 Measured (`880cca5b`, two workers, finish): 14 of 24 against 17 with none; the readiness checks fell from 12 a decision to 8. The
 workers are off unless GC_GAMBIT_WORKERS is set.
 
+### E and F, built whole: the readiness beside the decision, the plan kept and re-rooted
+
+- BESIDE THE DECISION (lazy SMP, `search/break.c` readyJob, `decide.c` readySpread/readyStop, `search.h` startJobs/jobsDone): the
+  landed boards a decision will ask readiness of are handed to the workers worst-ranked first, while the decision asks them best-ranked
+  first in its own shares, exactly as with none. Whichever thread begins a board searches it (its state claimed); the other reads the
+  answer. The workers search on past the decision, with no deadline of its, until the next decision takes the pool back; what they find
+  goes into the table every thread shares. The decision can only gain: nothing of its time is handed away.
+- THE TABLE, shared and kept (`readyKept`, 512 boards, one lock): keyed by the whole board, so a board that changed misses -- new
+  information repairs it by itself.
+- THE PLAN KEPT AND RE-ROOTED (`search/plan.c` planOut and seeds, `answer.c` keepPlan/plannedPaths): the planner's lines are kept with
+  a bottom-row anchor, as the break search's are; the next decision takes off the swaps played since, adds the rows risen, and begins
+  its beam from them beside its root -- the subtree under the move played searched on, deeper. Each seed is played again, every step
+  within the rules, so one the new board no longer allows is let go.
+- THE INTENTIONS AND ROUTES back (`decide.c` keptJudged, routeJudged), measured before on a build whose material floor marked lines lost
+  early; a line judged already is never judged twice.
+- STABLE (`rank.c` key 10): of two lines every key leaves equal, the one the last decision kept.
+- The workers are on by default (the cores less two: on a GitHub runner's four, two). Logged `pre=`, `seed=`, `kept=`, `route=`.
+
 ### F, its first piece: the breaks already found, kept (`search/break.c` readyKept)
 
 The readiness check -- 72% of a decision -- asks the break search of each line's landed board. The board a line lands on next decision

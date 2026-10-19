@@ -113,7 +113,8 @@ static void searchAll(const Read *R, Found *S) {
   if (ms >= 20) {
     S->tried++;
     PlanOpts po = { GP->width ? GP->width : 40, GP->depth ? GP->depth : 7, GP->pool ? GP->pool : 250, &R->guides, R->by ? R->by : NOT_ASKED,
-                    R->keepOn ? &R->keep : 0, R->readyAt, R->under, R->F.v[FACT_US_DIES] > 0 ? R->F.v[FACT_US_DIES] : 0, R->under, ms };
+                    R->keepOn ? &R->keep : 0, R->readyAt, R->under, R->F.v[FACT_US_DIES] > 0 ? R->F.v[FACT_US_DIES] : 0, R->under, ms,
+                    planSeedsHave ? &planSeeds : 0 };
     plan(&decQ, &po, &S->ap); S->haveAp = 1;
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
   }

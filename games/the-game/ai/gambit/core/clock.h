@@ -26,7 +26,12 @@ static void clockShareEnd(double old) { clockShare = old; }
 static LOCAL int64_t clockPoll;
 // A host that knows the game's frame (native.c) stops a decision on it: out once the frame before its move has begun.
 static int (*clockFrameOut)(void);
+// A JOB BESIDE THE DECISION (decide.c readySpread): no deadline of the decision's -- its searches end in their own share, or when the
+// next decision takes the pool back (jobStop)
+static LOCAL int inJob;
+static int32_t jobStop;
 static int clockOut(void) {
+  if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (clockAborted) return 1;
 #ifdef __wasm__
   if (clockWork >= clockPoll) { clockPoll = clockWork + 400; if (abort_poll() == 1) { clockAborted = 1; return 1; } }

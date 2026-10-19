@@ -94,6 +94,48 @@ static int carriedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
   }
   return 1;
 }
+// (a frontier kept: K anchored to a bottom-row panel the move played and the swaps handed on do not touch, with what was played)
+static int anchorKept(Kept *K, const Paths *paths, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
+  const Board *b = decQ.b;
+  for (int col = 1; col <= W; col++) {
+    int32_t id = b->p[1][col].f[ID];
+    if (id == NUL) continue;
+    int touched = 0;
+    if (kind == 1) {
+      if (CR(move) == 1 && (CC(move) == col || CC(move) + 1 == col)) touched = 1;
+      for (int i = 0; i < nhanded; i++) if (CR(handed[i]) == 1 && (CC(handed[i]) == col || CC(handed[i]) + 1 == col)) touched = 1;
+    }
+    if (touched) continue;
+    K->set = 1; K->paths = *paths; K->gid = digTargetOf(b); K->anchorRow = 1; K->anchorCol = col; K->anchorId = id; K->id = qid;
+    K->playedHold = kind == 0; K->played = move; K->nhanded = nhanded; for (int i = 0; i < nhanded; i++) K->handed[i] = handed[i];
+    return 1;
+  }
+  return 0;
+}
+// THE PLAN KEPT (search/plan.c planOut): the planner's lines, anchored as the break search's are, and re-rooted at the next decision --
+// the swaps played since taken off, the rows risen since added (plannedPaths: the next plan's seeds)
+static Kept thePlanKept;
+static void keepPlan(int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
+  memset(&thePlanKept, 0, sizeof thePlanKept);
+  if (!planOut.n || !(kind == 0 || kind == 1)) return;
+  anchorKept(&thePlanKept, &planOut, kind, move, handed, nhanded, qid);
+}
+static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, Paths *out) {
+  out->n = 0;
+  Kept *K = &thePlanKept;
+  if (!K->set || !K->paths.n) return 0;
+  int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId);
+  if (dr == NOT_ASKED) return 0;
+  int32_t pre[MAXLINE + 1];
+  int npre = playedSince(K, lineFrom, linePressed, pre);
+  for (int i = 0; i < K->paths.n; i++) {
+    if (!startsWith(K->paths.path[i], K->paths.len[i], pre, npre)) continue;
+    int t = out->n++;
+    out->len[t] = K->paths.len[i] - npre;
+    for (int k = 0; k < out->len[t]; k++) out->path[t][k] = (CR(K->paths.path[i][npre + k]) + dr) * 8 + CC(K->paths.path[i][npre + k]);
+  }
+  return out->n > 0;
+}
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
   memset(&theKept, 0, sizeof theKept);
   if (!br || !br->keepOut.n || br->depth || !(kind == 0 || kind == 1)) return;
@@ -203,6 +245,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   pressAllowance = allowanceKnown ? allowance : -1;
   towardRestLen = 0;
   carryFrom = lineFrom; carryPressed = linePressed;
+  planSeedsHave = plannedPaths(decQ.b, lineFrom, linePressed, &planSeeds); planOut.n = 0; planSeeded = 0;
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)
   int32_t gid = digTargetOf(decQ.b);
   if (gid == NUL) { digOn = 0; digN = 0; digGid = NUL; }
@@ -212,7 +255,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   backBoard = decQ.b;
   theBack.at = at;
   aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
-  readyAsked = readyHit = 0; readyPendClear();
+  readyAsked = readyHit = 0; readyStop(); readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   readMs = nowMs() - tStart;
   double brMs;
@@ -251,8 +294,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (d.kind == 1 && P.line && P.line->k.play == PLAY_TOWARD) { towardPlayedN = P.line->k.nseq; for (int i = 0; i < P.line->k.nseq; i++) towardPlayed[i] = P.line->k.seq[i]; }
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
+  keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
   if (!(d.kind == 0 && P.top && P.top->wait)) carryOf(&R, P.line, qid);
-  wayPlayed = P.line && P.line->k.way;
+  keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
+  keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
   if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
   int32_t pa = NUL, pb = NUL;
@@ -304,6 +349,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   L_s(" casc="); L_i(cascadeLive(decQ.b)); L_s(" pop="); L_i(popLeft(decQ.b)); L_s(" hp="); L_i(decQ.b->health); L_s(" stop="); L_d(R.F.v[FACT_US_STOP]);
   if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
+  if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
+  if (routeOffered) { L_s(" route="); L_i(routeOffered); if (routePlayed) L_s("/played"); }
+  if (planSeeded) { L_s(" seed="); L_i(planSeeded); }
   if (readyPre) { L_s(" pre="); L_i(readyPre); L_s("/"); L_i(readyPendN); }
   if (wayOffered) { L_s(" way="); L_i(wayOffered); if (wayPlayed) L_s("/played"); }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight);
@@ -410,7 +458,9 @@ static void modeLeft(void) {
 EXPORT(gb_new_game) void gb_new_game(void) {
   modeLeft();
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
-  for (int i = 0; i < READYN; i++) readyKept[i].h = 0, readyKept[i].nbytes = 0;   // (a new game's boards are its own)
+  readyStop(); readyKeptClear();   // (a new game's boards are its own)
+  memset(theIntents, 0, sizeof theIntents);
+  memset(&thePlanKept, 0, sizeof thePlanKept);
   gb_back(0, 0, 0, 0, 0, 0, 0);
 }
 EXPORT(gb_switch) void gb_switch(int min, int max) { switchMin = min > 0 ? min : 0; switchMax = max > switchMin ? max : switchMin; nswitch = 0; }
