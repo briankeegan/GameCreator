@@ -204,9 +204,5 @@ handed on behind a hold and never pressed: the frame loop followed a hand only w
 after a hold is paced. A swap with its judged frame is now pressed on it, paced or not, and a line the frame loop cannot press on is
 logged with why ("LINE dropped").
 Measured (`595d88f3`): finish 21 (5, 8, 8) -- large_garbage 8 of 8; the three losses combo_storm, a life kept 90% of 644.
-THE LINE IN PROGRESS PRESSED AS JUDGED: of the lives not kept, the line in progress judged again at the next decision pressed its
-swaps as soon as it could -- not when the decision that began it pressed them -- so it was not the line that lived, and it could stop
-breaking (carryDrop=3). Each swap carried is kept with the frame it was judged pressed from (decide.c Carry restAt), and the judge
-presses none before it (judge.c notBefore, outcome.c lineNb).
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
