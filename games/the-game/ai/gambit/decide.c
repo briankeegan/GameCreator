@@ -140,7 +140,7 @@ static int ranked(const Read *R, const Found *S) {
   rankReact = C2.reaction + 1;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
-  // (ABLATION: the intentions off)
+  n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0;
@@ -157,7 +157,7 @@ static int ranked(const Read *R, const Found *S) {
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);
   // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)
-  // (ABLATION: the routes off)
+  { int n0 = n; n = routeJudged(R, n); if (n > n0) sortJudged(order, n); }
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
   // part of the time left each of those still to be asked -- and the order is made again)
