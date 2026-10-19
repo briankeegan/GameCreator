@@ -99,5 +99,8 @@ Those runs were not at level 10: nothing set the level, so the client's default,
 | build | 15/24 (2, 6, 7); aim 11% | `50dba0ce` |
 | switching | | |
 
+At `01290f76` (no assumed garbage; the board's own chain this decision's): finish them 19 (combo_storm 7, factory 5, large_garbage 7),
+aim 83%; pressure 18 (6, 7, 5), aim 16%; big chain 13 (1, 6, 6), aim 3%. Walk 3.5-3.6 cells, 19-20% of jumps 6 or more.
+
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
