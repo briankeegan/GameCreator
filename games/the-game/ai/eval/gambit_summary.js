@@ -12,6 +12,7 @@ if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2);
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
 var walk = { n: 0, cells: 0, far: 0 };   // the cells from one swap the decisions played to the next (want=r,c), and the jumps of 6 or more
+var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wallMs=) and the break search's (brMs=), under garbage apart
 var cutShort = { boards: 0, cut: 0 };     // decisions where the board was making a chain of its own (own=A/B), and those that cut it short
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, starved: 0, inHand: 0 };
 fs.readdirSync(DIR).sort().forEach(function (g) {
@@ -38,6 +39,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var w = / want=(\d+),(\d+)/.exec(l);
       if (w) { var r = +w[1], c = +w[2]; if (last) { var d = Math.abs(r - last[0]) + Math.abs(c - last[1]); walk.n++; walk.cells += d; if (d >= 6) walk.far++; } last = [r, c]; }
       else last = null;
+      var wm = / wallMs=([\d.]+)/.exec(l), bm = / brMs=([\d.]+)/.exec(l);
+      if (wm) think.wall.push(+wm[1]);
+      if (bm) (/ under=1/.test(l) ? think.brUnder : think.br).push(+bm[1]);
       var o = / own=(\d+)\/(\d+)/.exec(l);
       if (o) { cutShort.boards++; if (+o[2] < +o[1]) cutShort.cut++; }
     });
@@ -95,6 +99,8 @@ if (nturns) {
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
 }
 if (walk.n) console.log('walk: ' + (walk.cells / walk.n).toFixed(1) + ' cells from one swap to the next, ' + Math.round(100 * walk.far / walk.n) + '% of ' + walk.n + ' jumps 6 or more');
+var pct = function (a, q) { if (!a.length) return '-'; var s = a.slice().sort(function (x, y) { return x - y; }); return String(Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))])); };
+if (think.wall.length) console.log('think: a decision ' + pct(think.wall, 0.5) + ' ms (90% under ' + pct(think.wall, 0.9) + '); the break search ' + pct(think.brUnder, 0.5) + ' ms under garbage (90% under ' + pct(think.brUnder, 0.9) + '), ' + pct(think.br, 0.5) + ' otherwise');
 console.log('the board\'s own chain: ' + cutShort.boards + ' decisions while it made one, ' + cutShort.cut + ' cut it short');
 if (Object.keys(links).length) console.log('chain links past two, by cause: ' + ['garbage', 'swap', 'alone'].map(function (w) { return w + ' ' + fmt(links[w] || {}); }).join('; '));
 console.log('budgets: ' + budget.over + ' frames over the think budget, slowest frame ' + budget.worst + ' ms, ' + budget.dropped + ' keys dropped, ' +
