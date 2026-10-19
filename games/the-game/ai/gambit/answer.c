@@ -398,37 +398,8 @@ static void modeLeft(void) {
   memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry);
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
 }
-// THE NEXT BLOCK, AS THE LAST CAME (the profile's `expect`): the garbage the questions showed, each block received once its frame has
-// passed -- the last one's size, and the frames between the last two -- and, after everything shown on its way, one block more of that
-// size that many frames after the last. Only the decision's question carries it: the frame loop predicts the board on what the game
-// shows (front.c), the decision plans for what keeps coming.
-static int expectOn;
-static int32_t seenAt[MAXARR], seenW[MAXARR], seenH[MAXARR], nseen, recvAt[2], recvW, recvH, nrecv;
-EXPORT(gb_expect) void gb_expect(int on) { expectOn = on; }
-static void expectNext(void) {
-  int32_t now = decQ.b->stopWatch;
-  // (received: a block shown before, its frame passed -- the largest of those received on one frame)
-  for (int i = 0; i < nseen; i++) {
-    if (seenAt[i] > now) continue;
-    if (!nrecv || seenAt[i] != recvAt[0]) { if (nrecv && seenAt[i] < recvAt[0]) continue; recvAt[1] = recvAt[0]; recvAt[0] = seenAt[i]; nrecv++; recvW = recvH = 0; }
-    if (seenW[i] * seenH[i] > recvW * recvH) { recvW = seenW[i]; recvH = seenH[i]; }
-  }
-  nseen = 0;
-  int32_t last = nrecv ? recvAt[0] : NUL;
-  for (int i = 0; i < decQ.narr && nseen < MAXARR; i++) {
-    seenAt[nseen] = now + decQ.arr[i].at; seenW[nseen] = decQ.arr[i].width; seenH[nseen] = decQ.arr[i].height;
-    if (last == NUL || seenAt[nseen] > last) last = seenAt[nseen];
-    nseen++;
-  }
-  if (!expectOn || nrecv < 2 || decQ.narr >= MAXARR) return;
-  int32_t gap = recvAt[0] - recvAt[1], next = last + gap;
-  if (gap <= 0 || recvW <= 0 || recvH <= 0) return;
-  while (next <= now) next += gap;
-  decQ.arr[decQ.narr++] = (Arr){ next - now, recvW, recvH, 0, 0 };
-}
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  nseen = 0; nrecv = 0;
   modeLeft();
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   gb_back(0, 0, 0, 0, 0, 0, 0);
@@ -476,7 +447,6 @@ static int32_t modeAt(int32_t at) {
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
   decQ = hostQ; decQ.b = hostBoard;
-  expectNext();
   ncache = 0;
   // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
   switchedNow = 0;

@@ -49,6 +49,7 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 - Raise in the opening.
 - Every answer arrives in time for its move; a decision may think across frames.
 - Every number comes from the engine -- no invented constants.
+- **Nothing is assumed about garbage not yet shown.** Training's patterns are exercises standing in for a real opponent, who throws anything at any time: Gambit plans on the garbage the game shows on its way and nothing else -- never the pattern's size, rhythm or next block.
 - **Gambit sees only what the screen shows.** A colour a break converts garbage into is unseen until the client draws it
   (`gambit/lua/board.lua` `shown`, held by `board.test.lua` in every run).
 - **Everything runs on GitHub Actions** -- the games, the reports, any experiment. Nothing is run in the sandbox: it edits code and
@@ -90,11 +91,11 @@ Those runs were not at level 10: nothing set the level, so the client's default,
 
 | mode | level 11 | runs |
 |---|---|---|
-| finish them | 14/24 (combo_storm 2, factory 7, large_garbage 5); aim 83%. With expect: 15 (5, 5, 5), aim 82% | `7ab7a861`, `6e6ee823` |
-| pressure | 18/24 (combo_storm 4, factory 8, large_garbage 6); aim 17%. With expect: 18 (4, 7, 7), aim 18% | `7ab7a861`, `6e6ee823` |
-| big chain | 12/24 (3, 5, 4); aim 3%. With expect: 17 (4, 7, 6), aim 3% | `50dba0ce`, `6e6ee823` |
-| build | 15/24 (2, 6, 7); aim 11%. With expect: 18 (4, 7, 7), aim 10% | `50dba0ce`, `6e6ee823` |
+| finish them | 14/24 (combo_storm 2, factory 7, large_garbage 5); aim 83% | `7ab7a861` |
+| pressure | 18/24 (combo_storm 4, factory 8, large_garbage 6); aim 17% | `7ab7a861` |
+| big chain | 12/24 (3, 5, 4); aim 3% | `50dba0ce` |
+| build | 15/24 (2, 6, 7); aim 11% | `50dba0ce` |
 | switching | | |
 
-Every run with 0 divergences and 0 late moves. Expect (the next block, as the last came) is every profile's since `6e6ee823`'s runs: 68 of 96 against 59. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
+Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

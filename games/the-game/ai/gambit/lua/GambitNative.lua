@@ -38,7 +38,6 @@ void gn_rule_name(int i, const char *name);
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff);
 void gn_switch(int min, int max);
 void gn_share(int under, int otherwise);
-void gn_expect(int on);
 int32_t *gn_tele(void);
 int32_t *gn_ages(void);
 void gn_match(void);
@@ -57,13 +56,13 @@ for i = 0, NH - 1 do HI[ffi.string(C.nb_head_name(i))] = i end
 do
   local file = os.getenv("GC_GAMBIT_WORDS") or (DIR .. "/gambit.words")
   local f = assert(io.open(file), "GambitNative: no " .. file .. " (words.js writes it)")
-  local setup, profile, rules, switch, share, expect
+  local setup, profile, rules, switch, share
   for line in f:lines() do
     local kind, rest = line:match("^(%S+) (.*)$")
-    if kind == "setup" or kind == "profile" or kind == "rules" or kind == "switch" or kind == "share" or kind == "expect" then
+    if kind == "setup" or kind == "profile" or kind == "rules" or kind == "switch" or kind == "share" then
       local v = {}
       for n in rest:gmatch("%S+") do v[#v + 1] = tonumber(n) end
-      if kind == "setup" then setup = v elseif kind == "profile" then profile = v elseif kind == "switch" then switch = v elseif kind == "share" then share = v elseif kind == "expect" then expect = v else rules = v end
+      if kind == "setup" then setup = v elseif kind == "profile" then profile = v elseif kind == "switch" then switch = v elseif kind == "share" then share = v else rules = v end
     elseif kind == "name" then
       local i, name = rest:match("^(%d+) (.*)$")
       C.gn_rule_name(tonumber(i), name)
@@ -78,7 +77,6 @@ do
   C.gn_profile(profile[1], profile[2], profile[3], profile[4], profile[5], profile[6], profile[7], profile[8])
   C.gn_switch(switch and switch[1] or 0, switch and switch[2] or 0)
   C.gn_share(share and share[1] or 0, share and share[2] or 0)
-  C.gn_expect(expect and expect[1] or 0)
 end
 
 local GambitNative = {}
