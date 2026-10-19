@@ -22,8 +22,10 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 4. **The cursor walks the shortest way.** A line's swaps are pressed in the order the cursor reaches them soonest, kept only where the
    engine says the board comes out no worse (`rank.c` `judgeWalked`). Measured: the mean cells between one swap and the next, and the
    share of jumps of 6 or more. Last measured (main server): 3.4 cells, 17%.
-5. **Live play.** The opening raise held through its rows; never holding while the hold dies and a line that lives is offered; enough
-   pressure on the enemy. Measured on the fight's and the main server's logs.
+5. **Aggressive.** It attacks far more than it does now: every board that can send garbage without giving up its life sends it, and
+   a mode's attack is fired as soon as it is made, not held. Measured every run and every fight: attacks a minute and the garbage
+   cells they send a minute (gambit_summary.js `aggression`), against the default bot's on the same server. Live play too: the opening
+   raise held through its rows; never holding while the hold dies and a line that lives is offered.
 6. **Every mode 24/24 at level 11, twice in a row**, then switching (5-30 s, every direction) 24/24 with the switches happening.
 
 ## Open questions for the owner
