@@ -241,7 +241,7 @@ static void *workerMain(void *arg) {
 static int32_t gnAhead = 90, gnGap = 20, gnJitter = 16, gnFrames;
 static int32_t ages[512];
 // The bot's hands and pacing, level 10's health, and the run's log.
-// THE WORKERS: one a spare core (host.c hostWorkers: GC_GAMBIT_WORKERS, else the cores less the game's and Gambit's), each the
+// THE WORKERS: GC_GAMBIT_WORKERS of them (host.c hostWorkers; none unset), each the
 // engine's pool's (search.h workerLoop) -- every batch of steps a search hands the pool (core/nodes.h stepMany) is played on them all.
 static void *gnWorker(void *arg) { paThreadId((int)(long)arg); workerLoop(); return 0; }
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {

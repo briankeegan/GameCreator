@@ -116,6 +116,11 @@ one candidate after another. Batching the steps inside a search cannot reach it.
 threads (the break search made reentrant: its state a thread's own), and the searches as a portfolio -- coarse-grained, as lazy SMP
 is. That is E's next step, and it comes with F: a kept plan asks readiness of the few lines that changed, not of every line again.
 
+In the game's own process the workers took the client down after its first decision (runs 362-365: every game "no result", the log
+ending after one GAMBITD line with `GAMBIT workers 2`); the C checks, with no game beside them, pass with them. The workers are off
+unless GC_GAMBIT_WORKERS is set, until a check runs the frame loop beside the searches and the workers (the game's thread and Gambit's
+share the engine's thread 0 -- its board pool -- which the workers' phases hand boards out of).
+
 ### F, its first piece: the breaks already found, kept (`search/break.c` readyKept)
 
 The readiness check -- 72% of a decision -- asks the break search of each line's landed board. The board a line lands on next decision
