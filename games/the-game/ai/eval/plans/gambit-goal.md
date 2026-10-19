@@ -96,7 +96,7 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 
 ## Where it stands
 
-What is done next, and in what order: `plans/gambit-next.md` -- the one plan.
+What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
 
