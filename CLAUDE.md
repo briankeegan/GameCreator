@@ -177,7 +177,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
 
 ## The AI trainer (`games/the-game/ai/eval/`)
 
-- **Gambit's goal is `plans/gambit-goal.md`**: every mode 24/24 on the real Training mode, then switching between them. Its rules and
+- **Gambit's goal is `plans/gambit-goal.md`**: every mode 24/24 at level 11, played as the mode asks, never spoiling the board's own chain. Its rules and
   its order are there; read it before working on Gambit.
 - **Gambit is C, in `games/the-game/ai/gambit/`** (layout in its README), on the one C engine (`eval/native/pa.c`). In the Lua
   client it runs in-process (`libgambit.so`, `PA_BOT=gambit`): the stack goes straight into the C engine. `gambit.wasm` and its loader
