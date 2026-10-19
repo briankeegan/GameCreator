@@ -183,7 +183,9 @@ ready from where it ends. The summary counts it ("a life kept"). The most of the
 never asked readiness, so a line that lived by a break in reach lost it the moment it was carried on. It is asked now, as any line.
 Measured: `284b3a33` finish 19 (5, 8, 6), a life kept 82% of 422; `2a8a1f38` finish 19 (4, 8, 7), a life kept 88% of 672 -- lines
 that live half again as many. Two combo_storm games lost in the first wave (frames 387, 551): the opening raise toward the rules' ten
-rows, then the rest of the wave shown after it -- new information, not a prediction gone wrong. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+rows, then the rest of the wave shown after it -- new information, not a prediction gone wrong.
+Ablation (`bd0cf187`, the kept plan's seeds, intentions and routes off): finish 17 (5, 8, 4) against 19 with them -- they stay. Builds
+this close have run 17 to 22: one run of 24 games has a deviation near two, so a change of a game or two is under one run's noise. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 
