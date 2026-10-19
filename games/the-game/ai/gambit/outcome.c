@@ -29,8 +29,12 @@ typedef struct {
 
 // WHETHER WHAT A LINE MAKES FITS THE LIST: what it makes, the chain it reaches as the game counts it, and
 // every clear of its own
-static int fitsList(const List *L, Made m, const Judged *j) {
-  if (defends(m, j->chainAll)) return 1;   // (the defence: judge.c defends)
+static int fitsWithin(const List *L, Made m, const Judged *j);
+// (the rule, judge.c: within the list -- an entry, a chain begun toward one, a three that breaks -- and with `last`, a last resort too)
+static int fitsList(const List *L, Made m, const Judged *j, int last) {
+  return breakingThree(m, j->chainAll) || fitsWithin(L, m, j) || (last && lastResort(m, j->chainAll));
+}
+static int fitsWithin(const List *L, Made m, const Judged *j) {
   // (a chain shorter than the list asks is begun toward it (judge.c chainBegins): within the list, its own clears held to it as ever;
   // ranked after every line that meets an entry, as it meets none)
   int32_t chain = imax(chainOf(m), j->chainAll);
@@ -119,7 +123,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     int breaks = o.j.made.broke > 0, stands = o.j.lostAt == FOREVER;
     o.dead = 0; o.ready = ready;
     o.lives = breaks || !coming ? (stands || ready == 1) : (ready == 1 || (ready == NOT_ASKED && stands));
-    o.fits = fitsList(&theList, o.j.made, &o.j) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
+    o.fits = fitsList(&theList, o.j.made, &o.j, 1) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
     o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1;
@@ -204,7 +208,7 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
   Made m = o.j.made;
-  o.fits = !o.j.dead && fitsList(&theList, m, &o.j) && imax(m.chain, o.j.chainAll) <= MAXCHAIN &&
+  o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN &&
            !(decF.belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0));
   // (a list ended by "default": a line outside it is the default's own, kept while the board lives through it)
   if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN;   // (the host's own check, a line held to no list)

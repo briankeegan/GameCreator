@@ -22,7 +22,7 @@ typedef struct {
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
-  int32_t met;         // the entry of the list (with the defence's) the judged line meets, -1 none (rules.c metOf)
+  int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
   double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
@@ -43,8 +43,8 @@ static struct { int32_t set, play, nseq, seq[MAXLINE], said, judged; } unbroken;
 typedef struct {
   FactSet F; int32_t enemyTopped;
   List list, asked, guides; int32_t end;
-  // (list: the rule's; asked: the list as the board asks it -- every entry a break under garbage -- the rank's; guides: asked and the
-  // defence's entry, the searches' -- a proposal's aim indexes it)
+  // (list: the rule's, its priorities; guides: the list as the board asks it -- every entry a break under garbage, then the one rule's
+  // three that breaks -- the searches', a proposal's aim indexes it; asked: the same, the rank's)
   int32_t by;                      // NOT_ASKED: none
   int32_t under, topped, breakWaits, belowFloor;
   int32_t saving;                  // saving panels up: breaks that leave the most come before the list (decide.c read)
@@ -88,11 +88,10 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // so a list never chooses a death. Below the rule's material floor a line that clears panels and breaks no garbage spends what the
   // board needs: outside too)
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
-  if (!(j ? fitsList(&R->list, m, j) : fits(&R->list, m))) J->outside = 1;
+  if (!(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
-  // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- the
-  // defence's entry guides the searches and is no entry of the list: of two breaks it never puts the larger before the life the smaller
-  // leaves)
+  // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
+  // entries, then the one rule's three that breaks)
   // (read off what the board ends up making, the chain already under way included: a swap that cuts it short meets what is left of it,
   // and leaving it alone -- the hold -- meets what it makes)
   int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
@@ -268,7 +267,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // garbage, the one whose board has more life by its panels -- before the list's entry: the board's life is its next breaks
   if (x->saving && y->saving && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
-  // line that keeps a topped board held, or a defence, is ordered by the list like every other
+  // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
   // (two that do not live and survive alike: the later loss, before the kind of line)

@@ -62,22 +62,19 @@ static int listWantsLonger(const List *L, int32_t chain) {
   }
   return 0;
 }
-// THE DEFENCE: a break made by one clear -- no chain, as the game counts it (chainAll: the chain the board is in) -- is the board's own
-// defence, never an attack: within every list. The one rule; the step check (stepFitsAt) and the line's (outcome.c fitsList) ask it, and
-// the list under garbage carries its search side (decide.c read: the defence's entry).
-// (and topped with no garbage on the board -- defendStop, set as the decision reads the board -- the clear that buys stop time, a combo of
-// four or more or a chain, is the board's defence the same way: it is what keeps a topped stack alive)
-static int32_t defendStop;
-static int defends(Made m, int32_t chainAll) {
-  if (m.broke > 0 && chainOf(m) <= 1 && chainAll <= 1) return 1;
-  return defendStop && (m.combo >= 4 || imax(chainOf(m), chainAll) >= 2);
-}
+// THE ONE RULE, for whatever list a mode passes -- the list is the mode's priorities, in order, and the only thing a mode changes: after
+// its entries, A THREE THAT BREAKS GARBAGE (one clear of three, no chain as the game counts it -- chainAll: the chain the board is in);
+// and LAST OF ALL, as they cost the board's panels, a clear that makes a chain or a combo the list does not ask for. Nothing else clears.
+// The step check (stepFitsAt) and the line's (outcome.c fitsList) ask it; rules.c withRule puts the three in the searches' list and the
+// order's, after the entries; a last resort is outside the list (rank.c), ranked after every line within it.
+static int breakingThree(Made m, int32_t chainAll) { return m.broke > 0 && m.combo <= 3 && chainOf(m) <= 1 && chainAll <= 1; }
+static int lastResort(Made m, int32_t chainAll) { return m.combo >= 4 || imax(chainOf(m), chainAll) >= 2; }
 // A CHAIN BEGUN TOWARD THE LIST: a chain the list wants longer than (within MAXCHAIN) is a beginning of one it asks for -- a chain is
 // carried on by the decisions after (extend), so one short of the ask is on its way to it, not outside it. A step's (stepFitsAt) and a
 // whole line's (outcome.c fitsList) the same.
 static int chainBegins(const List *L, int32_t chain) { return chain >= 2 && chain <= MAXCHAIN && listWantsLonger(L, chain); }
-// A STEP BEGINS A CHAIN, OR ENDS ONE: on a board still falling, its chain so far -- and a plain three, its first link -- is a beginning
-// while the list wants a longer chain, held to the list as it ends, on the whole line (lineFits); a combo of its own fits as itself.
+// A STEP WITHIN THE RULE: an entry, a three that breaks, a last resort -- or a plain three on a board still falling, a chain's first
+// link; the whole line is held to the rule as it ends (lineFits).
 static int stepFitsAt(Ctx *x, int i) {
   if (!listOn) return 1;
   Stats s;
@@ -87,13 +84,12 @@ static int stepFitsAt(Ctx *x, int i) {
   int32_t chain = chainOfStats(&s);
   int32_t biggest = 0;
   for (int k = 0; k < n; k++) if (own[k] > biggest) biggest = own[k];
-  if (defends((Made){ biggest, chain, s.broke, 0 }, chain)) return 1;   // (the defence)
-  if (stepFits(&theList, own, n, chain)) return 1;
+  Made sm = { biggest, chain, s.broke, 0 };
+  if (breakingThree(sm, chain) || stepFits(&theList, own, n, chain)) return 1;
+  if (chain > MAXCHAIN) return 0;
+  if (lastResort(sm, chain)) return 1;
   Board *b = ensureBoard(x, i);
-  if (!b || !(b->chainCounter > 0 || hasChainingPanels(b) || hasActivePanels(b))) return 0;
-  if (chain > MAXCHAIN || !(chain <= 1 ? listWantsLonger(&theList, 1) : chainBegins(&theList, chain))) return 0;
-  for (int k = 0; k < n; k++) if (own[k] > 3) { Made m = { own[k], 1, 0, 0 }; if (!fits(&theList, m)) return 0; }
-  return 1;
+  return b && (b->chainCounter > 0 || hasChainingPanels(b) || hasActivePanels(b));
 }
 static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 

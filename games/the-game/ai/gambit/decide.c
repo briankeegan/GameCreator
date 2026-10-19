@@ -48,16 +48,14 @@ static int readBoard_(Read *R) {
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];
   if (R->under) { for (int i = 0; i < R->guides.n; i++) R->guides.aim[i].brk = 1; R->end = 1; }
   decF.under = R->under;
-  R->asked = R->guides;   // (the list as the board asks it, the rank's: before the defence's entry is added for the searches)
-  // (and after its own entries, THE DEFENCE: a combo of four or more that breaks -- the clear that buys stop as it breaks -- then any
-  // clear that breaks, within every list -- so every mode's searches look for the breaks that keep a board alive, whatever its list
-  // asks; the order still reads the list as the board asks it)
-  for (int c = 4; R->under && c >= 3 && R->guides.n < MAXAIMS; c--) { Aim d; memset(&d, 0, sizeof d); d.combo.op = OP_GE; d.combo.n = c; d.brk = 1; R->guides.aim[R->guides.n++] = d; }
+  // (and after its entries, the one rule's three that breaks (rules.c withRule): the list as the board asks it, the searches' and the
+  // rank's alike)
+  if (R->under) withRule(&R->guides);
+  R->asked = R->guides;
   // (A LIST ENDED BY "default" -- every list under garbage -- falls back to the default's own move when none of it can be made: the
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)
   R->topped = !!F->v[FACT_US_TOPPED]; R->breakWaits = !!F->v[FACT_US_BREAKWAITS];
-  defendStop = R->topped && !R->under;   // (judge.c defends: topped with no garbage, the clear that buys stop time is the defence)
   // (SAVING UP PANELS, as the raise holds a band: begun topped with four rows' worth of panels or fewer, and kept until the board holds
   // eight rows' worth and the panels sure to make the list's largest combo ((size - 1) x colours and one); then it spends again)
   {
@@ -90,7 +88,7 @@ static int readBoard_(Read *R) {
   // (what the board left alone makes while a chain falls or a slab pops, as the game counts it -- for the log)
   if (cascadeLive(decQ.b) || R->pop) {
     Outcome a = leftAlone();
-    if (!a.dead) { R->aloneChain = a.j.chainAll; Made z = { 0, 0, 0, 0 }; R->aloneOut = !fitsList(&R->list, z, &a.j); }
+    if (!a.dead) { R->aloneChain = a.j.chainAll; Made z = { 0, 0, 0, 0 }; R->aloneOut = !fitsList(&R->list, z, &a.j, 0); }
   }
   return 1;
 }

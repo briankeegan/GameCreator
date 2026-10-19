@@ -2,7 +2,9 @@
 //   - the board as bits held to the cells it replaced, on boards of games and the boards one and two swaps from them (test/boards.txt);
 //     every perched block the reader finds, its line played on the engine, counted by whether its block came down;
 //   - the decision replayed (test/decisions.txt.gz: questions from runs on the fair board, a mode each): each answered twice, the same
-//     answer both times, and against test/decisions.golden -- every question whose answer moved printed, with what decided it.
+//     answer both times, and against test/decisions.golden -- every question whose answer moved printed, with what decided it;
+//   - the answers: every mode answered, and when any candidate lives, what is played lives (or is the raise);
+//   - the raise: each mode's boards cut to a low stack with nothing on it or on its way are raised, and the raise held down.
 //   the rules every decision is replayed on: test/rules.words (words.js, the finish profile; its mode set a question at a time).
 //   test DIR [golden]: "golden" writes test/decisions.golden from this build.
 #include <stdio.h>
@@ -17,6 +19,8 @@ int gb_bits_boards(void);
 int gb_perch_counts(int which);
 double gb_bits_ms(int cells);
 int gb_replay(int nbytes, int narr, int mode, int64_t work, char *out, int cap);
+void gb_replay_last(int32_t *v);
+void gb_replay_low(int keep);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath);
 int32_t *gn_io(void);
@@ -97,7 +101,7 @@ int main(int argc, char **argv) {
   FILE *g = fopen(path, golden ? "w" : "r");
   if (!g) { fprintf(stderr, "test: no %s (test DIR golden writes it)\n", path); return 2; }
   static char rec[4096], rec2[4096], want[4096];
-  int nq = 0, unsteady = 0, moved = 0, changed = 0;
+  int nq = 0, unsteady = 0, moved = 0, changed = 0, liveDied = 0, lows = 0, lowRaised = 0, raises = 0, raiseHeld = 0, modes[64] = { 0 };
   while (gzgets(z, line, sizeof line)) {
     int mode = atoi(line);
     const char *b = strstr(line, "GAMBITQ ");
@@ -105,6 +109,11 @@ int main(int argc, char **argv) {
     if (!b) continue;
     int narr, n = loadLine(b, &narr);
     if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) { fprintf(stderr, "test: question %d does not load\n", nq); return 1; }
+    // (the answer: when anything lives, what is played lives -- or is the raise; a low stack with nothing on it or on its way is raised;
+    // a raise is held down through its row)
+    { int32_t v[8]; gb_replay_last(v);
+      if (v[2] > 0 && v[0] != 2 && v[1] != 1) { liveDied++; if (liveDied <= 3) printf("  lives but died %d (mode %d): %s\n", nq, mode, rec); }
+        if (mode >= 0 && mode < 64) modes[mode]++; }
     n = loadLine(b, &narr);
     gb_replay(n, narr, mode, REPLAY_WORK, rec2, sizeof rec2);
     if (strcmp(rec, rec2)) { unsteady++; if (unsteady <= 3) printf("  unsteady %d: %s\n               %s\n", nq, rec, rec2); }
@@ -119,13 +128,37 @@ int main(int argc, char **argv) {
     }
     nq++;
   }
-  gzclose(z); fclose(g);
+  gzclose(z);
+  fclose(g);
+  // (the raise: each mode's question boards cut to a low stack with nothing on it or on its way -- each raised, and held down)
+  snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
+  if ((z = gzopen(path, "r"))) {
+    gb_replay_low(3);
+    int perMode[64] = { 0 };
+    while (gzgets(z, line, sizeof line)) {
+      int mode = atoi(line);
+      if (mode < 0 || mode >= 64 || perMode[mode] >= 4) continue;
+      const char *b = strstr(line, "GAMBITQ ");
+      if (!b) b = strstr(line, "GAMBITB ");
+      if (!b) continue;
+      int narr, n = loadLine(b, &narr);
+      if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) continue;
+      int32_t v[8]; gb_replay_last(v);
+      perMode[mode]++; lows++; lowRaised += v[0] == 2; raises += v[0] == 2; raiseHeld += v[0] == 2 && v[7] > 0;
+      if (v[0] != 2 && lows - lowRaised <= 3) printf("  low stack not raised (mode %d): %s\n", mode, rec);
+    }
+    gb_replay_low(0); gzclose(z);
+  }
   // ---- switching: every direction between the modes, over a run's games (gambit-switch.json's stretch)
   { int32_t counts[64 * 64]; int nr = 0, missing = gb_switch_check(24, 21600, 300, 1800, counts, &nr), lo = 1 << 30, hi = 0;
     for (int a = 0; a < nr; a++) for (int b = 0; b < nr; b++) if (a != b) { if (counts[a * nr + b] < lo) lo = counts[a * nr + b]; if (counts[a * nr + b] > hi) hi = counts[a * nr + b]; }
     printf("%s: switching -- %d modes, %d directions, each switched %d to %d times over 24 games, %d never\n", missing || nr < 2 ? "FAIL" : "ok", nr, nr * (nr - 1), lo, hi, missing);
     fail |= missing || nr < 2; }
   printf("%s: decisions replayed -- %d questions, %d answered differently on a second asking\n", unsteady ? "FAIL" : "ok", nq, unsteady);
+  { int nm = 0; for (int i = 0; i < 64; i++) nm += modes[i] > 0;
+    printf("%s: the answers -- %d questions over %d modes, %d played a line that dies while one lived\n", liveDied || nm < 4 ? "FAIL" : "ok", nq, nm, liveDied);
+    printf("%s: the raise -- %d of %d low stacks with no garbage raised, %d of %d raises held down\n", lowRaised < lows || raiseHeld < raises || !raises ? "FAIL" : "ok", lowRaised, lows, raiseHeld, raises);
+    fail |= liveDied || nm < 4 || !lows || lowRaised < lows || raiseHeld < raises; }
   if (golden) printf("wrote %s/decisions.golden\n", dir);
   else printf("%s: against the golden -- %d moves changed, %d records changed\n", moved ? "CHANGED" : "ok", moved, changed);
   fail |= unsteady || !nq;

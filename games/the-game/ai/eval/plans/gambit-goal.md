@@ -15,7 +15,9 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    a swap that cuts a 4-chain in progress to a 2-chain is a line that makes a 2-chain, ranked below leaving it alone -- never ranked
    as "makes nothing, like the hold". Measured: the decisions where the board alone made a bigger chain than the line played (0
    unless it was the only line that lives).
-3. **The modes are played, and played accurately.** Each mode's attacks meet its own aim -- pressure 4-chains, build 5-chains, big
+3. **The modes are played, and played accurately.** A mode is only its list -- its priorities, in order; everything else is one rule
+   for every mode: after the list's entries, a three that breaks garbage; last of all (they cost blocks), a clear that makes a chain or
+   a combo the list does not ask for; nothing else clears (`judge.c` the one rule). Every mode defends itself while it attacks. Each mode's attacks meet its own aim -- pressure 4-chains, build 5-chains, big
    chain 8+, finish them its combos -- built on purpose from its own stack, not the chains garbage colours happen to make. Measured
    every run: of the attacks fired in each mode, the share that met the mode's aim. Last measured: pressure 38%, build 26%, big chain
    10%. The target is the owner's to set.
@@ -26,6 +28,8 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    it, and a mode's attack is fired as soon as it is made, not held. Aggression is the blocks thrown a minute (gambit_summary.js
    `aggression`), measured every run. Live play too: the opening raise held through its rows; never holding while the hold dies and
    a line that lives is offered.
+   **Several ideas at once** is how the attack rate goes up: several chains built at once (several 8-chains, or different chains),
+   or several combos made ready at once, each continued on its own, then fired together.
 6. **Every mode 24/24 at level 11, twice in a row**, then switching (5-30 s, every direction) 24/24 with the switches happening.
 
 ## Open questions for the owner

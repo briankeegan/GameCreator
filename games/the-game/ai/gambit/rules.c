@@ -54,6 +54,14 @@ static int fits(const List *L, Made m) {
   for (int i = 0; i < L->n; i++) { Aim plain = L->aim[i]; plain.brk = -1; if (meets(&plain, m)) return 1; }
   return 0;
 }
+// THE ONE RULE'S THREE (judge.c breakingThree): after whatever entries a list has, under garbage, a three that breaks it -- the searches
+// look for it in every mode, and the order puts it after every entry
+static void withRule(List *L) {
+  Aim t; memset(&t, 0, sizeof t);
+  t.combo.op = OP_LE; t.combo.n = 3; t.chain.op = OP_EQ; t.chain.n = 1; t.brk = 1;
+  for (int i = 0; i < L->n; i++) if (!memcmp(&L->aim[i], &t, sizeof t)) return;
+  if (L->n < MAXAIMS) L->aim[L->n++] = t;
+}
 // A MOVE'S PLACE IN THE LIST: the first entry it meets, its break as the entry asks it (under garbage every entry asks one), as the
 // searches ask it (meets); -1 for one that clears nothing or meets none. The rank's one question of the list's order.
 static int metOf(const List *L, Made m) {

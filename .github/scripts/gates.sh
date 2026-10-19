@@ -125,7 +125,6 @@ gate_garbage_rules() {
   node games/the-game/ai/eval/threesLast.test.js &&
   node games/the-game/ai/eval/survivor_checks.test.js &&
   node games/the-game/ai/eval/break_near.test.js &&
-  node games/the-game/ai/eval/gambit_answer.test.js &&
   node games/the-game/ai/eval/attack_fire.test.js &&
   node games/the-game/ai/eval/survivor_audit.test.js &&
   node games/the-game/ai/eval/survivor_held.test.js &&
@@ -219,14 +218,15 @@ gate_server_engine() {
 
 # GAMBIT IN C (games/the-game/ai/gambit/, README.md): the wasm is built from its sources and the one C engine (BUILT holds every hash),
 # and the engine in it is the server's -- the engine tests, played on gambit.wasm; the native library the client loads (libgambit.so)
-# builds where clang does. Its decisions are held by gambit_answer.test.js (gate_garbage_rules) and by the 24 games (gambit-24.yml).
+# builds where clang does, and so do its C checks (build.sh test: its answers in every mode, the raise, the decisions against the golden);
+# its play is held by the 24 games (gambit-24.yml).
 gate_gambit_engine() {
   local G=games/the-game/ai/gambit E=games/the-game/ai/eval
   (cd $G && while read -r f h; do [ "$(sha256sum "$f" | cut -c1-64)" = "$h" ] || { echo "gambit: $f is not what BUILT says -- run build.sh"; exit 1; }; done < BUILT) &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_pa.test.js 20000 &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_countdown.test.js &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_arrivals.test.js &&
-  { ! command -v clang >/dev/null || $G/build.sh native; }
+  { ! command -v clang >/dev/null || { $G/build.sh native && $G/build.sh test; }; }
 }
 
 # The bot's cursor walks one cell a step and its travel is priced in frames.
