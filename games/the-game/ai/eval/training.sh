@@ -13,11 +13,12 @@
 # harness (client/src/debug/AppDriver.lua, PA_CMD_FILE, `trainingloop`); the local player's stack takes its keys
 # from the bot (PA_SURVIVOR=1, PA_BOT).
 #
-# Env: OUT_DIR (default ./training-out), PORT (47777), MINUTES (330, each client's limit), PROFILE, FRAMES.
+# Env: OUT_DIR (default ./training-out), PORT (47777), MINUTES (330, each client's limit), PROFILE, FRAMES, LEVEL (the modern level
+# the player's stack plays, 11; set on the character select and checked before Ready).
 # $OUT_DIR/results.txt holds a line per game.
 set -u
 EVAL="$(cd "$(dirname "$0")" && pwd)"
-BOT=${1:-wasm}; PATTERN=${2:-large_garbage}; GAMES=${3:-10}
+BOT=${1:-wasm}; PATTERN=${2:-large_garbage}; GAMES=${3:-10}; LEVEL=${LEVEL:-11}
 : "${PG:?PG: a panel-game checkout}" "${LOVE:?LOVE: the love binary (or the AppRun of an extracted AppImage)}"
 OUT_DIR=${OUT_DIR:-$PWD/training-out}; PORT=${PORT:-47777}; MINUTES=${MINUTES:-330}
 mkdir -p "$OUT_DIR"; OUT_DIR=$(cd "$OUT_DIR" && pwd)
@@ -77,16 +78,21 @@ for g in $(seq 1 "$GAMES"); do
   for i in $(seq 1 60); do grep -q '^trainingpattern ' "$OUT" && break; sleep 1; done
   got=$(grep -h '^trainingpattern ' "$OUT" | tail -1 | awk '{print $NF}')
   [ "$got" = "$SIZE" ] || { echo "game $g: the pattern is $got, not $PATTERN ($SIZE)" | tee -a "$OUT_DIR/results.txt"; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null; continue; }
-  send "menusel go_" "waitscene CharacterSelectVsSelf 600" "hold z 40" "wait 30" "trainingloop"
+  send "menusel go_" "waitscene CharacterSelectVsSelf 600" "level $LEVEL"
+  # (the level set on the character select, and checked: a level not set plays the client's saved one)
+  for i in $(seq 1 60); do grep -q '^level ' "$OUT" && break; sleep 1; done
+  lv=$(grep -h '^level ' "$OUT" | tail -1 | awk '{print $2}')
+  [ "$lv" = "$LEVEL" ] || { echo "game $g: the level is ${lv:-unset}, not $LEVEL" | tee -a "$OUT_DIR/results.txt"; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null; continue; }
+  send "hold z 40" "wait 30" "trainingloop"
   while kill -0 $CLIENT 2>/dev/null; do grep -q '^training ' "$OUT" && break; sleep 5; done
   sleep 3; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null
   cp "$OUT" "$OUT_DIR/pa_out-$g.txt"
   r=$(grep -h '^training ' "$OUT" | tail -1); echo "game $g $PATTERN ${r:-no result}" | tee -a "$OUT_DIR/results.txt"
-  # level 10 has one health: the first frame this game's health fell is where a level-10 game is lost
+  # the first frame this game's health fell: where a game of one health (levels 10 and 11) is lost
   [ -s "$OUT_DIR/frames.jsonl.gz" ] && node -e '
     var L = require("zlib").gunzipSync(require("fs").readFileSync(process.argv[1]), { finishFlush: require("zlib").constants.Z_SYNC_FLUSH }).toString().split("\n"), max = 0, at = null;
     for (var i = 0; i < L.length && at === null; i++) { try { var r = JSON.parse(L[i]); } catch (e) { continue; } if (r.health > max) max = r.health; else if (r.health < max) at = r.clock; }
-    console.log("game '"$g"' level10 " + (at === null ? "kept all health" : "lost health at frame " + at));' "$OUT_DIR/frames.jsonl.gz" | tee -a "$OUT_DIR/results.txt"
+    console.log("game '"$g"' level'"$LEVEL"' " + (at === null ? "kept all health" : "lost health at frame " + at));' "$OUT_DIR/frames.jsonl.gz" | tee -a "$OUT_DIR/results.txt"
   grep -h 'not in\|no menu\|TIMEOUT' "$OUT" | sed "s/^/game $g: /" >> "$OUT_DIR/results.txt"
 done
 CLIENT=

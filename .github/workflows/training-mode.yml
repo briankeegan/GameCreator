@@ -25,7 +25,7 @@ on:
         default: 'survivor-profiles/agro.json'
       panel_ref:
         description: 'The panel-game branch with AppDriver PA_SURVIVOR and trainingloop'
-        default: 'bramp/multi-player'
+        default: 'claude/newsey-game-ask-qa8u5e'
 
 jobs:
   play:
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: briankeegan/panel-game
-          ref: ${{ inputs.panel_ref || 'bramp/multi-player' }}
+          ref: ${{ inputs.panel_ref || 'claude/newsey-game-ask-qa8u5e' }}
           path: panel-game
           fetch-depth: 1
       - uses: actions/setup-node@v4
