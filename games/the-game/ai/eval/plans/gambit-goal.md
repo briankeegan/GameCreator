@@ -103,8 +103,10 @@ At `01290f76` (no assumed garbage; the board's own chain this decision's): finis
 aim 83%; pressure 18 (6, 7, 5), aim 16%; big chain 13 (1, 6, 6), aim 3%; build 14 (1, 6, 7), aim 10%; switching 16 (4, 4, 8), 376
 switches over all 12 directions. Walk 3.5-3.6 cells, 19-20% of jumps 6 or more.
 
-Flags, one run each against it: keep -- big chain 16, build 16; attack -- finish 15, pressure 17 (Training has no enemy to hurt: the
-attack only spends material; it is a fight's to judge).
+Flags against it: keep -- big chain 16 and 15, build 16 and 15, finish 18, pressure 15: on for the chain modes (their profiles), off
+for the attack modes. Attack first (of two breaks, the one that sends garbage) -- finish 15, pressure 17, and no more attacks a minute
+(finish 13.2 against 13.5, pressure 10.9 against 10.7): gone. Aggression at the baseline: finish 13.5 attacks and 83 garbage cells a
+minute, pressure 10.7 and 98.
 
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

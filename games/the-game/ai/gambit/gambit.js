@@ -223,7 +223,7 @@ Gambit.prototype.breakPath = function (ms) {
 };
 
 // THE PROFILE'S FLAGS by name, as the bits facts.c reads (FLAG_*); a name not known is refused
-var FLAGS = { attack: 1, keep: 2 };
+var FLAGS = { keep: 2 };
 function flagsOf(names) {
   return (names || []).reduce(function (bits, n) { if (!FLAGS[n]) throw new Error('gambit: no flag ' + n); return bits | FLAGS[n]; }, 0);
 }

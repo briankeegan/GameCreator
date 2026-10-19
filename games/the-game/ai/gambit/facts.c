@@ -178,9 +178,8 @@ static int settledPlay(int p) { return p == PLAY_ENTRY || p == PLAY_NEAREST || p
 static int setupPlay(int p) { return p == PLAY_SETUP || p == PLAY_LEVEL || p == PLAY_READY || p == PLAY_TOWARD; }
 typedef struct { int32_t combo, chain, broke, cells, earned, done, near100, dropAt, floor; double near; } Xs;   // floor: -1 not said, 0, 1
 // THE PROFILE'S FLAGS (its `flags`, by name -- words.js FLAGS, answer.c gb_flags), each a way of play measured before it is anyone's:
-//   attack  of two breaks, the one that sends garbage before the one whose panels leave the board more life (off: the panels first)
 //   keep    of two lines that do not live and outlive the next decision alike, the one whose panels leave the board more life first
-enum { FLAG_ATTACK = 1, FLAG_KEEP = 2 };
+enum { FLAG_KEEP = 2 };
 static int32_t gbFlags;
 static Tier tierOf(int play, const Xs *x, int aim, int under, int enemyOut, int topped, int waits) {
   Tier t; memset(&t, 0, sizeof t);
@@ -192,7 +191,6 @@ static Tier tierOf(int play, const Xs *x, int aim, int under, int enemyOut, int 
     if (aim >= 0 && !(broke > 0)) { t.tier = 2; SUB(aim, x->done); t.nlist = 1; return t; }
     if (broke > 0) { t.tier = 6; SUB(-1e300, x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -rate, buys ? 0 : 1, -broke); t.nlist = 3; return t; }
   }
-  if (broke > 0 && (gbFlags & FLAG_ATTACK)) { t.tier = 1; SUB(x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, buys ? 0 : 1, -cells, -x->dropAt, -rate, -broke); t.nlist = 4; return t; }
   if (broke > 0) { t.tier = 1; SUB(x->floor == 0 ? 1 : 0, aim >= 0 ? aim : 99, -x->dropAt, -rate, buys ? 0 : 1, -broke); t.nlist = 2; return t; }
   if (play == PLAY_CLEAR) { t.tier = 6; SUB(-stop); return t; }
   if (aim >= 0 && !under) { t.tier = 2; SUB(aim, -x->dropAt, x->done); t.nlist = 1; return t; }
