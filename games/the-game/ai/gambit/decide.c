@@ -162,7 +162,8 @@ static int ranked(const Read *R, const Found *S) {
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
   // part of the time left each of those still to be asked -- and the order is made again)
   readyDefer = 0; readyCollect = 0; readyFresh = 1;
-  #define READY_ASKS(J_) (!(J_)->o.lives && !(J_)->o.dead && (J_)->o.ready == NOT_ASKED && (J_) != carriedJ)
+  // (the line in progress too: a line that lived by a break in reach lives on by it, its landed board the one already searched)
+  #define READY_ASKS(J_) (!(J_)->o.lives && !(J_)->o.dead && (J_)->o.ready == NOT_ASKED)
   // (THE KEPT PLAN'S LINES -- intentions and routes -- take none of the decision's own search: their readiness is what the workers or
   // the kept breaks already hold, so the time is shared only over the lines the decision would ask with no plan kept)
   #define EXTRA(J_) ((J_)->k.kept || (J_)->k.route)
@@ -182,7 +183,7 @@ static int ranked(const Read *R, const Found *S) {
     else {
       static Judge again; Cand kc = J->k;
       if (judgeCand(R, &kc, &again)) {
-        again.wait = J->wait;
+        again.wait = J->wait; again.first = J->first; again.waitMax = J->waitMax;   // (its place in the order kept: the line in progress)
         again.outside = again.outside || J->outside;
         *J = again;
       }
