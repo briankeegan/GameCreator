@@ -79,10 +79,37 @@ Worker threads on the spare cores, sharing one table of lines already judged (th
 
 The same answer as one thread when given the same work, checked by the replay.
 
+### F. One plan, kept and repaired (incremental replanning) -- the backbone
+
+How robots that move while they plan do it (LPA*, D* Lite, anytime D*, time-bounded A*), and how planners keep a plan stable (plan
+repair over replanning): the search is never thrown away; a change is repaired where it touched; the agent acts on the best plan so
+far while the search goes on.
+
+- WHAT CHANGES IS KNOWN EXACTLY. The engine predicts every frame and the truth holds, so between decisions the plan's own board is the
+  game's. Only new information changes anything: garbage newly sent (the telegraph), the colours of a row as it rises, and the swap
+  just played. With none of it, the plan is still exactly right -- D* Lite with no edge changed -- and the search simply goes deeper
+  from where it was.
+- THE PLAN IS KEPT. The route (B) and its intentions (A), and the planner's frontier, re-rooted at the board the played swap leads
+  to, as Monte Carlo tree search keeps the subtree under the move it played and time-bounded A* keeps one search running across
+  steps.
+- A CHANGE IS REPAIRED WHERE IT TOUCHED. A block sent changes when the board is lost and the windows after it lands: the route and the
+  intentions are judged again from that frame, lines finished before it keep their outcome (the cache keyed by the board and the
+  line). A row risen touches the cells at the bottom: an intention that needs none of them keeps. Repair stops once the order is
+  settled (truncated D*: no more work than the answer needs).
+- STABLE. Of two repaired plans that rank alike, the one nearer the old (fewer stops changed, less walk) -- a plan that does not
+  thrash is one the cursor does not swing for. Measured: stops changed a decision, jumps of six or more.
+- ANYTIME AND CONTINUOUS. The answer is always ready (the kept route's next stop); the time left improves it (anytime repairing A*).
+  The planning runs between questions too, on its own thread, so a question is answered from a plan already made, never from a cold
+  start.
+- NEVER TRAPPED BY ITS OWN PLAN. A warm start misleads after a sharp change (the MPC warm-start papers): every decision also has the
+  proposers' fresh lines beside the repaired plan, all ranked in the one order, so a large block sent cannot hold the board to a plan
+  made before it.
+
 ## Build order
 
 1. E, the threads: no behaviour of its own -- the same decisions, searched deeper in the same time.
-2. A and B together, intentions and the route, with the carry as the first intention.
+2. F with A and B: the kept plan (intentions and the route, the carry the first intention), repaired on new information only,
+   planned on between questions.
 3. C, waiting filled.
 4. D, the shape math feeding B's setup stops.
 
@@ -90,6 +117,14 @@ Measured each time: survival per pattern, blocks thrown a minute, cells walked a
 up, intentions held at once, think ms and the decisions the clock cuts.
 
 ## Sources
+
+- [Lifelong Planning A*](https://en.wikipedia.org/wiki/Lifelong_Planning_A*) and [D* Lite (Koenig & Likhachev, AAAI 2002)](https://cse-robotics.engr.tamu.edu/dshell/cs625/aaai02b.pdf)
+- [Anytime Dynamic A* (Likhachev et al.)](https://www.ri.cmu.edu/publications/anytime-dynamic-a-an-anytime-replanning-algorithm) -- used by the 2007 DARPA Urban Challenge winner
+- [Plan stability: replanning versus plan repair (Fox et al., ICAPS 2006)](https://strathprints.strath.ac.uk/2776/) and [optimising stability in plan repair (ICAPS 2022)](https://ojs.aaai.org/index.php/ICAPS/article/view/19815)
+- [Time-bounded A* (Björnsson, Bulitko, Sturtevant)](https://www.cs.du.edu/~sturtevant/papers/TBA.pdf) and [RTAA* (Koenig & Likhachev)](https://www.eecs.ucf.edu/~gitars/cap6671/Papers/rtaa_aamas06.pdf)
+- [Tree reuse in real-time MCTS](https://arxiv.org/pdf/2407.03049)
+- [Warm starts mislead after sharp changes (MPC)](https://arxiv.org/pdf/2310.02918)
+- [Anytime incremental planning with experience graphs](https://www.ri.cmu.edu/publications/anytime-incremental-planning-with-e-graphs)
 
 - [Insertion heuristics for dynamic vehicle routing](https://optimization-online.org/2022/11/insertion-heuristics-for-a-class-of-dynamic-vehicle-routing-problems/)
 - [Asynchronous adaptive large neighbourhood search for dynamic routing](https://portal.fis.tum.de/en/publications/asynchronous-adaptive-large-neighborhood-search-algorithm-for-dyn/)
