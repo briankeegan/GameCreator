@@ -118,8 +118,9 @@ is. That is E's next step, and it comes with F: a kept plan asks readiness of th
 
 In the game's own process the workers took the client down after its first decision (runs 362-365: every game "no result", the log
 ending after one GAMBITD line with `GAMBIT workers 2`); the C checks, with no game beside them, pass with them. The workers are off
-unless GC_GAMBIT_WORKERS is set, until a check runs the frame loop beside the searches and the workers (the game's thread and Gambit's
-share the engine's thread 0 -- its board pool -- which the workers' phases hand boards out of).
+unless GC_GAMBIT_WORKERS is set (gambit-24.yml's `workers`). The cause found: the game's thread makes its keys with engine steps
+(`front.c` keyCtx) as the engine's thread 0 -- Gambit's own, the pool the workers' phases hand boards out of. The game's thread is now
+the engine's last (`native.c` gn_setup), its own pool.
 
 ### F, its first piece: the breaks already found, kept (`search/break.c` readyKept)
 

@@ -58,9 +58,8 @@ int hostThread(void *(*fn)(void *)) {
 #include <limits.h>
 int hostFutexWait(int *p, int v) { return (int)syscall(SYS_futex, p, FUTEX_WAIT_PRIVATE, v, NULL, NULL, 0); }
 int hostFutexWake(int *p, int n) { return (int)syscall(SYS_futex, p, FUTEX_WAKE_PRIVATE, n < 0 ? INT_MAX : n, NULL, NULL, 0); }
-// THE WORKERS: GC_GAMBIT_WORKERS of them (at most `most`; none when it is not set -- in the game's own process the workers took the
-// client down after its first decision, plans/gambit-infra.md E), each started with its id (1, 2, ...) and pinned where Gambit is
-// (GC_GAMBIT_CPUS). The number started.
+// THE WORKERS: GC_GAMBIT_WORKERS of them (at most `most`; none when it is not set), each started with its id (1, 2, ...) and pinned
+// where Gambit is (GC_GAMBIT_CPUS). The number started.
 static void *(*workerFn)(void *);
 static void *workerStart(void *arg) { pinned(); return workerFn(arg); }
 int hostWorkers(void *(*fn)(void *), int most) {

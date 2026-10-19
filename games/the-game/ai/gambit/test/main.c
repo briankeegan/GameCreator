@@ -23,6 +23,7 @@ void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
 int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
+void paThreadId(int id);
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath);
 int32_t *gn_io(void);
 int gn_rules(int n);
@@ -67,6 +68,7 @@ static int loadWords(const char *path) {
   if (have != 7) return 0;
   gn_setup(setup[0], setup[1], setup[2], setup[3], setup[4], setup[5], setup[6], "");
   if (gn_rules(nrules) != nrules) return 0;
+  paThreadId(0);   // (the checks answer on this thread, as Gambit's own does: the engine's thread 0 -- gn_setup made it the game's)
   gn_profile(profile[0], profile[1], profile[2], profile[3], profile[4], profile[5], profile[6], profile[7]);
   return 1;
 }

@@ -245,13 +245,16 @@ static int32_t ages[512];
 // engine's pool's (search.h workerLoop) -- every batch of steps a search hands the pool (core/nodes.h stepMany) is played on them all.
 static void *gnWorker(void *arg) { paThreadId((int)(long)arg); workerLoop(); return 0; }
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {
+  // (THE GAME'S THREAD, which calls this and plays the frame loop -- its keys are engine steps (front.c keyCtx) -- is the engine's last
+  // thread, its own board pool: thread 0 is Gambit's, the one the workers' phases hand boards out of)
+  paThreadId(MAXTHREADS - 1);
   gnReaction = reaction; gnAhead = ahead; gnGap = gap; gnJitter = jitter; gnPlanHealth = planHealth;
   gb_config(reaction, swapGap, cursor);
   if (logPath && *logPath) hostOpenLog(logPath);
   static int started;
   if (!started) {
     started = 1;
-    int n = hostWorkers(gnWorker, MAXTHREADS - 1);
+    int n = hostWorkers(gnWorker, MAXTHREADS - 2);
     while (__atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST) < n) {}
     static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
   }
