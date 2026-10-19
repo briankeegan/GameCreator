@@ -164,7 +164,8 @@ can afford, and a nearer break bought with a last resort is paid for in panels, 
 The material floor (outcome.c) judged a line that leaves no break to build lost the frame it is done -- measured against the board
 as it was asked, once a game: never asked again after the game's first decision under garbage, and blind to a board that loses its
 break by itself (a slab's pop ending). In 384's large_garbage-2 it held through 14 decisions of a 424-frame stop, every walk toward
-the break judged lost 41 frames before the hold. It is now measured against the board left alone, asked every decision. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+the break judged lost 41 frames before the hold. It is now measured against the board left alone, asked every decision.
+At `e4aa58dc`: finish 22 (6, 8, 8) -- the best yet; one of its two losses 24 frames from the end. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 
