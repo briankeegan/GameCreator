@@ -131,6 +131,10 @@ the threads (at most half the time left). The checks then read the answers; a br
 alone is. The break search's state is each thread's own (`LOCAL`: its nodes, its lines, its scratch, the clock's share and work, the
 press memo); a search run as a job steps alone, never in a batch. With no workers nothing changes: the C checks' answers are the
 golden's. Logged `pre=answered/kept`.
+The workers took the client down a second time (runs 378-382: no game had a result): Gambit's thinking thread (`native.c`
+workerMain) took the engine's thread id 1, the first worker's, so the two shared a pool of boards. It is thread 0 now, the workers
+1..n, and they are on by default: the cores less two (`host.c` hostWorkers). Found by playing the client's training headless
+(`lua/check.lua`) under gdb.
 
 ### F, its first piece: the breaks already found, kept (`search/break.c` readyKept)
 
