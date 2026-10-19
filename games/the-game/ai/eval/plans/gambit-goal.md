@@ -126,7 +126,10 @@ At `35e93c15` (the rules' floor 30, every mode): finish 18 (5, 6, 7), pressure 1
 run before: the floor is within the noise; combo_storm is still where the games go.
 On combo_storm under garbage (the games' own logs, 342 and 344), finish was offered 4379 entry lines, 2444 break lines and 982
 clears; big chain 207, 1042 and 8. The searches aim at the list, and big chain's (8-chains, and the defence's combos of 4) holds
-almost no break the board can make. The defence now ends with any clear that breaks, so every mode's searches see them.
+almost no break the board can make.
+At `0a332d80` (the one rule: the list's entries, then a three that breaks, then the last resort; no defence entries): finish 16 (4, 7,
+5), aim 81%; pressure 20 (6, 8, 6), aim 17%; big chain 16 (4, 7, 5), aim 1%; build 14 (4, 4, 6), aim 6%. Blocks thrown a minute 15.9,
+17.2, 17.8, 18.3. combo_storm in the chain modes 4 of 8 against 1-4 before; build's factory 4 of 8 against 8.
 
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
