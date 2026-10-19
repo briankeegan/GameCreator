@@ -379,8 +379,8 @@ EXPORT(gb_rules) int gb_rules(int n) {
 // The profile: the mode played the whole game (the rule's name, -1: chosen by the facts each decision), the gambit's numbers, the
 // bot's hands.
 // THE BREAK SEARCH'S SHARE of the searches' time, in percent, under garbage and otherwise (the profile's `share`); 0 keeps the default
-// ATTACK FIRST (facts.c attackFirst): 1 on
-EXPORT(gb_attack) void gb_attack(int on) { attackFirst = on; }
+// THE PROFILE'S FLAGS (facts.c gbFlags), as bits
+EXPORT(gb_flags) void gb_flags(int bits) { gbFlags = bits; }
 EXPORT(gb_share) void gb_share(int under, int otherwise) {
   underShare = under > 0 && under <= 100 ? under / 100.0 : UNDER_SHARE;
   breakShare = otherwise > 0 && otherwise <= 100 ? otherwise / 100.0 : BREAK_SHARE;

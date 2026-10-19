@@ -1,1 +1,1 @@
-{"base":"gambit-pressure.json","gambit":{"attack":true}}
+{"base":"gambit-pressure.json","gambit":{"flags":["attack"]}}
