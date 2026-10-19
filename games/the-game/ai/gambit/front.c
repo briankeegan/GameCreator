@@ -481,20 +481,25 @@ static void take(void) {
 // The frame the line's next swap is pressed from: where the plan ends, or later when it was judged pressed later.
 static int32_t lineDue(void) { return imax(F.nextAt, F.lineAt[0]); }
 // The line behind the move, its next swap played from the frame it is due, on the board predicted for then.
+// (a line it cannot press on is dropped, and the run's log says why)
+static int lineDropped(int32_t due, const char *why) {
+  if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "LINE dropped at %d (due %d, %d left): %s", F.now, due, F.lineN, why); flog(l); F.loggedRefused++; }
+  F.lineN = 0; return 0;
+}
 static int follow(void) {
   static Keys k;
   if (!F.lineN) return 0;
   int32_t due = imax(lineDue(), F.now + 1);
-  if (modeAt(due) != F.lineMode) { F.lineN = 0; return 0; }
+  if (modeAt(due) != F.lineMode) return lineDropped(due, "another mode");
   int32_t mv = F.line[0], hl, hs;
-  if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) { F.lineN = 0; return 0; }
-  if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) { F.lineN = 0; return 0; }
+  if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) return lineDropped(due, "no board predicted");
+  if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) return lineDropped(due, "no keys press it");
   if (F.pending) abortTo(F.pId);
   F.pending = 0;
   walkKeys(&k, due);
-  if (!keysFit(due, &k)) { F.lineN = 0; F.st.guarded++; return 0; }
+  if (!keysFit(due, &k)) { F.st.guarded++; return lineDropped(due, "its keys do not fit"); }
   int left = allowanceAt(due);
-  if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) { F.lineN = 0; return 0; }
+  if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance");
   F.st.heldWalks += k.held;
   for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1 });
   F.nextAt = due + k.n;
@@ -598,12 +603,13 @@ static void afterFrame(int32_t bits) {
   F.haveExpect = 1;
   Board *next = F.expect;
   if (next->gameOverClock > 0) return;
-  if (F.pending && !F.pPaced && !answerWaiting(F.pId)) { if (F.lineN) { if (lineDue() - now <= 1) follow(); } else if (F.nextAt - now == 1) F.st.noLine++; }
+  // (a swap handed on with the frame it was judged pressed from is pressed then, paced or not -- the line judged is the line played)
+  if (F.pending && (!F.pPaced || (F.lineN && F.lineAt[0])) && !answerWaiting(F.pId)) { if (F.lineN) { if (lineDue() - now <= 1) follow(); } else if (F.nextAt - now == 1) F.st.noLine++; }
   if (F.pending) return;
   int gap = calmGap(next);
   while (gap < 0 && F.lineN && F.nextAt > now && lineDue() - now < soon() && follow()) {}
-  // (a swap judged pressed later than the plan ends, due before an answer could be had: pressed then, the question asked after it)
-  while (F.lineN && F.lineAt[0] > F.nextAt && lineDue() - now < soon() && follow()) {}
+  // (and one due before an answer could be had is pressed then, the question asked after it)
+  while (F.lineN && F.lineAt[0] && lineDue() - now < soon() && follow()) {}
   int lead = F.nextAt > now ? soon() : imax(soon(), imin(aheadOf(), popLeft(next) / 4));
   int32_t at = imax(F.nextAt > now ? F.nextAt : 0, now + lead);
   int paced = 0;

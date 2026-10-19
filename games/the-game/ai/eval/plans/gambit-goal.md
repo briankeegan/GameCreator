@@ -199,5 +199,9 @@ as the gap. The judge presses a settled line's next swap as soon as its pair can
 judged. Now the line played is handed to the frame loop whole, each swap with the frame the judge pressed it from (answer.c handAt,
 front.c lineDue): a settled line's swaps after the board settles, a line whose first swap waits a hold with the whole line handed.
 A JavaScript host (gambit.js) presses a hand as soon as it can, so it is handed only what the judge pressed so.
+Measured (`5c374828`): finish 16 (4, 8, 4). In large_garbage-2 the line in progress lived (13047, its first swap two frames off), was
+handed on behind a hold and never pressed: the frame loop followed a hand only while the question out was unpaced, and the question
+after a hold is paced. A swap with its judged frame is now pressed on it, paced or not, and a line the frame loop cannot press on is
+logged with why ("LINE dropped").
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
