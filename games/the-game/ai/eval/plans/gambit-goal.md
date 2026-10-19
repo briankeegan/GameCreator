@@ -158,7 +158,9 @@ At `880cca5b` (the readiness searched on every thread, two workers): finish 14 (
 decision to 8, and two games died before frame 1400. The workers are off by default again. Next: the intentions and routes taken out.
 At `f9a30f5c` (the intentions and routes taken out): finish 19 (7, 7, 5), the best's again. Of the boards after each loss's turn,
 searched again with more time, 58 of 60 had no break to find (run 374): the board is lost at the turn, by the line played there.
-Next: of two lines that do not live, the one leaving the nearer next break before the list's entry. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+Of two lines that do not live, the one leaving the nearer next break before the list's entry (`1659fda8`): finish 14 (2, 8, 4) --
+the last resorts from 16% to 38% of the lines played, the material under garbage 25 to 22. Reverted: the list orders what the board
+can afford, and a nearer break bought with a last resort is paid for in panels, as the narrower alike was. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 
