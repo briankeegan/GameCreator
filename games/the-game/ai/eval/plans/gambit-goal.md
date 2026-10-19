@@ -117,6 +117,12 @@ combo_storm 4 and 5 of 8 against 1-2. On combo_storm the chain modes held 26 pan
 5-chains spend what the board lives on.
 Repeated: big chain 18 and 16 (13, 12 at the floor of 24), build 17 and 15 (14, 14); finish 16 (19, 17) and pressure 18 (18, 18) at
 30 -- the chain modes gain, the attack modes do not. The rules' floor is 30 for every mode.
+At `35e93c15` (the rules' floor 30, every mode): finish 18 (5, 6, 7), pressure 15 (2, 8, 5), big chain 15 (1, 8, 6), build 18 (4, 8,
+6). Blocks thrown a minute: finish 15.0, pressure 16.8, big chain 17.3, build 17.8. Big chain's combo_storm 1 of 8 against 4-5 a
+run before: the floor is within the noise; combo_storm is still where the games go.
+On combo_storm under garbage (the games' own logs, 342 and 344), finish was offered 4379 entry lines, 2444 break lines and 982
+clears; big chain 207, 1042 and 8. The searches aim at the list, and big chain's (8-chains, and the defence's combos of 4) holds
+almost no break the board can make. The defence now ends with any clear that breaks, so every mode's searches see them.
 
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

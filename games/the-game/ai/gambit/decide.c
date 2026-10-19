@@ -49,9 +49,10 @@ static int readBoard_(Read *R) {
   if (R->under) { for (int i = 0; i < R->guides.n; i++) R->guides.aim[i].brk = 1; R->end = 1; }
   decF.under = R->under;
   R->asked = R->guides;   // (the list as the board asks it, the rank's: before the defence's entry is added for the searches)
-  // (and after its own entries, THE DEFENCE: a combo of four or more that breaks -- the clear that buys stop as it breaks, within every
-  // list -- so every mode's searches look for the breaks that keep a board alive, whatever its list asks)
-  if (R->under && R->guides.n < MAXAIMS) { Aim d; memset(&d, 0, sizeof d); d.combo.op = OP_GE; d.combo.n = 4; d.brk = 1; R->guides.aim[R->guides.n++] = d; }
+  // (and after its own entries, THE DEFENCE: a combo of four or more that breaks -- the clear that buys stop as it breaks -- then any
+  // clear that breaks, within every list -- so every mode's searches look for the breaks that keep a board alive, whatever its list
+  // asks; the order still reads the list as the board asks it)
+  for (int c = 4; R->under && c >= 3 && R->guides.n < MAXAIMS; c--) { Aim d; memset(&d, 0, sizeof d); d.combo.op = OP_GE; d.combo.n = c; d.brk = 1; R->guides.aim[R->guides.n++] = d; }
   // (A LIST ENDED BY "default" -- every list under garbage -- falls back to the default's own move when none of it can be made: the
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)
