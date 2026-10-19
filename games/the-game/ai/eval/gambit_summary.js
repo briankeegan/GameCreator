@@ -22,6 +22,7 @@ var forgone = { decisions: 0, missed: 0, blocks: 0 };
 var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wallMs=) and the break search's (brMs=), under garbage apart
 var cutShort = { boards: 0, cut: 0 };     // decisions where the board was making a chain of its own (own=A/B), and those that cut it short
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, starved: 0, inHand: 0 };
+var kept = { n: 0, held: 0 };   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
   if (!fs.existsSync(rf)) return;
@@ -39,6 +40,15 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     var lines = fs.readFileSync(lf, 'utf8').split('\n');
     // (the decisions the clock cut: what a faster or slower machine would have played differently)
     lines.forEach(function (l) { if (l.indexOf('GAMBITD ') !== 0) return; var c = / out=(\d+)/.exec(l); if (!c) return; budget.decisions++; if (+c[1]) budget.out++; });
+    // (A LIFE KEPT: a line played under garbage that lives, then nothing new told -- the next block lands on the same frame, as many
+    // queued -- and whether the next decision has a line that lives: the engine predicts every frame, so it should)
+    var ds = lines.filter(function (l) { return l.indexOf('GAMBITD ') === 0; }), num = function (l, k) { var m = new RegExp(' ' + k + '=(-?\\d+)').exec(l); return m ? +m[1] : null; };
+    for (var di = 0; di + 1 < ds.length; di++) {
+      var da = ds[di], db = ds[di + 1];
+      if (da.indexOf(' v=lives') < 0 || da.indexOf(' under=1') < 0 || num(da, 'land') === null || num(db, 'land') === null) continue;
+      if (+da.split(' ')[1] + num(da, 'land') !== +db.split(' ')[1] + num(db, 'land') || num(da, 'qk') !== num(db, 'qk')) continue;
+      kept.n++; if (num(db, 'live') > 0) kept.held++;
+    }
     // (SWITCHING: each switch by its direction -- the mode before it to the mode after -- and the mode a lost game was lost in)
     var was = null, one = null, switched = false, last = null;
     lines.forEach(function (l) {
@@ -131,6 +141,7 @@ if (nturns) {
 }
 if (rule.n) console.log('the one rule: of ' + rule.n + ' lines played that met a part of it, ' + Math.round(100 * (rule.e || 0) / rule.n) + '% an entry of the list, ' + Math.round(100 * (rule.t || 0) / rule.n) + '% a three that breaks, ' + Math.round(100 * (rule.l || 0) / rule.n) + '% a last resort');
 if (rule.preKept) console.log('boards searched once: ' + rule.preHit + ' readiness checks answered by a board this decision had searched already (or a worker), of ' + rule.preKept + ' boards kept');
+if (kept.n) console.log('a life kept: ' + kept.held + ' of ' + kept.n + ' lines that lived, nothing new told, lived on at the next decision (' + Math.round(100 * kept.held / kept.n) + '%)');
 if (rule.rdyAsked) console.log('kept plan: ' + rule.rdyHit + ' of ' + rule.rdyAsked + ' readiness checks answered by a break already found (' + Math.round(100 * rule.rdyHit / rule.rdyAsked) + '%)');
 if (rule.keptOff || rule.routeOff || rule.wayOff) console.log('intentions: ' + (rule.keptOff || 0) + ' kept lines offered again, ' + (rule.keptPlayed || 0) + ' played; routes: ' + (rule.routeOff || 0) + ' judged, ' + (rule.routePlayed || 0) + ' played; on the way: ' + (rule.wayOff || 0) + ' offered, ' + (rule.wayPlayed || 0) + ' played');
 if (aggr.frames) console.log('aggression: ' + (aggr.blocks * 3600 / aggr.frames).toFixed(1) + ' blocks thrown a minute (' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute; ' + Math.round(aggr.frames / 3600) + ' minutes)');

@@ -121,7 +121,10 @@ static int nearOf(const Board *b); static int garbageOn(const Board *b);   // (s
 static int32_t readyRow1Buf[W + 1];
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   readyPendLast = 0; readyNearLast = -1;
-  int land = step(x, n, MK_LONG, 0, 0, imax(1, wait - NODE(x, n)->t));
+  // (a line that ends past the landing is ready from where it ends -- never a frame on: the same trajectory, asked from any root,
+  // lands on the same board, so a break found on it once is found again by its key)
+  int dt = wait - NODE(x, n)->t;
+  int land = dt > 0 ? step(x, n, MK_LONG, 0, 0, dt) : n;
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   if (readyDefer && !readyCollect) return NOT_ASKED;
   int calm = settleOf(x, land);

@@ -174,7 +174,12 @@ landed board searched once a decision): finish 20 (6, 6, 8); 54,000 of 250,000 c
 Its early loss (factory, frame 723): 190 frames with no break in reach, every decision a line within the list lost 58 frames before a
 last resort, the two "alike". Alike only while a break is in reach (`727c7248`): finish 14 (4, 7, 3), last resorts 27%, material
 22.9 -- the third measure of the same thing (with the narrower alike twice): a later loss bought with a last resort is paid for in
-panels. Reverted; the alike rule stands as it is. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+panels. Reverted; the alike rule stands as it is.
+A LIFE KEPT: of the lines played under garbage that lived, with nothing new told after (the next block landing on the same frame, as
+many queued), the next decision had a line that lived 79% of the time (run 389) -- the engine predicts every frame, so it should be
+all. One cause: readiness looked from a frame on past a line's end, the hold the next decision asked from where the board settled --
+one trajectory, two boards a frame apart, so the break found on one was never found again by its key. Now a line past the landing is
+ready from where it ends. The summary counts it ("a life kept"). Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 
