@@ -155,7 +155,10 @@ chain 20, build 15 (5, 7, 3) -- 68 of 96 against 80.
 At `fd23d88f` (no line judged twice, the readiness time split over the checks still to ask, work on the way): finish 17 (4, 7, 6).
 From here one mode at a time, finish first, on the latest build only; every mode again once finish holds, for regressions.
 At `880cca5b` (the readiness searched on every thread, two workers): finish 14 (5, 5, 4) -- the readiness checks fell from 12 a
-decision to 8, and two games died before frame 1400. The workers are off by default again. Next: the intentions and routes taken out. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
+decision to 8, and two games died before frame 1400. The workers are off by default again. Next: the intentions and routes taken out.
+At `f9a30f5c` (the intentions and routes taken out): finish 19 (7, 7, 5), the best's again. Of the boards after each loss's turn,
+searched again with more time, 58 of 60 had no break to find (run 374): the board is lost at the turn, by the line played there.
+Next: of two lines that do not live, the one leaving the nearer next break before the list's entry. Kept lines played about 800 times in 20,000 decisions, routes 13. The readiness
 checks rose from 10-11 a decision to 12-13 with every break search's share cut with them, and the decisions left no time to judge
 anything doubled (6-17 to 14-31).
 

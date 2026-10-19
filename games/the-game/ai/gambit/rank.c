@@ -262,6 +262,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
+    // 4b. (neither lives) the nearer next break on the board the line leaves (outcome.c nearAfter): a board that dies has only its next
+    // break to live by, so the line leaving one nearer comes before the list's entry
+    if (x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && x->o.nearAfter != y->o.nearAfter) return x->o.nearAfter - y->o.nearAfter;
     // 5. (neither lives) within the list before outside it
     if (x->outside != y->outside) return x->outside ? 1 : -1;
   }
