@@ -115,6 +115,8 @@ the chain modes (1-2 of 8) is where the games are lost. Aggression holds at 10-1
 The material floor at 30 in the chain modes (an experiment, gambit-rules-floor30.json; the rules keep 24): build 17, big chain 18 --
 combo_storm 4 and 5 of 8 against 1-2. On combo_storm the chain modes held 26 panels under garbage against finish's 32: their own
 5-chains spend what the board lives on.
+Repeated: big chain 18 and 16 (13, 12 at the floor of 24), build 17 and 15 (14, 14); finish 16 (19, 17) and pressure 18 (18, 18) at
+30 -- the chain modes gain, the attack modes do not. Whether the rules' floor goes to 30 for big chain and build is the owner's.
 
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
