@@ -3,7 +3,7 @@
 -- garbage the senders' telegraphs show and the input budget's window, and the frame loop gives the keys. Nothing is decided here.
 --
 --   local G = dofile(<GameCreator>/games/the-game/ai/gambit/lua/GambitNative.lua)   -- once per process
---   local bot = G.new({})   -- opts.network: online, the opponent and the garbage on its way read only as the server sends them
+--   local bot = G.new({})
 --   bot:startMatch(stack)                 -- once per match
 --   local char = bot:input(stack, sources, view)   -- every frame, before it is run (view: the opponent's shipped board, or nil)
 --
@@ -88,7 +88,6 @@ function GambitNative.new(opts)
   self.inputs = opts.inputBudget or InputBudget.standard()
   self.ownInputs = opts.inputBudget == nil
   self.dropped, self.frames, self.ages, self.pv = 0, 0, {}, {}
-  self.network = opts.network
   self.ts0, self.ts1 = ffi.new("double[4]"), ffi.new("double[4]")
   return self
 end
@@ -145,16 +144,21 @@ local function piece(T, x, g)
   T[x + 5] = g.finalized == nil and NUL or b01(g.finalized)
   return x + 6
 end
--- (online -- opts.network -- the garbage on its way is the stack's own queue, what the server delivered, and nothing else: the copy of
--- the opponent played here sends from its own outgoing queue, which is never delivered here, so read it would be garbage that never
--- comes)
+-- A SOURCE WHOSE GARBAGE COMES OVER THE WIRE: the engine's own routing (common/engine/GarbageDelivery.lua looseSyncActive) -- loose
+-- sync on and connected, the source not this client's: the server's relayed garbage is what lands, and the copy of the source played
+-- here is no word on it (its outgoing queue is never delivered here). Anywhere else -- lockstep, Training, a local match -- the source
+-- is played here exactly and delivers here, so its outgoing garbage is the garbage on its way and its board the opponent's own.
+local function wired(src)
+  return LOOSE_SYNC_GARBAGE and GAME and GAME.netClient and GAME.netClient.isConnected and GAME.netClient:isConnected()
+    and not src.is_local and true or false
+end
+-- (a wired source's garbage is read off this stack's own queue only, what the server delivered: board.lua loads it)
 function GambitNative:telegraph(sources)
   local T, x = C.gn_tele(), 1
   local n = 0
-  if self.network then sources = EMPTY end
   for _, src in ipairs(sources or EMPTY) do
     local q = src.outgoingGarbage
-    if q and src.stopWatch ~= nil then
+    if q and src.stopWatch ~= nil and not wired(src) then
       n = n + 1
       T[x], T[x + 1] = src.stopWatch, b01(q.illegalStuffIsAllowed); x = x + 2
       -- (every transit not yet delivered: one whose time has come waits while the stack has CAPPED_AT queued, GarbageDelivery; its count
@@ -188,28 +192,29 @@ end
 -- off the opponent's own board as its client shipped it (view: BotClient's oppView, from the snapshots it paints from) when one came
 -- within VIEW_FRESH frames -- its stop counted down since; else off the copy of its stack played here from its relayed keys: its stop
 -- and pre-stop, or its shake when longer, as the judge reads a board's (judge.c dropAt).
-local VIEW_FRESH = 90
--- Online (network) only the shipped board is read, however old the last one -- the copy played here is no source of the opponent's
--- board -- and before the first, the board a match begins with: not topped out, low, no stop.
-local function opponentOf(sources, view, clock, network)
-  if view and clock and view.seen and (network or clock - view.seen <= VIEW_FRESH) then
+-- An opponent whose garbage comes over the wire (wired) is read off its shipped board only, however old the last one -- the copy played
+-- here is no source of its board -- and before the first, the board a match begins with: not topped out, low, no stop. One played here
+-- exactly is read off its own stack. (A panel counts as the engine's Panel:dangerous counts it: garbage still falling is not the
+-- stack's height, and does not top it out.)
+local function counts(p) if not p then return false end if p.isGarbage then return p.state ~= "falling" end return (p.color or 0) ~= 0 end
+local function opponentOf(sources, view, clock)
+  local anyWired = false
+  for _, src in ipairs(sources or EMPTY) do if src.panels and wired(src) then anyWired = true end end
+  if view and clock and view.seen and (anyWired or clock - view.seen <= VIEW_FRESH) then
     return 1, view.over and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
   end
-  if network then return 1, 0, 0, 0 end
+  if anyWired then return 1, 0, 0, 0 end
   local has, out, top, stop = 0, 0, 0, 0
-  for _, src in ipairs(sources or {}) do
+  for _, src in ipairs(sources or EMPTY) do
     if type(src.game_ended) == "function" and src:game_ended() then return 0, 0, 0, 0 end
     if type(src.isToppedOut) == "function" and src.panels then
       has = 1
       stop = math.max(stop, (src.stop_time or 0) + (src.pre_stop_time or 0), src.shake_time or 0)
       local above = src.panels[(src.height or 12) + 1]
-      for col = 1, src.width or 6 do local p = above and above[col]; if p and p.isGarbage then out = 1 end end
+      for col = 1, src.width or 6 do local p = above and above[col]; if p and p.isGarbage and p.state ~= "falling" then out = 1 end end
       for row = src.height or 12, 1, -1 do
         local found = false
-        for col = 1, src.width or 6 do
-          local p = src.panels[row] and src.panels[row][col]
-          if p and p.color and p.color ~= 0 then found = true break end
-        end
+        for col = 1, src.width or 6 do if counts(src.panels[row] and src.panels[row][col]) then found = true break end end
         if found then if row > top then top = row end break end
       end
     end
@@ -226,7 +231,7 @@ function GambitNative:think(stack, sources, view)
   self:telegraph(sources)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
-  local has, out, top, stop = opponentOf(sources, view, stack.clock, self.network)
+  local has, out, top, stop = opponentOf(sources, view, stack.clock)
   local t2 = ThinkBudget.now()
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
