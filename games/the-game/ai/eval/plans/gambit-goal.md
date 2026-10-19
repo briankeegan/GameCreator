@@ -90,10 +90,10 @@ Those runs were not at level 10: nothing set the level, so the client's default,
 
 | mode | level 11 | runs |
 |---|---|---|
-| finish them | 14/24 (combo_storm 2, factory 7, large_garbage 5) | `7ab7a861` |
-| pressure | 18/24 (combo_storm 4, factory 8, large_garbage 6) | `7ab7a861` |
-| big chain | | |
-| build | | |
+| finish them | 14/24 (combo_storm 2, factory 7, large_garbage 5); aim 83% | `7ab7a861` |
+| pressure | 18/24 (combo_storm 4, factory 8, large_garbage 6); aim 17% | `7ab7a861` |
+| big chain | 12/24 | `50dba0ce` |
+| build | 15/24 | `50dba0ce` |
 | switching | | |
 
 Both with 0 divergences and 0 late moves. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
