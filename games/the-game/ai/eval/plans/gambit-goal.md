@@ -394,3 +394,8 @@ other is lost less than a break's time later.
 Measured (`d7e22a03`, run 444, pressure, finished 11:36 ET): 14 (combo_storm 3/8, factory 8/8, large_garbage 3/8 from 7/8). With
 the break held to the later loss everywhere, large_garbage -- short boards, 23 panels -- lost the panels its breaks convert. Now the
 break comes first as before on a board below the floor, and is held to the later loss only where the board has panels to spare.
+Measured (`ecb6b40d`, run 445, pressure, finished 11:49 ET): 21 (combo_storm 5/8 -- 2019, 11957, 20808 -- factory 8/8,
+large_garbage 8/8); 1 late move, 0 divergences; own chain cut while a living line kept it: 0; aim met 12%; aggression 18.1. One short
+of 22, with no fault found in its losses the order is not built to make (combo_storm-6 at 7 panels after a break of 36 cells; -5 the
+material key choosing the break that keeps the next one's panels; -4 a short board's break 91 frames sooner): pressure is left at 21,
+to be won with every mode run together. Build next -- its first run.
