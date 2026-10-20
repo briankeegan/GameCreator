@@ -424,3 +424,8 @@ THE NEXT BREAKS' PANELS, ONCE EVERYTHING LANDS: of two breaks on a short or topp
 panels under the lowest garbage on the board the readiness lands -- everything shown landed, settled (judge.c readyMat) -- comes first
 (rank.c 7a); the line's own end board where the landing was not asked. Measured on the two patterns that lose (combo_storm,
 large_garbage), twice -- the patterns input -- as much as one run of 24 costs.
+Measured (`a22dd377`, runs 452 and 453, build, combo_storm and large_garbage only, finished 13:3x ET): 8 and 10 of 16 -- combo_storm 3/8
+and 6/8 on the same build; the five build runs before it 12, 12, 9, 11, 7 of 16 on the same two patterns (10.2). THE NOISE: the same
+build swings three games of eight in one pattern, so a change worth a game or two is invisible in one run, or two -- and most of the
+single-run verdicts above (a game or two either way) are inside it. Measuring a change now needs the same games played again: a run
+that plays each of the 16 games more than once, or fixed seeds.
