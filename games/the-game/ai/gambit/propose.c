@@ -87,9 +87,6 @@ static void startChains(const Read *R, Found *S, double ms) {
 // begun on a worker too; each its own thread's nodes and buffers (LOCAL), its lines merged into this decision's after (searchMerge).
 // Asked of before the jobs begin (searchPrep); with fewer workers, or none begun, every search is this thread's, one after another.
 static int32_t planSplit, planSplitAt, extBeside, planBDone, extDone;
-// (under garbage the break search is Gambit's own thread's -- the class the board lives by -- and the planner's first entries, or all of
-// them, a worker's: planBeside, planOptsA, into the decision's plan; answer.c breakBegin)
-static int32_t planBeside, planADone; static PlanOpts planOptsA; static Paths planOutA; static Found *planAInto;
 static List planHalfA, planHalfB;
 static PlanOpts planOptsB; static Plan planB; static Paths planOutB;
 static double extMsBeside;
@@ -102,7 +99,7 @@ static PlanOpts planOptsOf(const Read *R, const List *aims, double ms) {
 }
 static void searchPrep(const Read *R, Found *S) {
   memset(S, 0, sizeof *S);
-  planSplit = 0; extBeside = 0; planBDone = 0; extDone = 0; planBeside = 0; planADone = 0;
+  planSplit = 0; extBeside = 0; planBDone = 0; extDone = 0;
   if (!R->guides.n) return;
   Profile *GP = &C2.GP;
   Board *board = decQ.b;
@@ -125,13 +122,7 @@ static void searchPrep(const Read *R, Found *S) {
     planSplit = 1;
   }
 }
-static void searchUnsplit(void) { planSplit = 0; extBeside = 0; planBeside = 0; }
-static void planAJob(void) {
-  planOut.n = 0; planSeeded = 0;
-  plan(&decQ, &planOptsA, &planAInto->ap);
-  planOutA = planOut;
-  __atomic_store_n(&planADone, 1, __ATOMIC_RELEASE);
-}
+static void searchUnsplit(void) { planSplit = 0; extBeside = 0; }
 // (the searches running beside this thread -- answer.c breakBegin: then each, this thread's planner too, has the searches' whole time,
 // this one keeping back a fifth for the level and the readiness lines after it, rather than half of what is left)
 static int32_t searchBeside;
@@ -163,11 +154,6 @@ static int pLineBetter(const PLine *a, const PLine *b, int how) {   // (a over b
   return a->earned > b->earned || (a->earned == b->earned && a->nseq < b->nseq);
 }
 static void searchMerge(const Read *R, Found *S) {
-  if (planBeside) {
-    if (__atomic_load_n(&planADone, __ATOMIC_ACQUIRE)) { S->haveAp = 1; for (int i = 0; i < planOutA.n; i++) planKeep(planOutA.path[i], planOutA.len[i]); }
-    // (a planner no worker began: planned here, in what is left)
-    else if (leftMs() >= 20) { PlanOpts po = planOptsA; po.ms = leftMs() / 2; plan(&decQ, &po, &S->ap); S->haveAp = 1; }
-  }
   if (planSplit && __atomic_load_n(&planBDone, __ATOMIC_ACQUIRE)) {
     for (int i = 0; i < planHalfB.n && planSplitAt + i < MAXAIMS; i++)
       if (planB.perAim[i].set) { S->ap.perAim[planSplitAt + i] = planB.perAim[i]; S->ap.perAim[planSplitAt + i].aimIndex = planSplitAt + i; }
@@ -190,7 +176,7 @@ static void searchAll(const Read *R, Found *S) {
   double usual = searchBeside ? leftMs() * 0.8 : leftMs() / 2;
   int idle = C2.idle && leftAlone().lives;
   double ms = idle ? (usual > leftMs() ? usual : leftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
-  if (ms >= 20 && !planBeside) {
+  if (ms >= 20) {
     S->tried++;
     PlanOpts po = planOptsOf(R, planSplit ? &planHalfA : &R->guides, ms);
     plan(&decQ, &po, &S->ap); S->haveAp = 1;
