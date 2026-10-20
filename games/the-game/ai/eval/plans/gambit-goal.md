@@ -350,3 +350,7 @@ one with 5 touches in 74 ms) and 2097.
 UNDER GARBAGE WITH NOTHING LIVING, THE WORKERS TO THE BREAK: the decision after one where no line lived does not split the planner
 or extend the chain on a worker -- both stay on Gambit's thread, one after another -- so the break search and the survival search have
 the two cores the game leaves (propose.c searchPrep, lastNoneLived).
+Measured (`9b25576f`, run 433, finished 09:30 ET): finish 21 (8, 7, 6) -- a life kept 72% (run 432: 80%), aim met 78%, walk 3.5 cells
+with 20% jumps of 6 or more. The chain, kept on Gambit's thread, ran first and took half the searches' time before the planner began.
+Now only the planner's split is given up there -- its whole list on Gambit's thread in its full share -- and the chain stays on its
+worker beside the break and survival searches.

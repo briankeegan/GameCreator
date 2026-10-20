@@ -112,12 +112,13 @@ static void searchPrep(const Read *R, Found *S) {
     if (S->xAims.n < MAXAIMS) { Aim brk; memset(&brk, 0, sizeof brk); brk.brk = 1; S->xAims.aim[S->xAims.n++] = brk; }
   }
   if (pool.nworkers < 3 || !C2.due || poolBusy) return;
-  // (UNDER GARBAGE WITH NOTHING LIVING, the break search has the workers: the planner and the chain stay on this thread, one after
-  // another, so the break and the survival search are not three searches on two cores -- run 432, factory-3: 436 ms and no break where
-  // the reach report's search found one in 74 ms)
-  if (R->under && lastNoneLived) return;
   extBeside = !GP->extendOff && ((cascadeLive(board) || R->pop) || wantsChain(&R->guides));
   extMsBeside = leftMs();
+  // (UNDER GARBAGE WITH NOTHING LIVING, the planner is not split: its whole list here, in this thread's full share of the searches, and
+  // the workers left to the break search, the chain and the survival search -- run 432, factory-3: 436 ms and no break where the reach
+  // report's search found one in 74 ms. The chain stays on its worker: run here, it takes half the time before the planner begins, run
+  // 433)
+  if (R->under && lastNoneLived) return;
   if (R->guides.n >= 2) {
     planSplitAt = (R->guides.n + 1) / 2;
     planHalfA = R->guides; planHalfA.n = planSplitAt;
