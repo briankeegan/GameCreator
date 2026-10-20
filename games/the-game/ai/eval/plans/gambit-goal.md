@@ -452,3 +452,6 @@ A LINE JUDGED PRESSED LATER IS PRESSED THEN: a line whose first swap the judge p
 answered as a hold with the whole line handed on, and the hold's keys ran a reaction (12 frames) -- the first swap pressed at +12 where it
 was judged at +1, and the line no longer the one judged (run 456, large_garbage-7, 3508: a line that lived to 334, lost at 3533). Now
 the hold lasts until the line's first swap is due (front.c take).
+Measured (`0f29137a`, run 457, build, combo_storm and large_garbage, seed 1, finished 13:52 ET): 13 of 16 (combo_storm 6/8 -- 1826,
+12371 -- large_garbage 7/8 -- 20265) against 8, 9 and 10 on the builds before it on the same games, and 7-12 on every build before
+the seed: the best yet on the two patterns that lose. 0 late moves, 0 divergences.
