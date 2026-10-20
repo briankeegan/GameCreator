@@ -284,7 +284,9 @@ static Played playOf(const Read *R, int n) {
 // found again once the stack has risen. A line handed to the frame loop is the line in progress too: the next decision judges what is
 // left of it once the swaps the frame loop pressed of it since (carryFrom, carryPressed: the question's lineFrom, linePressed) are
 // played, so a line begun is played on unless something ranks above it.
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
+// (popping: a slab of garbage was popping on the board it was begun on -- a break the next decision finds popping is the line's own
+// only when none was then)
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
 static Carry theCarry;
 static int32_t carryFrom = -1, carryPressed;
 // THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
@@ -307,7 +309,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
   for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
-  theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0;
+  theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
@@ -320,7 +322,7 @@ static void carryReady(const Judge *H, int32_t qid) {
   if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
-  theCarry.settled = 0; theCarry.broke = 1;
+  theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0;
 }
 // THE READINESS BESIDE THE DECISION (search/break.c readyJob): the boards the order will ask readiness of handed to the workers,
 // worst-ranked first -- the decision asks them best-ranked first -- each searched by whichever thread begins it first. They search on
@@ -443,7 +445,7 @@ static int routeJudged(const Read *R, int n) {
 // played on as it is pressed, while every step is legal and it still makes what it was begun for. wait: its next step must wait for
 // the board to settle.
 // (why the line in progress was not carried on, for the log: 0 carried or none, 1 its anchor panel gone, 2 a step no longer there to
-// press or the board lost on it, 3 it no longer breaks, 4 it no longer makes what it was begun for)
+// press or the board lost on it, 3 it no longer breaks and its swaps pressed did not, 4 it no longer makes what it was begun for)
 static int carryDrop;
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
@@ -467,7 +469,9 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   Made x = { j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
   int32_t done = j.done, fire = j.fire, nats = j.nats, ats[MAXLINE];
   for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
-  if (C->broke && !(x.broke > 0)) { carryDrop = 3; return 0; }
+  // (a line begun for a break whose swaps pressed so far made it -- the slab popping now, none when it was begun -- is carried on for
+  // what the rest of it makes: the rest is what the line was judged to live by)
+  if (C->broke && !(x.broke > 0) && !(!C->popping && popLeft(decQ.b) > 0)) { carryDrop = 3; return 0; }
   if (C->hasAim && !meets(&C->aim, x)) { carryDrop = 4; return 0; }
   int aim = -1;
   if (C->hasAim) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;

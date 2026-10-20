@@ -433,3 +433,10 @@ A SET-UP KNOWN TO THE NEXT DECISION: the planner's set-up was one swap -- the fi
 nothing kept where it was going, so the next decision might build something else and the set-up go unused. Now the set-up is offered
 as its whole way there too (search/plan.c setupLine): its first swap played, the rest carried on as the line in progress, judged again
 each decision (decide.c carryOf).
+Seeded (`616dc8af`, runs 454 and 455, build, combo_storm and large_garbage, seed 1): 9 and 10 of 16. The seed holds -- combo_storm-2's
+board at its first search (frame 364) is the same in both runs -- and the games part there, on the first answer the clock bounds: the
+same panels, the bot's own timing the noise. The seed takes the panels out of it, not the timing.
+A LINE WHOSE BREAK IS MADE IS PLAYED ON: large_garbage-7 (run 455) at 3932 carried a line that lived, its swap pressed then the break
+(the board searched again: [2,2], one swap); at 3946 the rest of it was asked to break again, did not -- the slab was popping already --
+and the line that lived was dropped for one that died (lost at 4092). Now a line begun for a break is carried on when the slab is
+popping on its board and was not when it was begun (decide.c carriedCand): the rest is judged for what it makes, as every line is.
