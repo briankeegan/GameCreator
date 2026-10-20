@@ -112,17 +112,20 @@ static void searchPrep(const Read *R, Found *S) {
   }
   if (pool.nworkers < 3 || !C2.due || poolBusy) return;
   extBeside = !GP->extendOff && ((cascadeLive(board) || R->pop) || wantsChain(&R->guides));
-  extMsBeside = leftMs() / 2;
+  extMsBeside = leftMs();
   if (R->guides.n >= 2) {
     planSplitAt = (R->guides.n + 1) / 2;
     planHalfA = R->guides; planHalfA.n = planSplitAt;
     memset(&planHalfB, 0, sizeof planHalfB);
     for (int i = planSplitAt; i < R->guides.n; i++) planHalfB.aim[planHalfB.n++] = R->guides.aim[i];
-    planOptsB = planOptsOf(R, &planHalfB, leftMs() / 2);
+    planOptsB = planOptsOf(R, &planHalfB, leftMs());
     planSplit = 1;
   }
 }
 static void searchUnsplit(void) { planSplit = 0; extBeside = 0; }
+// (the searches running beside this thread -- answer.c breakBegin: then each, this thread's planner too, has the searches' whole time,
+// this one keeping back a fifth for the level and the readiness lines after it, rather than half of what is left)
+static int32_t searchBeside;
 // (the chain extended or begun, wherever it runs: S->ex or S->start)
 static void searchExt(const Read *R, Found *S, double ms) {
   Profile *GP = &C2.GP;
@@ -170,7 +173,7 @@ static void searchAll(const Read *R, Found *S) {
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
   if (!extBeside) { double xMs = leftMs() / 2; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
-  double usual = leftMs() / 2;
+  double usual = searchBeside ? leftMs() * 0.8 : leftMs() / 2;
   int idle = C2.idle && leftAlone().lives;
   double ms = idle ? (usual > leftMs() ? usual : leftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
   if (ms >= 20) {

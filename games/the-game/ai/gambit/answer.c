@@ -317,6 +317,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   searchPrep(&R, &S);
   int beside = breakBegin(&R, &S, lineFrom, linePressed);
   if (!beside) searchUnsplit();
+  searchBeside = beside;
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   double ts = nowMs();
   searchAll(&R, &S);

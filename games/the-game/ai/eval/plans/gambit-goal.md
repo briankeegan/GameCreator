@@ -251,6 +251,10 @@ found the races, 838 reports: the floor's scratch board (facts.c endFacts EB, ES
 planner's arrays (jobN), and poolBusy read unordered -- each thread's own, or atomic, now; 0 reports. `build.sh tsan` runs it, in
 gambit-24's C checks and gate_gambit_engine. And the readiness the last decision left on the workers is taken back as a decision
 begins, not at its judging: the pool was still busy when the searches were to begin, so none of them ran on a worker.
+Measured (`ee9dfef7`, run 418): no game crashed, finish 17 (3, 7, 7); Gambit's thread 0.45 to 0.54 of a CPU, the workers 0.33 to 0.40
+each, the machine a third idle -- every search side by side still took half of what was left, as one after another, and Gambit's
+thread waited for the break search. Now each has the searches' whole time, Gambit's planner keeping back a fifth for the level and the
+readiness lines (propose.c searchBeside).
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --
