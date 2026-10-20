@@ -377,3 +377,9 @@ Measured (`4f53d6f0`, run 440, big chain, finished 10:34 ET): 17 (combo_storm 4/
 raise asked in 785 decisions, pressed once: 784 times the board left alone took no raise within 120 frames by the test as written
 (the host's, and no chain running). Now the test is the host's alone, and what held the raise shut on every frame searched is logged
 (`refill=.../sN`) and summed.
+Measured (`b27034b8`, run 441, big chain, finished 10:49 ET): 20 (combo_storm 4/8, factory 8/8, large_garbage 8/8). The floor's
+raise, timed: shut on every one of 120 frames in 814 of 816 asks -- the rise locked 414, topped once the garbage lands 275, panels
+moving 252, the shake 112: in combo_storm the garbage never stops, and a board left alone takes no raise until it is topped. The losses
+there were not short (23 to 51 panels at the turn). Big chain's list is 8-chains only, so under garbage a combo that breaks is outside
+it, and where nothing lives the order put every line within the list -- a plain three -- before it (key 5). Now between two breaks
+under garbage that both die, the list's ask does not decide: the garbage broken and the material left do.

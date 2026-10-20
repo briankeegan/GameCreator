@@ -304,8 +304,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
-    // 5. (neither lives) within the list before outside it
-    if (x->outside != y->outside) return x->outside ? 1 : -1;
+    // 5. (neither lives) within the list before outside it -- but not between two breaks under garbage: every mode defends itself while
+    // it attacks, and of two breaks that both die the list's ask is not what decides -- the garbage they break (7b) and the material they
+    // leave (6, 7a) do (run 441, big chain: a combo that breaks is outside a list of 8-chains, and was ranked below a plain three)
+    if (x->outside != y->outside && !(decF.under && x->apBroke > 0 && y->apBroke > 0)) return x->outside ? 1 : -1;
   }
   // 6. THE NEXT BREAK'S MATERIAL: of two breaks under garbage, the one that leaves a break to build (outcome.c nextBuild) and keeps the
   // board's floor -- before the list's entry: the list orders the breaks the board can afford
