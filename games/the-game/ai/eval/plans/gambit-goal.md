@@ -529,3 +529,5 @@ UNDER GARBAGE THE NEARER BREAK BEFORE THE PANELS KEPT: combo_storm-3 (run 475, 1
 reach -- the hold kept, as the line whose panels give the board the most life, over lines that brought the next break nearer, and the
 stop ran out on a board eight slabs deep. Now under garbage, within a tier, the line nearer its next break comes before the life its
 panels leave (rank.c, nearAfter before lifeLeft).
+Measured (`ca81b2c2`, run 476, build, one 24, finished 18:5x ET): 20 (combo_storm 6/8 -- 11509, 20060 -- factory 8/8, large_garbage 6/8
+-- 3785, 9978); 0 divergences.
