@@ -501,3 +501,6 @@ Measured (`3a24e52a`, run 467, build, two rounds): 34 of 48 (combo_storm 13/16, 
 lost seven games to it. The line in progress is put first of its tier, and a break found on the board once everything lands is a break
 on a board the stack is not yet: put first, it took the place of lines the order ranks above it. Now the break a ready swap leaves is
 carried and offered, judged as every line is, and not put first (decide.c carriedFromReady).
+Measured (`f4f9921a`, run 468, build, two rounds): 35 of 48 (combo_storm 10/16, factory 13/16, large_garbage 12/16): the ready break
+offered, not first, is about even. THE BREAK SOONER BEFORE THE MATERIAL (rank.c 5a, where 7c was): the key that took run 465 to 39 of
+48, asked before the material keys.

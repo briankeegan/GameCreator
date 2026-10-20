@@ -318,6 +318,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // leave (6, 7a) do (run 441, big chain: a combo that breaks is outside a list of 8-chains, and was ranked below a plain three)
     if (x->outside != y->outside && !(decF.under && x->apBroke > 0 && y->apBroke > 0)) return x->outside ? 1 : -1;
   }
+  // 5a. THE BREAK SOONER: of two breaks under garbage that neither lives, alike so far, the one whose last swap is pressed sooner --
+  // before their material: a break made is panels the next is made of, a break put off is one a later decision may put off again, each
+  // new line a few frames longer lived, till the board has no time left to make it (run 457, combo_storm-6: 1585 to 1816, a break of 24
+  // to 28 cells in every line played, never made)
+  if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apFire >= 0 && y->apFire >= 0 && x->apFire != y->apFire) return x->apFire - y->apFire;
   // 6. THE NEXT BREAK'S MATERIAL: of two breaks under garbage, the one that leaves a break to build (outcome.c nextBuild) and keeps the
   // board's floor -- before the list's entry: the list orders the breaks the board can afford
   if (x->material >= 0 && y->material >= 0 && x->material != y->material) return x->material - y->material;
@@ -335,10 +340,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 7b. UNDER GARBAGE THE RULE IS TO BREAK (the rules' underGarbage): of two breaks under garbage that neither lives, the one that breaks
   // more of it -- before the list's entry: the board's life is the garbage it gets off
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apBroke != y->apBroke) return x->apBroke > y->apBroke ? -1 : 1;
-  // 7c. THE BREAK SOONER: of two such breaks alike so far, the one whose last swap is pressed sooner -- a break put off is one a later
-  // decision may put off again, each new line a few frames longer lived, till the board has no time left to make it (run 457,
-  // combo_storm-6: 1585 to 1816, a break of 24 to 28 cells in every line played, never made)
-  if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apFire >= 0 && y->apFire >= 0 && x->apFire != y->apFire) return x->apFire - y->apFire;
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay;
