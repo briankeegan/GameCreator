@@ -334,3 +334,8 @@ three answers running (797, 806, 821) were refused by the frame loop, their 14 k
 judge had priced the walk under the allowance and kept the line -- two measures of one fact. Now the judge cuts a line whose first
 swap's walk is over what the allowance leaves, as the frame loop refuses it, and the order takes one that can be pressed; the summary
 counts the answers refused.
+Measured (`68de6463`, run 431, finished 02:59 ET): finish 21 -- combo_storm 8/8 for the first time, factory 8/8, large_garbage 5/8
+(4121, 12744, 12977); 0 answers refused by the input allowance, 0 late moves, 0 frames over, 0 divergences; aim met 81%, the list
+85%, aggression 16.9; own chain cut while a living line kept it: 0. Every large_garbage loss ran out of material on a board topped
+out under slabs (large_garbage-5: 23 panels for 2,000 frames, then 9): topped, the rules never raise ("A raise is never made on a
+board topped out"), so the reserve there is kept only by what the breaks convert.
