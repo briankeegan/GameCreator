@@ -27,6 +27,9 @@ on:
       bot:
         description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
         default: 'gambit'
+      seed:
+        description: 'The panel seed base (PA_SEED = base*100 + pattern*10 + game: every game the same panels every run, so builds are measured on the same games); empty for random'
+        default: '1'
       patterns:
         description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games; the goal is measured on all three)'
         default: '["combo_storm","factory","large_garbage"]'
@@ -81,7 +84,13 @@ jobs:
           FRAMES: ${{ inputs.frames }}
           MINUTES: '60'
           GC_GAMBIT_WORKERS: ${{ inputs.workers }}
+          SEED_BASE: ${{ inputs.seed }}
         run: |
+          if [ -n "$SEED_BASE" ]; then
+            case "${{ matrix.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; *) P=9;; esac
+            export PA_SEED=$((SEED_BASE * 100 + P * 10 + ${{ matrix.game }}))
+            echo "::notice title=seed::${{ matrix.pattern }} ${{ matrix.game }}: PA_SEED=$PA_SEED"
+          fi
           echo "::notice title=cores::$(nproc) threads, $(lscpu | awk -F: '/^Core\(s\) per socket|^Thread\(s\) per core/ {gsub(/ +/, " ", $2); printf "%s:%s, ", $1, $2}')cpu:core $(lscpu -e=CPU,CORE | tail -n +2 | awk '{printf "%s:%s ", $1, $2}'), GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
           bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
