@@ -509,3 +509,8 @@ before the material spends the panels. Back after it (7c). The 7c builds over 19
 Measured (`4ad1c1ff`, run 470, build, two rounds, four workers -- the break search's wider beam on a thread of its own): 33 of 48
 (combo_storm 6/16, factory 16/16, large_garbage 11/16): no better than three; the runner's four CPUs are shared with the client and its
 renderer. Three stay.
+Measured (`3a82fdae`, run 471, build, two rounds on seeds 3 and 4): 38 of 48 (combo_storm 10/16, factory 16/16, large_garbage 12/16).
+The judge cut 49299 lines for a walk not begun within a reaction -- 13218 of them the break search's -- and 31365 for no swap there.
+A SWAP THAT WAITS IS PRESSED WHEN ITS WALK BEGINS: a line whose swap could not be walked to within a reaction was cut, though the frame
+loop presses every swap of a line from the frame its walk was judged to begin (the hand's frames, and a first swap's timed hold, which
+ends when it is due). The cut is gone (judge.c); a swap is waited for as long as the press waits (core/nodes.h PRESS_WAIT).

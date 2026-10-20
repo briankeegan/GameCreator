@@ -48,7 +48,7 @@ typedef struct {
   int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
   int32_t late;                 // the clock stopped it: no answer
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
-  int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 its walk not begun within a reaction
+  int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
 } Judged;
@@ -211,8 +211,9 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
       if (out == STEP_NULL) { j->cut = k; j->cutWhy = 2; break; }
       if (from < 0) { j->dead = 1; j->deadAt = deadAt; break; }
-      // (a swap whose walk cannot begin within a reaction is one the frame loop does not press -- front.c keysOf refuses it: not there)
-      if (NODE(x, from)->t - NODE(x, n)->t > cfgReaction) { j->cut = k; j->cutWhy = 3; break; }
+      // (a swap whose walk begins later than a reaction is pressed from the frame it begins (ats): handed on with that frame, or, the
+      // line's first, answered as a hold until then (answer.c timed) -- so the frame loop's keys for it are made on the board where the
+      // walk begins, never waited for)
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from;
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
