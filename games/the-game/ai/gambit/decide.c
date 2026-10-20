@@ -7,6 +7,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
+static int32_t raiseRefill;   // (the raise asked is the floor's, not the opening's: answer.c lets a line that lives or breaks go first)
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
 // board every line ends on
@@ -73,10 +74,13 @@ static int readBoard_(Read *R) {
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
   R->readyAt = NOT_ASKED;
   if (!R->under) { for (int i = 0; i < decQ.narr; i++) if (R->readyAt == NOT_ASKED || decQ.arr[i].at < R->readyAt) R->readyAt = decQ.arr[i].at; if (R->readyAt == NOT_ASKED && decQ.b->ninc) R->readyAt = 0; }
-  // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running; never after)
+  // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- and after it, the rules' material
+  // floor kept by raising: below it, not topped, the stack under `to`, the rows the next break is made of brought in)
   int32_t to = rule->raiseTo ? rule->raiseTo : theTables.raiseTo;
   int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped;
-  R->low = to && opening && fullTop(decQ.b) < to; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
+  int refill = !opening && R->belowFloor && !R->topped;
+  raiseRefill = refill;
+  R->low = to && (opening || refill) && fullTop(decQ.b) < to; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
   // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed)
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;

@@ -258,6 +258,10 @@ readiness lines (propose.c searchBeside).
 Measured (`eb712c0e`, run 419): finish 21 (7, 6, 8), no crash, 0 boards predicted otherwise; aim met 81%, the list's entries 83% of
 the lines played; the workers 0.47 to 0.53 of a CPU each, the machine 17 to 26% idle where it was 49; both factory losses after frame
 19,700.
+THE FLOOR KEPT BY RAISING: combo_storm-6 (run 419) spent its panels from 53 to 11 over 850 frames -- attacks, then breaks -- and was
+lost with none left to break with; the raise was the opening's only ("never after"), and the rules' material floor only kept clears
+that break nothing out. Now below the floor, not topped and under `to`, the stack is raised as the opening raises it -- a line that
+lives or breaks before it (decide.c refill, answer.c).
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --
