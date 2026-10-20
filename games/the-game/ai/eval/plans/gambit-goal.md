@@ -386,3 +386,8 @@ under garbage that both die, the list's ask does not decide: the garbage broken 
 Measured (`d8c285ae`, run 442, big chain, finished 11:02 ET): 23 (combo_storm 7/8 -- 2418 -- factory 8/8, large_garbage 8/8); 0 late
 moves, 0 frames over, 0 divergences; a life kept 86%; aggression 19.8; own chain cut while a living line kept it: 0; aim met 1%.
 Big chain is at 22: pressure next.
+PRESSURE, the first run (`b4344884`, run 443, finished 11:23 ET): 17 (combo_storm 3/8 -- 4578, 7673, 10008, 19832, 20525 -- factory
+7/8, large_garbage 7/8); 1 late move, 0 divergences; own chain cut while a living line kept it: 0; aim met 12%, the list 12%, threes
+that break 39%, last resorts 50%; aggression 18.6. Of two lines that die, a break came first while it left a break's time, however much
+later the other was lost (combo_storm-5, 7359: a break lost at 193 over a line lost at 335). Now a break comes first only where the
+other is lost less than a break's time later.
