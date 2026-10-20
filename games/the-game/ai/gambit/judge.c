@@ -48,6 +48,7 @@ typedef struct {
   int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
   int32_t late;                 // the clock stopped it: no answer
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
+  int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 its walk not begun within a reaction
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
 } Judged;
@@ -166,7 +167,7 @@ static int stepTapped(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) 
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->fire = -1; j->cut = -1; j->readyNear = -1; j->readyMat = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -196,7 +197,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       // (a first swap whose walk is over what the allowance leaves is not there to press: the frame loop refuses its keys -- front.c
       // keysFit, GUARDED -- so the line is cut as one whose swap is gone; a later swap is held to the allowance at its own frame, by the
       // frame loop as it follows the line -- front.c follow)
-      if (k == 0 && acts > left) { j->cut = k; break; }
+      if (k == 0 && acts > left) { j->cut = k; j->cutWhy = 1; break; }
       spent += acts;
     }
     int kind = last || o->settled ? MK_SETTLE : MK_SWAP, out;
@@ -208,17 +209,17 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       int from;
       out = pressWalk(x, n, kind, mr, mc, stepTapped, &from);
       if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
-      if (out == STEP_NULL) { j->cut = k; break; }
+      if (out == STEP_NULL) { j->cut = k; j->cutWhy = 2; break; }
       if (from < 0) { j->dead = 1; j->deadAt = deadAt; break; }
       // (a swap whose walk cannot begin within a reaction is one the frame loop does not press -- front.c keysOf refuses it: not there)
-      if (NODE(x, from)->t - NODE(x, n)->t > cfgReaction) { j->cut = k; break; }
+      if (NODE(x, from)->t - NODE(x, n)->t > cfgReaction) { j->cut = k; j->cutWhy = 3; break; }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from;
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
     }
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
     if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
-    if (!last && out == STEP_NULL) { j->cut = k; break; }
+    if (!last && out == STEP_NULL) { j->cut = k; j->cutWhy = 2; break; }
     if (!liveNode(x, out)) { j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
     Stats st;
     statsOf(x, out, &st);

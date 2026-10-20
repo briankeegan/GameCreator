@@ -11,6 +11,7 @@ var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
+var allow = { n: 0, at: [0, 0, 0, 0], drop2: 0, drop2cut0: 0, why: { a: 0, n: 0, w: 0 } };   // (the input allowance each decision was made under: 0-5, 6-20, 21-40, over 40 left; the lines in progress cut at their next swap)
 var walk = { n: 0, cells: 0, far: 0 };   // the cells from one swap the decisions played to the next (want=r,c), and the jumps of 6 or more
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
 // AGGRESSION: the blocks of garbage thrown a minute (a combo's pieces of combo garbage, a chain's slab for every link past the first),
@@ -61,6 +62,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     var was = null, one = null, switched = false, last = null;
     lines.forEach(function (l) {
       if (l.indexOf('GAMBITD ') !== 0) return;
+      var al = / allow=(-?\d+)/.exec(l);
+      if (al && +al[1] >= 0) { var av = +al[1]; allow.n++; allow.at[av <= 5 ? 0 : av <= 20 ? 1 : av <= 40 ? 2 : 3]++; }
+      if (/ carryDrop=2/.test(l)) { allow.drop2++; if (/ carryDrop=2:d-1:c0/.test(l)) { allow.drop2cut0++; var cw = / carryDrop=2:d-1:c0([anw])/.exec(l); if (cw) allow.why[cw[1]]++; } }
       var w = / want=(\d+),(\d+)/.exec(l);
       if (w) { var r = +w[1], c = +w[2]; if (last) { var d = Math.abs(r - last[0]) + Math.abs(c - last[1]); walk.n++; walk.cells += d; if (d >= 6) walk.far++; } last = [r, c]; }
       else last = null;
@@ -175,6 +179,8 @@ if (rule.keptOff || rule.routeOff || rule.wayOff) console.log('intentions: ' + (
 if (rule.refill) console.log('the floor\'s raise: asked in ' + rule.refill + ' decisions -- ' + (rule.refillReady || 0) + ' raised to a break ready once everything lands, ' + (rule.refillShort || 0) + ' raised on a board too short to break, ' + (rule.refillNone || 0) + ' with no row the board lives through, ' + (rule.refillCasc || 0) + ' where the stack took no raise within 120 frames, ' + (rule.refillLocked || 0) + ' with nothing to raise once it did; ' + (rule.refillTimed || 0) + ' put off to the frame the stack took it (' + (rule.refillTimed ? (rule.refillWait / rule.refillTimed).toFixed(0) : '-') + ' frames on average)' + (rule.shut ? '; shut every frame by: ' + Object.keys(rule.shut).map(function (k) { return k + ' ' + rule.shut[k]; }).join(', ') : ''));
 if (aggr.frames) console.log('aggression: ' + (aggr.blocks * 3600 / aggr.frames).toFixed(1) + ' blocks thrown a minute (' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute; ' + Math.round(aggr.frames / 3600) + ' minutes)');
 if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed + ' of ' + forgone.decisions + ' decisions offered a line that lives and throws more than the one played (' + forgone.blocks + ' blocks)');
+if (allow.n) console.log('the input allowance: of ' + allow.n + ' decisions, ' + allow.at.map(function (v) { return Math.round(100 * v / allow.n) + '%'; }).join(' / ') +
+  ' made with 0-5 / 6-20 / 21-40 / over 40 actions left of the limit; lines in progress dropped at a step no longer there ' + allow.drop2 + ', ' + allow.drop2cut0 + ' at its next swap (' + allow.why.a + ' its walk over the allowance, ' + allow.why.n + ' no swap there, ' + allow.why.w + ' its walk not begun within a reaction)');
 if (walk.n) console.log('walk: ' + (walk.cells / walk.n).toFixed(1) + ' cells from one swap to the next, ' + Math.round(100 * walk.far / walk.n) + '% of ' + walk.n + ' jumps 6 or more');
 var pct = function (a, q) { if (!a.length) return '-'; var s = a.slice().sort(function (x, y) { return x - y; }); return String(Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))])); };
 if (think.wall.length) console.log('think: a decision ' + pct(think.wall, 0.5) + ' ms (90% under ' + pct(think.wall, 0.9) + '); the break search ' + pct(think.brUnder, 0.5) + ' ms under garbage (90% under ' + pct(think.brUnder, 0.9) + '), ' + pct(think.br, 0.5) + ' otherwise');

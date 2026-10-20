@@ -464,3 +464,9 @@ on also tells the frame loop of that garbage at once (front.c dropFrom), so it i
 Measured (`9bba87af`, run 459, build, the same games): 8 of 16 (combo_storm 2/8, large_garbage 6/8); combo_storm-4 lost at 394 to an
 early raise and garbage, no line pressed later in that game -- a game 457 survived. Noise, not the change. Run 460 measures `1d16e23c`
 (every change since 456) over three rounds, 48 games.
+Measured (`1d16e23c`, run 460, build, combo_storm and large_garbage, three rounds, finished 14:20 ET): 31 of 48 (combo_storm 16/24,
+large_garbage 15/24), 65%, against 56 of 96 (58%) over runs 454-459 -- inside the noise of 48 games, the right way. 0 divergences, 1
+late move. Of 7868 lines in progress dropped, 3955 at a step no longer there, 1881 of those at the very next swap; 96% of decisions are
+made with 40 actions or fewer left of the input limit (76 in 600 frames), and the busiest windows reach 70-76. Whether those 1881 are
+the allowance, a swap not there, or a walk not begun within a reaction, the log now says (carryDrop=2:...c0a|n|w), and every decision
+logs the allowance it was made under (allow=); the summary sums both.
