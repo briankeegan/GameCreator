@@ -187,7 +187,12 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       Board *bn = ensureBoard(x, n);
       int left = pressAllowance - spent;
       pressTight = left <= HOLDTIGHT;
-      if (bn) spent += actionsFor(bn->curRow, bn->curCol, mr, mc, left);
+      int acts = bn ? actionsFor(bn->curRow, bn->curCol, mr, mc, left) : 0;
+      // (a first swap whose walk is over what the allowance leaves is not there to press: the frame loop refuses its keys -- front.c
+      // keysFit, GUARDED -- so the line is cut as one whose swap is gone; a later swap is held to the allowance at its own frame, by the
+      // frame loop as it follows the line -- front.c follow)
+      if (k == 0 && acts > left) { j->cut = k; break; }
+      spent += acts;
     }
     int kind = last || o->settled ? MK_SETTLE : MK_SWAP, out;
     if (last) out = step(x, n, kind, mr, mc, 0);

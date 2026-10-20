@@ -329,3 +329,8 @@ losses had a reason in the ranking: combo_storm-1 at 351 raised in the opening w
 does; large_garbage-3 at 2873 played a break lost in 46 frames over a hold lost in 290 -- of two that die a break came first while
 it outlived the next decision's reaction (13 frames); now while it leaves the next decision a break's time (rankSave), the bar the
 order's "lost alike" already reads.
+Measured (`ee07a342`, run 430, finished 02:44 ET): finish 18 (5, 6, 7). Factory-4 was lost at 828 holding a line it could not press:
+three answers running (797, 806, 821) were refused by the frame loop, their 14 keys over the input allowance (GUARDED), while the
+judge had priced the walk under the allowance and kept the line -- two measures of one fact. Now the judge cuts a line whose first
+swap's walk is over what the allowance leaves, as the frame loop refuses it, and the order takes one that can be pressed; the summary
+counts the answers refused.
