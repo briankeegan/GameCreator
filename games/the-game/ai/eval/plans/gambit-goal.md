@@ -217,5 +217,8 @@ THE HORIZON, LONGER (`dbdb4b3c`, backed out): HORIZON 240 -> 360, so a line that
 that lives: finish 20 and 18 against the same code's 21 and 17 at 240 -- no better, and the clock cut up to 152 decisions a run.
 SAVING WEIGHS EVERY LINE (`66e29793`, backed out): while saving panels up under garbage, key 7 weighed every line's panels, the
 hold among them, not only two breaks': finish 20 of 23 and 18 -- the same as without it, so the list keeps its place.
+UNDER GARBAGE, THE MORE BROKEN: in combo_storm a line lives on 3-21% of the decisions under garbage -- nearly every choice is between
+lines that are all lost, ordered by the list, which in finish them ranks attacks, not the garbage broken. Of two breaks under garbage
+that neither lives, the one that breaks more now comes before the list (rank.c 7b). Measured on two runs.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
