@@ -812,6 +812,32 @@ function scheduleAnims(events) {
         }
       }
     }
+    // CUTTING A HULK IS NOT KILLING A SHIP. A wreck used to simply stop being
+    // drawn, which reads as the board deleting something rather than as the
+    // ship taking it apart and pocketing it. It is slower and colder than a
+    // kill — plating coming off, then the salvage running back to the hold.
+    else if (ev.type === "wreckCleared") {
+      anims.push({ kind: "cut", pos: { q: ev.q, r: ev.r }, start: now, dur: 620, particles: makeExplosionParticles(7) });
+      anims.push({ kind: "haul", from: { q: ev.q, r: ev.r }, start: now + 120, dur: 520 });
+    }
+    else if (ev.type === "salvage") {
+      const priorSalv = anims.filter((a) => a.kind === "sfloat").length;
+      anims.push({
+        kind: "sfloat",
+        amount: `+${ev.amount}`,
+        pos: { q: state.playerPos.q, r: state.playerPos.r },
+        start: now + 320 + priorSalv * 220,
+        dur: 1000,
+      });
+    }
+    // Rock gives way in stages, so it has to look like it: chips on the hit
+    // that splits it, a dust burst on the one that opens the lane.
+    else if (ev.type === "rockHit") {
+      anims.push({ kind: "cut", pos: { q: ev.q, r: ev.r }, start: now, dur: 340, particles: makeExplosionParticles(4) });
+    }
+    else if (ev.type === "rockCleared") {
+      anims.push({ kind: "cut", pos: { q: ev.q, r: ev.r }, start: now, dur: 560, particles: makeExplosionParticles(10) });
+    }
     else if (ev.type === "damage") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "shieldAbsorb") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "enemyMove") {
@@ -3658,11 +3684,66 @@ function draw() {
     ctx.restore();
   }
 
+  // What the hulk was carrying, counted off above the hold.
+  for (const a of anims) {
+    if (a.kind !== "sfloat" || now < a.start || now >= a.start + a.dur) continue;
+    const p = animProgress(a, now);
+    const c = hexToPixel(a.pos);
+    ctx.save();
+    ctx.globalAlpha = 1 - p * p;
+    ctx.fillStyle = "#e8b765";
+    ctx.font = `700 ${Math.max(11, geom.sx * 0.34)}px "SF Mono", "Menlo", "Consolas", monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText(`${a.amount} SALVAGE`, c.x, c.y - geom.sx * (0.75 + p * 1.1));
+    ctx.restore();
+  }
+
   // Explosions on top of everything.
   for (const a of anims) {
     if (a.kind !== "boom" || now >= a.start + a.dur) continue;
     const p = animProgress(a, now);
     drawExplosion(hexToPixel(a.pos), p, a.particles, geom.sx * 0.9);
+  }
+
+  // Plating coming off a hulk, or rock giving way: cold, slow, no fireball.
+  for (const a of anims) {
+    if (a.kind !== "cut" || now >= a.start + a.dur) continue;
+    const p = animProgress(a, now);
+    const c = hexToPixel(a.pos);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - p);
+    ctx.strokeStyle = "#cbb79a";
+    ctx.lineWidth = 2;
+    for (const part of a.particles) {
+      const d = geom.sx * 0.5 * part.speed * p;
+      const x = c.x + Math.cos(part.angle) * d;
+      const y = c.y + Math.sin(part.angle) * d;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(part.angle) * geom.sx * part.len * 0.5, y + Math.sin(part.angle) * geom.sx * part.len * 0.5);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // The salvage itself, running from the hulk back to the hold.
+  for (const a of anims) {
+    if (a.kind !== "haul" || now >= a.start + a.dur) continue;
+    const p = animProgress(a, now);
+    const from = hexToPixel(a.from);
+    const to = hexToPixel(state.playerPos);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - p * p);
+    ctx.fillStyle = "#e8b765";
+    for (let i = 0; i < 4; i++) {
+      const t = Math.min(1, Math.max(0, p * 1.25 - i * 0.12));
+      const x = from.x + (to.x - from.x) * t;
+      const y = from.y + (to.y - from.y) * t - Math.sin(t * Math.PI) * geom.sx * 0.3;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1.5, geom.sx * 0.05), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   ctx.restore();
