@@ -262,6 +262,9 @@ THE FLOOR KEPT BY RAISING: combo_storm-6 (run 419) spent its panels from 53 to 1
 lost with none left to break with; the raise was the opening's only ("never after"), and the rules' material floor only kept clears
 that break nothing out. Now below the floor, not topped and under `to`, the stack is raised as the opening raises it -- a line that
 lives or breaks before it (decide.c refill, answer.c).
+Measured (`19e641e6`, run 420): finish 23 (7, 8, 8) -- the best yet; aim met 82%, the list's entries 83%, 0 boards predicted otherwise.
+The one loss (combo_storm-3, 13995): at 13897 a break was there the live search missed and the reach report's wide search found in
+148 ms.
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --
