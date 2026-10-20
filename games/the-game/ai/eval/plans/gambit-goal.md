@@ -240,5 +240,8 @@ Measured: the break search on a worker (run 411) 19, the workers 0.20 to 0.31 of
 for the break search to reach the end of the searches' time; with the survival search on the second (run 412) 22 (7, 8, 7), the
 workers 0.42 to 0.48 each, the machine 30% idle where it was 49. Now the workers are taken back the moment the other searches are
 done, each keeping the best it found, so Gambit's thread never waits on them (answer.c breakEnd).
+EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
+of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more. Now one with
+work on its way walking at most one action more comes first (rank.c 8b).
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

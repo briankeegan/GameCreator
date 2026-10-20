@@ -282,8 +282,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay;
-    // 8b. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk
-    if (ax < MAXAIMS) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return wx - wy; } }
+    // 8b. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk; but a line
+    // with work on its way (propose.c wayLines: a swap that clears or sets up, made on a cell the cursor passes) walking at most one
+    // action more first -- every step the cursor takes does something, rather than only going there
+    if (ax < MAXAIMS) {
+      int wx = lineWalk(x), wy = lineWalk(y);
+      if (x->k.way != y->k.way && iabs(wx - wy) <= 1) return x->k.way ? -1 : 1;
+      if (wx != wy) return wx - wy;
+    } }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
   // (two that do not live and survive alike: the later loss, before the kind of line)
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
