@@ -408,3 +408,8 @@ Measured (`3219c4c1`, run 447, build, finished 12:18 ET): 20 (combo_storm 6/8 --
 16664, 21467); 0 late moves, 1 frame over, 0 divergences; own chain cut while a living line kept it: 0; aim met 5%; aggression 18.5.
 combo_storm-2 was lost with a one-swap break there (the reach report's first search, 3 ms) that was never searched for: the question
 was due sooner than the searches' share leaves the break search. Now short of that share it takes the judging's quarter, BREAK_MIN_MS.
+Measured (`d0a4b449`, run 448, build, finished 12:31 ET): 17 (combo_storm 4/8, factory 8/8, large_garbage 5/8); 0 late moves, 0
+divergences. Its 5 missed breaks searched again in the live search's own time (the reach report, written again by `21f64613`): 1
+found, 4 not -- the live search had 3 to 27 ms, the breaks took 5 to 186. Near the end the frame loop asked a few frames ahead, as
+recent answers had taken, and the answer had ms. Now after a hold on a board that dies with no break found, the question is asked a
+reaction ahead at least (front.c), the board lost sooner asked for its last frame alive as before.
