@@ -20,9 +20,10 @@ var aggr = { blocks: 0, attacks: 0, cells: 0, frames: 0 }, rule = {};
 // one played, each :L when it lives and :bN for the blocks it throws)
 var forgone = { decisions: 0, missed: 0, blocks: 0 };
 var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wallMs=) and the break search's (brMs=), under garbage apart
-// decisions where the board was making a chain of its own (own=A/B), and those that cut it short -- by how many lines lived (live=N/M):
-// two or more (the plan's 0), only one, or none (the line played was lost latest)
-var cutShort = { boards: 0, cut: 0, cutLived: 0, cutOnly: 0, cutNone: 0 };
+// decisions where the board was making a chain of its own (own=A/B), and those that cut it short -- while a line that lives kept it
+// (ownKept=N, the hold among them: the plan's 0), while lines lived and every one cut it, or while none lived (the line played was lost
+// latest)
+var cutShort = { boards: 0, cut: 0, cutKept: 0, cutAll: 0, cutNone: 0 };
 // EVERY MOVE ON THE WAY: the swaps pressed by what they came to, and the cells the cursor walked (front.c moveOn)
 var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0 };
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
@@ -93,7 +94,11 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var o = / own=(\d+)\/(\d+)/.exec(l);
       if (o) {
         cutShort.boards++;
-        if (+o[2] < +o[1]) { var lv = / live=(\d+)\//.exec(l), nl = lv ? +lv[1] : 0; cutShort.cut++; if (nl >= 2) cutShort.cutLived++; else if (nl === 1) cutShort.cutOnly++; else cutShort.cutNone++; }
+        if (+o[2] < +o[1]) {
+          var lv = / live=(\d+)\//.exec(l), nl = lv ? +lv[1] : 0, kp = / ownKept=(\d+)/.exec(l);
+          cutShort.cut++;
+          if (kp ? +kp[1] > 0 : nl >= 2) cutShort.cutKept++; else if (nl > 0) cutShort.cutAll++; else cutShort.cutNone++;
+        }
       }
     });
     lines.forEach(function (l) {
@@ -164,8 +169,8 @@ if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed
 if (walk.n) console.log('walk: ' + (walk.cells / walk.n).toFixed(1) + ' cells from one swap to the next, ' + Math.round(100 * walk.far / walk.n) + '% of ' + walk.n + ' jumps 6 or more');
 var pct = function (a, q) { if (!a.length) return '-'; var s = a.slice().sort(function (x, y) { return x - y; }); return String(Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))])); };
 if (think.wall.length) console.log('think: a decision ' + pct(think.wall, 0.5) + ' ms (90% under ' + pct(think.wall, 0.9) + '); the break search ' + pct(think.brUnder, 0.5) + ' ms under garbage (90% under ' + pct(think.brUnder, 0.9) + '), ' + pct(think.br, 0.5) + ' otherwise');
-console.log('the board\'s own chain: ' + cutShort.boards + ' decisions while it made one, ' + cutShort.cut + ' cut it short -- ' + cutShort.cutLived +
-            ' while two or more lines lived (the plan\'s 0), ' + cutShort.cutOnly + ' while one did, ' + cutShort.cutNone + ' while none did (lost latest)');
+console.log('the board\'s own chain: ' + cutShort.boards + ' decisions while it made one, ' + cutShort.cut + ' cut it short -- ' + cutShort.cutKept +
+            ' while a line that lives kept it (the plan\'s 0), ' + cutShort.cutAll + ' while every line that lives cut it, ' + cutShort.cutNone + ' while none lived (lost latest)');
 var nmv = moves.clear + moves.setup + moves.break + moves.none + moves.open, share = function (v) { return nmv ? Math.round(100 * v / nmv) + '%' : '-'; };
 if (nmv) console.log('every move on the way: the cursor walked ' + (aggr.frames ? (moves.cells * 3600 / aggr.frames).toFixed(0) : '-') + ' cells a minute; of ' + nmv +
                      ' swaps pressed ' + share(moves.clear) + ' cleared, ' + share(moves.setup) + ' set a clear up, ' + share(moves.break) + ' broke garbage, ' +

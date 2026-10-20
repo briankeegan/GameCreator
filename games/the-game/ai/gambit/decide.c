@@ -136,7 +136,7 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered);
   carriedJ = 0; unbroken.set = 0;
-  ideaAims = &R->asked;
+  ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
   double t1 = nowMs();

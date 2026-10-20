@@ -207,11 +207,17 @@ static Tier tierView(const Judge *J) {
 static int clears(const Judge *J) { return J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0; }
 // THE IDEAS A LINE LEAVES (search/ideas.c, several ideas at once): the board it ends on, the attacks one swap from fired there -- asked
 // the first time a key compares them, and kept with the line
+// (only with no garbage on the board -- under it the list's entries are breaks, and one a swap away is the break search's to find --
+// and IDEAS_ASKS lines a decision at most: each is a judging and a settle of every swap, taken from the decision's own time)
+#define IDEAS_ASKS 8
 static const List *ideaAims;   // (the list they meet: the rank's, decide.c ranked)
+static int32_t ideasAsks;      // (asked this decision)
 static int ideasOf(const Judge *J0) {
   Judge *J = (Judge *)J0;
   if (!J->ideasAsked) {
     J->ideasAsked = 1;
+    if (decF.under || ideasAsks >= IDEAS_ASKS) { J->ideas = -1; return -1; }
+    ideasAsks++;
     endNoKeep = 1;
     const Board *e = clockOut() || J->o.dead ? 0 : J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
     endNoKeep = 0;
@@ -313,16 +319,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay;
-    // 8a. MORE THROWN (several ideas at once): of two that meet the same entry, the one that throws more blocks, every attack its own
-    // -- two ideas fired before one
-    if (ax < MAXAIMS) { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) return ty - tx; }
+    // 8a. MORE THROWN (several ideas at once): of two that live and meet the same entry, the one that throws more blocks, every attack
+    // its own -- two ideas fired before one. (Not of two that die: there the panels a line spends are the next break's material.)
+    if (ax < MAXAIMS && lx) { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) return ty - tx; }
     // 8b. MORE DONE ON THE WAY: of two that meet the same entry, one that presses every swap of the other and more that helps -- work
     // on its way (propose.c wayLines), a second line made one with it (decide.c routeJudged), a second idea fired (search/plan.c pair)
     // -- first: the keys above found it no worse, and every step the cursor takes does something rather than only going there
     if (ax < MAXAIMS) { int cx = holdsLine(x, y), cy = holdsLine(y, x); if (cx != cy) return cx ? -1 : 1; }
-    // 8c. THE IDEAS KEPT: of two that meet the same entry and throw alike, the one whose board holds more ideas ready -- one fired, the
-    // others kept, each to be fired on its own
-    if (ax < MAXAIMS) { if (moreIdeas(x, y)) return -1; if (moreIdeas(y, x)) return 1; }
+    // 8c. THE IDEAS KEPT: of two that live, meet the same entry and throw alike, the one whose board holds more ideas ready -- one
+    // fired, the others kept, each to be fired on its own
+    if (ax < MAXAIMS && lx) { if (moreIdeas(x, y)) return -1; if (moreIdeas(y, x)) return 1; }
     // 8d. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk
     if (ax < MAXAIMS) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return wx - wy; } }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
@@ -330,8 +336,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   Tier tx = tierView(x), ty = tierView(y);
   if (tx.tier != ty.tier) return tx.tier - ty.tier;
-  // 9a. (two set-ups, neither clearing anything, no garbage on the board) the one that leaves more ideas ready -- before the kind of set-up
-  if (tx.tier == 4 && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return -1; if (moreIdeas(y, x)) return 1; }
+  // 9a. (two set-ups that live, neither clearing anything, no garbage on the board) the one that leaves more ideas ready -- before the kind of set-up
+  if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return -1; if (moreIdeas(y, x)) return 1; }
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
   for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return tx.sub[q] < ty.sub[q] ? -1 : 1;
   // 10. THE PLAN KEPT (plans/gambit-infra.md F, stable): of two lines every key leaves equal, the one the last decision kept (an

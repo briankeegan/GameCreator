@@ -40,8 +40,9 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    or several combos made ready at once, each continued on its own, then fired together. An IDEA is a swap that fires an entry of the
    list (`search/ideas.c`; two that clear a panel in common are one). The planner builds on the board with more ideas of two as near
    the list, and keeps the line that fires two (`pair`); a route's two lines are pressed at once too; a line throws every attack it
-   fires (`judge.c` `blocks`). Of two lines that meet the same entry, the one that throws more, then the one that leaves more ideas
-   ready (`rank.c` 8a, 8c); a set-up that leaves more ideas ready than the hold is something done. Measured: clears begun while
+   fires (`judge.c` `blocks`). Of two lines that live and meet the same entry, the one that throws more, then (no garbage on the board)
+   the one that leaves more ideas ready (`rank.c` 8a, 8c); a set-up that lives and leaves more ideas ready than the hold is something
+   done. Measured: clears begun while
    another still clears, the pair lines played, the lines that threw two blocks or more, the ideas left ready (gambit_summary.js
    `several ideas at once`).
 6. **Every mode 24/24 at level 11, twice in a row**, then switching (5-30 s, every direction) 24/24 with the switches happening.
@@ -291,3 +292,12 @@ lines made one) walks more still. Now of two that meet the same entry, one that 
 work on its way, a route -- comes first, however far it walks (rank.c 8b, holdsLine).
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).
+SEVERAL IDEAS AT ONCE (`8391d630`, run 424, finished 00:19 ET): finish 20 (5, 8, 7) -- combo_storm lost at 387, 3063, 16863,
+large_garbage at 7093; combos and chains about as run 420; 0 frames over, 0 keys dropped, 0 late moves, 0 divergences. The clock cut
+221 of 20,238 decisions where run 420 cut 17: every line ranked was asked its ideas, under garbage too, where they came to 0.06 on
+average. Lines firing two ideas: 1,576 offered, 233 played; 1,691 lines threw two blocks or more; 380 clears begun while another
+cleared. Every move on the way: 401 cells a minute; of 15,943 swaps 14% cleared, 31% set up, 38% broke, 16% nothing. Aggression 16.5
+(420: 16.9), aim met 84%, the list 85%. Own chain cut 112 times: 108 with no line living, 4 with lines living -- the two in progress
+(combo_storm-6, 1654 and 1679) cut a chain outside the list while the hold died. Now the ideas are asked only with no garbage on the
+board, 8 lines a decision at most, and more thrown and more ideas decide only between lines that live; the log says how many living
+lines kept the board's chain (`ownKept`).
