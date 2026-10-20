@@ -51,9 +51,8 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 
 - A material reserve before garbage lands, and how many panels.
 - Whether the chain modes build their chains on their own stack only, or may fire the chains garbage colours make without breaking.
-- Whether the opening raise goes higher than 10 rows. After the opening the raise is the play `plans/gambit.md` lists -- now, never
-  topped, by the next block's landing, weighed where nothing fits with setup, level and hold -- a row or two judged on the engine like
-  any line (`rank.c raiseCand`); the owner: there should be a reserve, and the stack raised again.
+- Whether the opening raise goes higher than 10 rows. After the opening the stack is raised again to keep the floor (the owner: there
+  should be a reserve), its 10 rows counting panels, garbage aside (`decide.c` refill, `facts.c panelTop`).
 
 ## Done, for each mode
 
@@ -321,3 +320,6 @@ board is below the floor -- after the lines' readiness, in the time left; the lo
 Measured (`a8ab8ce6`, run 427, finished 02:04 ET): finish 19 (5, 8, 6); the raise was offered in no decision -- it waited for a board
 with nothing moving, and a board where nothing lives always has something moving. Now it is offered where the floor's raise was (no
 chain falling, the game allowing a raise) and the engine's raise says whether the rows come in.
+Measured (`31a71b71`, run 428, finished 02:17 ET): finish 19 (5, 7, 7); the raise offered in 2 decisions -- judged after the lines'
+readiness, in time the readiness had already spent. Runs with the floor's raise: 23, 22; with the raise as a judged play: 16, 19, 19.
+The floor's raise is back, its 10 rows counted on the panels, garbage aside: a board under a slab is raised again.

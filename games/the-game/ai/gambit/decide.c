@@ -7,6 +7,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
+static int32_t raiseRefill;   // (the raise asked is the floor's, not the opening's: answer.c lets a line that lives or breaks go first)
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
 // board every line ends on
@@ -73,17 +74,19 @@ static int readBoard_(Read *R) {
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
   R->readyAt = NOT_ASKED;
   if (!R->under) { for (int i = 0; i < decQ.narr; i++) if (R->readyAt == NOT_ASKED || decQ.arr[i].at < R->readyAt) R->readyAt = decQ.arr[i].at; if (R->readyAt == NOT_ASKED && decQ.b->ninc) R->readyAt = 0; }
-  // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- after it, the raise is a candidate
-  // like any other (rank.c raiseCand), offered while the board is not topped and no chain falls: the engine's raise says whether the rows
-  // come in -- a board the game locks the raise out of raises nothing, and is no candidate)
+  // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- and after it, the rules' material
+  // floor kept by raising, a reserve: below it, not topped, the panels under `to` -- garbage on them aside, a slab is no panel to break
+  // with -- the rows the next break is made of brought in)
   int32_t to = rule->raiseTo ? rule->raiseTo : theTables.raiseTo;
   int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped;
-  R->low = to && opening && fullTop(decQ.b) < to; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
-  R->raiseOK = !opening && !R->topped && canRaiseNow && !cascadeLive(decQ.b);
-  // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed)
+  int refill = !opening && R->belowFloor && !R->topped;
+  raiseRefill = refill;
+  int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
+  R->low = to && (opening || refill) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
+  // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed -- and alive while they rise)
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;
-    int32_t rows = raiseReady(&decQ, to - fullTop(decQ.b), l < RAISE_MS ? l : RAISE_MS);
+    int32_t rows = raiseReady(&decQ, rowsUp, l < RAISE_MS ? l : RAISE_MS);
     if (rows <= 0) R->up = R->low = 0; else to = fullTop(decQ.b) + rows;
   }
   R->to = to;
@@ -125,9 +128,7 @@ static int fairShare(Cand *c, int n, int cap) {
   for (int i = 0; i < k; i++) c[i] = kept[i];
   return k;
 }
-#define NRAISE 2    // the raises a decision judges, a row and two (rank.c raiseCand)
-static int32_t raiseOffered;   // (the raises judged this decision: the log's)
-static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE + NRAISE], *order[MAXCANDS + 4 + NINTENT + NROUTE + NRAISE];
+static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 4 + NINTENT + NROUTE];
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
@@ -198,15 +199,6 @@ static int ranked(const Read *R, const Found *S) {
   }
   readyShare(0); readyFresh = 0; readyKnownOnly = 0;
   sortJudged(order, n);
-  // (THE RAISE, where nothing fits (plans/gambit.md): with no line that lives, or the board below the floor -- a row, and two, judged as
-  // the hold is on the board they leave, their readiness asked whole in the time left -- and the order made again)
-  raiseOffered = 0;
-  if (R->raiseOK && (!(n && order[0]->o.lives) || R->belowFloor)) {
-    int n0 = n;
-    for (int rows = 1; rows <= NRAISE && !clockOut(); rows++) { readyShare(NRAISE - rows + 1); if (raiseCand(R, rows, &theJudged[n])) { order[n] = &theJudged[n]; n++; raiseOffered++; } }
-    readyShare(0);
-    if (n > n0) sortJudged(order, n);
-  }
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
   if (!(n && order[0]->o.lives)) {
     int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
@@ -228,7 +220,7 @@ static int ranked(const Read *R, const Found *S) {
 
 // 5. PLAY: the raise when the opening calls for it, a hold while the raise waits for a busy board, else the first candidate in the one
 // order -- a line's first swap, or the hold
-typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred, raise; } Played;   // (raise: the rows a raise ranked first brings)
+typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred; } Played;
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -238,8 +230,7 @@ static Played playOf(const Read *R, int n) {
   P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
   // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
-  P.raise = P.top && P.top->k.play == PLAY_RAISE ? P.top->raiseRows : 0;
-  P.line = P.top && !P.raise && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
+  P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
   // does as well with that swap pressed later -- the next decision plans it again, so a first swap pressed early is undone by the next
   // plan's)
@@ -259,7 +250,7 @@ static Played playOf(const Read *R, int n) {
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
   }
-  P.name = P.line ? P.line->k.play : R->up || P.raise ? -2 : PLAY_HOLD;   // -2: the raise
+  P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
   P.ncands = n;
   return P;
