@@ -497,3 +497,7 @@ Measured (`e038118b`, run 466, finish them, all three patterns, two rounds): 36 
 A SWAP PLAYED FOR THE BREAK IT LEAVES IN REACH carries that break: a one-swap line played because a break is in reach once everything
 lands (its readiness) now hands that break to the next decision as the line in progress, as a hold waiting for one does (decide.c
 carryReady) -- run 465, large_garbage-6 round 2, 3543: a ready swap that lived by it, then a decision whose search was cut and found none.
+Measured (`3a24e52a`, run 467, build, two rounds): 34 of 48 (combo_storm 13/16, factory 16/16, large_garbage 5/16) -- large_garbage
+lost seven games to it. The line in progress is put first of its tier, and a break found on the board once everything lands is a break
+on a board the stack is not yet: put first, it took the place of lines the order ranks above it. Now the break a ready swap leaves is
+carried and offered, judged as every line is, and not put first (decide.c carriedFromReady).

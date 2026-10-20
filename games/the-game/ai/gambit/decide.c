@@ -156,6 +156,7 @@ static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 4 + N
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
+static int carriedFromReady(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
@@ -179,7 +180,7 @@ static int ranked(const Read *R, const Found *S) {
   if (R->guides.n && carriedCand(R, &ck, &cwait) && judgeCand(R, &ck, &theJudged[n])) {
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
-    if (cwait) cj->waitMax = 1; else cj->first = 1;   // (its place: rank.c tierView)
+    if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
     order[n] = cj; n++; carriedJ = cj;
   }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
@@ -286,8 +287,11 @@ static Played playOf(const Read *R, int n) {
 // played, so a line begun is played on unless something ranks above it.
 // (popping: a slab of garbage was popping on the board it was begun on -- a break the next decision finds popping is the line's own
 // only when none was then)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
+// (ready: a break found on the board once everything lands, carried from a swap played for it -- offered, not put first: it was found
+// on a board the stack is not yet)
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
 static Carry theCarry;
+static int carriedFromReady(void) { return theCarry.ready; }
 static int32_t carryFrom = -1, carryPressed;
 // THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
 // into theCarry; 0 when every one is touched. carryOf and carryReady ask it.
@@ -323,7 +327,7 @@ static void carryReady(const Judge *H, int32_t qid) {
   if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
-  theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0;
+  theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0; theCarry.ready = !H->hold;
 }
 // THE READINESS BESIDE THE DECISION (search/break.c readyJob): the boards the order will ask readiness of handed to the workers,
 // worst-ranked first -- the decision asks them best-ranked first -- each searched by whichever thread begins it first. They search on
