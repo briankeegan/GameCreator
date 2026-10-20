@@ -358,3 +358,7 @@ Measured (`9b25576f`, run 433, finished 09:30 ET): finish 21 (8, 7, 6) -- a life
 with 20% jumps of 6 or more. The chain, kept on Gambit's thread, ran first and took half the searches' time before the planner began.
 Now only the planner's split is given up there -- its whole list on Gambit's thread in its full share -- and the chain stays on its
 worker beside the break and survival searches.
+Measured (`8345dccd`, run 434, finished 09:44 ET): finish 19 (4, 8, 7), a life kept 74% (run 432: 80%). The workers given to the
+break search under garbage, two ways (runs 433, 434: 21, 19), against the layout of run 432 (22): the idea is kept open -- what costs
+the lines that live is not found yet -- and the layout of run 432 is back while the next mode is worked on. Finish them is at 22 (run
+432): big chain next.

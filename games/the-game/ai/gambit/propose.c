@@ -87,7 +87,6 @@ static void startChains(const Read *R, Found *S, double ms) {
 // begun on a worker too; each its own thread's nodes and buffers (LOCAL), its lines merged into this decision's after (searchMerge).
 // Asked of before the jobs begin (searchPrep); with fewer workers, or none begun, every search is this thread's, one after another.
 static int32_t planSplit, planSplitAt, extBeside, planBDone, extDone;
-static int32_t lastNoneLived;   // (the decision before had no line that lives: answer.c, after the rank)
 static List planHalfA, planHalfB;
 static PlanOpts planOptsB; static Plan planB; static Paths planOutB;
 static double extMsBeside;
@@ -114,11 +113,6 @@ static void searchPrep(const Read *R, Found *S) {
   if (pool.nworkers < 3 || !C2.due || poolBusy) return;
   extBeside = !GP->extendOff && ((cascadeLive(board) || R->pop) || wantsChain(&R->guides));
   extMsBeside = leftMs();
-  // (UNDER GARBAGE WITH NOTHING LIVING, the planner is not split: its whole list here, in this thread's full share of the searches, and
-  // the workers left to the break search, the chain and the survival search -- run 432, factory-3: 436 ms and no break where the reach
-  // report's search found one in 74 ms. The chain stays on its worker: run here, it takes half the time before the planner begins, run
-  // 433)
-  if (R->under && lastNoneLived) return;
   if (R->guides.n >= 2) {
     planSplitAt = (R->guides.n + 1) / 2;
     planHalfA = R->guides; planHalfA.n = planSplitAt;
