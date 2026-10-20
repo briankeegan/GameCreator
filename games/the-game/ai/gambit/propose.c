@@ -163,7 +163,7 @@ static void searchMerge(const Read *R, Found *S) {
     if (pLineBetter(&planB.lowest, &S->ap.lowest, 2)) S->ap.lowest = planB.lowest;
     if (pLineBetter(&planB.stopBest, &S->ap.stopBest, 3)) S->ap.stopBest = planB.stopBest;
     if (pLineBetter(&planB.pair, &S->ap.pair, 4)) { S->ap.pair = planB.pair; if (S->ap.pair.aimIndex >= 0) S->ap.pair.aimIndex += planSplitAt; }
-    if (!S->haveAp) { S->haveAp = 1; S->ap.setup = planB.setup; }
+    if (!S->haveAp) { S->haveAp = 1; S->ap.setup = planB.setup; S->ap.nsetupLine = planB.nsetupLine; memcpy(S->ap.setupLine, planB.setupLine, sizeof planB.setupLine); }
     for (int i = 0; i < planOutB.n; i++) planKeep(planOutB.path[i], planOutB.len[i]);
   }
   // (a chain the workers did not begin: extended or begun here, in what is left)
@@ -477,7 +477,12 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   if (S->lvU && !seenDigHas(decQ.b, S->lvU)) { int32_t one = S->lvU; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
   if (S->lvG && !seenDigHas(decQ.b, S->lvG)) { int32_t one = S->lvG; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
   // SET UP: the planner's swap toward the ask, with no block on its way; CLEAR: the line that leaves the lowest stack
-  if (S->haveAp && S->ap.setup && R->readyAt == NOT_ASKED && !seenDigHas(decQ.b, S->ap.setup)) { int32_t one = S->ap.setup; ADD(PLAY_SETUP, &one, 1, -1, 0); }
+  // (the set-up as the line the planner found it on, the whole way to the board it builds toward: its first swap played, the rest carried
+  // on as the line in progress -- decide.c carryOf -- judged again each decision, so a set-up built is one the next decisions know of)
+  if (S->haveAp && S->ap.setup && R->readyAt == NOT_ASKED && !seenDigHas(decQ.b, S->ap.setup)) {
+    if (S->ap.nsetupLine > 1) { int m0 = n; ADD(PLAY_SETUP, S->ap.setupLine, S->ap.nsetupLine, -1, 0); if (n > m0) out[m0].settled = 1; }
+    int32_t one = S->ap.setup; ADD(PLAY_SETUP, &one, 1, -1, 0);
+  }
   if (S->haveAp && S->ap.lowest.set) { int m0 = n; ADD(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.lowest); }
   #undef ADD
   // (and from the lines above: the converted row's chain, then every three grown -- the converted lines' own among them)

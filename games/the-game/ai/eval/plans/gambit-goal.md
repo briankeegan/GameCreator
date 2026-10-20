@@ -429,3 +429,7 @@ and 6/8 on the same build; the five build runs before it 12, 12, 9, 11, 7 of 16 
 build swings three games of eight in one pattern, so a change worth a game or two is invisible in one run, or two -- and most of the
 single-run verdicts above (a game or two either way) are inside it. Measuring a change now needs the same games played again: a run
 that plays each of the 16 games more than once, or fixed seeds.
+A SET-UP KNOWN TO THE NEXT DECISION: the planner's set-up was one swap -- the first toward the board it built toward -- and once pressed
+nothing kept where it was going, so the next decision might build something else and the set-up go unused. Now the set-up is offered
+as its whole way there too (search/plan.c setupLine): its first swap played, the rest carried on as the line in progress, judged again
+each decision (decide.c carryOf).
