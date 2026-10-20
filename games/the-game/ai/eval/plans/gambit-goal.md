@@ -492,3 +492,8 @@ under garbage that neither lives and every key before leaves equal, the one whos
 Measured (`c0e01ab1`, run 465, build, all three patterns, two rounds, finished 15:4x ET): 39 of 48 (combo_storm 12/16, factory 15/16,
 large_garbage 12/16), 81%, against 30 and 31 of 48 on the two builds before it on the same games -- eight games of 48, two standard
 errors: the break sooner holds. About 19.5 a 24. 0 late moves, 0 divergences. Finish next on the same commit, for what 7c does there.
+Measured (`e038118b`, run 466, finish them, all three patterns, two rounds): 36 of 48 (combo_storm 9/16, factory 14/16, large_garbage
+13/16), 18 a 24; aim met 63%.
+A SWAP PLAYED FOR THE BREAK IT LEAVES IN REACH carries that break: a one-swap line played because a break is in reach once everything
+lands (its readiness) now hands that break to the next decision as the line in progress, as a hold waiting for one does (decide.c
+carryReady) -- run 465, large_garbage-6 round 2, 3543: a ready swap that lived by it, then a decision whose search was cut and found none.

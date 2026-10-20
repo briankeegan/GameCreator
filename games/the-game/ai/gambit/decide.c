@@ -314,10 +314,11 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
 }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
-// as soon as it lives.
+// as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the
+// same promise.
 static void carryReady(const Judge *H, int32_t qid) {
   const Judged *j = &H->o.j;
-  if (!H->hold || H->o.ready != 1 || j->readyN < 1) return;
+  if ((!H->hold && H->k.nseq != 1) || H->o.ready != 1 || j->readyN < 1) return;
   memset(&theCarry, 0, sizeof theCarry);
   if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
