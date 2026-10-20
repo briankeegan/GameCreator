@@ -413,3 +413,7 @@ divergences. Its 5 missed breaks searched again in the live search's own time (t
 found, 4 not -- the live search had 3 to 27 ms, the breaks took 5 to 186. Near the end the frame loop asked a few frames ahead, as
 recent answers had taken, and the answer had ms. Now after a hold on a board that dies with no break found, the question is asked a
 reaction ahead at least (front.c), the board lost sooner asked for its last frame alive as before.
+Measured (`a196edac`, run 450, build, finished 12:48 ET): 17 (combo_storm 6/8, factory 6/8, large_garbage 5/8); 1 late move, 0
+divergences; missed breaks 1 of 78 boards searched again (run 448: 5), found in its own 237 ms -- the time was won; 77 had none to find.
+At the turn of most losses the order took a line lost at 304 or 317 over one lost at 368 or 377 that broke as much: three tries or more
+counted alike. Now two lines that die survive alike only when they leave as many tries.
