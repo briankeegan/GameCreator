@@ -197,24 +197,30 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // THE BREAK SEARCH ON A WORKER (plans/gambit-infra.md: two plans at once): begun before the other searches, until they end
 // (searchesEnd), and taken back after them -- a job no worker began by then is searched here, in what is left. Its judging is its
 // thread's own (judge.c judgeCtx, outcome.c cache: LOCAL).
+// (and with a second worker, the survival search too (decide.c ranked), in the same time: what it is asked of is the board alone, so it is
+// searched before the judging says whether anything lives, and kept for it -- svJob)
 static Ctx *brCtx; static const Read *brJobR; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
-  (void)i;
   clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
   inJob = 1; pressTight = decQ.tight; ncache = 0;
-  breakRun(brJobR, brJobBy);
+  if (i == 0) breakRun(brJobR, brJobBy);
+  else {
+    double old = clockShareBegin(brJobBy);
+    svJob = outlive(&decQ, HORIZON + REST, REST, brJobBy - nowMs(), 6, 30);
+    clockShareEnd(old);
+    __atomic_store_n(&svJobDone, 1, __ATOMIC_RELEASE);
+  }
   inJob = 0;
-  brJobMs = nowMs() - brJobT0;
-  __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE);
+  if (i == 0) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, int32_t lineFrom, int32_t linePressed) {
-  brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST);
+  brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
   if (!brCtx) brCtx = ctxOf(0);
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
-  return startJobs(brCtx, breakJob, 1);
+  return startJobs(brCtx, breakJob, pool.nworkers >= 2 ? 2 : 1);
 }
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
   jobsDone(brCtx);

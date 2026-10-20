@@ -7,7 +7,7 @@
 #define OUT_SEQ 16
 typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost; } OItem;
 typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt; } Outlived;
-static Ctx *outCtx;
+static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
 static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best; memset(&best, 0, sizeof best);

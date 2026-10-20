@@ -234,5 +234,7 @@ Measured: one worker, not pinned (run 408), finish 20 -- the worker 0.09 to 0.18
 workers (run 410), 19 -- each 0.07 to 0.11. The workers had nothing to do: the readiness jobs are a few boards a decision. TWO PLANS AT
 ONCE: with workers, the break search (92 ms of a decision's 310) runs on one of them beside the other searches (149 ms), in all of
 their time (answer.c breakBegin, breakEnd), its judging its thread's own (judge.c judgeCtx, outcome.c cache: LOCAL).
+With a second worker, the survival search (32 ms, asked after the judging when nothing lives) runs on it from the start too, in the
+same time, its board the decision's alone; the judging takes it when it asks (decide.c svJob).
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

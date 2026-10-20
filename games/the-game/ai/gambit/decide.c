@@ -124,6 +124,7 @@ static int fairShare(Cand *c, int n, int cap) {
 }
 static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 4 + NINTENT + NROUTE];
 static int32_t phaseMs[3];
+static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
@@ -201,7 +202,7 @@ static int ranked(const Read *R, const Found *S) {
   surviveAsked = 0;
   if (!(n && order[0]->o.lives) && leftMs() > 0) {
     surviveAsked = 1;
-    Outlived sv = outlive(&decQ, HORIZON + REST, REST, leftMs(), 6, 30);
+    Outlived sv = __atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? svJob : outlive(&decQ, HORIZON + REST, REST, leftMs(), 6, 30);
     offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
