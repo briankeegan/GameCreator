@@ -301,3 +301,11 @@ cleared. Every move on the way: 401 cells a minute; of 15,943 swaps 14% cleared,
 (combo_storm-6, 1654 and 1679) cut a chain outside the list while the hold died. Now the ideas are asked only with no garbage on the
 board, 8 lines a decision at most, and more thrown and more ideas decide only between lines that live; the log says how many living
 lines kept the board's chain (`ownKept`).
+Measured (`a141a6ae`, run 425, finished 00:36 ET): finish 22 (7, 8, 7) -- combo_storm-3 lost at 9700, large_garbage-6 at 6517;
+0 frames over, 0 keys dropped, 0 late moves, 0 divergences; the clock cut 27 decisions (run 424: 221). Own chain cut 154 times: 0
+while a line that lives kept it (the plan's 0), 14 while every line that lives cut it, 140 while none lived. Aggression 17.0 -- the
+most yet -- aim met 81%, the list 85%. Every move on the way: 407 cells a minute; of 16,974 swaps 14% cleared, 32% set up, 37%
+broke, 16% nothing; walk 3.2 cells, 17% jumps of 6 or more. Several ideas: 244 lines firing two played, 1,822 lines threw two
+blocks or more, 394 clears begun while another cleared; the ideas were asked 12 times (the boards are under garbage 84 to 99% of
+decisions). Both losses ran out of material under garbage: large_garbage-6 held 14 to 23 panels for 800 frames, combo_storm-3 went
+from 45 to 26 in 500 frames of breaks, each with no break left to make -- the open question of a reserve before garbage lands.
