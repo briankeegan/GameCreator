@@ -240,6 +240,14 @@ static int lineWalk(const Judge *J) {
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
   return n;
 }
+// (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
+// break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
+static int holdsLine(const Judge *x, const Judge *y) {
+  if (!(x->k.way || x->k.route) || x->hold || y->hold || x->k.nseq <= y->k.nseq || !y->k.nseq) return 0;
+  int j = 0;
+  for (int i = 0; i < x->k.nseq && j < y->k.nseq; i++) if (x->k.seq[i] == y->k.seq[j]) j++;
+  return j == y->k.nseq;
+}
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
@@ -282,14 +290,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay;
-    // 8b. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk; but a line
-    // with work on its way (propose.c wayLines: a swap that clears or sets up, made on a cell the cursor passes) walking at most one
-    // action more first -- every step the cursor takes does something, rather than only going there
-    if (ax < MAXAIMS) {
-      int wx = lineWalk(x), wy = lineWalk(y);
-      if (x->k.way != y->k.way && iabs(wx - wy) <= 1) return x->k.way ? -1 : 1;
-      if (wx != wy) return wx - wy;
-    } }
+    // 8b. MORE DONE ON THE WAY: of two that meet the same entry, one that presses every swap of the other and more that helps -- work
+    // on its way (propose.c wayLines), a second line made one with it (decide.c routeJudged) -- first: the keys above found it no worse,
+    // and every step the cursor takes does something rather than only going there
+    if (ax < MAXAIMS) { int cx = holdsLine(x, y), cy = holdsLine(y, x); if (cx != cy) return cx ? -1 : 1; }
+    // 8c. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk
+    if (ax < MAXAIMS) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return wx - wy; } }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
   // (two that do not live and survive alike: the later loss, before the kind of line)
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
