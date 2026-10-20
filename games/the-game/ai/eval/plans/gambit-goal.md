@@ -535,3 +535,4 @@ A LINE'S FIRST SWAP STILL WALKED WITHIN A REACTION: with the cut gone, the frame
 before) -- a first swap whose walk could not begin within a reaction, on a line with no frames to hand on (a level line, a slab
 popping): nothing pressed, asked again. The cut is back for a line's first swap; its later swaps are pressed from the frame their walk
 begins. The summary's budgets now count the answers refused so (gambit_summary.js).
+Measured (`8bdf75af`, run 477, build, one 24): 17 (combo_storm 4/8, factory 8/8, large_garbage 5/8); 0 answers refused (204 in 476).
