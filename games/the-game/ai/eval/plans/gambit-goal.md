@@ -514,3 +514,6 @@ The judge cut 49299 lines for a walk not begun within a reaction -- 13218 of the
 A SWAP THAT WAITS IS PRESSED WHEN ITS WALK BEGINS: a line whose swap could not be walked to within a reaction was cut, though the frame
 loop presses every swap of a line from the frame its walk was judged to begin (the hand's frames, and a first swap's timed hold, which
 ends when it is due). The cut is gone (judge.c); a swap is waited for as long as the press waits (core/nodes.h PRESS_WAIT).
+Measured (`85ce8628`, run 472, build, four rounds on seeds 1-4, 96 games): 75 of 96 (combo_storm 25/32, factory 27/32, large_garbage
+23/32), 78% -- the swap that waits pressed when its walk begins is even with the cut (36 of 48 on seeds 1-2, 38 on 3-4). The cut counts
+then counted the walking order's trial judgings too; they are kept out now, as the drops are (rank.c judgeWalked).

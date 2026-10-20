@@ -430,10 +430,10 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int ok = judgeCand(R, k, J);
   static Cand w; static Judge JW;
   if (clockOut() || !walkOrder(k, &w)) return ok;
-  int32_t keepDrops[NPLAYS][NDROPS]; memcpy(keepDrops, dropped, sizeof dropped);
+  int32_t keepDrops[NPLAYS][NDROPS], keepCut[4], keepCutBr[4]; memcpy(keepDrops, dropped, sizeof dropped); memcpy(keepCut, cutWhy, sizeof cutWhy); memcpy(keepCutBr, cutWhyBreak, sizeof cutWhyBreak);
   int keepUnbroken = unbroken.set;
   int wok = judgeCand(R, &w, &JW);
-  memcpy(dropped, keepDrops, sizeof dropped); unbroken.set = keepUnbroken;
+  memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
   if (!wok || (ok && compareJudged(&JW, J) > 0)) return ok;
   *J = JW;
   return 1;
