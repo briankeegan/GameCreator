@@ -448,3 +448,7 @@ Measured (`b7f4f47b`, run 456, build, combo_storm and large_garbage, seed 1, fin
 large_garbage 4/8) against 9 and 10 on `616dc8af`; 1 late move, 0 divergences. Lost: combo_storm 1, 3, 7, 8; large_garbage 1, 6, 7, 8.
 large_garbage-6 lost to the carried break dropped while its slab popped again (3749 to 3763), large_garbage-7 to the one late move (3508:
 a carried line that lived to 334, its answer late, nothing pressed).
+A LINE JUDGED PRESSED LATER IS PRESSED THEN: a line whose first swap the judge pressed after the answer's frame (answer.c timed) is
+answered as a hold with the whole line handed on, and the hold's keys ran a reaction (12 frames) -- the first swap pressed at +12 where it
+was judged at +1, and the line no longer the one judged (run 456, large_garbage-7, 3508: a line that lived to 334, lost at 3533). Now
+the hold lasts until the line's first swap is due (front.c take).

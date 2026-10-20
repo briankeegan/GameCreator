@@ -497,6 +497,9 @@ static void take(void) {
       k.n = imin(a.raiseNow, MAXKEYS);
       for (int q = 0; q < k.n; q++) { k.ins[q] = IN_RAISE; k.hl[q] = q == k.n - 1 ? a.raiseAfter : 0; k.hs[q] = q == k.n - 1 && a.raiseAfter > 0; }
     }
+    // (A LINE JUDGED PRESSED LATER: its hold lasts until the line's first swap is due, not a reaction -- the swap pressed on the frame it
+    // was judged pressed from)
+    if (a.kind == 0 && a.nhand && a.handAt[0] > at) k.n = imin(k.n, a.handAt[0] - at);
     F.st.played++;
     walkKeys(&k, at);
     if (!keysFit(at, &k)) {
