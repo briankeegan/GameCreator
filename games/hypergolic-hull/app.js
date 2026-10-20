@@ -830,13 +830,12 @@ function scheduleAnims(events) {
         dur: 1000,
       });
     }
-    // Rock gives way in stages, so it has to look like it: chips on the hit
-    // that splits it, a dust burst on the one that opens the lane.
-    else if (ev.type === "rockHit") {
-      anims.push({ kind: "cut", pos: { q: ev.q, r: ev.r }, start: now, dur: 340, particles: makeExplosionParticles(4) });
-    }
-    else if (ev.type === "rockCleared") {
-      anims.push({ kind: "cut", pos: { q: ev.q, r: ev.r }, start: now, dur: 560, particles: makeExplosionParticles(10) });
+    // One animation for rock, whichever hit it was. The hex itself already
+    // says which stage it is at — a split boulder draws as split, and a
+    // cleared one is gone — so a second, different burst is telling you
+    // again in a language you have to learn first.
+    else if (ev.type === "rockHit" || ev.type === "rockCleared") {
+      anims.push({ kind: "cut", pos: { q: ev.q, r: ev.r }, start: now, dur: 480, particles: makeExplosionParticles(8) });
     }
     else if (ev.type === "damage") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "shieldAbsorb") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
