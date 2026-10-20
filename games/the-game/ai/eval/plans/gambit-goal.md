@@ -347,3 +347,6 @@ late move, 0 refused, 0 divergences; aim met 80%, the list 82%, aggression 15.8;
 combo_storm-5 lived at 7642 and 7656 (5 lines of 13) and nothing lived from 7682: a life not kept. factory-3 was lost with breaks
 there the live search did not find -- at 2063 (the break search cut by the clock, br=0/t3/cut; the reach report's touch search found
 one with 5 touches in 74 ms) and 2097.
+UNDER GARBAGE WITH NOTHING LIVING, THE WORKERS TO THE BREAK: the decision after one where no line lived does not split the planner
+or extend the chain on a worker -- both stay on Gambit's thread, one after another -- so the break search and the survival search have
+the two cores the game leaves (propose.c searchPrep, lastNoneLived).
