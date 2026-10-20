@@ -479,3 +479,7 @@ change; over 96 games the opening raise is no worse (combo_storm 14/18 raised ea
 A SETTLED LINE IN PROGRESS WAITS FOR THE BOARD: a settled line's next step was judged again on a board still moving from the step before
 and cut when its walk could not begin within a reaction -- where it was judged on that board settled. Now the line in progress is judged
 on its board settled (decide.c carriedCand, waitTo), offered as the carry that waits, and judged so by the order (rank.c judgeCand).
+Measured (`a2dcd5cf`, run 462, build, all three patterns, two rounds): 31 of 48 (combo_storm 12/16, factory 10/16, large_garbage 9/16)
+against 30 on `f79188c7`; lines in progress cut at their next swap 234 against 1809 (68 for a walk not begun within a reaction, against
+1566). FACTORY: 22 of 32 over 461 and 462, against 37 of 40 over runs 446-451 (random panels then): a regression since `3844777e`, or the
+seeded games harder -- run 463 plays the Gambit of `3844777e` on the same factory games (gambit-24.yml `gambit_from`) to say which.
