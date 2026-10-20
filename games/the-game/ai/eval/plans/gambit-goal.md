@@ -46,6 +46,9 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    another still clears, the pair lines played, the lines that threw two blocks or more, the ideas left ready (gambit_summary.js
    `several ideas at once`).
 6. **Every mode 24/24 at level 11, twice in a row**, then switching (5-30 s, every direction) 24/24 with the switches happening.
+   **The order (the owner's):** one mode at a time to 22 of 24, then the next -- a change made for one mode can break another, so 24
+   is not chased in one mode alone. Once every mode is at 22, they are run together and each change checked for a mode it set back.
+   Finish them reached 22 in run 432; big chain next.
 
 ## Open questions for the owner
 
