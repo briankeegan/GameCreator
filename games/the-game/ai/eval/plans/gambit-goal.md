@@ -221,5 +221,9 @@ UNDER GARBAGE, THE MORE BROKEN: in combo_storm a line lives on 3-21% of the deci
 lines that are all lost, ordered by the list, which in finish them ranks attacks, not the garbage broken. Of two breaks under garbage
 that neither lives, the one that breaks more now comes before the list (rank.c 7b). Measured (`9d55ecb4`): finish 21 (7, 7, 7) and
 19 (5, 6, 8) -- combo_storm 12 of 16 against 9, aim met 80% as before. Kept.
+ONE TRY OR TWO: large_garbage-4 (run 403, 3604) played a break lost at 109 over one lost at 348 -- alike, both past rankSave (97),
+the list deciding. Two that do not live are no longer alike when the shorter leaves the board only one break's time (under twice
+rankSave) and the other a break's time more. Narrower than `778441d5` (any gap of a break's time), which raised the last resorts to
+25%. Measured on two runs.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

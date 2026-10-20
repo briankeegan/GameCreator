@@ -258,8 +258,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int bx = x->apBroke > 0 && lostOf(x) > rankReact, by = y->apBroke > 0 && lostOf(y) > rankReact;
     if (bx != by) return bx ? -1 : 1;
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
-    // the material, the saving and the list decide between them before the later loss does (10)
-    int alike = lostOf(x) >= rankSave && lostOf(y) >= rankSave;
+    // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
+    // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.
+    double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+    int alike = lo >= rankSave && !(lo < 2 * rankSave && hi - lo >= rankSave);
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
