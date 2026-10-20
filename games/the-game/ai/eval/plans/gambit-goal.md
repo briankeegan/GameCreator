@@ -531,3 +531,7 @@ stop ran out on a board eight slabs deep. Now under garbage, within a tier, the 
 panels leave (rank.c, nearAfter before lifeLeft).
 Measured (`ca81b2c2`, run 476, build, one 24, finished 18:5x ET): 20 (combo_storm 6/8 -- 11509, 20060 -- factory 8/8, large_garbage 6/8
 -- 3785, 9978); 0 divergences.
+A LINE'S FIRST SWAP STILL WALKED WITHIN A REACTION: with the cut gone, the frame loop refused 204 answers in run 476 (144 in 475, none
+before) -- a first swap whose walk could not begin within a reaction, on a line with no frames to hand on (a level line, a slab
+popping): nothing pressed, asked again. The cut is back for a line's first swap; its later swaps are pressed from the frame their walk
+begins. The summary's budgets now count the answers refused so (gambit_summary.js).

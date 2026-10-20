@@ -30,7 +30,7 @@ var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
 // the ideas left ready on the board a line played leaves, where the rank asked (ideas=)
 var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
-var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, starved: 0, inHand: 0, guarded: 0 };
+var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
 var kept = { n: 0, held: 0 };   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
@@ -128,7 +128,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var o = JSON.parse(over2.slice(over2.indexOf('match over: ') + 12));
       budget.late += o.late || 0; budget.lateWorst = Math.max(budget.lateWorst, o.late || 0);
       budget.diverged += o.diverged || 0; if (o.diverged) budget.divergedGames++;
-      budget.starved += o.starved || 0; budget.inHand += o.inHand || 0; budget.guarded += o.guarded || 0;
+      budget.starved += o.starved || 0; budget.inHand += o.inHand || 0; budget.guarded += o.guarded || 0; budget.refused += o.refused || 0;
       var a = o.attacks || {};
       ['combo', 'chain'].forEach(function (k) { Object.keys(a[k] || {}).forEach(function (z) { t[k][z] = (t[k][z] || 0) + a[k][z]; }); });
       if (one && !switched) aimOf(one, a);
@@ -200,7 +200,7 @@ console.log('several ideas at once: ' + moves.together + ' clears begun while an
             several.ideas2 + ' of ' + several.ideasN + ' times');
 if (Object.keys(links).length) console.log('chain links past two, by cause: ' + ['garbage', 'swap', 'alone'].map(function (w) { return w + ' ' + fmt(links[w] || {}); }).join('; '));
 console.log('budgets: ' + budget.over + ' frames over the think budget, slowest frame ' + budget.worst + ' ms, ' + budget.dropped + ' keys dropped, ' +
-            budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), ' + budget.guarded + ' answers whose keys the input allowance refused, over ' + budget.games + ' games');
+            budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), ' + budget.guarded + ' answers whose keys the input allowance refused, ' + budget.refused + ' with no keys to press them within a reaction, over ' + budget.games + ' games');
 if (budget.decisions) console.log('decisions the clock cut: ' + budget.out + ' of ' + budget.decisions + ' (' + (100 * budget.out / budget.decisions).toFixed(1) + '%)');
 // THE TRUTH: every board the frame loop predicted is the one the game made; one that is not is a plan made on a board that never was
 console.log('truth: ' + budget.diverged + ' boards predicted otherwise than the game made them, in ' + budget.divergedGames + ' of ' + budget.games + ' games');
