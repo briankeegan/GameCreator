@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          fetch-depth: ${{ inputs.gambit_from != '' && 0 || 1 }}
+          fetch-depth: ${{ inputs.gambit_from != '' && '0' || '1' }}
       - name: The Gambit of another commit
         if: ${{ inputs.gambit_from != '' }}
         run: |
