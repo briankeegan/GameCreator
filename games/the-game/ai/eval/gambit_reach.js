@@ -15,7 +15,7 @@ var rules = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles',
 var list = rules.attack.filter(function (r) { return r.name === 'finish them'; })[0].aims.filter(function (a) { return typeof a !== 'string'; });
 // (a log's lines up to the game over: after it the frame loop asks on a board that no longer plays)
 function played(lines) { var i = -1; lines.forEach(function (l, k) { if (l.indexOf('GAMEOVER ') === 0) i = k; }); return i < 0 ? lines : lines.slice(0, i); }
-var totals = { missed: 0, impossible: 0, boards: 0 }, turns = {}, how = {}, took = {};
+var totals = { missed: 0, impossible: 0, boards: 0, inTime: 0, notInTime: 0 }, turns = {}, how = {}, took = {};
 var BUCKETS = [20, 100, 300, 1000, Infinity], bucketOf = function (ms) { for (var i = 0; i < BUCKETS.length; i++) if (ms < BUCKETS[i]) return BUCKETS[i] === Infinity ? '1000+' : '<' + BUCKETS[i]; };
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
@@ -25,8 +25,13 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   // (the boards its break search came up empty on, and the last boards it decided on, written at the match's end: GAMBITL)
   // (a last board is searched again only when its own decision -- the one asked on its frame -- found no break: GAMBITL holds the last
   // boards whatever the live search found, GAMBITB only those it came up empty on; one board a frame)
-  var all = played(fs.readFileSync(lf, 'utf8').split('\n')), broke = {};
-  all.forEach(function (l) { if (l.indexOf('GAMBITD ') !== 0) return; var b = / br=(\S+)/.exec(l); if (b && /^[1-9]/.test(b[1])) broke[l.split(' ')[1]] = 1; });
+  var all = played(fs.readFileSync(lf, 'utf8').split('\n')), broke = {}, brMsAt = {};
+  all.forEach(function (l) {
+    if (l.indexOf('GAMBITD ') !== 0) return;
+    var b = / br=(\S+)/.exec(l), bm = / brMs=(\d+)/.exec(l), at = l.split(' ')[1];
+    if (b && /^[1-9]/.test(b[1])) broke[at] = 1;
+    if (bm) brMsAt[at] = +bm[1];
+  });
   var lostAt = +m[2], seenAt = {}, lines = all.filter(function (l) {
     var at = l.split(' ')[1];
     if (!(l.indexOf('GAMBITB ') === 0 || (l.indexOf('GAMBITL ') === 0 && !broke[at])) || seenAt[at]) return false;
@@ -53,7 +58,15 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     // (a break the search's own first step finds is one the live search could not have missed on this board: the board, whole, for a replay)
     if (found && line.how === 'first' && (totals.shown = (totals.shown || 0) + 1) <= 12) console.log('MISSEDB ' + g + ' ' + x.at + ' ' + x.b64 + ' ' + JSON.stringify(x.arr));
     if (found && line.how) { how[line.how] = (how[line.how] || 0) + 1; var bk = bucketOf(line.ms); took[bk] = (took[bk] || 0) + 1; }
-    out.push(x.at + (found ? ' MISSED(' + line.length + (line.how ? ' ' + line.how + ' ' + line.ms + 'ms' : '') + ')' : ' none'));
+    // (IN ITS OWN TIME: the board searched again in the ms the live search had (its decision's brMs) -- found, the live search lost the
+    // break to the machine it ran on (its thread's share of the CPU); not found, to the time it was given)
+    var inTime = '';
+    if (found && /^C\d+:/.test(x.b64) && brMsAt[x.at] !== undefined) {
+      var again = G.breakOnBytes(x.b64.slice(x.b64.indexOf(':') + 1), x.arr, list, Math.max(1, brMsAt[x.at]), 0);
+      inTime = again ? ' in its ' + brMsAt[x.at] + 'ms: found' : ' in its ' + brMsAt[x.at] + 'ms: not';
+      if (again) totals.inTime++; else totals.notInTime++;
+    }
+    out.push(x.at + (found ? ' MISSED(' + line.length + (line.how ? ' ' + line.how + ' ' + line.ms + 'ms' : '') + inTime + ')' : ' none'));
   });
   console.log(g + '  ' + m[1] + ' lost at ' + lostAt + ': ' + (out.length ? out.join(', ') : 'no empty searches logged'));
   // THE TURN: the last frame a break was there -- a decision whose break search found one, or a board searched again that had one --
@@ -76,4 +89,5 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
 });
 console.log('\nthe moves at the turn, every loss: ' + JSON.stringify(turns));
 console.log('\n' + totals.boards + ' boards searched again: ' + totals.missed + ' had a break the live search missed, ' + totals.impossible + ' had none to find');
+if (totals.inTime + totals.notInTime) console.log('the missed breaks searched again in the live search\'s own time: ' + totals.inTime + ' found (the machine took them), ' + totals.notInTime + ' not (the time did)');
 if (totals.missed) console.log('the missed breaks, by how they were found: ' + JSON.stringify(how) + '; by the ms they took: ' + JSON.stringify(took));
