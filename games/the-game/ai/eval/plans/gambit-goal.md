@@ -489,3 +489,6 @@ the random ones 446-451 played. Build stands at about 65% on all three patterns,
 THE BREAK SOONER (rank.c 7c): a break put off decision after decision -- each new line breaking as much a few frames later and lived a
 few frames longer, alike by the tries -- till the board has no time to make it (run 457, combo_storm-6, 1585 to 1816). Now of two breaks
 under garbage that neither lives and every key before leaves equal, the one whose last swap is pressed sooner comes first.
+Measured (`c0e01ab1`, run 465, build, all three patterns, two rounds, finished 15:4x ET): 39 of 48 (combo_storm 12/16, factory 15/16,
+large_garbage 12/16), 81%, against 30 and 31 of 48 on the two builds before it on the same games -- eight games of 48, two standard
+errors: the break sooner holds. About 19.5 a 24. 0 late moves, 0 divergences. Finish next on the same commit, for what 7c does there.
