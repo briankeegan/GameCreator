@@ -128,6 +128,8 @@ jobs:
           node $EV/gambit_summary.js games-of-run > report/summary.txt 2>&1 || true
           node $EV/gambit_losses.js games-of-run 10 > report/losses.txt 2>&1 || true
           node $EV/gambit_reach.js games-of-run 300 3000 > report/reach.txt 2>&1 || true
+          # (the time the run finished, ET on the 24-hour clock: plans/gambit-goal.md)
+          echo "finished: $(TZ=America/New_York date '+%Y-%m-%d %H:%M') ET" >> report/summary.txt
           sed 's/^/::notice title=summary::/' report/summary.txt
           tail -3 report/losses.txt | sed 's/^/::notice title=losses::/'
           grep -h "boards searched again\|moves at the turn" report/reach.txt | sed 's/^/::notice title=reach::/' || true

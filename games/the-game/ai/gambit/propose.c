@@ -145,12 +145,13 @@ static void planJob(void) {
   planOutB = planOut;
   __atomic_store_n(&planBDone, 1, __ATOMIC_RELEASE);
 }
-static int pLineBetter(const PLine *a, const PLine *b, int how) {   // (a over b: 0 nearer, 1 more broken, 2 lower, 3 more earned)
+static int pLineBetter(const PLine *a, const PLine *b, int how) {   // (a over b: 0 nearer, 1 more broken, 2 lower, 3 more earned, 4 more sent)
   if (!a->set) return 0;
   if (!b->set) return 1;
   if (how == 0) return a->near > b->near || (a->near == b->near && a->nseq < b->nseq);
   if (how == 1) return a->broke > b->broke || (a->broke == b->broke && a->done < b->done);
   if (how == 2) return a->top < b->top || (a->top == b->top && a->nseq < b->nseq);
+  if (how == 4) return a->cells > b->cells || (a->cells == b->cells && a->nseq < b->nseq);
   return a->earned > b->earned || (a->earned == b->earned && a->nseq < b->nseq);
 }
 static void searchMerge(const Read *R, Found *S) {
@@ -161,6 +162,7 @@ static void searchMerge(const Read *R, Found *S) {
     if (pLineBetter(&planB.quick, &S->ap.quick, 1)) S->ap.quick = planB.quick;
     if (pLineBetter(&planB.lowest, &S->ap.lowest, 2)) S->ap.lowest = planB.lowest;
     if (pLineBetter(&planB.stopBest, &S->ap.stopBest, 3)) S->ap.stopBest = planB.stopBest;
+    if (pLineBetter(&planB.pair, &S->ap.pair, 4)) { S->ap.pair = planB.pair; if (S->ap.pair.aimIndex >= 0) S->ap.pair.aimIndex += planSplitAt; }
     if (!S->haveAp) { S->haveAp = 1; S->ap.setup = planB.setup; }
     for (int i = 0; i < planOutB.n; i++) planKeep(planOutB.path[i], planOutB.len[i]);
   }
@@ -318,6 +320,7 @@ static int convertLines(const Read *R, Cand *out, int n, int cap) {
 #define WAY_PER 2     // lines on the way, a line
 #define WAY_LINES 6   // the lines whose way is searched, in the order offered
 static int32_t wayOffered, wayPlayed;   // (the lines on the way this decision offered, and whether one was played: the log's)
+static int32_t pairOffered;              // (the lines firing two ideas this decision offered: the log's)
 static int waySharesCell(int32_t a, int32_t b) { return CR(a) == CR(b) && iabs(CC(a) - CC(b)) <= 1; }
 static int onWay(int r0, int c0, int32_t s, int32_t first, int d) {
   return actionsFor(r0, c0, CR(s), CC(s), HOLDTIGHT + 1) + actionsFor(CR(s), CC(s), CR(first), CC(first), HOLDTIGHT + 1) <= d + 1;
@@ -386,9 +389,17 @@ static int wayLines(Cand *out, int n, int cap) {
 }
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
+  pairOffered = 0;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
   // AN ENTRY: the planner's line for each entry of the list it found one for
   if (S->haveAp) for (int i = 0; i < R->guides.n; i++) if (S->ap.perAim[i].set) { int m0 = n; ADD(PLAY_ENTRY, S->ap.perAim[i].seq, S->ap.perAim[i].nseq, i, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.perAim[i]); }
+  // TWO IDEAS FIRED (search/plan.c pair): the planner's line that fires two entries of the list, each step once the board settles -- and
+  // the same swaps pressed at once, the second while the first still clears: both attacks out in the time of one, if the engine says
+  // the second is still there to press
+  if (S->haveAp && S->ap.pair.set) {
+    for (int at = 0; at < 2; at++) { int m0 = n; ADD(PLAY_ENTRY, S->ap.pair.seq, S->ap.pair.nseq, S->ap.pair.aimIndex, 0); if (n > m0) { xFromPlan(&out[m0], &S->ap.pair); out[m0].pair = 1; if (at) { out[m0].settled = 0; out[m0].xNats = 0; out[m0].xFire = -1; out[m0].xDone = -1; } } }
+    pairOffered += 2;
+  }
   // THE EXTENSION: links that keep a chain already falling going (or a popping slab lined up), and the nearest of them to the list
   if (S->haveEx) {
     const XLine *ex = &S->ex.best;

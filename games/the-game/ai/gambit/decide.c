@@ -101,7 +101,7 @@ static int readBoard_(Read *R) {
 // none that lives and time left, the survival search proposes its line too.
 #define MAXCANDS 128
 #define NINTENT 4   // the intentions a decision keeps (keepIntents)
-#define NROUTE 6    // the routes a decision judges (routeJudged)
+#define NROUTE 10   // the routes a decision judges (routeJudged)
 #define PROPOSED (2 * MAXCANDS)   // what the proposers may offer; past MAXCANDS, every play keeps its share (fairShare)
 static Cand theCands[PROPOSED];
 static int32_t cappedN;   // the candidates left unjudged past MAXCANDS, a decision (the log's capped=)
@@ -136,6 +136,7 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered);
   carriedJ = 0; unbroken.set = 0;
+  ideaAims = &R->asked;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
   double t1 = nowMs();
@@ -382,7 +383,9 @@ static int keptJudged(const Read *R, int n) {
 }
 // THE ROUTE (plans/gambit-infra.md B): of the lines ranked so far, the best that make something and are pressed settled, two at a time
 // on columns apart -- one's clears cannot move the panels the other swaps -- made one line, pressed in the order the cursor reaches its
-// swaps soonest (rank.c judgeWalked), judged whole on the engine and ranked with the rest: one walk that does both.
+// swaps soonest (rank.c judgeWalked), judged whole on the engine and ranked with the rest: one walk that does both. And the same two
+// pressed at once, the second while the first still clears (two ideas fired together): both attacks out in the time of one, where the
+// engine says the second swap is still there to press.
 #define ROUTE_TOP 4
 static int routeCols(const Judge *J) { int m = 0; for (int q = 0; q < J->k.nseq; q++) m |= 3 << CC(J->k.seq[q]); return m; }
 static int routeJudged(const Read *R, int n) {
@@ -403,9 +406,10 @@ static int routeJudged(const Read *R, int n) {
       Cand k;
       if (!candOf(&k, A->k.play, seq, m, -1, 0)) continue;
       k.settled = 1; k.route = 1;
-      if (judgedHas(n, &k)) continue;
-      routeOffered++;
-      if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+      if (!judgedHas(n, &k)) { routeOffered++; if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; } }
+      if (routeOffered >= NROUTE || clockOut()) break;
+      k.settled = 0; k.pair = 1;
+      if (!judgedHas(n, &k)) { routeOffered++; if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; } }
     }
   return n;
 }

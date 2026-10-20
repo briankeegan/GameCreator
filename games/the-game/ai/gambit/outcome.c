@@ -57,6 +57,7 @@ static uint32_t lineHash(const int32_t *seq, int n, int settled, int kind) {
 }
 static int readyFresh;   // (the readiness asked now: an outcome kept without it is judged again, and replaced)
 static int endWanted;    // (lineEnd: the line is judged again and the board it ends on kept)
+static int endNoKeep;    // (and that judging not kept in the cache: asked once the rank has the line's whole outcome -- rank.c ideasOf)
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
   if ((readyFresh || endWanted) && kind == 0) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
@@ -168,7 +169,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     }
   }
   // (a judging the clock stopped is no answer: it is not kept, and the next asking judges it again)
-  if (!o.late && !waitTo) keep(seq, n, settled, 0, &o);
+  if (!o.late && !waitTo && !endNoKeep) keep(seq, n, settled, 0, &o);
   return o;
 }
 // THE BOARD A LINE ENDS ON, as the judge plays it (the land a proposer reads what falls from: search/fill.c), judged as the proposers

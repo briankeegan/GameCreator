@@ -46,8 +46,19 @@ typedef struct {
   // each chain link past the list's two, by its cause: panels out of garbage (colours not shown when it was decided), a swap pressed
   // since the link before it, or neither (the stack alone)
   int32_t linkBy[3][32];
+  // EVERY MOVE ON THE WAY: each swap pressed by what it came to (moveOn) -- a clear before the next swap, a set-up (a clear after it),
+  // a break, or nothing -- and the cells the cursor walked
+  int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
+  int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
 } FStats;
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
+// (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
+// it -- and how many swaps were pressed since)
+#define MOVE_OPEN 64
+#define MOVE_IDS 32
+#define MOVE_FOR 600
+#define MOVE_FALL 60
+typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter; } MoveOpen;
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
@@ -76,6 +87,8 @@ static struct {
   int32_t toppedNow;
   // the attacks made, read off the board as it is shown
   int32_t chainMax, pendCombo[16], npendCombo, matchedIds[MAXROWS * W], nmatched, swapSince;
+  // the swaps pressed still followed, the garbage cells matched last frame, and the cursor where it was and whether it was walked
+  MoveOpen moves[MOVE_OPEN]; int32_t nmoves, gMatched, curRowWas, curColWas, curWalked;
   int32_t reaction, ahead, gap, jitter;
   uint32_t rnd;
   FStats st;
@@ -515,21 +528,25 @@ static int follow(void) {
 // (a panel out of garbage keeps the garbage's id: every id seen as garbage is kept)
 #define WASG (1 << 20)
 static uint8_t wasGarbage[WASG];
+static void movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke);
 static void countAttacks(const Board *b) {
-  static int32_t now[MAXROWS * W];
-  int nn = 0, fresh = 0, fromGarbage = 0;
+  static int32_t now[MAXROWS * W], freshIds[MAXROWS * W];
+  int nn = 0, fresh = 0, fromGarbage = 0, gm = 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
     const int32_t *f = b->p[r][c].f;
     if (f[ISGARBAGE] && f[ID] != NUL) wasGarbage[f[ID] & (WASG - 1)] = 1;
+    if (f[ISGARBAGE] && f[STATE] == MATCHED) gm++;
     if (f[STATE] == MATCHED && !f[ISGARBAGE] && f[COLOR] > 0) {
       now[nn++] = f[ID];
       int seen = 0;
       for (int i = 0; i < F.nmatched && !seen; i++) seen = F.matchedIds[i] == f[ID];
-      if (!seen) { fresh++; if ((f[ID] != NUL && wasGarbage[f[ID] & (WASG - 1)]) || (f[FELL] != NUL && f[FELL] > 0)) fromGarbage++; }
+      if (!seen) { freshIds[fresh++] = f[ID]; if ((f[ID] != NUL && wasGarbage[f[ID] & (WASG - 1)]) || (f[FELL] != NUL && f[FELL] > 0)) fromGarbage++; }
     }
   }
   memcpy(F.matchedIds, now, sizeof(int32_t) * (unsigned long)nn); F.nmatched = nn;
+  movesOn(b, freshIds, fresh, gm > F.gMatched); F.gMatched = gm;
   int32_t cc = b->chainCounter;
+  if (fresh > 0 && nn > fresh && !(cc > F.chainMax)) F.st.together++;
   if (cc >= 2 && F.npendCombo) F.npendCombo = 0;
   if (cc == 0 && F.npendCombo) { for (int i = 0; i < F.npendCombo; i++) F.st.combo[imin(F.pendCombo[i], 63)]++; F.npendCombo = 0; }
   if (fresh >= 4 && cc < 2 && F.npendCombo < 16) F.pendCombo[F.npendCombo++] = fresh;
@@ -541,6 +558,49 @@ static void countAttacks(const Board *b) {
   if (cc == 0) F.chainMax = 0;
 }
 
+// ---------------------------------------------------------------- every move on the way: what each swap pressed came to
+// A swap pressed is followed by the ids of the panels it moves -- the two swapped, and those above them that fall in the MOVE_FALL
+// frames after it -- until one of them is matched or MOVE_FOR frames pass: matched before the next swap is pressed, the swap cleared;
+// after it, the swap set the clear up; a clear that breaks garbage, a break; none matched, a swap that did nothing.
+static void moveBegin(const Board *b) {
+  for (int i = 0; i < F.nmoves; i++) F.moves[i].swapsAfter++;
+  if (F.nmoves == MOVE_OPEN) { F.st.moveNone++; memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
+  MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock;
+  int r0 = b->curRow;
+  for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
+    for (int r = r0; r < b->nrows && m->n < MOVE_IDS; r++) {
+      const int32_t *f = b->p[r][c].f;
+      if (f[COLOR] <= 0 || f[ISGARBAGE] || f[ID] == NUL) continue;
+      m->ids[m->n] = f[ID]; m->moved[m->n++] = r == r0;
+    }
+}
+static void movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) {
+  static int32_t ids[MAXROWS * W], states[MAXROWS * W];
+  int nc = 0, k = 0;
+  if (!F.nmoves) return;
+  for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = b->p[r][c].f;
+    if (f[COLOR] > 0 && !f[ISGARBAGE] && f[ID] != NUL) { ids[nc] = f[ID]; states[nc++] = f[STATE]; }
+  }
+  for (int i = 0; i < F.nmoves; i++) {
+    MoveOpen *m = &F.moves[i];
+    int done = 0, alive = 0;
+    for (int j = 0; j < m->n && !done; j++) {
+      int st = -1;
+      for (int q = 0; q < nc && st < 0; q++) if (ids[q] == m->ids[j]) st = states[q];
+      if (st < 0) continue;
+      alive = 1;
+      if (!m->moved[j] && b->clock - m->at <= MOVE_FALL && (st == HOVERING || st == FALLING)) m->moved[j] = 1;
+      if (m->moved[j]) for (int q = 0; q < nfresh && !done; q++) done = fresh[q] == m->ids[j];
+    }
+    if (done) { if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
+    if (!alive || b->clock - m->at > MOVE_FOR) { F.st.moveNone++; continue; }
+    if (k != i) F.moves[k] = *m;
+    k++;
+  }
+  F.nmoves = k;
+}
+
 // ---------------------------------------------------------------- one frame
 static int frontFrame(void) {
   Board *t = F.truth;
@@ -548,6 +608,8 @@ static int frontFrame(void) {
   char why[160];
   F.now = now;
   countAttacks(t);
+  if (F.curWalked) F.st.cursorCells += iabs(t->curRow - F.curRowWas) + iabs(t->curCol - F.curColWas);
+  F.curRowWas = t->curRow; F.curColWas = t->curCol;
   F.toppedNow = isToppedOut(t);
   F.st.frames++;
   double wall = fNow();
@@ -587,6 +649,8 @@ static int frontFrame(void) {
     if (!(now < F.raiseCutUntil)) { dropAll(); F.st.raiseCut++; }
     F.raiseCutUntil = now + 30;
   }
+  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t);
+  F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
   countActions(bits, now);
   if (bits & IN_SWAP) F.swapSince = 1;
   return bits;
@@ -656,7 +720,10 @@ static void statsLine(char *out, int cap) {
     for (int z = 0; z < 32 && k < cap; z++) if (F.st.linkBy[w][z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.linkBy[w][z]); first = 0; }
     if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
   }
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), "}}");
+  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
+  // (the swaps still followed when the match ends are counted by what they came to so far: nothing yet)
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d}}",
+                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together);
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {

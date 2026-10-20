@@ -14,7 +14,8 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 2. **Never spoil the board's own chain.** A line is judged on what the board ends up making, the cascade already under way included:
    a swap that cuts a 4-chain in progress to a 2-chain is a line that makes a 2-chain, ranked below leaving it alone -- never ranked
    as "makes nothing, like the hold". Measured: the decisions where the board alone made a bigger chain than the line played (0
-   unless it was the only line that lives).
+   unless it was the only line that lives) -- reported apart by how many lines lived: two or more (the 0), one, or none (the line
+   played was the one lost latest; run 420: all 178 cuts were here).
 3. **The modes are played, and played accurately.** A mode is only its list -- its priorities, in order; everything else is one rule
    for every mode: after the list's entries, a three that breaks garbage; last of all (they cost blocks), a clear that makes a chain or
    a combo the list does not ask for; nothing else clears (`judge.c` the one rule). Every mode defends itself while it attacks. Each mode's attacks meet its own aim -- pressure 4-chains, build 5-chains, big
@@ -28,20 +29,30 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    cursor moves comes first, and a far one has to earn its walk. With a goal across the board (a break at the top right, the cursor at
    the bottom left), the cursor does things on its way there -- a chain or a combo nearby, setting up as it climbs, another in the
    middle -- then the break. Never a swing from one corner to the other with nothing done between. Measured: cells walked a minute,
-   and the share of swaps that clear, set up, or break.
+   and the share of swaps that clear, set up, or break (`front.c` follows every swap pressed by the panels it moved until one clears:
+   before the next swap a clear, after it a set-up, with garbage broken a break, none in 10 s nothing -- gambit_summary.js `every move
+   on the way`).
 5. **Aggressive** -- after survival (6), once the games are survived. It throws far more blocks than it does now: every board that can send garbage without giving up its life sends
    it, and a mode's attack is fired as soon as it is made, not held. Aggression is the blocks thrown a minute (gambit_summary.js
    `aggression`), measured every run. Live play too: the opening raise held through its rows; never holding while the hold dies and
    a line that lives is offered.
    **Several ideas at once** is how the attack rate goes up: several chains built at once (several 8-chains, or different chains),
-   or several combos made ready at once, each continued on its own, then fired together.
+   or several combos made ready at once, each continued on its own, then fired together. An IDEA is a swap that fires an entry of the
+   list (`search/ideas.c`; two that clear a panel in common are one). The planner builds on the board with more ideas of two as near
+   the list, and keeps the line that fires two (`pair`); a route's two lines are pressed at once too; a line throws every attack it
+   fires (`judge.c` `blocks`). Of two lines that meet the same entry, the one that throws more, then the one that leaves more ideas
+   ready (`rank.c` 8a, 8c); a set-up that leaves more ideas ready than the hold is something done. Measured: clears begun while
+   another still clears, the pair lines played, the lines that threw two blocks or more, the ideas left ready (gambit_summary.js
+   `several ideas at once`).
 6. **Every mode 24/24 at level 11, twice in a row**, then switching (5-30 s, every direction) 24/24 with the switches happening.
 
 ## Open questions for the owner
 
 - A material reserve before garbage lands, and how many panels.
 - Whether the chain modes build their chains on their own stack only, or may fire the chains garbage colours make without breaking.
-- Whether the opening raise goes higher than 10 rows, or recurs later in the game.
+- Whether the opening raise goes higher than 10 rows, or recurs later in the game. **Built without asking (run 420, 19e641e6)**: after
+  the opening, a raise below the material floor (30 panels), not topped and under 10 rows, unless a line lives or breaks -- 21 -> 23.
+  Keep it, or take it out?
 
 ## Done, for each mode
 

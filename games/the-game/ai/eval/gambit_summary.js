@@ -20,7 +20,14 @@ var aggr = { blocks: 0, attacks: 0, cells: 0, frames: 0 }, rule = {};
 // one played, each :L when it lives and :bN for the blocks it throws)
 var forgone = { decisions: 0, missed: 0, blocks: 0 };
 var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wallMs=) and the break search's (brMs=), under garbage apart
-var cutShort = { boards: 0, cut: 0 };     // decisions where the board was making a chain of its own (own=A/B), and those that cut it short
+// decisions where the board was making a chain of its own (own=A/B), and those that cut it short -- by how many lines lived (live=N/M):
+// two or more (the plan's 0), only one, or none (the line played was lost latest)
+var cutShort = { boards: 0, cut: 0, cutLived: 0, cutOnly: 0, cutNone: 0 };
+// EVERY MOVE ON THE WAY: the swaps pressed by what they came to, and the cells the cursor walked (front.c moveOn)
+var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0 };
+// SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
+// the ideas left ready on the board a line played leaves, where the rank asked (ideas=)
+var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, starved: 0, inHand: 0 };
 var kept = { n: 0, held: 0 };   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
@@ -79,8 +86,15 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         forgone.decisions++;
         if (best > played) { forgone.missed++; forgone.blocks += best - played; }
       }
+      var pa = / pair=(\d+)(\/played)?/.exec(l), th = / thrown=(\d+)/.exec(l), id = / ideas=(\d+)/.exec(l);
+      if (pa) { several.pairOff += +pa[1]; if (pa[2]) several.pairPlayed++; }
+      if (th && +th[1] > 0) { several.thrownLines++; several.thrown += +th[1]; if (+th[1] >= 2) several.thrown2++; }
+      if (id) { several.ideasN++; several.ideas += +id[1]; if (+id[1] >= 2) several.ideas2++; }
       var o = / own=(\d+)\/(\d+)/.exec(l);
-      if (o) { cutShort.boards++; if (+o[2] < +o[1]) cutShort.cut++; }
+      if (o) {
+        cutShort.boards++;
+        if (+o[2] < +o[1]) { var lv = / live=(\d+)\//.exec(l), nl = lv ? +lv[1] : 0; cutShort.cut++; if (nl >= 2) cutShort.cutLived++; else if (nl === 1) cutShort.cutOnly++; else cutShort.cutNone++; }
+      }
     });
     lines.forEach(function (l) {
       var d = /^GAMBITD \d+ (.*?) play=/.exec(l);
@@ -100,6 +114,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       ['combo', 'chain'].forEach(function (k) { Object.keys(a[k] || {}).forEach(function (z) { t[k][z] = (t[k][z] || 0) + a[k][z]; }); });
       if (one && !switched) aimOf(one, a);
       aggr.frames += o.frames || 0;
+      Object.keys(moves).forEach(function (k) { moves[k] += (o.moves || {})[k] || 0; });
       Object.keys(a.combo || {}).forEach(function (z) { var g = PA.comboGarbage(+z); aggr.attacks += a.combo[z]; aggr.blocks += a.combo[z] * g.length; aggr.cells += a.combo[z] * g.reduce(function (s, w) { return s + w; }, 0); });
       Object.keys(a.chain || {}).forEach(function (z) { aggr.attacks += a.chain[z]; aggr.blocks += a.chain[z] * (+z - 1); aggr.cells += a.chain[z] * 6 * (+z - 1); });
       // (every chain link past two, by its cause: garbage's colours, a swap since the link before, or the stack alone)
@@ -149,7 +164,16 @@ if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed
 if (walk.n) console.log('walk: ' + (walk.cells / walk.n).toFixed(1) + ' cells from one swap to the next, ' + Math.round(100 * walk.far / walk.n) + '% of ' + walk.n + ' jumps 6 or more');
 var pct = function (a, q) { if (!a.length) return '-'; var s = a.slice().sort(function (x, y) { return x - y; }); return String(Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))])); };
 if (think.wall.length) console.log('think: a decision ' + pct(think.wall, 0.5) + ' ms (90% under ' + pct(think.wall, 0.9) + '); the break search ' + pct(think.brUnder, 0.5) + ' ms under garbage (90% under ' + pct(think.brUnder, 0.9) + '), ' + pct(think.br, 0.5) + ' otherwise');
-console.log('the board\'s own chain: ' + cutShort.boards + ' decisions while it made one, ' + cutShort.cut + ' cut it short');
+console.log('the board\'s own chain: ' + cutShort.boards + ' decisions while it made one, ' + cutShort.cut + ' cut it short -- ' + cutShort.cutLived +
+            ' while two or more lines lived (the plan\'s 0), ' + cutShort.cutOnly + ' while one did, ' + cutShort.cutNone + ' while none did (lost latest)');
+var nmv = moves.clear + moves.setup + moves.break + moves.none + moves.open, share = function (v) { return nmv ? Math.round(100 * v / nmv) + '%' : '-'; };
+if (nmv) console.log('every move on the way: the cursor walked ' + (aggr.frames ? (moves.cells * 3600 / aggr.frames).toFixed(0) : '-') + ' cells a minute; of ' + nmv +
+                     ' swaps pressed ' + share(moves.clear) + ' cleared, ' + share(moves.setup) + ' set a clear up, ' + share(moves.break) + ' broke garbage, ' +
+                     share(moves.none) + ' came to nothing (' + share(moves.open) + ' still open when the game ended)');
+console.log('several ideas at once: ' + moves.together + ' clears begun while another was still clearing; lines firing two ideas ' + several.pairOff +
+            ' offered, ' + several.pairPlayed + ' played; of ' + several.thrownLines + ' lines played that threw, ' + several.thrown2 + ' threw two blocks or more (' +
+            several.thrown + ' blocks); the board a line left held ' + (several.ideasN ? (several.ideas / several.ideasN).toFixed(2) : '-') + ' ideas ready on average, two or more ' +
+            several.ideas2 + ' of ' + several.ideasN + ' times');
 if (Object.keys(links).length) console.log('chain links past two, by cause: ' + ['garbage', 'swap', 'alone'].map(function (w) { return w + ' ' + fmt(links[w] || {}); }).join('; '));
 console.log('budgets: ' + budget.over + ' frames over the think budget, slowest frame ' + budget.worst + ' ms, ' + budget.dropped + ' keys dropped, ' +
             budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), over ' + budget.games + ' games');

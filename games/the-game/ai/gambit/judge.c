@@ -31,6 +31,9 @@ typedef struct {
   int32_t aloneChain;           // the chain the board left alone makes
   int32_t chainAll;             // the chain the line reaches as the game counts it (the chain already falling and every link after it)
   int32_t singles[MAXCOMBOS], nsingles;   // sizes of 4 or more the line clears as a clear of its own, no link of a chain
+  int32_t blocks;               // THE BLOCKS THE LINE THROWS, every attack its own (rules.c blocksOf): each clear of four or more a combo's
+                                // pieces, each chain a slab a link past the first -- a line that fires two ideas throws both -- beyond what
+                                // the board left alone throws
   int32_t dropAt;               // the frame garbage can next drop once the line is over
   int32_t dead, deadAt, done, fire, nats, ats[MAXLINE];
   int32_t lostAt;               // FOREVER, a frame, or NOT_ASKED
@@ -167,7 +170,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   Stats bs;
   if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
   j->base = baseBroke;
-  int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 };
+  int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 }, pieces = 0, links = 0;
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
@@ -210,6 +213,9 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     Stats st;
     statsOf(x, out, &st);
     for (int i = 0; i < st.n; i++) { if (st.size[i] > combo) combo = st.size[i]; if (!(st.chainAt[i] > 1) && st.size[i] >= 4 && st.size[i] < MAXCOMBOS + 64) single[st.size[i]] = 1; }
+    for (int i = 0; i < st.n; i++) if (!(st.chainAt[i] > 1)) pieces += blocksOf(st.size[i], 0);
+    // (a settled step's chain ends in it, so each is an attack of its own; steps pressed at once are one chain, counted at its longest)
+    if (o->settled || last) links += imax(0, chainOfStats(&st) - 1);
     if (chainOfStats(&st) > chain) chain = chainOfStats(&st);
     broke += st.broke;
     j->done = NODE(x, out)->t;
@@ -222,6 +228,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->made.combo = combo > baseCombo ? combo : 0; j->made.chain = chain > baseChain ? chain : 0; j->made.broke = imax(0, broke - baseBroke);
   j->whole = (Made){ combo, chain, j->made.broke, 0 }; j->aloneChain = baseChain;
   j->chainAll = imax(chain, q->b->chainCounter);
+  if (!o->settled) links = imax(links, imax(0, chain - 1));
+  j->blocks = imax(0, pieces + links - blocksOf(baseCombo, baseChain));
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;

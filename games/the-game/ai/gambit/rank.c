@@ -12,6 +12,7 @@ typedef struct {
   int32_t kept;    // an intention the last decision kept, found again (decide.c keptJudged)
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
+  int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -32,6 +33,7 @@ typedef struct {
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
   int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
+  int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press)
@@ -203,6 +205,24 @@ static Tier tierView(const Judge *J) {
 // nothing leaves the panels the hold does, and two such boards read at different frames differ only by what landed between.) Being offered is never a
 // reason to be played. (markIdle, before every sort of the order: idle lines rank after the hold, tierView)
 static int clears(const Judge *J) { return J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0; }
+// THE IDEAS A LINE LEAVES (search/ideas.c, several ideas at once): the board it ends on, the attacks one swap from fired there -- asked
+// the first time a key compares them, and kept with the line
+static const List *ideaAims;   // (the list they meet: the rank's, decide.c ranked)
+static int ideasOf(const Judge *J0) {
+  Judge *J = (Judge *)J0;
+  if (!J->ideasAsked) {
+    J->ideasAsked = 1;
+    endNoKeep = 1;
+    const Board *e = clockOut() || J->o.dead ? 0 : J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
+    endNoKeep = 0;
+    J->ideas = e ? ideasOn(e, ideaAims) : -1;
+  }
+  return J->ideas;
+}
+// (more ideas ready, both known)
+static int moreIdeas(const Judge *x, const Judge *y) { int a = ideasOf(x), b = ideasOf(y); return a >= 0 && b >= 0 && a > b; }
+// THE BLOCKS A LINE THROWS (judge.c blocks: every attack its own)
+static int thrownOf(const Judge *J) { return J->hold || J->o.dead ? 0 : J->o.j.blocks; }
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
@@ -211,6 +231,9 @@ static int beatsHold(const Judge *L, const Judge *H) {
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
   if (L->o.ready == 1 && H->o.ready != 1) return 1;
   if (L->readyNext == 1 && H->readyNext != NOT_ASKED && H->readyNext != 1) return 1;
+  // (A SET-UP: with no garbage on the board, a line that lives where the hold does and leaves more ideas ready than the hold -- an attack
+  // made ready is something done)
+  if (!decF.under && L->o.lives && H->o.lives && moreIdeas(L, H)) return 1;
   return 0;
 }
 static double lostOf(const Judge *x);
@@ -243,7 +266,7 @@ static int lineWalk(const Judge *J) {
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
 // break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
 static int holdsLine(const Judge *x, const Judge *y) {
-  if (!(x->k.way || x->k.route) || x->hold || y->hold || x->k.nseq <= y->k.nseq || !y->k.nseq) return 0;
+  if (!(x->k.way || x->k.route || x->k.pair) || x->hold || y->hold || x->k.nseq <= y->k.nseq || !y->k.nseq) return 0;
   int j = 0;
   for (int i = 0; i < x->k.nseq && j < y->k.nseq; i++) if (x->k.seq[i] == y->k.seq[j]) j++;
   return j == y->k.nseq;
@@ -290,17 +313,25 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay;
+    // 8a. MORE THROWN (several ideas at once): of two that meet the same entry, the one that throws more blocks, every attack its own
+    // -- two ideas fired before one
+    if (ax < MAXAIMS) { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) return ty - tx; }
     // 8b. MORE DONE ON THE WAY: of two that meet the same entry, one that presses every swap of the other and more that helps -- work
-    // on its way (propose.c wayLines), a second line made one with it (decide.c routeJudged) -- first: the keys above found it no worse,
-    // and every step the cursor takes does something rather than only going there
+    // on its way (propose.c wayLines), a second line made one with it (decide.c routeJudged), a second idea fired (search/plan.c pair)
+    // -- first: the keys above found it no worse, and every step the cursor takes does something rather than only going there
     if (ax < MAXAIMS) { int cx = holdsLine(x, y), cy = holdsLine(y, x); if (cx != cy) return cx ? -1 : 1; }
-    // 8c. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk
+    // 8c. THE IDEAS KEPT: of two that meet the same entry and throw alike, the one whose board holds more ideas ready -- one fired, the
+    // others kept, each to be fired on its own
+    if (ax < MAXAIMS) { if (moreIdeas(x, y)) return -1; if (moreIdeas(y, x)) return 1; }
+    // 8d. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk
     if (ax < MAXAIMS) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return wx - wy; } }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
   // (two that do not live and survive alike: the later loss, before the kind of line)
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   Tier tx = tierView(x), ty = tierView(y);
   if (tx.tier != ty.tier) return tx.tier - ty.tier;
+  // 9a. (two set-ups, neither clearing anything, no garbage on the board) the one that leaves more ideas ready -- before the kind of set-up
+  if (tx.tier == 4 && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return -1; if (moreIdeas(y, x)) return 1; }
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
   for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return tx.sub[q] < ty.sub[q] ? -1 : 1;
   // 10. THE PLAN KEPT (plans/gambit-infra.md F, stable): of two lines every key leaves equal, the one the last decision kept (an
