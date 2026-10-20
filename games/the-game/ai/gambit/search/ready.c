@@ -105,8 +105,10 @@ static Board *landedAll(const Board *b0, const Arr *arr, int narr, int32_t last,
   }
   return 0;
 }
+static int32_t raiseAlive;   // (the rows raiseReady found the board alive through once everything lands, ready or not)
 static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
   int32_t last = NOT_ASKED;
+  raiseAlive = 0;
   for (int i = 0; i < q->narr; i++) if (last == NOT_ASKED || q->arr[i].at > last) last = q->arr[i].at;
   if (last == NOT_ASKED || rows <= 0) return imax(0, rows);
   double t0 = nowMs();
@@ -123,6 +125,7 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     for (int i = 0; i < q->narr; i++) { left[i] = q->arr[i]; left[i].at = imax(0, q->arr[i].at - f); }
     Board *got = landedAll(st, left, q->narr, imax(0, last - f), at);
     if (!got || nowMs() - t0 > ms) break;
+    raiseAlive = k;
     // (a plan once landed: the readiness every move is held to -- a break within two swaps that the list allows)
     Question q2 = *q; q2.b = got; q2.narr = 0;
     int rt = rootOf(x, &q2);

@@ -362,3 +362,9 @@ Measured (`8345dccd`, run 434, finished 09:44 ET): finish 19 (4, 8, 7), a life k
 break search under garbage, two ways (runs 433, 434: 21, 19), against the layout of run 432 (22): the idea is kept open -- what costs
 the lines that live is not found yet -- and the layout of run 432 is back while the next mode is worked on. Finish them is at 22 (run
 432): big chain next.
+BIG CHAIN, the first run (`0e077871`, run 438, finished 09:57 ET): 20 (combo_storm 4/8 -- 3501, 7854, 16748, 17981 -- factory 8/8,
+large_garbage 8/8); 0 late moves, 1 frame over, 0 divergences; own chain cut while a living line kept it: 0; aim met 1% (17 of 1,327
+attacks an 8-chain or more), the list 2%, threes that break 67%, last resorts 32%; aggression 18.1. Every loss ran out of panels (12
+to 19) on boards the floor's raise left short, combo_storm-3 with no garbage on it at 7644: the floor's raise was held to readiness,
+and a board too short to make a break leaves none once everything lands at any row count. Now below the floor the rows the board
+lives through are raised when none is ready, and the log says what the floor's raise did (`refill=`).

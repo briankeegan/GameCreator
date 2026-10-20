@@ -91,6 +91,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (pa) { several.pairOff += +pa[1]; if (pa[2]) several.pairPlayed++; }
       if (th && +th[1] > 0) { several.thrownLines++; several.thrown += +th[1]; if (+th[1] >= 2) several.thrown2++; }
       if (id) { several.ideasN++; several.ideas += +id[1]; if (+id[1] >= 2) several.ideas2++; }
+      var rf = / refill=(-?\d+)\/(\d+)\/(\d+)/.exec(l);
+      if (rf) { var ra = +rf[1]; rule.refill = (rule.refill || 0) + 1; if (ra === -1) rule.refillCasc = (rule.refillCasc || 0) + 1; else if (ra === -2) rule.refillLocked = (rule.refillLocked || 0) + 1; else if (+rf[2] > 0) rule.refillReady = (rule.refillReady || 0) + 1; else if (+rf[3] > 0) rule.refillShort = (rule.refillShort || 0) + 1; else rule.refillNone = (rule.refillNone || 0) + 1; }
       var o = / own=(\d+)\/(\d+)/.exec(l);
       if (o) {
         cutShort.boards++;
@@ -164,6 +166,7 @@ if (rule.preKept) console.log('boards searched once: ' + rule.preHit + ' readine
 if (kept.n) console.log('a life kept: ' + kept.held + ' of ' + kept.n + ' lines that lived, nothing new told, lived on at the next decision (' + Math.round(100 * kept.held / kept.n) + '%)');
 if (rule.rdyAsked) console.log('kept plan: ' + rule.rdyHit + ' of ' + rule.rdyAsked + ' readiness checks answered by a break already found (' + Math.round(100 * rule.rdyHit / rule.rdyAsked) + '%)');
 if (rule.keptOff || rule.routeOff || rule.wayOff) console.log('intentions: ' + (rule.keptOff || 0) + ' kept lines offered again, ' + (rule.keptPlayed || 0) + ' played; routes: ' + (rule.routeOff || 0) + ' judged, ' + (rule.routePlayed || 0) + ' played; on the way: ' + (rule.wayOff || 0) + ' offered, ' + (rule.wayPlayed || 0) + ' played');
+if (rule.refill) console.log('the floor\'s raise: asked in ' + rule.refill + ' decisions -- ' + (rule.refillReady || 0) + ' raised to a break ready once everything lands, ' + (rule.refillShort || 0) + ' raised on a board too short to break, ' + (rule.refillNone || 0) + ' with no row the board lives through, ' + (rule.refillCasc || 0) + ' held by a cascade, ' + (rule.refillLocked || 0) + ' where the game allowed no raise');
 if (aggr.frames) console.log('aggression: ' + (aggr.blocks * 3600 / aggr.frames).toFixed(1) + ' blocks thrown a minute (' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute; ' + Math.round(aggr.frames / 3600) + ' minutes)');
 if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed + ' of ' + forgone.decisions + ' decisions offered a line that lives and throws more than the one played (' + forgone.blocks + ' blocks)');
 if (walk.n) console.log('walk: ' + (walk.cells / walk.n).toFixed(1) + ' cells from one swap to the next, ' + Math.round(100 * walk.far / walk.n) + '% of ' + walk.n + ' jumps 6 or more');
