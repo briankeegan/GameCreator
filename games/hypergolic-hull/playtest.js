@@ -664,6 +664,12 @@ function playSector(state, report) {
       const label = WRECK_EVENTS[ev.type];
       if (label) report.wreckLoop[label] = (report.wreckLoop[label] || 0) + 1;
     }
+    // Hold on to every hull the pilot ever shared a board with, so the
+    // roster table below can say how long each class lived and how often it
+    // got to use the thing that makes it that class. Collected by object,
+    // not counted here: a dead hostile stays in state.enemies, and
+    // roundsLived only ever grows, so the last look is the whole story.
+    for (const e of state.enemies || []) report.rosterSeen.add(e);
     for (const line of state.log.slice(logSeen)) {
       const who = /^([A-Z]+)/.exec(line);
       if (!who) continue;
@@ -1064,6 +1070,7 @@ function main() {
     turnKind: {},
     hostileMoves: {},
     wreckLoop: {},
+    rosterSeen: new Set(),
     shape: {},
     depthReached: {},
     hullAtDepth: {},
@@ -1128,6 +1135,33 @@ console.log("gates taken:", report.gates);
   }
   console.log("what the hostiles did:", report.hostileMoves);
   console.log("the wreck loop:", report.wreckLoop);
+  {
+    // THE ROSTER, BY WHAT IT GOT TO DO. Every class's character is a cadence
+    // or a geometry — a charge you can read, a blind side you can go round,
+    // a crowd it calls in — and a hull that dies to the first shot that
+    // touches it never shows the player any of it. "silent" is the share of
+    // that class's hulls that died without ever firing: a class that is
+    // mostly silent is a name the player learns nothing about.
+    const rows = {};
+    for (const e of report.rosterSeen) {
+      const r = (rows[e.type] = rows[e.type] || { n: 0, rounds: 0, shots: 0, silent: 0, killed: 0 });
+      r.n += 1;
+      r.rounds += e.roundsLived || 0;
+      r.shots += e.shotsFired || 0;
+      if (!(e.shotsFired || 0)) r.silent += 1;
+      if (!e.alive) r.killed += 1;
+    }
+    console.log("\nthe roster, by what it got to do:");
+    for (const [type, r] of Object.entries(rows).sort((a, b) => b[1].n - a[1].n)) {
+      console.log(
+        `  ${type.padEnd(14)} n=${String(r.n).padStart(4)}` +
+          `  lived ${(r.rounds / r.n).toFixed(1)} rounds` +
+          `  fired ${(r.shots / r.n).toFixed(2)}x` +
+          `  silent ${((r.silent / r.n) * 100).toFixed(0)}%` +
+          `  died ${((r.killed / r.n) * 100).toFixed(0)}%`
+      );
+    }
+  }
   if (process.env.ECON) {
     const byDepth = (rows, key) => {
       const m = {};

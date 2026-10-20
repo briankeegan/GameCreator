@@ -185,19 +185,42 @@ assert.strictEqual(state.maxAp, 1, "1 is the standard budget now (the plumbing s
 assert.strictEqual(Engine.livingEnemies(state).length, 2);
 assert.strictEqual(state.exitUnlocked, true, "the Warp Gate is online from the start — clearing enemies is optional, for salvage only");
 
-// A 1-AP chaser moves OR fires — its danger zone is exactly its weapon's
-// current reach, no move+fire projection. (An Interceptor's Autocannon
-// reaches two down its lanes, so distance-2 hexes ON those lanes are
-// genuinely threatened; three is where the projection would start.)
+// A CONTACT CHASER'S DANGER ZONE IS ITS DRIVE PLUS ITS GUN. It burns and
+// then fires from where it landed, so an Interceptor on an Ion Drive owns
+// every hex within three — and the overlay has to say so, because it is
+// also what the auto-router steers by and what the pilots in playtest.js
+// read. A projection that stopped at the gun would be the overlay promising
+// safe ground that is not.
 const openingThreats = Engine.computeThreatHexes(state);
-assert.ok(
-  Engine.livingEnemies(state).every((e) =>
+for (const e of Engine.livingEnemies(state)) {
+  const ship = Engine.ENEMY_TYPES[e.type].ship;
+  if (!ship.hasDrive || !ship.weapons.some((w) => (w.range || 0) <= 1)) continue;
+  const owns = 1 + Math.max(1, ship.moveRange || 1);
+  assert.ok(
     state.boardHexes
-      .filter((h) => Engine.hexDistance(h, e) === 3)
-      .every((h) => !openingThreats.has(Engine.hexKey(h)))
-  ),
-  "the threat overlay marks only a chaser's actual weapon reach — no move+fire projection at 1 AP"
-);
+      .filter((h) => Engine.hexDistance(h, e) <= owns && Engine.hexDistance(h, e) > 0)
+      .every((h) => openingThreats.has(Engine.hexKey(h))),
+    `${e.type}: every hex inside its burn-and-touch is marked`
+  );
+}
+// And it does not cry wolf either: a lone chaser owns its burn-and-touch and
+// nothing past it. Stated on a board with one hull on it, because the map is
+// a union — on a crowded board the hex outside one chaser's reach is inside
+// somebody else's, and the claim would be about the crowd.
+{
+  const lone = Engine.createGameState(goldenLevel);
+  lone.enemies.slice(1).forEach((x) => (x.alive = false));
+  const e = lone.enemies[0];
+  const ship = Engine.ENEMY_TYPES[e.type].ship;
+  const owns = 1 + Math.max(1, ship.moveRange || 1);
+  const map = Engine.computeThreatHexes(lone);
+  assert.ok(
+    lone.boardHexes
+      .filter((h) => Engine.hexDistance(h, e) > owns)
+      .every((h) => !map.has(Engine.hexKey(h))),
+    "nothing past a lone chaser's burn-and-touch is marked"
+  );
+}
 
 let fireActions = 0;
 let guard = 0;
@@ -283,6 +306,11 @@ assert.strictEqual(
 // punishes — move to a hex still beside a charged chaser and its shot
 // lands the moment your turn commits.
 const mistakeState = Engine.createGameState(goldenLevel);
+// One chaser, because the claim is about one chaser. Since a hull that
+// burns now fires from where it LANDS, the rest of the board reaches the
+// flagship in this round too, and the exact hull figure below would have
+// been measuring the crowd instead of the mistake.
+mistakeState.enemies.slice(1).forEach((e) => (e.alive = false));
 mistakeState.enemies[0].q = mistakeState.playerPos.q;
 mistakeState.enemies[0].r = mistakeState.playerPos.r - 1; // adjacent, directly up
 const stillInReach = Engine.legalSublightTargets(mistakeState).find((to) => Engine.isAdjacent(to, mistakeState.enemies[0]));
@@ -1542,6 +1570,11 @@ assert.strictEqual(salvageState.shieldCharges, 1, "the new capacity arrives rais
 assert.strictEqual(salvageState.salvage, 0, "the generator costs its full salvage price");
 
 const raiseState = Engine.createGameState(shieldLevel);
+// Quiet board: raising shields spends the round, and a contact chaser now
+// closes and fires in the same round, so the charge this raises would be
+// spent absorbing a hit before the assertion below could read it. What is
+// under test here is the energy and the turn, not the absorb.
+raiseState.enemies.forEach((e) => (e.alive = false));
 raiseState.hold.items.push({ id: "shieldGenerator", x: 3, y: 0 }); // fixture: install a generator directly
 Engine.syncHoldDerived(raiseState);
 assert.strictEqual(raiseState.maxShields, 1, "an installed generator IS the capacity");
@@ -2054,8 +2087,12 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
   // Capability comes from hardware, and ONLY from hardware. Take the drive
   // out and the same class stops chasing; take the gun out and it stops
   // shooting. Nothing else in the file gets a vote.
+  // Named by KIND, not by id: the Interceptor's engine is an Ion Drive now,
+  // and a test that knew the part number would have passed an emplacement.
   const grounded = Engine.deriveShip({
-    items: Engine.ENEMY_TYPES.interceptor.hold.items.filter((it) => it.id !== "sublightDrive"),
+    items: Engine.ENEMY_TYPES.interceptor.hold.items.filter(
+      (it) => (Engine.EQUIPMENT[it.id] || {}).kind !== "engine"
+    ),
   });
   assert.strictEqual(grounded.hasDrive, false, "pull an Interceptor's drive and it is an emplacement");
   const disarmed = Engine.deriveShip({
@@ -2238,7 +2275,13 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     outpost: null,
     enemies: [
       { type: "cruiser", q: 3, r: 2 },
-      { type: "interceptor", q: 3, r: 1 }, // adjacent to the gunner, so inside its own burst
+      // An UNARMED wingman, adjacent to the gunner and so inside its own
+      // burst. It was an Interceptor, which is a contact chaser — and a
+      // contact chaser now closes and fires in the same round, so it landed
+      // the hit this fixture is asserting the gunner did not take. Two hexes
+      // both adjacent to the gunner are never more than two apart, so there
+      // is nowhere to park an armed wingman out of its own reach.
+      { type: "tender", q: 3, r: 1 },
     ],
     hazards: [],
     exitRule: "all-enemies-dead",
@@ -3326,20 +3369,47 @@ assert.strictEqual(tradeState.enemies[0].alive, false, "the next round's FIRE ki
 assert.strictEqual(tradeState.hull, Engine.START_HULL - 1, "with no reply — the dead don't get a phase");
 assert.strictEqual(tradeState.turnCount, 2, "the exchange took two full rounds");
 
-// The enemy phase runs on the same 1-AP budget: a chaser out of range
-// spends its round closing, and fires the round it can.
+// A CONTACT CHASER CLOSES AND HITS IN THE SAME ROUND. Its burn resolves
+// before the shooting and its shot is re-decided from where it landed, so
+// an Interceptor two hexes out is not standing on safe ground: it is one
+// round from hull. That is the whole reason a chaser is worth the name —
+// while it closed first and fired a round later, the flagship's turn always
+// came in between, and every gun in the game kills a one-hull contact
+// outright, so it was never alive to fire. Measured: 91% of these hulls
+// never got a shot off.
+//
+// It does NOT extend to a gun that reaches: see enemyPhase. Reach belongs
+// to the things that cannot chase you.
 const closerState = Engine.createGameState({ ...initiativeLevel, id: 984 });
 closerState.enemies[0].q = 2;
 closerState.enemies[0].r = 3; // distance 2 — outside a contact weapon's reach
-Engine.applyEndTurn(closerState); // hold: its phase spends its one point closing
+Engine.applyEndTurn(closerState); // hold: it burns into contact and fires
 assert.strictEqual(
   Engine.isAdjacent(closerState.enemies[0], closerState.playerPos),
   true,
-  "the chaser closed a hex"
+  "the chaser closed"
 );
-assert.strictEqual(closerState.hull, Engine.START_HULL, "moving was its whole turn — no shot yet");
-Engine.applyEndTurn(closerState); // hold again: now it fires
-assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "the following round it spends its point on the shot");
+assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "and hit on arrival — closing is not a free round for you");
+
+// A LONG GUN STILL SPENDS ITS ROUND ON ONE OR THE OTHER. The Bombard
+// carries a Mortar that lands at three and has a drive to carry it there;
+// if closing also bought the shot, every gun platform in the roster would
+// be reposition-and-snipe, which is the one shape the roster rules out.
+{
+  const sniper = Engine.createGameState({
+    ...initiativeLevel,
+    id: 983,
+    enemies: [{ type: "bombard", q: 2, r: 0 }],
+  });
+  const gun = sniper.enemies[0];
+  gun.energy = gun.maxEnergy; // charged, so what follows is about the rule and not the bus
+  const hullBefore = sniper.hull;
+  const movedFrom = { q: gun.q, r: gun.r };
+  Engine.applyEndTurn(sniper);
+  if (!Engine.posEq(gun, movedFrom)) {
+    assert.strictEqual(hullBefore, sniper.hull, "a long gun that repositioned did not also shoot");
+  }
+}
 
 // A cost-1 gun against a cost-1 reactor now ALTERNATES fire and recharge
 // rounds — same "1 to 1, nothing for free" rule the flagship's own
@@ -3370,8 +3440,8 @@ for (let t = 1; t <= 6; t++) {
 const CH = Engine.START_HULL;
 assert.deepStrictEqual(
   chaserHullTimeline,
-  [CH, CH - 1, CH - 1, CH - 2, CH - 2, CH - 3],
-  "closes round 1, then alternates a shot with a recharge round — no shot two rounds running"
+  [CH - 1, CH - 1, CH - 2, CH - 2, CH - 3, CH - 3],
+  "hits on arrival, then alternates a shot with a recharge round — no shot two rounds running"
 );
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
@@ -3593,13 +3663,18 @@ assert.deepStrictEqual(
     );
   }
 
-  // loner — the Railgun Destroyer won't fire at all while another hostile
-  // is close to IT. The counter is to bring its own side to it, which is
-  // the opposite of what every other threat on the board teaches.
+  // Nothing out here shoots through its own side, so a hostile standing in
+  // the lane switches the Railgun off. The counter is to bring its own side
+  // to it, which is the opposite of what every other threat teaches.
+  //
+  // Stated from FIVE hexes down the lane, not four. A contact chaser owns
+  // every hex within three of itself now (its burn plus its touch), so with
+  // the wingman at (4,1) a flagship at (4,4) is threatened — by the wingman,
+  // not by the gun this is about.
   {
     const solo = Engine.createGameState({ ...inhLevel, enemies: [{ type: "railgun", q: 4, r: 0 }] });
     solo.enemies[0].energy = Engine.WEAPONS.railgun.energyCost;
-    solo.playerPos = { q: 4, r: 4 }; // straight down its lane
+    solo.playerPos = { q: 4, r: 5 }; // straight down its lane
     assert.ok(
       Engine.computeThreatHexes(solo).has(Engine.hexKey(solo.playerPos)),
       "alone, its lane is live"
@@ -3610,11 +3685,11 @@ assert.deepStrictEqual(
       enemies: [{ type: "railgun", q: 4, r: 0 }, { type: "interceptor", q: 4, r: 1 }],
     });
     escorted.enemies[0].energy = Engine.WEAPONS.railgun.energyCost;
-    escorted.playerPos = { q: 4, r: 4 };
+    escorted.playerPos = { q: 4, r: 5 };
     assert.strictEqual(
       Engine.computeThreatHexes(escorted).has(Engine.hexKey(escorted.playerPos)),
       false,
-      "with a wingman inside three of it, the lane goes quiet — and the overlay says so"
+      "with one of its own standing in the lane, it goes quiet — and the overlay says so"
     );
   }
 
@@ -4159,6 +4234,26 @@ assert.deepStrictEqual(
       state.hull < hullBefore || Engine.liveMissiles(state).some((m) => !m.spent),
       "a hostile spends its shot on ONE of the two — it never gets the flagship and the ordnance with one round"
     );
+  }
+}
+
+// EVERY HOSTILE HOLD IS A REAL HOLD. A class is written as a grid of crates
+// at coordinates, and nothing read that grid back: an item hanging off the
+// edge, sitting on a masked-out cell, or overlapping its neighbour still
+// derived a ship, so a hold could claim a gun or a drive the geometry does
+// not actually have room for. The flagship's hold is checked by the game
+// every time the player drags a crate; the roster's is checked here.
+{
+  for (const [type, def] of Object.entries(Engine.ENEMY_TYPES)) {
+    const src = def.hold;
+    const probe = { cols: src.cols, rows: src.rows, blocked: (src.blocked || []).slice(), items: [] };
+    for (const it of src.items) {
+      assert.ok(
+        Engine.holdCanPlace(probe, it.id, it.x, it.y),
+        `${type}: ${it.id} does not fit at ${it.x},${it.y} — off the grid, on a masked cell, or on top of another crate`
+      );
+      probe.items.push({ id: it.id, x: it.x, y: it.y });
+    }
   }
 }
 

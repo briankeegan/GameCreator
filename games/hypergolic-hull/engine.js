@@ -1135,8 +1135,39 @@
     // shoots, whether it can chase you at all, how big its bus is and how
     // fast it fills — is READ OFF THE HOLD by deriveShip, exactly as
     // yours is. Nothing here restates it.
+    // `closes` — THE ONE CLASS THAT CATCHES YOU. Its burn resolves before
+    // the shooting and its shot is re-decided from where it landed, so it
+    // hits on arrival instead of a round later (see enemyPhase).
+    //
+    // A contact gun on a hull no faster than its target could not ever be
+    // fired. Every gun the player buys reaches two or further, so backing
+    // off one hex a round out-ranged and out-paced a chaser forever, and the
+    // flagship's turn always fell between a chaser arriving and a chaser
+    // shooting — every gun in the game kills a one-hull contact outright, so
+    // it was never alive to fire. Measured over 40 runs (`playtest.js`, "the
+    // roster, by what it got to do"): the Interceptor and the Cruiser are
+    // 445 of the 1,085 hulls that ever appear, they lived 5.7 and 6.0 rounds
+    // apiece, and they fired 0.10 shots each — SILENT 91% of the time. Half
+    // the roster was slow-moving salvage and the board was somewhere you
+    // walked across rather than somewhere you were in.
+    //
+    // ONE class, and the measurements are why. Every contact gun in the
+    // roster doing this took 7 wins in 40 to 1 and the median run from depth
+    // 9 to depth 4 — a board where three separate hulls each land a free hit
+    // on arrival is not a decision, it is weather. The Interceptor alone
+    // lands at depth 8 with the silence down to 44%. The Cruiser is the one
+    // that most wants it next and is the one that measured worst: its Flak
+    // Burst takes everything touching it, so an arrival hit from it is a
+    // whole round of the player's hull, and adding it alone put the median
+    // back at 4.
+    //
+    // It is NOT fast as well. Fitting it an Ion Drive on top (two hexes a
+    // round, which the hold has room for if the drive bay runs the full
+    // depth) measured 0 wins in 40 and median depth 7: the threat radius
+    // goes to three and there is nowhere left to stand. Speed and the
+    // arrival hit are the same dial, and this is the setting of it.
     interceptor: {
-      hull: 1, salvage: 2,
+      hull: 1, salvage: 2, closes: true,
       hold: {
         cols: 3, rows: 4, blocked: ["0,3", "2,3"],
         items: [
@@ -3769,16 +3800,24 @@
         }
       }
       for (const k of covered) threats.set(k, (threats.get(k) || 0) + 1);
-      // A chaser with 2+ AP can close one hex AND fire in the same enemy
-      // phase — its true danger zone this round is one ring wider than
-      // where it stands. Every current chaser carries an omnidirectional
-      // weapon, so "one ring wider" is exactly distance <= range + 1.
-      // (Moot at ENEMY_AP 1 — a 1-AP chaser moves OR fires, never both.)
-      if (ENEMY_AP > 1 && ship.hasDrive) {
-        const reach = Math.max(...live.map((w) => w.range));
+      // A CONTACT CHASER'S DANGER ZONE IS ITS DRIVE PLUS ITS GUN. Its burn
+      // resolves before the shooting and its shot is re-decided from where
+      // it landed (see enemyPhase), so an Interceptor on an Ion Drive
+      // threatens three hexes out, not one — and this map is what the
+      // overlay paints, what the auto-router avoids and what the pilots in
+      // playtest.js read. Painting one ring when the truth is three is the
+      // overlay lying about the only thing it exists to say.
+      //
+      // Contact guns only, and for the same reason the rule itself is: a
+      // long gun spends its round either moving or shooting, so where it
+      // stands is the whole story.
+      const closers = (ENEMY_TYPES[enemy.type] || {}).closes ? live.filter((w) => (w.range || 0) <= 1) : [];
+      if (ship.hasDrive && closers.length) {
+        const burn = Math.max(1, ship.moveRange || 1);
+        const reach = Math.max(...closers.map((w) => w.range));
         for (const hex of state.boardHexes) {
           const d = hexDistance(enemy, hex);
-          if (d <= reach || d > reach + 1) continue;
+          if (d <= reach || d > reach + burn) continue;
           threats.set(hexKey(hex), (threats.get(hexKey(hex)) || 0) + 1);
         }
       }
@@ -4750,6 +4789,73 @@
   // barrage), movers step after the shooting. Damage accumulates across
   // the WHOLE phase and one shield charge absorbs all of it — a raised
   // shield eats the round's entire barrage before the hull is touched.
+  // ONE ACTION, A WHOLE BURN — and the burn is as long as the drive bolted
+  // into the hull. A hostile's step used to be hardcoded to one hex however
+  // big its engine was, so `moveRange` was read for the flagship and for
+  // nobody else: fitting an Ion Drive to a class changed literally nothing,
+  // measured, down to the digit. "Capability comes from hardware, and ONLY
+  // from hardware" was half true.
+  //
+  // Each step after the first is re-decided against the board as it now
+  // stands, and the burn stops the moment the hull would rather do something
+  // else — ENEMY_AP is 1, so moving and firing in the same round is not a
+  // thing either side gets. Hazards and gates are judged where the burn
+  // ENDS, exactly as sublightRoutes judges the flagship's: a hex you pass
+  // through costs nothing.
+  function applyEnemyBurn(state, enemy, firstTo, claimed) {
+    const ship = enemyShip(enemy);
+    const range = Math.max(1, (ship && ship.moveRange) || 1);
+    let to = firstTo;
+    let moved = false;
+    for (let step = 0; step < range; step++) {
+      if (step > 0) {
+        const next = decideIntent(state, enemy);
+        if (next.type !== "move") break;
+        to = next.to;
+      }
+      const from = { q: enemy.q, r: enemy.r };
+      const dest = hexKey(to);
+      // Re-check at APPLY time, not decide time: the board has moved on.
+      if (claimed.has(dest) || !canFlyInto(state, to, enemy)) break;
+      claimed.delete(hexKey(from));
+      claimed.add(dest);
+      state.events.push({ type: "enemyMove", enemyId: enemy.id, from, to: { q: to.q, r: to.r } });
+      enemy.q = to.q;
+      enemy.r = to.r;
+      moved = true;
+    }
+    if (!moved) return;
+    // GROUND CHARGES EVERYONE. A hull that ends a round on a mine drift
+    // pays the same hull the flagship does; a one-hull contact caught in
+    // one dies there and leaves its wreck like any other kill.
+    const ground = hazardRule(hazardAt(state, enemy));
+    if (ground.lethal || ground.damageOnEnd) {
+      enemy.hp -= ground.lethal ? enemy.maxHp : ground.damageOnEnd;
+      if (enemy.hp <= 0) {
+        enemy.alive = false;
+        state.events.push({ type: "kill", q: enemy.q, r: enemy.r, victim: enemy.type, source: "hazard" });
+        pushLog(state, `${enemy.type.toUpperCase()} caught in the minefield.`);
+        leaveWreck(state, enemy);
+        dropCargo(state, enemy);
+        return;
+      }
+    }
+    // OUT THROUGH THE GATE WITH IT. A laden Collector that reaches a gate
+    // is gone and so is the salvage — the one loss in this game you take
+    // by being slow rather than by being hit, and the reason it is a clock
+    // and not a pest. It does not need the gate unlocked: it is leaving
+    // with cargo, not finishing a sector.
+    if (enemy.carrying && (state.exits || []).some((ex) => posEq(ex, enemy))) {
+      enemy.alive = false;
+      enemy.escaped = true;
+      state.events.push({ type: "collectorEscaped", q: enemy.q, r: enemy.r, victim: enemy.carrying.type });
+      pushLog(
+        state,
+        `${enemy.type.toUpperCase()} jumped out with the ${enemy.carrying.type.toUpperCase()} hulk. That salvage is gone.`
+      );
+    }
+  }
+
   function enemyPhase(state) {
     let totalDamage = 0;
     const firedThisPhase = new Set();
@@ -4823,6 +4929,50 @@
         state.enemies.push(reborn);
         state.events.push({ type: "wreckRevived", q: wreck.q, r: wreck.r, victim: wreck.type, enemyId: enemy.id });
         pushLog(state, `${enemy.type.toUpperCase()} has the ${wreck.type.toUpperCase()} back on its feet.`);
+      }
+      // Every intent was decided against the board as it stood BEFORE
+      // anyone moved, so two contacts can pick the same hex. Applying both
+      // stacked them: one apparent contact dealing two damage a round, a
+      // single-target shot leaving a hidden survivor, and enemyAt() only
+      // ever seeing the first of them. Claim ground as it is taken.
+      const claimed = new Set(livingEnemies(state).map((e) => hexKey(e)));
+      for (const { enemy, intent } of intents) {
+        if (intent.type !== "move" || !enemy.alive) continue;
+        applyEnemyBurn(state, enemy, intent.to, claimed);
+        if (state.status !== "playing") return;
+      }
+      // THE BURN RESOLVES BEFORE THE SHOOTING, so a hull that closes can
+      // touch you the same round — BUT ONLY WITH A GUN THAT HAS TO TOUCH.
+      //
+      // The shooting used to resolve first, which meant a hull that spent its
+      // round closing could not fire until the round after — and a one-hull
+      // chaser carrying a contact gun never got that round, because the
+      // flagship's turn came in between and every gun in the game kills a
+      // one-hull contact outright. Measured over 40 runs: the Interceptor and
+      // the Cruiser are 445 of the 1,085 hulls that ever appear, and they
+      // were SILENT 91% of the time. Half the roster was scenery.
+      //
+      // REACH OR MOTION, NEVER BOTH. The rule the roster is built on is that
+      // reach belongs to the things that cannot chase you — a hostile that
+      // outranges you AND closes on you has no counterplay, and was measured
+      // flattening the crawl by depth 5. Most of the gun platforms do carry a
+      // drive (the Railgun, the Picket, the Bombard: they pay for it in
+      // charge time), so letting any hull that burned also shoot would have
+      // handed every one of them reposition-and-snipe. A contact gun is the
+      // exception the rule does not cover: a hull that must be standing on
+      // you to fire has already given you the three answers — kill it, break
+      // off, or put something between you — by the time it arrives.
+      //
+      // Nothing changes for a hull that did not move: its first answer
+      // stands, decided from the hex it is still sitting on.
+      for (const row of intents) {
+        if (row.intent.type !== "move" || !row.enemy.alive) continue;
+        if (!(ENEMY_TYPES[row.enemy.type] || {}).closes) continue;
+        const next = decideIntent(state, row.enemy);
+        if (next.type !== "attack") continue;
+        const gun = WEAPONS[next.weaponKey];
+        if (!gun || (gun.range || 0) > 1) continue; // a long gun spent its round moving
+        row.intent = next;
       }
       const attackers = intents
         .filter(({ intent }) => intent.type === "attack")
@@ -4966,58 +5116,19 @@
           target: { q: state.playerPos.q, r: state.playerPos.r },
         });
       }
-      // Every intent was decided against the board as it stood BEFORE
-      // anyone moved, so two contacts can pick the same hex. Applying both
-      // stacked them: one apparent contact dealing two damage a round, a
-      // single-target shot leaving a hidden survivor, and enemyAt() only
-      // ever seeing the first of them. Claim ground as it is taken.
-      const claimed = new Set(livingEnemies(state).map((e) => hexKey(e)));
-      for (const { enemy, intent } of intents) {
-        if (intent.type !== "move" || !enemy.alive) continue;
-        const from = { q: enemy.q, r: enemy.r };
-        const dest = hexKey(intent.to);
-        // Re-check at APPLY time, not decide time: the board has moved on.
-        if (claimed.has(dest) || !canFlyInto(state, intent.to, enemy)) continue;
-        claimed.delete(hexKey(from));
-        claimed.add(dest);
-        state.events.push({ type: "enemyMove", enemyId: enemy.id, from, to: intent.to });
-        enemy.q = intent.to.q;
-        enemy.r = intent.to.r;
-        // GROUND CHARGES EVERYONE. A hull that ends a round on a mine drift
-        // pays the same hull the flagship does; a one-hull contact caught in
-        // one dies there and leaves its wreck like any other kill.
-        const ground = hazardRule(hazardAt(state, enemy));
-        if (ground.lethal || ground.damageOnEnd) {
-          enemy.hp -= ground.lethal ? enemy.maxHp : ground.damageOnEnd;
-          if (enemy.hp <= 0) {
-            enemy.alive = false;
-            state.events.push({ type: "kill", q: enemy.q, r: enemy.r, victim: enemy.type, source: "hazard" });
-            pushLog(state, `${enemy.type.toUpperCase()} caught in the minefield.`);
-            leaveWreck(state, enemy);
-            dropCargo(state, enemy);
-            continue;
-          }
-        }
-        // OUT THROUGH THE GATE WITH IT. A laden Collector that reaches a gate
-        // is gone and so is the salvage — the one loss in this game you take
-        // by being slow rather than by being hit, and the reason it is a clock
-        // and not a pest. It does not need the gate unlocked: it is leaving
-        // with cargo, not finishing a sector.
-        if (enemy.carrying && (state.exits || []).some((ex) => posEq(ex, enemy))) {
-          enemy.alive = false;
-          enemy.escaped = true;
-          state.events.push({ type: "collectorEscaped", q: enemy.q, r: enemy.r, victim: enemy.carrying.type });
-          pushLog(
-            state,
-            `${enemy.type.toUpperCase()} jumped out with the ${enemy.carrying.type.toUpperCase()} hulk. That salvage is gone.`
-          );
-        }
-      }
     }
     // Anyone who found a shot this round is fresh out of patience-spending;
     // anyone who didn't is one round closer to just charging in.
     for (const enemy of livingEnemies(state)) {
       enemy.idleRounds = firedThisPhase.has(enemy.id) ? 0 : (enemy.idleRounds || 0) + 1;
+      // WHAT THE PLAYER ACTUALLY SAW THIS CLASS DO. Every class's character
+      // is in its cadence and its geometry — a charge you can read, a blind
+      // side you can go round — and none of that reaches the player unless
+      // the hull survives long enough to use it. `roundsLived` and
+      // `shotsFired` are what playtest.js reads to say so with a number
+      // instead of an opinion.
+      enemy.roundsLived = (enemy.roundsLived || 0) + 1;
+      if (firedThisPhase.has(enemy.id)) enemy.shotsFired = (enemy.shotsFired || 0) + 1;
     }
     // Ordnance already in the air flies LAST, after everyone has taken
     // their step — so the hex you moved to is the hex it is judging, and
