@@ -255,6 +255,9 @@ Measured (`ee9dfef7`, run 418): no game crashed, finish 17 (3, 7, 7); Gambit's t
 each, the machine a third idle -- every search side by side still took half of what was left, as one after another, and Gambit's
 thread waited for the break search. Now each has the searches' whole time, Gambit's planner keeping back a fifth for the level and the
 readiness lines (propose.c searchBeside).
+Measured (`eb712c0e`, run 419): finish 21 (7, 6, 8), no crash, 0 boards predicted otherwise; aim met 81%, the list's entries 83% of
+the lines played; the workers 0.47 to 0.53 of a CPU each, the machine 17 to 26% idle where it was 49; both factory losses after frame
+19,700.
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --
