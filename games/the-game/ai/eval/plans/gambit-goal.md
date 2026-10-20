@@ -236,5 +236,9 @@ ONCE: with workers, the break search (92 ms of a decision's 310) runs on one of 
 their time (answer.c breakBegin, breakEnd), its judging its thread's own (judge.c judgeCtx, outcome.c cache: LOCAL).
 With a second worker, the survival search (32 ms, asked after the judging when nothing lives) runs on it from the start too, in the
 same time, its board the decision's alone; the judging takes it when it asks (decide.c svJob).
+Measured: the break search on a worker (run 411) 19, the workers 0.20 to 0.31 of a CPU, Gambit's own thread down to 0.78 -- it waited
+for the break search to reach the end of the searches' time; with the survival search on the second (run 412) 22 (7, 8, 7), the
+workers 0.42 to 0.48 each, the machine 30% idle where it was 49. Now the workers are taken back the moment the other searches are
+done, each keeping the best it found, so Gambit's thread never waits on them (answer.c breakEnd).
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

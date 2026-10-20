@@ -195,7 +195,7 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
   return 1;
 }
 // THE BREAK SEARCH ON A WORKER (plans/gambit-infra.md: two plans at once): begun before the other searches, until they end
-// (searchesEnd), and taken back after them -- a job no worker began by then is searched here, in what is left. Its judging is its
+// (searchesEnd, at the most), and taken back as soon as they are done -- a job no worker began by then is searched here, in what is left. Its judging is its
 // thread's own (judge.c judgeCtx, outcome.c cache: LOCAL).
 // (and with a second worker, the survival search too (decide.c ranked), in the same time: what it is asked of is the board alone, so it is
 // searched before the judging says whether anything lives, and kept for it -- svJob)
@@ -222,7 +222,10 @@ static int breakBegin(const Read *R, int32_t lineFrom, int32_t linePressed) {
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
   return startJobs(brCtx, breakJob, pool.nworkers >= 2 ? 2 : 1);
 }
+// (taken back the moment the other searches are done: the worker's search stops where it is -- the break search and the survival search
+// keep the best found -- so this thread never waits on it, and the judging has the time that is left)
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
+  __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
   jobsDone(brCtx);
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) return breakSearch(R, lineFrom, linePressed, ms);
   *ms = brJobMs; brCut = brJobT0 + brJobMs >= brJobBy; brResumed = brHave ? brResume.n : 0;
