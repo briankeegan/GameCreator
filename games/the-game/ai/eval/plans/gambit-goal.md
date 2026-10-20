@@ -504,3 +504,5 @@ carried and offered, judged as every line is, and not put first (decide.c carrie
 Measured (`f4f9921a`, run 468, build, two rounds): 35 of 48 (combo_storm 10/16, factory 13/16, large_garbage 12/16): the ready break
 offered, not first, is about even. THE BREAK SOONER BEFORE THE MATERIAL (rank.c 5a, where 7c was): the key that took run 465 to 39 of
 48, asked before the material keys.
+Measured (`4b9afcea`, run 469, build, two rounds): 35 of 48 (large_garbage 9/16, its material under garbage 21.8): the break sooner put
+before the material spends the panels. Back after it (7c). The 7c builds over 192 games: 39, 34, 35, 35 of 48 -- 74%, about 18 a 24.
