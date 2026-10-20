@@ -461,3 +461,6 @@ in 457 on the same panels and the same play. THE NOISE IS THE BOT'S OWN TIMING, 
 against 3/8): one run of 16 games cannot tell a build from the one before it. Now a run plays rounds (gambit-24.yml `rounds`, each round
 the patterns' games again on seeds of its own) and a build is measured over 32 games or more. The drop kept from the unforeseen garbage
 on also tells the frame loop of that garbage at once (front.c dropFrom), so it is not dropped again every frame till the plan ends.
+Measured (`9bba87af`, run 459, build, the same games): 8 of 16 (combo_storm 2/8, large_garbage 6/8); combo_storm-4 lost at 394 to an
+early raise and garbage, no line pressed later in that game -- a game 457 survived. Noise, not the change. Run 460 measures `1d16e23c`
+(every change since 456) over three rounds, 48 games.
