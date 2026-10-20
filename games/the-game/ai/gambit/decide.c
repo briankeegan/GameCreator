@@ -447,6 +447,8 @@ static int routeJudged(const Read *R, int n) {
 // (why the line in progress was not carried on, for the log: 0 carried or none, 1 its anchor panel gone, 2 a step no longer there to
 // press or the board lost on it, 3 it no longer breaks and its swaps pressed did not, 4 it no longer makes what it was begun for)
 static int carryDrop;
+// (and for the log, the line dropped: the steps it had left, and for 2 how the judge ended it -- dead at, cut at, the steps it pressed)
+static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, carryDropNats;
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0;
@@ -463,7 +465,8 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
-  if (j.dead || j.nats < nrest) { carryDrop = 2; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
+  carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];
+  if (j.dead || j.nats < nrest) { carryDrop = 2; carryDropDead = j.dead ? j.deadAt : -1; carryDropCut = j.cut; carryDropNats = j.nats; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
   *wait = C->settled && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
   // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
   Made x = { j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
