@@ -31,7 +31,9 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    middle -- then the break. Never a swing from one corner to the other with nothing done between. Measured: cells walked a minute,
    and the share of swaps that clear, set up, or break (`front.c` follows every swap pressed by the panels it moved until one clears:
    before the next swap a clear, after it a set-up, with garbage broken a break, none in 10 s nothing -- gambit_summary.js `every move
-   on the way`).
+   on the way`). A set-up swap is useful; one whose panels never clear is a set-up not used later -- the plan kept, the intention and the
+   line in progress are what carry it to the next decision. Those come to nothing are counted by the kind of line each was pressed for
+   (front.c moveBy, `came to nothing, by the kind of line`), so the waste is found where it is.
 5. **Aggressive** -- after survival (6), once the games are survived. It throws far more blocks than it does now: every board that can send garbage without giving up its life sends
    it, and a mode's attack is fired as soon as it is made, not held. Aggression is the blocks thrown a minute (gambit_summary.js
    `aggression`), measured every run. Live play too: the opening raise held through its rows; never holding while the hold dies and
