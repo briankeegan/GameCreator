@@ -483,3 +483,9 @@ Measured (`a2dcd5cf`, run 462, build, all three patterns, two rounds): 31 of 48 
 against 30 on `f79188c7`; lines in progress cut at their next swap 234 against 1809 (68 for a walk not begun within a reaction, against
 1566). FACTORY: 22 of 32 over 461 and 462, against 37 of 40 over runs 446-451 (random panels then): a regression since `3844777e`, or the
 seeded games harder -- run 463 plays the Gambit of `3844777e` on the same factory games (gambit-24.yml `gambit_from`) to say which.
+Measured (run 464, factory only, two rounds, the Gambit of `3844777e` on today's harness and seeds): 13 of 16, against 22 of 32 for the
+builds since on the same games -- two games of sixteen apart, inside the noise: no regression; the seeded factory games are harder than
+the random ones 446-451 played. Build stands at about 65% on all three patterns, 15-16 a 24.
+THE BREAK SOONER (rank.c 7c): a break put off decision after decision -- each new line breaking as much a few frames later and lived a
+few frames longer, alike by the tries -- till the board has no time to make it (run 457, combo_storm-6, 1585 to 1816). Now of two breaks
+under garbage that neither lives and every key before leaves equal, the one whose last swap is pressed sooner comes first.
