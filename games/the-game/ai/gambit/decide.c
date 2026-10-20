@@ -7,7 +7,6 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
-static int32_t raiseRefill;   // (the raise asked is the floor's, not the opening's: answer.c lets a line that lives or breaks go first)
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
 // board every line ends on
@@ -74,13 +73,12 @@ static int readBoard_(Read *R) {
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
   R->readyAt = NOT_ASKED;
   if (!R->under) { for (int i = 0; i < decQ.narr; i++) if (R->readyAt == NOT_ASKED || decQ.arr[i].at < R->readyAt) R->readyAt = decQ.arr[i].at; if (R->readyAt == NOT_ASKED && decQ.b->ninc) R->readyAt = 0; }
-  // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- and after it, the rules' material
-  // floor kept by raising: below it, not topped, the stack under `to`, the rows the next break is made of brought in)
+  // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- after it, the raise is a candidate
+  // like any other (rank.c raiseCand), offered while the board is not topped and still: nothing moving, which locks the raise out)
   int32_t to = rule->raiseTo ? rule->raiseTo : theTables.raiseTo;
   int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped;
-  int refill = !opening && R->belowFloor && !R->topped;
-  raiseRefill = refill;
-  R->low = to && (opening || refill) && fullTop(decQ.b) < to; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
+  R->low = to && opening && fullTop(decQ.b) < to; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
+  R->raiseOK = !opening && !R->topped && canRaiseNow && !cascadeLive(decQ.b) && !hasActivePanels(decQ.b) && decQ.b->shakeTime <= 0;
   // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed)
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;
@@ -126,7 +124,8 @@ static int fairShare(Cand *c, int n, int cap) {
   for (int i = 0; i < k; i++) c[i] = kept[i];
   return k;
 }
-static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 4 + NINTENT + NROUTE];
+#define NRAISE 2    // the raises a decision judges, a row and two (rank.c raiseCand)
+static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE + NRAISE], *order[MAXCANDS + 4 + NINTENT + NROUTE + NRAISE];
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
@@ -160,6 +159,8 @@ static int ranked(const Read *R, const Found *S) {
   Judge *H = &theJudged[n];
   holdCand(R, 0, H);
   order[n] = H; n++;
+  // (THE RAISE: a row, and two, judged as the hold is on the board they leave)
+  for (int rows = 1; R->raiseOK && rows <= NRAISE && !clockOut(); rows++) if (raiseCand(R, rows, &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);
   // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)
@@ -186,6 +187,7 @@ static int ranked(const Read *R, const Found *S) {
     readyKnownOnly = EXTRA(J);
     if (!readyKnownOnly) readyShare(toAsk--);
     if (J->hold) holdCand(R, J->wait, J);
+    else if (J->k.play == PLAY_RAISE) { int rows = J->raiseRows; static Judge again; if (raiseCand(R, rows, &again)) *J = again; }
     else {
       static Judge again; Cand kc = J->k;
       if (judgeCand(R, &kc, &again)) {
@@ -218,7 +220,7 @@ static int ranked(const Read *R, const Found *S) {
 
 // 5. PLAY: the raise when the opening calls for it, a hold while the raise waits for a busy board, else the first candidate in the one
 // order -- a line's first swap, or the hold
-typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred; } Played;
+typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred, raise; } Played;   // (raise: the rows a raise ranked first brings)
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -228,7 +230,8 @@ static Played playOf(const Read *R, int n) {
   P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
   // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
-  P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
+  P.raise = P.top && P.top->k.play == PLAY_RAISE ? P.top->raiseRows : 0;
+  P.line = P.top && !P.raise && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
   // does as well with that swap pressed later -- the next decision plans it again, so a first swap pressed early is undone by the next
   // plan's)
@@ -248,7 +251,7 @@ static Played playOf(const Read *R, int n) {
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
   }
-  P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
+  P.name = P.line ? P.line->k.play : R->up || P.raise ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
   P.ncands = n;
   return P;

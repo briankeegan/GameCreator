@@ -51,9 +51,9 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 
 - A material reserve before garbage lands, and how many panels.
 - Whether the chain modes build their chains on their own stack only, or may fire the chains garbage colours make without breaking.
-- Whether the opening raise goes higher than 10 rows, or recurs later in the game. **Built without asking (run 420, 19e641e6)**: after
-  the opening, a raise below the material floor (30 panels), not topped and under 10 rows, unless a line lives or breaks -- 21 -> 23.
-  Keep it, or take it out?
+- Whether the opening raise goes higher than 10 rows. After the opening the raise is the play `plans/gambit.md` lists -- now, never
+  topped, by the next block's landing, weighed where nothing fits with setup, level and hold -- a row or two judged on the engine like
+  any line (`rank.c raiseCand`); the owner: there should be a reserve, and the stack raised again.
 
 ## Done, for each mode
 
@@ -309,3 +309,8 @@ broke, 16% nothing; walk 3.2 cells, 17% jumps of 6 or more. Several ideas: 244 l
 blocks or more, 394 clears begun while another cleared; the ideas were asked 12 times (the boards are under garbage 84 to 99% of
 decisions). Both losses ran out of material under garbage: large_garbage-6 held 14 to 23 panels for 800 frames, combo_storm-3 went
 from 45 to 26 in 500 frames of breaks, each with no break left to make -- the open question of a reserve before garbage lands.
+THE RAISE IS A PLAY: the floor's raise (run 420) was a gate -- below 30 panels, the stack under 10 rows counting garbage, nothing
+moving -- that in both of run 425's losses never opened: one raise each, the opening's, at frame 216, the board under a slab or popping
+nine decisions in ten. Now after the opening a raise of one row and of two is a candidate whenever the board is still and not topped,
+judged as the hold is on the board it leaves (garbage on its way landing as it comes, the frames it takes in its loss) and ranked with
+the rest: played where it does better than holding -- a later loss, a break nearer or ready.

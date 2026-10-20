@@ -34,6 +34,7 @@ typedef struct {
   int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
+  int32_t raiseRows, raiseFrames;   // a raise (PLAY_RAISE, rank.c raiseCand): the rows it brings in, and the frames it takes
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press)
@@ -57,6 +58,7 @@ typedef struct {
   Keep keep; int32_t keepOn;
   int32_t readyAt;                 // NOT_ASKED: none
   int32_t pop, to, low, up;
+  int32_t raiseOK;                 // a raise may be offered (decide.c read: past the opening, not topped, the board still -- rank.c raiseCand)
   int32_t aloneChain, aloneOut;
   int32_t rule;
 } Read;
@@ -162,10 +164,46 @@ static void holdCand(const Read *R, int wait, Judge *J) {
   const Judged *j = J->o.dead ? 0 : &J->o.j;
   J->apDone = j ? j->done : -1; J->apFire = -1; J->apChainAll = j ? j->chainAll : 0; J->apPlayed = !!j;
 }
+// A RAISE, a candidate like any other (plans/gambit.md, the plays: now, never topped, by the next block's landing; and where nothing
+// fits -- setup, level, raise or hold -- whichever leaves the best attack in reach): the stack raised `rows` rows as the frame loop holds
+// the raise, then the board left alone, judged as the hold is -- the garbage on its way landing as it comes, the frames the raise takes
+// counted in its loss. It clears nothing, so it is played only where it does better than holding (markIdle): a later loss, a break
+// nearer or ready, more ideas; among the set-ups it ranks after setting up the ask and before levelling, and by the life its panels
+// leave (a short board's life is its panels) and the break nearest after it.
+static int raiseCand(const Read *R, int rows, Judge *J) {
+  static Board *st;
+  if (!st) st = nb_new();
+  if (!st || clockOut()) return 0;
+  cloneBoard(st, decQ.b);
+  int32_t top0 = fullTop(st), f = 0;
+  while (fullTop(st) < top0 + rows && st->gameOverClock <= 0 && f < 40 * rows) { st->input = RAISE_IN; run(st); f++; }
+  st->input = 0;
+  if (st->gameOverClock > 0 || fullTop(st) < top0 + rows || isToppedOut(st)) return 0;
+  Question q2 = decQ; q2.b = st; q2.holdLeft = 0; q2.holdStarted = 0;
+  for (int i = 0; i < q2.narr; i++) q2.arr[i].at = imax(0, q2.arr[i].at - f);
+  Question keepQ = decQ; Facts keepF = decF; int32_t keepRB = rootBuildable, keepAC = aloneChain;
+  decQ = q2;
+  if (decF.land != NOT_ASKED) decF.land = imax(0, decF.land - f);
+  if (decF.next != NOT_ASKED) decF.next = imax(0, decF.next - f);
+  rootBuildable = NOT_ASKED; endNoKeep = 1;
+  holdCand(R, 0, J);
+  endNoKeep = 0; decQ = keepQ; decF = keepF; rootBuildable = keepRB; aloneChain = keepAC;
+  if (J->o.dead || J->o.late) return 0;
+  J->hold = 0; J->k.play = PLAY_RAISE; J->raiseRows = rows; J->raiseFrames = f; J->settled = 0;
+  if (J->o.lostAt != NOT_ASKED && J->o.lostAt != FOREVER) J->o.lostAt += f;
+  if (J->o.j.lostAt != NOT_ASKED && J->o.j.lostAt != FOREVER) J->o.j.lostAt += f;
+  memset(&J->t, 0, sizeof J->t); J->t.tier = 4; J->t.nsub = 1; J->t.sub[0] = 3;
+  if (J->o.panelsLeft >= 0) {
+    tierInsert(&J->t, J->t.nlist, -(double)J->o.lifeLeft);
+    if (J->o.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, J->o.nearAfter);
+  }
+  J->apDone = f; J->apPlayed = 0;
+  return 1;
+}
 // A DIG THAT CAN WAIT: a line toward a break that lives no longer than the hold, and is still done before the hold is lost after one
 // more decision (react frames)
 static void readyNextFor(Judge *J) {
-  if (J->o.lives || J->readyNext != NOT_ASKED) return;
+  if (J->o.lives || J->readyNext != NOT_ASKED || J->k.play == PLAY_RAISE) return;
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
 }
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
@@ -219,7 +257,7 @@ static int ideasOf(const Judge *J0) {
     if (decF.under || ideasAsks >= IDEAS_ASKS) { J->ideas = -1; return -1; }
     ideasAsks++;
     endNoKeep = 1;
-    const Board *e = clockOut() || J->o.dead ? 0 : J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
+    const Board *e = clockOut() || J->o.dead || J->k.play == PLAY_RAISE ? 0 : J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
     endNoKeep = 0;
     J->ideas = e ? ideasOn(e, ideaAims) : -1;
   }
