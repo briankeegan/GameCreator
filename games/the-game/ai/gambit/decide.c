@@ -462,12 +462,15 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
   // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
   // settled line waits while the board still moves)
-  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  // (a settled line's next step is pressed on the board settled from the step before, as it was judged: on a board still moving the
+  // step is judged once it has settled -- waitTo -- not cut for a walk that cannot begin within a reaction)
+  int moving = C->settled && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
+  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0 };
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];
   if (j.dead || j.nats < nrest) { carryDrop = 2; carryDropDead = j.dead ? j.deadAt : -1; carryDropCut = j.cut; carryDropWhy = j.cutWhy; carryDropNats = j.nats; return 0; }   // (a step no longer legal: the judge pressed fewer than the line has)
-  *wait = C->settled && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
+  *wait = moving;
   // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
   Made x = { j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
   int32_t done = j.done, fire = j.fire, nats = j.nats, ats[MAXLINE];

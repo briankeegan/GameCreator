@@ -470,3 +470,12 @@ late move. Of 7868 lines in progress dropped, 3955 at a step no longer there, 18
 made with 40 actions or fewer left of the input limit (76 in 600 frames), and the busiest windows reach 70-76. Whether those 1881 are
 the allowance, a swap not there, or a walk not begun within a reaction, the log now says (carryDrop=2:...c0a|n|w), and every decision
 logs the allowance it was made under (allow=); the summary sums both.
+Measured (`f79188c7`, run 461, build, all three patterns, two rounds, finished 14:4x ET): 30 of 48 (combo_storm 8/16, factory 12/16,
+large_garbage 10/16) -- 15 a 24. Of the 1809 lines in progress cut at their next swap, 1566 for a walk not begun within a reaction, 238
+with no swap there, 5 over the allowance; the allowance is 6-40 left in 96% of decisions and 0-5 in none, so the input limit is not what
+cuts them. combo_storm-7 (seed 1) lost at 837 in 459 and 461 and lasted to 6964+ otherwise: its first decision, on the same board, raised
+in those two (the opening raise fires when the stack can raise on the frame asked) and cleared in the others -- the timing again, not a
+change; over 96 games the opening raise is no worse (combo_storm 14/18 raised early, 10/22 not).
+A SETTLED LINE IN PROGRESS WAITS FOR THE BOARD: a settled line's next step was judged again on a board still moving from the step before
+and cut when its walk could not begin within a reaction -- where it was judged on that board settled. Now the line in progress is judged
+on its board settled (decide.c carriedCand, waitTo), offered as the carry that waits, and judged so by the order (rank.c judgeCand).

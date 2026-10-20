@@ -78,7 +78,8 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   int st = k->settled >= 0 ? k->settled : settledPlay(play);
   // (what it makes is the whole line on the engine, as the judge counts it -- not what the search that found it counted; a line the
   // judge could not play out is judged on the search's word)
-  Outcome oc = outcome(k->seq, k->nseq, st);
+  // (the line in progress waiting for the board to settle: judged on the board settled, as carriedCand found it)
+  Outcome oc = play == PLAY_CARRYWAIT ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
   if (!oc.dead && oc.j.cut >= 0) { dropAs(play, DROP_CUT); return 0; }
