@@ -417,3 +417,6 @@ Measured (`a196edac`, run 450, build, finished 12:48 ET): 17 (combo_storm 6/8, f
 divergences; missed breaks 1 of 78 boards searched again (run 448: 5), found in its own 237 ms -- the time was won; 77 had none to find.
 At the turn of most losses the order took a line lost at 304 or 317 over one lost at 368 or 377 that broke as much: three tries or more
 counted alike. Now two lines that die survive alike only when they leave as many tries.
+Measured (`3844777e`, run 451, build, finished 13:02 ET): 15 (combo_storm 3/8, factory 8/8, large_garbage 4/8); material under
+garbage down (large_garbage 19 from 23, combo_storm 25 from 26): the later loss taken past three tries spent the panels the material
+key keeps. Three tries or more alike again; the turn of run 450's losses is still open -- to be won by the material, not the later loss.
