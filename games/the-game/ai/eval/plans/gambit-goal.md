@@ -523,3 +523,9 @@ THE PLANNER'S BREAK, AS THE JUDGE COUNTS IT: in 2088 decisions of run 469's larg
 judge 0 -- the planner counted what a step's settle converted, the board's own popping slab or cascade with it, where the judge and the
 break search count what the line has broken beyond the board left alone. The planner now counts a step's break that way (search/plan.c
 BROKE_OF, stillAt), so its beam is built on breaks the line makes.
+Measured (`c9c12992`, run 475, build, one 24): 18 (combo_storm 4/8, factory 6/8, large_garbage 8/8 -- its first 8 on these games); the
+planner's entry claiming a break the judge does not see went from 16% of large_garbage's decisions to 3%.
+UNDER GARBAGE THE NEARER BREAK BEFORE THE PANELS KEPT: combo_storm-3 (run 475, 12294): a break made, 294 frames of stop, no break in
+reach -- the hold kept, as the line whose panels give the board the most life, over lines that brought the next break nearer, and the
+stop ran out on a board eight slabs deep. Now under garbage, within a tier, the line nearer its next break comes before the life its
+panels leave (rank.c, nearAfter before lifeLeft).

@@ -138,9 +138,13 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   }
   // (THE LIFE ITS PANELS LEAVE (outcome.c lifeOf, measured), then THE NEAREST BREAK AFTER IT: of two in one tier, the one whose board has
   // more life by the panels left on it, then the one nearer its next break -- right after the list's own keys)
+  // -- under garbage the nearer break first: the next break is the board's life there, and the panels kept by doing nothing never make it
   if (oc.panelsLeft >= 0) {
-    tierInsert(&J->t, J->t.nlist, -(double)oc.lifeLeft);
-    if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, oc.nearAfter);
+    if (R->under && oc.nearAfter >= 0) { tierInsert(&J->t, J->t.nlist, oc.nearAfter); tierInsert(&J->t, J->t.nlist + 1, -(double)oc.lifeLeft); }
+    else {
+      tierInsert(&J->t, J->t.nlist, -(double)oc.lifeLeft);
+      if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, oc.nearAfter);
+    }
   }
   J->settled = st; J->aim = aim; J->o = oc;
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;
