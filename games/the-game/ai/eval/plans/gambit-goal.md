@@ -540,3 +540,5 @@ A LINE THAT BREAKS IS CARRIED WHATEVER ITS TIER: three of run 477's four combo_s
 cells, its first swap pressed, and at its second swap's frame no line that lived -- the line forgotten: under garbage while the break
 waits, a breaking line ranks in the last tier (facts.c tierOf, 6), and only lines of tier 4 or better were carried (decide.c carryOf).
 Now a line that breaks is carried whatever its tier.
+Measured (`f5b63ce4`, run 478, build, one 24): 17 (combo_storm 6/8, factory 5/8, large_garbage 6/8); none of its losses the line
+forgotten after its first swap -- each a board with no break in reach for 200-300 frames before it died.
