@@ -323,3 +323,9 @@ chain falling, the game allowing a raise) and the engine's raise says whether th
 Measured (`31a71b71`, run 428, finished 02:17 ET): finish 19 (5, 7, 7); the raise offered in 2 decisions -- judged after the lines'
 readiness, in time the readiness had already spent. Runs with the floor's raise: 23, 22; with the raise as a judged play: 16, 19, 19.
 The floor's raise is back, its 10 rows counted on the panels, garbage aside: a board under a slab is raised again.
+Measured (`a3219524`, run 429, finished 02:31 ET): finish 19 (5, 8, 6); lines that lived 577, the clock cut 33, 0 late moves. Two
+losses had a reason in the ranking: combo_storm-1 at 351 raised in the opening while nothing lived and the garbage landed that frame
+(a break that lasted 310 frames was offered) -- now the opening's raise gives way to a break where nothing lives, as the floor's
+does; large_garbage-3 at 2873 played a break lost in 46 frames over a hold lost in 290 -- of two that die a break came first while
+it outlived the next decision's reaction (13 frames); now while it leaves the next decision a break's time (rankSave), the bar the
+order's "lost alike" already reads.
