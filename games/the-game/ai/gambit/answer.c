@@ -185,9 +185,11 @@ static void breakRunTo(const Read *R, double by, Broke *into) {
 static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
   double share = R->under ? underShare : breakShare;
   *ms = 0; brCut = 0; brResumed = 0;
-  // (no break search on a question due sooner than it could take: the answer would come late)
-  if (C2.due && leftMs() < BREAK_MIN_MS) return 0;
-  double t = nowMs();
+  // (no break search on a question due sooner than it could take: the answer would come late -- the searches' time is what it takes
+  // first, and short of that, the judging's quarter: a board this near its end has a break one swap away or none (run 447, combo_storm-2
+  // at 13038: a one-swap break, found in 3 ms, not searched for))
+  double t = nowMs(), room = C2.due ? C2.due - C2.margin - t : 1e9;
+  if (C2.due && room < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   // (its share of what the searches have, propose.c leftMs: the other searches the rest, the judging its quarter)
   double by = C2.due ? t + (BREAK_MIN_MS > leftMs() * share ? BREAK_MIN_MS : leftMs() * share) : t + BREAK_MAX_MS;

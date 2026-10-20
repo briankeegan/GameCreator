@@ -404,3 +404,7 @@ large_garbage 6/8 -- 7792, 17252); 1 late move, 0 divergences; own chain cut whi
 last resorts 50%; aggression 18.9. Of two lines that die, any two lost past two breaks' time were alike (combo_storm-2, 10837: a line
 lost at 266 taken over one lost at 385 that broke more). Now two survive alike when they leave the next decisions as many breaks'
 time -- tries, a break's time each -- or three or more each.
+Measured (`3219c4c1`, run 447, build, finished 12:18 ET): 20 (combo_storm 6/8 -- 13050, 17166 -- factory 8/8, large_garbage 6/8 --
+16664, 21467); 0 late moves, 1 frame over, 0 divergences; own chain cut while a living line kept it: 0; aim met 5%; aggression 18.5.
+combo_storm-2 was lost with a one-swap break there (the reach report's first search, 3 ms) that was never searched for: the question
+was due sooner than the searches' share leaves the break search. Now short of that share it takes the judging's quarter, BREAK_MIN_MS.
