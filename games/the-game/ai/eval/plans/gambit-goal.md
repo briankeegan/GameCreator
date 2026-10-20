@@ -271,6 +271,10 @@ narrower, and its break is played when the narrower finds none (answer.c JOB_WID
 run 421): finish 21 (7, 6, 8), 5 of 31 boards searched again had a break the live search missed where run 420 had 1 -- the misses
 the narrower beam's, at 132 to 221 ms: four workers on the two CPUs the game and Gambit's thread leave are no more CPU, each search
 slower. Three workers by default again; the wider beam runs only with a fourth.
+THE BREAK SEARCH AT GAMBIT'S OWN CLASS: the workers run at the idle class, and a break search on one shares two CPUs with every other
+job; a thread cannot be raised back from the idle class without a privilege the game does not have. So under garbage the break search
+is Gambit's own thread's again, with most of the searches' time, and the planner's first entries (or all of them) go to a worker in
+its place (answer.c breakHere, propose.c planAJob); off garbage, as run 420.
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --

@@ -6,6 +6,7 @@
 #define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
 // (the profile's own, in percent, where it gives one: gb_share)
 static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
+static int32_t breakHere;   // (under garbage: the break search on Gambit's own thread, the planner's first entries on a worker)
 #define BREAK_MIN_MS 5
 #define BREAK_MAX_MS 400
 #define ROW_STEPS 16
@@ -183,7 +184,8 @@ static void breakRunTo(const Read *R, double by, Broke *into) {
   clockShareEnd(old);
 }
 static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  double share = R->under ? underShare : breakShare;
+  // (the break search here with the planner on a worker: most of the searches' time, a fifth kept for the level and the readiness lines)
+  double share = R->under ? (breakHere && searchBeside ? 0.8 : underShare) : breakShare;
   *ms = 0; brCut = 0; brResumed = 0;
   // (no break search on a question due sooner than it could take: the answer would come late)
   if (C2.due && leftMs() < BREAK_MIN_MS) return 0;
@@ -206,7 +208,7 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // worker that finishes one takes the next)
 // (and under garbage, the break search's wider touch beam on a worker of its own from the start, beside the narrower: the break it finds
 // is played when the narrower finds none -- theBrWide)
-enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE };
+enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE, JOB_PLANA };
 static int32_t jobKinds[5], njobKinds;
 static Broke theBrWide; static int32_t wideDone;
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
@@ -216,6 +218,7 @@ static void breakJob(int32_t i) {
   int kind = jobKinds[i];
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
   else if (kind == JOB_PLAN) planJob();
+  else if (kind == JOB_PLANA) planAJob();
   else if (kind == JOB_EXT) extJob(brJobR, brJobS);
   else if (kind == JOB_WIDE) { touchFrom = 1; breakRunTo(brJobR, brJobBy, &theBrWide); touchFrom = 0; __atomic_store_n(&wideDone, 1, __ATOMIC_RELEASE); }
   else {
@@ -228,13 +231,18 @@ static void breakJob(int32_t i) {
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
-  brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
+  brCut = 0; brResumed = 0; breakHere = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
   if (!brCtx) brCtx = ctxOf(0);
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
-  njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
+  // (under garbage the break search stays here, at Gambit's own thread's class -- the workers run at the idle class, and a break search
+  // there shared two CPUs with every other job and missed breaks: run 421 -- and the planner goes to a worker in its place)
+  breakHere = R->under;
+  njobKinds = 0;
+  if (breakHere) { planBeside = 1; planAInto = S; planOptsA = planOptsOf(R, planSplit ? &planHalfA : &R->guides, leftMs()); jobKinds[njobKinds++] = JOB_PLANA; }
+  else jobKinds[njobKinds++] = JOB_BREAK;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
@@ -246,6 +254,7 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 // 120 boards searched again, run 415, where 1 to 3 had been)
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
   jobsDone(brCtx);
+  if (breakHere) return 0;
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) return breakSearch(R, lineFrom, linePressed, ms);
   if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
   *ms = brJobMs; brCut = brJobT0 + brJobMs >= brJobBy; brResumed = brHave ? brResume.n : 0;
@@ -327,10 +336,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   int beside = breakBegin(&R, &S, lineFrom, linePressed);
   if (!beside) searchUnsplit();
   searchBeside = beside;
-  int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
+  int ran = beside && !breakHere ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   double ts = nowMs();
   searchAll(&R, &S);
-  if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
+  if (beside) { int r = breakEnd(&R, lineFrom, linePressed, &brMs); if (!breakHere) ran = r; }
   searchMerge(&R, &S);
   S.searchMs = nowMs() - ts;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
