@@ -967,14 +967,14 @@ static int startJobs(Ctx *x, void (*job)(int32_t), int32_t n) {
   for (int32_t i = 0; i < n; i++) { jobTasks.a[jobTasks.n++] = i; jobTasks.a[jobTasks.n++] = JOB_TASK; jobTasks.a[jobTasks.n++] = 0; jobTasks.a[jobTasks.n++] = i; jobRes.a[i] = PENDING; }
   pool.job = job;
   if (!startPhase(x, &jobTasks, jobRes.a, 0)) { pool.job = 0; return 0; }
-  poolBusy = 1;
+  __atomic_store_n(&poolBusy, 1, __ATOMIC_RELEASE);
   return 1;
 }
 static void jobsDone(Ctx *x) {
   if (!poolBusy) return;
   __atomic_store_n(&pool.next, pool.ntasks, __ATOMIC_SEQ_CST);   // (the jobs not begun: begun by no thread)
   finishPhase(x);
-  pool.job = 0; poolBusy = 0;
+  pool.job = 0; __atomic_store_n(&poolBusy, 0, __ATOMIC_RELEASE);
 }
 // Steps on every thread: the io body holds n records (parent, kind, row,
 // col, frames), each the step ns_advance would make from them. Out, in the io

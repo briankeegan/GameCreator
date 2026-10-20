@@ -97,9 +97,9 @@ jobs:
       # (after the games, so a check that fails turns the run red without stopping a game)
       - name: Gambit's C checks (the bits, perched blocks, the decisions replayed against the golden)
         if: always()
-        timeout-minutes: 5
+        timeout-minutes: 15
         # (and again on two workers: the readiness searched on every thread -- every check but the golden, which their search may move)
-        run: cd games/the-game/ai/gambit && ./build.sh test && GC_GAMBIT_WORKERS=2 ./build.sh test
+        run: cd games/the-game/ai/gambit && ./build.sh test && GC_GAMBIT_WORKERS=2 ./build.sh test && ./build.sh tsan > /dev/null
 
   report:
     needs: play

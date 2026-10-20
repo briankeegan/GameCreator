@@ -120,7 +120,7 @@ static Vec batchTasks, batchRes, batchDead;
 static LOCAL int batchN;
 static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int kind, int n) {
   batchN = 0;
-  if (inJob || poolBusy || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
+  if (inJob || __atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE) || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
   batchTasks.n = 0;
   for (int j = 0; j < n; j++) {
     int mr = CR(moves[j]), mc = CC(moves[j]);

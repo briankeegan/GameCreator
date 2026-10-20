@@ -294,6 +294,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   pressTight = decQ.tight; pressMemoClear();
   pressAllowance = allowanceKnown ? allowance : -1;
   towardRestLen = 0;
+  // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
+  readyStop();
   carryFrom = lineFrom; carryPressed = linePressed;
   planSeedsHave = plannedPaths(decQ.b, lineFrom, linePressed, &planSeeds); planOut.n = 0; planSeeded = 0;
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)

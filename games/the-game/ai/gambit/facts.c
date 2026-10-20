@@ -59,7 +59,7 @@ static void lowestGroupTop(const Board *b, int H, int32_t *top, int32_t *onScree
 // THE FACTS OF OUR BOARD: the garbage on its way as the question gives it (arrivals), topped as the game says
 static void factsOf(const Board *b, const Arr *arr, int narr, int topped, FactSet *F) {
   // (the board's shape, the one reading of it: search/bits.c bitsShape)
-  static Bits FB; static BoardShape FS;
+  static LOCAL Bits FB; static LOCAL BoardShape FS;
   bitsOf(b, &FB); bitsShape(&FB, &FS);
   int H = b->nrows - 1, top = FS.top, material = FS.material, contact = FS.contact, garb = FS.garbage, *peaks = FS.peak;
   int32_t stop = b->stopTime + b->preStopTime, coming = 0, next = NUL;
@@ -122,7 +122,7 @@ static int32_t deadlineOf(const FactSet *F, const Rule *r) {
 // ---- THE FLOOR (keeps, gridFacts): a line's board keeps it -- unless the line breaks garbage; its height, material and evenness the
 // board's shape (search/bits.c bitsShape), as the facts read them
 static void endFacts(const Board *b, int32_t *height, int32_t *material, int32_t *evenness) {
-  static Bits EB; static BoardShape ES;
+  static LOCAL Bits EB; static LOCAL BoardShape ES;   // (each thread's: every search asks the floor)
   bitsOf(b, &EB); bitsShape(&EB, &ES);
   *height = ES.top; *material = ES.material; *evenness = ES.even;
 }

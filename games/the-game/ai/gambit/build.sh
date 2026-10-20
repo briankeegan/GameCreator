@@ -13,6 +13,13 @@ if [ "${1:-}" = native ]; then
 fi
 # ./build.sh test [golden|speed]: the C checks, natively (test/main.c: the board as bits, perched blocks, the decisions replayed against the
 # golden; "golden" writes it from this build; "speed" answers questions on the wall clock and prints the engine work a decision does).
+# ./build.sh tsan: the C checks built with ThreadSanitizer (gcc's runtime) and run on GC_GAMBIT_WORKERS (default 3) workers -- every
+# search a worker runs beside Gambit's thread is raced against it; any data race fails (exit 66)
+if [ "${1:-}" = tsan ]; then
+  gcc -O1 -g -fsanitize=thread -pthread -DPA_HEAP -DGB_TEST -w native.c host.c test/main.c -lm -lz -o /tmp/gambit-tsan &&
+    GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-3} TSAN_OPTIONS="halt_on_error=1 exitcode=66 report_signal_unsafe=0 history_size=2" /tmp/gambit-tsan test
+  exit
+fi
 if [ "${1:-}" = test ]; then
   clang -O2 -pthread -DPA_HEAP -DGB_TEST -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes \
     native.c host.c test/main.c -lm -lz -o /tmp/gambit-test && GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-0} /tmp/gambit-test test "${2:-}"

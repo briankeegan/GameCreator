@@ -33,7 +33,7 @@ static int runOf(const Land *L, int r, int c, int dr, int dc, int32_t k, int *er
 // hold it up, from none of the run's own cells. Nearest first; one walk a cell.
 static void fillWalks(const Board *B, const Land *L, int minRun, Fills *F) {
   F->n = 0;
-  static Bits BB;
+  static LOCAL Bits BB;
   bitsOf(B, &BB);
   int top = BB.top;
   static uint8_t done[MAXROWS + 2][W + 2];

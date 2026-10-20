@@ -226,7 +226,7 @@ gate_gambit_engine() {
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_pa.test.js 20000 &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_countdown.test.js &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_arrivals.test.js &&
-  { ! command -v clang >/dev/null || { $G/build.sh native && $G/build.sh test && GC_GAMBIT_WORKERS=2 $G/build.sh test; }; }
+  { ! command -v clang >/dev/null || { $G/build.sh native && $G/build.sh test && GC_GAMBIT_WORKERS=2 $G/build.sh test && $G/build.sh tsan > /dev/null; }; }
 }
 
 # The bot's cursor walks one cell a step and its travel is priced in frames.

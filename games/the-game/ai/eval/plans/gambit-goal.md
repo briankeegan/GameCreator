@@ -246,6 +246,11 @@ ALL THE SEARCHES AT ONCE: with three workers the decision's searches run side by
 (LOCAL): the break search, the survival search, the chain extended or begun (propose.c searchExt) and the planner's list split in two
 -- its first entries planned on Gambit's thread, the rest on a worker, two beams each led by its own entries, their lines merged
 (propose.c searchPrep, searchMerge; answer.c breakJob). Two workers by default became three.
+Measured (`fc7867b1`, run 417): 15 of 24 games crashed in their first seconds. ThreadSanitizer on the C checks with three workers
+found the races, 838 reports: the floor's scratch board (facts.c endFacts EB, ES), the board facts' (FB, FS), the fill's, one of the
+planner's arrays (jobN), and poolBusy read unordered -- each thread's own, or atomic, now; 0 reports. `build.sh tsan` runs it, in
+gambit-24's C checks and gate_gambit_engine. And the readiness the last decision left on the workers is taken back as a decision
+begins, not at its judging: the pool was still busy when the searches were to begin, so none of them ran on a worker.
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --

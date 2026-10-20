@@ -142,7 +142,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     for (int pi = 0; pi < npool; pi++) { pool[pi].reach = 0; pool[pi].nkids = 0; }
     // the level's jobs: every legal swap of every board in the pool, played to the board's settle
     for (int pi = 0; pi < npool; pi++) { int nm = swapsOfNode(x, pool[pi].n, ms); for (int j = 0; j < nm && nj < PLAN_KIDS; j++) { jobP[nj] = pi; jobM[nj++] = ms[j]; } }
-    { static int32_t jobN[PLAN_KIDS]; for (int j = 0; j < nj; j++) jobN[j] = pool[jobP[j]].n;
+    { static LOCAL int32_t jobN[PLAN_KIDS]; for (int j = 0; j < nj; j++) jobN[j] = pool[jobP[j]].n;
       stepBatch(x, jobN, jobM, MK_SETTLE, nj);   // (every thread: core/nodes.h stepBatch)
       for (int j = 0; j < nj; j++) jobOut[j] = stepTake(x, j, jobN[j], MK_SETTLE, jobM[j]);
       batchDone(); }
