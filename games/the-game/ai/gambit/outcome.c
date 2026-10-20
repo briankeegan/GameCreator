@@ -48,7 +48,7 @@ static int fitsWithin(const List *L, Made m, const Judged *j) {
 // ---- the decision's cache: every line judged once
 #define CACHEN 4096
 typedef struct { uint32_t h; int32_t settled, n, kind; int32_t seq[MAXLINE]; Outcome o; } Cached;
-static Cached *cache; static int32_t ncache;
+static LOCAL Cached *cache; static LOCAL int32_t ncache;   // (each thread its own: the break search judges on a worker -- answer.c)
 static Question decQ; static Facts decF;
 static uint32_t lineHash(const int32_t *seq, int n, int settled, int kind) {
   uint32_t h = 2166136261u ^ (uint32_t)(settled * 7 + kind * 131);

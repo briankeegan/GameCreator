@@ -230,5 +230,9 @@ WHERE THE MACHINE GOES (cpu_watch.sh, run 407): a game's runner is 53% idle -- G
 (llvmpipe) 0.84, the rest a tenth; its four CPUs are two cores (0 and 1 one, 2 and 3 the other), and Gambit could be put on CPU 1,
 the drawing's own core. Now the game is on CPU 0, Gambit's thread alone on the other core, and its workers, at the idle class
 (SCHED_IDLE), on the two CPUs left.
+Measured: one worker, not pinned (run 408), finish 20 -- the worker 0.09 to 0.18 of a CPU, the machine still 49% idle; pinned, two
+workers (run 410), 19 -- each 0.07 to 0.11. The workers had nothing to do: the readiness jobs are a few boards a decision. TWO PLANS AT
+ONCE: with workers, the break search (92 ms of a decision's 310) runs on one of them beside the other searches (149 ms), in all of
+their time (answer.c breakBegin, breakEnd), its judging its thread's own (judge.c judgeCtx, outcome.c cache: LOCAL).
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

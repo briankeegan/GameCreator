@@ -155,20 +155,13 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
   }
 }
 
-// THE BREAK SEARCH, in its share of the decision's time
+// THE BREAK SEARCH, in its share of the decision's time -- or, with workers, on one of them beside the other searches, in all of theirs
 static Broke theBr;
 static int32_t brCut, brResumed;
-static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  double share = R->under ? underShare : breakShare;
-  *ms = 0; brCut = 0; brResumed = 0;
-  // (no break search on a question due sooner than it could take: the answer would come late)
-  if (C2.due && leftMs() < BREAK_MIN_MS) return 0;
-  double t = nowMs();
+static Paths brResume; static int brHave;
+// (the search itself, on whichever thread runs it: what it reads is the question, the read and the kept paths, its nodes its thread's)
+static void breakRun(const Read *R, double by) {
   int32_t pop = popLeft(decQ.b);
-  static Paths resume;
-  int have = carriedPaths(decQ.b, lineFrom, linePressed, &resume);
-  // (its share of what the searches have, propose.c leftMs: the other searches the rest, the judging its quarter)
-  double by = C2.due ? t + (BREAK_MIN_MS > leftMs() * share ? BREAK_MIN_MS : leftMs() * share) : t + BREAK_MAX_MS;
   double old = clockShareBegin(by);
   // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
   // is searched first, quick to find, so a break to play is in hand however long the list's own takes; the rest of the share then goes
@@ -181,13 +174,52 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
     listDefault = 0;
     off = theBr;
     if (off.depth && !clockOut()) {
-      breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, have ? &resume : 0, &theBr);
+      breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, &theBr);
       if (!theBr.depth) theBr = off;
     }
-  } else breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, have ? &resume : 0, &theBr);
+  } else breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, &theBr);
   clockShareEnd(old);
-  brCut = nowMs() >= by; brResumed = have ? resume.n : 0;
+}
+static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
+  double share = R->under ? underShare : breakShare;
+  *ms = 0; brCut = 0; brResumed = 0;
+  // (no break search on a question due sooner than it could take: the answer would come late)
+  if (C2.due && leftMs() < BREAK_MIN_MS) return 0;
+  double t = nowMs();
+  brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
+  // (its share of what the searches have, propose.c leftMs: the other searches the rest, the judging its quarter)
+  double by = C2.due ? t + (BREAK_MIN_MS > leftMs() * share ? BREAK_MIN_MS : leftMs() * share) : t + BREAK_MAX_MS;
+  breakRun(R, by);
+  brCut = nowMs() >= by; brResumed = brHave ? brResume.n : 0;
   *ms = nowMs() - t;
+  return 1;
+}
+// THE BREAK SEARCH ON A WORKER (plans/gambit-infra.md: two plans at once): begun before the other searches, until they end
+// (searchesEnd), and taken back after them -- a job no worker began by then is searched here, in what is left. Its judging is its
+// thread's own (judge.c judgeCtx, outcome.c cache: LOCAL).
+static Ctx *brCtx; static const Read *brJobR; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
+static void breakJob(int32_t i) {
+  (void)i;
+  clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
+  inJob = 1; pressTight = decQ.tight; ncache = 0;
+  breakRun(brJobR, brJobBy);
+  inJob = 0;
+  brJobMs = nowMs() - brJobT0;
+  __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE);
+}
+static int breakBegin(const Read *R, int32_t lineFrom, int32_t linePressed) {
+  brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST);
+  if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
+  brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
+  brJobR = R; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
+  if (!brCtx) brCtx = ctxOf(0);
+  __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
+  return startJobs(brCtx, breakJob, 1);
+}
+static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
+  jobsDone(brCtx);
+  if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) return breakSearch(R, lineFrom, linePressed, ms);
+  *ms = brJobMs; brCut = brJobT0 + brJobMs >= brJobBy; brResumed = brHave ? brResume.n : 0;
   return 1;
 }
 
@@ -259,12 +291,14 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   double brMs;
   // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
   double searchShare = clockShareBegin(searchesEnd());
-  int ran = breakSearch(&R, lineFrom, linePressed, &brMs);
-  C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
+  int beside = breakBegin(&R, lineFrom, linePressed);
+  int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   double ts = nowMs();
   static Found S;
   searchAll(&R, &S);
   S.searchMs = nowMs() - ts;
+  if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
+  C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
   clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
   int n = ranked(&R, &S);

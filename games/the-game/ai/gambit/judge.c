@@ -47,7 +47,7 @@ typedef struct {
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
 } Judged;
 
-static Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
+static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
 
 
 // THE LIST FOR ONE STEP (attacker stepFits): its own clears, each no link of a chain, and the chain it reaches -- held to the list when
