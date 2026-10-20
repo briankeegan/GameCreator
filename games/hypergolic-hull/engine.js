@@ -3236,11 +3236,12 @@
   // a scrambler" — so every new kind of ground was instant death until
   // somebody remembered to special-case it.
   const HAZARDS = {
-    // ROCK IS SOLID, NOT PERMANENT. Two hits open it, which is what keeps
-    // "there is always a way through" true however the board rolled: a lane
-    // you cannot walk round is a lane you can shoot open. It also gives every
-    // gun a second job and makes a chokepoint a decision rather than a wall.
-    asteroid: { blocksMove: true, blocksShot: true, hp: 2 },
+    // ROCK IS SOLID, NOT PERMANENT. One shot opens it, which keeps "there is
+    // always a way through" true however the board rolled: a lane you cannot
+    // walk round is a lane you can shoot open. One and not two because
+    // nothing is decided between a first hit and a second — it is the same
+    // choice made twice, which is a toll rather than a decision.
+    asteroid: { blocksMove: true, blocksShot: true, hp: 1 },
     blackhole: { lethal: true },
     scrambler: { jams: true },
     // COVER YOU CAN WALK THROUGH, and the direct answer to reach. A gun

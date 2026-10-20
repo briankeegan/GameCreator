@@ -644,18 +644,14 @@ async function freshPage(browser, url, errors) {
           put.rock
         );
       assert.strictEqual(await rockLeft(), 1, "the boulder is still there to shoot");
-      for (let shot = 0; shot < 2 && (await rockLeft()); shot++) {
-        await page.evaluate(() => {
-          window.__hhState.energy = window.__hhState.maxEnergy;
-          window.__hhState.ap = window.__hhState.maxAp;
-        });
-        await clickHex(page, "sublight", put.rock);
-        const live = await page.$(".weapon-btn:not([disabled])");
-        if (!live) break;
-        await live.click();
-        await page.waitForTimeout(200);
-      }
-      assert.strictEqual(await rockLeft(), 0, "two shots on marked rock open the lane");
+      await page.evaluate(() => {
+        window.__hhState.energy = window.__hhState.maxEnergy;
+        window.__hhState.ap = window.__hhState.maxAp;
+      });
+      await clickHex(page, "sublight", put.rock);
+      await page.click(".weapon-btn:not([disabled])");
+      await page.waitForTimeout(200);
+      assert.strictEqual(await rockLeft(), 0, "one shot on marked rock opens the lane");
     }
   }
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the confirmed volley kills the Interceptor");
