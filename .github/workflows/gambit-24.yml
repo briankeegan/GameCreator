@@ -22,8 +22,8 @@ on:
         description: 'A past run of this workflow: its games written up again, nothing played'
         default: ''
       workers:
-        description: "Gambit's worker threads (GC_GAMBIT_WORKERS; none when empty): three -- the break search, the planner's second half and the chain, the survival search"
-        default: '3'
+        description: "Gambit's worker threads (GC_GAMBIT_WORKERS; none when empty): four -- the break search, the planner's second half and the chain, the break search's wider beam, the survival search"
+        default: '4'
       bot:
         description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
         default: 'gambit'

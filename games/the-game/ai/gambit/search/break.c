@@ -18,6 +18,8 @@
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
 #define KEEPN TOUCH_BEAM            // the lines carried on
 #define LINEUP_BUDGET 400
+// (the touch beam from its wider beam on, its narrower left to another thread searching the same board: answer.c's wide job)
+static LOCAL int32_t touchFrom;
 #define LINEUP_DEPTH 8
 #define LINEUP_BEAM 8
 #define PAIR 5
@@ -287,7 +289,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   for (int i = 0; i < nseeds; i++) tl0[n0++] = seeds[i];
   for (int i = 0; i < nfirsts; i++) if (liveNode(x, firsts[i]->n) && within(s, firsts[i]->n)) tl0[n0++] = firsts[i];
   int tpath = 0;
-  for (int tb = 0; tb < 2 && !tpath && !SEARCH_OUT(); tb++) {
+  for (int tb = touchFrom; tb < 2 && !tpath && !SEARCH_OUT(); tb++) {
     int beam = tb ? TOUCH_WIDE : TOUCH_BEAM, ntl = n0;
     for (int i = 0; i < n0; i++) tl[i] = tl0[i];
     for (int td = 2; td <= TOUCH_DEPTH && ntl && !tpath && !SEARCH_OUT(); td++) {

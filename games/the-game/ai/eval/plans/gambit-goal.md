@@ -265,6 +265,9 @@ lives or breaks before it (decide.c refill, answer.c).
 Measured (`19e641e6`, run 420): finish 23 (7, 8, 8) -- the best yet; aim met 82%, the list's entries 83%, 0 boards predicted otherwise.
 The one loss (combo_storm-3, 13995): at 13897 a break was there the live search missed and the reach report's wide search found in
 148 ms.
+TWO WIDTHS AT ONCE: the touch beam is searched 30 wide and then, if it finds nothing, 100 wide, one after the other in the break
+search's time -- the wider is what the time cuts. Under garbage, a fourth worker searches the wider beam from the start beside the
+narrower, and its break is played when the narrower finds none (answer.c JOB_WIDE, search/break.c touchFrom). Four workers by default.
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --

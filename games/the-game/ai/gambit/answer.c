@@ -160,7 +160,9 @@ static Broke theBr;
 static int32_t brCut, brResumed;
 static Paths brResume; static int brHave;
 // (the search itself, on whichever thread runs it: what it reads is the question, the read and the kept paths, its nodes its thread's)
-static void breakRun(const Read *R, double by) {
+static void breakRunTo(const Read *R, double by, Broke *into);
+static void breakRun(const Read *R, double by) { breakRunTo(R, by, &theBr); }
+static void breakRunTo(const Read *R, double by, Broke *into) {
   int32_t pop = popLeft(decQ.b);
   double old = clockShareBegin(by);
   // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
@@ -168,16 +170,16 @@ static void breakRun(const Read *R, double by) {
   // to a break within the list, which is played instead if found)
   listDefault = 0;
   if (R->end == 1) {
-    static Broke off;
+    static LOCAL Broke off;
     listDefault = 1;
-    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, 0, &theBr);
+    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, 0, into);
     listDefault = 0;
-    off = theBr;
+    off = *into;
     if (off.depth && !clockOut()) {
-      breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, &theBr);
-      if (!theBr.depth) theBr = off;
+      breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, into);
+      if (!into->depth) *into = off;
     }
-  } else breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, &theBr);
+  } else breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, into);
   clockShareEnd(old);
 }
 static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
@@ -202,8 +204,11 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // (THE JOBS, in the order the workers take them: the break search; the second half of the planner's list and the chain extended or begun,
 // when the decision splits them off (propose.c searchPrep); the survival search -- each with what it needs from the decision, and a
 // worker that finishes one takes the next)
-enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_SURVIVE };
-static int32_t jobKinds[4], njobKinds;
+// (and under garbage, the break search's wider touch beam on a worker of its own from the start, beside the narrower: the break it finds
+// is played when the narrower finds none -- theBrWide)
+enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE };
+static int32_t jobKinds[5], njobKinds;
+static Broke theBrWide; static int32_t wideDone;
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
   clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
@@ -212,6 +217,7 @@ static void breakJob(int32_t i) {
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
   else if (kind == JOB_PLAN) planJob();
   else if (kind == JOB_EXT) extJob(brJobR, brJobS);
+  else if (kind == JOB_WIDE) { touchFrom = 1; breakRunTo(brJobR, brJobBy, &theBrWide); touchFrom = 0; __atomic_store_n(&wideDone, 1, __ATOMIC_RELEASE); }
   else {
     double old = clockShareBegin(brJobBy);
     svJob = outlive(&decQ, HORIZON + REST, REST, brJobBy - nowMs(), 6, 30);
@@ -231,6 +237,8 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
+  __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
+  if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   return startJobs(brCtx, breakJob, njobKinds);
 }
@@ -239,6 +247,7 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
   jobsDone(brCtx);
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) return breakSearch(R, lineFrom, linePressed, ms);
+  if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
   *ms = brJobMs; brCut = brJobT0 + brJobMs >= brJobBy; brResumed = brHave ? brResume.n : 0;
   return 1;
 }
