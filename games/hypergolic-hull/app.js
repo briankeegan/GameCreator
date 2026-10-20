@@ -2311,13 +2311,11 @@ function drawScramblerField(center, radius, now, seed) {
 // dark rocks reads as "a wall," distinct from the smooth circular Outpost/
 // Warp Gate. Shape is seeded per hex so it doesn't jitter frame to frame,
 // but still varies field to field.
-function drawAsteroidField(center, r, seed, hurt) {
+function drawAsteroidField(center, r, seed) {
   const rng = seededRandom(`asteroid-${seed}`);
   ctx.save();
   ctx.translate(center.x, center.y);
-  // A SPLIT BOULDER LOOKS SPLIT. Rock takes two hits and opens, so the hex
-  // has to say which of them it has taken, or the second shot is a guess.
-  const rockCount = hurt ? 2 : 4;
+  const rockCount = 4;
   for (let i = 0; i < rockCount; i++) {
     const angle = (i / rockCount) * Math.PI * 2 + rng() * 0.6;
     const dist = r * (0.18 + rng() * 0.22);
@@ -3432,7 +3430,7 @@ function draw() {
     } else if (isDiscovery) {
       drawDiscovery(center, geom.sx * 0.56, now, state.discoveryFlavor, `${state.levelId}-${k}`);
     } else if (isHazard && isHazard.type === "asteroid") {
-      drawAsteroidField(center, geom.sx * 0.56, k, isHazard.hp !== undefined && isHazard.hp < 2);
+      drawAsteroidField(center, geom.sx * 0.56, k);
     } else if (isHazard && isHazard.type === "scrambler") {
       drawScramblerField(center, geom.sx * 0.58, now, k);
     } else if (isHazard && isHazard.type === "ionCloud") {

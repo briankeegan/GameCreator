@@ -2772,10 +2772,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
   assert.ok(!Engine.canFlyInto(st, boulder, "player"), "and nothing can fly into it");
   Engine.setFacing(st, 0);
   Engine.applyFire(st);
-  assert.strictEqual(rocks(), 1, "one hit splits rock but does not open it");
-  assert.strictEqual(st.hazards[0].hp, 1, "and the damage is remembered on the hazard");
-  Engine.applyFire(st);
-  assert.strictEqual(rocks(), 0, "the second hit breaks it apart");
+  assert.strictEqual(rocks(), 0, "one hit breaks it apart");
   assert.ok(Engine.canFlyInto(st, boulder, "player"), "and the lane is open afterwards");
 }
 
