@@ -74,11 +74,12 @@ static int readBoard_(Read *R) {
   R->readyAt = NOT_ASKED;
   if (!R->under) { for (int i = 0; i < decQ.narr; i++) if (R->readyAt == NOT_ASKED || decQ.arr[i].at < R->readyAt) R->readyAt = decQ.arr[i].at; if (R->readyAt == NOT_ASKED && decQ.b->ninc) R->readyAt = 0; }
   // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- after it, the raise is a candidate
-  // like any other (rank.c raiseCand), offered while the board is not topped and still: nothing moving, which locks the raise out)
+  // like any other (rank.c raiseCand), offered while the board is not topped and no chain falls: the engine's raise says whether the rows
+  // come in -- a board the game locks the raise out of raises nothing, and is no candidate)
   int32_t to = rule->raiseTo ? rule->raiseTo : theTables.raiseTo;
   int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped;
   R->low = to && opening && fullTop(decQ.b) < to; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
-  R->raiseOK = !opening && !R->topped && canRaiseNow && !cascadeLive(decQ.b) && !hasActivePanels(decQ.b) && decQ.b->shakeTime <= 0;
+  R->raiseOK = !opening && !R->topped && canRaiseNow && !cascadeLive(decQ.b);
   // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed)
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;

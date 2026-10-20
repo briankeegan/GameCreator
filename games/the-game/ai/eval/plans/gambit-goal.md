@@ -318,3 +318,6 @@ Measured (`35fb2778`, run 426, finished 01:50 ET): finish 16 (4, 6, 6) -- factor
 run 418; 1 late move, the clock cut 55, lines that lived 313 (run 425: 494). Factory-2 never raised: the raise judged its readiness on
 every still decision, out of the time the lines' readiness had. Now the raise is judged only where nothing fits -- no line lives, or the
 board is below the floor -- after the lines' readiness, in the time left; the log counts it (`raises=`).
+Measured (`a8ab8ce6`, run 427, finished 02:04 ET): finish 19 (5, 8, 6); the raise was offered in no decision -- it waited for a board
+with nothing moving, and a board where nothing lives always has something moving. Now it is offered where the floor's raise was (no
+chain falling, the game allowing a raise) and the engine's raise says whether the rows come in.
