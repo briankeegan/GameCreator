@@ -383,3 +383,6 @@ moving 252, the shake 112: in combo_storm the garbage never stops, and a board l
 there were not short (23 to 51 panels at the turn). Big chain's list is 8-chains only, so under garbage a combo that breaks is outside
 it, and where nothing lives the order put every line within the list -- a plain three -- before it (key 5). Now between two breaks
 under garbage that both die, the list's ask does not decide: the garbage broken and the material left do.
+Measured (`d8c285ae`, run 442, big chain, finished 11:02 ET): 23 (combo_storm 7/8 -- 2418 -- factory 8/8, large_garbage 8/8); 0 late
+moves, 0 frames over, 0 divergences; a life kept 86%; aggression 19.8; own chain cut while a living line kept it: 0; aim met 1%.
+Big chain is at 22: pressure next.
