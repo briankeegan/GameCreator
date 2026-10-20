@@ -138,10 +138,11 @@ static void arrivalsOf(const Board *b) {
   for (int i = 1; i < F.narr; i++) { Arrival x = F.arr[i]; int j = i - 1; while (j >= 0 && F.arr[j].at > x.at) { F.arr[j + 1] = F.arr[j]; j--; } F.arr[j + 1] = x; }
 }
 // The garbage of `now` a decision made knowing `knew` did not count on: each piece of `knew` accounts for one no bigger, due no sooner;
-// whether any of it is due by `by` (a stopWatch).
-static int unforeseenBy(const Arrival *knew, int nk, const Arrival *now, int nn, int32_t by) {
+// the stopWatch the soonest of it is due (0x7fffffff: none), and whether any of it is due by `by`.
+static int32_t unforeseenFirst(const Arrival *knew, int nk, const Arrival *now, int nn) {
   static uint8_t used[MAXARRIVALS];
   memset(used, 0, (unsigned long)nk);
+  int32_t first = 0x7fffffff;
   for (int i = 0; i < nn; i++) {
     const Arrival *a = &now[i];
     int found = 0;
@@ -150,10 +151,11 @@ static int unforeseenBy(const Arrival *knew, int nk, const Arrival *now, int nn,
       if (!used[k] && b->at <= a->at && b->g.width == a->g.width && b->g.height >= a->g.height && !!b->g.isChain == !!a->g.isChain &&
           !!b->g.isMetal == !!a->g.isMetal) { used[k] = 1; found = 1; }
     }
-    if (!found && a->at <= by) return 1;
+    if (!found && a->at < first) first = a->at;
   }
-  return 0;
+  return first;
 }
+static int unforeseenBy(const Arrival *knew, int nk, const Arrival *now, int nn, int32_t by) { return unforeseenFirst(knew, nk, now, nn) <= by; }
 // Garbage due by the frame just reached, received as the server receives it; what lands is taken out of `pend`.
 // (garbage held back lands as the search lands it, search.h runFrame: only while fewer than CAPPED_AT are queued, the earliest due a frame)
 // THE QUEUE A BOARD HOLDS: fuller than MAXINC, the board keeps the pieces that drop soonest, as the host loads it -- the piece to drop
@@ -260,6 +262,13 @@ static void planClearFrom(int32_t t) { for (int i = 0; i < PLANN; i++) if (F.pla
 static void dropAll(void) {
   if (F.pending) abortTo(F.pId);
   F.epoch++; planClearFrom(NUL + 1); F.nextAt = 0; F.lineN = 0; F.pending = 0;
+}
+// Everything planned from frame `t` and asked is dropped: the board is the one it was made for until then. (from the next frame or
+// sooner: all of it)
+static void dropFrom(int32_t t) {
+  if (t <= F.now + 1) { dropAll(); return; }
+  if (F.pending) abortTo(F.pId);
+  F.epoch++; planClearFrom(t); if (F.nextAt > t) F.nextAt = t; F.lineN = 0; F.pending = 0;
 }
 
 // The board at `at`, from `b` now, pressing what is planned till then, and the garbage still to land after it (from).
@@ -648,7 +657,9 @@ static int frontFrame(void) {
   // again on every colour shown, a slab popping would leave no question answered until it is done.)
   if (!diverged && F.haveExpect && revealed(F.expect, t)) F.st.revealed++;
   int32_t off = t->clock - t->stopWatch;
-  if (F.nextAt > now && unforeseenBy(F.knew, F.nknew, F.arr, F.narr, F.nextAt - off)) { dropAll(); F.st.unforeseen++; }
+  // (GARBAGE UNFORESEEN: the keys planned before it lands are pressed as planned -- the board is the one they were judged on until then --
+  // the rest dropped and asked again; garbage due at T is received once the frame before it has run)
+  if (F.nextAt > now) { int32_t u = unforeseenFirst(F.knew, F.nknew, F.arr, F.narr); if (u <= F.nextAt - off) { dropFrom(u + off - 1); F.st.unforeseen++; } }
   if (F.pending && unforeseenBy(F.pKnew, F.pNknew, F.arr, F.narr, F.pAt - off)) { abortTo(F.pId); F.pending = 0; F.st.reasked++; }
   take();
   int32_t bits;

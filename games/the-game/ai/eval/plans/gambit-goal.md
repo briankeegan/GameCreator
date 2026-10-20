@@ -440,3 +440,7 @@ A LINE WHOSE BREAK IS MADE IS PLAYED ON: large_garbage-7 (run 455) at 3932 carri
 (the board searched again: [2,2], one swap); at 3946 the rest of it was asked to break again, did not -- the slab was popping already --
 and the line that lived was dropped for one that died (lost at 4092). Now a line begun for a break is carried on when the slab is
 popping on its board and was not when it was begun (decide.c carriedCand): the rest is judged for what it makes, as every line is.
+GARBAGE UNFORESEEN DROPS ONLY WHAT COMES AFTER IT: combo_storm-3 (run 455) at 6942 had one swap that broke 28 cells and lived to 290,
+due at once on a board that died the frame after; garbage the decision had not counted on arrived, the whole plan was dropped, and the
+board died before a question could be answered. Garbage lands on the stack's top and changes nothing before it lands, so now the keys
+planned before it lands are pressed as planned and only the rest is dropped and asked again (front.c dropFrom).
