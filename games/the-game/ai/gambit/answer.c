@@ -274,7 +274,7 @@ static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c' };
 typedef struct { int32_t kind, move; } Move;   // kind: 0 hold, 1 swap, 2 raise
 // THE ANSWER, read by the host (gb_answer): the move, the raise held, the line handed on, and what the log and the audit read
 typedef struct {
-  Move d; int32_t raiseNow, raiseAfter, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled;
+  Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled;
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
@@ -443,7 +443,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (wayOffered) { L_s(" way="); L_i(wayOffered); if (wayPlayed) L_s("/played"); }
   // (the floor's raise: the rows asked, how many leave a break once everything lands, how many the board lives through -- or, asked
   // while the board is busy, -1 a cascade, -2 the game's raise not allowed)
-  if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); }
+  if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight);
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
@@ -499,7 +499,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (lifeLived && landAbs != NUL && landAbs == lifeLand && qk == lifeQk && !P.nlive && lifeDumps < LIFEDUMPS) { A->dumpBoard = 3; lifeDumps++; }
     lifeLived = A->verdict == 1 && R.under; lifeLand = landAbs; lifeQk = qk; }
   // THE RAISE HELD DOWN: the steps the row has left, and the rows on to the rule's `to`
-  if (d.kind == 2) { A->raiseNow = imax(1, (decQ.b->displacement ? decQ.b->displacement : ROW_STEPS) - 1); A->raiseAfter = imax(0, R.to - fullTop(decQ.b) - 1) * ROW_STEPS; }
+  // (a raise put off to the frame the stack takes one is held from then, on the board it will be: decide.c raiseWait)
+  A->raiseWait = d.kind == 2 ? raiseWait : 0;
+  if (d.kind == 2) { const Board *rb = A->raiseWait ? raiseWaitBoard : decQ.b;
+                     A->raiseNow = imax(1, (rb->displacement ? rb->displacement : ROW_STEPS) - 1); A->raiseAfter = imax(0, R.to - fullTop(rb) - 1) * ROW_STEPS; }
 }
 
 // ---- THE HOST'S SIDE: the rules, the profile, a question, the log

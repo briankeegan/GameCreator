@@ -105,6 +105,29 @@ static Board *landedAll(const Board *b0, const Arr *arr, int narr, int32_t last,
   }
   return 0;
 }
+// THE FRAMES UNTIL THE STACK TAKES A RAISE (raiseOpenIn): the board left alone, run a frame at a time with the garbage shown landing as the
+// game lands it, to the first frame the engine would act on a raise (raiseOpen, the host's own test: native.c canRaiseOn) -- that board
+// into `at`; NOT_ASKED when it does not within `most` frames, or the board is lost first
+static int raiseOpen(const Board *b) {
+  return !b->preventManualRaise && !b->manualRaise && !isToppedOut((Board *)b) && !hasFallingGarbage((Board *)b) && !b->riseLock &&
+         !hasActivePanels((Board *)b) && !(b->shakeTime > 0) && b->chainCounter == 0;
+}
+static int32_t raiseOpenIn(const Question *q, int32_t most, Board *at) {
+  cloneBoard(at, q->b);
+  Arr pend[MAXARR]; int np = 0;
+  for (int i = 0; i < q->narr; i++) pend[np++] = q->arr[i];
+  for (int32_t i = 0; i <= most && at->gameOverClock <= 0; i++) {
+    if (i > 0 && raiseOpen(at)) return i;
+    at->input = 0; run(at);
+    int k = 0;
+    for (int a = 0; a < np; a++) {
+      if (pend[a].at <= i + 1) { Incoming g = { pend[a].width, pend[a].height, pend[a].isChain, pend[a].isMetal & 1, at->stopWatch, 1 }; receiveGarbage(at, &g); }
+      else pend[k++] = pend[a];
+    }
+    np = k;
+  }
+  return NOT_ASKED;
+}
 static int32_t raiseAlive;   // (the rows raiseReady found the board alive through once everything lands, ready or not)
 static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
   int32_t last = NOT_ASKED;

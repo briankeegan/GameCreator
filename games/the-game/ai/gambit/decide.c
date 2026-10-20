@@ -7,8 +7,10 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
-static int32_t raiseRefill;
-static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)   // (the raise asked is the floor's, not the opening's: answer.c lets a line that lives or breaks go first)
+static int32_t raiseRefill;   // (the raise asked is the floor's, not the opening's: answer.c lets a line that lives or breaks go first)
+static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
+static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
+#define RAISE_WAIT 120   // the frames the floor's raise waits for the stack to take one, at most
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
 // board every line ends on
@@ -84,18 +86,32 @@ static int readBoard_(Read *R) {
   raiseRefill = refill;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
   R->low = to && (opening || refill) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
-  refillAsked = refillReady = refillAlive = 0;
-  if (refill && R->low && !R->up) refillAsked = -(cascadeLive(decQ.b) ? 1 : 2);   // (asked, and the board busy: -1 a cascade, -2 the game's raise)
+  refillAsked = refillReady = refillAlive = 0; raiseWait = 0;
+  // (THE FLOOR'S RAISE, TIMED: a board busy now -- a cascade, panels moving, the shake -- is one the engine would not raise; it is run on,
+  // left alone with the garbage shown landing as the game lands it, to the first frame it would (search/ready.c raiseOpenIn), and the
+  // raise is judged on that board and pressed then)
+  Question rq = decQ;
+  if (refill && R->low && !R->up && !clockOut()) {
+    if (!raiseWaitBoard) raiseWaitBoard = nb_new();
+    int32_t w = raiseWaitBoard ? raiseOpenIn(&decQ, RAISE_WAIT, raiseWaitBoard) : NOT_ASKED;
+    if (w > 0) {
+      rq.b = raiseWaitBoard; rq.holdLeft = 0; rq.holdStarted = 0;
+      rq.narr = 0; for (int i = 0; i < decQ.narr; i++) if (decQ.arr[i].at > w) { rq.arr[rq.narr] = decQ.arr[i]; rq.arr[rq.narr++].at -= w; }
+      rowsUp = to - panelTop(raiseWaitBoard);
+      if (rowsUp > 0) { R->up = 1; raiseWait = w; }
+    }
+    if (!R->up) refillAsked = -(w == NOT_ASKED ? 1 : 2);   // (asked, and the stack takes no raise within RAISE_WAIT: -1, or nothing to raise once it does: -2)
+  }
   // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed -- and alive while they rise)
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;
-    int32_t rows = raiseReady(&decQ, rowsUp, l < RAISE_MS ? l : RAISE_MS);
+    int32_t rows = raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
     // (THE FLOOR'S RAISE ON A BOARD TOO SHORT TO BREAK: below the floor, no row count leaves a break once everything lands -- the panels
     // a break is made of are what the board lacks -- so the rows the board lives through once everything lands are raised all the same:
     // the panels are the next break's material, and the opening's raise is held to readiness, never the floor's)
     refillAsked = refill ? rowsUp : 0; refillReady = rows; refillAlive = raiseAlive;
     if (rows <= 0 && refill) rows = raiseAlive;
-    if (rows <= 0) R->up = R->low = 0; else to = fullTop(decQ.b) + rows;
+    if (rows <= 0) { R->up = R->low = 0; raiseWait = 0; } else to = fullTop(rq.b) + rows;
   }
   R->to = to;
   R->pop = popLeft(decQ.b) > 0;

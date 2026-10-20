@@ -164,7 +164,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   Answer *A = &theAnswer;
   memset(out, 0, sizeof *out);
   out->id = q->id; out->epoch = q->epoch; out->at = q->at; out->kind = A->d.kind; out->move = A->d.move;
-  out->raiseNow = A->raiseNow; out->raiseAfter = A->raiseAfter; out->nhand = A->nhand;
+  out->raiseNow = A->raiseNow; out->raiseAfter = A->raiseAfter; out->raiseWait = A->raiseWait; out->nhand = A->nhand;
   for (int i = 0; i < A->nhand; i++) { out->hand[i] = A->hand[i]; out->handAt[i] = A->handAt[i]; }
   out->holdLives = A->holdLives; out->brk = A->brk; out->urgent = A->urgent; out->idleMs = A->idleMs;
   out->empty = A->empty; out->nalt = A->nalt; for (int i = 0; i < A->nalt; i++) out->alt[i] = A->alt[i];

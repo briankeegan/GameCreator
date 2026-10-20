@@ -368,3 +368,8 @@ attacks an 8-chain or more), the list 2%, threes that break 67%, last resorts 32
 to 19) on boards the floor's raise left short, combo_storm-3 with no garbage on it at 7644: the floor's raise was held to readiness,
 and a board too short to make a break leaves none once everything lands at any row count. Now below the floor the rows the board
 lives through are raised when none is ready, and the log says what the floor's raise did (`refill=`).
+Measured (`6dd968cf`, run 439, big chain, finished 10:14 ET): 20 (combo_storm 5/8, factory 8/8, large_garbage 7/8). The floor's
+raise was asked in 1,057 decisions and pressed in none: 915 on a board busy with a cascade, 142 where the game took no raise -- in
+combo_storm the board is falling or popping nearly every time it is asked. THE FLOOR'S RAISE, TIMED: a board busy now is run on, left
+alone, to the first frame the engine would act on a raise (search/ready.c raiseOpenIn, the host's own test), the raise judged on that
+board and handed to the frame loop to be pressed then (front.c, raiseWait) -- a line that lives or breaks still first.

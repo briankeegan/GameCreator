@@ -28,6 +28,7 @@ typedef struct {
 } FQuestion;
 typedef struct {
   int32_t id, epoch, at, kind, move, raiseNow, raiseAfter, nhand, hand[MAXLINE], holdLives, brk, urgent, error;
+  int32_t raiseWait;           // a raise held from this many frames after `at`, the first the stack takes one (0: from `at`)
   int32_t handAt[MAXLINE];     // the frame each swap handed on was judged pressed from (0: as soon as the one before is done)
   int32_t empty;               // a hold the clock left no time to judge anything for
   int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
@@ -462,6 +463,21 @@ static void take(void) {
     }
     if (!a.empty) { F.altMode = modeAt(a.at); F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
+    // (A RAISE PUT OFF: nothing pressed until the frame the stack takes it, then the raise held for its rows -- the keys made here, as a
+    // raise's are, on the board as it will be then)
+    if (a.kind == 2 && a.raiseWait > 0) {
+      k.n = imin(imax(1, a.raiseNow), MAXKEYS); k.held = 0;
+      for (int q = 0; q < k.n; q++) { k.ins[q] = IN_RAISE; k.hl[q] = q == k.n - 1 ? a.raiseAfter : 0; k.hs[q] = q == k.n - 1 && a.raiseAfter > 0; }
+      planClearFrom(at);
+      at += a.raiseWait;
+      F.st.played++;
+      for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 0 });
+      F.nextAt = at + k.n;
+      F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
+      memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
+      F.lineN = 0; F.haveLineOf = 0;
+      continue;
+    }
     if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
       F.st.refused++;
       if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
