@@ -107,17 +107,23 @@ static Board *landedAll(const Board *b0, const Arr *arr, int narr, int32_t last,
 }
 // THE FRAMES UNTIL THE STACK TAKES A RAISE (raiseOpenIn): the board left alone, run a frame at a time with the garbage shown landing as the
 // game lands it, to the first frame the engine would act on a raise (raiseOpen, the host's own test: native.c canRaiseOn) -- that board
-// into `at`; NOT_ASKED when it does not within `most` frames, or the board is lost first
-static int raiseOpen(const Board *b) {
-  return !b->preventManualRaise && !b->manualRaise && !isToppedOut((Board *)b) && !hasFallingGarbage((Board *)b) && !b->riseLock &&
-         !hasActivePanels((Board *)b) && !(b->shakeTime > 0) && b->chainCounter == 0;
+// into `at`; NOT_ASKED when it does not within `most` frames, or the board is lost first -- and raiseShut, what held it shut on every
+// frame searched (a bit each: 1 a raise prevented, 2 one held, 4 topped, 8 garbage falling, 16 the rise locked, 32 panels moving, 64 the
+// shake), the log's
+static int32_t raiseShut;
+static int raiseShutOf(const Board *b) {
+  Board *m = (Board *)b;
+  return (b->preventManualRaise ? 1 : 0) | (b->manualRaise ? 2 : 0) | (isToppedOut(m) ? 4 : 0) | (hasFallingGarbage(m) ? 8 : 0) |
+         (b->riseLock ? 16 : 0) | (hasActivePanels(m) ? 32 : 0) | (b->shakeTime > 0 ? 64 : 0);
 }
+static int raiseOpen(const Board *b) { return raiseShutOf(b) == 0; }
 static int32_t raiseOpenIn(const Question *q, int32_t most, Board *at) {
   cloneBoard(at, q->b);
   Arr pend[MAXARR]; int np = 0;
   for (int i = 0; i < q->narr; i++) pend[np++] = q->arr[i];
+  raiseShut = 127;
   for (int32_t i = 0; i <= most && at->gameOverClock <= 0; i++) {
-    if (i > 0 && raiseOpen(at)) return i;
+    if (i > 0) { int s = raiseShutOf(at); if (!s) return i; raiseShut &= s; }
     at->input = 0; run(at);
     int k = 0;
     for (int a = 0; a < np; a++) {

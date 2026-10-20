@@ -373,3 +373,7 @@ raise was asked in 1,057 decisions and pressed in none: 915 on a board busy with
 combo_storm the board is falling or popping nearly every time it is asked. THE FLOOR'S RAISE, TIMED: a board busy now is run on, left
 alone, to the first frame the engine would act on a raise (search/ready.c raiseOpenIn, the host's own test), the raise judged on that
 board and handed to the frame loop to be pressed then (front.c, raiseWait) -- a line that lives or breaks still first.
+Measured (`4f53d6f0`, run 440, big chain, finished 10:34 ET): 17 (combo_storm 4/8, factory 7/8, large_garbage 6/8); the floor's
+raise asked in 785 decisions, pressed once: 784 times the board left alone took no raise within 120 frames by the test as written
+(the host's, and no chain running). Now the test is the host's alone, and what held the raise shut on every frame searched is logged
+(`refill=.../sN`) and summed.
