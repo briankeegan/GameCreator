@@ -420,3 +420,7 @@ counted alike. Now two lines that die survive alike only when they leave as many
 Measured (`3844777e`, run 451, build, finished 13:02 ET): 15 (combo_storm 3/8, factory 8/8, large_garbage 4/8); material under
 garbage down (large_garbage 19 from 23, combo_storm 25 from 26): the later loss taken past three tries spent the panels the material
 key keeps. Three tries or more alike again; the turn of run 450's losses is still open -- to be won by the material, not the later loss.
+THE NEXT BREAKS' PANELS, ONCE EVERYTHING LANDS: of two breaks on a short or topped board under garbage, the one that leaves more
+panels under the lowest garbage on the board the readiness lands -- everything shown landed, settled (judge.c readyMat) -- comes first
+(rank.c 7a); the line's own end board where the landing was not asked. Measured on the two patterns that lose (combo_storm,
+large_garbage), twice -- the patterns input -- as much as one run of 24 costs.
