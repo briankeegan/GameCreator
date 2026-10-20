@@ -109,10 +109,9 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   int32_t base = 0;
   Stats bs;
   if (liveNode(x, baseOut) && statsOf(x, baseOut, &bs) && bs.cleared > 0) base = sentCells(&bs);
-  // (and the garbage it converts whatever is pressed -- a slab popping: a line's first step breaks what it breaks beyond it, as the judge
-  // counts it; the steps after begin once that settle is over)
-  int32_t baseBroke = liveNode(x, baseOut) && statsOf(x, baseOut, &bs) ? bs.broke : 0;
-  #define BROKE_OF(it, st) imax(0, (st).broke - ((it)->nseq ? 0 : baseBroke))
+  // (a step that converts garbage breaks what the line has broken by its settle beyond the board left alone by then -- the break
+  // search's and the judge's measure: a slab already popping, or a cascade of the board's own, converts whatever is pressed)
+  #define BROKE_OF(it, st) ((st).broke > 0 ? imax(0, NODE(x, out)->brk - stillAt(&still, NODE(x, out)->t)) : 0)
   P->base = base;
   int32_t rootH = connectedOf(ensureBoard(x, root));
   int32_t setH = rootH, haveSetup = 0, setIdeas = 0; double setReachD = 0;

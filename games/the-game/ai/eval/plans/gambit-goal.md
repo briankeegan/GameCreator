@@ -517,3 +517,9 @@ ends when it is due). The cut is gone (judge.c); a swap is waited for as long as
 Measured (`85ce8628`, run 472, build, four rounds on seeds 1-4, 96 games): 75 of 96 (combo_storm 25/32, factory 27/32, large_garbage
 23/32), 78% -- the swap that waits pressed when its walk begins is even with the cut (36 of 48 on seeds 1-2, 38 on 3-4). The cut counts
 then counted the walking order's trial judgings too; they are kept out now, as the drops are (rank.c judgeWalked).
+Measured on `9d927c18`, two rounds each: pressure 35 of 48 (combo_storm 10/16, factory 15/16, large_garbage 10/16; aim met 8%), big
+chain 33 of 48 (9/16, 14/16, 10/16; aim 1%). Every mode stands at 16.5-19 a 24. From here a run is one 24 (the owner's).
+THE PLANNER'S BREAK, AS THE JUDGE COUNTS IT: in 2088 decisions of run 469's large_garbage the planner's entry said it broke 6 and the
+judge 0 -- the planner counted what a step's settle converted, the board's own popping slab or cascade with it, where the judge and the
+break search count what the line has broken beyond the board left alone. The planner now counts a step's break that way (search/plan.c
+BROKE_OF, stillAt), so its beam is built on breaks the line makes.
