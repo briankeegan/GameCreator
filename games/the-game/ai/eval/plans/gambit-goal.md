@@ -267,7 +267,10 @@ The one loss (combo_storm-3, 13995): at 13897 a break was there the live search 
 148 ms.
 TWO WIDTHS AT ONCE: the touch beam is searched 30 wide and then, if it finds nothing, 100 wide, one after the other in the break
 search's time -- the wider is what the time cuts. Under garbage, a fourth worker searches the wider beam from the start beside the
-narrower, and its break is played when the narrower finds none (answer.c JOB_WIDE, search/break.c touchFrom). Four workers by default.
+narrower, and its break is played when the narrower finds none (answer.c JOB_WIDE, search/break.c touchFrom). Measured (`ff565443`, four workers,
+run 421): finish 21 (7, 6, 8), 5 of 31 boards searched again had a break the live search missed where run 420 had 1 -- the misses
+the narrower beam's, at 132 to 221 ms: four workers on the two CPUs the game and Gambit's thread leave are no more CPU, each search
+slower. Three workers by default again; the wider beam runs only with a fourth.
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --
