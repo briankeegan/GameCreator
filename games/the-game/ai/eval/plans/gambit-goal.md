@@ -506,3 +506,6 @@ offered, not first, is about even. THE BREAK SOONER BEFORE THE MATERIAL (rank.c 
 48, asked before the material keys.
 Measured (`4b9afcea`, run 469, build, two rounds): 35 of 48 (large_garbage 9/16, its material under garbage 21.8): the break sooner put
 before the material spends the panels. Back after it (7c). The 7c builds over 192 games: 39, 34, 35, 35 of 48 -- 74%, about 18 a 24.
+Measured (`4ad1c1ff`, run 470, build, two rounds, four workers -- the break search's wider beam on a thread of its own): 33 of 48
+(combo_storm 6/16, factory 16/16, large_garbage 11/16): no better than three; the runner's four CPUs are shared with the client and its
+renderer. Three stay.
