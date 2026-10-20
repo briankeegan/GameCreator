@@ -27,6 +27,9 @@ on:
       bot:
         description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
         default: 'gambit'
+      patterns:
+        description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games; the goal is measured on all three)'
+        default: '["combo_storm","factory","large_garbage"]'
 
 permissions:
   contents: read
@@ -40,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pattern: [combo_storm, factory, large_garbage]
+        pattern: ${{ fromJSON(inputs.patterns || '["combo_storm","factory","large_garbage"]') }}
         game: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
