@@ -399,3 +399,8 @@ large_garbage 8/8); 1 late move, 0 divergences; own chain cut while a living lin
 of 22, with no fault found in its losses the order is not built to make (combo_storm-6 at 7 panels after a break of 36 cells; -5 the
 material key choosing the break that keeps the next one's panels; -4 a short board's break 91 frames sooner): pressure is left at 21,
 to be won with every mode run together. Build next -- its first run.
+BUILD, the first run (`3cd40adf`, run 446, finished 12:04 ET): 19 (combo_storm 6/8 -- 10501, 11135 -- factory 7/8 -- 11292 --
+large_garbage 6/8 -- 7792, 17252); 1 late move, 0 divergences; own chain cut while a living line kept it: 0; aim met 7%, the list 9%,
+last resorts 50%; aggression 18.9. Of two lines that die, any two lost past two breaks' time were alike (combo_storm-2, 10837: a line
+lost at 266 taken over one lost at 385 that broke more). Now two survive alike when they leave the next decisions as many breaks'
+time -- tries, a break's time each -- or three or more each.

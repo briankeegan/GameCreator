@@ -301,7 +301,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.
     double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
-    int alike = lo >= rankSave && !(lo < 2 * rankSave && hi - lo >= rankSave);
+    // (TRIES: the breaks the next decisions have the time for, a break's time each -- two lines survive alike when they leave as many,
+    // or three or more each: run 446, build, a line lost at 266 taken over one lost at 385 that broke more, two tries against three)
+    int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
+    int alike = lo >= rankSave && (tlo == thi || tlo >= 3);
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
