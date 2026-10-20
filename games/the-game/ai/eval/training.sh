@@ -66,6 +66,8 @@ for g in $(seq 1 "$GAMES"); do
   CLIENT=$!
   for i in $(seq 1 300); do grep -q '^ready=' "$OUT" && break; kill -0 $CLIENT 2>/dev/null || break; sleep 1; done
   grep -q '^ready=' "$OUT" || { echo "game $g: the client did not start" | tee -a "$OUT_DIR/results.txt"; continue; }
+  # (where the machine goes while it plays: cpu_watch.sh, one line a game in results.txt)
+  "$EVAL/cpu_watch.sh" "$CLIENT" "$OUT_DIR/cpu-$g.txt" &
   # (the game's thread wins its own core: raised above anything else scheduled there, where the runner allows it)
   LP=$(pgrep -n -f "$LOVE $PG" 2>/dev/null); [ -n "$LP" ] && sudo -n renice -n -10 -p "$LP" >/dev/null 2>&1 || true
   for i in $(seq 1 20); do
@@ -88,6 +90,8 @@ for g in $(seq 1 "$GAMES"); do
   sleep 3; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null
   cp "$OUT" "$OUT_DIR/pa_out-$g.txt"
   r=$(grep -h '^training ' "$OUT" | tail -1); echo "game $g $PATTERN ${r:-no result}" | tee -a "$OUT_DIR/results.txt"
+  for i in $(seq 1 20); do [ -s "$OUT_DIR/cpu-$g.txt" ] && break; sleep 1; done
+  [ -s "$OUT_DIR/cpu-$g.txt" ] && echo "game $g $(cat "$OUT_DIR/cpu-$g.txt")" | tee -a "$OUT_DIR/results.txt"
   # the first frame this game's health fell: where a game of one health (levels 10 and 11) is lost
   [ -s "$OUT_DIR/frames.jsonl.gz" ] && node -e '
     var L = require("zlib").gunzipSync(require("fs").readFileSync(process.argv[1]), { finishFlush: require("zlib").constants.Z_SYNC_FLUSH }).toString().split("\n"), max = 0, at = null;

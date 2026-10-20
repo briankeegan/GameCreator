@@ -41,7 +41,7 @@ static void pinned(void) {
     if (CPU_COUNT(&set)) pthread_setaffinity_np(pthread_self(), sizeof set, &set);
   }
 }
-static void *threadStart(void *arg) { pinned(); return threadFn(arg); }
+static void *threadStart(void *arg) { pinned(); pthread_setname_np(pthread_self(), "gambit"); return threadFn(arg); }
 int hostThread(void *(*fn)(void *)) {
   pthread_t t; pthread_attr_t at;
   threadFn = fn;
@@ -58,11 +58,18 @@ int hostThread(void *(*fn)(void *)) {
 #include <limits.h>
 int hostFutexWait(int *p, int v) { return (int)syscall(SYS_futex, p, FUTEX_WAIT_PRIVATE, v, NULL, NULL, 0); }
 int hostFutexWake(int *p, int n) { return (int)syscall(SYS_futex, p, FUTEX_WAKE_PRIVATE, n < 0 ? INT_MAX : n, NULL, NULL, 0); }
-// THE WORKERS: GC_GAMBIT_WORKERS of them (at most `most`; none when it is not set -- on a runner's four threads, two cores' worth, a
-// worker takes what Gambit's own thread and the game run on), each started with its id (1, 2, ...) and pinned where Gambit is
-// (GC_GAMBIT_CPUS). The number started.
+// THE WORKERS: GC_GAMBIT_WORKERS of them (at most `most`; none when it is not set), each started with its id (1, 2, ...), pinned where
+// Gambit is (GC_GAMBIT_CPUS) and named gworkerN, as Gambit's own thread is named gambit (eval/cpu_watch.sh counts them by name). The
+// number started.
 static void *(*workerFn)(void *);
-static void *workerStart(void *arg) { pinned(); return workerFn(arg); }
+// (each at the idle class, SCHED_IDLE: it runs only on a CPU nothing else wants, so it never takes a cycle from Gambit's own thread
+// or the game's -- on a runner whose four threads are two cores' worth, a worker at the normal class took them and lost games)
+static void *workerStart(void *arg) {
+  pinned();
+  char name[16]; snprintf(name, sizeof name, "gworker%ld", (long)arg); pthread_setname_np(pthread_self(), name);
+  struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
+  return workerFn(arg);
+}
 int hostWorkers(void *(*fn)(void *), int most) {
   const char *e = getenv("GC_GAMBIT_WORKERS");
   int n = e && *e ? atoi(e) : 0;
