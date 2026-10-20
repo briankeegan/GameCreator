@@ -239,7 +239,9 @@ same time, its board the decision's alone; the judging takes it when it asks (de
 Measured: the break search on a worker (run 411) 19, the workers 0.20 to 0.31 of a CPU, Gambit's own thread down to 0.78 -- it waited
 for the break search to reach the end of the searches' time; with the survival search on the second (run 412) 22 (7, 8, 7), the
 workers 0.42 to 0.48 each, the machine 30% idle where it was 49. Now the workers are taken back the moment the other searches are
-done, each keeping the best it found, so Gambit's thread never waits on them (answer.c breakEnd).
+done, each keeping the best it found, so Gambit's thread never waits on them (answer.c breakEnd) -- measured with the next (run 415):
+finish 14, 18 of 120 boards searched again had a break the live search missed where 1 to 3 had: the other searches end early, and
+the break search was cut short with them. Backed out: the workers run to the end of the searches' time.
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --
