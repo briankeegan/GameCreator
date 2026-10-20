@@ -342,3 +342,8 @@ board topped out"), so the reserve there is kept only by what the breaks convert
 THE NEXT BREAK'S PANELS: topped under garbage, or below the floor -- where the stack is never raised, or is short -- of two breaks the
 one that leaves more panels under the lowest garbage comes first (rank.c 7a, after the material and the saving keys, before the list):
 what a break converts lands there, and the next break is made of it (`outcome.c matLeft`, the facts' own material reading).
+Measured (`dd0f1f81`, run 432, finished 03:14 ET): finish 22 -- large_garbage 8/8, combo_storm 7/8 (7884), factory 7/8 (2105); 1
+late move, 0 refused, 0 divergences; aim met 80%, the list 82%, aggression 15.8; own chain cut while a living line kept it: 0.
+combo_storm-5 lived at 7642 and 7656 (5 lines of 13) and nothing lived from 7682: a life not kept. factory-3 was lost with breaks
+there the live search did not find -- at 2063 (the break search cut by the clock, br=0/t3/cut; the reach report's touch search found
+one with 5 touches in 74 ms) and 2097.
