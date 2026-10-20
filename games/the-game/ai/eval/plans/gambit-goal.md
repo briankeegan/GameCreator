@@ -339,3 +339,6 @@ Measured (`68de6463`, run 431, finished 02:59 ET): finish 21 -- combo_storm 8/8 
 85%, aggression 16.9; own chain cut while a living line kept it: 0. Every large_garbage loss ran out of material on a board topped
 out under slabs (large_garbage-5: 23 panels for 2,000 frames, then 9): topped, the rules never raise ("A raise is never made on a
 board topped out"), so the reserve there is kept only by what the breaks convert.
+THE NEXT BREAK'S PANELS: topped under garbage, or below the floor -- where the stack is never raised, or is short -- of two breaks the
+one that leaves more panels under the lowest garbage comes first (rank.c 7a, after the material and the saving keys, before the list):
+what a break converts lands there, and the next break is made of it (`outcome.c matLeft`, the facts' own material reading).

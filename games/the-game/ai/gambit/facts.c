@@ -65,6 +65,8 @@ static void lowestGroupTop(const Board *b, int H, int32_t *top, int32_t *onScree
     }
   }
 }
+// THE MATERIAL: the panels under the lowest garbage (search/bits.c bitsShape), the one reading the facts and a judged board share
+static int32_t materialOn(const Board *b) { static LOCAL Bits MB; static LOCAL BoardShape MS; bitsOf(b, &MB); bitsShape(&MB, &MS); return MS.material; }
 // THE FACTS OF OUR BOARD: the garbage on its way as the question gives it (arrivals), topped as the game says
 static void factsOf(const Board *b, const Arr *arr, int narr, int topped, FactSet *F) {
   // (the board's shape, the one reading of it: search/bits.c bitsShape)

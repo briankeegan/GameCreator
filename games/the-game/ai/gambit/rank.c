@@ -313,6 +313,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 7. SAVING PANELS UP (decide.c read: begun topped and short, kept until the list's largest combo is sure): of two breaks under
   // garbage, the one whose board has more life by its panels -- before the list's entry: the board's life is its next breaks
   if (x->saving && y->saving && x->o.lifeLeft != y->o.lifeLeft) return x->o.lifeLeft > y->o.lifeLeft ? -1 : 1;
+  // 7a. THE NEXT BREAK'S PANELS (topped under garbage, or below the floor -- a board that cannot raise, or is short): of two breaks, the
+  // one that leaves more panels under the lowest garbage -- what a break converts lands there, and the next break is made of it
+  if (decF.under && (decF.topped || decF.belowFloor) && x->apBroke > 0 && y->apBroke > 0 && x->o.matLeft >= 0 && y->o.matLeft >= 0 &&
+      x->o.matLeft != y->o.matLeft) return x->o.matLeft > y->o.matLeft ? -1 : 1;
   // 7b. UNDER GARBAGE THE RULE IS TO BREAK (the rules' underGarbage): of two breaks under garbage that neither lives, the one that breaks
   // more of it -- before the list's entry: the board's life is the garbage it gets off
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apBroke != y->apBroke) return x->apBroke > y->apBroke ? -1 : 1;
