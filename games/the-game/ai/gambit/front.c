@@ -29,7 +29,6 @@ typedef struct {
 typedef struct {
   int32_t id, epoch, at, kind, move, raiseNow, raiseAfter, nhand, hand[MAXLINE], holdLives, brk, urgent, error;
   int32_t raiseWait;           // a raise held from this many frames after `at`, the first the stack takes one (0: from `at`)
-  int32_t play;                // the kind of line the move is of (facts.c PLAY_*, -2 the raise): what each swap pressed is counted by
   int32_t handAt[MAXLINE];     // the frame each swap handed on was judged pressed from (0: as soon as the one before is done)
   int32_t empty;               // a hold the clock left no time to judge anything for
   int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
@@ -51,7 +50,6 @@ typedef struct {
   // EVERY MOVE ON THE WAY: each swap pressed by what it came to (moveOn) -- a clear before the next swap, a set-up (a clear after it),
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
-  int32_t moveBy[NPLAYS], moveNoneBy[NPLAYS];   // (and by the kind of line each came from: pressed, and come to nothing)
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
 } FStats;
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
@@ -61,7 +59,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_IDS 32
 #define MOVE_FOR 600
 #define MOVE_FALL 60
-typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, play; } MoveOpen;
+typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter; } MoveOpen;
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
@@ -92,7 +90,6 @@ static struct {
   int32_t chainMax, pendCombo[16], npendCombo, matchedIds[MAXROWS * W], nmatched, swapSince;
   // the swaps pressed still followed, the garbage cells matched last frame, and the cursor where it was and whether it was walked
   MoveOpen moves[MOVE_OPEN]; int32_t nmoves, gMatched, curRowWas, curColWas, curWalked;
-  int32_t curPlay;   // the kind of line the swaps being pressed are of (the answer's)
   int32_t reaction, ahead, gap, jitter;
   uint32_t rnd;
   FStats st;
@@ -492,7 +489,6 @@ static void take(void) {
       for (int q = 0; q < k.n; q++) { k.ins[q] = IN_RAISE; k.hl[q] = q == k.n - 1 ? a.raiseAfter : 0; k.hs[q] = q == k.n - 1 && a.raiseAfter > 0; }
     }
     F.st.played++;
-    F.curPlay = a.play;
     walkKeys(&k, at);
     if (!keysFit(at, &k)) {
       F.st.guarded++;
@@ -582,13 +578,10 @@ static void countAttacks(const Board *b) {
 // A swap pressed is followed by the ids of the panels it moves -- the two swapped, and those above them that fall in the MOVE_FALL
 // frames after it -- until one of them is matched or MOVE_FOR frames pass: matched before the next swap is pressed, the swap cleared;
 // after it, the swap set the clear up; a clear that breaks garbage, a break; none matched, a swap that did nothing.
-static void moveNoneOf(const MoveOpen *m) { F.st.moveNone++; if (m->play >= 0) F.st.moveNoneBy[m->play]++; }
 static void moveBegin(const Board *b) {
   for (int i = 0; i < F.nmoves; i++) F.moves[i].swapsAfter++;
-  if (F.nmoves == MOVE_OPEN) { moveNoneOf(&F.moves[0]); memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
+  if (F.nmoves == MOVE_OPEN) { F.st.moveNone++; memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
   MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock;
-  m->play = F.curPlay >= 0 && F.curPlay < NPLAYS ? F.curPlay : -1;
-  if (m->play >= 0) F.st.moveBy[m->play]++;
   int r0 = b->curRow;
   for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
     for (int r = r0; r < b->nrows && m->n < MOVE_IDS; r++) {
@@ -617,7 +610,7 @@ static void movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke)
       if (m->moved[j]) for (int q = 0; q < nfresh && !done; q++) done = fresh[q] == m->ids[j];
     }
     if (done) { if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
-    if (!alive || b->clock - m->at > MOVE_FOR) { moveNoneOf(m); continue; }
+    if (!alive || b->clock - m->at > MOVE_FOR) { F.st.moveNone++; continue; }
     if (k != i) F.moves[k] = *m;
     k++;
   }
@@ -750,15 +743,8 @@ static void statsLine(char *out, int cap) {
   }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
   // (the swaps still followed when the match ends are counted by what they came to so far: nothing yet)
-  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"by\":{",
-                             F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together);
-  // (each kind of line: its swaps pressed, and those come to nothing -- "name":[pressed,none])
-  first = 1;
-  for (int p = 0; p < NPLAYS && k < cap; p++) if (F.st.moveBy[p]) {
-    char nm[32]; int q = 0; for (const char *c = PLAY_NAME[p]; *c && q < 31; c++) nm[q++] = *c == ' ' ? '_' : *c; nm[q] = 0;
-    k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":[%d,%d]", first ? "" : ",", nm, F.st.moveBy[p], F.st.moveNoneBy[p]); first = 0;
-  }
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), "}}}");
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d}}",
+                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together);
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {

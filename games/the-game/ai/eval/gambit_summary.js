@@ -25,7 +25,7 @@ var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wal
 // latest)
 var cutShort = { boards: 0, cut: 0, cutKept: 0, cutAll: 0, cutNone: 0 };
 // EVERY MOVE ON THE WAY: the swaps pressed by what they came to, and the cells the cursor walked (front.c moveOn)
-var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0, by: {} };
+var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0 };
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
 // the ideas left ready on the board a line played leaves, where the rank asked (ideas=)
 var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
@@ -127,8 +127,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       ['combo', 'chain'].forEach(function (k) { Object.keys(a[k] || {}).forEach(function (z) { t[k][z] = (t[k][z] || 0) + a[k][z]; }); });
       if (one && !switched) aimOf(one, a);
       aggr.frames += o.frames || 0;
-      Object.keys(moves).forEach(function (k) { if (k !== 'by') moves[k] += (o.moves || {})[k] || 0; });
-      Object.keys((o.moves || {}).by || {}).forEach(function (p) { var v = o.moves.by[p], t = moves.by[p] || (moves.by[p] = [0, 0]); t[0] += v[0]; t[1] += v[1]; });
+      Object.keys(moves).forEach(function (k) { moves[k] += (o.moves || {})[k] || 0; });
       Object.keys(a.combo || {}).forEach(function (z) { var g = PA.comboGarbage(+z); aggr.attacks += a.combo[z]; aggr.blocks += a.combo[z] * g.length; aggr.cells += a.combo[z] * g.reduce(function (s, w) { return s + w; }, 0); });
       Object.keys(a.chain || {}).forEach(function (z) { aggr.attacks += a.chain[z]; aggr.blocks += a.chain[z] * (+z - 1); aggr.cells += a.chain[z] * 6 * (+z - 1); });
       // (every chain link past two, by its cause: garbage's colours, a swap since the link before, or the stack alone)
@@ -185,9 +184,6 @@ var nmv = moves.clear + moves.setup + moves.break + moves.none + moves.open, sha
 if (nmv) console.log('every move on the way: the cursor walked ' + (aggr.frames ? (moves.cells * 3600 / aggr.frames).toFixed(0) : '-') + ' cells a minute; of ' + nmv +
                      ' swaps pressed ' + share(moves.clear) + ' cleared, ' + share(moves.setup) + ' set a clear up, ' + share(moves.break) + ' broke garbage, ' +
                      share(moves.none) + ' came to nothing (' + share(moves.open) + ' still open when the game ended)');
-// (the swaps come to nothing, by the kind of line each was pressed for: which of them are waste and which shape the stack)
-var byKeys = Object.keys(moves.by).sort(function (a, b) { return moves.by[b][1] - moves.by[a][1]; });
-if (byKeys.length) console.log('came to nothing, by the kind of line: ' + byKeys.map(function (p) { var v = moves.by[p]; return p + ' ' + v[1] + ' of ' + v[0] + ' (' + Math.round(100 * v[1] / Math.max(1, v[0])) + '%)'; }).join(', '));
 console.log('several ideas at once: ' + moves.together + ' clears begun while another was still clearing; lines firing two ideas ' + several.pairOff +
             ' offered, ' + several.pairPlayed + ' played; of ' + several.thrownLines + ' lines played that threw, ' + several.thrown2 + ' threw two blocks or more (' +
             several.thrown + ' blocks); the board a line left held ' + (several.ideasN ? (several.ideas / several.ideasN).toFixed(2) : '-') + ' ideas ready on average, two or more ' +
