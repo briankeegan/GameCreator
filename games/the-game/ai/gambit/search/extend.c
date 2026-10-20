@@ -14,7 +14,7 @@ typedef struct { XLine best, nearest; double ms; } Ext;
 // a node's cascade once it settles: what it sends, its chain and largest match, the garbage it converted, and whether its board keeps
 // the floor (kept: with what it broke, floor: as if it broke nothing)
 typedef struct { int32_t ok, cells, chain, combo, broke, kept, floor, done; } Sent;
-static Ctx *extCtx;
+static LOCAL Ctx *extCtx;
 static Sent sendsOf(Ctx *x, int n, const Keep *keep) {
   Sent g; memset(&g, 0, sizeof g);
   int out = settleOf(x, n);
@@ -37,8 +37,8 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   int32_t baseCells = E->best.cells;
   int na = o->aims ? o->aims->n : 0;
   XLine per[MAXAIMS]; memset(per, 0, sizeof per);
-  static PItem poolA[PLAN_POOL], poolB[PLAN_POOL];
-  static int32_t idx[PLAN_POOL], tmpI[PLAN_POOL], keyH[PLAN_POOL], keyS[PLAN_POOL], ms[MAXROWS * W];
+  static LOCAL PItem poolA[PLAN_POOL], poolB[PLAN_POOL];
+  static LOCAL int32_t idx[PLAN_POOL], tmpI[PLAN_POOL], keyH[PLAN_POOL], keyS[PLAN_POOL], ms[MAXROWS * W];
   PItem *pool = poolA, *next = poolB;
   int npool = 1;
   memset(&pool[0], 0, sizeof pool[0]); pool[0].n = root;

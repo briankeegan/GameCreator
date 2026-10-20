@@ -47,7 +47,7 @@ typedef struct {
 #define READY_LINE_MS 120
 // whether a list asks for a chain at all
 static int wantsChain(const List *L) { for (int i = 0; i < L->n; i++) if (L->aim[i].chain.op && listWantsLonger(L, 1)) return 1; return 0; }
-static Ctx *startCtx;
+static LOCAL Ctx *startCtx;
 static void startChains(const Read *R, Found *S, double ms) {
   if (ms < 5) return;
   Profile *GP = &C2.GP;
@@ -55,7 +55,7 @@ static void startChains(const Read *R, Found *S, double ms) {
   Ctx *x = startCtx = ctxOf(startCtx);
   int root = rootOf(x, &decQ);
   if (root < 0) { clockShareEnd(shareOld); return; }
-  static int32_t ms_[MAXROWS * W], starts[MAXROWS * W];
+  static LOCAL int32_t ms_[MAXROWS * W], starts[MAXROWS * W];
   int nm = swapsOfNode(x, root, ms_), ns = 0;
   // (the swaps that start a clear: played to the settle, they clear panels)
   for (int j = 0; j < nm && !clockOut(); j++) {
@@ -82,14 +82,27 @@ static void startChains(const Read *R, Found *S, double ms) {
   }
   clockShareEnd(shareOld);
 }
-static void searchAll(const Read *R, Found *S) {
+// THE SEARCHES BESIDE THIS THREAD (answer.c searchJob): with three workers or more, the list the planner plays for split in two -- its
+// first entries planned here, the rest on a worker, two plans at once, each beam led by its own entries -- and the chain extended or
+// begun on a worker too; each its own thread's nodes and buffers (LOCAL), its lines merged into this decision's after (searchMerge).
+// Asked of before the jobs begin (searchPrep); with fewer workers, or none begun, every search is this thread's, one after another.
+static int32_t planSplit, planSplitAt, extBeside, planBDone, extDone;
+static List planHalfA, planHalfB;
+static PlanOpts planOptsB; static Plan planB; static Paths planOutB;
+static double extMsBeside;
+static PlanOpts planOptsOf(const Read *R, const List *aims, double ms) {
+  Profile *GP = &C2.GP;
+  PlanOpts po = { GP->width ? GP->width : 40, GP->depth ? GP->depth : 7, GP->pool ? GP->pool : 250, aims, R->by ? R->by : NOT_ASKED,
+                  R->keepOn ? &R->keep : 0, R->readyAt, R->under, R->F.v[FACT_US_DIES] > 0 ? R->F.v[FACT_US_DIES] : 0, R->under, ms,
+                  planSeedsHave ? &planSeeds : 0 };
+  return po;
+}
+static void searchPrep(const Read *R, Found *S) {
   memset(S, 0, sizeof *S);
+  planSplit = 0; extBeside = 0; planBDone = 0; extDone = 0;
   if (!R->guides.n) return;
   Profile *GP = &C2.GP;
   Board *board = decQ.b;
-  // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
-  // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
-  double xMs = leftMs() / 2;
   // (a slab popping is lined up as the list is written -- the pop is the break; with garbage left, the entries that break again first)
   S->xAims = !R->pop ? R->guides : R->list;
   if (R->pop && R->under) {
@@ -97,24 +110,72 @@ static void searchAll(const Read *R, Found *S) {
     for (int i = 0; i < R->list.n && S->xAims.n < MAXAIMS; i++) S->xAims.aim[S->xAims.n++] = R->list.aim[i];
     if (S->xAims.n < MAXAIMS) { Aim brk; memset(&brk, 0, sizeof brk); brk.brk = 1; S->xAims.aim[S->xAims.n++] = brk; }
   }
-  double xm = xMs < leftMs() ? xMs : leftMs();
-  if ((cascadeLive(board) || R->pop) && !GP->extendOff && xm >= 20) {
-    S->tried++;
-    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0, xm };
+  if (pool.nworkers < 3 || !C2.due || poolBusy) return;
+  extBeside = !GP->extendOff && ((cascadeLive(board) || R->pop) || wantsChain(&R->guides));
+  extMsBeside = leftMs() / 2;
+  if (R->guides.n >= 2) {
+    planSplitAt = (R->guides.n + 1) / 2;
+    planHalfA = R->guides; planHalfA.n = planSplitAt;
+    memset(&planHalfB, 0, sizeof planHalfB);
+    for (int i = planSplitAt; i < R->guides.n; i++) planHalfB.aim[planHalfB.n++] = R->guides.aim[i];
+    planOptsB = planOptsOf(R, &planHalfB, leftMs() / 2);
+    planSplit = 1;
+  }
+}
+static void searchUnsplit(void) { planSplit = 0; extBeside = 0; }
+// (the chain extended or begun, wherever it runs: S->ex or S->start)
+static void searchExt(const Read *R, Found *S, double ms) {
+  Profile *GP = &C2.GP;
+  Board *board = decQ.b;
+  if ((cascadeLive(board) || R->pop) && !GP->extendOff && ms >= 20) {
+    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0, ms };
     extend(&decQ, &eo, &S->ex); S->haveEx = 1;
   }
   // (A CHAIN IS BEGUN AND CONTINUED: on a board at rest, each swap that starts a clear, then the links its fall is continued by -- the
   // extension's own search, from the board the swap leaves falling; a beginning whose chain ends in the list is a line)
-  if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->guides)) startChains(R, S, leftMs() / 2);
+  if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->guides)) startChains(R, S, ms);
+}
+static void extJob(const Read *R, Found *S) { searchExt(R, S, extMsBeside); __atomic_store_n(&extDone, 1, __ATOMIC_RELEASE); }
+static void planJob(void) {
+  planOut.n = 0; planSeeded = 0;
+  plan(&decQ, &planOptsB, &planB);
+  planOutB = planOut;
+  __atomic_store_n(&planBDone, 1, __ATOMIC_RELEASE);
+}
+static int pLineBetter(const PLine *a, const PLine *b, int how) {   // (a over b: 0 nearer, 1 more broken, 2 lower, 3 more earned)
+  if (!a->set) return 0;
+  if (!b->set) return 1;
+  if (how == 0) return a->near > b->near || (a->near == b->near && a->nseq < b->nseq);
+  if (how == 1) return a->broke > b->broke || (a->broke == b->broke && a->done < b->done);
+  if (how == 2) return a->top < b->top || (a->top == b->top && a->nseq < b->nseq);
+  return a->earned > b->earned || (a->earned == b->earned && a->nseq < b->nseq);
+}
+static void searchMerge(const Read *R, Found *S) {
+  if (planSplit && __atomic_load_n(&planBDone, __ATOMIC_ACQUIRE)) {
+    for (int i = 0; i < planHalfB.n && planSplitAt + i < MAXAIMS; i++)
+      if (planB.perAim[i].set) { S->ap.perAim[planSplitAt + i] = planB.perAim[i]; S->ap.perAim[planSplitAt + i].aimIndex = planSplitAt + i; }
+    if (pLineBetter(&planB.nearest, &S->ap.nearest, 0)) S->ap.nearest = planB.nearest;
+    if (pLineBetter(&planB.quick, &S->ap.quick, 1)) S->ap.quick = planB.quick;
+    if (pLineBetter(&planB.lowest, &S->ap.lowest, 2)) S->ap.lowest = planB.lowest;
+    if (pLineBetter(&planB.stopBest, &S->ap.stopBest, 3)) S->ap.stopBest = planB.stopBest;
+    if (!S->haveAp) { S->haveAp = 1; S->ap.setup = planB.setup; }
+    for (int i = 0; i < planOutB.n; i++) planKeep(planOutB.path[i], planOutB.len[i]);
+  }
+  // (a chain the workers did not begin: extended or begun here, in what is left)
+  if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, leftMs() / 2);
+}
+static void searchAll(const Read *R, Found *S) {
+  if (!R->guides.n) return;
+  // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
+  // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
+  if (!extBeside) { double xMs = leftMs() / 2; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
   double usual = leftMs() / 2;
   int idle = C2.idle && leftAlone().lives;
   double ms = idle ? (usual > leftMs() ? usual : leftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
   if (ms >= 20) {
     S->tried++;
-    PlanOpts po = { GP->width ? GP->width : 40, GP->depth ? GP->depth : 7, GP->pool ? GP->pool : 250, &R->guides, R->by ? R->by : NOT_ASKED,
-                    R->keepOn ? &R->keep : 0, R->readyAt, R->under, R->F.v[FACT_US_DIES] > 0 ? R->F.v[FACT_US_DIES] : 0, R->under, ms,
-                    planSeedsHave ? &planSeeds : 0 };
+    PlanOpts po = planOptsOf(R, planSplit ? &planHalfA : &R->guides, ms);
     plan(&decQ, &po, &S->ap); S->haveAp = 1;
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
   }

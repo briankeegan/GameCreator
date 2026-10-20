@@ -31,13 +31,13 @@ typedef struct {
 } PlanOpts;
 typedef struct { PLine perAim[MAXAIMS], nearest, quick, lowest, stopBest; int32_t setup; double ms; int32_t base; } Plan;
 
-static Ctx *planCtx;
+static LOCAL Ctx *planCtx;   // (each thread its own, as every buffer here: two plans search at once -- answer.c searchJob)
 // THE PLAN KEPT (plans/gambit-infra.md F, as tree reuse keeps the subtree under the move played): the lines a plan ends with -- each
 // entry's best, the nearest, the quickest break, the lowest, the longest stop, and the beam's last boards -- kept (planOut) for the next
 // decision, which begins its beam from them as well as from its root (the seeds): what was searched is searched on, deeper, not again.
 // Each seed is played again on the new board, every step within the rules, so new information repairs it or lets it go.
-static Paths planOut;
-static int32_t planSeeded;   // (the seeds the plan began from, this decision -- the log's)
+static LOCAL Paths planOut;
+static LOCAL int32_t planSeeded;   // (the seeds the plan began from, this decision -- the log's)
 static int32_t planSeedsHave; static Paths planSeeds;   // (this decision's seeds: answer.c plannedPaths)
 static void planKeep(const int32_t *seq, int n) {
   if (planOut.n >= KEEPN || n <= 0 || n > MAXPATH) return;
@@ -60,7 +60,7 @@ static int32_t connectedOf(const Board *b) {
 // (search/bits.c bitsShape)
 typedef struct { int32_t top, even, hollow; } Shape;
 static Shape shapeOf(const Board *b) {
-  static Bits PB; static BoardShape PS;
+  static LOCAL Bits PB; static LOCAL BoardShape PS;
   bitsOf(b, &PB); bitsShape(&PB, &PS);
   Shape s = { PS.top, PS.even, PS.hollow };
   return s;
@@ -111,9 +111,9 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   int32_t setH = rootH, haveSetup = 0; double setReachD = 0;
   // (garbage broken by frame t standing still: a slab already popping goes on converting whatever is pressed)
   BS still; memset(&still, 0, sizeof still); still.x = x; still.root = root;
-  static PItem poolA[PLAN_POOL], poolB[PLAN_POOL];
-  static PItem kids[PLAN_KIDS];
-  static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], keyB[PLAN_KIDS], ms[MAXROWS * W];
+  static LOCAL PItem poolA[PLAN_POOL], poolB[PLAN_POOL];
+  static LOCAL PItem kids[PLAN_KIDS];
+  static LOCAL int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], keyB[PLAN_KIDS], ms[MAXROWS * W];
   PItem *pool = poolA, *next = poolB;
   int npool = 1;
   memset(&pool[0], 0, sizeof pool[0]); pool[0].n = root; pool[0].h = rootH;
@@ -138,7 +138,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   int na = o->aims ? o->aims->n : 0;
   for (int d = 1; d <= o->depth && npool && !clockOut(); d++) {
     int nk = 0, nj = 0;
-    static int32_t jobP[PLAN_KIDS], jobM[PLAN_KIDS], jobOut[PLAN_KIDS];
+    static LOCAL int32_t jobP[PLAN_KIDS], jobM[PLAN_KIDS], jobOut[PLAN_KIDS];
     for (int pi = 0; pi < npool; pi++) { pool[pi].reach = 0; pool[pi].nkids = 0; }
     // the level's jobs: every legal swap of every board in the pool, played to the board's settle
     for (int pi = 0; pi < npool; pi++) { int nm = swapsOfNode(x, pool[pi].n, ms); for (int j = 0; j < nm && nj < PLAN_KIDS; j++) { jobP[nj] = pi; jobM[nj++] = ms[j]; } }
@@ -225,7 +225,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     }
     // the pool ranked by how near the list its lines one swap on come, then how connected; their kids, each board once, ranked by how
     // connected, make the next pool
-    static double reachK[PLAN_POOL];
+    static LOCAL double reachK[PLAN_POOL];
     for (int pi = 0; pi < npool; pi++) { idx[pi] = pi; keyB[pi] = pool[pi].h; reachK[pi] = pool[pi].reach; }
     // (reach then how connected, both descending: sorted by connected first, then stably by reach)
     sortByKeyDesc(idx, npool, keyB, tmpI);
@@ -251,12 +251,12 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         haveSetup = 1; setReachD = it->reach; setH = it->h; P->setup = it->seq[0];
       }
     }
-    static int32_t nidx[PLAN_POOL];
+    static LOCAL int32_t nidx[PLAN_POOL];
     for (int q2 = 0; q2 < nn; q2++) { nidx[q2] = q2; keyB[q2] = next[q2].h; }
     sortByKeyDesc(nidx, nn, keyB, tmpI);
     int keepN = imin(nn, o->pool);
     PItem *old = pool; pool = next; next = old;
-    static PItem sorted[PLAN_POOL];
+    static LOCAL PItem sorted[PLAN_POOL];
     for (int q2 = 0; q2 < keepN; q2++) sorted[q2] = pool[nidx[q2]];
     for (int q2 = 0; q2 < keepN; q2++) pool[q2] = sorted[q2];
     npool = keepN;

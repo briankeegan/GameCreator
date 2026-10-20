@@ -116,9 +116,9 @@ static int32_t readyPendOf(Ctx *x, int n);
 static int readyDefer;
 // readyCollect: and while it is deferred, the landed board kept -- searched once a decision, by whichever thread begins it
 // (readyPendLast: which) -- and how near a break it is by the shape math (readyNearLast), what the decision asks it in the order of
-static int32_t readyCollect, readyPendLast, readyNearLast;
+static int32_t readyCollect; static LOCAL int32_t readyPendLast, readyNearLast;
 static int nearOf(const Board *b); static int garbageOn(const Board *b);   // (search/break.c)
-static int32_t readyRow1Buf[W + 1];
+static LOCAL int32_t readyRow1Buf[W + 1];
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   readyPendLast = 0; readyNearLast = -1;
   // (a line that ends past the landing is ready from where it ends -- never a frame on: the same trajectory, asked from any root,

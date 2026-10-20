@@ -242,6 +242,10 @@ workers 0.42 to 0.48 each, the machine 30% idle where it was 49. Now the workers
 done, each keeping the best it found, so Gambit's thread never waits on them (answer.c breakEnd) -- measured with the next (run 415):
 finish 14, 18 of 120 boards searched again had a break the live search missed where 1 to 3 had: the other searches end early, and
 the break search was cut short with them. Backed out: the workers run to the end of the searches' time.
+ALL THE SEARCHES AT ONCE: with three workers the decision's searches run side by side, each its own thread's nodes and buffers
+(LOCAL): the break search, the survival search, the chain extended or begun (propose.c searchExt) and the planner's list split in two
+-- its first entries planned on Gambit's thread, the rest on a worker, two beams each led by its own entries, their lines merged
+(propose.c searchPrep, searchMerge; answer.c breakJob). Two workers by default became three.
 EVERY STEP DOES SOMETHING: the lines with work on their way (propose.c wayLines) were offered 2,500 times a run and played 12 to 24:
 of two that meet the same entry the order took the one the cursor walks less, and a line on the way walks a step more; a route (two
 lines made one) walks more still. Now of two that meet the same entry, one that presses every swap of the other and more that helps --

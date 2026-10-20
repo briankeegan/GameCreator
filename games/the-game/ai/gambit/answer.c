@@ -199,11 +199,19 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // thread's own (judge.c judgeCtx, outcome.c cache: LOCAL).
 // (and with a second worker, the survival search too (decide.c ranked), in the same time: what it is asked of is the board alone, so it is
 // searched before the judging says whether anything lives, and kept for it -- svJob)
-static Ctx *brCtx; static const Read *brJobR; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
+// (THE JOBS, in the order the workers take them: the break search; the second half of the planner's list and the chain extended or begun,
+// when the decision splits them off (propose.c searchPrep); the survival search -- each with what it needs from the decision, and a
+// worker that finishes one takes the next)
+enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_SURVIVE };
+static int32_t jobKinds[4], njobKinds;
+static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
   clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
   inJob = 1; pressTight = decQ.tight; ncache = 0;
-  if (i == 0) breakRun(brJobR, brJobBy);
+  int kind = jobKinds[i];
+  if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
+  else if (kind == JOB_PLAN) planJob();
+  else if (kind == JOB_EXT) extJob(brJobR, brJobS);
   else {
     double old = clockShareBegin(brJobBy);
     svJob = outlive(&decQ, HORIZON + REST, REST, brJobBy - nowMs(), 6, 30);
@@ -211,16 +219,20 @@ static void breakJob(int32_t i) {
     __atomic_store_n(&svJobDone, 1, __ATOMIC_RELEASE);
   }
   inJob = 0;
-  if (i == 0) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
+  if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
-static int breakBegin(const Read *R, int32_t lineFrom, int32_t linePressed) {
+static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
   brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
-  brJobR = R; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
+  brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
   if (!brCtx) brCtx = ctxOf(0);
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
-  return startJobs(brCtx, breakJob, pool.nworkers >= 2 ? 2 : 1);
+  njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
+  if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
+  if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
+  if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
+  return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
 // 120 boards searched again, run 415, where 1 to 3 had been)
@@ -299,13 +311,16 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   double brMs;
   // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
   double searchShare = clockShareBegin(searchesEnd());
-  int beside = breakBegin(&R, lineFrom, linePressed);
+  static Found S;
+  searchPrep(&R, &S);
+  int beside = breakBegin(&R, &S, lineFrom, linePressed);
+  if (!beside) searchUnsplit();
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   double ts = nowMs();
-  static Found S;
   searchAll(&R, &S);
-  S.searchMs = nowMs() - ts;
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
+  searchMerge(&R, &S);
+  S.searchMs = nowMs() - ts;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
   clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
