@@ -439,6 +439,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (planSeeded) { L_s(" seed="); L_i(planSeeded); }
   if (readyPre) { L_s(" pre="); L_i(readyPre); L_s("/"); L_i(readyPendN); }
   if (wayOffered) { L_s(" way="); L_i(wayOffered); if (wayPlayed) L_s("/played"); }
+  if (raiseOffered) { L_s(" raises="); L_i(raiseOffered); if (P.raise) L_s("/played"); }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight);
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");

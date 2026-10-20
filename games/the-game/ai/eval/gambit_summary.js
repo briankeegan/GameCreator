@@ -71,6 +71,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (kp) { rule.keptOff = (rule.keptOff || 0) + +kp[1]; if (kp[2]) rule.keptPlayed = (rule.keptPlayed || 0) + 1; }
       if (rt) { rule.routeOff = (rule.routeOff || 0) + +rt[1]; if (rt[2]) rule.routePlayed = (rule.routePlayed || 0) + 1; }
       if (wy) { rule.wayOff = (rule.wayOff || 0) + +wy[1]; if (wy[2]) rule.wayPlayed = (rule.wayPlayed || 0) + 1; }
+      var rz = / raises=(\d+)(\/played)?/.exec(l);
+      if (rz) { rule.raiseOff = (rule.raiseOff || 0) + 1; if (rz[2]) rule.raisePlayed = (rule.raisePlayed || 0) + 1; }
       var rd = / rdy=(\d+)\/(\d+)/.exec(l);
       var pr = / pre=(\d+)\/(\d+)/.exec(l);
       if (pr) { rule.preHit = (rule.preHit || 0) + +pr[1]; rule.preKept = (rule.preKept || 0) + +pr[2]; }
@@ -164,6 +166,7 @@ if (rule.preKept) console.log('boards searched once: ' + rule.preHit + ' readine
 if (kept.n) console.log('a life kept: ' + kept.held + ' of ' + kept.n + ' lines that lived, nothing new told, lived on at the next decision (' + Math.round(100 * kept.held / kept.n) + '%)');
 if (rule.rdyAsked) console.log('kept plan: ' + rule.rdyHit + ' of ' + rule.rdyAsked + ' readiness checks answered by a break already found (' + Math.round(100 * rule.rdyHit / rule.rdyAsked) + '%)');
 if (rule.keptOff || rule.routeOff || rule.wayOff) console.log('intentions: ' + (rule.keptOff || 0) + ' kept lines offered again, ' + (rule.keptPlayed || 0) + ' played; routes: ' + (rule.routeOff || 0) + ' judged, ' + (rule.routePlayed || 0) + ' played; on the way: ' + (rule.wayOff || 0) + ' offered, ' + (rule.wayPlayed || 0) + ' played');
+if (rule.raiseOff) console.log('the raise after the opening: offered in ' + rule.raiseOff + ' decisions (nothing living, or below the floor), played in ' + (rule.raisePlayed || 0));
 if (aggr.frames) console.log('aggression: ' + (aggr.blocks * 3600 / aggr.frames).toFixed(1) + ' blocks thrown a minute (' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute; ' + Math.round(aggr.frames / 3600) + ' minutes)');
 if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed + ' of ' + forgone.decisions + ' decisions offered a line that lives and throws more than the one played (' + forgone.blocks + ' blocks)');
 if (walk.n) console.log('walk: ' + (walk.cells / walk.n).toFixed(1) + ' cells from one swap to the next, ' + Math.round(100 * walk.far / walk.n) + '% of ' + walk.n + ' jumps 6 or more');

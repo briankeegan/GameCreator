@@ -314,3 +314,7 @@ moving -- that in both of run 425's losses never opened: one raise each, the ope
 nine decisions in ten. Now after the opening a raise of one row and of two is a candidate whenever the board is still and not topped,
 judged as the hold is on the board it leaves (garbage on its way landing as it comes, the frames it takes in its loss) and ranked with
 the rest: played where it does better than holding -- a later loss, a break nearer or ready.
+Measured (`35fb2778`, run 426, finished 01:50 ET): finish 16 (4, 6, 6) -- factory lost twice (3116, 10807) for the first time since
+run 418; 1 late move, the clock cut 55, lines that lived 313 (run 425: 494). Factory-2 never raised: the raise judged its readiness on
+every still decision, out of the time the lines' readiness had. Now the raise is judged only where nothing fits -- no line lives, or the
+board is below the floor -- after the lines' readiness, in the time left; the log counts it (`raises=`).

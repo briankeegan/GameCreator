@@ -125,6 +125,7 @@ static int fairShare(Cand *c, int n, int cap) {
   return k;
 }
 #define NRAISE 2    // the raises a decision judges, a row and two (rank.c raiseCand)
+static int32_t raiseOffered;   // (the raises judged this decision: the log's)
 static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE + NRAISE], *order[MAXCANDS + 4 + NINTENT + NROUTE + NRAISE];
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
@@ -159,8 +160,6 @@ static int ranked(const Read *R, const Found *S) {
   Judge *H = &theJudged[n];
   holdCand(R, 0, H);
   order[n] = H; n++;
-  // (THE RAISE: a row, and two, judged as the hold is on the board they leave)
-  for (int rows = 1; R->raiseOK && rows <= NRAISE && !clockOut(); rows++) if (raiseCand(R, rows, &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);
   // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)
@@ -187,7 +186,6 @@ static int ranked(const Read *R, const Found *S) {
     readyKnownOnly = EXTRA(J);
     if (!readyKnownOnly) readyShare(toAsk--);
     if (J->hold) holdCand(R, J->wait, J);
-    else if (J->k.play == PLAY_RAISE) { int rows = J->raiseRows; static Judge again; if (raiseCand(R, rows, &again)) *J = again; }
     else {
       static Judge again; Cand kc = J->k;
       if (judgeCand(R, &kc, &again)) {
@@ -199,6 +197,15 @@ static int ranked(const Read *R, const Found *S) {
   }
   readyShare(0); readyFresh = 0; readyKnownOnly = 0;
   sortJudged(order, n);
+  // (THE RAISE, where nothing fits (plans/gambit.md): with no line that lives, or the board below the floor -- a row, and two, judged as
+  // the hold is on the board they leave, their readiness asked whole in the time left -- and the order made again)
+  raiseOffered = 0;
+  if (R->raiseOK && (!(n && order[0]->o.lives) || R->belowFloor)) {
+    int n0 = n;
+    for (int rows = 1; rows <= NRAISE && !clockOut(); rows++) { readyShare(NRAISE - rows + 1); if (raiseCand(R, rows, &theJudged[n])) { order[n] = &theJudged[n]; n++; raiseOffered++; } }
+    readyShare(0);
+    if (n > n0) sortJudged(order, n);
+  }
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
   if (!(n && order[0]->o.lives)) {
     int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
