@@ -391,3 +391,6 @@ PRESSURE, the first run (`b4344884`, run 443, finished 11:23 ET): 17 (combo_stor
 that break 39%, last resorts 50%; aggression 18.6. Of two lines that die, a break came first while it left a break's time, however much
 later the other was lost (combo_storm-5, 7359: a break lost at 193 over a line lost at 335). Now a break comes first only where the
 other is lost less than a break's time later.
+Measured (`d7e22a03`, run 444, pressure, finished 11:36 ET): 14 (combo_storm 3/8, factory 8/8, large_garbage 3/8 from 7/8). With
+the break held to the later loss everywhere, large_garbage -- short boards, 23 panels -- lost the panels its breaks convert. Now the
+break comes first as before on a board below the floor, and is held to the later loss only where the board has panels to spare.
