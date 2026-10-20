@@ -444,3 +444,7 @@ GARBAGE UNFORESEEN DROPS ONLY WHAT COMES AFTER IT: combo_storm-3 (run 455) at 69
 due at once on a board that died the frame after; garbage the decision had not counted on arrived, the whole plan was dropped, and the
 board died before a question could be answered. Garbage lands on the stack's top and changes nothing before it lands, so now the keys
 planned before it lands are pressed as planned and only the rest is dropped and asked again (front.c dropFrom).
+Measured (`b7f4f47b`, run 456, build, combo_storm and large_garbage, seed 1, finished 13:46 ET): 8 of 16 (combo_storm 4/8,
+large_garbage 4/8) against 9 and 10 on `616dc8af`; 1 late move, 0 divergences. Lost: combo_storm 1, 3, 7, 8; large_garbage 1, 6, 7, 8.
+large_garbage-6 lost to the carried break dropped while its slab popped again (3749 to 3763), large_garbage-7 to the one late move (3508:
+a carried line that lived to 334, its answer late, nothing pressed).
