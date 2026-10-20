@@ -34,6 +34,15 @@ case "$PATTERN" in combo_storm) SIZE=4x1 ;; factory) SIZE=6x2 ;; large_garbage) 
 # the game's core.
 NCPU=$(nproc); CLIENT_CPU=0; MIND_CPUS="1-$(( NCPU - 1 ))"
 [ "$NCPU" -lt 2 ] && MIND_CPUS=0
+# Gambit's own thread alone on a core the game's is not on, its workers on the CPUs left (each the other hyperthread of one or the
+# other: they run at the idle class, so they take only what those leave) -- measured, cpu_watch.sh: a runner's four CPUs are two
+# cores, and the game and Gambit's thread each keep one CPU busy
+core() { cat "/sys/devices/system/cpu/cpu$1/topology/core_id" 2>/dev/null || echo "$1"; }
+GAMBIT_CPU= WORKER_CPUS=
+for c in $(seq 1 $(( NCPU - 1 ))); do
+  if [ -z "$GAMBIT_CPU" ] && [ "$(core "$c")" != "$(core "$CLIENT_CPU")" ]; then GAMBIT_CPU=$c; else WORKER_CPUS=${WORKER_CPUS:+$WORKER_CPUS,}$c; fi
+done
+[ -z "$GAMBIT_CPU" ] && { GAMBIT_CPU=$MIND_CPUS; WORKER_CPUS=$MIND_CPUS; }
 MIND=
 cleanup() { [ -n "$MIND" ] && kill "$MIND" 2>/dev/null; [ -n "${CLIENT:-}" ] && kill "$CLIENT" 2>/dev/null; }
 trap cleanup EXIT
@@ -50,7 +59,8 @@ elif [ "$BOT" = gambit ]; then
   # Gambit's library, built for this machine, and the profile as numbers (words.js); its log is the run's survivor.log
   "$EVAL/../gambit/build.sh" native || exit 1
   GC_SURVIVOR_PROFILE="$EVAL/${PROFILE:-survivor-profiles/gambit-finish.json}" node "$EVAL/../gambit/words.js" > "$OUT_DIR/gambit.words" || exit 1
-  export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$MIND_CPUS"
+  export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS"
+  echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS"
   : > "$OUT_DIR/survivor.log"
 fi
 

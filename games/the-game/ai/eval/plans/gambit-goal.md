@@ -224,6 +224,11 @@ that neither lives, the one that breaks more now comes before the list (rank.c 7
 ONE TRY OR TWO: large_garbage-4 (run 403, 3604) played a break lost at 109 over one lost at 348 -- alike, both past rankSave (97),
 the list deciding. Two that do not live are no longer alike when the shorter leaves the board only one break's time (under twice
 rankSave) and the other a break's time more. Narrower than `778441d5` (any gap of a break's time), which raised the last resorts to
-25%. Measured on two runs.
+25%. Measured (`4ee0bf1b`, and `31347edc` that decides alike): finish 21 (8, 7, 6), 22 (6, 8, 8), 21 (6, 8, 7) -- against about
+19 before; the list's entries fell from 84% of the lines played to 79%. Kept.
+WHERE THE MACHINE GOES (cpu_watch.sh, run 407): a game's runner is 53% idle -- Gambit's thread 0.86 of a CPU, the game's drawing
+(llvmpipe) 0.84, the rest a tenth; its four CPUs are two cores (0 and 1 one, 2 and 3 the other), and Gambit could be put on CPU 1,
+the drawing's own core. Now the game is on CPU 0, Gambit's thread alone on the other core, and its workers, at the idle class
+(SCHED_IDLE), on the two CPUs left.
 Every run with 0 divergences and 0 late moves. Half the searches' time to the break search under garbage (share50): finish 13, pressure 16 -- no better. At the turn of every loss the move was mostly the hold (finish 437 of 443, pressure 112
 of 118).

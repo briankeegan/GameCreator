@@ -25,10 +25,10 @@ void hostUnlock(void) { pthread_mutex_unlock(&mu); }
 void hostWait(void) { pthread_cond_wait(&cv, &mu); }
 void hostSignal(void) { pthread_cond_signal(&cv); }
 // GAMBIT'S THREAD: the room the main thread has for its stack (the searches keep their scratch there), and the cores GC_GAMBIT_CPUS
-// names ("1-3", "2,3"), so it thinks beside the game rather than on the game's own core.
+// names ("1-3", "2,3"), so it thinks beside the game rather than on the game's own core; the workers on GC_GAMBIT_WORKER_CPUS's
+// (else Gambit's), so they take a core of their own rather than Gambit's.
 static void *(*threadFn)(void *);
-static void pinned(void) {
-  const char *cpus = getenv("GC_GAMBIT_CPUS");
+static void pinnedTo(const char *cpus) {
   if (cpus && *cpus) {
     cpu_set_t set; CPU_ZERO(&set);
     for (const char *p = cpus; *p;) {
@@ -41,6 +41,7 @@ static void pinned(void) {
     if (CPU_COUNT(&set)) pthread_setaffinity_np(pthread_self(), sizeof set, &set);
   }
 }
+static void pinned(void) { pinnedTo(getenv("GC_GAMBIT_CPUS")); }
 static void *threadStart(void *arg) { pinned(); pthread_setname_np(pthread_self(), "gambit"); return threadFn(arg); }
 int hostThread(void *(*fn)(void *)) {
   pthread_t t; pthread_attr_t at;
@@ -65,7 +66,8 @@ static void *(*workerFn)(void *);
 // (each at the idle class, SCHED_IDLE: it runs only on a CPU nothing else wants, so it never takes a cycle from Gambit's own thread
 // or the game's -- on a runner whose four threads are two cores' worth, a worker at the normal class took them and lost games)
 static void *workerStart(void *arg) {
-  pinned();
+  const char *w = getenv("GC_GAMBIT_WORKER_CPUS");
+  if (w && *w) pinnedTo(w); else pinned();
   char name[16]; snprintf(name, sizeof name, "gworker%ld", (long)arg); pthread_setname_np(pthread_self(), name);
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
   return workerFn(arg);
