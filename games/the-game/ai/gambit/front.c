@@ -269,6 +269,8 @@ static void dropFrom(int32_t t) {
   if (t <= F.now + 1) { dropAll(); return; }
   if (F.pending) abortTo(F.pId);
   F.epoch++; planClearFrom(t); if (F.nextAt > t) F.nextAt = t; F.lineN = 0; F.pending = 0;
+  // (the garbage now on its way is what the keys kept are pressed knowing: told once, not again every frame till they end)
+  memcpy(F.knew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.nknew = F.narr;
 }
 
 // The board at `at`, from `b` now, pressing what is planned till then, and the garbage still to land after it (from).

@@ -455,3 +455,9 @@ the hold lasts until the line's first swap is due (front.c take).
 Measured (`0f29137a`, run 457, build, combo_storm and large_garbage, seed 1, finished 13:52 ET): 13 of 16 (combo_storm 6/8 -- 1826,
 12371 -- large_garbage 7/8 -- 20265) against 8, 9 and 10 on the builds before it on the same games, and 7-12 on every build before
 the seed: the best yet on the two patterns that lose. 0 late moves, 0 divergences.
+Measured (`31c9518b`, run 458, build, the same games): 8 of 16 (combo_storm 5/8, large_garbage 3/8) against 13 on `0f29137a` -- and
+large_garbage met no garbage unforeseen (large_garbage-2: 0), so the change never ran there: four of its games lost in 458 and survived
+in 457 on the same panels and the same play. THE NOISE IS THE BOT'S OWN TIMING, and it is as wide on fixed seeds as without them (7/8
+against 3/8): one run of 16 games cannot tell a build from the one before it. Now a run plays rounds (gambit-24.yml `rounds`, each round
+the patterns' games again on seeds of its own) and a build is measured over 32 games or more. The drop kept from the unforeseen garbage
+on also tells the frame loop of that garbage at once (front.c dropFrom), so it is not dropped again every frame till the plan ends.

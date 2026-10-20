@@ -33,6 +33,9 @@ on:
       patterns:
         description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games; the goal is measured on all three)'
         default: '["combo_storm","factory","large_garbage"]'
+      rounds:
+        description: "The rounds played, a JSON list: each round plays every pattern's 8 games again on seeds of its own (round r: seed base + r - 1), so a build is measured on more games than one run holds"
+        default: '[1]'
 
 permissions:
   contents: read
@@ -48,6 +51,7 @@ jobs:
       matrix:
         pattern: ${{ fromJSON(inputs.patterns || '["combo_storm","factory","large_garbage"]') }}
         game: [1, 2, 3, 4, 5, 6, 7, 8]
+        round: ${{ fromJSON(inputs.rounds || '[1]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,19 +92,19 @@ jobs:
         run: |
           if [ -n "$SEED_BASE" ]; then
             case "${{ matrix.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; *) P=9;; esac
-            export PA_SEED=$((SEED_BASE * 100 + P * 10 + ${{ matrix.game }}))
-            echo "::notice title=seed::${{ matrix.pattern }} ${{ matrix.game }}: PA_SEED=$PA_SEED"
+            export PA_SEED=$(((SEED_BASE + ${{ matrix.round }} - 1) * 100 + P * 10 + ${{ matrix.game }}))
+            echo "::notice title=seed::${{ matrix.pattern }} ${{ matrix.game }} round ${{ matrix.round }}: PA_SEED=$PA_SEED"
           fi
           echo "::notice title=cores::$(nproc) threads, $(lscpu | awk -F: '/^Core\(s\) per socket|^Thread\(s\) per core/ {gsub(/ +/, " ", $2); printf "%s:%s, ", $1, $2}')cpu:core $(lscpu -e=CPU,CORE | tail -n +2 | awk '{printf "%s:%s ", $1, $2}'), GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
           bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
         if: always()
-        run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }}::/' || true
+        run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }} r${{ matrix.round }}::/' || true
       - uses: actions/upload-artifact@v4
         if: always()
         timeout-minutes: 5
         with:
-          name: gambit-${{ matrix.pattern }}-${{ matrix.game }}
+          name: gambit-${{ matrix.pattern }}-${{ matrix.game }}${{ matrix.round > 1 && format('-r{0}', matrix.round) || '' }}
           path: |
             out/results.txt
             out/survivor.log
