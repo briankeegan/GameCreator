@@ -536,3 +536,7 @@ before) -- a first swap whose walk could not begin within a reaction, on a line 
 popping): nothing pressed, asked again. The cut is back for a line's first swap; its later swaps are pressed from the frame their walk
 begins. The summary's budgets now count the answers refused so (gambit_summary.js).
 Measured (`8bdf75af`, run 477, build, one 24): 17 (combo_storm 4/8, factory 8/8, large_garbage 5/8); 0 answers refused (204 in 476).
+A LINE THAT BREAKS IS CARRIED WHATEVER ITS TIER: three of run 477's four combo_storm losses were a line chosen for a break of 24-36
+cells, its first swap pressed, and at its second swap's frame no line that lived -- the line forgotten: under garbage while the break
+waits, a breaking line ranks in the last tier (facts.c tierOf, 6), and only lines of tier 4 or better were carried (decide.c carryOf).
+Now a line that breaks is carried whatever its tier.

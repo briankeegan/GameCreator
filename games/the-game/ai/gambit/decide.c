@@ -307,7 +307,9 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) {
 // (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   memset(&theCarry, 0, sizeof theCarry);
-  if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1 || k->t.tier > 4) return;
+  // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
+  // tier, and its swaps after the first are the break it was chosen for)
+  if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1 || (k->t.tier > 4 && !(k->apBroke > 0))) return;
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = decQ.b->p[1][c].f[ID];
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) return;
