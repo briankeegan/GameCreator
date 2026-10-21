@@ -103,6 +103,36 @@ static int stepFitsAt(Ctx *x, int i) {
 }
 static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 // (a step's wasted threes: its clears of three, no link of a chain, in a step that breaks nothing and makes no chain)
+// THE FIRST SWAP'S OWN CLEAR (the line's wasted three, as the game makes it): the swap pressed and run FIRST_LOOK frames beside the board
+// left alone as long -- the panels it matched that the board alone did not, exactly three, none beside garbage, and its settle no longer
+// a chain than the board's own: a three for nothing, whatever the line's later swaps break
+#define FIRST_LOOK 12
+static int32_t firstThree(Ctx *x, int root, int mr, int mc, const Stats *bs) {
+  int a = step(x, root, MK_SWAP, mr, mc, 0);
+  if (!liveNode(x, a)) return 0;
+  int w = step(x, a, MK_LONG, 0, 0, FIRST_LOOK);
+  if (!liveNode(x, w)) return 0;
+  int al = step(x, root, MK_LONG, 0, 0, NODE(x, w)->t - NODE(x, root)->t);
+  const Board *bw = ensureBoard(x, w), *ba = liveNode(x, al) ? ensureBoard(x, al) : 0;
+  if (!bw) return 0;
+  static LOCAL int32_t was[MAXROWS * W];
+  int nw = 0, n = 0, touch = 0;
+  if (ba) for (int r = 1; r < ba->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = ba->p[r][c].f; if (f[STATE] == MATCHED && !f[ISGARBAGE] && nw < MAXROWS * W) was[nw++] = f[ID]; }
+  for (int r = 1; r < bw->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = bw->p[r][c].f;
+    if (f[STATE] != MATCHED || f[ISGARBAGE]) continue;
+    int old = 0; for (int q = 0; q < nw && !old; q++) old = was[q] == f[ID];
+    if (old) continue;
+    n++;
+    static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
+    for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc = c + DC[d]; if (rr >= 1 && rr < bw->nrows && cc >= 1 && cc <= W && bw->p[rr][cc].f[ISGARBAGE]) touch = 1; }
+  }
+  if (n != 3 || touch) return 0;
+  int sz = step(x, root, MK_SETTLE, mr, mc, 0);
+  Stats fs;
+  if (liveNode(x, sz) && statsOf(x, sz, &fs) && chainOfStats(&fs) > imax(1, bs ? chainOfStats(bs) : 0)) return 0;
+  return 1;
+}
 static int32_t threesOf(const Stats *s) { int32_t n = 0; if (chainOfStats(s) > 1 || s->broke > 0) return 0; for (int j = 0; j < s->n; j++) if (s->size[j] == 3 && !(s->chainAt[j] > 1)) n++; return n; }
 
 // (the garbage the board left alone has broken by frame t, from the board landed: cached per frame)
