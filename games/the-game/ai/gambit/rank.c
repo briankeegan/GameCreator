@@ -283,6 +283,7 @@ static void markIdle(Judge **a, int n) {
 static int cutsShort(const Judge *J) { return !J->hold && J->apPlayed && aloneChain > 1 && J->apWhole < aloneChain; }
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
+#define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
@@ -355,6 +356,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   // 5a. TWO THAT LIVE: the list before the material -- a board that lives either way throws the attack the list asks, not the cheaper
   // break (the owner: twice as aggressive)
+  // -- and a far line earns its walk only within WALK_EARN actions of the nearer: of two that live and both attack, the one the cursor
+  // walks much less is played (the owner: no big corner-to-corner moves; the far idea is still there next decision, nearer)
+  if (lx && x->met >= 0 && y->met >= 0 && !x->hold && !y->hold) { int wx = lineWalk(x), wy = lineWalk(y); if (iabs(wx - wy) > WALK_EARN) return wx - wy; }
   if (lx) { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return ax - ay; }
   // 6. THE NEXT BREAK'S MATERIAL: of two breaks under garbage, the one that leaves a break to build (outcome.c nextBuild) and keeps the
   // board's floor -- before the list's entry: the list orders the breaks the board can afford

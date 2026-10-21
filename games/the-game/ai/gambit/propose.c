@@ -316,7 +316,7 @@ static int convertLines(const Read *R, Cand *out, int n, int cap) {
 // setup measure). Only the swaps on some line's way are stepped (on every thread: core/nodes.h stepBatch), the most useful first: a
 // clear, then the break brought nearer, then the colours joined. Offered as the play it was made from, every swap pressed once the board
 // settles; the engine judges the whole of it, so a swap that spoils the line or leaves the board no better is ranked by what it does.
-#define WAY_MIN 4     // the cursor's actions to a line's first swap before its way is searched
+#define WAY_MIN 3     // the cursor's actions to a line's first swap before its way is searched
 #define WAY_PER 2     // lines on the way, a line
 #define WAY_LINES 6   // the lines whose way is searched, in the order offered
 static int32_t wayOffered, wayPlayed;   // (the lines on the way this decision offered, and whether one was played: the log's)
@@ -362,7 +362,8 @@ static int wayLines(Cand *out, int n, int cap) {
     const Board *b = ensureBoard(x, o);
     if (!b) continue;
     int32_t nearer = under ? near0 - nearOf(b) : 0, joined = connectedOf(b) - conn0;
-    int32_t sc = st.cleared > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : joined > 0 ? joined : 0;
+    // (a clear of three that breaks nothing is no work: a wasted three)
+    int32_t sc = st.cleared > 3 || st.broke > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : joined > 0 ? joined : 0;
     if (sc > 0) { on[nu] = on[j]; score[nu++] = sc; }
   }
   batchDone();
@@ -389,6 +390,30 @@ static int wayLines(Cand *out, int n, int cap) {
         n++; got = 1; wayOffered++;
       }
       added += got;
+    }
+    // (and two on the way: the two most useful the cursor passes in turn, a step aside at most for each)
+    for (int q = 0, done2 = 0; q < nu && !done2 && n < cap && k0.nseq + 2 <= MAXLINE; q++) {
+      int32_t a = on[idx[q]];
+      for (int u = q + 1; u < nu && !done2 && n < cap; u++) {
+        int32_t b = on[idx[u]], s1 = a, s2 = b;
+        if (waySharesCell(a, b)) continue;
+        int da = actionsFor(r0, c0, CR(a), CC(a), HOLDTIGHT + 1), db = actionsFor(r0, c0, CR(b), CC(b), HOLDTIGHT + 1);
+        if (db < da) { s1 = b; s2 = a; }
+        int walk = actionsFor(r0, c0, CR(s1), CC(s1), HOLDTIGHT + 1) + actionsFor(CR(s1), CC(s1), CR(s2), CC(s2), HOLDTIGHT + 1) +
+                   actionsFor(CR(s2), CC(s2), CR(first), CC(first), HOLDTIGHT + 1);
+        if (walk > wantD[w] + 2) continue;
+        int shared = 0;
+        for (int m = 0; m < k0.nseq && !shared; m++) shared = waySharesCell(s1, k0.seq[m]) || waySharesCell(s2, k0.seq[m]);
+        if (shared) continue;
+        int32_t seq[MAXLINE]; seq[0] = s1; seq[1] = s2;
+        for (int m = 0; m < k0.nseq; m++) seq[m + 2] = k0.seq[m];
+        for (int at = 0; at < 2 && n < cap; at++) {
+          Cand *c = &out[n];
+          if (!candOf(c, k0.play, seq, k0.nseq + 2, k0.aim, 0)) continue;
+          c->settled = !at; c->way = 1; c->x = k0.x; c->xFire = -1; c->xDone = -1;
+          n++; wayOffered++; done2 = 1;
+        }
+      }
     }
   }
   return n;
