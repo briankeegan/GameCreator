@@ -701,3 +701,5 @@ UNDER GARBAGE, THE PANELS KEPT: run 538's large_garbage-1 played clears through 
 against 230, 175 against 169) and took its panels from 19 to 7 -- the hold and the clear both outside the list, key 5 had nothing
 to decide, and the nearer-next-break key took the clear. Now under garbage, of two lost alike, the one that spends no panels below the
 floor comes first (rank.c, before the nearer-break key).
+Measured (`0a952dc6`, runs 544-547, seed 1): big chain 23, build 20, finish 21, pressure 17 -- 81 against 89. Taken back (rank.c as at
+`8adc9abc`). Pressure's combo_storm lost 4 of 8, three of them after frame 17900.
