@@ -634,3 +634,6 @@ NEARER WHEN NONE IS NEAR: past breakNear's reach (no three lined up by walking p
 far as every other -- the break search's beam and the order's nearAfter had nothing to go by, and large_garbage played 200-400 frames
 toward no break. Now there the makings of one count: of the panels touching garbage, the most of its colour in its row and the two
 under it, and how many touch (search/break.c touchPotential) -- the beam's score and nearAfter both.
+Measured (`daab542f`, run 510, big chain, seed 1): 12 (combo_storm 3/8, factory 5/8, large_garbage 4/8) against 19 -- the makings of a
+break as nearness took the order's nearAfter (the tier, the alike rule, beating the hold) over by small differences, and the panels
+went. Taken back (search/break.c as at `5f4e7ece`).
