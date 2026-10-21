@@ -576,3 +576,5 @@ TAPPED WHEN THE BOARD DIES SOON, NOT ONLY TOPPED: combo_storm-3 and -4 (run 488)
 0-1 ms), the boards 10-12 frames from their stop's end and not yet topped, or with 12 actions left -- no tap. Now a board lost within 60
 frames left alone (its stop, or its rise to the top, and its health: facts.c framesToTop) taps while 8 actions are left to spare.
 Measured (`008850af`, run 489, build, seed 3): 20 (combo_storm 7/8, factory 8/8, large_garbage 5/8) against 18 and 19 on the same games.
+Measured (`73d8d6c6`, run 490, build, seed 1): 18 (combo_storm 5/8, factory 7/8, large_garbage 6/8), against 21 on 485's build. Build
+over runs 482-490: 21, 15, 17, 21, 21, 19, 18, 20, 18 -- one 24 swings three games either way.
