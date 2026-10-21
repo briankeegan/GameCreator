@@ -692,3 +692,6 @@ Measured (`8adc9abc`, runs 536 and 537, build): seed 2 17 against 17, seed 1 22 
 against 20. It stays. Two of the losses are at 394 and 421, the first garbage on the opening raise.
 Measured (`8adc9abc`+, runs 538 and 539, finish): seed 1 23 (combo_storm 8/8, factory 8/8, large_garbage 7/8) -- finish at 22 -- and
 seed 2 21 (combo_storm 8/8, factory 8/8, large_garbage 5/8). Big chain on this build next.
+Measured (`8adc9abc`+, runs 540 and 541, big chain): seed 1 22 (combo_storm 7/8, factory 8/8, large_garbage 7/8), seed 2 20. EVERY
+MODE HAS REACHED 22 on this build's seeds: big chain 22, build 22 (537), finish 23 (538); pressure 23 on `6a5231a3` (534), measured on
+this build next. Then every mode on one build, every change checked against all four.
