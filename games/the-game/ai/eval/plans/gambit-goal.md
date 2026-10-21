@@ -603,3 +603,5 @@ the later loss before anything else (rank.c 9), which the hold nearly always is.
 break comes first.
 Measured (`8e26111d`, run 496, build, seed 1, finished 01:4x ET): 22 (combo_storm 7/8 -- 10973 -- factory 8/8, large_garbage 7/8 --
 7767): build's first 22.
+Measured (`8e26111d`, run 497, build, seed 2): 23 (combo_storm 8/8, factory 8/8, large_garbage 7/8 -- 18471). BUILD AT 22: 22 and 23 on
+two sets of games. Left at 22 for the next mode (the owner's order); every mode measured next on this build.
