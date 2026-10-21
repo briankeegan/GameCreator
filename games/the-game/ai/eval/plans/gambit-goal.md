@@ -587,3 +587,4 @@ hold lost at 44 over two breaks lost at 44, the breaks taken for lines no better
 die, the list orders only a line that spends panels below the floor (rank.c 5, J->spends); and a break lost no sooner than the hold beats
 it (rank.c beatsHold).
 Measured (`d8a50696`, run 492, build, seed 1): 18 (combo_storm 3/8, factory 8/8, large_garbage 7/8).
+Measured (`b18d0d90`, run 493, build, seed 2): 20 (combo_storm 6/8, factory 7/8, large_garbage 7/8). Build stands at 19-20 a 24.
