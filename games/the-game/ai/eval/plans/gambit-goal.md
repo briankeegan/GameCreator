@@ -601,3 +601,5 @@ BUILD THE NEXT BREAK RATHER THAN HOLD: under garbage a break was in reach in 50-
 them had none in reach with more than 60 frames of stop -- and held in most (1028). Two dying lines alike by the tries were ordered by
 the later loss before anything else (rank.c 9), which the hold nearly always is. Now, under garbage, of two alike the one nearer its next
 break comes first.
+Measured (`8e26111d`, run 496, build, seed 1, finished 01:4x ET): 22 (combo_storm 7/8 -- 10973 -- factory 8/8, large_garbage 7/8 --
+7767): build's first 22.
