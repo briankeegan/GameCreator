@@ -52,6 +52,19 @@ static int fits(const List *L, Made m) {
 }
 // THE ONE RULE'S THREE (judge.c breakingThree): after whatever entries a list has, under garbage, a three that breaks it -- the searches
 // look for it in every mode, and the order puts it after every entry
+// A LONG CHAIN'S LIST UNDER GARBAGE (decide.c read): a list that asks a chain longer than five takes, under garbage, every chain of two or
+// more that breaks -- before the three that breaks: each link that touches the garbage breaks it again, the chains that dig, which a
+// list of long chains alone leads no search toward
+static int asksLongChain(const List *L) {
+  for (int i = 0; i < L->n; i++) { const Test *t = &L->aim[i].chain; if (t->op && t->n + (t->op == OP_GT) > 5 && (t->op == OP_GE || t->op == OP_GT || t->op == OP_EQ)) return 1; }
+  return 0;
+}
+static void withChains(List *L) {
+  Aim t; memset(&t, 0, sizeof t);
+  t.chain.op = OP_GE; t.chain.n = 2; t.brk = 1;
+  for (int i = 0; i < L->n; i++) if (!memcmp(&L->aim[i], &t, sizeof t)) return;
+  if (L->n < MAXAIMS) L->aim[L->n++] = t;
+}
 static void withRule(List *L) {
   Aim t; memset(&t, 0, sizeof t);
   t.combo.op = OP_LE; t.combo.n = 3; t.chain.op = OP_EQ; t.chain.n = 1; t.brk = 1;

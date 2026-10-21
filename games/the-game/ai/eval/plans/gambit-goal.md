@@ -607,3 +607,8 @@ Measured (`8e26111d`, run 497, build, seed 2): 23 (combo_storm 8/8, factory 8/8,
 two sets of games. Left at 22 for the next mode (the owner's order); every mode measured next on this build.
 Every mode on `db5af9c7`, seed 1 (runs 498-500): finish 19 (7, 7, 5; aim 62%), pressure 20 (7, 7, 6; aim 8%), big chain 15 (5, 7, 3;
 aim 1%); build 22 and 23. Big chain next.
+Measured (run 501, big chain, seed 2): 17 (combo_storm 3/8, factory 7/8, large_garbage 7/8) -- with seed 1's 15, big chain stands well
+below build (22, 23) on the same engine; the two differ only in the list. UNDER GARBAGE A LIST OF LONG CHAINS TAKES THE CHAINS THAT BREAK:
+a list asking a chain over five (big chain's 8) led the searches toward nothing a buried board can make -- a chain of 2-7 that breaks met
+no entry and was near none, where build's 5 made 2-4 near. Now such a list, under garbage, takes every chain of two or more that breaks,
+after its own entries and before the three that breaks (rules.c withChains; decide.c read).

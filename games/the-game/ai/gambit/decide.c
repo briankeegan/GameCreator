@@ -54,6 +54,7 @@ static int readBoard_(Read *R) {
   decF.under = R->under;
   // (and after its entries, the one rule's three that breaks (rules.c withRule): the list as the board asks it, the searches' and the
   // rank's alike)
+  if (R->under && asksLongChain(&R->guides)) withChains(&R->guides);
   if (R->under) withRule(&R->guides);
   R->asked = R->guides;
   // (A LIST ENDED BY "default" -- every list under garbage -- falls back to the default's own move when none of it can be made: the
