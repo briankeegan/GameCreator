@@ -18,7 +18,7 @@ static LOCAL int32_t pressTight;
 // A BOARD NEAR ITS END (pressTap): lost within TAP_DIES frames left alone (its stop, or its rise to the top, and its health) -- its
 // walks tapped, on time, while the allowance keeps TAP_RESERVE actions to spare; held as when tight below that. The decision says so
 // (answer.c), the frame loop presses its line so.
-#define TAP_RESERVE 8
+#define TAP_RESERVE 16
 #define TAP_DIES 60
 static LOCAL int32_t pressTap;
 static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }

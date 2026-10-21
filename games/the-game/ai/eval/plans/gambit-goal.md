@@ -578,3 +578,5 @@ frames left alone (its stop, or its rise to the top, and its health: facts.c fra
 Measured (`008850af`, run 489, build, seed 3): 20 (combo_storm 7/8, factory 8/8, large_garbage 5/8) against 18 and 19 on the same games.
 Measured (`73d8d6c6`, run 490, build, seed 1): 18 (combo_storm 5/8, factory 7/8, large_garbage 6/8), against 21 on 485's build. Build
 over runs 482-490: 21, 15, 17, 21, 21, 19, 18, 20, 18 -- one 24 swings three games either way.
+THE TAP KEEPS 16: factory-4 (run 490, 13331-13357) died with no actions left (allow=0), every line cut for a walk over the allowance --
+the taps had spent down to the reserve of 8 and past it on the walks they made. The reserve is 16 (core/nodes.h TAP_RESERVE).
