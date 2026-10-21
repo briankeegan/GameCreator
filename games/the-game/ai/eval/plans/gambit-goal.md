@@ -756,3 +756,5 @@ the stack's own (front.c, `wasted` and `wastedAlone`).
 THE LOW RAISE INTO GARBAGE: the fight on `079e0b86` lost 26 of 26 in 22 minutes -- the low stack's raise, giving way to nothing, raised
 rows the board lived through none of with garbage on its way, and the board topped out with 26-49 panels. With garbage on its way the
 floor's raise now takes no more rows than the board lives through once it lands (decide.c read).
+Topped, or about to be: 132 of that fight's decisions dropped a wasted three with nothing else living and the board not yet topped.
+At one health a board that tops out is lost, so the three is let back when the hold is lost within a break's time too.
