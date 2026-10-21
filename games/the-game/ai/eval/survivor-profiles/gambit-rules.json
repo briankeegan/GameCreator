@@ -2,9 +2,7 @@
  "keep": {
   "material": ">=30"
  },
- "raise": {
-  "to": 10
- },
+ "raise": {"to": 11},
  "underGarbage": "break",
  "attack": [
   {
