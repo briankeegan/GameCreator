@@ -628,3 +628,5 @@ THE OPENING RAISE TO 11 ROWS (the owner: if anything it should raise more): meas
 Measured (`5f4e7ece`, run 507, big chain, seed 2, raised to 11 rows): 22 (combo_storm 7/8, factory 8/8, large_garbage 7/8) against 18
 at 10 rows.
 Measured (run 508, big chain, seed 1, 11 rows): 19 (combo_storm 7/8, factory 8/8, large_garbage 4/8) against 18 at 10. Big chain 22, 19.
+Measured (run 509, build, seed 1, 11 rows): 20 (combo_storm 5/8, factory 8/8, large_garbage 7/8) against 22 at 10 -- inside a run's
+three games. 11 rows stay (the owner's).
