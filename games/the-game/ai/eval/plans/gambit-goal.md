@@ -665,3 +665,5 @@ Measured (`5e78e866`, run 522, big chain, seed 1): 21 (combo_storm 7/8, factory 
 Measured (`5e78e866`, run 523, build, seed 1): 16 (combo_storm 4/8, factory 8/8, large_garbage 4/8) against 20 at `5f4e7ece` (run
 509). Over the seeds measured on both builds the rule's runs are +3, +1, +2, -6, -4: inside a run's noise either way; it stays.
 FOUR WORKERS: the runners' four CPUs sit 63% idle with three; a fourth gives the break search its wider beam (workers input).
+Measured (`5e78e866`, four workers, runs 524 and 525, seed 1): build 17 against 16 with three, finish 21 against 19. Four is the
+workflow's default.
