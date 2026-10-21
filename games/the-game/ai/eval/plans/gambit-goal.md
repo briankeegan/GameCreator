@@ -734,3 +734,5 @@ A LOW STACK RAISES (the owner: below six rows, raise high, if not topped; the br
 floor's raise now asks for a stack under LOW_ROWS (6) rows of panels as well as below the material floor, not topped, raising toward
 `raise.to` (11) -- and gives way to nothing (it gave way to any line that lived or broke, so in a fight it never raised). Its rows are
 the ones that leave a break once everything lands (decide.c read, answer.c).
+NO WASTED THREE, DYING TOO (the owner: "wasted 3s are the worst thing you can do"): where nothing lives, a three that breaks nothing
+and throws nothing ranks after a line that wastes none, unless that line is lost within a break's time (rank.c 2a, neither lives).

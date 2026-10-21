@@ -316,6 +316,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // -- on a board short of panels (below the floor) always; on one with panels to spare, not over a line lost a break's time later (run
     // 443, pressure, 47 panels: a break lost at 193 played over a line lost at 335). Short, the panels a break converts are the next
     // break's (run 444: large_garbage 7 to 3 of 8 with the break held to the later loss everywhere)
+    // 2a. (neither lives) NO WASTED THREE: a three that breaks nothing and throws nothing after one that wastes none, unless that one is
+    // lost before the next decision could make a break (rankSave) -- the worst thing a board can do (the owner)
+    { int wx = wastesThree(x), wy = wastesThree(y);
+      if (wx != wy && lostOf(wx ? y : x) >= rankSave) return wx ? 1 : -1; }
     int bx = x->apBroke > 0 && lostOf(x) >= rankSave, by = y->apBroke > 0 && lostOf(y) >= rankSave;
     if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return bx ? -1 : 1; }
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
