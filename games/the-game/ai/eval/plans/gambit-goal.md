@@ -661,3 +661,4 @@ Measured (`5e78e866`, runs 519 and 520, seed 2): pressure 22 (combo_storm 6/8, f
 and big chain 16 (combo_storm 3/8, factory 7/8, large_garbage 6/8) against 22 on `5f4e7ece` (seed 2's big chain has run 15 to 22:
 504 18, 505 21, 507 22, 512 15, 514 18); its combo_storm-3 lost at 1016, under garbage from 516 at 26 panels.
 Measured (`5e78e866`, run 521, finish, seed 2): 21 (combo_storm 7/8, factory 8/8, large_garbage 6/8). Finish 19 and 21.
+Measured (`5e78e866`, run 522, big chain, seed 1): 21 (combo_storm 7/8, factory 8/8, large_garbage 6/8) against 19 and 19 there.
