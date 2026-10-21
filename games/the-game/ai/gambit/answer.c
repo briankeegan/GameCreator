@@ -214,10 +214,12 @@ static Broke theBrWide; static int32_t wideDone;
 // (where the break search ran, for the log: 0 not run, 1 a worker beside the searches, 2 the decision after a worker had not finished it,
 // 3 the decision with no worker free; and the ms it was given)
 static int32_t brWhere; static double brGiven;
+static int32_t decTap;   // (the decision's pressTap, for its jobs' threads)
+static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as the answer says: the native one, native.c gn_setup)
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
   clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
-  inJob = 1; pressTight = decQ.tight; ncache = 0;
+  inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
   int kind = jobKinds[i];
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
   else if (kind == JOB_PLAN) planJob();
@@ -280,7 +282,7 @@ static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c' };
 typedef struct { int32_t kind, move; } Move;   // kind: 0 hold, 1 swap, 2 raise
 // THE ANSWER, read by the host (gb_answer): the move, the raise held, the line handed on, and what the log and the audit read
 typedef struct {
-  Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled;
+  Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled, tap;
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
@@ -305,7 +307,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   logN = 0; logBuf[0] = 0;
   double tStart = nowMs();
   // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks)
-  decQ.tight = allowanceKnown && allowance <= HOLDTIGHT;
+  pressTap = decTap = hostTaps && allowanceKnown && hostTopped && decQ.b->stopTime + decQ.b->preStopTime <= TAP_STOP && decQ.b->shakeTime <= TAP_STOP;
+  decQ.tight = allowanceKnown && tightAt(allowance);
+  A->tap = pressTap;
   pressTight = decQ.tight; pressMemoClear();
   pressAllowance = allowanceKnown ? allowance : -1;
   towardRestLen = 0;
@@ -454,7 +458,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the floor's raise: the rows asked, how many leave a break once everything lands, how many the board lives through -- or, asked
   // while the board is busy, -1 a cascade, -2 the game's raise not allowed)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
-  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance);
+  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1");
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }

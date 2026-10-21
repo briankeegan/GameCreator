@@ -28,6 +28,7 @@ typedef struct {
 } FQuestion;
 typedef struct {
   int32_t id, epoch, at, kind, move, raiseNow, raiseAfter, nhand, hand[MAXLINE], holdLives, brk, urgent, error;
+  int32_t tap;                 // the board near its end: the line's walks tapped while the allowance has some to spare (core/nodes.h pressTap)
   int32_t raiseWait;           // a raise held from this many frames after `at`, the first the stack takes one (0: from `at`)
   int32_t handAt[MAXLINE];     // the frame each swap handed on was judged pressed from (0: as soon as the one before is done)
   int32_t empty;               // a hold the clock left no time to judge anything for
@@ -78,7 +79,7 @@ static struct {
   // the line after the move, pressed as it was decided: its swaps, each from the frame it was judged pressed from (lineAt, 0: as soon as
   // the one before is done)
   int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
-  int32_t lineMode, altMode;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
+  int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   double thinking[FTHINK]; int32_t nthinking;
   double msPerFrame, wall;
@@ -402,7 +403,7 @@ static void countActions(int32_t bits, int32_t now) {
   if (k > F.st.maxWindow) F.st.maxWindow = k;
   if (k > F.limit) F.st.overInput++;
 }
-static void walkKeys(Keys *k, int32_t at) { if (allowanceAt(at) <= HOLDTIGHT) fSlowWalks(k); else fHoldWalks(k); }
+static void walkKeys(Keys *k, int32_t at) { if (tightAt(allowanceAt(at))) fSlowWalks(k); else fHoldWalks(k); }
 
 // ---------------------------------------------------------------- pacing
 // How soon an answer can be had, in frames: half again the slowest of the last few.
@@ -469,7 +470,7 @@ static void take(void) {
     if (a.kind == 0 && a.empty) {
       F.st.starved++;
       if (F.nalt && F.altMode != modeAt(at)) F.nalt = 0;
-      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineN = F.nalt; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
+      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineTap = 0; F.lineN = F.nalt; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
       if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
     }
     if (!a.empty) { F.altMode = modeAt(a.at); F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
@@ -503,6 +504,7 @@ static void take(void) {
     // was judged pressed from)
     if (a.kind == 0 && a.nhand && a.handAt[0] > at) k.n = imin(k.n, a.handAt[0] - at);
     F.st.played++;
+    pressTap = a.tap;
     walkKeys(&k, at);
     if (!keysFit(at, &k)) {
       F.st.guarded++;
@@ -517,7 +519,7 @@ static void take(void) {
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
-    F.lineN = a.nhand; F.lineMode = modeAt(a.at); for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
+    F.lineN = a.nhand; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0;
   }
 }
@@ -539,6 +541,7 @@ static int follow(void) {
   if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) return lineDropped(due, "no keys press it");
   if (F.pending) abortTo(F.pId);
   F.pending = 0;
+  pressTap = F.lineTap;
   walkKeys(&k, due);
   if (!keysFit(due, &k)) { F.st.guarded++; return lineDropped(due, "its keys do not fit"); }
   int left = allowanceAt(due);

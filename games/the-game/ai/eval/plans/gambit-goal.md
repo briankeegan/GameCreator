@@ -557,3 +557,9 @@ none: on a board 0-28 frames from death, with the allowance tight, the search wa
 then would -- later than the taps the search again took -- and the break is too late. 96% of decisions were tight at 40 actions left,
 and the busiest 10 s used 53 of 76. THE ALLOWANCE TIGHT AT 20 LEFT, not 40 (core/nodes.h, survivor_keys.js HOLDTIGHT): a walk is tapped,
 on time, till the input limit is near.
+Measured (`96701edf`, run 484, build, one 24): 17 (combo_storm 5/8 -- 835 -- factory 6/8 -- 836 -- large_garbage 6/8): tight at 20
+spent the allowance -- 53% of decisions made with 6-20 actions left where 19% had been -- and at 777-829 and 786-812 every line was
+cut for a walk over it, the hold the only line left. Back to 40.
+TAPPED NEAR THE END: a board topped with its stop and shake about to run out (45 frames) walks tapped while the allowance keeps 12 actions
+to spare (core/nodes.h tightAt, pressTap) -- the decision says so and hands it on with the line it plays, and the frame loop presses
+that line so (front.c lineTap); only where the host's frame loop reads it (the native one: native.c gn_setup).

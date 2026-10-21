@@ -13,14 +13,20 @@ EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 // frames later, from node pi -- the search's keys for the swap, walked as the frame loop walks them.
 #define TAP_GAP 4         // frames between taps (cursorMoveFrames)
 #define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
-#define HOLDTIGHT 20      // the actions short of the input limit at which every walk of two cells or more is held (the search and the frame loop)
+#define HOLDTIGHT 40      // the actions short of the input limit at which every walk of two cells or more is held (the search and the frame loop)
 static LOCAL int32_t pressTight;
+// A BOARD NEAR ITS END (pressTap): topped, its stop and shake about to run out -- its walks tapped, on time, while the allowance keeps
+// TAP_RESERVE actions to spare; held as when tight below that. The decision says so (answer.c), the frame loop presses its line so.
+#define TAP_RESERVE 12
+#define TAP_STOP 45
+static LOCAL int32_t pressTap;
+static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }
 #define MIN_LEG 3          // the shortest walk a held key is no later on
 // The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be
 // (left: the actions the input budget still allows -- tight at HOLDTIGHT or under). The frame loop's and the judge's, the one count.
 static int iabs(int v) { return v < 0 ? -v : v; }
 static int actionsFor(int row, int col, int r, int c, int left) {
-  int tight = left <= HOLDTIGHT, legs[2], nl = 0, cost = 1;
+  int tight = tightAt(left), legs[2], nl = 0, cost = 1;
   if (iabs(c - col)) legs[nl++] = iabs(c - col);
   if (iabs(r - row)) legs[nl++] = iabs(r - row);
   for (int k = 0; k < nl; k++) {
