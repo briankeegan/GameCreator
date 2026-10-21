@@ -319,10 +319,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // where it was 23 -- finish 15 against 17)
     int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
     int alike = lo >= rankSave && (tlo == thi || tlo >= 3);
-    // (BOUGHT WITH THE PANELS: the later loss of a line that clears panels below the floor and breaks nothing (spends) is stop time, and
-    // stop time holds the stack from rising -- the rows the next panels come in by. Beside one that spends none and leaves the next
-    // decision a try, they survive alike: the list (5) puts the one that keeps its panels first)
-    if (!alike && lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends) alike = 1;
+    // (BOUGHT WITH THE PANELS: with no garbage on the board, the later loss of a line that clears panels below the floor and breaks
+    // nothing (spends) is stop time, and stop time holds the stack from rising -- the rows the next panels come in by. Beside one that
+    // spends none and leaves the next decision a try, they survive alike: the list (5) puts the one that keeps its panels first. Under
+    // garbage the rising stack brings no panels in -- the garbage tops it -- and the list's own exceptions (5) decide)
+    if (!alike && !decF.under && lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends) alike = 1;
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;

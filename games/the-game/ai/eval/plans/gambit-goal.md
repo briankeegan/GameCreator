@@ -669,3 +669,6 @@ Measured (`5e78e866`, four workers, runs 524 and 525, seed 1): build 17 against 
 workflow's default.
 Measured (`29e5ec1c`, run 526, build, seed 2): 16 (combo_storm 5/8, factory 7/8, large_garbage 4/8). Build 17 and 16 on this build;
 the same games played with `92d19244`'s Gambit next (before the panels rule), to see whether the rule is what build lost.
+Measured (run 527, build, seed 1, `92d19244`'s Gambit, four workers): 21 (combo_storm 7/8, factory 6/8, large_garbage 8/8) against 17
+with the panels rule -- the rule costs build. Now it holds only with no garbage on the board, the case it was made for (pressure's
+combo_storm-6 spent its panels before garbage reached it).
