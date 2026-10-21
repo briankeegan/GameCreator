@@ -667,3 +667,5 @@ Measured (`5e78e866`, run 523, build, seed 1): 16 (combo_storm 4/8, factory 8/8,
 FOUR WORKERS: the runners' four CPUs sit 63% idle with three; a fourth gives the break search its wider beam (workers input).
 Measured (`5e78e866`, four workers, runs 524 and 525, seed 1): build 17 against 16 with three, finish 21 against 19. Four is the
 workflow's default.
+Measured (`29e5ec1c`, run 526, build, seed 2): 16 (combo_storm 5/8, factory 7/8, large_garbage 4/8). Build 17 and 16 on this build;
+the same games played with `92d19244`'s Gambit next (before the panels rule), to see whether the rule is what build lost.
