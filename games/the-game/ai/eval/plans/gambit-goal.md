@@ -605,3 +605,5 @@ Measured (`8e26111d`, run 496, build, seed 1, finished 01:4x ET): 22 (combo_stor
 7767): build's first 22.
 Measured (`8e26111d`, run 497, build, seed 2): 23 (combo_storm 8/8, factory 8/8, large_garbage 7/8 -- 18471). BUILD AT 22: 22 and 23 on
 two sets of games. Left at 22 for the next mode (the owner's order); every mode measured next on this build.
+Every mode on `db5af9c7`, seed 1 (runs 498-500): finish 19 (7, 7, 5; aim 62%), pressure 20 (7, 7, 6; aim 8%), big chain 15 (5, 7, 3;
+aim 1%); build 22 and 23. Big chain next.
