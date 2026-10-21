@@ -594,3 +594,6 @@ the board's next panels.
 UNDER GARBAGE A BREAK FIRST, ALWAYS (the owner: breaking is how the board gets more blocks): of two lines that neither lives under
 garbage, the one that breaks comes first whatever their losses (rank.c 2) -- before, a break gave way to a line lost a break's time
 later on a board with panels to spare, and to any line when the break itself was lost within a break's time.
+Measured (`687b06a7`, runs 494 and 495, build, seeds 1 and 2): 16 and 18 (34 against 38 on the same games before) -- and the share of
+swaps that broke garbage the same, 31-32%: ranking breaks higher makes no more of them, the board has to have one in reach. Both order
+changes taken back (rank.c as at `ba4c312f`).

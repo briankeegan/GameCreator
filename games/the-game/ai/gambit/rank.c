@@ -307,9 +307,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // -- on a board short of panels (below the floor) always; on one with panels to spare, not over a line lost a break's time later (run
     // 443, pressure, 47 panels: a break lost at 193 played over a line lost at 335). Short, the panels a break converts are the next
     // break's (run 444: large_garbage 7 to 3 of 8 with the break held to the later loss everywhere)
-    // -- and under garbage always: breaking is where the board's next panels come from (the owner)
-    int bx = x->apBroke > 0 && (decF.under || lostOf(x) >= rankSave), by = y->apBroke > 0 && (decF.under || lostOf(y) >= rankSave);
-    if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.under || decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return bx ? -1 : 1; }
+    int bx = x->apBroke > 0 && lostOf(x) >= rankSave, by = y->apBroke > 0 && lostOf(y) >= rankSave;
+    if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return bx ? -1 : 1; }
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.
@@ -332,9 +331,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // order is not what keeps the board (run 491, large_garbage-6: a hold lost at 194 over a line toward a break lost at 212)
     if (x->outside != y->outside && !(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends)) return x->outside ? 1 : -1;
   }
-  // 7b. UNDER GARBAGE THE RULE IS TO BREAK (the rules' underGarbage): of two breaks under garbage that neither lives, the one that breaks
-  // more of it -- before the list's entry and before the material it leaves: the garbage a break gets off is the board's next panels
-  if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apBroke != y->apBroke) return x->apBroke > y->apBroke ? -1 : 1;
   // 6. THE NEXT BREAK'S MATERIAL: of two breaks under garbage, the one that leaves a break to build (outcome.c nextBuild) and keeps the
   // board's floor -- before the list's entry: the list orders the breaks the board can afford
   if (x->material >= 0 && y->material >= 0 && x->material != y->material) return x->material - y->material;
@@ -349,6 +345,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int32_t mx = lx2 ? x->o.j.readyMat : x->o.matLeft, my = lx2 ? y->o.j.readyMat : y->o.matLeft;
     if (mx >= 0 && my >= 0 && mx != my) return mx > my ? -1 : 1;
   }
+  // 7b. UNDER GARBAGE THE RULE IS TO BREAK (the rules' underGarbage): of two breaks under garbage that neither lives, the one that breaks
+  // more of it -- before the list's entry: the board's life is the garbage it gets off
+  if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apBroke != y->apBroke) return x->apBroke > y->apBroke ? -1 : 1;
   // 7c. THE BREAK SOONER: of two such breaks alike so far, the one whose last swap is pressed sooner -- a break put off is one a later
   // decision may put off again, each new line a few frames longer lived, till the board has no time left to make it (run 457,
   // combo_storm-6: 1585 to 1816, a break of 24 to 28 cells in every line played, never made). After the material: put before it, the
