@@ -792,3 +792,7 @@ THE PRESS GUARD (the owner: "why are threes still wasted"): the judge's word is 
 Now every swap about to be pressed is played first on a copy of the board as it is; one that makes a clear of three beside no garbage
 whose fall makes no chain is not pressed -- the plan dropped, the next decision asked -- unless the board is topped out (front.c
 wastedSwap; the summary's `swaps refused at the press`).
+THE JUDGE READS CLEARS AS THE GAME COUNTS THEM (the owner: "fix the infra"): the engine now records, for each clear a step makes, whether
+it is a chain's link (its panels fell from one) and whether garbage is joined to it (pa.c checkMatches, sLink and sTouch -- after the
+board's bytes, no board changed). The judge's wasted three is the frame loop's own test a clear at a time: a three, no link, no garbage,
+no link after it in the step -- where it read the step's chain counter, which a three made while the board's own chain falls shares.

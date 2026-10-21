@@ -107,6 +107,7 @@ static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 // left alone as long -- the panels it matched that the board alone did not, exactly three, none beside garbage, and its settle no longer
 // a chain than the board's own: a three for nothing, whatever the line's later swaps break
 #define FIRST_LOOK 12
+static int32_t linksOf(const Stats *s);
 static int32_t firstThree(Ctx *x, int root, int mr, int mc, const Stats *bs) {
   int a = step(x, root, MK_SWAP, mr, mc, 0);
   if (!liveNode(x, a)) return 0;
@@ -130,10 +131,21 @@ static int32_t firstThree(Ctx *x, int root, int mr, int mc, const Stats *bs) {
   if (n != 3 || touch) return 0;
   int sz = step(x, root, MK_SETTLE, mr, mc, 0);
   Stats fs;
-  if (liveNode(x, sz) && statsOf(x, sz, &fs) && chainOfStats(&fs) > imax(1, bs ? chainOfStats(bs) : 0)) return 0;
+  if (liveNode(x, sz) && statsOf(x, sz, &fs) && linksOf(&fs) > (bs ? linksOf(bs) : 0)) return 0;   // (its fall made a link)
   return 1;
 }
-static int32_t threesOf(const Stats *s) { int32_t n = 0; if (chainOfStats(s) > 1 || s->broke > 0) return 0; for (int j = 0; j < s->n; j++) if (s->size[j] == 3 && !(s->chainAt[j] > 1)) n++; return n; }
+// (a step's wasted threes, as the game's own count reads them (front.c countAttacks), a clear at a time: a clear of three that is no link
+// of a chain and has no garbage joined to it -- and no chain's link after it in the step, which its fall may have made)
+static int32_t threesOf(const Stats *s) {
+  int32_t n = 0;
+  for (int j = 0; j < s->n; j++) {
+    if (s->size[j] != 3 || s->link[j] || s->touch[j]) continue;
+    int later = 0; for (int q = j + 1; q < s->n && !later; q++) later = s->link[q];
+    if (!later) n++;
+  }
+  return n;
+}
+static int32_t linksOf(const Stats *s) { int32_t n = 0; for (int j = 0; j < s->n; j++) n += !!s->link[j]; return n; }
 
 // (the garbage the board left alone has broken by frame t, from the board landed: cached per frame)
 static int32_t still_(Ctx *x, int land, int32_t t, int32_t *idleT, int32_t *idleB, int32_t *nIdle) {

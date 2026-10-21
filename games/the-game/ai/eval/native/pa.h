@@ -100,6 +100,9 @@ typedef struct Board {
   // nrows rows and nothing past them
   Incoming inc[MAXINC];           // the next to drop last
   Panel p[MAXROWS][W + 1];
+  // (WHAT A STEP DID, more: of each clear, whether it is a link of a chain -- its panels fell from one -- and whether garbage is joined
+  // to it, breaking some. After the board's head and its queue: not part of the board, never sent, no board's bytes changed by them)
+  int32_t sLink[MAXCOMBOS], sTouch[MAXCOMBOS];
 } Board;
 #define BOARD_HEAD ((unsigned long)&((Board *)0)->inc)
 static inline void paCopy(Board *dst, const Board *src) {

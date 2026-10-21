@@ -716,15 +716,16 @@ static void checkMatches(Board *b) {
       if (SETN(p->f[FELL])) p->f[FELL] = NUL;
       p->f[COMBOINDEX] = i + 1; p->f[COMBOSIZE] = comboSize;
     }
-    int32_t onScreen = 0;
+    int32_t onScreen = 0, touched = 0;
     if (getConnectedGarbagePanels(b, &matching, &garbage)) {
+      touched = garbage.n > 0;
       for (i = 0; i < garbage.n; i++) if (CR(garbage.at[i]) <= b->height) onScreen++;
       matchGarbagePanels(b, &garbage, b->fFLASH + b->fFACE + b->fPOP * (comboSize + onScreen), isChainLink, onScreen);
     }
     b->preStopTime = imax(b->preStopTime, b->fFLASH + b->fFACE + b->fPOP * (comboSize + onScreen));
     int32_t stopTime = calculateStopTime(b, comboSize, b->wasToppedOut, isChainLink, b->chainCounter);
     if (stopTime > b->stopTime) b->stopTime = stopTime;
-    if (b->sNCombo < MAXCOMBOS) { b->sCombo[b->sNCombo] = comboSize; b->sChainAt[b->sNCombo] = b->chainCounter; b->sNCombo++; }
+    if (b->sNCombo < MAXCOMBOS) { b->sCombo[b->sNCombo] = comboSize; b->sChainAt[b->sNCombo] = b->chainCounter; b->sLink[b->sNCombo] = isChainLink; b->sTouch[b->sNCombo] = touched; b->sNCombo++; }
     b->sCleared += comboSize;
     if (stopTime > b->sEarned) b->sEarned = stopTime;
     int32_t bonus = b->chainCounter > 13 ? 0 : b->chainCounter;
