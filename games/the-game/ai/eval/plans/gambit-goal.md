@@ -811,3 +811,11 @@ lost a break's time (rankSave) later.
 ON THE WAY (the owner: "going really far for moves"): 18 of 702 decisions in a fight played a line with work on its way. Now
 (`fe49d86c`) wayLines also offers two useful swaps the cursor passes in turn, searches the way from three actions out, and no longer
 counts a three for nothing as work; of two lines that live and both attack, one walking more than WALK_EARN (6) actions further loses.
+Measured (`05543891`, runs 641-644): 0, 1, 2 and 0 of 24, 0.3-0.6 wasted threes a minute; the fight 2 won, 17 lost. Under garbage no
+line is predicted to live, and a three that buys less than a break's time was dropped: reverted (`e5492043`). In a 12b4b919 game every
+wasted three was the order's (w3 on the decision played), none the press guard's: lines that break garbage and make a three as well.
+Measured (`fe49d86c`, runs 645-648, the walk alone): big chain 19, build 20, finish 22, pressure 22; 1.4-2.4 wasted threes a minute.
+THE THREE TAKEN OUT (`e5c1638b`): the three best lines that waste a three are judged again with one swap left out at a time, so the
+order has the same line without the three to keep in its place.
+SELF-PLAY: each side calls a match from its own board -- lost when its own death comes before the other's -- so both sides can count a
+loss when both boards die within the network's delay (13 of 38 on 05543891). Against another bot the logs agree on every result.
