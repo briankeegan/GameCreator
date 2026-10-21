@@ -307,7 +307,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   logN = 0; logBuf[0] = 0;
   double tStart = nowMs();
   // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks)
-  pressTap = decTap = hostTaps && allowanceKnown && hostTopped && decQ.b->stopTime + decQ.b->preStopTime <= TAP_STOP && decQ.b->shakeTime <= TAP_STOP;
+  { const Board *b = decQ.b; double dies = (hostTopped ? b->stopTime + b->preStopTime : framesToTop(b)) + b->health;
+    pressTap = decTap = hostTaps && allowanceKnown && dies <= TAP_DIES; }
   decQ.tight = allowanceKnown && tightAt(allowance);
   A->tap = pressTap;
   pressTight = decQ.tight; pressMemoClear();

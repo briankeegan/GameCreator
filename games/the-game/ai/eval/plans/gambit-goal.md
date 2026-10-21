@@ -572,3 +572,6 @@ the garbage elsewhere with what was left -- factory-1 (run 487, 6992-7019) misse
 the 210-257 it had, each decision cut. Now under a pop the touch beam has the first half of what is left, the line-ups and the touch beam
 after them the rest (search/break.c).
 Measured (`d5e0df46`, run 488, build, seed 3): 18 (combo_storm 4/8, factory 7/8, large_garbage 7/8) against 19 on the same games.
+TAPPED WHEN THE BOARD DIES SOON, NOT ONLY TOPPED: combo_storm-3 and -4 (run 488) lost one-swap breaks at 11525 and 12841 (found again in
+0-1 ms), the boards 10-12 frames from their stop's end and not yet topped, or with 12 actions left -- no tap. Now a board lost within 60
+frames left alone (its stop, or its rise to the top, and its health: facts.c framesToTop) taps while 8 actions are left to spare.

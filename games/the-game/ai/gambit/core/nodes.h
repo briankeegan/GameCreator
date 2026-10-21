@@ -15,10 +15,11 @@ EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 #define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
 #define HOLDTIGHT 40      // the actions short of the input limit at which every walk of two cells or more is held (the search and the frame loop)
 static LOCAL int32_t pressTight;
-// A BOARD NEAR ITS END (pressTap): topped, its stop and shake about to run out -- its walks tapped, on time, while the allowance keeps
-// TAP_RESERVE actions to spare; held as when tight below that. The decision says so (answer.c), the frame loop presses its line so.
-#define TAP_RESERVE 12
-#define TAP_STOP 45
+// A BOARD NEAR ITS END (pressTap): lost within TAP_DIES frames left alone (its stop, or its rise to the top, and its health) -- its
+// walks tapped, on time, while the allowance keeps TAP_RESERVE actions to spare; held as when tight below that. The decision says so
+// (answer.c), the frame loop presses its line so.
+#define TAP_RESERVE 8
+#define TAP_DIES 60
 static LOCAL int32_t pressTap;
 static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }
 #define MIN_LEG 3          // the shortest walk a held key is no later on
