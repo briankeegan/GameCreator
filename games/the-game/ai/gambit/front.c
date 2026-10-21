@@ -40,6 +40,10 @@ static int takeAnswer(FAnswer *a);        // native.c: 1 when one was waiting
 static int answerWaiting(int32_t id);     // native.c
 static void abortTo(int32_t id);          // native.c: every question up to id is no longer wanted
 static void flog(const char *s);          // native.c: a line into the run's log
+static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr);   // native.c: a board into the log
+// (the boards the last swaps were pressed on, a ring: the one a wasted three came of is logged with it)
+#define SWAPRING 4
+static Board *swapRing[SWAPRING]; static int32_t swapRingAt[SWAPRING], swapRingN;
 
 typedef struct {
   int32_t frames, decisions, played, late, diverged, refused, guarded, unasked, idle, followed, noLine, unforeseen, reasked, revealed,
@@ -96,7 +100,7 @@ static struct {
   uint32_t rnd;
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
-  int32_t loggedDiffer, matchAt, matchAfter, loggedWasted;   // (the followed swap a clear came of: pressed at, swaps since -- for the wasted three's log)
+  int32_t loggedDiffer, matchAt, matchAfter, loggedWasted, pendSwapAt;   // (the followed swap a clear came of: pressed at, swaps since -- for the wasted three's log)
 } F;
 
 static double fNow(void) { return clock_ms(); }
@@ -588,7 +592,12 @@ static void countAttacks(const Board *b) {
   if (cc >= 2) { F.pendThree = F.pendThreeAlone = 0; F.pendLog[0] = 0; }
   if (cc == 0 && (F.pendThree || F.pendThreeAlone) && !hasActivePanels((Board *)b)) {
     F.st.wasted += F.pendThree; F.st.wastedAlone += F.pendThreeAlone; F.pendThree = F.pendThreeAlone = 0;
-    if (F.pendLog[0] && F.loggedWasted < 400) { flog(F.pendLog); F.loggedWasted++; }
+    if (F.pendLog[0] && F.loggedWasted < 400) {
+      flog(F.pendLog);
+      // (the first few with the board their swap was pressed on: GAMBITX <frame pressed>)
+      if (F.loggedWasted < 24) for (int i = 0; i < SWAPRING; i++) if (swapRing[i] && swapRingAt[i] == F.pendSwapAt) dumpBoard("GAMBITX", swapRingAt[i], swapRing[i], 0, 0);
+      F.loggedWasted++;
+    }
     F.pendLog[0] = 0;
   }
   if (fresh == 3 && cc < 2 && !brokeNow) {
@@ -606,6 +615,7 @@ static void countAttacks(const Board *b) {
         static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
         for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc2 = c + DC[d]; if (rr >= 1 && rr < b->nrows && cc2 >= 1 && cc2 <= W && b->p[rr][cc2].f[ISGARBAGE]) touch = 1; }
       }
+      F.pendSwapAt = bySwap ? F.matchAt : -1;
       if (k < (int)sizeof F.pendLog) snprintf(l + k, sizeof F.pendLog - (unsigned long)k, " by=%s swapAt=%d after=%d touch=%d", bySwap ? "swap" : "alone", bySwap ? F.matchAt : -1, bySwap ? F.matchAfter : -1, touch);
     }
   }
@@ -626,6 +636,7 @@ static void countAttacks(const Board *b) {
 // frames after it -- until one of them is matched or MOVE_FOR frames pass: matched before the next swap is pressed, the swap cleared;
 // after it, the swap set the clear up; a clear that breaks garbage, a break; none matched, a swap that did nothing.
 static void moveBegin(const Board *b) {
+  { int i = swapRingN++ % SWAPRING; if (!swapRing[i]) swapRing[i] = nb_new(); if (swapRing[i]) { cloneBoard(swapRing[i], b); swapRingAt[i] = b->clock; } }
   for (int i = 0; i < F.nmoves; i++) F.moves[i].swapsAfter++;
   if (F.nmoves == MOVE_OPEN) { F.st.moveNone++; memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
   MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock;
