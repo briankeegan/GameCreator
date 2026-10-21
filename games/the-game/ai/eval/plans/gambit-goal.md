@@ -758,3 +758,6 @@ rows the board lived through none of with garbage on its way, and the board topp
 floor's raise now takes no more rows than the board lives through once it lands (decide.c read).
 Topped, or about to be: 132 of that fight's decisions dropped a wasted three with nothing else living and the board not yet topped.
 At one health a board that tops out is lost, so the three is let back when the hold is lost within a break's time too.
+EVERY THREE IN THE LINE (the owner: fix the three problem): the judge took a line by its biggest clear, so a stray three beside a combo
+passed. Now it counts each clear of three that breaks nothing and begins no chain, step by step, beyond the board left alone's
+(judge.c threes), and a line with any is a wasted three (rank.c wastesThree) -- out of the order unless it is the save.

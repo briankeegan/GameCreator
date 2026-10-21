@@ -31,6 +31,7 @@ typedef struct {
   int32_t aloneChain;           // the chain the board left alone makes
   int32_t chainAll;             // the chain the line reaches as the game counts it (the chain already falling and every link after it)
   int32_t singles[MAXCOMBOS], nsingles;   // sizes of 4 or more the line clears as a clear of its own, no link of a chain
+  int32_t threes;               // WASTED THREES: the line's clears of three that break nothing and begin no chain, beyond the board left alone's
   int32_t blocks;               // THE BLOCKS THE LINE THROWS, every attack its own (rules.c blocksOf): each clear of four or more a combo's
                                 // pieces, each chain a slab a link past the first -- a line that fires two ideas throws both -- beyond what
                                 // the board left alone throws
@@ -101,6 +102,8 @@ static int stepFitsAt(Ctx *x, int i) {
   return b && (b->chainCounter > 0 || hasChainingPanels(b) || hasActivePanels(b));
 }
 static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
+// (a step's wasted threes: its clears of three, no link of a chain, in a step that breaks nothing and makes no chain)
+static int32_t threesOf(const Stats *s) { int32_t n = 0; if (chainOfStats(s) > 1 || s->broke > 0) return 0; for (int j = 0; j < s->n; j++) if (s->size[j] == 3 && !(s->chainAt[j] > 1)) n++; return n; }
 
 // (the garbage the board left alone has broken by frame t, from the board landed: cached per frame)
 static int32_t still_(Ctx *x, int land, int32_t t, int32_t *idleT, int32_t *idleB, int32_t *nIdle) {
@@ -167,14 +170,15 @@ static int stepTapped(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) 
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
   int base = settleOf(x, root);
   int32_t baseChain = 0, baseCombo = 0, baseBroke = 0;
   Stats bs;
-  if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
+  int32_t baseThrees = 0, threes = 0;
+  if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; baseThrees = threesOf(&bs); if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
   j->base = baseBroke;
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 }, pieces = 0, links = 0;
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
@@ -230,7 +234,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     // (a settled step's chain ends in it, so each is an attack of its own; steps pressed at once are one chain, counted at its longest)
     if (o->settled || last) links += imax(0, chainOfStats(&st) - 1);
     if (chainOfStats(&st) > chain) chain = chainOfStats(&st);
-    broke += st.broke;
+    broke += st.broke; threes += threesOf(&st);
     j->done = NODE(x, out)->t;
     if (!last) lastAt = j->done;
     n = out;
@@ -243,6 +247,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->chainAll = imax(chain, q->b->chainCounter);
   if (!o->settled) links = imax(links, imax(0, chain - 1));
   j->blocks = imax(0, pieces + links - blocksOf(baseCombo, baseChain));
+  j->threes = imax(0, threes - baseThrees);
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
