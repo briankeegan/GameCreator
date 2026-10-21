@@ -38,7 +38,7 @@ typedef struct {
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press)
-enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, NDROPS };
+enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, NDROPS };
 static int32_t dropped[NPLAYS][NDROPS], offered[NPLAYS];
 static void dropAs(int play, int why) { dropped[play][why]++; }
 // (the lines cut, by why the judge cut them: judge.c cutWhy -- 1 a first walk over the allowance, 2 no swap there, 3 a walk not begun
@@ -94,6 +94,8 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
     if (!unbroken.set) { unbroken.set = 1; unbroken.play = play; unbroken.nseq = k->nseq; for (int i = 0; i < k->nseq; i++) unbroken.seq[i] = k->seq[i]; unbroken.said = k->x.broke; unbroken.judged = j->made.broke; }
   }
   if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), m.broke > 0 ? 2 : m.combo > 0 || m.chain > 0)) { dropAs(play, DROP_BACK); return 0; }
+  // (NO WASTED THREE, EVER (the owner): a line whose clears break nothing and throw nothing -- a combo of three, no chain -- is no line)
+  if ((m.combo > 0 || m.chain > 0) && !(m.broke > 0) && m.combo <= 3 && m.chain <= 1 && !(j && j->blocks > 0)) { dropAs(play, DROP_WASTE); return 0; }
   // (it fits the list -- the chain as the game counts it -- or it is outside it: ranked after every line within it that lives, and kept,
   // so a list never chooses a death. Below the rule's material floor a line that clears panels and breaks no garbage spends what the
   // board needs: outside too)
@@ -239,9 +241,6 @@ static int moreIdeas(const Judge *x, const Judge *y) { int a = ideasOf(x), b = i
 // THE BLOCKS A LINE THROWS (judge.c blocks: every attack its own)
 static int thrownOf(const Judge *J) { return J->hold || J->o.dead ? 0 : J->o.j.blocks; }
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
-// A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
-// and none broken
-static int wastesThree(const Judge *J) { return !J->hold && (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0; }
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
   // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
@@ -302,8 +301,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
     // 2. (both live) within the list before outside it
     if (x->outside != y->outside) return x->outside ? 1 : -1;
-    // 2a. (both live) no wasted three: a board that lives either way does not spend three panels for nothing (the owner)
-    if (wastesThree(x) != wastesThree(y)) return wastesThree(x) ? 1 : -1;
     // 2b. (both live) the line that throws before one that throws nothing -- a three that breaks, a set-up, the hold: a board that lives
     // either way sends garbage (the owner: twice as aggressive, no threes)
     if ((thrownOf(x) > 0) != (thrownOf(y) > 0)) return thrownOf(x) > 0 ? -1 : 1;
@@ -316,10 +313,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // -- on a board short of panels (below the floor) always; on one with panels to spare, not over a line lost a break's time later (run
     // 443, pressure, 47 panels: a break lost at 193 played over a line lost at 335). Short, the panels a break converts are the next
     // break's (run 444: large_garbage 7 to 3 of 8 with the break held to the later loss everywhere)
-    // 2a. (neither lives) NO WASTED THREE: a three that breaks nothing and throws nothing after one that wastes none, unless that one is
-    // lost before the next decision could make a break (rankSave) -- the worst thing a board can do (the owner)
-    { int wx = wastesThree(x), wy = wastesThree(y);
-      if (wx != wy && lostOf(wx ? y : x) >= rankSave) return wx ? 1 : -1; }
     int bx = x->apBroke > 0 && lostOf(x) >= rankSave, by = y->apBroke > 0 && lostOf(y) >= rankSave;
     if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return bx ? -1 : 1; }
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and

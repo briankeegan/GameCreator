@@ -276,7 +276,7 @@ static void L_d(double v) {
 }
 static void L_mv(int32_t mv) { L_i(CR(mv)); L_s(","); L_i(CC(mv)); }
 static void L_play(int p) { const char *s = p == -2 ? "raise" : PLAY_NAME[p]; for (; *s; s++) { char c[2] = { *s == ' ' ? '_' : *s, 0 }; L_s(c); } }
-static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c' };
+static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c', 'w' };
 
 // THE MOVE: the one order's choice -- the raise the opening called for, a line's first swap, or the hold
 typedef struct { int32_t kind, move; } Move;   // kind: 0 hold, 1 swap, 2 raise

@@ -736,3 +736,6 @@ floor's raise now asks for a stack under LOW_ROWS (6) rows of panels as well as 
 the ones that leave a break once everything lands (decide.c read, answer.c).
 NO WASTED THREE, DYING TOO (the owner: "wasted 3s are the worst thing you can do"): where nothing lives, a three that breaks nothing
 and throws nothing ranks after a line that wastes none, unless that line is lost within a break's time (rank.c 2a, neither lives).
+NO WASTED THREE, EVER (the owner: "you shouldn't have to count the wasted, you just shouldn't allow"): a line whose clears break
+nothing and throw nothing is dropped before it is ranked (rank.c, DROP_WASTE -- 'w' in the log's dropped counts); the rank keys that
+ordered such lines last are gone.
