@@ -772,3 +772,7 @@ blocks a minute; 5.8-6.0 wasted threes a minute, every one a swap's -- where the
 THE FIRST SWAP'S THREE: run 606's wasted threes (GAMBITW) were each made 6 frames after the first swap of a line the judge took as an
 attack -- a three now, a 2-chain 280 frames on: pressed straight through, the three falls in a step its later chain is counted in. Now
 the first swap is settled alone too, and a three it makes for nothing makes the line a wasted three (judge.c).
+Measured (`95df54f2`, run 607, factory, 8 games): 8/8, 21.9 blocks a minute, 6.5 wasted threes a minute -- the first-swap check missed:
+under garbage the first swap's settle breaks the garbage already popping and runs the chain already falling, so a three of its own read
+as part of them. Now the swap's threes are counted beyond the board left alone's, a break or a chain only when it is more than the
+board's own (judge.c threesBeyond).
