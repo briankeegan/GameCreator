@@ -377,6 +377,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
+  carryNextOf(P.line);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
   keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
   if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
@@ -559,7 +560,7 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 // for the old mode's list), the dig, the line toward a break.
 static void modeLeft(void) {
   lifeLived = 0;
-  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry);
+  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
 }
 // A new game: nothing of the last one is carried on.

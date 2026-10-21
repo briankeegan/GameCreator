@@ -291,19 +291,23 @@ static Played playOf(const Read *R, int n) {
 // on a board the stack is not yet)
 typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
 static Carry theCarry;
+// THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
+// break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
+static Carry theCarryNext;
 static int carriedFromReady(void) { return theCarry.ready; }
 static int32_t carryFrom = -1, carryPressed;
 // THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
 // into theCarry; 0 when every one is touched. carryOf and carryReady ask it.
-static int anchorOf(const int32_t *row1, const int32_t *seq, int n) {
+static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) {
   for (int c = 1; c <= W; c++) {
     if (row1[c] == NUL) continue;
     int touched = 0;
     for (int i = 0; i < n; i++) if (CR(seq[i]) == 1 && (CC(seq[i]) == c || CC(seq[i]) + 1 == c)) touched = 1;
-    if (!touched) { theCarry.anchorRow = 1; theCarry.anchorCol = c; theCarry.anchorId = row1[c]; return 1; }
+    if (!touched) { C->anchorRow = 1; C->anchorCol = c; C->anchorId = row1[c]; return 1; }
   }
   return 0;
 }
+static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anchorInto(&theCarry, row1, seq, n); }
 // (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   memset(&theCarry, 0, sizeof theCarry);
@@ -322,6 +326,15 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
 // as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the
 // same promise.
+static void carryNextOf(const Judge *L) {
+  memset(&theCarryNext, 0, sizeof theCarryNext);
+  const Judged *j = L ? &L->o.j : 0;
+  if (!j || L->hold || L->o.ready != 1 || j->readyN < 1 || !theCarry.set) return;
+  if (!anchorInto(&theCarryNext, j->readyRow1, j->readyLine, j->readyN)) return;
+  theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.nrest = j->readyN;
+  for (int i = 0; i < j->readyN; i++) theCarryNext.rest[i] = j->readyLine[i];
+  theCarryNext.settled = 0; theCarryNext.broke = 1; theCarryNext.ready = 1;
+}
 static void carryReady(const Judge *H, int32_t qid) {
   const Judged *j = &H->o.j;
   if ((!H->hold && H->k.nseq != 1) || H->o.ready != 1 || j->readyN < 1) return;
@@ -460,6 +473,10 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0;
   int skip = C->id == carryFrom ? carryPressed : 0;
+  if (C->set && C->nrest <= skip && theCarryNext.set) {
+    // (the line's own swaps all pressed: the break it lived by is the line in progress now, popping or not as the board is now)
+    *C = theCarryNext; memset(&theCarryNext, 0, sizeof theCarryNext); C->popping = popLeft(decQ.b) > 0; skip = 0;
+  }
   if (!C->set || C->nrest <= skip) return 0;
   int dr = NOT_ASKED;
   // (from the row not yet risen: the board a waited-for break was found on may have risen past this one)

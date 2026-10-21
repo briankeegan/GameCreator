@@ -544,3 +544,8 @@ Measured (`f5b63ce4`, run 478, build, one 24): 17 (combo_storm 6/8, factory 5/8,
 forgotten after its first swap -- each a board with no break in reach for 200-300 frames before it died.
 Every mode on `a83c820f`, one 24 each (runs 479-481): finish 17 (6, 7, 4; aim 64%), pressure 20 (8, 5, 7; aim 9%), big chain 18 (7, 7,
 4; aim 0%); build 17-20 (476-478). large_garbage the weakest pattern in three modes of four.
+THE BREAK A LINE LIVES BY IS CARRIED NEXT: one line in five judged to live had none that lived at the next decision (the summary's "a
+life kept", 79-80%). Big chain's large_garbage (run 481, 11360): the line in progress lived by a break in reach once everything lands;
+its swaps pressed, the next decision's break search did not find that break, and nothing lived. Now a line played that lives by its
+readiness carries that break as well, made the line in progress once its own swaps are pressed (decide.c theCarryNext), offered and
+judged as every line is.
