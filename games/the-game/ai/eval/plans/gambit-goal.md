@@ -588,3 +588,6 @@ die, the list orders only a line that spends panels below the floor (rank.c 5, J
 it (rank.c beatsHold).
 Measured (`d8a50696`, run 492, build, seed 1): 18 (combo_storm 3/8, factory 8/8, large_garbage 7/8).
 Measured (`b18d0d90`, run 493, build, seed 2): 20 (combo_storm 6/8, factory 7/8, large_garbage 7/8). Build stands at 19-20 a 24.
+MORE BROKEN BEFORE THE PANELS KEPT (the owner: a board running out of panels is a board not breaking): of two breaks under garbage that
+neither lives, the one that breaks more now comes before the material keys (rank.c 7b before 6 and 7a) -- the garbage a break gets off is
+the board's next panels.
