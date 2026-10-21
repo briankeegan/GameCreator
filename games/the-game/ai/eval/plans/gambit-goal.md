@@ -655,3 +655,5 @@ decision a clear lost later than the hold, each clear's stop holding the stack f
 floor's raise asked and never open). Now the later loss a line that spends panels below the floor buys is no reason to pass over one
 that spends none and leaves the next decision a try: the two survive alike, and the list puts the one that keeps its panels first
 (rank.c key 3).
+Measured (`9fb7b62c`, runs 517 and 518, seed 1): pressure 21 (combo_storm 6/8, factory 7/8, large_garbage 8/8) against 18, finish
+19 (combo_storm 6/8, factory 7/8, large_garbage 6/8) against 18.
