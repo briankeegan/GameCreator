@@ -85,14 +85,6 @@ static int readBoard_(Read *R) {
   int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped;
   int refill = !opening && R->belowFloor && !R->topped;
   raiseRefill = refill;
-  // (the opening raise leaves room for the garbage on its way: its rows -- a slab's its height, narrower pieces their cells a row's worth
-  // at a time -- off the rows raised to (run 504, large_garbage-3: raised to 42 panels under a slab 105 frames off, lost at 421))
-  if (opening) {
-    int32_t rows = 0, narrow = 0;
-    for (int i = 0; i < decQ.narr; i++) { if (decQ.arr[i].width >= W) rows += decQ.arr[i].height; else narrow += decQ.arr[i].width * decQ.arr[i].height; }
-    for (int i = 0; i < decQ.b->ninc; i++) { if (decQ.b->inc[i].width >= W) rows += decQ.b->inc[i].height; else narrow += decQ.b->inc[i].width * decQ.b->inc[i].height; }
-    to = imax(0, to - rows - (narrow + W - 1) / W);
-  }
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
   R->low = to && (opening || refill) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
   refillAsked = refillReady = refillAlive = 0; raiseWait = 0;
