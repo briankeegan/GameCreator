@@ -13,7 +13,7 @@
 var REPEAT_FIRST = 10;   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
 var TAP_GAP = 4;         // frames between taps (cursorMoveFrames)
 var MIN_LEG = 3;         // the shortest walk a held key can be no later on
-var HOLDTIGHT = 40;      // the actions short of the limit at which every walk of two cells or more is held, later than taps
+var HOLDTIGHT = 20;      // the actions short of the limit at which every walk of two cells or more is held, later than taps
 
 function holdWalks(inputs, minLeg) {
   var out = inputs.slice(), min = minLeg || MIN_LEG, held = 0, i = 0;

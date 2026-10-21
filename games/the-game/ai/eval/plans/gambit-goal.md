@@ -551,3 +551,9 @@ readiness carries that break as well, made the line in progress once its own swa
 judged as every line is.
 Measured (`78ce3ee1`, run 482, build, one 24, finished 21:1x ET): 21 (combo_storm 7/8 -- 8902 -- factory 8/8, large_garbage 6/8 --
 9682, 10660); a life kept 84% (79-80% before); 0 divergences.
+Measured (`53fe0953`, run 483, build, one 24 on seed 3): 15 (combo_storm 5/8, factory 6/8, large_garbage 4/8). The breaks the live
+search missed and found again in its own time (3418, 4762, 6217) ran on a worker given a second (brAt=1/1088) and ended in 1-3 ms with
+none: on a board 0-28 frames from death, with the allowance tight, the search walks the cursor held from two cells, as the frame loop
+then would -- later than the taps the search again took -- and the break is too late. 96% of decisions were tight at 40 actions left,
+and the busiest 10 s used 53 of 76. THE ALLOWANCE TIGHT AT 20 LEFT, not 40 (core/nodes.h, survivor_keys.js HOLDTIGHT): a walk is tapped,
+on time, till the input limit is near.
