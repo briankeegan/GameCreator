@@ -565,3 +565,5 @@ to spare (core/nodes.h tightAt, pressTap) -- the decision says so and hands it o
 that line so (front.c lineTap); only where the host's frame loop reads it (the native one: native.c gn_setup).
 Measured (`8d6adfc1`, run 485, build, one 24, finished 23:0x ET): 21 (combo_storm 5/8 -- 3759, 6080, 7023 -- factory 8/8,
 large_garbage 8/8); 1 break missed (5 in 483), 0 divergences.
+The same build on more games (runs 486, 487): seed 2 21 (combo_storm 6/8, factory 8/8, large_garbage 7/8), seed 3 19 (6/8, 6/8, 7/8)
+against 15 there on `53fe0953` -- build 21, 21, 19 over three sets of games, 20.3.
