@@ -697,3 +697,7 @@ MODE HAS REACHED 22 on this build's seeds: big chain 22, build 22 (537), finish 
 this build next. Then every mode on one build, every change checked against all four.
 Measured (`8adc9abc`+, runs 542 and 543, pressure): 22 and 22. EVERY MODE ON ONE BUILD (seed 1 / seed 2): big chain 22/20, build
 22/17, finish 23/21, pressure 22/22 -- 169 of 192. The 23 losses: large_garbage 11, combo_storm 10, factory 2.
+UNDER GARBAGE, THE PANELS KEPT: run 538's large_garbage-1 played clears through a slab's pops that bought 6 frames over the hold (236
+against 230, 175 against 169) and took its panels from 19 to 7 -- the hold and the clear both outside the list, key 5 had nothing
+to decide, and the nearer-next-break key took the clear. Now under garbage, of two lost alike, the one that spends no panels below the
+floor comes first (rank.c, before the nearer-break key).

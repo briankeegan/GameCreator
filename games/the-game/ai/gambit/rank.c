@@ -384,6 +384,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (two that do not live and survive alike: the later loss, before the kind of line)
   // -- under garbage, of two alike (as many tries left) the one nearer its next break first: with no break in reach, the frames a hold
   // keeps are frames nothing is built in (run 495: large_garbage held in 1028 decisions with no break in reach and a stop of over 60)
+  // -- and before that, under garbage, of two lost alike the one that spends no panels below the floor (clears and breaks nothing): the
+  // panels under the garbage are the next break's, and nearer is no reason to spend them
+  if (!lx && decF.under && x->spends != y->spends) {
+    double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+    if (lo >= rankSave && (int)(lo / rankSave) == (int)(hi / rankSave)) return x->spends ? 1 : -1;
+  }
   if (!lx && decF.under && x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && x->o.nearAfter != y->o.nearAfter) {
     double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
     int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
