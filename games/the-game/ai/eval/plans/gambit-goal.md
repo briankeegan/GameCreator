@@ -718,3 +718,7 @@ Measured (`f80146c3`, runs 560-562, random seeds): big chain 20, build 17, finis
 before (17-19). Under garbage -- 99% of training's decisions -- every entry asks a break, so an attack that leaves the garbage meets
 none and ranks with the hold. THE ATTACKS UNDER GARBAGE: after the three that breaks, the mode's own entries again with no break
 asked (rules.c withAttacks), so a board that lives throws rather than holds; breaks still first.
+Measured (`7080a5de`, runs 564-567, random seeds): big chain 22, build 21, finish 20, pressure 20 -- survival held -- and 18.9, 19.0,
+17.5, 19.4 blocks a minute: still as before. Between two breaks the material keys (6-7c) come before the list, and a three spends
+fewer panels than a combo or a chain, so the three is played even where both lines live. TWO THAT LIVE: the list before the material
+(rank.c 5a).
