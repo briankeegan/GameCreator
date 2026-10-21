@@ -767,3 +767,5 @@ swap's (wastedAlone 0).
 Measured (fight on `7fbcbd79`, 20 minutes, Gambit against the default on the fork's server at level 10): 2 won, 5 lost (1-12 and 0-26
 before the raise was capped). 13 wasted threes over the run, every one a save -- nothing lived and the hold was lost within a break's
 time; 1875 decisions dropped a wasted three.
+Measured (`7fbcbd79`, runs 602-605, random seeds): big chain 24 (the first 24), build 20, finish 22, pressure 22 -- 88 of 96; 19.5-20.3
+blocks a minute; 5.8-6.0 wasted threes a minute, every one a swap's -- where the decisions played 2 lines a game the judge saw as one.
