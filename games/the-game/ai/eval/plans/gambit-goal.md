@@ -796,3 +796,7 @@ THE JUDGE READS CLEARS AS THE GAME COUNTS THEM (the owner: "fix the infra"): the
 it is a chain's link (its panels fell from one) and whether garbage is joined to it (pa.c checkMatches, sLink and sTouch -- after the
 board's bytes, no board changed). The judge's wasted three is the frame loop's own test a clear at a time: a three, no link, no garbage,
 no link after it in the step -- where it read the step's chain counter, which a three made while the board's own chain falls shares.
+Measured (`9ac440f5`, runs 625-627): big chain 21, build 23, finish 21; 0.58-0.75 wasted threes a minute, 6-11 swaps refused at the press.
+Under garbage the board is topped with hundreds of frames of stop left, and "topped" let every three through. Now the save is only a
+board lost within a break's time: the press guard lets a three through only topped with GUARD_SAVE (90) stop frames or fewer left, the
+order only where the hold is lost within rankSave.

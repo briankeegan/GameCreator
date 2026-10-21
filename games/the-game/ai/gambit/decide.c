@@ -248,9 +248,9 @@ static int ranked(const Read *R, const Found *S) {
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
   }
   // NO WASTED THREE (the owner: not an option): a line whose clears break nothing and throw nothing is taken out of the order -- unless
-  // the board is topped out, or tops out before the next decision could make a break (the hold lost within rankSave: at one health a
-  // topped board is a lost one), and nothing else keeps it (every other line lost as soon): only there is a three a save
-  { int soon = R->topped;
+  // the board is lost before the next decision could make a break (the hold lost within rankSave -- topped with stop time left, it is
+  // not) and nothing else keeps it (every other line lost as soon): only there is a three a save
+  { int soon = 0;
     for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.lives && lostOf(order[i]) < rankSave) soon = 1;
     int keeps = !soon;
     for (int i = 0; i < n && !keeps; i++) if (!wastesThree(order[i]) && (order[i]->o.lives || lostOf(order[i]) >= rankSave)) keeps = 1;

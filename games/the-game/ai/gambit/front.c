@@ -680,9 +680,10 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
 // ---------------------------------------------------------------- no wasted three, on the board itself
 // THE PRESS GUARD (the owner: a wasted three is never played): a swap about to be pressed is played first on a copy of the board as it is
 // -- the frames after it as the game runs them -- and refused when it makes a clear of three none of whose panels is beside garbage and
-// whose fall makes no chain: a three for nothing, whatever the plan judged. Topped out it is let through (the save). 1: refuse it.
+// whose fall makes no chain: a three for nothing, whatever the plan judged. 1: refuse it.
 #define GUARD_LOOK 30
 #define GUARD_SETTLE 400
+#define GUARD_SAVE 90   // the stop frames a topped board has left when a three is its save (about a break's time at level 11)
 static Board *guardBoard;
 static int wastedSwap(const Board *t, int32_t bits) {
   if (!guardBoard) guardBoard = nb_new();
@@ -766,7 +767,9 @@ static int frontFrame(void) {
     F.raiseCutUntil = now + 30;
   }
   // (no wasted three pressed: the swap refused, the plan dropped, the next decision asked on the board as it is)
-  if ((bits & IN_SWAP & ~F.prevBits) && !(F.toppedNow || t->wasToppedOut) && wastedSwap(t, bits)) {
+  // (let through only as the save: topped out, its stop all but spent -- a topped board still stopped lives on, it needs no three)
+  int saveNow = (F.toppedNow || t->wasToppedOut) && t->stopTime + t->preStopTime <= GUARD_SAVE;
+  if ((bits & IN_SWAP & ~F.prevBits) && !saveNow && wastedSwap(t, bits)) {
     bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
   }
   if (bits & IN_SWAP & ~F.prevBits) moveBegin(t);
