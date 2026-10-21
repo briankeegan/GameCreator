@@ -621,3 +621,4 @@ Measured (`9814de13`, run 504, big chain, seed 2): 18 (combo_storm 7/8 -- 3/8 be
 THE OPENING RAISE LEAVES ROOM FOR THE GARBAGE ON ITS WAY: large_garbage-3 on seed 2 died at 421 in runs 495 and 504 -- the opening raise
 took the stack to 42 panels under a slab 105 frames off. The rows raised to now lose the rows on their way (a slab its height, narrower
 pieces their cells a row's worth at a time; decide.c read).
+Measured (`dc1b4337`, run 505, big chain, seed 2): 21 (combo_storm 6/8, factory 8/8, large_garbage 7/8) against 17 and 18 there.
