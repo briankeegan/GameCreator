@@ -542,3 +542,5 @@ waits, a breaking line ranks in the last tier (facts.c tierOf, 6), and only line
 Now a line that breaks is carried whatever its tier.
 Measured (`f5b63ce4`, run 478, build, one 24): 17 (combo_storm 6/8, factory 5/8, large_garbage 6/8); none of its losses the line
 forgotten after its first swap -- each a board with no break in reach for 200-300 frames before it died.
+Every mode on `a83c820f`, one 24 each (runs 479-481): finish 17 (6, 7, 4; aim 64%), pressure 20 (8, 5, 7; aim 9%), big chain 18 (7, 7,
+4; aim 0%); build 17-20 (476-478). large_garbage the weakest pattern in three modes of four.
