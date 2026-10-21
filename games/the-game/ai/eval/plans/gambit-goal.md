@@ -709,3 +709,7 @@ Measured (`a5241725`, runs 548-551, seed 1, HORIZON 300): big chain 20, build 14
 horizon decides a great deal; the other way next: HORIZON 200.
 RANDOM SEEDS (the owner): every run plays new games -- the seed input's default is empty. The fixed-seed runs above measured the
 same 24 games each time.
+TWICE AS AGGRESSIVE (the owner, watching the fight: "still going for threes, which are worthless -- twice as aggressive"): every
+mode's list now ends with every attack it can throw -- a chain of 2 or more, a combo of 4 or more (finish them: its own combos and
+2-chain, then any combo of 4 or more and chain of 3 or more, before its three) -- so a line that throws ranks within the list, after
+the mode's own aim and before the three that breaks (gambit-rules.json). Measured by the summary's blocks thrown a minute.
