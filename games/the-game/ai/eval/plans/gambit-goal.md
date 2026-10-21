@@ -677,3 +677,6 @@ Measured (`073c8349`, runs 528 and 529, seed 1): build 22 (combo_storm 7/8, fact
 Measured (`7dc3b42c`, runs 530 and 531, seed 2): build 21 (combo_storm 8/8, factory 8/8, large_garbage 5/8) against 16, pressure 18
 (combo_storm 8/8, factory 7/8, large_garbage 3/8) against 22. Build and pressure over both seeds: 80 with the rule off garbage, 76
 with it everywhere -- it stays off garbage.
+NEARER, IF THE ALLOWANCE AFFORDS IT: run 530's large_garbage-2 walked eight-swap lines toward a break through a slab's 170-frame pop,
+chosen by the nearer-next-break key, and had 9 actions of the allowance left when the pop ended -- no break's walk. That key now
+takes a nearer line only when its walk leaves a break's (BREAK_WALK 20 actions) in the allowance (rank.c).

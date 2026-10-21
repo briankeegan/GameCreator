@@ -276,6 +276,7 @@ static void markIdle(Judge **a, int n) {
 static int cutsShort(const Judge *J) { return !J->hold && J->apPlayed && aloneChain > 1 && J->apWhole < aloneChain; }
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
+#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
@@ -380,7 +381,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && decF.under && x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && x->o.nearAfter != y->o.nearAfter) {
     double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
     int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
-    if (lo >= rankSave && tlo == thi) return x->o.nearAfter - y->o.nearAfter;
+    // (and only a nearer line the input allowance affords with a break's walk to spare (BREAK_WALK): one that walks the allowance down
+    // to nothing is nearer a break it cannot then press)
+    const Judge *nr = x->o.nearAfter < y->o.nearAfter ? x : y;
+    if (lo >= rankSave && tlo == thi && (pressAllowance < 0 || pressAllowance - lineWalk(nr) >= BREAK_WALK)) return x->o.nearAfter - y->o.nearAfter;
   }
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   Tier tx = tierView(x), ty = tierView(y);
