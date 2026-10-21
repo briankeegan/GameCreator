@@ -567,3 +567,7 @@ Measured (`8d6adfc1`, run 485, build, one 24, finished 23:0x ET): 21 (combo_stor
 large_garbage 8/8); 1 break missed (5 in 483), 0 divergences.
 The same build on more games (runs 486, 487): seed 2 21 (combo_storm 6/8, factory 8/8, large_garbage 7/8), seed 3 19 (6/8, 6/8, 7/8)
 against 15 there on `53fe0953` -- build 21, 21, 19 over three sets of games, 20.3.
+UNDER A POP, THE TOUCH BEAM FIRST: with a slab popping the break search tried the popping slab's line-ups first and the touch beam on
+the garbage elsewhere with what was left -- factory-1 (run 487, 6992-7019) missed breaks of 7 and 8 swaps searched again in 95-106 ms of
+the 210-257 it had, each decision cut. Now under a pop the touch beam has the first half of what is left, the line-ups and the touch beam
+after them the rest (search/break.c).

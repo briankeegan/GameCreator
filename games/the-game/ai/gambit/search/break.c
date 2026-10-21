@@ -506,6 +506,15 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   }
   if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; return; }
   if (wait > 0) {
+    // (a slab popping: the touch beam on the garbage elsewhere first, in half what is left -- a line-up's tries can take the whole of
+    // it, and the touch beam had none (run 487, factory-1: a break of 7 swaps under a pop of 99 frames, found in 95 ms of 257 searched
+    // again, missed)
+    if (clockShare > 0) {
+      double half = nowMs() + (clockShare - nowMs()) / 2, old = clockShareBegin(half);
+      int hit = touchBeam(&s, firsts, nfirsts);
+      clockShareEnd(old);
+      if (hit) { out->depth = 1; return; }
+    }
     int w0 = step(x, s.root, MK_LONG, 0, 0, wait);
     if (w0 >= 0 && w0 < (1 << 20)) outsideBuf[w0] = 0;   // (made from the root: within the rules so far)
     if (!breaksAt(&s, w0, 0, 0) && lineups(&s, firsts, nfirsts)) { out->depth = 1; return; }
