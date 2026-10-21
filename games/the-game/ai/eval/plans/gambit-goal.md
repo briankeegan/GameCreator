@@ -745,3 +745,5 @@ not dropped; it comes after every line that wastes none -- before the lives key 
 NO WASTED THREE, NOT AN OPTION (the owner): a line whose clears break nothing and throw nothing is taken out of the order -- unless every
 other line is lost before the next decision could make a break, when the three that saves the board is no waste (decide.c ranked,
 'w' in the log's dropped counts). The rank key for it is gone.
+Only topped out (the owner: "not allowed if not topped out, that's not a save"): the wasted three is let back only when the board is
+topped and nothing else keeps it.
