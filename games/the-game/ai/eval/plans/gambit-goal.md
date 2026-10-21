@@ -637,3 +637,5 @@ under it, and how many touch (search/break.c touchPotential) -- the beam's score
 Measured (`daab542f`, run 510, big chain, seed 1): 12 (combo_storm 3/8, factory 5/8, large_garbage 4/8) against 19 -- the makings of a
 break as nearness took the order's nearAfter (the tier, the alike rule, beating the hold) over by small differences, and the panels
 went. Taken back (search/break.c as at `5f4e7ece`).
+THE MAKINGS OF A BREAK, THE BEAM'S ONLY: the same measure as the break search's beam score past breakNear's reach, and nowhere else
+(search/break.c nearScore); the order's nearness stays breakNear's.
