@@ -350,8 +350,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
   int n = ranked(&R, &S);
-  // (the floor's raise gives way to a line that lives or breaks: the break is what the raise brings the panels in for)
-  if (R.up && raiseRefill && n && (order[0]->o.lives || order[0]->apBroke > 0)) R.up = R.low = 0;
+  // (the floor's raise gives way to nothing: a low stack is raised, and the break it holds ready is made once it has risen (the owner)
+  // -- the rows raised are the ones that leave a break once everything lands, decide.c read)
   // (and the opening's to a break, where nothing lives: a raise is no answer to garbage landing on a board that dies)
   if (R.up && !raiseRefill && n && !order[0]->o.lives && order[0]->apBroke > 0) R.up = R.low = 0;
   Played P = playOf(&R, n);

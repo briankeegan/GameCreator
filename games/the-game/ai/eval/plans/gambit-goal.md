@@ -730,3 +730,7 @@ throw nothing ranks after one that does not (rank.c 2a) -- 80 such decisions in 
 THE LINE THAT THROWS (the owner: "still randomly breaking 3s"): under garbage the three that breaks came before an attack that leaves
 the garbage. Now of two lines that live, one that throws comes before one that throws nothing -- the three that breaks, a set-up, the
 hold (rank.c 2b).
+A LOW STACK RAISES (the owner: below six rows, raise high, if not topped; the break is held ready and made after it raises): the
+floor's raise now asks for a stack under LOW_ROWS (6) rows of panels as well as below the material floor, not topped, raising toward
+`raise.to` (11) -- and gives way to nothing (it gave way to any line that lived or broke, so in a fight it never raised). Its rows are
+the ones that leave a break once everything lands (decide.c read, answer.c).
