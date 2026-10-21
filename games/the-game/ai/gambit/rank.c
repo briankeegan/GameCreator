@@ -239,6 +239,9 @@ static int moreIdeas(const Judge *x, const Judge *y) { int a = ideasOf(x), b = i
 // THE BLOCKS A LINE THROWS (judge.c blocks: every attack its own)
 static int thrownOf(const Judge *J) { return J->hold || J->o.dead ? 0 : J->o.j.blocks; }
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
+// A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
+// and none broken
+static int wastesThree(const Judge *J) { return !J->hold && (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0; }
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
   // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
@@ -299,6 +302,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
     // 2. (both live) within the list before outside it
     if (x->outside != y->outside) return x->outside ? 1 : -1;
+    // 2a. (both live) no wasted three: a board that lives either way does not spend three panels for nothing (the owner)
+    if (wastesThree(x) != wastesThree(y)) return wastesThree(x) ? 1 : -1;
     // 3. (both live) a hold that lives by the break it waits for is that break played later: a line that breaks and lives now first
     int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
     if (hx != hy) return hx ? 1 : -1;

@@ -722,3 +722,8 @@ Measured (`7080a5de`, runs 564-567, random seeds): big chain 22, build 21, finis
 17.5, 19.4 blocks a minute: still as before. Between two breaks the material keys (6-7c) come before the list, and a three spends
 fewer panels than a combo or a chain, so the three is played even where both lines live. TWO THAT LIVE: the list before the material
 (rank.c 5a).
+EVERY MOVE ON THE WAY, PRESSED THROUGH (the owner, watching the fight: big moves corner to corner, nothing done on the way): the fight
+offered 2658 lines with a swap on the way and played 69 -- each pressed its way swap and then waited for the board to settle, so a
+clear on the way put the line it led to off by that clear's time. Now each is offered pressed straight through too (propose.c
+wayLines). NO WASTED THREE (the owner: "still wasting 3s for no reason"): of two lines that live, one whose clears break nothing and
+throw nothing ranks after one that does not (rank.c 2a) -- 80 such decisions in the fight's 4781.

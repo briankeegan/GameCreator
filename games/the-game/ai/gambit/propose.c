@@ -379,10 +379,16 @@ static int wayLines(Cand *out, int n, int cap) {
       if (shared) continue;
       int32_t seq[MAXLINE]; seq[0] = s;
       for (int m = 0; m < k0.nseq; m++) seq[m + 1] = k0.seq[m];
-      Cand *c = &out[n];
-      if (!candOf(c, k0.play, seq, k0.nseq + 1, k0.aim, 0)) continue;
-      c->settled = 1; c->way = 1; c->x = k0.x; c->xFire = -1; c->xDone = -1;
-      n++; added++; wayOffered++;
+      // (twice: each swap pressed once the board settles, and pressed straight through -- the cursor walks on while the swap on its
+      // way still clears, so the line it was on its way to is not put off by that clear's time)
+      int got = 0;
+      for (int at = 0; at < 2 && n < cap; at++) {
+        Cand *c = &out[n];
+        if (!candOf(c, k0.play, seq, k0.nseq + 1, k0.aim, 0)) continue;
+        c->settled = !at; c->way = 1; c->x = k0.x; c->xFire = -1; c->xDone = -1;
+        n++; got = 1; wayOffered++;
+      }
+      added += got;
     }
   }
   return n;
