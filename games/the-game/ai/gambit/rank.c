@@ -307,8 +307,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // -- on a board short of panels (below the floor) always; on one with panels to spare, not over a line lost a break's time later (run
     // 443, pressure, 47 panels: a break lost at 193 played over a line lost at 335). Short, the panels a break converts are the next
     // break's (run 444: large_garbage 7 to 3 of 8 with the break held to the later loss everywhere)
-    int bx = x->apBroke > 0 && lostOf(x) >= rankSave, by = y->apBroke > 0 && lostOf(y) >= rankSave;
-    if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return bx ? -1 : 1; }
+    // -- and under garbage always: breaking is where the board's next panels come from (the owner)
+    int bx = x->apBroke > 0 && (decF.under || lostOf(x) >= rankSave), by = y->apBroke > 0 && (decF.under || lostOf(y) >= rankSave);
+    if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.under || decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return bx ? -1 : 1; }
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.

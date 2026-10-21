@@ -591,3 +591,6 @@ Measured (`b18d0d90`, run 493, build, seed 2): 20 (combo_storm 6/8, factory 7/8,
 MORE BROKEN BEFORE THE PANELS KEPT (the owner: a board running out of panels is a board not breaking): of two breaks under garbage that
 neither lives, the one that breaks more now comes before the material keys (rank.c 7b before 6 and 7a) -- the garbage a break gets off is
 the board's next panels.
+UNDER GARBAGE A BREAK FIRST, ALWAYS (the owner: breaking is how the board gets more blocks): of two lines that neither lives under
+garbage, the one that breaks comes first whatever their losses (rank.c 2) -- before, a break gave way to a line lost a break's time
+later on a board with panels to spare, and to any line when the break itself was lost within a break's time.
