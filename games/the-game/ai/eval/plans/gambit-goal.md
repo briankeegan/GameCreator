@@ -647,3 +647,11 @@ THE MAKINGS WEIGH AS THE UNEVENNESS DOES: 25 a unit (up to 600), so a level stac
 Measured (`a10b61bb`, runs 513 and 514, big chain, seeds 1 and 2): 19 and 18 -- 37 over both seeds, against 38 at 100 a unit and 41
 without the makings. Taken back (search/break.c as at `5f4e7ece`).
 Big chain reached 22 at `5f4e7ece` (run 507); on to pressure and finish, measured on this build (`5f4e7ece`'s Gambit).
+Measured (`92d19244`, runs 515 and 516, seed 1): pressure 18 (combo_storm 4/8, factory 8/8, large_garbage 6/8), finish 18
+(combo_storm 5/8, factory 7/8, large_garbage 6/8). Every mode's combo_storm is its weakest pattern; two of its losses come before
+frame 1600.
+BOUGHT WITH THE PANELS: pressure's combo_storm-6 (run 515) spent 39 panels to 18 before garbage ever reached the board -- every
+decision a clear lost later than the hold, each clear's stop holding the stack from rising, its chains keeping the rise locked (the
+floor's raise asked and never open). Now the later loss a line that spends panels below the floor buys is no reason to pass over one
+that spends none and leaves the next decision a try: the two survive alike, and the list puts the one that keeps its panels first
+(rank.c key 3).
