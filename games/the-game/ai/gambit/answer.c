@@ -211,6 +211,9 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE };
 static int32_t jobKinds[5], njobKinds;
 static Broke theBrWide; static int32_t wideDone;
+// (where the break search ran, for the log: 0 not run, 1 a worker beside the searches, 2 the decision after a worker had not finished it,
+// 3 the decision with no worker free; and the ms it was given)
+static int32_t brWhere; static double brGiven;
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
   clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
@@ -248,7 +251,8 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 // 120 boards searched again, run 415, where 1 to 3 had been)
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
   jobsDone(brCtx);
-  if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) return breakSearch(R, lineFrom, linePressed, ms);
+  if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = leftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
+  brWhere = 1; brGiven = brJobBy - brJobT0;
   if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
   *ms = brJobMs; brCut = brJobT0 + brJobMs >= brJobBy; brResumed = brHave ? brResume.n : 0;
   return 1;
@@ -329,6 +333,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   int beside = breakBegin(&R, &S, lineFrom, linePressed);
   if (!beside) searchUnsplit();
   searchBeside = beside;
+  brWhere = 0; brGiven = 0;
+  if (!beside) { brWhere = 3; brGiven = leftMs(); }
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   double ts = nowMs();
   searchAll(&R, &S);
@@ -453,7 +459,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }
   else L_s("none");
-  L_s(" brMs="); L_i((int64_t)brMs);
+  L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
   int any = 0;
