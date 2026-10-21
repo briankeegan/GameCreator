@@ -28,8 +28,8 @@ on:
         description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
         default: 'gambit'
       seed:
-        description: 'The panel seed base (PA_SEED = base*100 + pattern*10 + game: every game the same panels every run, so builds are measured on the same games); empty for random'
-        default: '1'
+        description: 'The panel seed base (PA_SEED = base*100 + pattern*10 + game: every game the same panels every run); empty (the default) for random -- every run new games'
+        default: ''
       patterns:
         description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games; the goal is measured on all three)'
         default: '["combo_storm","factory","large_garbage"]'

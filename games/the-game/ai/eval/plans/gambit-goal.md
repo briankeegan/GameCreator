@@ -707,3 +707,5 @@ THE HORIZON 300: a line lives when its board is alive 240 frames on -- four seco
 alive to 600 are both "lives" and the list's keys, not survival, order them. Now 300 (outcome.c HORIZON).
 Measured (`a5241725`, runs 548-551, seed 1, HORIZON 300): big chain 20, build 14, finish 19, pressure 20 -- 73 against 89. The
 horizon decides a great deal; the other way next: HORIZON 200.
+RANDOM SEEDS (the owner): every run plays new games -- the seed input's default is empty. The fixed-seed runs above measured the
+same 24 games each time.
