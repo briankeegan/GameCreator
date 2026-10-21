@@ -788,3 +788,7 @@ blocks a minute; 0.77-1.00 wasted threes a minute (6 a minute was the miscount).
 lost (their threes were not read: now they are, rank.c wastesThree), 2 the save, 8 lines the judge saw none in.
 Measured (fight on `339bb3d9`): 5 won, 6 lost against the default (6-6 before this round's raise and three changes; 0-26 and 1-12 while
 the raise was uncapped).
+THE PRESS GUARD (the owner: "why are threes still wasted"): the judge's word is a prediction, and where it is wrong a three gets through.
+Now every swap about to be pressed is played first on a copy of the board as it is; one that makes a clear of three beside no garbage
+whose fall makes no chain is not pressed -- the plan dropped, the next decision asked -- unless the board is topped out (front.c
+wastedSwap; the summary's `swaps refused at the press`).

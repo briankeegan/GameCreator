@@ -56,7 +56,7 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
-  int32_t wasted, wastedAlone;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own)
+  int32_t wasted, wastedAlone, wasteRefused;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own)
 } FStats;
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 // (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
@@ -677,6 +677,44 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
   return bySwap;
 }
 
+// ---------------------------------------------------------------- no wasted three, on the board itself
+// THE PRESS GUARD (the owner: a wasted three is never played): a swap about to be pressed is played first on a copy of the board as it is
+// -- the frames after it as the game runs them -- and refused when it makes a clear of three none of whose panels is beside garbage and
+// whose fall makes no chain: a three for nothing, whatever the plan judged. Topped out it is let through (the save). 1: refuse it.
+#define GUARD_LOOK 30
+#define GUARD_SETTLE 400
+static Board *guardBoard;
+static int wastedSwap(const Board *t, int32_t bits) {
+  if (!guardBoard) guardBoard = nb_new();
+  if (!guardBoard) return 0;
+  Board *g = guardBoard;
+  copyBoard(g, t);
+  static int32_t was[MAXROWS * W];
+  int nw = 0;
+  for (int r = 1; r < g->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = g->p[r][c].f; if (f[STATE] == MATCHED && nw < MAXROWS * W) was[nw++] = f[ID]; }
+  g->input = bits & ~IN_SWAP; g->pressSwap = 1;
+  int fresh = 0, touch = 0, f = 0;
+  for (; f < GUARD_LOOK && !fresh && g->gameOverClock <= 0; f++) {
+    run(g); g->input = 0; g->pressSwap = 0;
+    for (int r = 1; r < g->nrows; r++) for (int c = 1; c <= W; c++) {
+      const int32_t *p = g->p[r][c].f;
+      if (p[STATE] != MATCHED || p[ISGARBAGE]) continue;
+      int old = 0; for (int q = 0; q < nw && !old; q++) old = was[q] == p[ID];
+      if (old) continue;
+      fresh++;
+      static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
+      for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc = c + DC[d]; if (rr >= 1 && rr < g->nrows && cc >= 1 && cc <= W && g->p[rr][cc].f[ISGARBAGE]) touch = 1; }
+    }
+  }
+  if (fresh != 3 || touch) return 0;
+  // (its fall: a chain within GUARD_SETTLE frames makes it a chain's first link)
+  for (int k = 0; k < GUARD_SETTLE && g->gameOverClock <= 0; k++) {
+    run(g);
+    if (g->chainCounter >= 2) return 0;
+    if (g->chainCounter == 0 && !hasActivePanels(g)) break;
+  }
+  return 1;
+}
 // ---------------------------------------------------------------- one frame
 static int frontFrame(void) {
   Board *t = F.truth;
@@ -726,6 +764,10 @@ static int frontFrame(void) {
     bits &= ~IN_RAISE; F.holdLeft = 0; F.holdStarted = 0;
     if (!(now < F.raiseCutUntil)) { dropAll(); F.st.raiseCut++; }
     F.raiseCutUntil = now + 30;
+  }
+  // (no wasted three pressed: the swap refused, the plan dropped, the next decision asked on the board as it is)
+  if ((bits & IN_SWAP & ~F.prevBits) && !(F.toppedNow || t->wasToppedOut) && wastedSwap(t, bits)) {
+    bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
   }
   if (bits & IN_SWAP & ~F.prevBits) moveBegin(t);
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
@@ -805,8 +847,8 @@ static void statsLine(char *out, int cap) {
   }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
   // (the swaps still followed when the match ends are counted by what they came to so far: nothing yet)
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d}}",
-                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone);
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d}}",
+                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused);
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {
