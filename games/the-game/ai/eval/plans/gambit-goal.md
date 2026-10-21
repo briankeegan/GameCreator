@@ -783,3 +783,6 @@ THE COUNT WAS WRONG: the frame loop booked a three as wasted the frame the chain
 their link (run 612, frame 1133: a three of 4s in column 1, its fall a three of 1s, the 2-chain the judge saw). A three is now counted,
 and logged, once its clear and every panel falling from it have settled with no chain (front.c countAttacks). The 6 a minute were mostly
 chains' first links.
+Measured (`339bb3d9`, runs 613-616, random seeds, the count corrected): big chain 22, build 20, finish 23, pressure 22 -- 87 of 96; 20
+blocks a minute; 0.77-1.00 wasted threes a minute (6 a minute was the miscount). Of 14 in three games: 4 from lines the judge saw as
+lost (their threes were not read: now they are, rank.c wastesThree), 2 the save, 8 lines the judge saw none in.

@@ -243,7 +243,7 @@ static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 // and none broken
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
-  if (!J->o.dead && J->o.j.threes > 0) return 1;   // (any clear of three the line makes for nothing, whatever else it makes)
+  if (J->o.j.threes > 0) return 1;   // (any clear of three the line makes for nothing, whatever else it makes -- a line lost too)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
 static int beatsHold(const Judge *L, const Judge *H) {
