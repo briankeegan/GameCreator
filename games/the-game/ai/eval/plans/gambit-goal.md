@@ -681,3 +681,6 @@ NEARER, IF THE ALLOWANCE AFFORDS IT: run 530's large_garbage-2 walked eight-swap
 chosen by the nearer-next-break key, and had 9 actions of the allowance left when the pop ended -- no break's walk. That key now
 takes a nearer line only when its walk leaves a break's (BREAK_WALK 20 actions) in the allowance (rank.c).
 Measured (`77b3b8b3`, runs 532 and 533, seed 2): pressure 21 against 18, build 17 against 21 -- 38 against 39. Seed 1 next.
+Measured (`6a5231a3`, runs 534 and 535, seed 1): pressure 23 (combo_storm 7/8, factory 8/8, large_garbage 8/8) against 19, build 20
+(combo_storm 6/8, factory 8/8, large_garbage 6/8) against 22. The allowance rule over both seeds: 81 against 80; it stays. Pressure
+23 and 21; build 20 and 17.
