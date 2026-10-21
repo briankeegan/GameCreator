@@ -248,6 +248,13 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   if (!o->settled) links = imax(links, imax(0, chain - 1));
   j->blocks = imax(0, pieces + links - blocksOf(baseCombo, baseChain));
   j->threes = imax(0, threes - baseThrees);
+  // (and the first swap settled alone: a three it makes for nothing is wasted whatever the line does after -- a line pressed straight
+  // through takes its first clear into a step its later chain is counted in, where the step's count does not see it)
+  if (nseq > 0 && !j->threes) {
+    int f1 = step(x, root, MK_SETTLE, CR(seq[0]), CC(seq[0]), 0);
+    Stats fs;
+    if (liveNode(x, f1) && statsOf(x, f1, &fs)) j->threes = imax(0, threesOf(&fs) - baseThrees);
+  }
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;

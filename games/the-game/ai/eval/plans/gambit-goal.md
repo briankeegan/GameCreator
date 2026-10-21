@@ -769,3 +769,6 @@ before the raise was capped). 13 wasted threes over the run, every one a save --
 time; 1875 decisions dropped a wasted three.
 Measured (`7fbcbd79`, runs 602-605, random seeds): big chain 24 (the first 24), build 20, finish 22, pressure 22 -- 88 of 96; 19.5-20.3
 blocks a minute; 5.8-6.0 wasted threes a minute, every one a swap's -- where the decisions played 2 lines a game the judge saw as one.
+THE FIRST SWAP'S THREE: run 606's wasted threes (GAMBITW) were each made 6 frames after the first swap of a line the judge took as an
+attack -- a three now, a 2-chain 280 frames on: pressed straight through, the three falls in a step its later chain is counted in. Now
+the first swap is settled alone too, and a three it makes for nothing makes the line a wasted three (judge.c).
