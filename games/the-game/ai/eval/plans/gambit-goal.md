@@ -800,3 +800,4 @@ Measured (`9ac440f5`, runs 625-627): big chain 21, build 23, finish 21; 0.58-0.7
 Under garbage the board is topped with hundreds of frames of stop left, and "topped" let every three through. Now the save is only a
 board lost within a break's time: the press guard lets a three through only topped with GUARD_SAVE (90) stop frames or fewer left, the
 order only where the hold is lost within rankSave.
+Measured (`9ac440f5`, run 628, pressure): 24 of 24 -- pressure's first 24 -- 0.55 wasted threes a minute. The fight there: 2 won, 5 lost.
