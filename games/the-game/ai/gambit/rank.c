@@ -26,6 +26,7 @@ typedef struct {
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
+  int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
@@ -98,7 +99,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // board needs: outside too)
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
-  if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = 1;
+  if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = J->spends = 1;
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
   // entries, then the one rule's three that breaks)
   // (read off what the board ends up making, the chain already under way included: a swap that cuts it short meets what is left of it,
@@ -243,6 +244,9 @@ static int beatsHold(const Judge *L, const Judge *H) {
   // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
   if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
+  // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
+  // breaks lost at 44 put after a hold lost at 44)
+  if (L->apBroke > 0 && l != NOT_ASKED && h != NOT_ASKED && (l == FOREVER || (h != FOREVER && l >= h))) return 1;
   if (L->o.ready == 1 && H->o.ready != 1) return 1;
   if (L->readyNext == 1 && H->readyNext != NOT_ASKED && H->readyNext != 1) return 1;
   // (A SET-UP: with no garbage on the board, a line that lives where the hold does and leaves more ideas ready than the hold -- an attack
@@ -323,7 +327,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 5. (neither lives) within the list before outside it -- but not between two breaks under garbage: every mode defends itself while
     // it attacks, and of two breaks that both die the list's ask is not what decides -- the garbage they break (7b) and the material they
     // leave (6, 7a) do (run 441, big chain: a combo that breaks is outside a list of 8-chains, and was ranked below a plain three)
-    if (x->outside != y->outside && !(decF.under && x->apBroke > 0 && y->apBroke > 0)) return x->outside ? 1 : -1;
+    // -- nor, under garbage, between two that both die where the one outside it spends no panels below the floor: dying, the list's
+    // order is not what keeps the board (run 491, large_garbage-6: a hold lost at 194 over a line toward a break lost at 212)
+    if (x->outside != y->outside && !(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends)) return x->outside ? 1 : -1;
   }
   // 6. THE NEXT BREAK'S MATERIAL: of two breaks under garbage, the one that leaves a break to build (outcome.c nextBuild) and keeps the
   // board's floor -- before the list's entry: the list orders the breaks the board can afford

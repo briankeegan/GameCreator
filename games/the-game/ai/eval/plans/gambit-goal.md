@@ -581,3 +581,8 @@ over runs 482-490: 21, 15, 17, 21, 21, 19, 18, 20, 18 -- one 24 swings three gam
 THE TAP KEEPS 16: factory-4 (run 490, 13331-13357) died with no actions left (allow=0), every line cut for a walk over the allowance --
 the taps had spent down to the reserve of 8 and past it on the walks they made. The reserve is 16 (core/nodes.h TAP_RESERVE).
 Measured (`0ef152bb`, run 491, build, seed 1): 19 (combo_storm 7/8, factory 8/8, large_garbage 4/8).
+DYING UNDER GARBAGE, THE LIST DOES NOT ORDER, AND A BREAK BEATS THE HOLD IT OUTLASTS: run 491's large_garbage-6 (13932) played a hold lost
+at 194 over a line toward a break lost at 212 -- the line outside the list, put after the hold by key 5 -- and large_garbage-4 (7531) a
+hold lost at 44 over two breaks lost at 44, the breaks taken for lines no better than holding. Now under garbage, between two that both
+die, the list orders only a line that spends panels below the floor (rank.c 5, J->spends); and a break lost no sooner than the hold beats
+it (rank.c beatsHold).
