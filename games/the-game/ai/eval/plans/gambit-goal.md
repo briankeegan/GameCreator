@@ -617,3 +617,7 @@ where build is 8/8; the panels on the board the same in both modes, off garbage 
 LED AS A CHAIN OF FIVE: the searches and the order under garbage take a list's chain over five as a chain of five or more, breaking --
 the lead build plays under garbage by; the list itself, what fits and what meets, stays the mode's (rules.c guideShort, in place of
 withChains).
+Measured (`9814de13`, run 504, big chain, seed 2): 18 (combo_storm 7/8 -- 3/8 before -- factory 6/8, large_garbage 5/8).
+THE OPENING RAISE LEAVES ROOM FOR THE GARBAGE ON ITS WAY: large_garbage-3 on seed 2 died at 421 in runs 495 and 504 -- the opening raise
+took the stack to 42 panels under a slab 105 frames off. The rows raised to now lose the rows on their way (a slab its height, narrower
+pieces their cells a row's worth at a time; decide.c read).
