@@ -750,3 +750,6 @@ topped and nothing else keeps it.
 Measured (`d514b767`, runs 592-595, random seeds): big chain 19, build 20, finish 22, pressure 21 -- 82; 17.9-19.3 blocks a minute.
 WASTED THREES COUNTED ON THE GAME, NOT THE PLAN: the frame loop counts every clear of three that broke no garbage and was no link of a
 chain (front.c countAttacks, the match's moves.wasted; gambit_summary.js `wasted threes`) -- the number the owner wants at 0.
+Measured (`079e0b86`, runs 596 and 597): finish 20, pressure 18; 9.2 and 10.0 wasted threes a minute on the game -- where 2 of a game's
+984 decisions played a line the judge saw as one. The count now splits a swap's three (a panel a followed swap moved is in it) from
+the stack's own (front.c, `wasted` and `wastedAlone`).
