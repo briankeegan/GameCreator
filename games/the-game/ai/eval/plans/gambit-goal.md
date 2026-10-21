@@ -549,3 +549,5 @@ life kept", 79-80%). Big chain's large_garbage (run 481, 11360): the line in pro
 its swaps pressed, the next decision's break search did not find that break, and nothing lived. Now a line played that lives by its
 readiness carries that break as well, made the line in progress once its own swaps are pressed (decide.c theCarryNext), offered and
 judged as every line is.
+Measured (`78ce3ee1`, run 482, build, one 24, finished 21:1x ET): 21 (combo_storm 7/8 -- 8902 -- factory 8/8, large_garbage 6/8 --
+9682, 10660); a life kept 84% (79-80% before); 0 divergences.
