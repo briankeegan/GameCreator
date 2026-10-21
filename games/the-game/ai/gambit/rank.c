@@ -304,6 +304,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (x->outside != y->outside) return x->outside ? 1 : -1;
     // 2a. (both live) no wasted three: a board that lives either way does not spend three panels for nothing (the owner)
     if (wastesThree(x) != wastesThree(y)) return wastesThree(x) ? 1 : -1;
+    // 2b. (both live) the line that throws before one that throws nothing -- a three that breaks, a set-up, the hold: a board that lives
+    // either way sends garbage (the owner: twice as aggressive, no threes)
+    if ((thrownOf(x) > 0) != (thrownOf(y) > 0)) return thrownOf(x) > 0 ? -1 : 1;
     // 3. (both live) a hold that lives by the break it waits for is that break played later: a line that breaks and lives now first
     int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
     if (hx != hy) return hx ? 1 : -1;

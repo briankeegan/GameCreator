@@ -727,3 +727,6 @@ offered 2658 lines with a swap on the way and played 69 -- each pressed its way 
 clear on the way put the line it led to off by that clear's time. Now each is offered pressed straight through too (propose.c
 wayLines). NO WASTED THREE (the owner: "still wasting 3s for no reason"): of two lines that live, one whose clears break nothing and
 throw nothing ranks after one that does not (rank.c 2a) -- 80 such decisions in the fight's 4781.
+THE LINE THAT THROWS (the owner: "still randomly breaking 3s"): under garbage the three that breaks came before an attack that leaves
+the garbage. Now of two lines that live, one that throws comes before one that throws nothing -- the three that breaks, a set-up, the
+hold (rank.c 2b).
