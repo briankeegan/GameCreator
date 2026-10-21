@@ -742,3 +742,6 @@ ordered such lines last are gone.
 A WASTED THREE ONLY TO STAY ALIVE (the owner: it should not die rather than take one -- it took them when it would not have died):
 not dropped; it comes after every line that wastes none -- before the lives key -- unless that line is lost within a break's time
 (rankSave): the horizon calling the hold lost 200 frames on is no reason to spend three panels (rank.c key 0).
+NO WASTED THREE, NOT AN OPTION (the owner): a line whose clears break nothing and throw nothing is taken out of the order -- unless every
+other line is lost before the next decision could make a break, when the three that saves the board is no waste (decide.c ranked,
+'w' in the log's dropped counts). The rank key for it is gone.

@@ -53,4 +53,4 @@ games.forEach(function (g) {
 });
 console.log('\n' + lost + ' lost, ' + won + ' survived, of ' + (lost + won));
 console.log('how the moves were chosen, last ' + LAST + ' decisions of every loss: ' + JSON.stringify(whyAll));
-console.log('candidates dropped there, by why (o list, t late, r ready, b back, f floor, u unbroken, c cut): ' + JSON.stringify(dropAll));
+console.log('candidates dropped there, by why (o list, t late, r ready, b back, f floor, u unbroken, c cut, w a wasted three): ' + JSON.stringify(dropAll));
