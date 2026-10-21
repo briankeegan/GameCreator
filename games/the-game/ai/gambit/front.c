@@ -683,7 +683,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
 // whose fall makes no chain: a three for nothing, whatever the plan judged. 1: refuse it.
 #define GUARD_LOOK 30
 #define GUARD_SETTLE 400
-#define GUARD_DIE 120   // the frames the board is played on, with the swap and without, to tell a three that saves it
+#define GUARD_DIE 120   // the frames the board is played on without the swap: lost within them, the three is its save
 static Board *guardBoard;
 static int wastedSwap(const Board *t, int32_t bits) {
   if (!guardBoard) guardBoard = nb_new();
@@ -716,24 +716,20 @@ static int wastedSwap(const Board *t, int32_t bits) {
   }
   return 1;
 }
-// THE SAVE (savedByThree): the board as it is played on for GUARD_DIE frames, the garbage on its way landing as the game lands it --
-// once with the swap not pressed and nothing after it, once with it pressed. Only a board lost without the swap and alive with it lets
-// a three through.
+// THE SAVE (leftAloneDies): the board as it is, the swap not pressed and nothing after it, the garbage on its way landing as the game
+// lands it -- lost within GUARD_DIE frames. Only then is a three let through.
 static Board *dieBoard;
-static int lostIn(const Board *t, int32_t bits, int press) {
+static int leftAloneDies(const Board *t, int32_t bits) {
+  if (!dieBoard) dieBoard = nb_new();
+  if (!dieBoard) return 0;
   Board *g = dieBoard;
   copyBoard(g, t);
   static Arrival pend[MAXARRIVALS];
   int32_t np = F.narr;
   memcpy(pend, F.arr, sizeof(Arrival) * (unsigned long)np);
-  g->input = bits & ~(IN_SWAP | IN_RAISE); g->pressSwap = press;
-  for (int f = 0; f < GUARD_DIE && g->gameOverClock <= 0; f++) { run(g); g->input = 0; g->pressSwap = 0; landOn(g, pend, &np); }
+  g->input = bits & ~(IN_SWAP | IN_RAISE);
+  for (int f = 0; f < GUARD_DIE && g->gameOverClock <= 0; f++) { run(g); g->input = 0; landOn(g, pend, &np); }
   return g->gameOverClock > 0;
-}
-static int savedByThree(const Board *t, int32_t bits) {
-  if (!dieBoard) dieBoard = nb_new();
-  if (!dieBoard) return 0;
-  return lostIn(t, bits, 0) && !lostIn(t, bits, 1);
 }
 // ---------------------------------------------------------------- one frame
 static int frontFrame(void) {
@@ -786,8 +782,8 @@ static int frontFrame(void) {
     F.raiseCutUntil = now + 30;
   }
   // (no wasted three pressed: the swap refused, the plan dropped, the next decision asked on the board as it is)
-  // (let through only as the save: the board lost without it, and not with it)
-  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !savedByThree(t, bits)) {
+  // (let through only as the save: the board lost without it)
+  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !leftAloneDies(t, bits)) {
     bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
   }
   if (bits & IN_SWAP & ~F.prevBits) moveBegin(t);
