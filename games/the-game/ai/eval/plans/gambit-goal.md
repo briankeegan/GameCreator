@@ -630,3 +630,7 @@ at 10 rows.
 Measured (run 508, big chain, seed 1, 11 rows): 19 (combo_storm 7/8, factory 8/8, large_garbage 4/8) against 18 at 10. Big chain 22, 19.
 Measured (run 509, build, seed 1, 11 rows): 20 (combo_storm 5/8, factory 8/8, large_garbage 7/8) against 22 at 10 -- inside a run's
 three games. 11 rows stay (the owner's).
+NEARER WHEN NONE IS NEAR: past breakNear's reach (no three lined up by walking panels along their rows, NEAR_MISS) every board was as
+far as every other -- the break search's beam and the order's nearAfter had nothing to go by, and large_garbage played 200-400 frames
+toward no break. Now there the makings of one count: of the panels touching garbage, the most of its colour in its row and the two
+under it, and how many touch (search/break.c touchPotential) -- the beam's score and nearAfter both.

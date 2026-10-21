@@ -146,12 +146,33 @@ static void perchedOf(const Bits *B, Perches *P) {
   }
 }
 static void perchedDrops(const Board *b, Perches *P) { bitsOf(b, &scratchBits); perchedOf(&scratchBits, P); }
-static int nearOf(const Board *b) { return imin(breakNear(b), NEAR_MISS); }
+// THE MAKINGS OF A BREAK, past the nearest's reach (touchPotential): of the panels touching garbage, the most panels of its own colour in
+// its row and the two under it (two make a three) -- times eight -- and the panels touching garbage, up to eight. Where no break can be
+// lined up by walking panels along their rows (breakNear's NEAR_MISS), what is there to make one of once the stack moves: the search's
+// and the order's sense of nearer when none is near.
+#define POT_MAX 24
+static int touchPotentialOf(const Bits *B) {
+  int best = 0, starts = 0;
+  for (int r = 1; r <= B->top; r++) {
+    unsigned st = bitsStarts(B, r);
+    for (int c = 1; c <= W; c++) {
+      if (!(st >> c & 1)) continue;
+      int32_t k = B->code[r][c];
+      if (k <= 0 || k >= BITCOLOURS) continue;
+      starts++;
+      int n = bitCount(B->col[k][r] & ~(1u << c)) + (r >= 2 ? bitCount(B->col[k][r - 1]) : 0) + (r >= 3 ? bitCount(B->col[k][r - 2]) : 0);
+      if (n > best) best = n;
+    }
+  }
+  return imin(best, 2) * 8 + imin(starts, 8);
+}
+static int touchPotential(const Board *b) { bitsOf(b, &scratchBits); return touchPotentialOf(&scratchBits); }
+static int nearOf(const Board *b) { int n = breakNear(b); return n < NEAR_MISS ? n : NEAR_MISS + POT_MAX - touchPotential(b); }
 static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
 static int garbageOn(const Board *b) { bitsOf(b, &scratchBits); return bitsLowestG(&scratchBits) <= scratchBits.rows; }
 // the panels on the board, garbage not counted -- the material every break is made from
 static int32_t panelsOn(const Board *b) { bitsOf(b, &scratchBits); return bitsPanels(&scratchBits); }
-static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) - uneven(b); }
+static int32_t nearScore(const Board *b) { int n = breakNear(b); return n < NEAR_MISS ? -1000 * n - uneven(b) : -1000 * NEAR_MISS + 100 * touchPotential(b) - uneven(b); }
 // How far a board is toward lining up with the converting row `want`: per column, its top panel below the lowest garbage of that colour,
 // and the one under it too
 static int32_t pairsOf(const Board *b, const int32_t *want) {
