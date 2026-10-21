@@ -672,3 +672,5 @@ the same games played with `92d19244`'s Gambit next (before the panels rule), to
 Measured (run 527, build, seed 1, `92d19244`'s Gambit, four workers): 21 (combo_storm 7/8, factory 6/8, large_garbage 8/8) against 17
 with the panels rule -- the rule costs build. Now it holds only with no garbage on the board, the case it was made for (pressure's
 combo_storm-6 spent its panels before garbage reached it).
+Measured (`073c8349`, runs 528 and 529, seed 1): build 22 (combo_storm 7/8, factory 8/8, large_garbage 7/8) -- build at 22 -- against
+17 with the rule everywhere and 21 without it; pressure 19 (combo_storm 5/8, factory 8/8, large_garbage 6/8) against 21 and 18.
