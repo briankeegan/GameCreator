@@ -172,7 +172,7 @@ static int touchPotentialOf(const Bits *B) {
 static int32_t nearScore(const Board *b) {
   int n = breakNear(b);
   if (n < NEAR_MISS) return -1000 * n - uneven(b);
-  return -1000 * NEAR_MISS + 100 * touchPotentialOf(&scratchBits) - uneven(b);
+  return -1000 * NEAR_MISS + 25 * touchPotentialOf(&scratchBits) - uneven(b);
 }
 // How far a board is toward lining up with the converting row `want`: per column, its top panel below the lowest garbage of that colour,
 // and the one under it too

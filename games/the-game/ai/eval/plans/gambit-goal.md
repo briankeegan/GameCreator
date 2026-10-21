@@ -640,3 +640,7 @@ went. Taken back (search/break.c as at `5f4e7ece`).
 THE MAKINGS OF A BREAK, THE BEAM'S ONLY: the same measure as the break search's beam score past breakNear's reach, and nowhere else
 (search/break.c nearScore); the order's nearness stays breakNear's.
 Measured (`91dbdcf4`, run 511, big chain, seed 1): 23 (combo_storm 7/8, factory 8/8, large_garbage 8/8) against 19 on the same games.
+Measured (`91dbdcf4`, run 512, big chain, seed 2): 15 (combo_storm 3/8, factory 6/8, large_garbage 6/8) against 22 -- 38 over both
+seeds against 41. Past breakNear's reach the makings counted 100 a unit, up to 2,400, where the unevenness it is set against runs to
+about a hundred: the beam no longer kept the stack level there at all.
+THE MAKINGS WEIGH AS THE UNEVENNESS DOES: 25 a unit (up to 600), so a level stack still counts where no break is near.
