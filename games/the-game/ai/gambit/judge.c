@@ -103,15 +103,6 @@ static int stepFitsAt(Ctx *x, int i) {
 }
 static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 // (a step's wasted threes: its clears of three, no link of a chain, in a step that breaks nothing and makes no chain)
-// (the same of a step beside the board left alone: the threes beyond its own, where the step breaks no more garbage than it and makes no
-// longer chain -- garbage already popping, a chain already falling, are the board's)
-static int32_t threesBeyond(const Stats *s, const Stats *base) {
-  if (chainOfStats(s) > imax(1, base ? chainOfStats(base) : 0) || s->broke > (base ? base->broke : 0)) return 0;
-  int32_t n = 0, b = 0;
-  for (int j = 0; j < s->n; j++) if (s->size[j] == 3 && !(s->chainAt[j] > 1)) n++;
-  if (base) for (int j = 0; j < base->n; j++) if (base->size[j] == 3 && !(base->chainAt[j] > 1)) b++;
-  return imax(0, n - b);
-}
 static int32_t threesOf(const Stats *s) { int32_t n = 0; if (chainOfStats(s) > 1 || s->broke > 0) return 0; for (int j = 0; j < s->n; j++) if (s->size[j] == 3 && !(s->chainAt[j] > 1)) n++; return n; }
 
 // (the garbage the board left alone has broken by frame t, from the board landed: cached per frame)
@@ -259,11 +250,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->threes = imax(0, threes - baseThrees);
   // (and the first swap settled alone: a three it makes for nothing is wasted whatever the line does after -- a line pressed straight
   // through takes its first clear into a step its later chain is counted in, where the step's count does not see it)
-  if (nseq > 0 && !j->threes) {
-    int f1 = step(x, root, MK_SETTLE, CR(seq[0]), CC(seq[0]), 0);
-    Stats fs;
-    if (liveNode(x, f1) && statsOf(x, f1, &fs)) j->threes = threesBeyond(&fs, liveNode(x, base) ? &bs : 0);
-  }
+  if (nseq > 0 && !j->threes) j->threes = firstThree(x, root, CR(seq[0]), CC(seq[0]), liveNode(x, base) ? &bs : 0);
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;

@@ -776,3 +776,6 @@ Measured (`95df54f2`, run 607, factory, 8 games): 8/8, 21.9 blocks a minute, 6.5
 under garbage the first swap's settle breaks the garbage already popping and runs the chain already falling, so a three of its own read
 as part of them. Now the swap's threes are counted beyond the board left alone's, a break or a chain only when it is more than the
 board's own (judge.c threesBeyond).
+The game's wasted threes are real (run 609: 66 of 67 touched no garbage). The first swap's own clear is now read off the board, as the
+frame loop counts it: the swap run 12 frames beside the board left alone, the panels it matched that the board did not -- three, none
+beside garbage, its settle no longer a chain than the board's -- and that line is a wasted three (judge.c firstThree).
