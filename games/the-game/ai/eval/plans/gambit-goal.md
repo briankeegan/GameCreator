@@ -597,3 +597,7 @@ later on a board with panels to spare, and to any line when the break itself was
 Measured (`687b06a7`, runs 494 and 495, build, seeds 1 and 2): 16 and 18 (34 against 38 on the same games before) -- and the share of
 swaps that broke garbage the same, 31-32%: ranking breaks higher makes no more of them, the board has to have one in reach. Both order
 changes taken back (rank.c as at `ba4c312f`).
+BUILD THE NEXT BREAK RATHER THAN HOLD: under garbage a break was in reach in 50-66% of decisions (run 495), and in large_garbage 47% of
+them had none in reach with more than 60 frames of stop -- and held in most (1028). Two dying lines alike by the tries were ordered by
+the later loss before anything else (rank.c 9), which the hold nearly always is. Now, under garbage, of two alike the one nearer its next
+break comes first.

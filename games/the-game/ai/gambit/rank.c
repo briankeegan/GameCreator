@@ -370,6 +370,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (ax < MAXAIMS) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return wx - wy; } }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
   // (two that do not live and survive alike: the later loss, before the kind of line)
+  // -- under garbage, of two alike (as many tries left) the one nearer its next break first: with no break in reach, the frames a hold
+  // keeps are frames nothing is built in (run 495: large_garbage held in 1028 decisions with no break in reach and a stop of over 60)
+  if (!lx && decF.under && x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && x->o.nearAfter != y->o.nearAfter) {
+    double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+    int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
+    if (lo >= rankSave && tlo == thi) return x->o.nearAfter - y->o.nearAfter;
+  }
   if (!lx && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
   Tier tx = tierView(x), ty = tierView(y);
   if (tx.tier != ty.tier) return tx.tier - ty.tier;
