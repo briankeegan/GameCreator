@@ -764,3 +764,6 @@ passed. Now it counts each clear of three that breaks nothing and begins no chai
 The fight on `ba9b51db`: 1 of 13, raising 4 rows with garbage ON the board (none on its way, so the cap did not hold). The floor's raise
 now never takes the stack's top, garbage counted, up to the top row (decide.c read). Its wasted threes there: 15 a game, every one a
 swap's (wastedAlone 0).
+Measured (fight on `7fbcbd79`, 20 minutes, Gambit against the default on the fork's server at level 10): 2 won, 5 lost (1-12 and 0-26
+before the raise was capped). 13 wasted threes over the run, every one a save -- nothing lived and the hold was lost within a break's
+time; 1875 decisions dropped a wasted three.
