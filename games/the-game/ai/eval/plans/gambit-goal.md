@@ -761,3 +761,6 @@ At one health a board that tops out is lost, so the three is let back when the h
 EVERY THREE IN THE LINE (the owner: fix the three problem): the judge took a line by its biggest clear, so a stray three beside a combo
 passed. Now it counts each clear of three that breaks nothing and begins no chain, step by step, beyond the board left alone's
 (judge.c threes), and a line with any is a wasted three (rank.c wastesThree) -- out of the order unless it is the save.
+The fight on `ba9b51db`: 1 of 13, raising 4 rows with garbage ON the board (none on its way, so the cap did not hold). The floor's raise
+now never takes the stack's top, garbage counted, up to the top row (decide.c read). Its wasted threes there: 15 a game, every one a
+swap's (wastedAlone 0).
