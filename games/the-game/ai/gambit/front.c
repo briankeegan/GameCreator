@@ -95,6 +95,7 @@ static struct {
   int32_t reaction, ahead, gap, jitter;
   uint32_t rnd;
   FStats st;
+  char pendLog[200];   // (the wasted three's log line, written once it is counted)
   int32_t loggedDiffer, matchAt, matchAfter, loggedWasted;   // (the followed swap a clear came of: pressed at, swaps since -- for the wasted three's log)
 } F;
 
@@ -583,14 +584,19 @@ static void countAttacks(const Board *b) {
   int32_t cc = b->chainCounter;
   // (a clear of three with no garbage broken waits: a chain it starts makes it a link, and it was no waste)
   // (wasted: a swap's -- a panel a followed swap moved is in it; wastedAlone: the stack's own, panels out of garbage or fallen)
-  if (cc >= 2) F.pendThree = F.pendThreeAlone = 0;
-  if (cc == 0 && (F.pendThree || F.pendThreeAlone)) { F.st.wasted += F.pendThree; F.st.wastedAlone += F.pendThreeAlone; F.pendThree = F.pendThreeAlone = 0; }
+  // (counted once its clear and every panel falling from it have settled: a three's chain comes after it pops)
+  if (cc >= 2) { F.pendThree = F.pendThreeAlone = 0; F.pendLog[0] = 0; }
+  if (cc == 0 && (F.pendThree || F.pendThreeAlone) && !hasActivePanels((Board *)b)) {
+    F.st.wasted += F.pendThree; F.st.wastedAlone += F.pendThreeAlone; F.pendThree = F.pendThreeAlone = 0;
+    if (F.pendLog[0] && F.loggedWasted < 400) { flog(F.pendLog); F.loggedWasted++; }
+    F.pendLog[0] = 0;
+  }
   if (fresh == 3 && cc < 2 && !brokeNow) {
     if (bySwap) F.pendThree++; else F.pendThreeAlone++;
     // (each logged, the first few hundred: where, and the swap it came of -- to find what pressed it)
-    if (F.loggedWasted < 400) {
-      char l[200]; int k = snprintf(l, sizeof l, "GAMBITW %d three", b->clock);
-      for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q] && k < (int)sizeof l) k += snprintf(l + k, sizeof l - (unsigned long)k, " %d,%d", r, c); }
+    if (F.loggedWasted < 400 && !F.pendLog[0]) {
+      char *l = F.pendLog; int k = snprintf(l, sizeof F.pendLog, "GAMBITW %d three", b->clock);
+      for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q] && k < (int)sizeof F.pendLog) k += snprintf(l + k, sizeof F.pendLog - (unsigned long)k, " %d,%d", r, c); }
       // (touch: a garbage cell beside one of its cells -- a three beside garbage breaks it, whatever frame the garbage is matched on)
       int touch = 0;
       for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
@@ -600,8 +606,7 @@ static void countAttacks(const Board *b) {
         static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
         for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc2 = c + DC[d]; if (rr >= 1 && rr < b->nrows && cc2 >= 1 && cc2 <= W && b->p[rr][cc2].f[ISGARBAGE]) touch = 1; }
       }
-      if (k < (int)sizeof l) snprintf(l + k, sizeof l - (unsigned long)k, " by=%s swapAt=%d after=%d touch=%d", bySwap ? "swap" : "alone", bySwap ? F.matchAt : -1, bySwap ? F.matchAfter : -1, touch);
-      flog(l); F.loggedWasted++;
+      if (k < (int)sizeof F.pendLog) snprintf(l + k, sizeof F.pendLog - (unsigned long)k, " by=%s swapAt=%d after=%d touch=%d", bySwap ? "swap" : "alone", bySwap ? F.matchAt : -1, bySwap ? F.matchAfter : -1, touch);
     }
   }
   if (fresh > 0 && nn > fresh && !(cc > F.chainMax)) F.st.together++;

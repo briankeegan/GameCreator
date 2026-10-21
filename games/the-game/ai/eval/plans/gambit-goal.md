@@ -779,3 +779,7 @@ board's own (judge.c threesBeyond).
 The game's wasted threes are real (run 609: 66 of 67 touched no garbage). The first swap's own clear is now read off the board, as the
 frame loop counts it: the swap run 12 frames beside the board left alone, the panels it matched that the board did not -- three, none
 beside garbage, its settle no longer a chain than the board's -- and that line is a wasted three (judge.c firstThree).
+THE COUNT WAS WRONG: the frame loop booked a three as wasted the frame the chain counter read 0 -- before the panels it let fall made
+their link (run 612, frame 1133: a three of 4s in column 1, its fall a three of 1s, the 2-chain the judge saw). A three is now counted,
+and logged, once its clear and every panel falling from it have settled with no chain (front.c countAttacks). The 6 a minute were mostly
+chains' first links.
