@@ -690,3 +690,5 @@ and never made. Now of two lines lost alike, one that breaks nothing and walks t
 that keeps it (rank.c, after key 3).
 Measured (`8adc9abc`, runs 536 and 537, build): seed 2 17 against 17, seed 1 22 (combo_storm 6/8, factory 8/8, large_garbage 8/8)
 against 20. It stays. Two of the losses are at 394 and 421, the first garbage on the opening raise.
+Measured (`8adc9abc`+, runs 538 and 539, finish): seed 1 23 (combo_storm 8/8, factory 8/8, large_garbage 7/8) -- finish at 22 -- and
+seed 2 21 (combo_storm 8/8, factory 8/8, large_garbage 5/8). Big chain on this build next.
