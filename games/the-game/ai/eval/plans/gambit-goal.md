@@ -625,3 +625,5 @@ Measured (`dc1b4337`, run 505, big chain, seed 2): 21 (combo_storm 6/8, factory 
 The opening raise taken back to as it was (the owner: raising at the start is important -- if anything it should raise more; the bot is
 to be aggressive). Measured with it: big chain 21 on seed 2 against 17 and 18. decide.c as at `9814de13`.
 THE OPENING RAISE TO 11 ROWS (the owner: if anything it should raise more): measured on big chain's seed 2, 18 at 10 rows.
+Measured (`5f4e7ece`, run 507, big chain, seed 2, raised to 11 rows): 22 (combo_storm 7/8, factory 8/8, large_garbage 7/8) against 18
+at 10 rows.
