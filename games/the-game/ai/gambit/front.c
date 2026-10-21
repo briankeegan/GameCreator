@@ -591,7 +591,16 @@ static void countAttacks(const Board *b) {
     if (F.loggedWasted < 400) {
       char l[200]; int k = snprintf(l, sizeof l, "GAMBITW %d three", b->clock);
       for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q] && k < (int)sizeof l) k += snprintf(l + k, sizeof l - (unsigned long)k, " %d,%d", r, c); }
-      if (k < (int)sizeof l) snprintf(l + k, sizeof l - (unsigned long)k, " by=%s swapAt=%d after=%d", bySwap ? "swap" : "alone", bySwap ? F.matchAt : -1, bySwap ? F.matchAfter : -1);
+      // (touch: a garbage cell beside one of its cells -- a three beside garbage breaks it, whatever frame the garbage is matched on)
+      int touch = 0;
+      for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+        const int32_t *f = b->p[r][c].f; int mine = 0;
+        for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q]) mine = 1;
+        if (!mine) continue;
+        static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
+        for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc2 = c + DC[d]; if (rr >= 1 && rr < b->nrows && cc2 >= 1 && cc2 <= W && b->p[rr][cc2].f[ISGARBAGE]) touch = 1; }
+      }
+      if (k < (int)sizeof l) snprintf(l + k, sizeof l - (unsigned long)k, " by=%s swapAt=%d after=%d touch=%d", bySwap ? "swap" : "alone", bySwap ? F.matchAt : -1, bySwap ? F.matchAfter : -1, touch);
       flog(l); F.loggedWasted++;
     }
   }
