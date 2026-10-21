@@ -786,3 +786,5 @@ chains' first links.
 Measured (`339bb3d9`, runs 613-616, random seeds, the count corrected): big chain 22, build 20, finish 23, pressure 22 -- 87 of 96; 20
 blocks a minute; 0.77-1.00 wasted threes a minute (6 a minute was the miscount). Of 14 in three games: 4 from lines the judge saw as
 lost (their threes were not read: now they are, rank.c wastesThree), 2 the save, 8 lines the judge saw none in.
+Measured (fight on `339bb3d9`): 5 won, 6 lost against the default (6-6 before this round's raise and three changes; 0-26 and 1-12 while
+the raise was uncapped).
