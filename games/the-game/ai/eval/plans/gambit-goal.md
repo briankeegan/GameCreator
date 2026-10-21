@@ -563,3 +563,5 @@ cut for a walk over it, the hold the only line left. Back to 40.
 TAPPED NEAR THE END: a board topped with its stop and shake about to run out (45 frames) walks tapped while the allowance keeps 12 actions
 to spare (core/nodes.h tightAt, pressTap) -- the decision says so and hands it on with the line it plays, and the frame loop presses
 that line so (front.c lineTap); only where the host's frame loop reads it (the native one: native.c gn_setup).
+Measured (`8d6adfc1`, run 485, build, one 24, finished 23:0x ET): 21 (combo_storm 5/8 -- 3759, 6080, 7023 -- factory 8/8,
+large_garbage 8/8); 1 break missed (5 in 483), 0 divergences.
