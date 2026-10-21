@@ -713,3 +713,4 @@ TWICE AS AGGRESSIVE (the owner, watching the fight: "still going for threes, whi
 mode's list now ends with every attack it can throw -- a chain of 2 or more, a combo of 4 or more (finish them: its own combos and
 2-chain, then any combo of 4 or more and chain of 3 or more, before its three) -- so a line that throws ranks within the list, after
 the mode's own aim and before the three that breaks (gambit-rules.json). Measured by the summary's blocks thrown a minute.
+HORIZON 240 again, its runs cancelled: the aggression is measured alone.
