@@ -801,3 +801,13 @@ Under garbage the board is topped with hundreds of frames of stop left, and "top
 board lost within a break's time: the press guard lets a three through only topped with GUARD_SAVE (90) stop frames or fewer left, the
 order only where the hold is lost within rankSave.
 Measured (`9ac440f5`, run 628, pressure): 24 of 24 -- pressure's first 24 -- 0.55 wasted threes a minute. The fight there: 2 won, 5 lost.
+A THREE ONLY WHERE NOT PLAYING IT LOSES THE BOARD (the owner). `12b4b919` let one through wherever the board left alone was lost
+within 120 frames. Measured (runs 633-635): big chain 23, build 24, finish 19; 19.7 blocks a minute; but 1.4-2.2 wasted threes a
+minute -- under garbage 99% of the time, the board left alone is nearly always lost. The fight there: 6 won, 4 lost against the
+default, each side's log agreeing on every result.
+Now (`05543891`) the press guard plays the board on both ways and lets a three through only when the board is lost without the swap
+and alive with it (front.c savedByThree); the order keeps a three only when it lives and nothing else does, or all is lost and it is
+lost a break's time (rankSave) later.
+ON THE WAY (the owner: "going really far for moves"): 18 of 702 decisions in a fight played a line with work on its way. Now
+(`fe49d86c`) wayLines also offers two useful swaps the cursor passes in turn, searches the way from three actions out, and no longer
+counts a three for nothing as work; of two lines that live and both attack, one walking more than WALK_EARN (6) actions further loses.
