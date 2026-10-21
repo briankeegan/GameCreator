@@ -695,3 +695,5 @@ seed 2 21 (combo_storm 8/8, factory 8/8, large_garbage 5/8). Big chain on this b
 Measured (`8adc9abc`+, runs 540 and 541, big chain): seed 1 22 (combo_storm 7/8, factory 8/8, large_garbage 7/8), seed 2 20. EVERY
 MODE HAS REACHED 22 on this build's seeds: big chain 22, build 22 (537), finish 23 (538); pressure 23 on `6a5231a3` (534), measured on
 this build next. Then every mode on one build, every change checked against all four.
+Measured (`8adc9abc`+, runs 542 and 543, pressure): 22 and 22. EVERY MODE ON ONE BUILD (seed 1 / seed 2): big chain 22/20, build
+22/17, finish 23/21, pressure 22/22 -- 169 of 192. The 23 losses: large_garbage 11, combo_storm 10, factory 2.
