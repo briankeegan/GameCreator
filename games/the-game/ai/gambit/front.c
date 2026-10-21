@@ -95,7 +95,7 @@ static struct {
   int32_t reaction, ahead, gap, jitter;
   uint32_t rnd;
   FStats st;
-  int32_t loggedDiffer;
+  int32_t loggedDiffer, matchAt, matchAfter, loggedWasted;   // (the followed swap a clear came of: pressed at, swaps since -- for the wasted three's log)
 } F;
 
 static double fNow(void) { return clock_ms(); }
@@ -585,7 +585,16 @@ static void countAttacks(const Board *b) {
   // (wasted: a swap's -- a panel a followed swap moved is in it; wastedAlone: the stack's own, panels out of garbage or fallen)
   if (cc >= 2) F.pendThree = F.pendThreeAlone = 0;
   if (cc == 0 && (F.pendThree || F.pendThreeAlone)) { F.st.wasted += F.pendThree; F.st.wastedAlone += F.pendThreeAlone; F.pendThree = F.pendThreeAlone = 0; }
-  if (fresh == 3 && cc < 2 && !brokeNow) { if (bySwap) F.pendThree++; else F.pendThreeAlone++; }
+  if (fresh == 3 && cc < 2 && !brokeNow) {
+    if (bySwap) F.pendThree++; else F.pendThreeAlone++;
+    // (each logged, the first few hundred: where, and the swap it came of -- to find what pressed it)
+    if (F.loggedWasted < 400) {
+      char l[200]; int k = snprintf(l, sizeof l, "GAMBITW %d three", b->clock);
+      for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q] && k < (int)sizeof l) k += snprintf(l + k, sizeof l - (unsigned long)k, " %d,%d", r, c); }
+      if (k < (int)sizeof l) snprintf(l + k, sizeof l - (unsigned long)k, " by=%s swapAt=%d after=%d", bySwap ? "swap" : "alone", bySwap ? F.matchAt : -1, bySwap ? F.matchAfter : -1);
+      flog(l); F.loggedWasted++;
+    }
+  }
   if (fresh > 0 && nn > fresh && !(cc > F.chainMax)) F.st.together++;
   if (cc >= 2 && F.npendCombo) F.npendCombo = 0;
   if (cc == 0 && F.npendCombo) { for (int i = 0; i < F.npendCombo; i++) F.st.combo[imin(F.pendCombo[i], 63)]++; F.npendCombo = 0; }
@@ -634,7 +643,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
       if (!m->moved[j] && b->clock - m->at <= MOVE_FALL && (st == HOVERING || st == FALLING)) m->moved[j] = 1;
       if (m->moved[j]) for (int q = 0; q < nfresh && !done; q++) done = fresh[q] == m->ids[j];
     }
-    if (done) { bySwap = 1; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
+    if (done) { bySwap = 1; F.matchAt = m->at; F.matchAfter = m->swapsAfter; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
     if (!alive || b->clock - m->at > MOVE_FOR) { F.st.moveNone++; continue; }
     if (k != i) F.moves[k] = *m;
     k++;
