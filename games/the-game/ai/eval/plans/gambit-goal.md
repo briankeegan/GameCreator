@@ -639,3 +639,4 @@ break as nearness took the order's nearAfter (the tier, the alike rule, beating 
 went. Taken back (search/break.c as at `5f4e7ece`).
 THE MAKINGS OF A BREAK, THE BEAM'S ONLY: the same measure as the break search's beam score past breakNear's reach, and nowhere else
 (search/break.c nearScore); the order's nearness stays breakNear's.
+Measured (`91dbdcf4`, run 511, big chain, seed 1): 23 (combo_storm 7/8, factory 8/8, large_garbage 8/8) against 19 on the same games.
