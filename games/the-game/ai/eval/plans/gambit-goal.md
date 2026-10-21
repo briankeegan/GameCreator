@@ -684,3 +684,7 @@ Measured (`77b3b8b3`, runs 532 and 533, seed 2): pressure 21 against 18, build 1
 Measured (`6a5231a3`, runs 534 and 535, seed 1): pressure 23 (combo_storm 7/8, factory 8/8, large_garbage 8/8) against 19, build 20
 (combo_storm 6/8, factory 8/8, large_garbage 6/8) against 22. The allowance rule over both seeds: 81 against 80; it stays. Pressure
 23 and 21; build 20 and 17.
+THE ALLOWANCE'S RESERVE: run 533's factory-8 had 7 to 14 actions of the input allowance through its last 400 frames -- lines toward a
+break and set-ups had walked it down -- and the break it found (18 cells) was carried 100 frames, pressed later at every decision,
+and never made. Now of two lines lost alike, one that breaks nothing and walks the allowance below a break's walk ranks after one
+that keeps it (rank.c, after key 3).

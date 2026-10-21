@@ -328,6 +328,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
+    // (neither lives, lost alike) THE ALLOWANCE'S RESERVE: a line that breaks nothing and walks the input allowance below a break's walk
+    // (BREAK_WALK) after one that keeps it -- the break the next decisions find has to be pressed out of what is left
+    if (pressAllowance >= 0) {
+      int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
+      if (rx != ry) return rx ? 1 : -1;
+    }
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return x->readyNext ? -1 : 1;
     // 5. (neither lives) within the list before outside it -- but not between two breaks under garbage: every mode defends itself while
