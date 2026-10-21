@@ -683,7 +683,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
 // whose fall makes no chain: a three for nothing, whatever the plan judged. 1: refuse it.
 #define GUARD_LOOK 30
 #define GUARD_SETTLE 400
-#define GUARD_SAVE 90   // the stop frames a topped board has left when a three is its save (about a break's time at level 11)
+#define GUARD_DIE 120   // the frames the board is played on without the swap: lost within them, the three is its save
 static Board *guardBoard;
 static int wastedSwap(const Board *t, int32_t bits) {
   if (!guardBoard) guardBoard = nb_new();
@@ -715,6 +715,21 @@ static int wastedSwap(const Board *t, int32_t bits) {
     if (g->chainCounter == 0 && !hasActivePanels(g)) break;
   }
   return 1;
+}
+// THE SAVE (leftAloneDies): the board as it is, the swap not pressed and nothing after it, the garbage on its way landing as the game
+// lands it -- lost within GUARD_DIE frames. Only then is a three let through.
+static Board *dieBoard;
+static int leftAloneDies(const Board *t, int32_t bits) {
+  if (!dieBoard) dieBoard = nb_new();
+  if (!dieBoard) return 0;
+  Board *g = dieBoard;
+  copyBoard(g, t);
+  static Arrival pend[MAXARRIVALS];
+  int32_t np = F.narr;
+  memcpy(pend, F.arr, sizeof(Arrival) * (unsigned long)np);
+  g->input = bits & ~(IN_SWAP | IN_RAISE);
+  for (int f = 0; f < GUARD_DIE && g->gameOverClock <= 0; f++) { run(g); g->input = 0; landOn(g, pend, &np); }
+  return g->gameOverClock > 0;
 }
 // ---------------------------------------------------------------- one frame
 static int frontFrame(void) {
@@ -767,9 +782,8 @@ static int frontFrame(void) {
     F.raiseCutUntil = now + 30;
   }
   // (no wasted three pressed: the swap refused, the plan dropped, the next decision asked on the board as it is)
-  // (let through only as the save: topped out, its stop all but spent -- a topped board still stopped lives on, it needs no three)
-  int saveNow = (F.toppedNow || t->wasToppedOut) && t->stopTime + t->preStopTime <= GUARD_SAVE;
-  if ((bits & IN_SWAP & ~F.prevBits) && !saveNow && wastedSwap(t, bits)) {
+  // (let through only as the save: the board lost without it)
+  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !leftAloneDies(t, bits)) {
     bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
   }
   if (bits & IN_SWAP & ~F.prevBits) moveBegin(t);
