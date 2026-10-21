@@ -747,3 +747,6 @@ other line is lost before the next decision could make a break, when the three t
 'w' in the log's dropped counts). The rank key for it is gone.
 Only topped out (the owner: "not allowed if not topped out, that's not a save"): the wasted three is let back only when the board is
 topped and nothing else keeps it.
+Measured (`d514b767`, runs 592-595, random seeds): big chain 19, build 20, finish 22, pressure 21 -- 82; 17.9-19.3 blocks a minute.
+WASTED THREES COUNTED ON THE GAME, NOT THE PLAN: the frame loop counts every clear of three that broke no garbage and was no link of a
+chain (front.c countAttacks, the match's moves.wasted; gambit_summary.js `wasted threes`) -- the number the owner wants at 0.

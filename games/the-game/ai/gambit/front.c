@@ -52,6 +52,7 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
+  int32_t wasted;     // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- sent nothing)
 } FStats;
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 // (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
@@ -88,7 +89,7 @@ static struct {
   int32_t oppHas, oppOut, oppTop, oppStop;
   int32_t toppedNow;
   // the attacks made, read off the board as it is shown
-  int32_t chainMax, pendCombo[16], npendCombo, matchedIds[MAXROWS * W], nmatched, swapSince;
+  int32_t chainMax, pendCombo[16], npendCombo, pendThree, matchedIds[MAXROWS * W], nmatched, swapSince;
   // the swaps pressed still followed, the garbage cells matched last frame, and the cursor where it was and whether it was walked
   MoveOpen moves[MOVE_OPEN]; int32_t nmoves, gMatched, curRowWas, curColWas, curWalked;
   int32_t reaction, ahead, gap, jitter;
@@ -577,8 +578,13 @@ static void countAttacks(const Board *b) {
     }
   }
   memcpy(F.matchedIds, now, sizeof(int32_t) * (unsigned long)nn); F.nmatched = nn;
-  movesOn(b, freshIds, fresh, gm > F.gMatched); F.gMatched = gm;
+  int brokeNow = gm > F.gMatched;
+  movesOn(b, freshIds, fresh, brokeNow); F.gMatched = gm;
   int32_t cc = b->chainCounter;
+  // (a clear of three with no garbage broken waits: a chain it starts makes it a link, and it was no waste)
+  if (cc >= 2) F.pendThree = 0;
+  if (cc == 0 && F.pendThree) { F.st.wasted += F.pendThree; F.pendThree = 0; }
+  if (fresh == 3 && cc < 2 && !brokeNow) F.pendThree++;
   if (fresh > 0 && nn > fresh && !(cc > F.chainMax)) F.st.together++;
   if (cc >= 2 && F.npendCombo) F.npendCombo = 0;
   if (cc == 0 && F.npendCombo) { for (int i = 0; i < F.npendCombo; i++) F.st.combo[imin(F.pendCombo[i], 63)]++; F.npendCombo = 0; }
@@ -762,8 +768,8 @@ static void statsLine(char *out, int cap) {
   }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
   // (the swaps still followed when the match ends are counted by what they came to so far: nothing yet)
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d}}",
-                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together);
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d}}",
+                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted);
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {
