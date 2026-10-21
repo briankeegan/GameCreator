@@ -151,29 +151,7 @@ static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
 static int garbageOn(const Board *b) { bitsOf(b, &scratchBits); return bitsLowestG(&scratchBits) <= scratchBits.rows; }
 // the panels on the board, garbage not counted -- the material every break is made from
 static int32_t panelsOn(const Board *b) { bitsOf(b, &scratchBits); return bitsPanels(&scratchBits); }
-// THE MAKINGS OF A BREAK, past the nearest's reach (touchPotential): of the panels touching garbage, the most panels of its own colour in
-// its row and the two under it (two make a three), and the panels touching garbage -- the beam's sense of nearer where no break can be
-// lined up by walking panels along their rows (NEAR_MISS). The beam's only: as nearness in the order it outweighed the order's keys.
-static int touchPotentialOf(const Bits *B) {
-  int best = 0, starts = 0;
-  for (int r = 1; r <= B->top; r++) {
-    unsigned st = bitsStarts(B, r);
-    for (int c = 1; c <= W; c++) {
-      if (!(st >> c & 1)) continue;
-      int32_t k = B->code[r][c];
-      if (k <= 0 || k >= BITCOLOURS) continue;
-      starts++;
-      int n = bitCount(B->col[k][r] & ~(1u << c)) + (r >= 2 ? bitCount(B->col[k][r - 1]) : 0) + (r >= 3 ? bitCount(B->col[k][r - 2]) : 0);
-      if (n > best) best = n;
-    }
-  }
-  return imin(best, 2) * 8 + imin(starts, 8);
-}
-static int32_t nearScore(const Board *b) {
-  int n = breakNear(b);
-  if (n < NEAR_MISS) return -1000 * n - uneven(b);
-  return -1000 * NEAR_MISS + 25 * touchPotentialOf(&scratchBits) - uneven(b);
-}
+static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) - uneven(b); }
 // How far a board is toward lining up with the converting row `want`: per column, its top panel below the lowest garbage of that colour,
 // and the one under it too
 static int32_t pairsOf(const Board *b, const int32_t *want) {

@@ -644,3 +644,6 @@ Measured (`91dbdcf4`, run 512, big chain, seed 2): 15 (combo_storm 3/8, factory 
 seeds against 41. Past breakNear's reach the makings counted 100 a unit, up to 2,400, where the unevenness it is set against runs to
 about a hundred: the beam no longer kept the stack level there at all.
 THE MAKINGS WEIGH AS THE UNEVENNESS DOES: 25 a unit (up to 600), so a level stack still counts where no break is near.
+Measured (`a10b61bb`, runs 513 and 514, big chain, seeds 1 and 2): 19 and 18 -- 37 over both seeds, against 38 at 100 a unit and 41
+without the makings. Taken back (search/break.c as at `5f4e7ece`).
+Big chain reached 22 at `5f4e7ece` (run 507); on to pressure and finish, measured on this build (`5f4e7ece`'s Gambit).
