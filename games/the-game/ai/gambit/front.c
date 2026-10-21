@@ -32,6 +32,7 @@ typedef struct {
   int32_t raiseWait;           // a raise held from this many frames after `at`, the first the stack takes one (0: from `at`)
   int32_t handAt[MAXLINE];     // the frame each swap handed on was judged pressed from (0: as soon as the one before is done)
   int32_t empty;               // a hold the clock left no time to judge anything for
+  int32_t wastes;              // the line makes a three for nothing, kept by the order as the board's save (answer.c)
   int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
   double ms, idleMs, closeMs;
 } FAnswer;
@@ -86,6 +87,7 @@ static struct {
   int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
   int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
+  int32_t lineWastes;   // the line in hand was played for a three, as the board's save
   double thinking[FTHINK]; int32_t nthinking;
   double msPerFrame, wall;
   // the input budget: its limit and window, the frames the keys still inside it were pressed, the keys held last frame
@@ -525,6 +527,7 @@ static void take(void) {
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
+    F.lineWastes = a.wastes;
     F.lineN = a.nhand; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0;
   }
@@ -683,7 +686,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
 // whose fall makes no chain: a three for nothing, whatever the plan judged. 1: refuse it.
 #define GUARD_LOOK 30
 #define GUARD_SETTLE 400
-#define GUARD_DIE 120   // the frames the board is played on without the swap: lost within them, the three is its save
+#define GUARD_DIE 120   // the frames the board is played on, with the swap and without, to tell a three that saves it
 static Board *guardBoard;
 static int wastedSwap(const Board *t, int32_t bits) {
   if (!guardBoard) guardBoard = nb_new();
@@ -716,20 +719,24 @@ static int wastedSwap(const Board *t, int32_t bits) {
   }
   return 1;
 }
-// THE SAVE (leftAloneDies): the board as it is, the swap not pressed and nothing after it, the garbage on its way landing as the game
-// lands it -- lost within GUARD_DIE frames. Only then is a three let through.
+// THE SAVE: the board played on for GUARD_DIE frames, the garbage on its way landing as the game lands it -- with the swap not pressed
+// and nothing after it (lostIn 0), or with it pressed (lostIn 1). A three the plan made as the board's save is let through when the
+// board is lost without it; a three the plan did not see (the judge wrong), only when the board is lost without it and alive with it.
 static Board *dieBoard;
-static int leftAloneDies(const Board *t, int32_t bits) {
-  if (!dieBoard) dieBoard = nb_new();
-  if (!dieBoard) return 0;
+static int lostIn(const Board *t, int32_t bits, int press) {
   Board *g = dieBoard;
   copyBoard(g, t);
   static Arrival pend[MAXARRIVALS];
   int32_t np = F.narr;
   memcpy(pend, F.arr, sizeof(Arrival) * (unsigned long)np);
-  g->input = bits & ~(IN_SWAP | IN_RAISE);
-  for (int f = 0; f < GUARD_DIE && g->gameOverClock <= 0; f++) { run(g); g->input = 0; landOn(g, pend, &np); }
+  g->input = bits & ~(IN_SWAP | IN_RAISE); g->pressSwap = press;
+  for (int f = 0; f < GUARD_DIE && g->gameOverClock <= 0; f++) { run(g); g->input = 0; g->pressSwap = 0; landOn(g, pend, &np); }
   return g->gameOverClock > 0;
+}
+static int threeSaves(const Board *t, int32_t bits, int planned) {
+  if (!dieBoard) dieBoard = nb_new();
+  if (!dieBoard) return 0;
+  return lostIn(t, bits, 0) && (planned || !lostIn(t, bits, 1));
 }
 // ---------------------------------------------------------------- one frame
 static int frontFrame(void) {
@@ -782,8 +789,8 @@ static int frontFrame(void) {
     F.raiseCutUntil = now + 30;
   }
   // (no wasted three pressed: the swap refused, the plan dropped, the next decision asked on the board as it is)
-  // (let through only as the save: the board lost without it)
-  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !leftAloneDies(t, bits)) {
+  // (let through only as the save: the board lost without it -- and, a three the plan did not see, alive with it)
+  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !threeSaves(t, bits, F.lineWastes)) {
     bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
   }
   if (bits & IN_SWAP & ~F.prevBits) moveBegin(t);

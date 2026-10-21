@@ -285,6 +285,7 @@ typedef struct {
   Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled, tap;
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
+  int32_t wastes;   // the line played makes a three for nothing as the judge saw it, and the order kept it as the board's save
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
   int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
   int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
@@ -373,6 +374,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
   A->holdLives = d.kind == 0 && top && top->o.lives;
+  A->wastes = P.line && !R.up && wastesThree(P.line);
   // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
   // settled line's after the board settles -- so the frame loop presses the line that was judged)
   A->nhand = 0; A->handSettled = P.line && P.line->settled;
