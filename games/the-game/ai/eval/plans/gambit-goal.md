@@ -612,3 +612,8 @@ below build (22, 23) on the same engine; the two differ only in the list. UNDER 
 a list asking a chain over five (big chain's 8) led the searches toward nothing a buried board can make -- a chain of 2-7 that breaks met
 no entry and was near none, where build's 5 made 2-4 near. Now such a list, under garbage, takes every chain of two or more that breaks,
 after its own entries and before the three that breaks (rules.c withChains; decide.c read).
+Measured (`89af27c3`, runs 502 and 503, big chain, seeds 1 and 2): 18 and 17 (15 and 17 before) -- combo_storm 3/8 on seed 2 again,
+where build is 8/8; the panels on the board the same in both modes, off garbage (41) and under it (27). UNDER GARBAGE A LONG CHAIN IS
+LED AS A CHAIN OF FIVE: the searches and the order under garbage take a list's chain over five as a chain of five or more, breaking --
+the lead build plays under garbage by; the list itself, what fits and what meets, stays the mode's (rules.c guideShort, in place of
+withChains).
