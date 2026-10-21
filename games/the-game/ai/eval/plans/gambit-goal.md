@@ -688,3 +688,5 @@ THE ALLOWANCE'S RESERVE: run 533's factory-8 had 7 to 14 actions of the input al
 break and set-ups had walked it down -- and the break it found (18 cells) was carried 100 frames, pressed later at every decision,
 and never made. Now of two lines lost alike, one that breaks nothing and walks the allowance below a break's walk ranks after one
 that keeps it (rank.c, after key 3).
+Measured (`8adc9abc`, runs 536 and 537, build): seed 2 17 against 17, seed 1 22 (combo_storm 6/8, factory 8/8, large_garbage 8/8)
+against 20. It stays. Two of the losses are at 394 and 421, the first garbage on the opening raise.
