@@ -703,3 +703,5 @@ to decide, and the nearer-next-break key took the clear. Now under garbage, of t
 floor comes first (rank.c, before the nearer-break key).
 Measured (`0a952dc6`, runs 544-547, seed 1): big chain 23, build 20, finish 21, pressure 17 -- 81 against 89. Taken back (rank.c as at
 `8adc9abc`). Pressure's combo_storm lost 4 of 8, three of them after frame 17900.
+THE HORIZON 300: a line lives when its board is alive 240 frames on -- four seconds at level 11, where a line alive to 250 and one
+alive to 600 are both "lives" and the list's keys, not survival, order them. Now 300 (outcome.c HORIZON).
