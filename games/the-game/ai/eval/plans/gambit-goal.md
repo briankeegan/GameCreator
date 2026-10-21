@@ -714,3 +714,7 @@ mode's list now ends with every attack it can throw -- a chain of 2 or more, a c
 2-chain, then any combo of 4 or more and chain of 3 or more, before its three) -- so a line that throws ranks within the list, after
 the mode's own aim and before the three that breaks (gambit-rules.json). Measured by the summary's blocks thrown a minute.
 HORIZON 240 again, its runs cancelled: the aggression is measured alone.
+Measured (`f80146c3`, runs 560-562, random seeds): big chain 20, build 17, finish 20; blocks thrown a minute 18.9, 19.4, 17.8 -- as
+before (17-19). Under garbage -- 99% of training's decisions -- every entry asks a break, so an attack that leaves the garbage meets
+none and ranks with the hold. THE ATTACKS UNDER GARBAGE: after the three that breaks, the mode's own entries again with no break
+asked (rules.c withAttacks), so a board that lives throws rather than holds; breaks still first.

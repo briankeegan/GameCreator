@@ -56,6 +56,7 @@ static int readBoard_(Read *R) {
   // rank's alike)
   if (R->under) guideShort(&R->guides);
   if (R->under) withRule(&R->guides);
+  if (R->under) withAttacks(&R->guides, &R->list);
   R->asked = R->guides;
   // (A LIST ENDED BY "default" -- every list under garbage -- falls back to the default's own move when none of it can be made: the
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a

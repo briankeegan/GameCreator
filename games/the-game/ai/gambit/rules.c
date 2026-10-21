@@ -64,6 +64,17 @@ static void withRule(List *L) {
   for (int i = 0; i < L->n; i++) if (!memcmp(&L->aim[i], &t, sizeof t)) return;
   if (L->n < MAXAIMS) L->aim[L->n++] = t;
 }
+// THE ATTACKS UNDER GARBAGE (decide.c read): after the three that breaks, the mode's own entries again, a break not asked -- an attack
+// that leaves the garbage where it is meets the list there, after every break, so a board that lives throws it rather than holding.
+// The entries that throw nothing (a three) are not repeated. from: the mode's list as written.
+static void withAttacks(List *L, const List *from) {
+  for (int i = 0; i < from->n && L->n < MAXAIMS; i++) {
+    Aim a = from->aim[i];
+    if (a.chain.op == OP_EQ && a.chain.n == 1 && a.combo.op == OP_LE && a.combo.n <= 3) continue;
+    a.brk = -1;
+    L->aim[L->n++] = a;
+  }
+}
 // A MOVE'S PLACE IN THE LIST: the first entry it meets, its break as the entry asks it (under garbage every entry asks one), as the
 // searches ask it (meets); -1 for one that clears nothing or meets none. The rank's one question of the list's order.
 static int metOf(const List *L, Made m) {
