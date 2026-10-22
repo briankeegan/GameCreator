@@ -859,3 +859,5 @@ spent of material under garbage, each line lost sooner than the last (combo_stor
 the order have stopped moving the total (79-85 of 96 since 12b4b919); what is left is the defence itself.
 Measured (`6e09e4bf`, runs 693-696: of two lines lost within half a break's time, a row more material first): big chain 22, build
 21, finish 19, pressure 19 (81 of 96); 0.51-0.58 wasted threes a minute. Reverted.
+Measured (`c97fbb3c`, runs 697-700: the touch beam ten swaps deep, from eight): big chain 21, build 22, finish 21, pressure 21 (85 of
+96, every mode 21 or more); 0.44-0.74 wasted threes a minute. Kept; twelve next.
