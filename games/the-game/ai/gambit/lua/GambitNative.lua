@@ -155,14 +155,21 @@ local function wired(src)
     and not src.is_local and true or false
 end
 -- (a wired source's garbage is read off this stack's own queue only, what the server delivered: board.lua loads it)
-function GambitNative:telegraph(sources)
+-- (A SOURCE PLAYED HERE BEHIND THIS STACK: an opponent's stack copied from its relayed keys runs as far as its keys have come, so it
+-- can be frames behind this one -- its transits are timed on its own stopWatch, which the frame loop reads them against (front.c
+-- arrivalsOf), so its stopWatch is given as it will be once it has caught up: the frames it is behind added)
+local function caughtUp(src, me)
+  local lag = me and me.clock and src.clock and me.clock - src.clock or 0
+  return src.stopWatch + (lag > 0 and lag or 0)
+end
+function GambitNative:telegraph(sources, me)
   local T, x = C.gn_tele(), 1
   local n = 0
   for _, src in ipairs(sources or EMPTY) do
     local q = src.outgoingGarbage
     if q and src.stopWatch ~= nil and not wired(src) then
       n = n + 1
-      T[x], T[x + 1] = src.stopWatch, b01(q.illegalStuffIsAllowed); x = x + 2
+      T[x], T[x + 1] = caughtUp(src, me), b01(q.illegalStuffIsAllowed); x = x + 2
       -- (every transit not yet delivered: one whose time has come waits while the stack has CAPPED_AT queued, GarbageDelivery; its count
       -- written once they are)
       local sent, nt, at = 0, 0, x
@@ -231,7 +238,7 @@ function GambitNative:think(stack, sources, view)
   local t0 = ThinkBudget.now()
   self:load(stack)
   local t1 = ThinkBudget.now()
-  self:telegraph(sources)
+  self:telegraph(sources, stack)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
   local has, out, top, stop = opponentOf(sources, view, stack.clock)

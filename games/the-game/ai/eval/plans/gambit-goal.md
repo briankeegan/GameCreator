@@ -893,3 +893,10 @@ chain did not follow, and the three stood alone. The colours a slab converts to 
 a guess, and the judge does not say so.
 Measured (`f74f5421`, runs 745-748: a three starting a chain counted wasted while a colour is not shown): big chain 19 of 22, build 20,
 finish 22, pressure 22; 0.47-0.62 wasted threes a minute -- no fewer. Reverted.
+REAL GAMES (panel-game run 39702680320, Ranmaru_CPU live on panelattack.com, 3 hours): 31 matches, 17 won, 13 lost, 2 aborted
+(desynced, clocks 1681 against 1435). The frame loop's board diverged from the game 482 times -- in training, never: 396 an incoming
+piece the game had and the prediction had not yet received, 86 garbageCreatedCount a piece ahead. Each divergence drops the plan.
+Measured against the decision before each: the game received the piece 6-8 frames before the prediction did (154 at 8, 57 at 6,
+44 at 7). The cause: an opponent played here from its relayed keys runs behind this stack, and its transits are read against its own
+stopWatch (front.c arrivalsOf: offset = mine - its), so every piece was predicted the frames it is behind too late. GambitNative.lua
+now gives its stopWatch caught up (the frames behind added) -- nothing changes where the source keeps up (training, local play).
