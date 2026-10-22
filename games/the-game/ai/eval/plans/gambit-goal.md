@@ -832,3 +832,8 @@ Measured (`d35d39cd`, runs 657-660 -- the strict press guard of 900b2b8a and the
 75-116 swaps refused at the press a run. (`0cf136d2`, runs 661-662, on it): 16 and 12; 0.4-0.5 wasted threes a minute, 23-24 refused --
 the order taking a three only where every other line is lost within rankSave. The walk rule reverted (`d69255a4`); `70ea377e` puts the
 press guard back to the board lost without the swap. Both dispatched on all four modes (A: d69255a4, B: 70ea377e).
+Measured (runs 665-672, each mode both ways): B `70ea377e` (the press guard lets a three through whenever the board is lost without it)
+-- big chain 22, build 20, finish 19, pressure 21; 0.5-0.8 wasted threes a minute; 0-1 swaps refused a run. A `d69255a4` (a three the
+plan did not see must also leave the board alive) -- 10, 14, 14, 11 of 23; 18-29 refused. A refused swap drops the plan, and dropped
+plans under garbage are deaths: B stays. Against 12b4b919 the wasted threes fell from 1.4-2.2 a minute; what is left is the order's
+save, every other line lost within rankSave.
