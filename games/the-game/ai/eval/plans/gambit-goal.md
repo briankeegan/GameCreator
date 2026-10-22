@@ -920,3 +920,7 @@ Measured (`014e6f74`, runs 753-756, the line in progress kept): switches 39% to 
 carry turned it down (decide.c carriedCand): 48% dead once judged again (new garbage; a fair switch), 39% because the rest no longer
 met the entry the line was begun for (the swaps pressed so far made part of it), 3% a break it no longer made. The last is now carried
 on for no entry (carryDrop=5 in the log) and ranked as the line in progress.
+Measured (`19ae0cec`, runs 757-760): switches 27% to 19%; big chain 23, build 21, finish 21, pressure 19 (84 of 96); 0.54-0.66 wasted
+threes a minute. And the prediction: in the losses, lines played 30 or more frames out that outlived the board by a break's time or
+more fell from 40% (runs 657-748) to 13%. The lines are played as judged now, and the board is lost where the judge said it would be:
+what is left is a board with no line that lives -- the defence, not the infra.
