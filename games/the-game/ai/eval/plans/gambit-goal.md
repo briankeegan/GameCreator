@@ -938,9 +938,3 @@ Two faults. The rank took the survival worker's line only while leftMs() > 0 -- 
 line the worker had found was thrown away. And the survival job was the last of up to five handed to four threads, and a job no thread
 has begun when the searches end is not begun at all (jobsDone). Now the worker's line is taken whenever it has finished, and the
 survival job is handed out second, after the break search; the log's sv=1 when it finished, /asked when the rank asked it.
-THE RANK HAD NO TIME: the searches end a quarter short of the decision's due, kept for judging what they found (searchesEnd), and
-leftMs() counts to searchesEnd -- so every step of the rank that asked the time left was told it had none. The readiness of each line
-(a break once the garbage lands: whether a line under garbage lives) was given readyShare = leftMs()/(2 asks), a deadline already past,
-and answered only from the breaks already kept (5217 hits in 116221 asks); the readiness jobs were not spread to the workers; the
-three taken out never ran. In the rank, leftMs() now counts to the due less the margin and RANK_KEEP (6 ms): 74 of the golden's moves
-change.

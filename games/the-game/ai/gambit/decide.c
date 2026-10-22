@@ -170,9 +170,7 @@ static int carriedFromReady(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
-static int rankedIn(const Read *R, const Found *S);
-static int ranked(const Read *R, const Found *S) { rankPhase = 1; int n = rankedIn(R, S); rankPhase = 0; return n; }
-static int rankedIn(const Read *R, const Found *S) {
+static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; unbroken.set = 0;
   ideaAims = &R->asked; ideasAsks = 0;
