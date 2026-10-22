@@ -543,9 +543,12 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // (a line begun for a break whose swaps pressed so far made it -- the slab popping now, none when it was begun -- is carried on for
   // what the rest of it makes: the rest is what the line was judged to live by)
   if (C->broke && !(x.broke > 0) && !(!C->popping && popLeft(decQ.b) > 0)) { carryDrop = 3; return 0; }
-  if (C->hasAim && !meets(&C->aim, x)) { carryDrop = 4; return 0; }
+  // (the rest no longer meeting the entry it was begun for -- the swaps pressed so far made part of it -- it is carried on for no entry,
+  // ranked as the line in progress is: rank.c 1a)
+  int aimGone = C->hasAim && !meets(&C->aim, x);
+  if (aimGone) carryDrop = 5;
   int aim = -1;
-  if (C->hasAim) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;
+  if (C->hasAim && !aimGone) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;
   if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, nrest, aim, 0)) return 0;
   k->settled = C->settled;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;

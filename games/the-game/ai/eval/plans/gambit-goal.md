@@ -915,3 +915,8 @@ line to break line 270, break line to entry 182 -- and 3% held or raised. Each l
 five were put down at the next decision for a near-equal one. Now (1a, rank.c) the line in progress, judged again on the board as it
 is, ranks before another of the same life unless the other is lost a break's time later or meets an earlier entry.
 Measured (`3a0d69c8`, runs 749-752): big chain 22, build 21 of 23, finish 24, pressure 20.
+Measured (`014e6f74`, runs 753-756, the line in progress kept): switches 39% to 27%; big chain 22, build 23, finish 22 of 23, pressure
+20 (87 of 95); 0.65-0.83 wasted threes a minute. Of the switches left, 78% had no line in progress among the options at all -- the
+carry turned it down (decide.c carriedCand): 48% dead once judged again (new garbage; a fair switch), 39% because the rest no longer
+met the entry the line was begun for (the swaps pressed so far made part of it), 3% a break it no longer made. The last is now carried
+on for no entry (carryDrop=5 in the log) and ranked as the line in progress.
