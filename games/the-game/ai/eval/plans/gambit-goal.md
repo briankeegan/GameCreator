@@ -948,3 +948,7 @@ lost within rankSave -- the best line that wastes one and the best that does not
 the survival search asked of the board each leaves, garbage still on its way landing as it would. A three whose board, with the best
 line on, outlasts the other's by less than half a break's time was not needed: it is dropped. In the decision's own time, SAVE_MS
 (10) each at most, SAVE_KEEP_MS (4) kept; the log's saveAsk=not needed/asked.
+Measured (`38da0132`, runs 781-784, the save asked): big chain 24, build 21, finish 22, pressure 20 (87 of 96); 0.44-0.64 wasted
+threes a minute; of 42 saves asked in four games, none found not needed. The threes left are saves by the owner's rule, and the count
+called them wasted. Now a three of a line the survival search found the board needed (saveOk) is counted saved, apart; the rest are
+the wasted -- and the log gives both boards' loss (saveAsk=not/asked:with/without).

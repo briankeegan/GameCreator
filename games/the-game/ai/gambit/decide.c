@@ -175,7 +175,8 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 // it could not be asked. The hold's board is the board left alone.
 #define SAVE_MS 10
 #define SAVE_KEEP_MS 4
-static int32_t saveAsked, saveNot;   // (saves asked of the survival search this decision, and the threes it found not needed: the log's)
+static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
+static double saveCw = -1, saveCk = -1;
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
@@ -194,7 +195,7 @@ static double contLostOf(const Judge *J, double give) {
 }
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = 0;
+  carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -324,7 +325,9 @@ static int ranked(const Read *R, const Found *S) {
         double give = (saveRoomMs() - SAVE_KEEP_MS) / 2; if (give > SAVE_MS) give = SAVE_MS;
         double cw = contLostOf(bw, give), ck = cw >= 0 ? contLostOf(bk, give) : -1;
         saveAsked++;
+        saveCw = cw; saveCk = ck;
         if (cw >= 0 && ck >= 0 && ck + rankSave / 2 >= cw) { keeps = 1; saveNot++; }
+        else if (cw >= 0 && ck >= 0) saveOk = 1;
       }
     }
     if (keeps) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; } }

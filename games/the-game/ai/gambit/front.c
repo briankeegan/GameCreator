@@ -57,7 +57,7 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
-  int32_t wasted, wastedAlone, wasteRefused;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own)
+  int32_t wasted, wastedAlone, wasteRefused, saved;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
 } FStats;
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 // (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
@@ -95,7 +95,7 @@ static struct {
   int32_t oppHas, oppOut, oppTop, oppStop;
   int32_t toppedNow;
   // the attacks made, read off the board as it is shown
-  int32_t chainMax, pendCombo[16], npendCombo, pendThree, pendThreeAlone, matchedIds[MAXROWS * W], nmatched, swapSince;
+  int32_t chainMax, pendCombo[16], npendCombo, pendThree, pendThreeAlone, pendSave, matchedIds[MAXROWS * W], nmatched, swapSince;
   // the swaps pressed still followed, the garbage cells matched last frame, and the cursor where it was and whether it was walked
   MoveOpen moves[MOVE_OPEN]; int32_t nmoves, gMatched, curRowWas, curColWas, curWalked;
   int32_t reaction, ahead, gap, jitter;
@@ -592,9 +592,9 @@ static void countAttacks(const Board *b) {
   // (a clear of three with no garbage broken waits: a chain it starts makes it a link, and it was no waste)
   // (wasted: a swap's -- a panel a followed swap moved is in it; wastedAlone: the stack's own, panels out of garbage or fallen)
   // (counted once its clear and every panel falling from it have settled: a three's chain comes after it pops)
-  if (cc >= 2) { F.pendThree = F.pendThreeAlone = 0; F.pendLog[0] = 0; }
-  if (cc == 0 && (F.pendThree || F.pendThreeAlone) && !hasActivePanels((Board *)b)) {
-    F.st.wasted += F.pendThree; F.st.wastedAlone += F.pendThreeAlone; F.pendThree = F.pendThreeAlone = 0;
+  if (cc >= 2) { F.pendThree = F.pendThreeAlone = F.pendSave = 0; F.pendLog[0] = 0; }
+  if (cc == 0 && (F.pendThree || F.pendThreeAlone || F.pendSave) && !hasActivePanels((Board *)b)) {
+    F.st.wasted += F.pendThree; F.st.wastedAlone += F.pendThreeAlone; F.st.saved += F.pendSave; F.pendThree = F.pendThreeAlone = F.pendSave = 0;
     if (F.pendLog[0] && F.loggedWasted < 400) {
       flog(F.pendLog);
       // (the first few with the board their swap was pressed on: GAMBITX <frame pressed>)
@@ -604,7 +604,7 @@ static void countAttacks(const Board *b) {
     F.pendLog[0] = 0;
   }
   if (fresh == 3 && cc < 2 && !brokeNow) {
-    if (bySwap) F.pendThree++; else F.pendThreeAlone++;
+    if (bySwap && F.lineWastes) F.pendSave++; else if (bySwap) F.pendThree++; else F.pendThreeAlone++;
     // (each logged, the first few hundred: where, and the swap it came of -- to find what pressed it)
     if (F.loggedWasted < 400 && !F.pendLog[0]) {
       char *l = F.pendLog; int k = snprintf(l, sizeof F.pendLog, "GAMBITW %d three", b->clock);
@@ -871,8 +871,8 @@ static void statsLine(char *out, int cap) {
   }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
   // (the swaps still followed when the match ends are counted by what they came to so far: nothing yet)
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d}}",
-                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused);
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d}}",
+                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved);
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {
