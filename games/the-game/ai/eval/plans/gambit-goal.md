@@ -949,6 +949,3 @@ the order's saves (all lost within rankSave, 9 within 2 frames), 10 the judge di
 NO THREE CHOSEN, AGAIN (the owner: no wasted threes): `05543891` dropped the saves and died (0-2 of 24) -- on a build whose rank had no
 time for readiness and whose survival line was there in 8% of the decisions that needed it. Both fixed, the order now never keeps a
 line that wastes a three while anything else is in it, and the survival search takes no step that wastes one.
-THE SAVE, as the owner put it: either the board needs the three not to die, or it is a wasted three. The order keeps a line that
-wastes a three only when it lives and no line without one does -- a three lost anyway, later or not, is wasted. The frame loop counts
-the threes of a line played as such a save apart (moves.saved; the summary's "played as the board's save"), never as wasted.
