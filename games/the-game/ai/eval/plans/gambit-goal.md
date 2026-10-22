@@ -841,3 +841,7 @@ Measured (`59ae4b9b`, runs 673-676: a three that buys a break's time kept howeve
 pressure 20 -- 85 of 96 to B's 82, within the noise -- with 0.9-1.2 wasted threes a minute to B's 0.5-0.8. Reverted to 0cf136d2's rule.
 THE OPENING RAISE (run 676, combo_storm-3, lost at 376): raised to 48 panels as a slab landed, over lines lost 300 frames later. It now
 has the floor raise's caps, and where nothing lives gives way to a line lost a break's time later than the hold (`1a67e26d`).
+Measured (`1a67e26d`, runs 677-680): big chain 23, build 22, finish 17, pressure 21 (83 of 96); 0.50-0.58 wasted threes a minute.
+THE INPUT RESERVE (run 680, factory-2, lost at 812): the game allows 76 actions in any 600 frames. Breaks and carries of 3-8 swaps took
+the allowance from 33 to 1 in 250 frames; then 27 lines were cut for their walk and the board was lost. Now, where nothing lives, a line
+that walks the allowance below BREAK_WALK loses to one that keeps it unless it is lost a break's time later (`a98fcad9`).
