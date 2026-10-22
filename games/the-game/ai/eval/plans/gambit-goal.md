@@ -909,3 +909,9 @@ or more frames before a loss, 993 played a line predicted to outlive the board b
 464, breaks 227 of 330, entries 124 of 162 -- while holds and lines toward a break were predicted right (389 of 411, 302 of 321). The
 lines that do something are the ones the prediction overrates; the frame loop never diverged in those games, so it is the judge's
 horizon, not the board.
+LINES PUT DOWN HALFWAY (runs 749-752, `3a0d69c8`, the log's seq=): of 5470 decisions that followed one playing a line of three or
+more swaps, 59% carried it on (allowing a row's rise and a swap's timing), 39% switched to another line -- entry to entry 445, break
+line to break line 270, break line to entry 182 -- and 3% held or raised. Each line was chosen on its forecast played whole; two in
+five were put down at the next decision for a near-equal one. Now (1a, rank.c) the line in progress, judged again on the board as it
+is, ranks before another of the same life unless the other is lost a break's time later or meets an earlier entry.
+Measured (`3a0d69c8`, runs 749-752): big chain 22, build 21 of 23, finish 24, pressure 20.

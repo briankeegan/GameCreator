@@ -191,7 +191,7 @@ static int ranked(const Read *R, const Found *S) {
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
-    order[n] = cj; n++; carriedJ = cj;
+    cj->carried = 1; order[n] = cj; n++; carriedJ = cj;
   }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
@@ -226,7 +226,7 @@ static int ranked(const Read *R, const Found *S) {
     else {
       static Judge again; Cand kc = J->k;
       if (judgeCand(R, &kc, &again)) {
-        again.wait = J->wait; again.first = J->first; again.waitMax = J->waitMax;   // (its place in the order kept: the line in progress)
+        again.wait = J->wait; again.first = J->first; again.waitMax = J->waitMax; again.carried = J->carried;   // (its place in the order kept: the line in progress)
         again.outside = again.outside || J->outside;
         *J = again;
       }

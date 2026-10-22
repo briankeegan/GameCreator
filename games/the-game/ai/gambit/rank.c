@@ -29,6 +29,7 @@ typedef struct {
   int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
+  int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
   double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
@@ -302,6 +303,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
   if (lx != ly) return lx ? -1 : 1;
+  // 1a. THE LINE IN PROGRESS KEPT: of two that both live or both do not, the line the last decision was playing, judged again on the
+  // board as it is, before another -- unless the other is lost a break's time later (neither lives) or meets an earlier entry of the
+  // list (both live). A line put down halfway leaves a board its forecast never judged.
+  if (x->carried != y->carried && !x->hold && !y->hold) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : lostOf(o) < lostOf(c) + rankSave;
+    if (keep) return x->carried ? -1 : 1;
+  }
   if (lx) {
     // 2. (both live) the board's own chain kept before cut short: a chain the board is making is never stopped by a line that need not
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
