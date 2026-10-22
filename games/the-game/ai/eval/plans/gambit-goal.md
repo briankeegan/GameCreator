@@ -828,3 +828,7 @@ for two that live seldom applied (15% of moves walked 6 cells or more). `d35d39c
 ranked by the walk too (WALK_EARN). Runs on d35d39cd were dispatched, not yet read.
 `d9245160`: GambitNative.lua's VIEW_FRESH is defined again (8e328efb dropped it; the live client on panelattack.com errored at its first
 match).
+Measured (`d35d39cd`, runs 657-660 -- the strict press guard of 900b2b8a and the walk for lines lost alike): 8, 7, 6 and 9 of 24;
+75-116 swaps refused at the press a run. (`0cf136d2`, runs 661-662, on it): 16 and 12; 0.4-0.5 wasted threes a minute, 23-24 refused --
+the order taking a three only where every other line is lost within rankSave. The walk rule reverted (`d69255a4`); `70ea377e` puts the
+press guard back to the board lost without the swap. Both dispatched on all four modes (A: d69255a4, B: 70ea377e).
