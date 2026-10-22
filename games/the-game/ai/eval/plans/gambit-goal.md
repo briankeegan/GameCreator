@@ -924,3 +924,8 @@ Measured (`19ae0cec`, runs 757-760): switches 27% to 19%; big chain 23, build 21
 threes a minute. And the prediction: in the losses, lines played 30 or more frames out that outlived the board by a break's time or
 more fell from 40% (runs 657-748) to 13%. The lines are played as judged now, and the board is lost where the judge said it would be:
 what is left is a board with no line that lives -- the defence, not the infra.
+THE POINT OF NO RETURN (the 12 losses of runs 757-760): at the last decision with a line that lives, every one played it (v=lives);
+at the next, 15-40 frames on, none lived -- the garbage shown next (often landing 290-400 frames out) is what no line survives. "Lives"
+is against the garbage shown; the board had no margin for the next. In large_garbage the board sits with 12-30 panels under the slabs
+for thousands of frames, each break converting one row (broke=6) while the slabs come several rows tall: the breaks are a row at a
+time and the garbage is not.
