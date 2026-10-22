@@ -42,7 +42,6 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
         ms1[j] = bMv[b];
         int out = stepTake(x, b, level[i].n, MK_SWAP, bMv[b]);
         if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
-        { Stats w3; if (statsOf(x, out, &w3) && threesOf(&w3) > 0) continue; }   // (no step that wastes a three: judge.c threesOf)
         if (d == 1) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(ms1[j]), CC(ms1[j]), NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) continue; }
         Node *on = NODE(x, out);
         int dup = 0;
