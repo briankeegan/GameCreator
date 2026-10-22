@@ -5,6 +5,7 @@
 // answer; else the line whose board is lost latest. And THE FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn).
 
 #define OUT_SEQ 16
+#define OUTLIVE_WIDTH 45   // the survival search's beam, as the decision asks it
 typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost; } OItem;
 typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt; } Outlived;
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
