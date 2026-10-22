@@ -857,3 +857,5 @@ finish 17, pressure 21 (82 of 96); 0.7-0.9 wasted threes a minute. Reverted.
 THE TURN, the last decision a break was there, in the losses of runs 677-688: mostly a break played, then none to make -- the board
 spent of material under garbage, each line lost sooner than the last (combo_storm-5: 281, 237, 220 ... 59, 45 frames). Rule changes to
 the order have stopped moving the total (79-85 of 96 since 12b4b919); what is left is the defence itself.
+Measured (`6e09e4bf`, runs 693-696: of two lines lost within half a break's time, a row more material first): big chain 22, build
+21, finish 19, pressure 19 (81 of 96); 0.51-0.58 wasted threes a minute. Reverted.
