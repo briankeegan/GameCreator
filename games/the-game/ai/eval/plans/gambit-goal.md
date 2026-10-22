@@ -847,3 +847,8 @@ the allowance from 33 to 1 in 250 frames; then 27 lines were cut for their walk 
 that walks the allowance below BREAK_WALK loses to one that keeps it unless it is lost a break's time later (`a98fcad9`).
 Measured (`a98fcad9`, runs 681-684): big chain 21, build 20, finish 19, pressure 19 (79 of 96); 0.54-0.60 wasted threes a minute.
 No gain over 1a67e26d's 83: reverted (`7ba8a71b`).
+THE MACHINE: in runs 677-684, most breaks the live search missed were found again in its own time (r678: 12 of 14) -- the runner's
+four cores shared by four workers, the client and its software renderer. Measured with three workers (`9dccf512`, runs 685-688):
+big chain 18, build 20, finish 23, pressure 22 (83 of 96, as with four); missed breaks 3 in 171 boards searched again, against 25.
+Fewer misses, no more survival: the losses are elsewhere. Of ten traced on 1a67e26d, two spent the input allowance; the rest were
+boards short of panels under garbage (large_garbage-8: 17 panels, no break, topped and so no raise) and lines cut for a swap not there.
