@@ -448,6 +448,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" fire="); if (P.line && A->fire >= 0) L_i(A->fire); else L_s("-");
   L_s(" ats="); if (P.line && P.line->apNats) { for (int i = 0; i < P.line->apNats; i++) { if (i) L_s("/"); L_i(P.line->apAts[i]); } } else L_s("-");
   L_s(" swaps="); L_i(P.line ? P.line->k.nseq : 0);
+  if (P.line && P.line->k.nseq > 0) { L_s(" seq="); for (int q = 0; q < P.line->k.nseq; q++) { if (q) L_s(";"); L_mv(P.line->k.seq[q]); } }   // (the line played, every swap: whether the next decision carries it on)
   // (SEVERAL IDEAS AT ONCE: the blocks the line played throws, every attack its own; the ideas the board it leaves holds, where a key
   // asked them; the lines firing two ideas the planner offered, and whether one -- or a route pressed at once -- was played)
   L_s(" thrown="); L_i(P.line ? thrownOf(P.line) : 0);
