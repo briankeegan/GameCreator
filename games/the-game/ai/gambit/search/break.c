@@ -12,7 +12,7 @@
 // back) and a break is taken only through the shared line check (lineFits). Every step is the clock's: past its share the search
 // ends with what it has.
 
-#define TOUCH_DEPTH 8
+#define TOUCH_DEPTH 10
 #define TOUCH_BEAM 30
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
