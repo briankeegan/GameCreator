@@ -14,7 +14,7 @@
 
 #define TOUCH_DEPTH 12
 #define TOUCH_BEAM 60
-#define TOUCH_WIDE 150     // TOUCH_WIDER, the one wider beam
+#define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
 #define KEEPN TOUCH_BEAM            // the lines carried on
 #define LINEUP_BUDGET 400
@@ -26,7 +26,7 @@ static LOCAL int32_t touchFrom;
 #define NEAR_MISS 20
 #define MAXPATH 32
 #define LINEUP_AFTER 30
-#define LINEPOOL 12288   // lines one level holds: TOUCH_WIDE x the swaps of a board
+#define LINEPOOL 8192   // lines one level holds: TOUCH_WIDE x the swaps of a board
 
 typedef struct { int32_t key, n, s, h, len, kept; int32_t path[MAXPATH]; } Line;
 typedef struct { int32_t n, len[KEEPN]; int32_t path[KEEPN][MAXPATH]; } Paths;
