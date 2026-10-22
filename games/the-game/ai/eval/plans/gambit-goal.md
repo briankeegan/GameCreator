@@ -873,3 +873,5 @@ Measured (`04a8e7bd`, runs 717-720: the aimed line-up 12 wide, from 8): big chai
 the most yet, finish's first 24); 0.44-0.64 wasted threes a minute. Kept; the line-up 10 deep next.
 Measured (`7baf778b`, runs 721-724: the line-up 10 deep): big chain 24, build 17, finish 22, pressure 22 (85 of 96). Reverted; the
 line-up 16 wide next.
+Measured (`4df2894f`, runs 725-728: the line-up 16 wide): big chain 24, build 21, finish 22, pressure 21 (88 of 96). Reverted to 12
+(`04a8e7bd`'s 91). The search now stands: touch beam 12 deep, 60 wide, wider pass 100; line-up 8 deep, 12 wide.
