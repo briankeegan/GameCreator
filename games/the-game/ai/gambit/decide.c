@@ -177,6 +177,7 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 #define SAVE_KEEP_MS 4
 static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
 static double saveCw = -1, saveCk = -1;
+static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
@@ -195,7 +196,7 @@ static double contLostOf(const Judge *J, double give) {
 }
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1;
+  carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -278,7 +279,8 @@ static int ranked(const Read *R, const Found *S) {
     Outlived sv = svDone ? svJob : outlive(&decQ, HORIZON + REST, REST, leftMs(), 6, 30);
     offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
     Cand sk;
-    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
+    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
+    if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps
@@ -322,8 +324,11 @@ static int ranked(const Read *R, const Found *S) {
         else if (!bk || lostOf(J) > lostOf(bk)) bk = J;
       }
       if (bw && bk) {
-        double give = (saveRoomMs() - SAVE_KEEP_MS) / 2; if (give > SAVE_MS) give = SAVE_MS;
-        double cw = contLostOf(bw, give), ck = cw >= 0 ? contLostOf(bk, give) : -1;
+        // (the side without a three: the survival search's own line from now when it wastes none -- searched already, on a worker -- else
+        // the best line without one played to its end and searched on; the decision's time all the three's side's when it need not)
+        int have = svLost >= 0 && svClean;
+        double give = (saveRoomMs() - SAVE_KEEP_MS) / (have ? 1 : 2); if (give > SAVE_MS) give = SAVE_MS;
+        double cw = contLostOf(bw, give), ck = cw < 0 ? -1 : have ? (lostOf(bk) > svLost ? contLostOf(bk, give) : svLost) : contLostOf(bk, give);
         saveAsked++;
         saveCw = cw; saveCk = ck;
         if (cw >= 0 && ck >= 0 && ck + rankSave / 2 >= cw) { keeps = 1; saveNot++; }

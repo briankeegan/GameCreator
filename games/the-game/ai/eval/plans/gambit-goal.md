@@ -952,3 +952,8 @@ Measured (`38da0132`, runs 781-784, the save asked): big chain 24, build 21, fin
 threes a minute; of 42 saves asked in four games, none found not needed. The threes left are saves by the owner's rule, and the count
 called them wasted. Now a three of a line the survival search found the board needed (saveOk) is counted saved, apart; the rest are
 the wasted -- and the log gives both boards' loss (saveAsk=not/asked:with/without).
+Measured (`453a3bc3`, runs 785-788): big chain 23, build 22, finish 20, pressure 18 (83 of 96); 0.45-0.57 wasted threes a minute, 0-6
+saves confirmed a run. Of 42 saves asked, 34 could not finish the side without a three (no time left). Of 37 wasted threes in twelve
+games, 26 the order's (carries 12, breaks 8, the survival line 5), 11 the judge did not see. The side without a three is now the
+survival search's own line from now when it wastes none -- searched on its worker already -- and the decision's time goes to the
+three's side.
