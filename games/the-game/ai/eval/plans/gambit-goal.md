@@ -867,3 +867,5 @@ Measured (`7339b7ad`, runs 705-708: the touch beam 45 wide, from 30): big chain 
 most yet); 0.59-0.65 wasted threes a minute. Kept; 60 wide next.
 Measured (`eb5d0a9b`, runs 709-712: 60 wide): big chain 22, build 24, finish 21, pressure 21 (88 of 96); 0.53-0.64 wasted threes a
 minute. Level with 45; kept. The wider beam (TOUCH_WIDE 150, from 100) next.
+Measured (`aaee65b0`, runs 713-716: the wider pass 150, from 100): big chain 21, build 20, finish 21, pressure 22 (84 of 96); 0.62-0.74
+wasted threes a minute. Reverted: the touch beam stands at 12 deep, 60 wide, its wider pass 100.
