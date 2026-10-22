@@ -879,3 +879,7 @@ Measured (`e23514b2`, runs 729-732: the survival search 45 wide): big chain 22, 
 Measured (`fd575ba0`, runs 733-736: the planner 60 wide): big chain 23, build 21, finish 21, pressure 21 (86 of 96). Reverted.
 Of the search's widths and depths, two moved the total: the touch beam (8 to 12 deep, 30 to 45-60 wide: 83 to 88-90) and the line-up
 (8 to 12 wide: 91). Wider still, deeper still, the survival search and the planner wider: 84-88, no better.
+Measured (`a3a56192`, runs 737-740: touch beam 45 beside the line-up 12): big chain 22, build 22, finish 16, pressure 23 (83 of 96).
+Reverted. Finish went 24 to 16 between two builds a beam width apart: one run of a mode on random seeds swings by up to eight games,
+so the totals of runs 697-740 (83-91) do not tell the settings apart. Every mode at 24, twice, asks for a board that survives about 199
+games in 200; the builds here survive about 9 in 10.
