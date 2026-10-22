@@ -317,8 +317,8 @@ static int ranked(const Read *R, const Found *S) {
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
     // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way
-    // landing as it would. A three whose board, with the best line on, outlasts the other's by less than half a break's time was not
-    // needed not to die: it is wasted)
+    // landing as it would. A three whose board, with the best line on, outlasts the other's by nothing was not needed not to die: it
+    // is wasted)
     if (!keeps && saveRoomMs() > SAVE_KEEP_MS + 2) {
       const Judge *bw = 0, *bk = 0;
       for (int i = 0; i < n; i++) {
@@ -330,13 +330,13 @@ static int ranked(const Read *R, const Found *S) {
         // (the side without a three: the survival search's own line from now when it wastes none -- searched already, on a worker -- else
         // the best line without one played to its end and searched on; the decision's time all the three's side's when it need not)
         // (the three's side first, with the time; then the side without, bounded below by what is known already -- the best line's own
-        // loss, the survival line's when it wastes none: a three that does not beat that by half a break's time is not needed, and only
+        // loss, the survival line's when it wastes none: a three that does not beat that is not needed, and only
         // otherwise is the side without searched, in what time is left)
         int have = svLost >= 0 && svClean;
         double kLow = lostOf(bk); if (have && svLost > kLow) kLow = svLost;
         double give = saveRoomMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
         double cw = contLostOf(bw, give), ck = -1;
-        if (cw >= 0 && kLow + rankSave / 2 >= cw) ck = kLow;
+        if (cw >= 0 && kLow >= cw) ck = kLow;
         else if (cw >= 0) {
           double give2 = saveRoomMs() - SAVE_KEEP_MS; if (give2 > SAVE_MS) give2 = SAVE_MS;
           double c2 = give2 >= 1 ? contLostOf(bk, give2) : -1;
@@ -344,7 +344,7 @@ static int ranked(const Read *R, const Found *S) {
         }
         saveAsked++;
         saveCw = cw; saveCk = ck;
-        if (cw >= 0 && ck >= 0 && ck + rankSave / 2 >= cw) { keeps = 1; saveNot++; }
+        if (cw >= 0 && ck >= 0 && ck >= cw) { keeps = 1; saveNot++; }
         else if (cw >= 0 && ck >= 0) saveOk = 1;
       }
     }

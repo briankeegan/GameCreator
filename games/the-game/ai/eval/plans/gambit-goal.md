@@ -978,3 +978,6 @@ THE DEATHS OF 798-800 (14): 12 short of material -- 8 to 20 panels, no break in 
 out: of 1,046 boards of four 800 games replayed, 1,017 topped, 2 taking a raise -- a raise is no way out there (asked of the survival
 search as a first step and measured on those boards; not kept). Under garbage the board lives on the stop time its clears give, and
 only a clear that breaks gives back the panels it spends.
+Measured (`07c5950a`, runs 801-804, every save asked answered): big chain 17, build 15, finish 22, pressure 19 (73 of 96); 0.42-0.55.
+Of 69 saves asked in six games, 63 needed, 6 not -- a three outlasting the other side by under half a break's time was called not
+needed. Now not needed is the owner's rule as said: the board without the three lasts as long.
