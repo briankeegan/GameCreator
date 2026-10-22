@@ -270,14 +270,15 @@ static int ranked(const Read *R, const Found *S) {
     if (ns) sortJudged(order, n);
   }
   // NO WASTED THREE (the owner: only when not doing it would kill it): a line whose clears break nothing and throw nothing is taken out
-  // of the order -- unless every other line is lost within a break's time (rankSave) and a three lives, or is lost later: only there is
-  // a three a save
+  // of the order -- unless every other line is lost and a three lives, or is lost later: within a break's time (rankSave) of the loss
+  // any later, past it a break's time later -- only there is a three a save
   { int keeps = 0, wasteLives = 0; double wasteLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
       if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
-    if (!keeps && keptLost >= rankSave) keeps = 1;
+    // (lost later than a break's time, the three is a save only if it buys a break's time more: the next decision can still make one)
+    if (!keeps && keptLost >= rankSave && !wasteLives && wasteLost < keptLost + rankSave) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     if (keeps) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; } }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
