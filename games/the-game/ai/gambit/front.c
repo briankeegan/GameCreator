@@ -789,8 +789,8 @@ static int frontFrame(void) {
     F.raiseCutUntil = now + 30;
   }
   // (no wasted three pressed: the swap refused, the plan dropped, the next decision asked on the board as it is)
-  // (let through only as the save: the board lost without it -- and, a three the plan did not see, alive with it)
-  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !threeSaves(t, bits, F.lineWastes)) {
+  // (let through only as the save: the board lost without it)
+  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !threeSaves(t, bits, 1)) {
     bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
   }
   if (bits & IN_SWAP & ~F.prevBits) moveBegin(t);
