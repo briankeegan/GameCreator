@@ -354,7 +354,11 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the floor's raise gives way to nothing: a low stack is raised, and the break it holds ready is made once it has risen (the owner)
   // -- the rows raised are the ones that leave a break once everything lands, decide.c read)
   // (and the opening's to a break, where nothing lives: a raise is no answer to garbage landing on a board that dies)
-  if (R.up && !raiseRefill && n && !order[0]->o.lives && order[0]->apBroke > 0) R.up = R.low = 0;
+  // -- or to a line that outlasts the hold by a break's time (rankSave): where nothing lives, a raise only brings the loss sooner
+  if (R.up && !raiseRefill && n && !order[0]->o.lives) {
+    const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
+    if (order[0]->apBroke > 0 || (H && !order[0]->hold && lostOf(order[0]) >= lostOf(H) + rankSave)) R.up = R.low = 0;
+  }
   Played P = playOf(&R, n);
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)

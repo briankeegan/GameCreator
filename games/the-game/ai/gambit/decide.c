@@ -115,10 +115,10 @@ static int readBoard_(Read *R) {
     // the panels are the next break's material, and the opening's raise is held to readiness, never the floor's)
     refillAsked = refill ? rowsUp : 0; refillReady = rows; refillAlive = raiseAlive;
     if (rows <= 0 && refill) rows = raiseAlive;
-    // (and, garbage on its way, never more than the board lives through once it lands -- and never the stack's top, garbage on it
-    // counted, up to the top row: a raise into the garbage is a death)
-    if (refill && rq.narr > 0 && rows > raiseAlive) rows = raiseAlive;
-    if (refill) { int32_t h = rq.b->height ? rq.b->height : 12; rows = imin(rows, h - 1 - fullTop(rq.b)); }
+    // (and, the opening's raise and the floor's alike: garbage on its way, never more than the board lives through once it lands --
+    // and never the stack's top, garbage on it counted, up to the top row: a raise into the garbage is a death)
+    if (rq.narr > 0 && rows > raiseAlive) rows = raiseAlive;
+    { int32_t h = rq.b->height ? rq.b->height : 12; rows = imin(rows, h - 1 - fullTop(rq.b)); }
     if (rows <= 0) { R->up = R->low = 0; raiseWait = 0; } else to = fullTop(rq.b) + rows;
   }
   R->to = to;
@@ -270,15 +270,14 @@ static int ranked(const Read *R, const Found *S) {
     if (ns) sortJudged(order, n);
   }
   // NO WASTED THREE (the owner: only when not doing it would kill it): a line whose clears break nothing and throw nothing is taken out
-  // of the order -- unless every other line is lost and a three lives, or is lost later: within a break's time (rankSave) of the loss
-  // any later, past it a break's time later -- only there is a three a save
+  // of the order -- unless every other line is lost within a break's time (rankSave) and a three lives, or is lost later: only there is
+  // a three a save
   { int keeps = 0, wasteLives = 0; double wasteLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
       if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
-    // (lost later than a break's time, the three is a save only if it buys a break's time more: the next decision can still make one)
-    if (!keeps && keptLost >= rankSave && !wasteLives && wasteLost < keptLost + rankSave) keeps = 1;
+    if (!keeps && keptLost >= rankSave) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     if (keeps) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; } }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
