@@ -871,3 +871,5 @@ Measured (`aaee65b0`, runs 713-716: the wider pass 150, from 100): big chain 21,
 wasted threes a minute. Reverted: the touch beam stands at 12 deep, 60 wide, its wider pass 100.
 Measured (`04a8e7bd`, runs 717-720: the aimed line-up 12 wide, from 8): big chain 23, build 21, finish 24, pressure 23 (91 of 96 --
 the most yet, finish's first 24); 0.44-0.64 wasted threes a minute. Kept; the line-up 10 deep next.
+Measured (`7baf778b`, runs 721-724: the line-up 10 deep): big chain 24, build 17, finish 22, pressure 22 (85 of 96). Reverted; the
+line-up 16 wide next.
