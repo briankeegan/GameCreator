@@ -339,9 +339,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
-    // (neither lives, lost alike) THE NEARER LINE: of two that both break garbage or both break none, one walking more than WALK_EARN
-    // actions further loses (the owner: no moves all over the board) -- lost alike, the far line buys nothing the near one does not
-    if (!x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0)) { int wx = lineWalk(x), wy = lineWalk(y); if (iabs(wx - wy) > WALK_EARN) return wx - wy; }
     // (neither lives, lost alike) THE ALLOWANCE'S RESERVE: a line that breaks nothing and walks the input allowance below a break's walk
     // (BREAK_WALK) after one that keeps it -- the break the next decisions find has to be pressed out of what is left
     if (pressAllowance >= 0) {
