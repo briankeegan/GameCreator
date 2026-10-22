@@ -17,7 +17,11 @@ static Ctx2 C2;
 // what the searches may take: the decision's time less the answer's margin and a quarter of it kept for judging what they found --
 // searchesEnd, the share every search runs in (answer.c answerTurn), so no search runs into the judging's quarter
 static double searchesEnd(void) { return C2.due ? C2.due - C2.margin - (C2.due - C2.t0) / 4 : 0; }
-static double leftMs(void) { return C2.due ? searchesEnd() - nowMs() : 1e9; }
+// (and the judging's own time, once the searches are done: the rank -- decide.c ranked -- runs in that quarter, to the decision's due less
+// its margin and RANK_KEEP for the answer; every step of the rank that asks the time left is asked it of that)
+#define RANK_KEEP 6
+static int rankPhase;
+static double leftMs(void) { return C2.due ? (rankPhase ? C2.due - C2.margin - RANK_KEEP : searchesEnd()) - nowMs() : 1e9; }
 static double leftMsOf(void) { return leftMs(); }
 
 // ---- the board's state the proposers read
