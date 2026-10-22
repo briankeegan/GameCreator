@@ -323,6 +323,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
     if (hx != hy) return hx ? 1 : -1;
   } else {
+    // 1b. (neither lives) THE BOARD'S OWN CHAIN KEPT: a line that cuts the chain the board is making short ranks after one that keeps it
+    // -- unless keeping it loses the board within a break's time (rankSave): a chain begun is the attack the board already has, and the
+    // three that began it is wasted once it is cut (the owner: never spoil the board's own chain)
+    if (cutsShort(x) != cutsShort(y)) { const Judge *keep = cutsShort(x) ? y : x; if (lostOf(keep) >= rankSave) return cutsShort(x) ? 1 : -1; }
     // 2. (neither lives) one that breaks garbage, while it leaves the next decision the time a break takes (rankSave): the panels a
     // break converts are what the next is made from -- a break lost before the next could be made converts them for nothing
     // -- on a board short of panels (below the floor) always; on one with panels to spare, not over a line lost a break's time later (run

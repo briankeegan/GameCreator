@@ -957,3 +957,8 @@ saves confirmed a run. Of 42 saves asked, 34 could not finish the side without a
 games, 26 the order's (carries 12, breaks 8, the survival line 5), 11 the judge did not see. The side without a three is now the
 survival search's own line from now when it wastes none -- searched on its worker already -- and the decision's time goes to the
 three's side.
+THE THREES THE JUDGE DID NOT SEE (35 in the games of runs 717-788): 18 on a still board, the swap pressed within 30 frames of its
+decision -- not a guess. Traced (785, factory-3, 13524): a three planned as a 2-chain's first link (chain=2); at the next decision,
+the chain falling (casc=1), a break line lost at 353 was played through its column, the chain was cut, and the three stood alone.
+Where nothing lives the board's own chain was kept only between lines lost alike. Now (1b) a line that cuts it ranks after one that
+keeps it, unless keeping it loses the board within rankSave.
