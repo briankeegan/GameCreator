@@ -938,3 +938,8 @@ Two faults. The rank took the survival worker's line only while leftMs() > 0 -- 
 line the worker had found was thrown away. And the survival job was the last of up to five handed to four threads, and a job no thread
 has begun when the searches end is not begun at all (jobsDone). Now the worker's line is taken whenever it has finished, and the
 survival job is handed out second, after the break search; the log's sv=1 when it finished, /asked when the rank asked it.
+Measured (`3dcf4bfb`, runs 777-780, a three kept only when it lives and nothing else does): 2, 1, 3 and 6 of 24; 0.22-0.32 wasted
+threes a minute, 0-10 played as saves. "Lives" is against the garbage shown, and nothing lives in 94% of the decisions of games the
+board survives: the judge's verdict cannot say which three the board needs not to die, and a three that only buys time is what keeps
+it alive until the next break. Reverted, with no-three-chosen (`3dcd7382`) and the rank's own time (`3d71201b`, runs 769-772: big
+chain 21, build 17, finish 20, pressure 20 -- 78 of 96 to 84-87, 0.59-0.72 wasted threes a minute): main is c616fec3's Gambit.
