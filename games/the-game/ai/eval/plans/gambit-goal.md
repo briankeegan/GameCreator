@@ -962,3 +962,9 @@ decision -- not a guess. Traced (785, factory-3, 13524): a three planned as a 2-
 the chain falling (casc=1), a break line lost at 353 was played through its column, the chain was cut, and the three stood alone.
 Where nothing lives the board's own chain was kept only between lines lost alike. Now (1b) a line that cuts it ranks after one that
 keeps it, unless keeping it loses the board within rankSave.
+Measured (`e1987b02`, runs 789-792): big chain 21, build 21, finish 21, pressure 20 (83 of 96); 0.36-0.60 wasted threes a minute.
+(`32bc7f2f`, runs 793-796, the board's own chain kept): 22, 17, 21, 23 (83 of 96); 0.47-0.64. Of 34 wasted threes in twelve of its
+games 27 were the order's saves and 7 the judge's misses (35 of 35 sampled before were misses, 17 a chain cut by a later swap) -- the
+misses are mostly gone; the saves are left. Of 142 saves asked, 51 confirmed needed, 6 found not needed, 85 without an answer: the
+three's side not searched in 34, the other in 51. Now the three's side is searched first with the time, the other bounded below by
+what is known (the best line's own loss, the survival line's) and searched only when the bound does not settle it.

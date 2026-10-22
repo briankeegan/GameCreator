@@ -326,9 +326,19 @@ static int ranked(const Read *R, const Found *S) {
       if (bw && bk) {
         // (the side without a three: the survival search's own line from now when it wastes none -- searched already, on a worker -- else
         // the best line without one played to its end and searched on; the decision's time all the three's side's when it need not)
+        // (the three's side first, with the time; then the side without, bounded below by what is known already -- the best line's own
+        // loss, the survival line's when it wastes none: a three that does not beat that by half a break's time is not needed, and only
+        // otherwise is the side without searched, in what time is left)
         int have = svLost >= 0 && svClean;
-        double give = (saveRoomMs() - SAVE_KEEP_MS) / (have ? 1 : 2); if (give > SAVE_MS) give = SAVE_MS;
-        double cw = contLostOf(bw, give), ck = cw < 0 ? -1 : have ? (lostOf(bk) > svLost ? contLostOf(bk, give) : svLost) : contLostOf(bk, give);
+        double kLow = lostOf(bk); if (have && svLost > kLow) kLow = svLost;
+        double give = saveRoomMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
+        double cw = contLostOf(bw, give), ck = -1;
+        if (cw >= 0 && kLow + rankSave / 2 >= cw) ck = kLow;
+        else if (cw >= 0) {
+          double give2 = saveRoomMs() - SAVE_KEEP_MS; if (give2 > SAVE_MS) give2 = SAVE_MS;
+          double c2 = give2 >= 1 ? contLostOf(bk, give2) : -1;
+          ck = c2 > kLow ? c2 : (c2 >= 0 ? kLow : -1);
+        }
         saveAsked++;
         saveCw = cw; saveCk = ck;
         if (cw >= 0 && ck >= 0 && ck + rankSave / 2 >= cw) { keeps = 1; saveNot++; }
