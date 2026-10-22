@@ -863,3 +863,5 @@ Measured (`c97fbb3c`, runs 697-700: the touch beam ten swaps deep, from eight): 
 96, every mode 21 or more); 0.44-0.74 wasted threes a minute. Kept; twelve next.
 Measured (`258dad7b`, runs 701-704: twelve deep): big chain 21, build 20, finish 23, pressure 22 (86 of 96); 0.46-0.65 wasted threes
 a minute. Kept; the beam wider (TOUCH_BEAM 45) next.
+Measured (`7339b7ad`, runs 705-708: the touch beam 45 wide, from 30): big chain 24, build 23, finish 21, pressure 22 (90 of 96 -- the
+most yet); 0.59-0.65 wasted threes a minute. Kept; 60 wide next.
