@@ -876,3 +876,6 @@ line-up 16 wide next.
 Measured (`4df2894f`, runs 725-728: the line-up 16 wide): big chain 24, build 21, finish 22, pressure 21 (88 of 96). Reverted to 12
 (`04a8e7bd`'s 91). The search now stands: touch beam 12 deep, 60 wide, wider pass 100; line-up 8 deep, 12 wide.
 Measured (`e23514b2`, runs 729-732: the survival search 45 wide): big chain 22, build 23, finish 19, pressure 23 (87 of 96). Reverted.
+Measured (`fd575ba0`, runs 733-736: the planner 60 wide): big chain 23, build 21, finish 21, pressure 21 (86 of 96). Reverted.
+Of the search's widths and depths, two moved the total: the touch beam (8 to 12 deep, 30 to 45-60 wide: 83 to 88-90) and the line-up
+(8 to 12 wide: 91). Wider still, deeper still, the survival search and the planner wider: 84-88, no better.
