@@ -21,7 +21,6 @@ static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
   factsOf(decQ.b, decQ.arr, decQ.narr, hostTopped, F);
-  judgeGuess = unseenOn(decQ.b);
   // (what every outcome reads of them: when the last block shown lands, and topped -- JUDGE.lastLanding, R.F.us.topped)
   decF.topped = !!F->v[FACT_US_TOPPED];
   decF.land = NOT_ASKED;

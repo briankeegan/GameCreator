@@ -136,19 +136,12 @@ static int32_t firstThree(Ctx *x, int root, int mr, int mc, const Stats *bs) {
 }
 // (a step's wasted threes, as the game's own count reads them (front.c countAttacks), a clear at a time: a clear of three that is no link
 // of a chain and has no garbage joined to it -- and no chain's link after it in the step, which its fall may have made)
-// (A CHAIN ON COLOURS NOT SHOWN: a slab still popping has cells whose colours the game has not shown -- the engine deals them as the
-// search wants -- so a three whose worth is the chain after it is a guess while any is on the board, and counted as a three for nothing)
-static int32_t judgeGuess;   // (decide.c read: the decision's board has a colour not shown)
-static int unseenOn(const Board *b) {
-  for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { int32_t k = b->p[r][c].f[COLOR]; if ((k >= 30 && k <= 119) || (k >= 130 && k <= 219)) return 1; }
-  return 0;
-}
 static int32_t threesOf(const Stats *s) {
   int32_t n = 0;
   for (int j = 0; j < s->n; j++) {
     if (s->size[j] != 3 || s->link[j] || s->touch[j]) continue;
     int later = 0; for (int q = j + 1; q < s->n && !later; q++) later = s->link[q];
-    if (!later || judgeGuess) n++;
+    if (!later) n++;
   }
   return n;
 }
