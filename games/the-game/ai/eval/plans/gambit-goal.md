@@ -845,3 +845,5 @@ Measured (`1a67e26d`, runs 677-680): big chain 23, build 22, finish 17, pressure
 THE INPUT RESERVE (run 680, factory-2, lost at 812): the game allows 76 actions in any 600 frames. Breaks and carries of 3-8 swaps took
 the allowance from 33 to 1 in 250 frames; then 27 lines were cut for their walk and the board was lost. Now, where nothing lives, a line
 that walks the allowance below BREAK_WALK loses to one that keeps it unless it is lost a break's time later (`a98fcad9`).
+Measured (`a98fcad9`, runs 681-684): big chain 21, build 20, finish 19, pressure 19 (79 of 96); 0.54-0.60 wasted threes a minute.
+No gain over 1a67e26d's 83: reverted (`53867224`).
