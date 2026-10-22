@@ -944,3 +944,8 @@ leftMs() counts to searchesEnd -- so every step of the rank that asked the time 
 and answered only from the breaks already kept (5217 hits in 116221 asks); the readiness jobs were not spread to the workers; the
 three taken out never ran. In the rank, leftMs() now counts to the due less the margin and RANK_KEEP (6 ms): 74 of the golden's moves
 change.
+Measured (`3d71201b`, runs 769 and 771 so far): big chain 21, finish 20; 0.67-0.72 wasted threes a minute. Of 37 in twelve games, 27
+the order's saves (all lost within rankSave, 9 within 2 frames), 10 the judge did not see.
+NO THREE CHOSEN, AGAIN (the owner: no wasted threes): `05543891` dropped the saves and died (0-2 of 24) -- on a build whose rank had no
+time for readiness and whose survival line was there in 8% of the decisions that needed it. Both fixed, the order now never keeps a
+line that wastes a three while anything else is in it, and the survival search takes no step that wastes one.
