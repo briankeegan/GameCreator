@@ -241,12 +241,14 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
   if (!brCtx) brCtx = ctxOf(0);
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
+  // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
+  // search second, the backup where nothing lives, begun every decision with a thread to spare)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
+  if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
-  if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
@@ -466,6 +468,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (wayOffered) { L_s(" way="); L_i(wayOffered); if (wayPlayed) L_s("/played"); }
   // (the floor's raise: the rows asked, how many leave a break once everything lands, how many the board lives through -- or, asked
   // while the board is busy, -1 a cascade, -2 the game's raise not allowed)
+  L_s(" sv="); L_i(__atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? 1 : 0); if (surviveAsked) L_s("/asked");   // (the survival job finished this decision; the backup asked of it)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1");
   L_s(" br=");

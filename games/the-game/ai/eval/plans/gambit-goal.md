@@ -933,3 +933,8 @@ STOP TIME SPENT WAITING (the 12 losses' games, decisions under garbage with noth
 were carry_wait -- the line in progress waiting for the board to settle before its next swap, mostly a slab converting -- and 24%
 holds. Now, the board moving, the line in progress is offered pressed straight through as well, each swap as soon as the board lets
 it, and the judge says which lives longer.
+THE SURVIVAL BACKUP WAS NOT THERE (games of runs 753-760): of 19601 decisions with no line that lives, 92% had no survival line at all.
+Two faults. The rank took the survival worker's line only while leftMs() > 0 -- the searches' time, always spent by the rank -- so a
+line the worker had found was thrown away. And the survival job was the last of up to five handed to four threads, and a job no thread
+has begun when the searches end is not begun at all (jobsDone). Now the worker's line is taken whenever it has finished, and the
+survival job is handed out second, after the break search; the log's sv=1 when it finished, /asked when the rank asked it.

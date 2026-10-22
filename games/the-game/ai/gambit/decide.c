@@ -247,9 +247,12 @@ static int ranked(const Read *R, const Found *S) {
   }
   double t2 = nowMs();
   surviveAsked = 0;
-  if (!(n && order[0]->o.lives) && leftMs() > 0) {
+  // (the survival search's line, the backup where nothing lives: the worker's whenever it has finished -- it was searched beside the
+  // decision, in the searches' time -- else searched here in what time the decision has left)
+  int svDone = __atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE);
+  if (!(n && order[0]->o.lives) && (svDone || leftMs() > 0)) {
     surviveAsked = 1;
-    Outlived sv = __atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? svJob : outlive(&decQ, HORIZON + REST, REST, leftMs(), 6, 30);
+    Outlived sv = svDone ? svJob : outlive(&decQ, HORIZON + REST, REST, leftMs(), 6, 30);
     offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
