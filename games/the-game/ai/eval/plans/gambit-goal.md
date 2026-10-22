@@ -891,3 +891,5 @@ rankSave (the save the rule allows); 14 the judge did not see. Of those, one tra
 slab popping (pop=232), its first link the three -- the colours the slab turned into were not the ones the judge played it with, the
 chain did not follow, and the three stood alone. The colours a slab converts to are not shown until it pops: a line that needs them is
 a guess, and the judge does not say so.
+Measured (`f74f5421`, runs 745-748: a three starting a chain counted wasted while a colour is not shown): big chain 19 of 22, build 20,
+finish 22, pressure 22; 0.47-0.62 wasted threes a minute -- no fewer. Reverted.
