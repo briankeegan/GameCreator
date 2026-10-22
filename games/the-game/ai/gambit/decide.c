@@ -162,7 +162,7 @@ static int fairShare(Cand *c, int n, int cap) {
 }
 #define NSTRIP 12   // the lines judged again with one swap left out (THE THREE TAKEN OUT)
 #define STRIP_LINES 3   // the best lines that waste a three, each judged again so
-static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 4 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
+static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
@@ -192,6 +192,11 @@ static int ranked(const Read *R, const Found *S) {
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
     cj->carried = 1; order[n] = cj; n++; carriedJ = cj;
+    // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
+    // board has settled: a slab converting is frames the line can be pressed in)
+    static Judge thru;
+    Cand k2 = ck; k2.settled = 0; k2.play = PLAY_CARRY;
+    if (cwait && judgeCand(R, &k2, &thru)) { thru.carried = 1; order[n] = &thru; n++; }
   }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];

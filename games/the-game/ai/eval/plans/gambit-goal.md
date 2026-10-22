@@ -929,3 +929,7 @@ at the next, 15-40 frames on, none lived -- the garbage shown next (often landin
 is against the garbage shown; the board had no margin for the next. In large_garbage the board sits with 12-30 panels under the slabs
 for thousands of frames, each break converting one row (broke=6) while the slabs come several rows tall: the breaks are a row at a
 time and the garbage is not.
+STOP TIME SPENT WAITING (the 12 losses' games, decisions under garbage with nothing that lives): with 60 or more frames of stop, 40%
+were carry_wait -- the line in progress waiting for the board to settle before its next swap, mostly a slab converting -- and 24%
+holds. Now, the board moving, the line in progress is offered pressed straight through as well, each swap as soon as the board lets
+it, and the judge says which lives longer.
