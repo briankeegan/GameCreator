@@ -172,7 +172,8 @@ static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
-// it could not be asked. The hold's board is the board left alone.
+// it could not be asked. The hold's board is the board left alone. A line lost before its end is lost where the judge saw it lost, and a
+// board the search finds no line on is lost where it is lost left alone.
 #define SAVE_MS 10
 #define SAVE_KEEP_MS 4
 static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
@@ -181,7 +182,8 @@ static double svLost = -1; static int32_t svClean;   // (the survival search's l
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
-  if (!eb || J->o.dead) return -1;
+  if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
+  if (!eb) return -1;
   endNoKeep = 1;
   const Board *e = J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
   endNoKeep = 0;
@@ -191,8 +193,9 @@ static double contLostOf(const Judge *J, double give) {
   Question q2 = decQ; q2.b = eb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
   Outlived c = outlive(&q2, HORIZON + REST, REST, give, 6, 30);
-  if (!c.set) return -1;
-  return c.lostAt == FOREVER ? 1e9 : (double)dt + c.lostAt;
+  int32_t lost = c.set ? c.lostAt : diesIn(&q2, HORIZON + REST);
+  if (lost < 0) return -1;
+  return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);

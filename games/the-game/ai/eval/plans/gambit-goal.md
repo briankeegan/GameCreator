@@ -968,3 +968,8 @@ games 27 were the order's saves and 7 the judge's misses (35 of 35 sampled befor
 misses are mostly gone; the saves are left. Of 142 saves asked, 51 confirmed needed, 6 found not needed, 85 without an answer: the
 three's side not searched in 34, the other in 51. Now the three's side is searched first with the time, the other bounded below by
 what is known (the best line's own loss, the survival line's) and searched only when the bound does not settle it.
+Measured (`12e8207c`, runs 797-800): big chain 24, build 20, finish 22, pressure 16 (82 of 96); 0.53-0.67. Of 67 saves asked in six
+games, 45 still without an answer -- and replayed (the games' own boards, test/main.c's replay), not for time: the line with the three
+was lost before its end (the judge's `dead`), which the save asked counted as no answer, or the survival search found no line on its
+end board. Now a line lost before its end is lost where the judge saw it, and a board with no line found is lost where it is lost left
+alone; replayed, every save asked has an answer (8 not needed, 8 needed of 16).
