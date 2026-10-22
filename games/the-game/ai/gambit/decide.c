@@ -170,9 +170,31 @@ static int carriedFromReady(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
+// THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
+// the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
+// it could not be asked. The hold's board is the board left alone.
+#define SAVE_MS 10
+#define SAVE_KEEP_MS 4
+static int32_t saveAsked, saveNot;   // (saves asked of the survival search this decision, and the threes it found not needed: the log's)
+static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
+static double contLostOf(const Judge *J, double give) {
+  static Board *eb; if (!eb) eb = nb_new();
+  if (!eb || J->o.dead) return -1;
+  endNoKeep = 1;
+  const Board *e = J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
+  endNoKeep = 0;
+  if (!e) return -1;
+  cloneBoard(eb, e);
+  int32_t dt = imax(0, eb->clock - decQ.b->clock);
+  Question q2 = decQ; q2.b = eb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
+  Outlived c = outlive(&q2, HORIZON + REST, REST, give, 6, 30);
+  if (!c.set) return -1;
+  return c.lostAt == FOREVER ? 1e9 : (double)dt + c.lostAt;
+}
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; unbroken.set = 0;
+  carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -287,6 +309,24 @@ static int ranked(const Read *R, const Found *S) {
     }
     if (!keeps && keptLost >= rankSave) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
+    // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
+    // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way
+    // landing as it would. A three whose board, with the best line on, outlasts the other's by less than half a break's time was not
+    // needed not to die: it is wasted)
+    if (!keeps && saveRoomMs() > SAVE_KEEP_MS + 2) {
+      const Judge *bw = 0, *bk = 0;
+      for (int i = 0; i < n; i++) {
+        const Judge *J = order[i];
+        if (wastesThree(J)) { if (!bw || J->o.lives > bw->o.lives || (J->o.lives == bw->o.lives && lostOf(J) > lostOf(bw))) bw = J; }
+        else if (!bk || lostOf(J) > lostOf(bk)) bk = J;
+      }
+      if (bw && bk) {
+        double give = (saveRoomMs() - SAVE_KEEP_MS) / 2; if (give > SAVE_MS) give = SAVE_MS;
+        double cw = contLostOf(bw, give), ck = cw >= 0 ? contLostOf(bk, give) : -1;
+        saveAsked++;
+        if (cw >= 0 && ck >= 0 && ck + rankSave / 2 >= cw) { keeps = 1; saveNot++; }
+      }
+    }
     if (keeps) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; } }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;

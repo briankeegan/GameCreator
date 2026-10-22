@@ -943,3 +943,8 @@ threes a minute, 0-10 played as saves. "Lives" is against the garbage shown, and
 board survives: the judge's verdict cannot say which three the board needs not to die, and a three that only buys time is what keeps
 it alive until the next break. Reverted, with no-three-chosen (`3dcd7382`) and the rank's own time (`3d71201b`, runs 769-772: big
 chain 21, build 17, finish 20, pressure 20 -- 78 of 96 to 84-87, 0.59-0.72 wasted threes a minute): main is c616fec3's Gambit.
+THE SAVE ASKED (the owner: either it needs it not to die, or it is wasted): where the rule lets a three through -- every other line
+lost within rankSave -- the best line that wastes one and the best that does not (the hold among them) are each played to the end and
+the survival search asked of the board each leaves, garbage still on its way landing as it would. A three whose board, with the best
+line on, outlasts the other's by less than half a break's time was not needed: it is dropped. In the decision's own time, SAVE_MS
+(10) each at most, SAVE_KEEP_MS (4) kept; the log's saveAsk=not needed/asked.
