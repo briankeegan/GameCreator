@@ -819,3 +819,12 @@ THE THREE TAKEN OUT (`e5c1638b`): the three best lines that waste a three are ju
 order has the same line without the three to keep in its place.
 SELF-PLAY: each side calls a match from its own board -- lost when its own death comes before the other's -- so both sides can count a
 loss when both boards die within the network's delay (13 of 38 on 05543891). Against another bot the logs agree on every result.
+Measured (`e5c1638b`, runs 649-651): big chain 19, build 20, finish 21; 1.3-2.2 wasted threes a minute -- the three taken out changed
+nothing. Of 47 wasted threes traced in six games, 37 were the order's own, played with every line predicted lost (32 within rankSave);
+10 the judge did not see, let through by the press guard as the board left alone was lost. The fight there: 10 won, 6 lost.
+`900b2b8a`: a three the plan did not see is pressed only when the board is lost without it and alive with it (the answer's `wastes`).
+THE WALK WHEN NOTHING LIVES (the owner: "moving all over the board"): 94% of decisions have no line predicted to live, so the walk rule
+for two that live seldom applied (15% of moves walked 6 cells or more). `d35d39cd`: two lost alike, both breaking or neither, are
+ranked by the walk too (WALK_EARN). Runs on d35d39cd were dispatched, not yet read.
+`d9245160`: GambitNative.lua's VIEW_FRESH is defined again (8e328efb dropped it; the live client on panelattack.com errored at its first
+match).
