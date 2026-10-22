@@ -13,7 +13,7 @@
 // ends with what it has.
 
 #define TOUCH_DEPTH 12
-#define TOUCH_BEAM 60
+#define TOUCH_BEAM 45
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
 #define KEEPN TOUCH_BEAM            // the lines carried on
