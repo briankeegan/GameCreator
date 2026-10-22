@@ -11,7 +11,7 @@
  "gambit": {
   "rules": "survivor-profiles/gambit-rules.json",
   "ms": 80,
-  "width": 40,
+  "width": 60,
   "depth": 7,
   "pool": 250
  },
