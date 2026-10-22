@@ -883,3 +883,6 @@ Measured (`a3a56192`, runs 737-740: touch beam 45 beside the line-up 12): big ch
 Reverted. Finish went 24 to 16 between two builds a beam width apart: one run of a mode on random seeds swings by up to eight games,
 so the totals of runs 697-740 (83-91) do not tell the settings apart. Every mode at 24, twice, asks for a board that survives about 199
 games in 200; the builds here survive about 9 in 10.
+TWO AHEAD (`fda7e868`, runs 741-744): where nothing lives, each of the three best lines played to its end and the survival search
+asked of the board it leaves; the line whose continuation is lost a break's time later first. Asked in 943 of 950 decisions of a
+game. Big chain 24, build 21, finish 22, pressure 21 (88 of 96); 0.57-0.66 wasted threes a minute. No gain: reverted.
