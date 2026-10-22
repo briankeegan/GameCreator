@@ -66,7 +66,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_IDS 32
 #define MOVE_FOR 600
 #define MOVE_FALL 60
-typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter; } MoveOpen;
+typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save; } MoveOpen;   // save: pressed for a line the survival search found the board needed (F.lineWastes)
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
@@ -102,7 +102,7 @@ static struct {
   uint32_t rnd;
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
-  int32_t loggedDiffer, matchAt, matchAfter, loggedWasted, pendSwapAt;   // (the followed swap a clear came of: pressed at, swaps since -- for the wasted three's log)
+  int32_t loggedDiffer, matchAt, matchAfter, matchSave, loggedWasted, pendSwapAt;   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
 } F;
 
 static double fNow(void) { return clock_ms(); }
@@ -604,7 +604,7 @@ static void countAttacks(const Board *b) {
     F.pendLog[0] = 0;
   }
   if (fresh == 3 && cc < 2 && !brokeNow) {
-    if (bySwap && F.lineWastes) F.pendSave++; else if (bySwap) F.pendThree++; else F.pendThreeAlone++;
+    if (bySwap && F.matchSave) F.pendSave++; else if (bySwap) F.pendThree++; else F.pendThreeAlone++;
     // (each logged, the first few hundred: where, and the swap it came of -- to find what pressed it)
     if (F.loggedWasted < 400 && !F.pendLog[0]) {
       char *l = F.pendLog; int k = snprintf(l, sizeof F.pendLog, "GAMBITW %d three", b->clock);
@@ -642,7 +642,7 @@ static void moveBegin(const Board *b) {
   { int i = swapRingN++ % SWAPRING; if (!swapRing[i]) swapRing[i] = nb_new(); if (swapRing[i]) { cloneBoard(swapRing[i], b); swapRingAt[i] = b->clock; } }
   for (int i = 0; i < F.nmoves; i++) F.moves[i].swapsAfter++;
   if (F.nmoves == MOVE_OPEN) { F.st.moveNone++; memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
-  MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock;
+  MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock; m->save = F.lineWastes;
   int r0 = b->curRow;
   for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
     for (int r = r0; r < b->nrows && m->n < MOVE_IDS; r++) {
@@ -671,7 +671,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
       if (!m->moved[j] && b->clock - m->at <= MOVE_FALL && (st == HOVERING || st == FALLING)) m->moved[j] = 1;
       if (m->moved[j]) for (int q = 0; q < nfresh && !done; q++) done = fresh[q] == m->ids[j];
     }
-    if (done) { bySwap = 1; F.matchAt = m->at; F.matchAfter = m->swapsAfter; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
+    if (done) { bySwap = 1; F.matchAt = m->at; F.matchAfter = m->swapsAfter; F.matchSave = m->save; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
     if (!alive || b->clock - m->at > MOVE_FOR) { F.st.moveNone++; continue; }
     if (k != i) F.moves[k] = *m;
     k++;

@@ -981,3 +981,7 @@ only a clear that breaks gives back the panels it spends.
 Measured (`07c5950a`, runs 801-804, every save asked answered): big chain 17, build 15, finish 22, pressure 19 (73 of 96); 0.42-0.55.
 Of 69 saves asked in six games, 63 needed, 6 not -- a three outlasting the other side by under half a break's time was called not
 needed. Now not needed is the owner's rule as said: the board without the three lasts as long.
+Measured (`9af27bf1`, runs 805-808, not needed only where the board without the three lasts as long): big chain 18, build 21, finish
+23, pressure 20 (82 of 96); 0.40-0.51, the fewest yet, and 6-14 saves a run. Of 19 wasted threes traced in six games, 13 were made by
+lines the survival search had found needed: the count read the save off the line in hand when the three cleared, which a later answer
+had replaced. Now each swap pressed carries whether its line was a save, and the three is counted by the swap it came of.
