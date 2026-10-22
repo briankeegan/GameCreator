@@ -900,3 +900,12 @@ Measured against the decision before each: the game received the piece 6-8 frame
 44 at 7). The cause: an opponent played here from its relayed keys runs behind this stack, and its transits are read against its own
 stopWatch (front.c arrivalsOf: offset = mine - its), so every piece was predicted the frames it is behind too late. GambitNative.lua
 now gives its stopWatch caught up (the frames behind added) -- nothing changes where the source keeps up (training, local play).
+REAL GAMES, the rest: the two aborted matches are desyncs (this stack's clock 1681 against the opponent copy's 1435 -- the copy
+240 frames behind); match 30 was called lost at 1388 with 161 frames of stop and the hold predicted lost at 320, nothing landing --
+a loss the frame loop's own board does not show (its counters stop at 1163 frames).
+THE DEATHS (351 losses of runs 657-748, the reports' last decisions): 176 broke garbage to the end and were lost anyway; 123 were short
+of panels (24 or fewer) under garbage; 29 in the opening (before frame 1500); 23 found no break at all. Of the 2483 decisions made 30
+or more frames before a loss, 993 played a line predicted to outlive the board by a break's time or more, or to live -- carries 283 of
+464, breaks 227 of 330, entries 124 of 162 -- while holds and lines toward a break were predicted right (389 of 411, 302 of 321). The
+lines that do something are the ones the prediction overrates; the frame loop never diverged in those games, so it is the judge's
+horizon, not the board.
