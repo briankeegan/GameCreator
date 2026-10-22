@@ -35,6 +35,7 @@ typedef struct {
   int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
+  double contLost;     // where nothing lives: the frame the board is lost after the line and the survival search's best line on (decide.c TWO AHEAD; 0 not asked)
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press)
@@ -321,6 +322,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // break's (run 444: large_garbage 7 to 3 of 8 with the break held to the later loss everywhere)
     int bx = x->apBroke > 0 && lostOf(x) >= rankSave, by = y->apBroke > 0 && lostOf(y) >= rankSave;
     if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return bx ? -1 : 1; }
+    // (neither lives) TWO AHEAD: of two whose continuations were searched (decide.c), the one whose board, after the line and the best
+    // line the survival search finds on, is lost a break's time later
+    if (x->contLost > 0 && y->contLost > 0 && (x->contLost - y->contLost >= rankSave || y->contLost - x->contLost >= rankSave)) return x->contLost > y->contLost ? -1 : 1;
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.

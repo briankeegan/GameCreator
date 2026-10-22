@@ -160,6 +160,11 @@ static int fairShare(Cand *c, int n, int cap) {
   for (int i = 0; i < k; i++) c[i] = kept[i];
   return k;
 }
+#define CONT_LINES 3   // the lines whose continuation is searched where nothing lives (TWO AHEAD)
+#define CONT_MS 12     // the most ms a continuation's survival search is given
+#define CONT_KEEP 15   // the ms of the decision's own time kept for the readiness and the rest of the rank
+static double roomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
+static int32_t contAsked, contFound;   // (the continuations searched this decision, and found: the log's)
 #define NSTRIP 12   // the lines judged again with one swap left out (THE THREE TAKEN OUT)
 #define STRIP_LINES 3   // the best lines that waste a three, each judged again so
 static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 4 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
@@ -201,6 +206,33 @@ static int ranked(const Read *R, const Found *S) {
   sortJudged(order, n);
   // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)
   { int n0 = n; n = routeJudged(R, n); if (n > n0) sortJudged(order, n); }
+  // TWO AHEAD (where nothing lives): each of the CONT_LINES best lines that do not live is played to its end, and the survival search
+  // asked of the board it leaves -- the garbage still on its way landing as it would -- for the frame that board is lost after the
+  // best line on it (contLost). The rank then puts a line lost a break's time later after its continuation first (rank.c). Asked
+  // before the readiness, in the decision's own time (roomMs) less CONT_KEEP, an equal part each
+  contAsked = contFound = 0;
+  if (n && !order[0]->o.lives && roomMs() > CONT_KEEP + 4) {
+    static Board *eb; if (!eb) eb = nb_new();
+    int asked = 0;
+    for (int i = 0; i < n && asked < CONT_LINES && eb && roomMs() > CONT_KEEP + 4; i++) {
+      Judge *J = order[i];
+      if (J->o.lives || J->o.dead) continue;
+      if (J->hold) continue;
+      asked++; contAsked++;
+      endNoKeep = 1;
+      const Board *e = lineEnd(J->k.seq, J->k.nseq, J->settled);
+      endNoKeep = 0;
+      if (!e) continue;
+      cloneBoard(eb, e);
+      int32_t dt = imax(0, eb->clock - decQ.b->clock);
+      Question q2 = decQ; q2.b = eb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+      for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
+      double give = (roomMs() - CONT_KEEP) / (CONT_LINES - asked + 1); if (give > CONT_MS) give = CONT_MS;
+      Outlived c = outlive(&q2, HORIZON + REST, REST, give, 6, 30);
+      if (c.set) { J->contLost = c.lostAt == FOREVER ? 1e9 : (double)dt + c.lostAt; contFound++; }
+    }
+    sortJudged(order, n);
+  }
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
   // part of the time left each of those still to be asked -- and the order is made again)
