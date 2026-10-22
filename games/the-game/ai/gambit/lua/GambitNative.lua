@@ -198,6 +198,7 @@ end
 -- here is no source of its board -- and before the first, the board a match begins with: not topped out, low, no stop. One played here
 -- exactly is read off its own stack. (A panel counts as the engine's Panel:dangerous counts it: garbage still falling is not the
 -- stack's height, and does not top it out.)
+local VIEW_FRESH = 90   -- frames a shipped board of the opponent is read as its board
 local function counts(p) if not p then return false end if p.isGarbage then return p.state ~= "falling" end return (p.color or 0) ~= 0 end
 local function opponentOf(sources, view, clock)
   local anyWired = false
