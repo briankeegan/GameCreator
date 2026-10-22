@@ -886,3 +886,8 @@ games in 200; the builds here survive about 9 in 10.
 TWO AHEAD (`fda7e868`, runs 741-744): where nothing lives, each of the three best lines played to its end and the survival search
 asked of the board it leaves; the line whose continuation is lost a break's time later first. Asked in 943 of 950 decisions of a
 game. Big chain 24, build 21, finish 22, pressure 21 (88 of 96); 0.57-0.66 wasted threes a minute. No gain: reverted.
+THE THREES LEFT (`04a8e7bd`, twelve games of runs 717-720): 36 wasted threes. 22 the order's own, every one with the board lost within
+rankSave (the save the rule allows); 14 the judge did not see. Of those, one traced (factory-3, 15883): a 2-chain planned through a
+slab popping (pop=232), its first link the three -- the colours the slab turned into were not the ones the judge played it with, the
+chain did not follow, and the three stood alone. The colours a slab converts to are not shown until it pops: a line that needs them is
+a guess, and the judge does not say so.
