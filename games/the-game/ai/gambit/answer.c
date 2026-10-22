@@ -227,7 +227,7 @@ static void breakJob(int32_t i) {
   else if (kind == JOB_WIDE) { touchFrom = 1; breakRunTo(brJobR, brJobBy, &theBrWide); touchFrom = 0; __atomic_store_n(&wideDone, 1, __ATOMIC_RELEASE); }
   else {
     double old = clockShareBegin(brJobBy);
-    svJob = outlive(&decQ, HORIZON + REST, REST, brJobBy - nowMs(), 6, OUTLIVE_WIDTH);
+    svJob = outlive(&decQ, HORIZON + REST, REST, brJobBy - nowMs(), 6, 30);
     clockShareEnd(old);
     __atomic_store_n(&svJobDone, 1, __ATOMIC_RELEASE);
   }
