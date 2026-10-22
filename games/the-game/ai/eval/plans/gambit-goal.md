@@ -837,3 +837,7 @@ Measured (runs 665-672, each mode both ways): B `70ea377e` (the press guard lets
 plan did not see must also leave the board alive) -- 10, 14, 14, 11 of 23; 18-29 refused. A refused swap drops the plan, and dropped
 plans under garbage are deaths: B stays. Against 12b4b919 the wasted threes fell from 1.4-2.2 a minute; what is left is the order's
 save, every other line lost within rankSave.
+Measured (`59ae4b9b`, runs 673-676: a three that buys a break's time kept however far off the loss): big chain 23, build 22, finish 20,
+pressure 20 -- 85 of 96 to B's 82, within the noise -- with 0.9-1.2 wasted threes a minute to B's 0.5-0.8. Reverted to 0cf136d2's rule.
+THE OPENING RAISE (run 676, combo_storm-3, lost at 376): raised to 48 panels as a slab landed, over lines lost 300 frames later. It now
+has the floor raise's caps, and where nothing lives gives way to a line lost a break's time later than the hold (`1a67e26d`).
