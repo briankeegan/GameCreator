@@ -852,3 +852,8 @@ four cores shared by four workers, the client and its software renderer. Measure
 big chain 18, build 20, finish 23, pressure 22 (83 of 96, as with four); missed breaks 3 in 171 boards searched again, against 25.
 Fewer misses, no more survival: the losses are elsewhere. Of ten traced on 1a67e26d, two spent the input allowance; the rest were
 boards short of panels under garbage (large_garbage-8: 17 panels, no break, topped and so no raise) and lines cut for a swap not there.
+Measured (`9b674af6`, runs 689-692: a three a save when every other line is lost within two breaks' time): big chain 21, build 23,
+finish 17, pressure 21 (82 of 96); 0.7-0.9 wasted threes a minute. Reverted.
+THE TURN, the last decision a break was there, in the losses of runs 677-688: mostly a break played, then none to make -- the board
+spent of material under garbage, each line lost sooner than the last (combo_storm-5: 281, 237, 220 ... 59, 45 frames). Rule changes to
+the order have stopped moving the total (79-85 of 96 since 12b4b919); what is left is the defence itself.
