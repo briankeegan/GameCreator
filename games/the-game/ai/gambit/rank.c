@@ -336,6 +336,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // spends none and leaves the next decision a try, they survive alike: the list (5) puts the one that keeps its panels first. Under
     // garbage the rising stack brings no panels in -- the garbage tops it -- and the list's own exceptions (5) decide)
     if (!alike && !decF.under && lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends) alike = 1;
+    // (CLOSE, NOT ALIKE: lost within half a break's time of each other, a row of the next break's material more decides before the
+    // later loss -- under garbage the panels a line leaves under it are what the next break is made of)
+    if (!alike && decF.under && lo >= rankSave && hi - lo < rankSave / 2 && x->o.matLeft >= 0 && y->o.matLeft >= 0 && iabs(x->o.matLeft - y->o.matLeft) >= W)
+      return x->o.matLeft > y->o.matLeft ? -1 : 1;
     if (!alike && lostOf(x) != lostOf(y)) return lostOf(y) > lostOf(x) ? 1 : -1;
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return cutsShort(x) ? 1 : -1;
