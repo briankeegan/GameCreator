@@ -21,7 +21,7 @@
 // (the touch beam from its wider beam on, its narrower left to another thread searching the same board: answer.c's wide job)
 static LOCAL int32_t touchFrom;
 #define LINEUP_DEPTH 8
-#define LINEUP_BEAM 16
+#define LINEUP_BEAM 12
 #define PAIR 5
 #define NEAR_MISS 20
 #define MAXPATH 32
