@@ -321,13 +321,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // break's (run 444: large_garbage 7 to 3 of 8 with the break held to the later loss everywhere)
     int bx = x->apBroke > 0 && lostOf(x) >= rankSave, by = y->apBroke > 0 && lostOf(y) >= rankSave;
     if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return bx ? -1 : 1; }
-    // (neither lives) THE INPUT RESERVE: a line that walks the input allowance below a break's walk (BREAK_WALK) after one that keeps
-    // it, breaking or not -- unless it is lost a break's time later: the game's budget refills an action every few frames, and a board
-    // whose allowance is spent cannot press the break the next decision finds
-    if (pressAllowance >= 0) {
-      int rx = pressAllowance - lineWalk(x) < BREAK_WALK, ry = pressAllowance - lineWalk(y) < BREAK_WALK;
-      if (rx != ry) { const Judge *keep = rx ? y : x, *spend = rx ? x : y; if (lostOf(spend) < lostOf(keep) + rankSave) return rx ? 1 : -1; }
-    }
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.
