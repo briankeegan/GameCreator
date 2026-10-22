@@ -861,3 +861,5 @@ Measured (`6e09e4bf`, runs 693-696: of two lines lost within half a break's time
 21, finish 19, pressure 19 (81 of 96); 0.51-0.58 wasted threes a minute. Reverted.
 Measured (`c97fbb3c`, runs 697-700: the touch beam ten swaps deep, from eight): big chain 21, build 22, finish 21, pressure 21 (85 of
 96, every mode 21 or more); 0.44-0.74 wasted threes a minute. Kept; twelve next.
+Measured (`258dad7b`, runs 701-704: twelve deep): big chain 21, build 20, finish 23, pressure 22 (86 of 96); 0.46-0.65 wasted threes
+a minute. Kept; the beam wider (TOUCH_BEAM 45) next.
