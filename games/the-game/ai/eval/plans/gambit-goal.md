@@ -973,3 +973,8 @@ games, 45 still without an answer -- and replayed (the games' own boards, test/m
 was lost before its end (the judge's `dead`), which the save asked counted as no answer, or the survival search found no line on its
 end board. Now a line lost before its end is lost where the judge saw it, and a board with no line found is lost where it is lost left
 alone; replayed, every save asked has an answer (8 not needed, 8 needed of 16).
+THE DEATHS OF 798-800 (14): 12 short of material -- 8 to 20 panels, no break in reach, the clears each three panels fewer (factory-8,
+800: 27 panels to 9 over 600 frames, every decision a clear for stop time, none touching the slab). Under garbage the board is topped
+out: of 1,046 boards of four 800 games replayed, 1,017 topped, 2 taking a raise -- a raise is no way out there (asked of the survival
+search as a first step and measured on those boards; not kept). Under garbage the board lives on the stop time its clears give, and
+only a clear that breaks gives back the panels it spends.
