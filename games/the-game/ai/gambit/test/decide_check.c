@@ -14,6 +14,10 @@ EXPORT(gb_replay_last) void gb_replay_last(int32_t *v) { for (int i = 0; i < 8; 
 // refused (-2) when those rows hold garbage or anything not at rest
 static int32_t replayLow;
 EXPORT(gb_replay_low) void gb_replay_low(int keep) { replayLow = keep; }
+// (THE ALLOWANCE THE GAME GAVE, gb_replay_allow ALLOW before a replay: the actions left in the input window, the walks tapped near the
+// end as the native host's frame loop taps them -- -1: none said, as the checks replay)
+static int32_t replayAllow = -1;
+EXPORT(gb_replay_allow) void gb_replay_allow(int allow) { replayAllow = allow; }
 static int lowered(Board *b, int keep) {
   const Panel *empty = 0;
   for (int c = 1; c <= W && !empty; c++) if (!b->p[b->nrows - 1][c].f[COLOR] && !b->p[b->nrows - 1][c].f[ISGARBAGE]) empty = &b->p[b->nrows - 1][c];
@@ -37,7 +41,9 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   int topped = fullTop(hostBoard) >= hostBoard->height;
   // (work 0: the wall clock's REPLAY_MS, as a game gives it -- the speed check's; else the work's, the same answer every time)
   double t0 = work > 0 ? 0 : clock_ms(), due = t0 + REPLAY_MS;
-  answerQuestion(1, 0, topped, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, replayLow && canRaiseOn(hostBoard), due, t0, 0);   // (the raise asked of a low stack only)
+  int32_t taps = hostTaps; if (replayAllow >= 0) hostTaps = 1;
+  answerQuestion(1, 0, topped, 0, 0, 0, 0, 0, 0, replayAllow >= 0, imax(0, replayAllow), -1, 0, replayLow && canRaiseOn(hostBoard), due, t0, 0);
+  hostTaps = taps;   // (the raise asked of a low stack only)
   clockNowOf = 0;
   const Answer *A = &theAnswer;
   replayLast[0] = A->d.kind; replayLast[1] = A->verdict; replayLast[2] = A->nlive; replayLast[3] = garbageOn(hostBoard);
@@ -77,20 +83,21 @@ EXPORT(gb_switch_check) int gb_switch_check(int games, int frames, int min, int 
 // A BOARD RUN A FRAME AT A TIME (gb_frames, the checks' tool for a board a game dumped): the question's board (gb_question_bytes), the
 // swap at (mr, mc) pressed as the judge presses it (mr 0: none), then `frames` frames left alone; per frame into out: the frame, the
 // chain counter, the panels active, the clears so far -- 4 words a frame. The frames written.
-static int32_t framesR2, framesC2, framesAt2;   // (a second swap, pressed from the frame framesAt2: gb_frames2)
+#define FRAMESW 16
+static int32_t framesR2[FRAMESW], framesC2[FRAMESW], framesAt2[FRAMESW], framesN2;   // (swaps after the first, each pressed from its frame: gb_frames2)
 static int32_t framesAskAt = -1; static Board *framesAsk;   // (the board kept at framesAskAt, for gb_frames_ask)
 EXPORT(gb_frames_keep) void gb_frames_keep(int at) { framesAskAt = at; }
-EXPORT(gb_frames2) void gb_frames2(int r, int c, int at) { framesR2 = r; framesC2 = c; framesAt2 = at; }
+EXPORT(gb_frames2) void gb_frames2(int r, int c, int at) { if (framesN2 < FRAMESW) { framesR2[framesN2] = r; framesC2[framesN2] = c; framesAt2[framesN2++] = at; } }
 EXPORT(gb_frames) int gb_frames(int mr, int mc, int frames, int32_t *out) {
   static Ctx *fx; fx = ctxOf(fx);
   curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
   int n = rootOf(fx, &hostQ);
   if (n < 0) return -1;
   if (mr) { int from; n = pressWalk(fx, n, MK_SWAP, mr, mc, stepTapped, &from); if (!liveNode(fx, n)) return -2; }
-  int k = 0, clears = 0;
+  int k = 0, clears = 0, next = 0;
   for (int f = 0; f < frames; f++) {
     int w;
-    if (framesR2 && NODE(fx, n)->t >= framesAt2) { int from; w = pressWalk(fx, n, MK_SWAP, framesR2, framesC2, stepTapped, &from); framesR2 = 0; }
+    if (next < framesN2 && NODE(fx, n)->t >= framesAt2[next]) { int from; w = pressWalk(fx, n, MK_SWAP, framesR2[next], framesC2[next], stepTapped, &from); next++; }
     else w = step(fx, n, MK_LONG, 0, 0, 1);
     if (!liveNode(fx, w)) break;
     Board *b = ensureBoard(fx, w);
@@ -118,4 +125,61 @@ EXPORT(gb_frames_ask) int gb_frames_ask(int mode, int64_t work, char *out, int c
   }
   k += snprintf(out + k, (unsigned long)(cap - k), "\n%s", logBuf);
   return k;
+}
+// THE LINE AS THE FRAME LOOP PRESSES IT (gb_front_line, the checks' tool): the question's board, its swaps mv[0..n) followed as front.c
+// follow() makes their keys -- each from the frame the keys before it end, or the frame it was judged pressed from (at, from the
+// board's clock; 0 none), whichever is later -- with `allow` actions left in the input window and the walks tapped (tap) or not. Per
+// swap into out: the frame its keys begin, the frame its swap goes down, its keys. The swaps keyed (a swap no keys press ends it).
+EXPORT(gb_front_line) int gb_front_line(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out) {
+  frontNew(cfgReaction, 90, -1, 0);
+  Board *b0 = F.truth; cloneBoard(b0, hostBoard);
+  int32_t t0 = b0->clock;
+  F.now = t0; F.npress = 0;
+  for (int i = 0; i < F.limit - allow; i++) F.pressFrames[F.npress++] = t0 - 1;
+  Arrival arr[MAXARR]; int32_t narr = 0;
+  for (int i = 0; i < hostQ.narr; i++) { Arrival a; memset(&a, 0, sizeof a); a.at = b0->stopWatch + hostQ.arr[i].at; a.g.width = hostQ.arr[i].width; a.g.height = hostQ.arr[i].height; a.g.isChain = hostQ.arr[i].isChain; a.g.frameEarned = NUL; arr[narr++] = a; }
+  static Keys k;
+  int32_t nextAt = t0, i = 0;
+  for (; i < n; i++) {
+    int32_t due = imax(nextAt, at[i] ? t0 + at[i] : 0), hl, hs;
+    if (!predict(b0, due, 0, 0, arr, narr, F.pr, &hl, &hs)) break;
+    if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv[i]), CC(mv[i]), &k)) break;
+    pressTap = tap;
+    walkKeys(&k, due);
+    int sw = -1;
+    for (int q = 0; q < k.n && sw < 0; q++) if (k.ins[q] & IN_SWAP) sw = q;
+    for (int q = 0; q < k.n; q++) planSet(due + q, (Planned){ k.ins[q], k.hl[q], k.hs[q], 1, 0 });
+    out[3 * i] = due - t0; out[3 * i + 1] = sw >= 0 ? due + sw - t0 : -1; out[3 * i + 2] = k.n;
+    nextAt = due + k.n;
+  }
+  return i;
+}
+// THE LINE AS THE JUDGE PRESSES IT (gb_judge_line, beside gb_front_line): the question's board, its swaps judged with `allow` actions
+// left and the walks tapped (tap) or not, as a decision judges them. Into out: each swap's frame (ats), then dead, deadAt, lostAt.
+EXPORT(gb_judge_line) int gb_judge_line(int n, const int32_t *mv, int allow, int tap, int settled, int32_t *out) {
+  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
+  decQ = hostQ;
+  pressTap = decTap = tap; decQ.tight = tightAt(allow); pressTight = decQ.tight; pressAllowance = allow;
+  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0 };
+  Judged j;
+  judge(&decQ, mv, n, &jo, &j);
+  int k = 0;
+  for (int i = 0; i < j.nats; i++) out[k++] = j.ats[i];
+  out[k++] = j.dead; out[k++] = j.deadAt; out[k++] = j.cut;
+  return j.nats;
+}
+// THE LINE PRESSED AS JUDGED (gb_line_agree, after a replay given an allowance: gb_replay_allow): the answer's swap and the line it hands
+// on, keyed as the frame loop keys them (gb_front_line) -- the swaps whose keys begin later than the frame the judge pressed them from,
+// or that no keys press. *n: the swaps compared.
+EXPORT(gb_line_agree) int gb_line_agree(int *n) {
+  const Answer *A = &theAnswer;
+  int32_t mv[MAXLINE + 1], at[MAXLINE + 1], out[3 * (MAXLINE + 1)], k = 0;
+  *n = 0;
+  if (replayAllow < 0 || !(A->d.kind == 1 || (A->d.kind == 0 && A->nhand))) return 0;
+  if (A->d.kind == 1) { mv[k] = A->d.move; at[k++] = 0; }
+  for (int i = 0; i < A->nhand && k <= MAXLINE && A->handAt[i] > 0; i++) { mv[k] = A->hand[i]; at[k++] = A->handAt[i]; }
+  int keyed = gb_front_line(k, mv, at, replayAllow, A->tap, out), late = k - keyed;
+  for (int i = 0; i < keyed; i++) late += out[3 * i] > at[i];
+  *n = k;
+  return late;
 }

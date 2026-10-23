@@ -314,7 +314,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     pressTap = decTap = hostTaps && allowanceKnown && dies <= TAP_DIES; }
   decQ.tight = allowanceKnown && tightAt(allowance);
   A->tap = pressTap;
-  pressTight = decQ.tight; pressMemoClear();
+  pressTight = decQ.tight;
   pressAllowance = allowanceKnown ? allowance : -1;
   towardRestLen = 0;
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)

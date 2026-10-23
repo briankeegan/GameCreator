@@ -21,6 +21,8 @@ double gb_bits_ms(int cells);
 int gb_replay(int nbytes, int narr, int mode, int64_t work, char *out, int cap);
 void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
+void gb_replay_allow(int allow);
+int gb_line_agree(int *n);
 int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
 void paThreadId(int id);
@@ -176,6 +178,30 @@ int main(int argc, char **argv) {
       if (v[0] != 2 && lows - lowRaised <= 3) printf("  low stack not raised (mode %d): %s\n", mode, rec);
     }
     gb_replay_low(0); gzclose(z);
+  }
+  // (THE LINE PRESSED AS JUDGED: each question answered again with the input budget tight -- walks held from two cells -- and the line
+  // the answer hands on keyed as the frame loop keys it: every swap's keys begin on the frame the judge pressed it from, never later. A
+  // swap pressed later is a board the judge never judged: front.c follow, core/nodes.h pressDelay)
+  snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
+  if ((z = gzopen(path, "r"))) {
+    int compared = 0, late = 0, lines = 0;
+    while (gzgets(z, line, sizeof line)) {
+      int mode = atoi(line);
+      const char *b = strstr(line, "GAMBITQ ");
+      if (!b) b = strstr(line, "GAMBITB ");
+      if (!b) continue;
+      for (int t = 0; t < 2; t++) {
+        int narr, n = loadLine(b, &narr), c;
+        gb_replay_allow(t ? 12 : 30);
+        if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) continue;
+        int l = gb_line_agree(&c);
+        compared += c; late += l; lines += c > 0;
+        if (l && late - l < 3) printf("  pressed later than judged (allowance %d, mode %d): %s\n", t ? 12 : 30, mode, rec);
+      }
+    }
+    gb_replay_allow(-1); gzclose(z);
+    printf("%s: the line pressed as judged -- %d swaps of %d lines keyed, %d begun later than the judge pressed them\n", late || !compared ? "FAIL" : "ok", compared, lines, late);
+    fail |= late || !compared;
   }
   // ---- switching: every direction between the modes, over a run's games (gambit-switch.json's stretch)
   { int32_t counts[64 * 64]; int nr = 0, missing = gb_switch_check(24, 21600, 300, 1800, counts, &nr), lo = 1 << 30, hi = 0;

@@ -428,7 +428,7 @@ EXPORT(gb_judge) int gb_judge(int nseq, int settled, int tight, int readyAt, int
   if (nseq < 0 || nseq > MAXLINE) return -1;
   for (int i = 0; i < nseq; i++) seq[i] = gbIo[i];
   JudgeOpts o = { settled, tight, readyAt, readyIfLost, readyIfBreak, lifeTo, lifeRest, why };
-  pressTight = tight; pressMemoClear();
+  pressTight = tight;
   Judged j;
   judge(&hostQ, seq, nseq, &o, &j);
   int32_t *w = gbIo, k = 0;

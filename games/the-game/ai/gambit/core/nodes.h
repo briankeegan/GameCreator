@@ -80,21 +80,10 @@ static int32_t pressDelayOf(Ctx *x, int pi, int mr, int mc) {
   int tap = firstSwap(in, n), slow = firstSwap(walkBuf, slowWalks(in, n, walkBuf, (int)(sizeof walkBuf / sizeof walkBuf[0])));
   return tap >= 0 && slow > tap ? slow - tap : 0;
 }
-// (the delay is the walk's -- where the cursor is and where the swap is -- kept per decision: pressMemoClear at its start; each thread
-// keeps its own, let go once the decision is another)
-#define PRESS_MEMO (MAXROWS * 8 * MAXROWS * 8)
-static LOCAL short pressMemo[PRESS_MEMO];
-static int32_t pressMemoGen; static LOCAL int32_t pressMemoAt = -1;
-static void pressMemoClear(void) { for (int i = 0; i < PRESS_MEMO; i++) pressMemo[i] = -1; pressMemoAt = ++pressMemoGen; }
+// (the delay is the board's, every time: the same cursor and swap are later by more or less as the board makes the walk wait)
 static int32_t pressDelay(Ctx *x, int pi, int mr, int mc) {
   if (!pressTight || !mr) return 0;
-  Board *b = ensureBoard(x, pi);
-  if (!b || b->curRow < 0 || b->curRow >= MAXROWS || b->curCol < 0 || b->curCol > 7) return 0;
-  if (pressMemoAt != pressMemoGen) { for (int i = 0; i < PRESS_MEMO; i++) pressMemo[i] = -1; pressMemoAt = pressMemoGen; }
-  int key = ((b->curRow * 8 + b->curCol) * MAXROWS + mr) * 8 + mc;
-  if (key < 0 || key >= PRESS_MEMO) return pressDelayOf(x, pi, mr, mc);
-  if (pressMemo[key] < 0) pressMemo[key] = (short)pressDelayOf(x, pi, mr, mc);
-  return pressMemo[key];
+  return pressDelayOf(x, pi, mr, mc);
 }
 // The child of node pi by one step (search.h advance: MK_SWAP, MK_SETTLE, MK_LONG, MK_HOLD), STEP_NULL when the clock is out or the
 // step is refused, STEP_DEAD when the board is lost on it (deadAt). A swap is pressed as the frame loop presses it: with the input
