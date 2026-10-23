@@ -165,6 +165,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 // THE HOLD, a candidate like any other: nothing pressed, its outcome the board's own -- below every play that fits, above a clear
 #define HOLD_TIER 5
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
+static int32_t carryChain;   // the chain the line in progress makes, judged again this decision (decide.c): the board's own too
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
@@ -288,9 +289,11 @@ static void markIdle(Judge **a, int n) {
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
 // A LINE THAT CUTS THE BOARD'S OWN CHAIN SHORT: the board left alone makes a chain (the hold's judging, aloneChain) and with the line
-// played it makes a shorter one
+// played it makes a shorter one -- or the line in progress makes one (carryChain) and this line, put in its place, a shorter one: a line
+// put down halfway leaves the chain it was making unmade
 static int cutsShort(const Judge *J) {
   if (J->hold || !J->apPlayed) return 0;
+  if (!J->carried && carryChain > 1 && J->apWhole < carryChain) return 1;
   if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
   return aloneChain > 1 && J->apWhole < aloneChain;
 }

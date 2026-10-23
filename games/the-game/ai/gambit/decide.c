@@ -232,6 +232,7 @@ static int ranked(const Read *R, const Found *S) {
     static Judge thru;
     Cand k2 = ck; k2.settled = 0; k2.play = PLAY_CARRY;
     if (cwait && judgeCand(R, &k2, &thru)) { thru.carried = 1; order[n] = &thru; n++; }
+    carryChain = imax(cj->o.dead ? 0 : cj->apWhole, cwait && thru.carried && !thru.o.dead ? thru.apWhole : 0);
   }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];

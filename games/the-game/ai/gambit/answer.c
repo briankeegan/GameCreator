@@ -329,7 +329,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   Read R;
   backBoard = decQ.b;
   theBack.at = at;
-  aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
+  aloneChain = 0; carryChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
   readyAsked = readyHit = 0; readyStop(); readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   readMs = nowMs() - tStart;

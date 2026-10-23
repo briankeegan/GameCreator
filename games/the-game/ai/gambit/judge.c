@@ -108,8 +108,7 @@ static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 // A WASTED THREE -- the one test, the judge's (firstThree) and the press guard's (front.c wastedSwap): g the board on the frame its swap
 // is pressed, a the same board with it not pressed, both played on FIRST_LOOK frames side by side -- the panels g matches that a does
 // not, exactly three, none beside garbage -- and then on till both are still (THREE_SETTLE at most): g's fall no longer a chain than
-// a's. And a swap that spoils the chain the board is making on its own -- a's chain two or more, g's shorter, no more garbage broken --
-// wastes the three that began it. g and a are played on (the caller's copies).
+// a's. g and a are played on (the caller's copies).
 #define FIRST_LOOK 30
 static int garbageCells(const Board *b) { int n = 0; for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) n += !!b->p[r][c].f[ISGARBAGE]; return n; }
 #define THREE_SETTLE 400
@@ -137,15 +136,28 @@ static int wastedThree(Board *g, Board *a) {
   }
   // (a panel of the three the board alone matches later is the board's own, not the swap's)
   int n = 0; for (int q = 0; q < ng; q++) { int own = 0; for (int k = 0; k < nw && !own; k++) own = was[k] == got[q]; n += !own; }
-  int three = n == 3 && !touch;
+  if (n != 3 || touch) return 0;
   int32_t gc = g->chainCounter, ac = a->chainCounter;
   for (int k = 0; k < THREE_SETTLE && g->gameOverClock <= 0; k++) {
     run(g); if (a->gameOverClock <= 0) run(a);
     gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
     if (g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
   }
-  if (ac >= 2 && gc < ac && garbageCells(g) >= garbageCells(a)) return 1;   // (the board's own chain spoiled)
-  return three && !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
+  return !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
+}
+// THE BOARD'S OWN CHAIN SPOILED (rank.c cutsShort, a line at a time): g the board with the swap pressed and every key after it the line
+// presses (keyAt: the bits on the f-th frame after the press), a the same board left alone, both played to rest -- a's chain two or more
+// and g's shorter, no more garbage broken: the three that began the board's chain made for nothing. g and a are played on.
+static int spoilsChain(Board *g, Board *a, int32_t (*keyAt)(int32_t f)) {
+  int32_t gc = g->chainCounter, ac = a->chainCounter;
+  for (int f = 0; f < FIRST_LOOK + THREE_SETTLE && g->gameOverClock <= 0; f++) {
+    run(g); if (a->gameOverClock <= 0) run(a);
+    int32_t k = keyAt ? keyAt(f) : 0;
+    g->input = k & ~(IN_SWAP | IN_RAISE); g->pressSwap = !!(k & IN_SWAP); a->input = 0; a->pressSwap = 0;
+    gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
+    if (f >= FIRST_LOOK && g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
+  }
+  return ac >= 2 && gc < ac && garbageCells(g) >= garbageCells(a);
 }
 // THE FIRST SWAP'S OWN CLEAR (the line's wasted three, as the game makes it): the board the swap is pressed on beside the board left
 // alone as long, by the one test

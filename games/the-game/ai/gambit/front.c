@@ -734,6 +734,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
 #define REFUSE_BLOCK 60      // the frames a refused swap's pair is kept out of the next decisions' first swaps
 #define GUARD_DIE 120   // the frames the board is played on, with the swap and without, to tell a three that saves it
 static Board *guardBoard, *aloneBoard;
+static int32_t planKeyAt(int32_t f) { Planned *q = planOf(F.now + f + 1); return q ? q->bits : 0; }
 static int wastedSwap(const Board *t, int32_t bits) {
   if (!guardBoard) guardBoard = nb_new();
   if (!aloneBoard) aloneBoard = nb_new();
@@ -741,7 +742,12 @@ static int wastedSwap(const Board *t, int32_t bits) {
   copyBoard(guardBoard, t); copyBoard(aloneBoard, t);
   guardBoard->input = bits & ~IN_SWAP; guardBoard->pressSwap = 1;
   aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
-  return wastedThree(guardBoard, aloneBoard);
+  if (wastedThree(guardBoard, aloneBoard)) return 1;
+  // (and the board's own chain spoiled by the line from here, as the judge asks it of the whole line: rank.c cutsShort)
+  copyBoard(guardBoard, t); copyBoard(aloneBoard, t);
+  guardBoard->input = bits & ~IN_SWAP; guardBoard->pressSwap = 1;
+  aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
+  return spoilsChain(guardBoard, aloneBoard, planKeyAt);
 }
 // THE SAVE: the board played on for GUARD_DIE frames, the garbage on its way landing as the game lands it -- with the swap not pressed
 // and nothing after it (lostIn 0), or with it pressed and the plan's keys after it as they will be pressed (lostIn 1). A three the plan
