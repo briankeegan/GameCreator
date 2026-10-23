@@ -1177,3 +1177,8 @@ this repo's own, not the game's: 456 actions a minute in panel-game's common/eng
 such limit). Asked of the owner: the budget raised or dropped under the wall rule, or the rule reverted.
 Measured (`1d68f34c`, runs 913-916, the wall rule with Gambit's own input budget, 900 a minute): big chain 22, build 22, finish 22,
 pressure 21 (87 of 96, against 83 before the rule); 0.11-0.16 wasted threes a minute.
+Measured (`c1957f0c`, runs 917-920, a raise leaves the board a REST alive once the garbage lands): big chain 23, build 22, finish 19,
+pressure 19 (83 of 96, against 87: within the spread); 0.14-0.19 wasted threes a minute. Of the 13 deaths none had a raise in its last
+150 frames; all under garbage, material 10-34. Two had decisions judged alive past the loss: 917 factory-7, a carried break (18 cells,
+judged lost at 298) dropped 26 frames later as no longer breaking, the board then lost in 16 -- the shape of 891 factory-8. Its boards
+before 3197 were gone from the log's ring of last boards (11 kept of 32): the ring is to keep them before the next trace.
