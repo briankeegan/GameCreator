@@ -1024,3 +1024,6 @@ games measure it.
 Measured (`d95231f4`, runs 825-828, a wait that does not end no longer kept first): big chain 18, build 21, finish 22, pressure 16 (77
 of 96, from 82 -- within the spread of one play measured twice, 78 and 82); 0.14-0.21. Kept: it is the live loss 44's fault, which
 training's boards rarely make.
+- 5 (HARD_CPU), traced: the floor's raise put off 116 frames (refill=1/1/0/w116), until the stack would take it -- and the frame loop
+  asked nothing until the raise's keys ended, so nothing was decided for 117 frames. Now the questions go on from the frame after the
+  answer; one that comes before the raise is due takes its keys' place.

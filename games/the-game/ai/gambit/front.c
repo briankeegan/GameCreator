@@ -484,15 +484,16 @@ static void take(void) {
     if (!a.empty) { F.altMode = modeAt(a.at); F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
     // (A RAISE PUT OFF: nothing pressed until the frame the stack takes it, then the raise held for its rows -- the keys made here, as a
-    // raise's are, on the board as it will be then)
+    // raise's are, on the board as it will be then. The questions go on meanwhile, from the frame after this answer's: the wait is the
+    // board's, and what lands in it is the next decision's to see -- an answer before the raise is due takes its keys' place)
     if (a.kind == 2 && a.raiseWait > 0) {
       k.n = imin(imax(1, a.raiseNow), MAXKEYS); k.held = 0;
       for (int q = 0; q < k.n; q++) { k.ins[q] = IN_RAISE; k.hl[q] = q == k.n - 1 ? a.raiseAfter : 0; k.hs[q] = q == k.n - 1 && a.raiseAfter > 0; }
       planClearFrom(at);
+      F.nextAt = at + 1;
       at += a.raiseWait;
       F.st.played++;
       for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 0, 0 });
-      F.nextAt = at + k.n;
       F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
       memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
       F.lineN = 0; F.haveLineOf = 0;
