@@ -136,9 +136,10 @@ EXPORT(gb_frames_ask) int gb_frames_ask(int mode, int64_t work, char *out, int c
 static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out);
 // (THE HELD KEYS, OFF THE WALL: the keys played on the board they begin on, every direction held two frames or more and let go with the
 // cursor anywhere but the wall it walks toward -- core/nodes.h legHeld -- counted)
-static int32_t frontHeldOff, frontHeld;
+static int32_t frontHeldOff, frontHeld, frontOffCell;
 static Board *heldBoard;
-static int heldOffWall(const Board *b, const Keys *k) {
+// (and the swap: pressed with the cursor on the swap the keys were made for, mv -- frontOffCell counts those that are not)
+static int heldOffWall(const Board *b, const Keys *k, int32_t mv) {
   if (!heldBoard) heldBoard = nb_new();
   Board *g = heldBoard;
   copyBoard(g, b);
@@ -150,11 +151,12 @@ static int heldOffWall(const Board *b, const Keys *k) {
     dir = d; if (d) held++;
     if (q == k->n) break;
     g->input = bits & ~IN_SWAP; g->pressSwap = !!(bits & IN_SWAP);
+    if ((bits & IN_SWAP) && (g->curRow != CR(mv) || g->curCol != CC(mv))) frontOffCell++;
     run(g);
   }
   return off;
 }
-EXPORT(gb_held_off) int gb_held_off(int *held) { *held = frontHeld; int o = frontHeldOff; frontHeldOff = frontHeld = 0; return o; }
+EXPORT(gb_held_off) int gb_held_off(int *held, int *offCell) { *held = frontHeld; *offCell = frontOffCell; int o = frontHeldOff; frontHeldOff = frontHeld = frontOffCell = 0; return o; }
 // (on the game's thread, as the frame loop runs: its own board pool, apart from thread 0's that the workers' searches hand out -- native.c)
 EXPORT(gb_front_line) int gb_front_line(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out) {
   paThreadId(MAXTHREADS - 1);
@@ -178,7 +180,7 @@ static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int
     if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv[i]), CC(mv[i]), &k)) break;
     pressTap = tap;
     walkKeys(&k, due, F.pr);
-    frontHeldOff += heldOffWall(F.pr, &k);
+    frontHeldOff += heldOffWall(F.pr, &k, mv[i]);
     int sw = -1;
     for (int q = 0; q < k.n && sw < 0; q++) if (k.ins[q] & IN_SWAP) sw = q;
     for (int q = 0; q < k.n; q++) planSet(due + q, (Planned){ k.ins[q], k.hl[q], k.hs[q], 1, 0 });

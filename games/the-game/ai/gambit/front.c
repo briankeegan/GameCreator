@@ -362,8 +362,11 @@ static void fSlowWalks(Keys *k, int row, int col) {
   while (i < n0) {
     Leg L;
     if (!walkLeg(k->ins, n0, i, &L)) { PUSH(k->ins[i], i); i++; continue; }
+    int w, b, shape = legShape(L.v, L.cells, row, col, &w, &b);
     legMove(L.v, L.cells, &row, &col);
-    if (L.cells < 2 || !legHeld(L.v, row, col)) { for (int f = i; f <= L.end; f++) PUSH(k->ins[f], f); i = L.end + 1; continue; }
+    // (slid to the wall and tapped back: core/nodes.h legSlide, the keys the judge's slowWalks presses)
+    if (shape == 2) { static int32_t sl[MAXKEYS]; int ns = legSlide(L.v, L.base, w, b, L.end - i + 1, sl, MAXKEYS); for (int g = 0; g < ns; g++) PUSH(sl[g], imin(i + g, L.end)); held++; i = L.end + 1; continue; }
+    if (shape != 1) { for (int f = i; f <= L.end; f++) PUSH(k->ins[f], f); i = L.end + 1; continue; }
     for (int g = i; g <= imax(L.last, L.end); g++) PUSH(g <= L.last ? L.v : L.base, imin(g, L.end));
     held++;
     i = L.end + 1;

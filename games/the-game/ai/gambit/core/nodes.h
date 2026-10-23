@@ -38,18 +38,42 @@ static int legHeld(int32_t v, int row, int col) {
   int32_t d = v & 15;
   return (d & IN_RIGHT) ? col >= W - 1 : (d & IN_LEFT) ? col <= 1 : (d & IN_DOWN) ? row <= 1 : 0;
 }
+// A WALK'S SHAPE when the allowance is tight, a leg of n cells from (row, col): 1 held to the wall it ends at (*w its cells); 2 slid to
+// the wall past its end and tapped back *b cells -- as a player slides to the edge and comes back, where that costs fewer actions than
+// tapping each cell (1 + *b against n); 0 tapped.
+static int legShape(int32_t v, int n, int row, int col, int *w, int *b) {
+  int32_t d = v & 15;
+  int wall = (d & IN_RIGHT) ? W - 1 - col : (d & IN_LEFT) ? col - 1 : (d & IN_DOWN) ? row - 1 : -1;
+  if (n < 2 || wall < 0) return 0;
+  if (wall <= n) { *w = n; *b = 0; return 1; }
+  *w = wall; *b = wall - n;
+  return 1 + *b < n ? 2 : 0;
+}
+// (a slide and the taps back, as keys: the direction held until the cursor is at the wall -- REPEAT_FIRST - 2 frames past its w-th
+// cell, walkLeg -- then the way back tapped TAP_GAP frames apart, the frames after them the leg's own other keys (base); never shorter
+// than the leg tapped (len), so its swap comes no sooner than the judge's tapped walk presses it. The keys written)
+static int legSlide(int32_t v, int32_t base, int w, int b, int len, int32_t *out, int cap) {
+  int32_t d = v & 15, back = (d & IN_RIGHT) ? IN_LEFT : (d & IN_LEFT) ? IN_RIGHT : IN_UP;
+  int k = 0;
+  for (int g = 0; g < w + REPEAT_FIRST - 1 && k < cap; g++) out[k++] = v;
+  for (int t = 0; t < b; t++) for (int g = 0; g < TAP_GAP && k < cap; g++) out[k++] = g ? base : base | back;
+  while (k < len && k < cap) out[k++] = base;
+  return k;
+}
 // The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be
 // -- and only where it ends at the wall -- (left: the actions the input budget still allows -- tight at HOLDTIGHT or under). The frame
 // loop's and the judge's, the one count.
 static int iabs(int v) { return v < 0 ? -v : v; }
+// (and, tight, slid to the wall and tapped back where that costs fewer: legShape)
+static int legCost(int32_t d, int n, int row, int col, int tight, int inner) {
+  int w, b, s = legShape(d, n, row, col, &w, &b);
+  if (tight) return s == 1 ? 1 : s == 2 ? 1 + b : n;
+  return s == 1 && (n >= MIN_LEG + 1 || (n == MIN_LEG && inner)) ? 1 : n;
+}
 static int actionsFor(int row, int col, int r, int c, int left) {
-  int tight = tightAt(left), legs[2], walls[2], nl = 0, cost = 1;
-  if (iabs(c - col)) { walls[nl] = (c > col && c >= W - 1) || (c < col && c <= 1); legs[nl++] = iabs(c - col); }
-  if (iabs(r - row)) { walls[nl] = r < row && r <= 1; legs[nl++] = iabs(r - row); }
-  for (int k = 0; k < nl; k++) {
-    int n = legs[k], inner = k < nl - 1;
-    cost += walls[k] && (tight ? n >= 2 : (n >= MIN_LEG + 1 || (n == MIN_LEG && inner))) ? 1 : n;
-  }
+  int tight = tightAt(left), cost = 1;
+  if (c != col) cost += legCost(c > col ? IN_RIGHT : IN_LEFT, iabs(c - col), row, col, tight, r != row);
+  if (r != row) cost += legCost(r > row ? IN_UP : IN_DOWN, iabs(r - row), row, c, tight, 0);
   return cost;
 }
 // THE ALLOWANCE A JUDGED LINE PRESSES UNDER: the decision's (NOT_ASKED: the host did not say), less what the line's own swaps spend --
@@ -72,16 +96,18 @@ static int walkLeg(const int32_t *in, int n, int i, Leg *L) {
   L->v = v; L->base = base; L->cells = cells; L->p = p; L->end = end; L->last = i + cells + REPEAT_FIRST - 2;
   return 1;
 }
-// slowWalks' keys: every walk of two cells or more that ends at the wall held, the frames it is late by put in before the next key (the
-// cursor at (row, col) when the keys begin)
+// slowWalks' keys: every walk of two cells or more that ends at the wall held, and one a slide to the wall and back saves actions on
+// slid (legShape), the frames it is late by put in before the next key (the cursor at (row, col) when the keys begin)
 static int slowWalks(const int32_t *in, int n, int32_t *out, int cap, int row, int col) {
   int k = 0, i = 0;
   while (i < n && k < cap) {
     Leg L;
     if (!walkLeg(in, n, i, &L)) { out[k++] = in[i]; i++; continue; }
     int32_t v = L.v, base = L.base, cnt = L.cells, last = L.last, end = L.end;
+    int w, b, shape = legShape(v, cnt, row, col, &w, &b);
     legMove(v, cnt, &row, &col);
-    if (cnt < 2 || !legHeld(v, row, col)) { for (int f = i; f <= end && k < cap; f++) out[k++] = in[f]; i = end + 1; continue; }
+    if (shape == 2) { k += legSlide(v, base, w, b, end - i + 1, out + k, cap - k); i = end + 1; continue; }
+    if (shape != 1) { for (int f = i; f <= end && k < cap; f++) out[k++] = in[f]; i = end + 1; continue; }
     for (int g = i; g <= (last > end ? last : end) && k < cap; g++) out[k++] = g <= last ? v : base;
     i = end + 1;
   }

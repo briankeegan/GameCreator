@@ -23,7 +23,7 @@ void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
 void gb_replay_allow(int allow);
 int gb_line_agree(int *n);
-int gb_held_off(int *held);
+int gb_held_off(int *held, int *offCell);
 const char *gb_line_shown(void);
 int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out);
 int gb_frames(int mr, int mc, int frames, int32_t *out);
@@ -208,9 +208,10 @@ int main(int argc, char **argv) {
     printf("%s: the line pressed as judged -- %d swaps of %d lines keyed, %d begun later than the judge pressed them\n", late || !compared ? "FAIL" : "ok", compared, lines, late);
     fail |= late || !compared;
     // (A HELD KEY ENDS AT THE WALL: of those keys, every direction held let go with the cursor at the wall it walks toward)
-    int held, off = gb_held_off(&held);
-    printf("%s: held keys end at the wall -- %d held of the lines keyed, %d let go off the wall\n", off || !held ? "FAIL" : "ok", held, off);
-    fail |= off || !held;
+    // (and every swap of them pressed with the cursor on the cell it was keyed for -- a slide and the taps back included)
+    int held, offCell, off = gb_held_off(&held, &offCell);
+    printf("%s: held keys end at the wall -- %d held of the lines keyed, %d let go off the wall, %d swaps pressed off their cell\n", off || offCell || !held ? "FAIL" : "ok", held, off, offCell);
+    fail |= off || offCell || !held;
   }
   // (A BOARD ON ITS WAY OUT, played by the frame loop and Gambit's thread as a game plays it, the engine the game, a frame each 16 ms:
   // each lives past the frame it is lost on left alone -- its question asked while a swap answered still comes down in time (front.c
