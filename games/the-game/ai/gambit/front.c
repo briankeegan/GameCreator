@@ -50,6 +50,7 @@ typedef struct {
   int32_t frames, decisions, played, late, diverged, refused, guarded, unasked, idle, followed, noLine, unforeseen, reasked, revealed,
           raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps, starved, inHand;
   int32_t behind, behindWorst;   // (a line's swaps whose keys began later than the frame the judge pressed them from, and by how much at most)
+  int32_t revealCleared;         // (plans dropped for a panel unseen when they were made coming to a clear: front.c revealClears)
   int32_t combo[64], chain[32];
   // each chain link past the list's two, by its cause: panels out of garbage (colours not shown when it was decided), a swap pressed
   // since the link before it, or neither (the stack alone)
@@ -99,6 +100,7 @@ static struct {
   int32_t chainMax, pendCombo[16], npendCombo, pendThree, pendThreeAlone, pendSave, matchedIds[MAXROWS * W], nmatched, swapSince;
   // the swaps pressed still followed, the garbage cells matched last frame, and the cursor where it was and whether it was walked
   MoveOpen moves[MOVE_OPEN]; int32_t nmoves, gMatched, curRowWas, curColWas, curWalked;
+  int32_t unseenIds[MAXROWS * W], nunseen;   // (the panels whose colours the plan in force was made without: revealClears)
   int32_t reaction, ahead, gap, jitter;
   uint32_t rnd;
   FStats st;
@@ -146,6 +148,25 @@ static void arrivalsOf(const Board *b) {
   }
   // (sorted by when they arrive, the order they came in kept between equals)
   for (int i = 1; i < F.narr; i++) { Arrival x = F.arr[i]; int j = i - 1; while (j >= 0 && F.arr[j].at > x.at) { F.arr[j + 1] = F.arr[j]; j--; } F.arr[j + 1] = x; }
+}
+// A COLOUR SHOWN THAT CLEARS (the plan made without it): the panels whose colours the question's board did not show -- a broken slab's,
+// a row not yet risen -- kept when its answer's keys are planned; one of them coming to a clear is a board no line of that plan was
+// judged on (an unseen colour matches nothing in the engine), and the frame loop's check, a frame at a time, never sees it differ
+static int unseenColour(int32_t c);
+static void unseenOf(const Board *b) {
+  F.nunseen = 0;
+  for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = b->p[r][c].f;
+    if (!f[ISGARBAGE] && unseenColour(f[COLOR]) && F.nunseen < MAXROWS * W) F.unseenIds[F.nunseen++] = f[ID];
+  }
+}
+static int revealClears(const Board *t) {
+  for (int r = 1; r < t->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = t->p[r][c].f;
+    if (f[ISGARBAGE] || f[STATE] != MATCHED) continue;
+    for (int i = 0; i < F.nunseen; i++) if (F.unseenIds[i] == f[ID]) return 1;
+  }
+  return 0;
 }
 // The garbage of `now` a decision made knowing `knew` did not count on: each piece of `knew` accounts for one no bigger, due no sooner;
 // the stopWatch the soonest of it is due (0x7fffffff: none), and whether any of it is due by `by`.
@@ -276,7 +297,7 @@ static FTrace ftrace[FTRACE]; static int32_t ftraceN, ftraceDrops;
 static void planClearFrom(int32_t t) { ftraceDrops |= 4; for (int i = 0; i < PLANN; i++) if (F.planAt[i] != NUL && F.planAt[i] >= t) F.planAt[i] = NUL; }
 // Everything planned and asked is dropped: the board is not the one it was made for.
 static void dropAll(void) {
-  ftraceDrops |= 1;
+  ftraceDrops |= 1; F.nunseen = 0;
   if (F.pending) abortTo(F.pId);
   F.epoch++; planClearFrom(NUL + 1); F.nextAt = 0; F.lineN = 0; F.pending = 0;
 }
@@ -545,6 +566,7 @@ static void take(void) {
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
     F.lineWastes = a.wastes;
+    unseenOf(F.pBoard);
     F.lineN = a.nhand; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0;
   }
@@ -791,6 +813,11 @@ static int frontFrame(void) {
   // question out -- a swap is where it is whatever the colour, and a board the colour does change is caught as one that differs. Asked
   // again on every colour shown, a slab popping would leave no question answered until it is done.)
   if (!diverged && F.haveExpect && revealed(F.expect, t)) F.st.revealed++;
+  // (and a colour shown coming to a clear: the plan was made on a board without it -- dropped, the next question asked on this one)
+  if (!diverged && F.nunseen && revealClears(t)) {
+    if (F.loggedDiffer < 40) { char l[120]; snprintf(l, sizeof l, "REVEALCLEAR clock %d: a panel the plan was made without came to a clear", now); flog(l); F.loggedDiffer++; }
+    dropAll(); F.st.revealCleared++;
+  }
   int32_t off = t->clock - t->stopWatch;
   // (GARBAGE UNFORESEEN: the keys planned before it lands are pressed as planned -- the board is the one they were judged on until then --
   // the rest dropped and asked again; garbage due at T is received once the frame before it has run)
@@ -890,10 +917,10 @@ static void afterFrame(int32_t bits) {
 static void statsLine(char *out, int cap) {
   int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
-                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"behind\":%d,\"behindWorst\":%d,\"attacks\":{\"combo\":{",
+                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"attacks\":{\"combo\":{",
                    F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
-                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.behind, F.st.behindWorst);
+                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.behind, F.st.behindWorst, F.st.revealCleared);
   int first = 1;
   for (int z = 0; z < 64 && k < cap; z++) if (F.st.combo[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.combo[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");

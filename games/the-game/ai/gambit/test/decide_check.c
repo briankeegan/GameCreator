@@ -274,3 +274,11 @@ EXPORT(gb_front_sim) int gb_front_sim(int frames, int msPerFrame, int mode, int3
   paThreadId(0);
   return k;
 }
+// (the board kept at gb_frames_keep's frame, a few of its numbers: its clock, stop, shake, the queue, the garbage made, the top -- for the
+// checks' tools to hold it beside a board the game logged)
+EXPORT(gb_frames_kept_info) int gb_frames_kept_info(int32_t *out) {
+  if (!framesAsk) return 0;
+  const Board *b = framesAsk;
+  out[0] = b->clock; out[1] = b->stopTime + b->preStopTime; out[2] = b->shakeTime; out[3] = b->ninc; out[4] = b->garbageCreatedCount; out[5] = fullTop(b);
+  return 6;
+}
