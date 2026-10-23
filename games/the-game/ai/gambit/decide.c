@@ -597,8 +597,9 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
   // settled line waits while the board still moves)
   // (a settled line's next step is pressed on the board settled from the step before, as it was judged: on a board still moving the
-  // step is judged once it has settled -- waitTo -- not cut for a walk that cannot begin within a reaction)
-  int moving = C->settled && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
+  // step is judged once it has settled -- waitTo -- not cut for a walk that cannot begin within a reaction; and a break the readiness
+  // found, on the board once everything lands, is pressed on that board: on one still moving it waits as a settled line does)
+  int moving = (C->settled || C->ready) && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
   JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0 };
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);

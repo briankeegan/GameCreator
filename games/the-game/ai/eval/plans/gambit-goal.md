@@ -990,3 +990,9 @@ rest of the line before its end -- dropped unoffered, where every other line was
 on is offered and ranked by its loss as every line is; only a step no longer there to press drops it.
 Measured (`4fb895f7`, runs 809-812, the count only -- the play unchanged from 9af27bf1): big chain 18, build 23, finish 19, pressure
 18 (78 of 96: 82 on the same play, the run-to-run spread); 0.28-0.37 wasted threes a minute, 24-29 saves a run counted apart.
+Measured (`8cd4a383`, runs 813-816, the line the board is lost on offered): big chain 21, build 20, finish 20, pressure 17 (78 of 96,
+as before); 0.31-0.41; lines dropped halfway ~320 a run, from ~2,300. Of 18 losses, 1 spent the input allowance (813 factory-7: 37
+candidates cut for it, a break found); at the turn of 7 of 12 the line in progress was played. 816 factory-7, 13534: a line lived by
+the break the readiness found once everything lands; at 13548 that break, the line in progress, was cut at its first swap -- its walk
+not begun within a reaction, the board still moving (~180 a run, carryDrop=2:c0w). Now a break the readiness found waits for the
+board to settle, as a settled line does.
