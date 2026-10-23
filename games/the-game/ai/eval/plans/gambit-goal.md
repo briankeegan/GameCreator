@@ -988,3 +988,5 @@ had replaced. Now each swap pressed carries whether its line was a save, and the
 THE LINE IN PROGRESS DROPPED: ~2,300 a run (carryDrop=2); in six games of 805-808, about 480 of 620 because the board was lost on the
 rest of the line before its end -- dropped unoffered, where every other line was lost too, often sooner. Now a line the board is lost
 on is offered and ranked by its loss as every line is; only a step no longer there to press drops it.
+Measured (`4fb895f7`, runs 809-812, the count only -- the play unchanged from 9af27bf1): big chain 18, build 23, finish 19, pressure
+18 (78 of 96: 82 on the same play, the run-to-run spread); 0.28-0.37 wasted threes a minute, 24-29 saves a run counted apart.
