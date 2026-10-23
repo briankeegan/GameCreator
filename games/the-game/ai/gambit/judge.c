@@ -107,8 +107,10 @@ static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 // A WASTED THREE -- the one test, the judge's (firstThree) and the press guard's (front.c wastedSwap): g the board on the frame its swap
 // is pressed, a the same board with it not pressed, both played on FIRST_LOOK frames side by side -- the panels g matches that a does
 // not, exactly three, none beside garbage -- and then on till both are still (THREE_SETTLE at most): g's fall no longer a chain than
-// a's. g and a are played on (the caller's copies).
+// a's. And a swap that spoils the chain the board is making on its own -- a's chain two or more, g's shorter, no more garbage broken --
+// wastes the three that began it. g and a are played on (the caller's copies).
 #define FIRST_LOOK 30
+static int garbageCells(const Board *b) { int n = 0; for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) n += !!b->p[r][c].f[ISGARBAGE]; return n; }
 #define THREE_SETTLE 400
 static int wastedThree(Board *g, Board *a) {
   static LOCAL int32_t was[MAXROWS * W * 2], got[MAXROWS * W * 2];
@@ -134,14 +136,15 @@ static int wastedThree(Board *g, Board *a) {
   }
   // (a panel of the three the board alone matches later is the board's own, not the swap's)
   int n = 0; for (int q = 0; q < ng; q++) { int own = 0; for (int k = 0; k < nw && !own; k++) own = was[k] == got[q]; n += !own; }
-  if (n != 3 || touch) return 0;
+  int three = n == 3 && !touch;
   int32_t gc = g->chainCounter, ac = a->chainCounter;
   for (int k = 0; k < THREE_SETTLE && g->gameOverClock <= 0; k++) {
     run(g); if (a->gameOverClock <= 0) run(a);
     gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
     if (g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
   }
-  return !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
+  if (ac >= 2 && gc < ac && garbageCells(g) >= garbageCells(a)) return 1;   // (the board's own chain spoiled)
+  return three && !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
 }
 // THE FIRST SWAP'S OWN CLEAR (the line's wasted three, as the game makes it): the board the swap is pressed on beside the board left
 // alone as long, by the one test
