@@ -1057,3 +1057,7 @@ THE PDR GAMES (ForPDR_CPU, panel-game run 39885790622, d95231f4: 10 won, 7 lost 
 - 11: alive at 10576 with 168 frames of stop, rolled back to 10566 with the opponent's keys in it: 6.
 - 8: breaks judged lost at 435 and later, lost at 51 the decision after, a rollback at the end.
 - 16: short of material (15-18 panels). 7: a tall stack early (41-44 panels) and an attack no line lived through.
+Measured (`1b386c69`, runs 841-844, the break that breaks most of its level): big chain 22, build 20, finish 23, pressure 20 (85 of 96,
+as 86); 0.12-0.23. Kept.
+The live workflow (panel-game bramp/multi-player 329c2c4) now gives Gambit the machine training does: four workers, the client on CPU 0,
+Gambit's thread on the other core.
