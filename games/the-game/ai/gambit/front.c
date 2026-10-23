@@ -22,6 +22,7 @@ typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys
 typedef struct {
   int32_t id, epoch, at, lead, allowance, topped, lineFrom, linePressed, holdLeft, holdStarted, narr;
   int32_t oppHas, oppOut, oppTop, oppStop;   // the opponent's stop: the frames it is held up by at the question's frame
+  int32_t refA, refB, refUntil;              // a pair the press guard refused (a wasted three), its panels' ids, kept out until a frame
   double ms, posted;
   Arrival arr[MAXARRIVALS];
   Board *b;
@@ -105,7 +106,7 @@ static struct {
   uint32_t rnd;
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
-  int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt;   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
+  int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil;   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
 } F;
 
 static double fNow(void) { return clock_ms(); }
@@ -484,6 +485,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
   q.allowance = allowanceAt(at); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
+  q.refA = F.refUntil > at ? F.refA : 0; q.refB = F.refUntil > at ? F.refB : 0; q.refUntil = F.refUntil;
   q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop; q.oppStop = imax(0, F.oppStop - (at - F.now));
   q.b = F.pBoard;
   postQuestion(&q);
@@ -727,47 +729,25 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
 
 // ---------------------------------------------------------------- no wasted three, on the board itself
 // THE PRESS GUARD (the owner: a wasted three is never played): a swap about to be pressed is played first on a copy of the board as it is
-// -- the frames after it as the game runs them -- and refused when it makes a clear of three none of whose panels is beside garbage and
-// whose fall makes no chain: a three for nothing, whatever the plan judged. 1: refuse it.
-#define GUARD_LOOK 30
-#define GUARD_SETTLE 400
+// -- beside the board with it not pressed, by the judge's own test (judge.c wastedThree) -- and refused when it makes a three for
+// nothing. The judge saw the board predicted for its question's frame; this one is the board as it is, every colour shown since. 1: refuse it.
+#define REFUSE_BLOCK 60      // the frames a refused swap's pair is kept out of the next decisions' first swaps
 #define GUARD_DIE 120   // the frames the board is played on, with the swap and without, to tell a three that saves it
-static Board *guardBoard;
+static Board *guardBoard, *aloneBoard;
 static int wastedSwap(const Board *t, int32_t bits) {
   if (!guardBoard) guardBoard = nb_new();
-  if (!guardBoard) return 0;
-  Board *g = guardBoard;
-  copyBoard(g, t);
-  static int32_t was[MAXROWS * W];
-  int nw = 0;
-  for (int r = 1; r < g->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = g->p[r][c].f; if (f[STATE] == MATCHED && nw < MAXROWS * W) was[nw++] = f[ID]; }
-  g->input = bits & ~IN_SWAP; g->pressSwap = 1;
-  int fresh = 0, touch = 0, f = 0;
-  for (; f < GUARD_LOOK && !fresh && g->gameOverClock <= 0; f++) {
-    run(g); g->input = 0; g->pressSwap = 0;
-    for (int r = 1; r < g->nrows; r++) for (int c = 1; c <= W; c++) {
-      const int32_t *p = g->p[r][c].f;
-      if (p[STATE] != MATCHED || p[ISGARBAGE]) continue;
-      int old = 0; for (int q = 0; q < nw && !old; q++) old = was[q] == p[ID];
-      if (old) continue;
-      fresh++;
-      static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
-      for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc = c + DC[d]; if (rr >= 1 && rr < g->nrows && cc >= 1 && cc <= W && g->p[rr][cc].f[ISGARBAGE]) touch = 1; }
-    }
-  }
-  if (fresh != 3 || touch) return 0;
-  // (its fall: a chain within GUARD_SETTLE frames makes it a chain's first link)
-  for (int k = 0; k < GUARD_SETTLE && g->gameOverClock <= 0; k++) {
-    run(g);
-    if (g->chainCounter >= 2) return 0;
-    if (g->chainCounter == 0 && !hasActivePanels(g)) break;
-  }
-  return 1;
+  if (!aloneBoard) aloneBoard = nb_new();
+  if (!guardBoard || !aloneBoard) return 0;
+  copyBoard(guardBoard, t); copyBoard(aloneBoard, t);
+  guardBoard->input = bits & ~IN_SWAP; guardBoard->pressSwap = 1;
+  aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
+  return wastedThree(guardBoard, aloneBoard);
 }
 // THE SAVE: the board played on for GUARD_DIE frames, the garbage on its way landing as the game lands it -- with the swap not pressed
 // and nothing after it (lostIn 0), or with it pressed and the plan's keys after it as they will be pressed (lostIn 1). A three the plan
 // made as the board's save (the survival search found it needed: Planned.save) is let through when the board is lost without it; any
-// other -- one the judge did not see, a colour it could not know shown -- only when the board is lost without it and alive with it.
+// other -- one the judge did not see, a colour it could not know shown -- never: the swap is refused and the next decision asked, where
+// the survival search finds the save if the board needs one.
 static Board *dieBoard;
 static int lostIn(const Board *t, int32_t bits, int press) {
   Board *g = dieBoard;
@@ -786,7 +766,7 @@ static int lostIn(const Board *t, int32_t bits, int press) {
 static int threeSaves(const Board *t, int32_t bits, int planned) {
   if (!dieBoard) dieBoard = nb_new();
   if (!dieBoard) return 0;
-  return lostIn(t, bits, 0) && (planned || !lostIn(t, bits, 1));
+  return planned && lostIn(t, bits, 0);
 }
 // ---------------------------------------------------------------- one frame
 static int frontFrame(void) {
@@ -847,7 +827,13 @@ static int frontFrame(void) {
   // (let through only as the save: the board lost without it)
   int32_t guard = 0;
   if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits)) {
-    if (!threeSaves(t, bits, save)) { bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++; } else { guard = 2; F.st.guardLet++; }
+    if (!threeSaves(t, bits, save)) {
+      bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
+      // (and its pair kept out of the next decisions' first swaps a while: a three the judge did not see is not planned again)
+      if (t->curCol >= 1 && t->curCol + 1 <= W && t->curRow >= 0 && t->curRow < t->nrows) {
+        F.refA = t->p[t->curRow][t->curCol].f[ID]; F.refB = t->p[t->curRow][t->curCol + 1].f[ID]; F.refUntil = now + REFUSE_BLOCK;
+      }
+    } else { guard = 2; F.st.guardLet++; }
   }
   if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save, guard);
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
