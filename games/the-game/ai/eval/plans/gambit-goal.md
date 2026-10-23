@@ -985,3 +985,6 @@ Measured (`9af27bf1`, runs 805-808, not needed only where the board without the 
 23, pressure 20 (82 of 96); 0.40-0.51, the fewest yet, and 6-14 saves a run. Of 19 wasted threes traced in six games, 13 were made by
 lines the survival search had found needed: the count read the save off the line in hand when the three cleared, which a later answer
 had replaced. Now each swap pressed carries whether its line was a save, and the three is counted by the swap it came of.
+THE LINE IN PROGRESS DROPPED: ~2,300 a run (carryDrop=2); in six games of 805-808, about 480 of 620 because the board was lost on the
+rest of the line before its end -- dropped unoffered, where every other line was lost too, often sooner. Now a line the board is lost
+on is offered and ranked by its loss as every line is; only a step no longer there to press drops it.
