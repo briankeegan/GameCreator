@@ -1147,3 +1147,5 @@ Measured (`cb6cd18c`, runs 885-888, the planner's quick break keeps the chain fi
 of 96, against 88); 0.10-0.15 wasted threes a minute (against 0.11-0.19). Both at the spread's edge; kept for the order it keeps.
 Now the touch beam's level, after the chain kept, takes the break that leaves the most material once its board settles, then the most
 broken: a slab broken above another leaves its row on the lower one, out of reach (870 large_garbage-8).
+Measured (`9f00aa0b`, runs 889-892, the break that leaves the most material): big chain 22, build 20, finish 21, pressure 23 (86 of 96,
+against 83; large_garbage 27 of 32, material under garbage 24 as before); 0.12-0.18. Within the spread; kept.
