@@ -1165,3 +1165,9 @@ last frame alive, 8636, where no swap comes down in time (the frame loop and Gam
 lose it the same way every time). Now a board on its way out is asked a reaction before that frame, or as soon as an answer can be had,
 never for the frame itself; offline it lives. Held by the C checks' "a board on its way out" (test/front.txt). The game itself had
 answered 4,2 at 8619 and still lost it as if never pressed, with nothing dropped, refused or late on record: not found.
+Measured (`9cf0d3de`, runs 901-904, the board on its way out asked in time): big chain 22, build 20, finish 20, pressure 21 (83 of 96);
+0.08-0.16 wasted threes a minute; as judged 0.
+Measured (`afb16a24`, runs 905-908, a held key ends at the wall -- the owner's rule for DAS): big chain 3, build 1, finish 4, pressure 1
+(9 of 96). The rule taps every walk that does not end at the wall, an action a cell, and the input budget (76 actions in 600 frames)
+is spent within ten seconds: 905 factory-1 lost at 628 with 75 of 76 actions used, 18 decisions at an allowance of 1. Asked of the
+owner: the cap raised or dropped under the rule, a slide to the wall and taps back, or the rule reverted.
