@@ -1199,3 +1199,12 @@ pressure 22 (66 of 72); 0.09-0.14 wasted threes a minute. Breaks under garbage m
 large_garbage 23-26% (21% before). large_garbage 19 of 24 (30 of 32 in 927-930), all five losses with no break found at the end;
 material under garbage unchanged (24.0-24.7 against 23.7-25.7), so the chain breaks did not starve it. Now the attacking break goes by
 the list's order (the mode's requirements), then blocks thrown, then a chain.
+Measured (`ea66c57c`..`30c3361d`, runs 938-941 and 947-950, the attacking break; the judge and the press guard on one three test):
+88 and 88 of 96; 12-20 wasted threes a run. Every one traced (947) passed the test at the press: its fall made a chain, which a later
+decision then spoiled -- a line put down halfway (5987: a swap that moved the chain's last panel aside, its swap back dropped by the
+next decision). A swap that spoils the board's own chain now wastes the three that began it (`720f2227`).
+Measured (`720f2227`, runs 951-954): wasted threes 1, 1, 2, 0; survived 20, 21, 21, 19 (81 of 96), 80-89 swaps refused at the press a
+run -- the guard asked the spoil of a swap alone where the judge asks it of the whole line. Now the guard plays the plan's keys after
+the swap, and a line put in the place of the line in progress cuts its chain short when it makes a shorter one (`2e45e656`). A line
+the clock stopped the judge on ranks as lost where it was judged alive to (947 combo_storm-4: every candidate dropped unjudged, the
+hold played, lost with 53 panels) (`b23002d5`).
