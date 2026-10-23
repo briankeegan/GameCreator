@@ -8,6 +8,29 @@
  "underGarbage": "break",
  "attack": [
   {
+   "name": "time attack",
+   "when": {
+    "enemy.none": true
+   },
+   "aims": [
+    {
+     "chain": ">=8"
+    },
+    {
+     "chain": ">=6"
+    },
+    {
+     "chain": ">=4"
+    },
+    {
+     "chain": ">=3"
+    },
+    {
+     "chain": ">=2"
+    }
+   ]
+  },
+  {
    "name": "finish them",
    "when": {
     "enemy.topped": true,

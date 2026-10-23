@@ -66,7 +66,7 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
 // attack rules is switched between -- into counts (n x n, by the rules' order), the pairs never switched between returned
 EXPORT(gb_switch_check) int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules) {
   int32_t idx[MAXRULES], nr = 0;
-  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1) idx[nr++] = theTables.r[i].name;
+  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1 && !asksNoEnemy(&theTables.r[i])) idx[nr++] = theTables.r[i].name;
   *nrules = nr;
   for (int i = 0; i < nr * nr; i++) counts[i] = 0;
   gb_switch(min, max);

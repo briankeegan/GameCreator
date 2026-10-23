@@ -612,7 +612,7 @@ static int lapOf(int n, int32_t *lap) {
 EXPORT(gb_switch_game) void gb_switch_game(uint32_t seed) {
   nswitch = 0; modeRule = C2.GP.mode;
   int32_t rules[MAXRULES], nr = 0;
-  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1) rules[nr++] = theTables.r[i].name;
+  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1 && !asksNoEnemy(&theTables.r[i])) rules[nr++] = theTables.r[i].name;
   if (!switchMin || nr < 2) return;
   static int32_t lap[MAXRULES * MAXRULES + 1];
   int nl = lapOf(nr, lap);

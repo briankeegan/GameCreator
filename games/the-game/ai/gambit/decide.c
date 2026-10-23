@@ -28,20 +28,16 @@ static int readBoard_(Read *R) {
   if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
   decF.next = F->known[FACT_US_NEXTLANDS] ? (int32_t)F->v[FACT_US_NEXTLANDS] : NOT_ASKED;
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
+  // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
+  factSet(F, FACT_ENEMY_NONE, !theOpp.has);
   R->enemyTopped = theOpp.has && theOpp.out;
   // (the frames until the board is lost if nothing is done, from the engine with the garbage the game shows landing when it lands:
   // sooner than the rise alone takes, the garbage on its way decides it -- queueKills)
   int32_t alone = diesIn(&decQ, F->v[FACT_US_DIES]);
   if (alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
-  // (the rule: the mode in force, else the first whose `when` the facts hold -- with no opponent to read, the rule an enemy low and not
-  // topped out asks for: nothing across presses this board, so it builds the biggest it can (the owner: with no pressure, go for big
-  // blocks) -- never the one for finishing a topped-out enemy, which raises to its top; else the first of the rules, so it still plays)
+  // (the rule: the mode in force, else the first whose `when` the facts hold -- with no opponent to read, the rule asking `enemy.none`;
+  // else the first of the rules, so a board with nobody across still plays)
   int ri = modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
-  if (ri < 0 && !theOpp.has && modeRule < 0) {
-    static FactSet G; G = *F;
-    factSet(&G, FACT_ENEMY_TOPPED, 0); factSet(&G, FACT_ENEMY_HEIGHT, 0); factSet(&G, FACT_ENEMY_STOP, 0);
-    ri = chooseRule(&G);
-  }
   if (ri < 0 && !theOpp.has && theTables.n > 0) ri = 0;
   if (ri < 0) return 0;
   const Rule *rule = &theTables.r[ri];
