@@ -1035,3 +1035,7 @@ the other was lost a whole break's time later, where 3 counts two losses alike o
 line in progress only over a line lost no later, or alike as 3 counts it (lostAlike).
 Measured (`8efd5afc`, runs 833-836): big chain 22, build 19, finish 19, pressure 19 (79 of 96, against 81); 0.13-0.22. Within the
 spread; kept for the one order's own count of alike.
+836 combo_storm-4, 16290: the line in progress, lost at 310 breaking 32, was found at 16308 three rows above where it was and cut at
+its first swap; lost at 16325. Its anchor was a bottom-row cell mid-swap with no panel in it -- an empty cell keeps its id and goes up
+the stack as panels fall into its place (pa.c switchPanels). Now a line is anchored only to a coloured panel at rest (judge.c
+anchorIdAt), the line in progress, the intentions and the readiness's break alike.

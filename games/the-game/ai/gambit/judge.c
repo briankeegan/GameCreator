@@ -171,6 +171,13 @@ static int32_t readyCollect; static LOCAL int32_t readyPendLast, readyNearLast, 
 static int32_t materialOn(const Board *b);   // (facts.c)
 static int nearOf(const Board *b); static int garbageOn(const Board *b);   // (search/break.c)
 static LOCAL int32_t readyRow1Buf[W + 1];
+// A LINE'S ANCHOR: a bottom-row cell's id, where the cell is a coloured panel at rest -- an empty cell keeps its id too, and goes up
+// the stack as each panel above it falls into its place (pa.c switchPanels), so a line anchored to one is found rows above where it was
+static int32_t anchorIdAt(const Board *b, int c) {
+  if (!b || b->nrows < 2) return NUL;
+  const int32_t *f = b->p[1][c].f;
+  return f[COLOR] && !f[ISGARBAGE] && f[STATE] == NORMAL ? f[ID] : NUL;
+}
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   readyPendLast = 0; readyNearLast = -1; readyMatLast = -1;
   // (a line that ends past the landing is ready from where it ends -- never a frame on: the same trajectory, asked from any root,
@@ -188,7 +195,7 @@ static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int
     readyPendLast = readyPendOf(x, land);
     return NOT_ASKED;
   }
-  { Board *lb = ensureBoard(x, land); for (int c = 1; c <= W; c++) readyRow1Buf[c] = lb && lb->nrows > 1 ? lb->p[1][c].f[ID] : NUL;
+  { Board *lb = ensureBoard(x, land); for (int c = 1; c <= W; c++) readyRow1Buf[c] = anchorIdAt(lb, c);
     readyMatLast = lb ? materialOn(lb) : -1; }
   if (clockOut()) return NOT_ASKED;
   return readyBreak(x, land, why, whyN);

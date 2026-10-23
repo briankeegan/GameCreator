@@ -433,7 +433,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   // tier, and its swaps after the first are the break it was chosen for)
   if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1 || (k->t.tier > 4 && !(k->apBroke > 0))) return;
   int32_t row1[W + 1];
-  for (int c = 1; c <= W; c++) row1[c] = decQ.b->p[1][c].f[ID];
+  for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
   for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
@@ -508,7 +508,7 @@ static int anchorFor(const int32_t *row1, const int32_t *seq, int n, int32_t *ro
 static void keepIntents(int n, const Judge *played) {
   memset(theIntents, 0, sizeof theIntents);
   int32_t row1[W + 1];
-  for (int c = 1; c <= W; c++) row1[c] = decQ.b->p[1][c].f[ID];
+  for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
   for (int i = 0, k = 0; i < n && k < NINTENT; i++) {
     const Judge *J = order[i];
     if (J == played || J->wait || J->o.dead || !clearsSomething(J) || J->k.nseq < 1) continue;
