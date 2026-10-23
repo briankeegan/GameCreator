@@ -1189,3 +1189,8 @@ the ring kept and the frames traced (926), the keys were pressed as planned -- t
 question's board did not show (a broken slab's) came to a clear the engine could not foresee (unseen colours match nothing), 104 of
 stop at 18028 the replay of the line does not make. Now a panel unseen when the plan was made coming to a clear drops it and asks
 again (`adb566a6`).
+Measured (`adb566a6`, runs 927-930, a colour shown coming to a clear drops the plan): big chain 24, build 23, finish 22, pressure 24
+(93 of 96: pressure 24 of 24 twice in a row); 0.09-0.18 wasted threes a minute. THE THREES LEFT (929, 25): every one a line the
+judge saw no three in, made at the press on a board lost either way, the survival search never asked -- the guard at the press let
+any planned three through on "lost without it". Now only a three the plan made as the board's save passes so; any other passes only
+where the board with it, the plan's keys after it pressed, lives (`f895fba8`).
