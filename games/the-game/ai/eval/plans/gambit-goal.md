@@ -1157,3 +1157,11 @@ the clock stopped the judge on was ranked as a board lasting almost forever (los
 could not play out is. Both held by the C checks' "the line pressed as judged" (every swap of the line handed on keyed no later than
 the judge pressed it, the input budget tight) and by each game's "as judged" count, which Gambit 24 is red on.
 Runs 893-896 (`d284b704`) played nothing: their C checks failed on the second of those, with workers.
+Measured (`387603f4`, runs 897-900, both of those): big chain 19, build 23, finish 21, pressure 20 (83 of 96, against 86: within the
+spread); 0.12-0.16 wasted threes a minute; as judged 0 in all 96 games.
+THE DEATHS OF 897-900 (13): twelve seen coming, each decision before the loss already lost within its next. One not: 900 factory-8, from
+8619 a board lost in 18 frames left alone, a swap at 4,2 saving it from as late as 8635 -- and the frame loop asked its board for the
+last frame alive, 8636, where no swap comes down in time (the frame loop and Gambit's thread playing it offline, the engine the game,
+lose it the same way every time). Now a board on its way out is asked a reaction before that frame, or as soon as an answer can be had,
+never for the frame itself; offline it lives. Held by the C checks' "a board on its way out" (test/front.txt). The game itself had
+answered 4,2 at 8619 and still lost it as if never pressed, with nothing dropped, refused or late on record: not found.
