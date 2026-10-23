@@ -1015,3 +1015,5 @@ THE REAL GAMES (panel-game run 39862813512, panelattack.com, 44 won, 7 lost, 1 a
 - The attacks are small: of the lines played, a chain of 4 or more 3-9% in every rule; 2.4 chains of 4+ a minute against 4.2
   2-chains. "finish them" (enemy.topped: garbage above its top row) was in force for 27% of decisions, in 96% of them with the enemy
   held up by a stop -- its aims run down to a plain three.
+Measured (`e2b8998a`, runs 821-824, the line in progress not kept over a break): big chain 20, build 19, finish 23, pressure 20 (82 of
+96, from 77); 0.10-0.18 wasted threes a minute, 30-68 saves a run. Kept.
