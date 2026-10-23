@@ -1105,3 +1105,8 @@ to watch). Kept.
 THE LIVE GAMES (Ranmaru_CPU, panel-game run 39884311606, workers 0, from 01:34): 25 won, 4 lost (all Tanycanayt), 1 aborted. Three of
 the four a rollback with the opponent's keys in it: 3 (a break lost at 449, three frames back, dead), 29 (23 of 46 lines living, 52
 frames back, dead at 1489 -- nearly a second of lag), 24 (2734 to 2733); 30 a fifteen-minute game under steady garbage.
+THE THREES LEFT (861, three games, save=0): 5, every one the first swap of a line judged a chain's first (chain=2) that stood alone.
+861 factory-3, 282: one swap (4,2) for a 2-chain, the three at 293; at 313 a break line judged to keep the chain (own=2/2), at 339 the
+board's counter at 2 (chain=2 on a waiting line) -- and the frame loop counted the three wasted, which it does only on a settled board
+with no link since. Which side is wrong wants the board of 287 (GAMBITX) run a frame at a time: a replay from the dumped bytes to a
+frame-by-frame step is the tool to build.
