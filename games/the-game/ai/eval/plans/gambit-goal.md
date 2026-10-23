@@ -1121,3 +1121,7 @@ Measured (`9cc59cd0`, runs 865-868, a settled line asked whether it keeps the ch
 Kept.
 Measured (`9844e304`, runs 869-872, the three taken out in the decision's own time): big chain 20, build 21, finish 23, pressure 21 (85 of
 96, against 84); 0.12-0.17 wasted threes a minute, against 0.07-0.13. No more survival, more waste: reverted.
+THE DEATHS OF 869-872 (11): 7 large_garbage, short of panels. 869 factory-4, 5619 (asked again with gb_frames_ask): the board alone
+making a 7-chain, its last link at 105 frames; a break lost at 267 (6 broken) would cut it, so 1b held (the hold lost at 233) -- and
+that break was the last in reach. Keeping the board's chain is the owner's rule, and a 7-chain is an attack worth having where there is
+an opponent; Training has none, so there it buys nothing. Left as the rule says, for the owner to weigh.
