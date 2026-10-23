@@ -366,23 +366,7 @@ static int keysOf(const Board *b, int32_t holdLeft, int32_t holdStarted, const A
   for (int i = 0; i < tapeN; i++) { k->ins[i] = buf[3 * i]; k->hl[i] = buf[3 * i + 1]; k->hs[i] = buf[3 * i + 2]; }
   return 1;
 }
-// A walk of n cells in one direction is played as n taps four frames apart; from four cells up (three where another walk follows) a held
-// key gets the cursor to the same cell on the same frame or sooner, so it is held for as long as the cursor needs and released.
-// (only a walk that ends at the wall: core/nodes.h legHeld; the cursor at (row, col) when the keys begin)
-static void fHoldWalks(Keys *k, int row, int col) {
-  Keys o = *k;
-  int held = 0, i = 0, n0 = k->n;
-  while (i < n0) {
-    Leg L;
-    if (!walkLeg(k->ins, n0, i, &L)) { i++; continue; }
-    legMove(L.v, L.cells, &row, &col);
-    if (L.cells >= MIN_LEG && L.last <= L.end && legHeld(L.v, row, col)) { for (int f = i; f <= L.end; f++) o.ins[f] = f <= L.last ? L.v : L.base; held++; }
-    i = L.p + 1;
-  }
-  o.held = held;
-  *k = o;
-}
-// The same walks held from two cells, when the allowance is tight; the frames the cursor is late by are put in before the next key,
+// The walks held from two cells, when the allowance is tight; the frames the cursor is late by are put in before the next key,
 // each carrying the raise held of the frame it follows.
 static void fSlowWalks(Keys *k, int row, int col) {
   static Keys o;
@@ -449,7 +433,8 @@ static void countActions(int32_t bits, int32_t now) {
   if (k > F.limit) F.st.overInput++;
 }
 // (b: the board the keys begin on)
-static void walkKeys(Keys *k, int32_t at, const Board *b) { if (tightAt(allowanceAt(at))) fSlowWalks(k, b->curRow, b->curCol); else fHoldWalks(k, b->curRow, b->curCol); }
+// (tapped, unless the allowance is tight: then held to the wall, core/nodes.h legShape)
+static void walkKeys(Keys *k, int32_t at, const Board *b) { if (tightAt(allowanceAt(at))) fSlowWalks(k, b->curRow, b->curCol); }
 
 // ---------------------------------------------------------------- pacing
 // How soon an answer can be had, in frames: half again the slowest of the last few.
