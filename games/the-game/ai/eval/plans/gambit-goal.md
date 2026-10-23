@@ -1090,3 +1090,9 @@ as the three's (threesOf: any link after it in the step). Now only the link righ
 between that is no link begins a chain of its own.
 Measured (`1a2fa171`, runs 857-860, a three a chain's first only by the link right after it): big chain 23, build 21, finish 24,
 pressure 23 (91 of 96, the best yet with 04a8e7bd's; finish 24/24 -- once); 0.15-0.19 wasted threes a minute, 41-51 saves a run. Kept.
+THE THREES LEFT (857, 860, six games): 8, all lines the judge saw no three in. Three were one swap judged to start a chain (860
+factory-3 21188, 857 combo_storm-2 17597 and 4157); each time the next decision played a break line judged to keep the board's own
+chain (own=3/3, 2/2) and the chain did not come. 1b's test -- the line's longest chain at least the board's (apWhole) -- passes a line
+that cuts the board's chain and makes one of its own: a chain's links count from 2 whichever chain they are (pa.c chainCounter), so the
+step's clears cannot tell them apart. Next: the board's chain held to the frame its last link lands as the hold makes it, and a line
+keeps it only where its own clears reach that link by then.
