@@ -200,14 +200,15 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
 // oldest first) -- what a loss is replayed from.
 static void ringKeep(int32_t at) {
   hostLock();
-  // (a question asked again for a frame no later than the last kept replaces it: the ring holds the last RINGN decisions forward)
-  int last = (ringHead - 1 + RINGN) % RINGN, again = ringCount && at <= ringAt[last];
-  int k = again ? last : ringHead;
+  // (a question asked again for a frame no later than ones kept takes their place: the plans made past it were dropped -- the ring holds
+  // one board a frame, in order, the last RINGN decisions forward)
+  while (ringCount && ringAt[(ringHead - 1 + RINGN) % RINGN] >= at) { ringHead = (ringHead - 1 + RINGN) % RINGN; ringCount--; }
+  int k = ringHead;
   if (!ring[k]) ring[k] = nb_new();
   if (ring[k]) {
     cloneBoard(ring[k], hostBoard); ringAt[k] = at; ringNarr[k] = hostQ.narr;
     for (int i = 0; i < hostQ.narr; i++) ringArr[k][i] = hostQ.arr[i];
-    if (!again) { ringHead = (ringHead + 1) % RINGN; if (ringCount < RINGN) ringCount++; }
+    ringHead = (ringHead + 1) % RINGN; if (ringCount < RINGN) ringCount++;
   }
   hostUnlock();
 }
