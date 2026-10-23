@@ -1125,3 +1125,7 @@ THE DEATHS OF 869-872 (11): 7 large_garbage, short of panels. 869 factory-4, 561
 making a 7-chain, its last link at 105 frames; a break lost at 267 (6 broken) would cut it, so 1b held (the hold lost at 233) -- and
 that break was the last in reach. Keeping the board's chain is the owner's rule, and a 7-chain is an attack worth having where there is
 an opponent; Training has none, so there it buys nothing. Left as the rule says, for the owner to weigh.
+870 large_garbage-8, 8300-10322, the material a decision's play spent or gained by the next decision: the holds spent 25 (38 holds),
+the breaking lines gained 30, the clears that broke nothing spent 12. The material is the panels under each column's first garbage
+(search/bits.c bitsShape): panels left on a lower slab are not counted until it breaks -- a break of an upper slab converts its row into
+panels on the one below, out of reach, and the holds are where those land. Which slab a break converts decides the material it gives.
