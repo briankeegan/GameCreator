@@ -1116,3 +1116,6 @@ any frame. 861 factory-3, 287: (4,2) left alone links at 61 frames and the chain
 at 26 does not. Asked on the board of 313 (26 frames on): a settled line -- the first swap pressed at once, the settle after it --
 was never asked whether it keeps the chain (keepsChain -1) and fell to apWhole. Now a settled line's first swap alone is run on to the
 frame of the chain's last link; one that waits for the board first keeps it by waiting.
+Measured (`9cc59cd0`, runs 865-868, a settled line asked whether it keeps the chain): big chain 18, build 22, finish 23, pressure 21
+(84 of 96, against 90 -- big chain's 18 the gap, within the spread); 0.07-0.13 wasted threes a minute, the fewest yet (from 0.18-0.24).
+Kept.
