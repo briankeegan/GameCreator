@@ -59,7 +59,7 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
-  int32_t wasted, wastedAlone, wasteRefused, saved;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
+  int32_t wasted, wastedAlone, wasteRefused, saved, guardLet;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
 } FStats;
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 // (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
@@ -68,7 +68,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_IDS 32
 #define MOVE_FOR 600
 #define MOVE_FALL 60
-typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save; } MoveOpen;   // save: pressed as a key of a save (Planned.save)
+typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard; } MoveOpen;   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
@@ -105,7 +105,7 @@ static struct {
   uint32_t rnd;
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
-  int32_t loggedDiffer, matchAt, matchAfter, matchSave, loggedWasted, pendSwapAt;   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
+  int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt;   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
 } F;
 
 static double fNow(void) { return clock_ms(); }
@@ -664,7 +664,7 @@ static void countAttacks(const Board *b) {
         for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc2 = c + DC[d]; if (rr >= 1 && rr < b->nrows && cc2 >= 1 && cc2 <= W && b->p[rr][cc2].f[ISGARBAGE]) touch = 1; }
       }
       F.pendSwapAt = bySwap ? F.matchAt : -1;
-      if (k < (int)sizeof F.pendLog) snprintf(l + k, sizeof F.pendLog - (unsigned long)k, " by=%s swapAt=%d after=%d touch=%d save=%d", bySwap ? "swap" : "alone", bySwap ? F.matchAt : -1, bySwap ? F.matchAfter : -1, touch, bySwap && F.matchSave ? 1 : 0);
+      if (k < (int)sizeof F.pendLog) snprintf(l + k, sizeof F.pendLog - (unsigned long)k, " by=%s swapAt=%d after=%d touch=%d save=%d guard=%d", bySwap ? "swap" : "alone", bySwap ? F.matchAt : -1, bySwap ? F.matchAfter : -1, touch, bySwap && F.matchSave ? 1 : 0, bySwap ? F.matchGuard : -1);
     }
   }
   if (fresh > 0 && nn > fresh && !(cc > F.chainMax)) F.st.together++;
@@ -683,11 +683,11 @@ static void countAttacks(const Board *b) {
 // A swap pressed is followed by the ids of the panels it moves -- the two swapped, and those above them that fall in the MOVE_FALL
 // frames after it -- until one of them is matched or MOVE_FOR frames pass: matched before the next swap is pressed, the swap cleared;
 // after it, the swap set the clear up; a clear that breaks garbage, a break; none matched, a swap that did nothing.
-static void moveBegin(const Board *b, int32_t save) {
+static void moveBegin(const Board *b, int32_t save, int32_t guard) {
   { int i = swapRingN++ % SWAPRING; if (!swapRing[i]) swapRing[i] = nb_new(); if (swapRing[i]) { cloneBoard(swapRing[i], b); swapRingAt[i] = b->clock; } }
   for (int i = 0; i < F.nmoves; i++) F.moves[i].swapsAfter++;
   if (F.nmoves == MOVE_OPEN) { F.st.moveNone++; memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
-  MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock; m->save = save;
+  MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock; m->save = save; m->guard = guard;
   int r0 = b->curRow;
   for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
     for (int r = r0; r < b->nrows && m->n < MOVE_IDS; r++) {
@@ -716,7 +716,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
       if (!m->moved[j] && b->clock - m->at <= MOVE_FALL && (st == HOVERING || st == FALLING)) m->moved[j] = 1;
       if (m->moved[j]) for (int q = 0; q < nfresh && !done; q++) done = fresh[q] == m->ids[j];
     }
-    if (done) { bySwap = 1; F.matchAt = m->at; F.matchAfter = m->swapsAfter; F.matchSave = m->save; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
+    if (done) { bySwap = 1; F.matchAt = m->at; F.matchAfter = m->swapsAfter; F.matchSave = m->save; F.matchGuard = m->guard; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
     if (!alive || b->clock - m->at > MOVE_FOR) { F.st.moveNone++; continue; }
     if (k != i) F.moves[k] = *m;
     k++;
@@ -845,10 +845,11 @@ static int frontFrame(void) {
   }
   // (no wasted three pressed: the swap refused, the plan dropped, the next decision asked on the board as it is)
   // (let through only as the save: the board lost without it)
-  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !threeSaves(t, bits, save)) {
-    bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
+  int32_t guard = 0;
+  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits)) {
+    if (!threeSaves(t, bits, save)) { bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++; } else { guard = 2; F.st.guardLet++; }
   }
-  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save);
+  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save, guard);
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
   countActions(bits, now);
   if (bits & IN_SWAP) F.swapSince = 1;
@@ -941,8 +942,8 @@ static void statsLine(char *out, int cap) {
   }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
   // (the swaps still followed when the match ends are counted by what they came to so far: nothing yet)
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d}}",
-                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved);
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d,\"guardLet\":%d}}",
+                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet);
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {
