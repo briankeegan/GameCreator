@@ -166,7 +166,7 @@ static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 5 + N
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
-static int carriedFromReady(void);
+static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
@@ -218,7 +218,10 @@ static int ranked(const Read *R, const Found *S) {
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
-    cj->carried = 1; order[n] = cj; n++; carriedJ = cj;
+    // (A WAIT THAT DOES NOT END: a line that has waited CARRY_WAITS decisions for a board that has not settled -- under garbage it may
+    // never -- is offered as any line is, no longer kept first as the line in progress (rank.c 1a): nothing of it has been pressed
+    // since, and its loss comes no later while it waits)
+    cj->carried = !(cwait && carryWaitsOut()); order[n] = cj; n++; carriedJ = cj;
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
     static Judge thru;
@@ -399,12 +402,14 @@ static Played playOf(const Read *R, int n) {
 // only when none was then)
 // (ready: a break found on the board once everything lands, carried from a swap played for it -- offered, not put first: it was found
 // on a board the stack is not yet)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId; Aim aim; } Carry;
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits; Aim aim; } Carry;
 static Carry theCarry;
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
 static Carry theCarryNext;
 static int carriedFromReady(void) { return theCarry.ready; }
+#define CARRY_WAITS 2
+static int carryWaitsOut(void) { return theCarry.waits >= CARRY_WAITS; }
 static int32_t carryFrom = -1, carryPressed;
 // THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
 // into theCarry; 0 when every one is touched. carryOf and carryReady ask it.
@@ -419,8 +424,11 @@ static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) 
 }
 static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anchorInto(&theCarry, row1, seq, n); }
 // (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
+// (waits: the decisions in a row the line has waited for the board to settle -- carryWaitsOut)
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
+  int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
+  theCarry.waits = waits;
   // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
   // tier, and its swaps after the first are the break it was chosen for)
   if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1 || (k->t.tier > 4 && !(k->apBroke > 0))) return;

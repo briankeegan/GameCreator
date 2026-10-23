@@ -1001,3 +1001,17 @@ Measured (`9c8dc4d1`, runs 817-820, the readiness's break waits for the board): 
 within a reaction 110-147 a run, from 155-191. At the turn of the losses of 813-816 the line in progress, breaking nothing, was kept
 over a break lost no sooner (816 large_garbage-2, 8469: the line in progress lost at 75 breaking none, a break lost at 75 breaking 6)
 -- 1a ran before 2. Now the line in progress is not kept over a break 2 would put first while it breaks nothing.
+THE REAL GAMES (panel-game run 39862813512, panelattack.com, 44 won, 7 lost, 1 aborted; Gambit from GameCreator main of 10-22 22:09):
+- The live workflow runs Gambit with no workers (GAMBIT workers 0) and unpinned; training runs four, pinned (training.sh). Every
+  measurement here is of a bot the live one is not: no survival search beside the decision, the break search on Gambit's own thread.
+- Rollbacks ~4 a match (the opponent's keys arriving late), wins and losses alike; divergences 1-9 a match, a block of garbage a few
+  frames off the forecast. Two losses were a rollback: 51 (Bowser) alive at 2404 with 266 frames of stop, rolled back to 2397 with
+  the opponent's attack in it and dead; 29 (Tanycanayt), 11 of 18 lines living at 767, rolled back from 781 to 768, dead at 795.
+- 44 (Bowser): a line waiting for the board to settle (carry_wait) kept first six decisions running while the stop ran from 74 to 17
+  -- under garbage the board did not settle, nothing of the line was pressed, and its loss came no later -- over lines lost later
+  (entry lost at 352 against its 280). Now a line that has waited CARRY_WAITS (2) decisions is offered as any line, not kept first.
+- 5 (HARD_CPU): under garbage, nothing living, the floor's raise held for 117 frames with no decision asked; the stack rose from 28 to
+  52 panels and topped out.
+- The attacks are small: of the lines played, a chain of 4 or more 3-9% in every rule; 2.4 chains of 4+ a minute against 4.2
+  2-chains. "finish them" (enemy.topped: garbage above its top row) was in force for 27% of decisions, in 96% of them with the enemy
+  held up by a stop -- its aims run down to a plain three.
