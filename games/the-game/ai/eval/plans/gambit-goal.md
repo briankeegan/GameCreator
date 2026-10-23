@@ -1074,3 +1074,7 @@ board is lost in was read for nothing -- aloneChain 0 (own= on 251 of 926 decisi
 lost in is read to the frame before, and the hold's chain counts whether it dies or not.
 Measured (`2d796c6c`, runs 849-852, the hold's chain counted though the board dies after): big chain 22, build 23, finish 20, pressure 22
 (87 of 96); 0.13-0.20. The board's own chain still cut in 400-447 decisions a run where nothing lives. Kept.
+851 combo_storm-4, 12691: every line lived; the line in progress, waiting, was handed on with its swap due at 12706 -- and the next
+question was asked for 12721, on a board predicted without that swap (follow() plans a swap only when it is due soon). Its answer took
+the line's place: the swap was never pressed (the board at 12721 the one of 12691, garbage on top), carryDrop=3, lost at 12723. Now a
+question is asked no later than the frame the line in hand's next swap is due.

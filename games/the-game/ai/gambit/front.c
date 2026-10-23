@@ -828,6 +828,9 @@ static void afterFrame(int32_t bits) {
   int32_t at = imax(F.nextAt > now ? F.nextAt : 0, now + lead);
   int paced = 0;
   if (gap >= 0 && F.lastSwapEnd + gap > at) { at = F.lastSwapEnd + gap; paced = 1; }
+  // (A LINE IN HAND: asked no later than the frame its next swap is due -- a board predicted past it is one without the swap, and the
+  // answer to it takes the line's place, so the swap is never pressed and the board the line was judged to leave never is)
+  if (F.lineN && lineDue() > now && at > lineDue()) { at = lineDue(); paced = 0; }
   if (at - now > aheadOf()) return;
   int32_t hl, hs;
   int ok = predict(next, at, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs);
