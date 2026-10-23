@@ -1072,3 +1072,5 @@ the chain falling, a break line lost at 319 swapped a link of it away over the h
 saw the board's own chain: the hold is judged by a settle of up to 900 frames, the board is lost in it under garbage, and a step the
 board is lost in was read for nothing -- aloneChain 0 (own= on 251 of 926 decisions with a chain falling). Now a settle the board is
 lost in is read to the frame before, and the hold's chain counts whether it dies or not.
+Measured (`2d796c6c`, runs 849-852, the hold's chain counted though the board dies after): big chain 22, build 23, finish 20, pressure 22
+(87 of 96); 0.13-0.20. The board's own chain still cut in 400-447 decisions a run where nothing lives. Kept.
