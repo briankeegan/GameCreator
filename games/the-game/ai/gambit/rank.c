@@ -400,10 +400,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int32_t mx = lx2 ? x->o.j.readyMat : x->o.matLeft, my = lx2 ? y->o.j.readyMat : y->o.matLeft;
     if (mx >= 0 && my >= 0 && mx != my) return mx > my ? -1 : 1;
   }
-  // 7a'. THE BREAK THE LINEUP MAKES (the owner: break first, but with the lineup, not a three): of two breaks under garbage alike so
-  // far, the one that makes a chain on its way -- the break is a link, and the attack goes with it -- before a break by clears alone
-  { int cx = !lx && decF.under && x->apBroke > 0 && x->apWhole >= 2, cy = !lx && decF.under && y->apBroke > 0 && y->apWhole >= 2;
-    if (cx != cy && x->apBroke > 0 && y->apBroke > 0) return cx ? -1 : 1; }
+  // 7a'. THE BREAK THAT ATTACKS (the owner: break first, but with the lineup, not a three -- and attack under pressure): of two breaks
+  // under garbage alike so far, the one that throws more blocks, then the one that makes a chain on the way -- the break is a link, and
+  // the attack goes with it
+  if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && !x->hold && !y->hold) {
+    if (x->o.j.blocks != y->o.j.blocks) return y->o.j.blocks - x->o.j.blocks;
+    int cx = x->apWhole >= 2, cy = y->apWhole >= 2;
+    if (cx != cy) return cx ? -1 : 1;
+  }
   // 7b. UNDER GARBAGE THE RULE IS TO BREAK (the rules' underGarbage): of two breaks under garbage that neither lives, the one that breaks
   // more of it -- before the list's entry: the board's life is the garbage it gets off
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apBroke != y->apBroke) return x->apBroke > y->apBroke ? -1 : 1;
