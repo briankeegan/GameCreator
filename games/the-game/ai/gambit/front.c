@@ -765,8 +765,9 @@ static int wastedSwap(const Board *t, int32_t bits) {
   return 1;
 }
 // THE SAVE: the board played on for GUARD_DIE frames, the garbage on its way landing as the game lands it -- with the swap not pressed
-// and nothing after it (lostIn 0), or with it pressed (lostIn 1). A three the plan made as the board's save is let through when the
-// board is lost without it; a three the plan did not see (the judge wrong), only when the board is lost without it and alive with it.
+// and nothing after it (lostIn 0), or with it pressed and the plan's keys after it as they will be pressed (lostIn 1). A three the plan
+// made as the board's save (the survival search found it needed: Planned.save) is let through when the board is lost without it; any
+// other -- one the judge did not see, a colour it could not know shown -- only when the board is lost without it and alive with it.
 static Board *dieBoard;
 static int lostIn(const Board *t, int32_t bits, int press) {
   Board *g = dieBoard;
@@ -775,7 +776,11 @@ static int lostIn(const Board *t, int32_t bits, int press) {
   int32_t np = F.narr;
   memcpy(pend, F.arr, sizeof(Arrival) * (unsigned long)np);
   g->input = bits & ~(IN_SWAP | IN_RAISE); g->pressSwap = press;
-  for (int f = 0; f < GUARD_DIE && g->gameOverClock <= 0; f++) { run(g); g->input = 0; g->pressSwap = 0; landOn(g, pend, &np); }
+  for (int f = 0; f < GUARD_DIE && g->gameOverClock <= 0; f++) {
+    run(g); landOn(g, pend, &np);
+    Planned *q = press ? planOf(F.now + f + 1) : 0;
+    g->input = q ? q->bits & ~(IN_SWAP | IN_RAISE) : 0; g->pressSwap = q && (q->bits & IN_SWAP);
+  }
   return g->gameOverClock > 0;
 }
 static int threeSaves(const Board *t, int32_t bits, int planned) {
@@ -840,7 +845,7 @@ static int frontFrame(void) {
   }
   // (no wasted three pressed: the swap refused, the plan dropped, the next decision asked on the board as it is)
   // (let through only as the save: the board lost without it)
-  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !threeSaves(t, bits, 1)) {
+  if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits) && !threeSaves(t, bits, save)) {
     bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
   }
   if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save);
