@@ -1140,3 +1140,6 @@ keep it: the touch beam's level, of its breaks, takes one whose board has the ch
 keepsOwnChain), then the most broken; with none, the most broken as before.
 Measured (`f9d93197`, runs 881-884, the touch beam's break that keeps the board's chain first): big chain 21, build 22, finish 22,
 pressure 23 (88 of 96, against 84); 0.11-0.19 wasted threes a minute (against 0.07-0.13: within the spread). Kept.
+THE THREES LEFT (881, 883, eight games, save=0): 4. Three a one-swap chain begun, cut by the next decision's break_line -- the planner's
+quick break (search/plan.c), which the touch beam's preference does not reach. Now the quick break keeps the board's chain before it
+cuts it too (quickBefore: the swap alone run on to the chain's last link -- the planner's steps settle, and by then the chain is over).
