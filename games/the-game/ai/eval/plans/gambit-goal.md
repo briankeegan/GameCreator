@@ -1143,3 +1143,5 @@ pressure 23 (88 of 96, against 84); 0.11-0.19 wasted threes a minute (against 0.
 THE THREES LEFT (881, 883, eight games, save=0): 4. Three a one-swap chain begun, cut by the next decision's break_line -- the planner's
 quick break (search/plan.c), which the touch beam's preference does not reach. Now the quick break keeps the board's chain before it
 cuts it too (quickBefore: the swap alone run on to the chain's last link -- the planner's steps settle, and by then the chain is over).
+Measured (`cb6cd18c`, runs 885-888, the planner's quick break keeps the chain first): big chain 20, build 22, finish 23, pressure 18 (83
+of 96, against 88); 0.10-0.15 wasted threes a minute (against 0.11-0.19). Both at the spread's edge; kept for the order it keeps.
