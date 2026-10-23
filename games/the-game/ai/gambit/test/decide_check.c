@@ -196,3 +196,46 @@ EXPORT(gb_line_agree) int gb_line_agree(int *n) {
   return late;
 }
 EXPORT(gb_line_shown) const char *gb_line_shown(void) { return lineShown; }
+// COLOURS SHOWN (gb_reveal_keep, then a board loaded, then gb_reveal_apply -- the checks' tool): the board kept gives the board loaded
+// the colours it shows where the loaded one has them unseen, panel by panel id. The panels coloured.
+static Board *revealSrc;
+EXPORT(gb_reveal_keep) void gb_reveal_keep(void) { if (!revealSrc) revealSrc = nb_new(); cloneBoard(revealSrc, hostBoard); }
+EXPORT(gb_reveal_apply) int gb_reveal_apply(void) {
+  int n = 0;
+  if (!revealSrc) return 0;
+  for (int r = 0; r < hostBoard->nrows; r++) for (int c = 1; c <= W; c++) {
+    int32_t *f = hostBoard->p[r][c].f;
+    if (!((f[COLOR] >= 30 && f[COLOR] <= 119) || (f[COLOR] >= 130 && f[COLOR] <= 219))) continue;
+    for (int r2 = 0; r2 < revealSrc->nrows; r2++) for (int c2 = 1; c2 <= W; c2++) {
+      const int32_t *g = revealSrc->p[r2][c2].f;
+      if (g[ID] == f[ID] && g[COLOR] >= 1 && g[COLOR] <= 10 && f[COLOR] != g[COLOR]) { f[COLOR] = g[COLOR]; n++; }
+    }
+  }
+  return n;
+}
+// THE FRAME LOOP ON ITS OWN (gb_front_sim, the checks' tool): the question's board played `frames` frames by the frame loop and Gambit's
+// thread as a game plays them -- the engine is the game: each frame's board is the one the frame loop predicted -- a frame each
+// `msPerFrame` of the wall clock, under the rule `mode` (-1: the profile's). Per frame into out: the clock, the keys. The frames played (the game lost: the last).
+EXPORT(gb_front_sim) int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out) {
+  paThreadId(MAXTHREADS - 1);
+  gn_match();
+  if (mode >= 0) modeRule = mode;
+  cloneBoard(F.truth, hostBoard);
+  tele[0] = 0;
+  int k = 0;
+  double next = clock_ms();
+  for (; k < frames; k++) {
+    while (clock_ms() < next) {}
+    next += msPerFrame;
+    double t = clock_ms(), per = msPerFrame;
+    __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, F.truth->clock, __ATOMIC_SEQ_CST);
+    int32_t clock = F.truth->clock, bits = frontFrame();
+    afterFrame(bits);
+    out[2 * k] = clock; out[2 * k + 1] = bits;
+    if (F.truth->gameOverClock > 0 || F.expect->gameOverClock > 0) { k++; break; }
+    cloneBoard(F.truth, F.expect);
+  }
+  statsOut();
+  paThreadId(0);
+  return k;
+}

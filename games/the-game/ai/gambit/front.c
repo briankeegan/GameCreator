@@ -841,11 +841,12 @@ static void afterFrame(int32_t bits) {
   if (at - now > aheadOf()) return;
   int32_t hl, hs;
   int ok = predict(next, at, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs);
-  // (the board predicted lost by then: asked for the last frame it is still alive, which leaves the question all the time there is)
+  // (the board predicted lost by then: asked a reaction before the last frame it is still alive, or as soon as an answer can be had
+  // when that is later -- never for the last frame itself, where no swap pressed comes down before the board is lost)
   if (ok && F.pr->gameOverClock > 0) {
-    int32_t alive = F.pr->gameOverClock - 1;
-    ok = alive > now + 1 && predict(next, alive, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs) && F.pr->gameOverClock <= 0;
-    if (ok) at = alive;
+    int32_t alive = F.pr->gameOverClock - 1, want = imin(alive - 1, imax(now + soon(), alive - F.reaction));
+    ok = want > now + 1 && predict(next, want, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs) && F.pr->gameOverClock <= 0;
+    if (ok) at = want;
   }
   if (!ok || F.pr->gameOverClock > 0) {
     if (F.loggedAskNow < 40) {

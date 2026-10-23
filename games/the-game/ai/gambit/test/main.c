@@ -24,6 +24,8 @@ void gb_replay_low(int keep);
 void gb_replay_allow(int allow);
 int gb_line_agree(int *n);
 const char *gb_line_shown(void);
+int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out);
+int gb_frames(int mr, int mc, int frames, int32_t *out);
 int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
 void paThreadId(int id);
@@ -204,6 +206,30 @@ int main(int argc, char **argv) {
     gb_replay_allow(-1); gzclose(z);
     printf("%s: the line pressed as judged -- %d swaps of %d lines keyed, %d begun later than the judge pressed them\n", late || !compared ? "FAIL" : "ok", compared, lines, late);
     fail |= late || !compared;
+  }
+  // (A BOARD ON ITS WAY OUT, played by the frame loop and Gambit's thread as a game plays it, the engine the game, a frame each 16 ms:
+  // each lives past the frame it is lost on left alone -- its question asked while a swap answered still comes down in time (front.c
+  // afterFrame). Not under the thread sanitizer, whose clock is not the game's)
+  snprintf(path, sizeof path, "%s/front.txt", dir);
+  FILE *fb = getenv("TSAN_OPTIONS") ? 0 : fopen(path, "r");
+  if (fb) {
+    int boards = 0, outlived = 0;
+    static int32_t fo[2 * 4000];
+    while (fgets(line, sizeof line, fb)) {
+      int mode = atoi(line), narr;
+      const char *b = strstr(line, "GAMBIT");
+      if (!b) continue;
+      int n = loadLine(b, &narr);
+      if (n < 0 || gb_question_bytes(n, 0) != 0) continue;
+      int alone = gb_frames(0, 0, 2000, fo);
+      if (gb_question_bytes(n, 0) != 0) continue;
+      int k = gb_front_sim(alone + 120, 16, mode, fo);
+      boards++; outlived += k > alone + 1;
+      if (k <= alone + 1) printf("  lost on its way out (mode %d): %d frames left alone, %d played\n", mode, alone, k);
+    }
+    fclose(fb);
+    printf("%s: a board on its way out -- %d of %d outlived the frame they are lost on left alone\n", outlived < boards || !boards ? "FAIL" : "ok", outlived, boards);
+    fail |= outlived < boards || !boards;
   }
   // ---- switching: every direction between the modes, over a run's games (gambit-switch.json's stretch)
   { int32_t counts[64 * 64]; int nr = 0, missing = gb_switch_check(24, 21600, 300, 1800, counts, &nr), lo = 1 << 30, hi = 0;
