@@ -238,6 +238,14 @@ static int breaksAt(BS *s, int n, const int32_t *path, int len) {
 }
 // (the garbage rows a line has broken once the board it leaves has settled: a break whose converted panels match again breaks on)
 static int32_t brokeSettled(Ctx *x, int n) { int z = settleOf(x, n); return liveNode(x, z) ? NODE(x, z)->brk : NODE(x, n)->brk; }
+// (whether a break keeps the chain the board is making: its board, at the frame the chain's last link comes, has that link -- judge.c
+// ownChainOf; 1 when the board makes none)
+static int keepsOwnChain(Ctx *x, int n) {
+  if (ownChainBy <= 0) return 1;
+  int w = NODE(x, n)->t < ownChainBy ? step(x, n, MK_LONG, 0, 0, ownChainBy - NODE(x, n)->t) : n;
+  Board *b = liveNode(x, w) ? ensureBoard(x, w) : 0;
+  return b && b->chainCounter >= ownChainN;
+}
 static int swapsOfNode(Ctx *x, int n, int32_t *ms) { Board *b = ensureBoard(x, n); return b ? legalSwaps(b, ms) : 0; }
 static void keepPaths(Paths *p, Line **ls, int n) {
   p->n = 0;
@@ -343,8 +351,9 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       }
       bAt[ntl] = nb;
       stepBatch(x, bPar, bMv, MK_SWAP, nb);
-      // (the level a break is found on is taken whole: of its lines that break, the one that has broken most once its board settles --
-      // a break whose converted panels match again is rows more of the slab)
+      // (the level a break is found on is taken whole: of its lines that break, one that keeps the board's own chain first -- a chain cut
+      // leaves the three that began it wasted -- then the one that has broken most once its board settles: a break whose converted
+      // panels match again is rows more of the slab)
       int32_t bestB = -1, bestKey = 0, bestLen = 0, bestAt = 0, bestPath[MAXPATH];
       for (int i = 0; i < ntl; i++) {
         for (int b = bAt[i]; b < bAt[i + 1]; b++) {
@@ -354,7 +363,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
           Line *nl = lineIn(ar); if (!nl) break;
           *nl = *tl[i]; nl->n = t3; if (nl->len < MAXPATH) nl->path[nl->len++] = mv;
           if (breaksAt(s, t3, nl->path, nl->len)) {
-            int32_t bk = brokeSettled(x, t3);
+            int32_t bk = brokeSettled(x, t3) + (keepsOwnChain(x, t3) ? 1 << 16 : 0);
             if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
             continue;
           }

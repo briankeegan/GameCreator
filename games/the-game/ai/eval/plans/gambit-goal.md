@@ -1135,3 +1135,6 @@ under garbage costs breaks (as 869 factory-4's 7-chain): survival down, waste ha
 Measured (`bc1e087d`, runs 877-880, 1b of lines lost in their run, never of a break under garbage): big chain 21, build 18, finish 21,
 pressure 17 (77 of 96); 0.17-0.22 wasted threes a minute. Worse on both: the breaks let through cut the chains, and asking 1b of the
 lines lost in their run is what both of the last two share with the survival lost. Reverted to 9cc59cd0's order.
+The rank cannot have both -- held for the chain, the breaks go; let through, the chains go -- so the search is asked for breaks that
+keep it: the touch beam's level, of its breaks, takes one whose board has the chain's last link by its frame first (search/break.c
+keepsOwnChain), then the most broken; with none, the most broken as before.
