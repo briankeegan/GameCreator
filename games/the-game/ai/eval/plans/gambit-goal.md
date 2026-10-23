@@ -1099,3 +1099,9 @@ keeps it only where its own clears reach that link by then.
 Now built: each decision a chain falls, the board left alone is run a frame at a time to the frame its last link comes (judge.c
 ownChainOf); a line not settled keeps the chain only where its own board, at that frame, has the chain counter there (keepsChain), and
 1b reads that. The speed check: 254,153 frames stepped a decision in the wall clock's time, against 244,165 before.
+Measured (`d9b94a42`, runs 861-864, the board's own chain held to its last link's frame): big chain 24, build 21, finish 23, pressure 22
+(90 of 96; big chain 24/24 -- once, as finish in 859); 0.18-0.24 wasted threes a minute (against 0.15-0.19: within the spread, or a cost
+to watch). Kept.
+THE LIVE GAMES (Ranmaru_CPU, panel-game run 39884311606, workers 0, from 01:34): 25 won, 4 lost (all Tanycanayt), 1 aborted. Three of
+the four a rollback with the opponent's keys in it: 3 (a break lost at 449, three frames back, dead), 29 (23 of 46 lines living, 52
+frames back, dead at 1489 -- nearly a second of lag), 24 (2734 to 2733); 30 a fifteen-minute game under steady garbage.
