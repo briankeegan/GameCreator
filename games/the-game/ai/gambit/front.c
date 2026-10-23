@@ -49,6 +49,7 @@ static Board *swapRing[SWAPRING]; static int32_t swapRingAt[SWAPRING], swapRingN
 typedef struct {
   int32_t frames, decisions, played, late, diverged, refused, guarded, unasked, idle, followed, noLine, unforeseen, reasked, revealed,
           raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps, starved, inHand;
+  int32_t behind, behindWorst;   // (a line's swaps whose keys began later than the frame the judge pressed them from, and by how much at most)
   int32_t combo[64], chain[32];
   // each chain link past the list's two, by its cause: panels out of garbage (colours not shown when it was decided), a swap pressed
   // since the link before it, or neither (the stack alone)
@@ -546,6 +547,12 @@ static int follow(void) {
   if (!F.lineN) return 0;
   int32_t due = imax(lineDue(), F.now + 1);
   if (modeAt(due) != F.lineMode) return lineDropped(due, "another mode");
+  // (THE LINE AS JUDGED: a swap keyed later than the judge pressed it from is pressed on a board the judge never judged -- counted, and
+  // the first few logged; plans/gambit-goal.md, the truth)
+  if (F.lineAt[0] > 0 && due > F.lineAt[0]) {
+    F.st.behind++; F.st.behindWorst = imax(F.st.behindWorst, due - F.lineAt[0]);
+    if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "LINE behind at %d: %d,%d keyed from %d, judged from %d", F.now, CR(F.line[0]), CC(F.line[0]), due, F.lineAt[0]); flog(l); F.loggedRefused++; }
+  }
   int32_t mv = F.line[0], hl, hs;
   if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) return lineDropped(due, "no board predicted");
   if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) return lineDropped(due, "no keys press it");
@@ -856,10 +863,10 @@ static void afterFrame(int32_t bits) {
 static void statsLine(char *out, int cap) {
   int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
-                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"attacks\":{\"combo\":{",
+                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"behind\":%d,\"behindWorst\":%d,\"attacks\":{\"combo\":{",
                    F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
-                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand);
+                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.behind, F.st.behindWorst);
   int first = 1;
   for (int z = 0; z < 64 && k < cap; z++) if (F.st.combo[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.combo[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");

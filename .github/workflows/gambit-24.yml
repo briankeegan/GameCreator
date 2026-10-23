@@ -173,3 +173,7 @@ jobs:
       - name: The truth held
         run: |
           grep -q '^truth: 0 ' report/summary.txt || { grep '^truth:' report/summary.txt | sed 's/^/::error title=truth::/'; exit 1; }
+      # THE LINE AS JUDGED: every swap of a line handed on keyed from the frame the judge pressed it from, never later
+      - name: The line pressed as judged
+        run: |
+          grep -q '^as judged: 0 ' report/summary.txt || { grep '^as judged:' report/summary.txt | sed 's/^/::error title=as judged::/'; exit 1; }
