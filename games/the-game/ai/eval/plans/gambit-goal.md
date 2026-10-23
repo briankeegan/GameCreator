@@ -1129,7 +1129,6 @@ an opponent; Training has none, so there it buys nothing. Left as the rule says,
 the breaking lines gained 30, the clears that broke nothing spent 12. The material is the panels under each column's first garbage
 (search/bits.c bitsShape): panels left on a lower slab are not counted until it breaks -- a break of an upper slab converts its row into
 panels on the one below, out of reach, and the holds are where those land. Which slab a break converts decides the material it gives.
-866 combo_storm-4, 16093 (replayed: GAMBITX 16110, gb_frames with swaps after it): (5,4) alone links at 63 frames; the next decision's
-(4,4) at 13 keeps it, the one after's (4,2) at 27 cuts it. Asked on the board of 27: the break line judged not to keep the chain
-(keepsChain 0) and not cut (cutsShort 0) -- cutsShort asked apPlayed, which is 0 for a line lost in its own run (rank.c: no Judged for a
-dead outcome), and under garbage most are. Now keepsChain is read first, whatever the line's end; the hold is played there.
+Measured (`b77e08c4`, runs 873-876, cutsShort asked of lines lost in their run): big chain 19, build 21, finish 21 of 23 (one game's
+job failed), pressure 17 (78 of 95, against 84-85); 0.06-0.12 wasted threes a minute, against 0.07-0.13. The chain held more often
+under garbage costs breaks (as 869 factory-4's 7-chain): survival down, waste hardly. Reverted.
