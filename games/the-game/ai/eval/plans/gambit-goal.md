@@ -1088,3 +1088,5 @@ decision's best at 64) was a second volley of fifty, not on its way at 6043: not
 none (w3=0): the three falls in the next swap's step, 151 frames long, and a link later in it -- the next swap's own chain -- was read
 as the three's (threesOf: any link after it in the step). Now only the link right after a three makes it a chain's first; a clear
 between that is no link begins a chain of its own.
+Measured (`1a2fa171`, runs 857-860, a three a chain's first only by the link right after it): big chain 23, build 21, finish 24,
+pressure 23 (91 of 96, the best yet with 04a8e7bd's; finish 24/24 -- once); 0.15-0.19 wasted threes a minute, 41-51 saves a run. Kept.
