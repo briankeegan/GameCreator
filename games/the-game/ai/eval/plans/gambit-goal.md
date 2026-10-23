@@ -1194,3 +1194,8 @@ Measured (`adb566a6`, runs 927-930, a colour shown coming to a clear drops the p
 judge saw no three in, made at the press on a board lost either way, the survival search never asked -- the guard at the press let
 any planned three through on "lost without it". Now only a three the plan made as the board's save passes so; any other passes only
 where the board with it, the plan's keys after it pressed, lives (`f895fba8`).
+Measured (`41f97c69`, runs 935-937, a break by a chain before one by clears alone, the three guard strict): finish 23, big chain 21,
+pressure 22 (66 of 72); 0.09-0.14 wasted threes a minute. Breaks under garbage made with a chain: combo_storm 35-40%, factory 37-39%,
+large_garbage 23-26% (21% before). large_garbage fell to 19 of 24 (30 of 32 in 927-930): all five losses starved, 11-22 panels at the
+end -- a chain break spends panels the next break needs. Now the attacking break goes by the list's order (the mode's requirements),
+then blocks thrown, then a chain, and only on a board above the keep floor (`01d2716a`).
