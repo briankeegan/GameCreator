@@ -1061,3 +1061,5 @@ Measured (`1b386c69`, runs 841-844, the break that breaks most of its level): bi
 as 86); 0.12-0.23. Kept.
 The live workflow (panel-game bramp/multi-player 329c2c4) now gives Gambit the machine training does: four workers, the client on CPU 0,
 Gambit's thread on the other core.
+Measured (`614c0135`, runs 845-848, the raise held to what the board lives through under garbage): big chain 21, build 22, finish 22,
+pressure 21 (86 of 96); 0.10-0.22, 38-60 saves a run. Kept.
