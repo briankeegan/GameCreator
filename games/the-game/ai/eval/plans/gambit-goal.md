@@ -1175,3 +1175,5 @@ Measured (`5790db63`, runs 909-911, the wall rule with a slide to the wall and t
 4, pressure 3 (13 of 72; build still playing). Short walks are tapped either way, and the input budget still runs out. The budget is
 this repo's own, not the game's: 456 actions a minute in panel-game's common/engine/computerPlayers/InputBudget.lua (upstream has no
 such limit). Asked of the owner: the budget raised or dropped under the wall rule, or the rule reverted.
+Measured (`1d68f34c`, runs 913-916, the wall rule with Gambit's own input budget, 900 a minute): big chain 22, build 22, finish 22,
+pressure 21 (87 of 96, against 83 before the rule); 0.11-0.16 wasted threes a minute.
