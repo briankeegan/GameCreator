@@ -158,7 +158,13 @@ end
 -- (A SOURCE PLAYED HERE BEHIND THIS STACK: an opponent's stack copied from its relayed keys runs as far as its keys have come, so it
 -- can be frames behind this one -- its transits are timed on its own stopWatch, which the frame loop reads them against (front.c
 -- arrivalsOf), so its stopWatch is given as it will be once it has caught up: the frames it is behind added)
+-- (THE RECEIVER'S OWN TIME, upstream: upstream Panel Attack delivers a transit on the frame the RECEIVING stack's stopWatch reaches its
+-- time -- Match:pushGarbageTo, the receiver rolled back when it has passed it -- where this fork's GarbageDelivery delivers it once the
+-- sender's does. So on an upstream engine (no GarbageDelivery) the transits are read against this stack's own stopWatch, however far
+-- the sender's copy here lags)
+local SENDER_TIMED = (pcall(require, "common.engine.GarbageDelivery"))
 local function caughtUp(src, me)
+  if not SENDER_TIMED and me and me.stopWatch then return me.stopWatch end
   local lag = me and me.clock and src.clock and me.clock - src.clock or 0
   return src.stopWatch + (lag > 0 and lag or 0)
 end
