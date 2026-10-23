@@ -1138,3 +1138,5 @@ lines lost in their run is what both of the last two share with the survival los
 The rank cannot have both -- held for the chain, the breaks go; let through, the chains go -- so the search is asked for breaks that
 keep it: the touch beam's level, of its breaks, takes one whose board has the chain's last link by its frame first (search/break.c
 keepsOwnChain), then the most broken; with none, the most broken as before.
+Measured (`f9d93197`, runs 881-884, the touch beam's break that keeps the board's chain first): big chain 21, build 22, finish 22,
+pressure 23 (88 of 96, against 84); 0.11-0.19 wasted threes a minute (against 0.07-0.13: within the spread). Kept.
