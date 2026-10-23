@@ -1078,3 +1078,5 @@ Measured (`2d796c6c`, runs 849-852, the hold's chain counted though the board di
 question was asked for 12721, on a board predicted without that swap (follow() plans a swap only when it is due soon). Its answer took
 the line's place: the swap was never pressed (the board at 12721 the one of 12691, garbage on top), carryDrop=3, lost at 12723. Now a
 question is asked no later than the frame the line in hand's next swap is due.
+Measured (`fe962673`, runs 853-856, asked no later than the line in hand's next swap): big chain 21, build 18, finish 23, pressure 23 (85
+of 96, against 87: the spread); 0.11-0.21. Kept.
