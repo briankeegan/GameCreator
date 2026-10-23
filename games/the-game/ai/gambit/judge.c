@@ -49,6 +49,7 @@ typedef struct {
                                 // garbage), -1 not asked
   int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
   int32_t late;                 // the clock stopped it: no answer
+  int32_t aliveTo;              // and the frame from the root the board was judged alive to when it did (0: none)
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
   int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 a first walk not begun within a reaction
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
@@ -399,6 +400,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
   }
   j->late = j->late || clockOut();
+  if (j->late && !j->dead) j->aliveTo = liveNode(x, n) ? NODE(x, n)->t - NODE(x, root)->t : 0;
 }
 
 // ---- for a host's check: the question from a node of a search the host made, and a line judged

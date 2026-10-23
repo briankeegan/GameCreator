@@ -88,8 +88,12 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
   if (!oc.dead && oc.j.cut >= 0) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
-  // (NOR IS ONE THE CLOCK STOPPED THE JUDGE ON: its board unknown and its loss never asked -- not a board that lasts)
-  if (oc.late) { dropAs(play, DROP_UNJUDGED); return 0; }
+  // (ONE THE CLOCK STOPPED THE JUDGE ON: its board past that frame unknown -- ranked as a line lost on the frame it was judged alive to,
+  // what it makes on the search's word: never a board that lasts, and never dropped for a hold that dies sooner)
+  if (oc.late) {
+    if (oc.j.aliveTo <= 0) { dropAs(play, DROP_UNJUDGED); return 0; }
+    oc.late = 0; oc.dead = 1; oc.lives = 0; oc.lostAt = oc.j.aliveTo; oc.ready = NOT_ASKED;
+  }
   const Judged *j = oc.dead ? 0 : &oc.j;
   Made m = j ? (Made){ j->made.combo, j->made.chain, j->made.broke, k->x.cells } : (Made){ k->x.combo, k->x.chain, k->x.broke, k->x.cells };
   if (j && k->x.broke > 0 && !(j->made.broke > 0)) {
