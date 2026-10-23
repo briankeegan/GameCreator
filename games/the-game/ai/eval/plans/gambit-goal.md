@@ -1041,3 +1041,8 @@ the stack as panels fall into its place (pa.c switchPanels). Now a line is ancho
 anchorIdAt), the line in progress, the intentions and the readiness's break alike.
 Measured (`88d13e52`, runs 837-840, anchored to a panel): big chain 22, build 22, finish 19, pressure 23 (86 of 96, from 79-82); 0.14-0.22
 wasted threes a minute; lines dropped halfway 221-260 a run. Kept.
+THE DEATHS OF 837-840 (10): most a break played, then nothing in reach for 200-450 frames, held to the end. 839 large_garbage-6
+replayed at 200 times the work (test/main.c replay): no break on any board from 8517 on -- the search finished, 8 to 14 panels. The
+game was lost before: from 7654 to 7958 five breaks of one row each (broke=6) while the slab above stayed eleven rows (7689: rows
+6-16; 7958: rows 4-14) and the panels under it went from 26 to 14. One row at a time does not keep up with large_garbage; what would
+is a break whose converted panels match again (a row more broken a link).
