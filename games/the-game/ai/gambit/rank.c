@@ -38,8 +38,8 @@ typedef struct {
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
-// the judge could not press)
-enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, NDROPS };
+// the judge could not press, w a wasted three, j the clock stopped its judging)
+enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, NDROPS };
 static int32_t dropped[NPLAYS][NDROPS], offered[NPLAYS];
 static void dropAs(int play, int why) { dropped[play][why]++; }
 // (the lines cut, by why the judge cut them: judge.c cutWhy -- 1 a first walk over the allowance, 2 no swap there, 3 a walk not begun
@@ -88,6 +88,8 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
   if (!oc.dead && oc.j.cut >= 0) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
+  // (NOR IS ONE THE CLOCK STOPPED THE JUDGE ON: its board unknown and its loss never asked -- not a board that lasts)
+  if (oc.late) { dropAs(play, DROP_UNJUDGED); return 0; }
   const Judged *j = oc.dead ? 0 : &oc.j;
   Made m = j ? (Made){ j->made.combo, j->made.chain, j->made.broke, k->x.cells } : (Made){ k->x.combo, k->x.chain, k->x.broke, k->x.cells };
   if (j && k->x.broke > 0 && !(j->made.broke > 0)) {

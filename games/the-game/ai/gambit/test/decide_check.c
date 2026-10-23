@@ -130,7 +130,15 @@ EXPORT(gb_frames_ask) int gb_frames_ask(int mode, int64_t work, char *out, int c
 // follow() makes their keys -- each from the frame the keys before it end, or the frame it was judged pressed from (at, from the
 // board's clock; 0 none), whichever is later -- with `allow` actions left in the input window and the walks tapped (tap) or not. Per
 // swap into out: the frame its keys begin, the frame its swap goes down, its keys. The swaps keyed (a swap no keys press ends it).
+static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out);
+// (on the game's thread, as the frame loop runs: its own board pool, apart from thread 0's that the workers' searches hand out -- native.c)
 EXPORT(gb_front_line) int gb_front_line(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out) {
+  paThreadId(MAXTHREADS - 1);
+  int keyed = frontLine(n, mv, at, allow, tap, out);
+  paThreadId(0);
+  return keyed;
+}
+static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out) {
   frontNew(cfgReaction, 90, -1, 0);
   Board *b0 = F.truth; cloneBoard(b0, hostBoard);
   int32_t t0 = b0->clock;
@@ -171,6 +179,7 @@ EXPORT(gb_judge_line) int gb_judge_line(int n, const int32_t *mv, int allow, int
 // THE LINE PRESSED AS JUDGED (gb_line_agree, after a replay given an allowance: gb_replay_allow): the answer's swap and the line it hands
 // on, keyed as the frame loop keys them (gb_front_line) -- the swaps whose keys begin later than the frame the judge pressed them from,
 // or that no keys press. *n: the swaps compared.
+static char lineShown[512];
 EXPORT(gb_line_agree) int gb_line_agree(int *n) {
   const Answer *A = &theAnswer;
   int32_t mv[MAXLINE + 1], at[MAXLINE + 1], out[3 * (MAXLINE + 1)], k = 0;
@@ -181,5 +190,9 @@ EXPORT(gb_line_agree) int gb_line_agree(int *n) {
   int keyed = gb_front_line(k, mv, at, replayAllow, A->tap, out), late = k - keyed;
   for (int i = 0; i < keyed; i++) late += out[3 * i] > at[i];
   *n = k;
+  // (the line, for the checks' report: each swap, the frame judged, the frame keyed)
+  int w = snprintf(lineShown, sizeof lineShown, "tap %d settled %d:", A->tap, A->handSettled);
+  for (int i = 0; i < k && w < (int)sizeof lineShown - 40; i++) w += snprintf(lineShown + w, sizeof lineShown - (unsigned long)w, " %d,%d@%d/%d", CR(mv[i]), CC(mv[i]), at[i], i < keyed ? out[3 * i] : -1);
   return late;
 }
+EXPORT(gb_line_shown) const char *gb_line_shown(void) { return lineShown; }

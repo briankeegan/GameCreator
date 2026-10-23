@@ -23,6 +23,7 @@ void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
 void gb_replay_allow(int allow);
 int gb_line_agree(int *n);
+const char *gb_line_shown(void);
 int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
 void paThreadId(int id);
@@ -184,19 +185,20 @@ int main(int argc, char **argv) {
   // swap pressed later is a board the judge never judged: front.c follow, core/nodes.h pressDelay)
   snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
   if ((z = gzopen(path, "r"))) {
-    int compared = 0, late = 0, lines = 0;
+    int compared = 0, late = 0, lines = 0, qi = -1;
     while (gzgets(z, line, sizeof line)) {
       int mode = atoi(line);
       const char *b = strstr(line, "GAMBITQ ");
       if (!b) b = strstr(line, "GAMBITB ");
       if (!b) continue;
+      qi++;
       for (int t = 0; t < 2; t++) {
         int narr, n = loadLine(b, &narr), c;
         gb_replay_allow(t ? 12 : 30);
         if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) continue;
         int l = gb_line_agree(&c);
         compared += c; late += l; lines += c > 0;
-        if (l && late - l < 3) printf("  pressed later than judged (allowance %d, mode %d): %s\n", t ? 12 : 30, mode, rec);
+        if (l && late - l < 3) printf("  pressed later than judged (question %d, allowance %d, mode %d): %s\n    the line (swap@judged/keyed): %s\n", qi, t ? 12 : 30, mode, rec, gb_line_shown());
       }
     }
     gb_replay_allow(-1); gzclose(z);
