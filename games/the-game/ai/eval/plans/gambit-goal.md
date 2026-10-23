@@ -1182,3 +1182,10 @@ pressure 19 (83 of 96, against 87: within the spread); 0.14-0.19 wasted threes a
 150 frames; all under garbage, material 10-34. Two had decisions judged alive past the loss: 917 factory-7, a carried break (18 cells,
 judged lost at 298) dropped 26 frames later as no longer breaking, the board then lost in 16 -- the shape of 891 factory-8. Its boards
 before 3197 were gone from the log's ring of last boards (11 kept of 32): the ring is to keep them before the next trace.
+Measured (`3136c13c`/`07dd7b44`, runs 921, 922, 925, 926): big chain 21, build 22, finish 21, pressure 24 -- the first 24 of 24 in a mode
+(88 of 96); 0.11-0.15 wasted threes a minute. THE LINES THAT NEVER BROKE (891 factory-8, 920 combo_storm-2, 922 combo_storm-1, 926
+large_garbage-6): each a break judged lost far off, its rest found "no longer breaking" a decision later, the truth held throughout. With
+the ring kept and the frames traced (926), the keys were pressed as planned -- the board was not the one judged: a colour the
+question's board did not show (a broken slab's) came to a clear the engine could not foresee (unseen colours match nothing), 104 of
+stop at 18028 the replay of the line does not make. Now a panel unseen when the plan was made coming to a clear drops it and asks
+again (`adb566a6`).
