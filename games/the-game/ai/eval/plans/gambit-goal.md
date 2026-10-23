@@ -1033,3 +1033,5 @@ At the turn of the losses of 829-832 the line in progress was kept over lines lo
 line in progress lost at 114 over entries lost at 204 (6 broken each); 829 large_garbage-8, 11845, 203 over 276 -- 1a kept it unless
 the other was lost a whole break's time later, where 3 counts two losses alike only when they leave as many tries. Now 1a keeps the
 line in progress only over a line lost no later, or alike as 3 counts it (lostAlike).
+Measured (`8efd5afc`, runs 833-836): big chain 22, build 19, finish 19, pressure 19 (79 of 96, against 81); 0.13-0.22. Within the
+spread; kept for the one order's own count of alike.
