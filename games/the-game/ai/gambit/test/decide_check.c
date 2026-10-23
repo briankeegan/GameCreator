@@ -8,8 +8,8 @@ static int64_t replayWork;
 static double replayNow(void) { return (double)clockWork * REPLAY_MS / (double)replayWork; }
 // (the last replay's answer as numbers, for the checks: its kind (0 hold, 1 swap, 2 raise), verdict (answer.c Answer), the candidates
 // that live, the garbage on the board, the blocks on their way, the stack's top row, the rules' raise row, the raise's held steps)
-static int32_t replayLast[8];
-EXPORT(gb_replay_last) void gb_replay_last(int32_t *v) { for (int i = 0; i < 8; i++) v[i] = replayLast[i]; }
+static int32_t replayLast[9];
+EXPORT(gb_replay_last) void gb_replay_last(int32_t *v) { for (int i = 0; i < 9; i++) v[i] = replayLast[i]; }
 // A LOW STACK (gb_replay_low KEEP, before a replay): the question's board cut to its bottom KEEP rows, nothing queued or on its way --
 // refused (-2) when those rows hold garbage or anything not at rest
 static int32_t replayLow;
@@ -50,7 +50,7 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   clockNowOf = 0;
   const Answer *A = &theAnswer;
   replayLast[0] = A->d.kind; replayLast[1] = A->verdict; replayLast[2] = A->nlive; replayLast[3] = garbageOn(hostBoard);
-  replayLast[4] = hostQ.narr; replayLast[5] = fullTop(hostBoard); replayLast[6] = theTables.raiseTo; replayLast[7] = A->d.kind == 2 ? A->raiseNow : 0;
+  replayLast[4] = hostQ.narr; replayLast[5] = fullTop(hostBoard); replayLast[6] = theTables.raiseTo; replayLast[7] = A->d.kind == 2 ? A->raiseNow : 0; replayLast[8] = A->sooner;
   int k = snprintf(out, (unsigned long)cap, "move %d %d,%d play %d live %d/%d |", A->d.kind, A->d.move ? CR(A->d.move) : 0, A->d.move ? CC(A->d.move) : 0,
                    A->play, A->nlive, A->ncands);
   // (the chain the board makes left alone and the one it makes with the line played, where the board is making one)
