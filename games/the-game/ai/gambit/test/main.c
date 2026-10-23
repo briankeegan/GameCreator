@@ -23,6 +23,7 @@ void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
 void gb_replay_allow(int allow);
 int gb_line_agree(int *n);
+int gb_held_off(int *held);
 const char *gb_line_shown(void);
 int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out);
 int gb_frames(int mr, int mc, int frames, int32_t *out);
@@ -194,18 +195,22 @@ int main(int argc, char **argv) {
       if (!b) b = strstr(line, "GAMBITB ");
       if (!b) continue;
       qi++;
-      for (int t = 0; t < 2; t++) {
+      for (int t = 0; t < 3; t++) {
         int narr, n = loadLine(b, &narr), c;
-        gb_replay_allow(t ? 12 : 30);
+        gb_replay_allow(t == 2 ? 76 : t ? 12 : 30);
         if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) continue;
         int l = gb_line_agree(&c);
         compared += c; late += l; lines += c > 0;
-        if (l && late - l < 3) printf("  pressed later than judged (question %d, allowance %d, mode %d): %s\n    the line (swap@judged/keyed): %s\n", qi, t ? 12 : 30, mode, rec, gb_line_shown());
+        if (l && late - l < 3) printf("  pressed later than judged (question %d, allowance %d, mode %d): %s\n    the line (swap@judged/keyed): %s\n", qi, t == 2 ? 76 : t ? 12 : 30, mode, rec, gb_line_shown());
       }
     }
     gb_replay_allow(-1); gzclose(z);
     printf("%s: the line pressed as judged -- %d swaps of %d lines keyed, %d begun later than the judge pressed them\n", late || !compared ? "FAIL" : "ok", compared, lines, late);
     fail |= late || !compared;
+    // (A HELD KEY ENDS AT THE WALL: of those keys, every direction held let go with the cursor at the wall it walks toward)
+    int held, off = gb_held_off(&held);
+    printf("%s: held keys end at the wall -- %d held of the lines keyed, %d let go off the wall\n", off || !held ? "FAIL" : "ok", held, off);
+    fail |= off || !held;
   }
   // (A BOARD ON ITS WAY OUT, played by the frame loop and Gambit's thread as a game plays it, the engine the game, a frame each 16 ms:
   // each lives past the frame it is lost on left alone -- its question asked while a swap answered still comes down in time (front.c

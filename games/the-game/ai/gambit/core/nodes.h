@@ -23,16 +23,32 @@ static LOCAL int32_t pressTight;
 static LOCAL int32_t pressTap;
 static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }
 #define MIN_LEG 3          // the shortest walk a held key is no later on
+// A HELD KEY ENDS AT THE WALL: a direction is held only for a walk the board stops -- to column 1 or W - 1, or down to row 1 -- as a
+// player slides to the edge and taps back from it; a walk that ends anywhere else is tapped a cell at a time (the owner: the bot slides
+// only to the end, as a player would). (The stack's top moves, so a walk up is tapped.) legMove: where a leg of `cells` from (row, col)
+// ends; legHeld: whether a leg ending at (row, col) may be held.
+static void legMove(int32_t v, int cells, int *row, int *col) {
+  int32_t d = v & 15;
+  if (d & IN_RIGHT) *col = *col + cells > W - 1 ? W - 1 : *col + cells;
+  else if (d & IN_LEFT) *col = *col - cells < 1 ? 1 : *col - cells;
+  else if (d & IN_UP) *row += cells;
+  else if (d & IN_DOWN) *row = *row - cells < 1 ? 1 : *row - cells;
+}
+static int legHeld(int32_t v, int row, int col) {
+  int32_t d = v & 15;
+  return (d & IN_RIGHT) ? col >= W - 1 : (d & IN_LEFT) ? col <= 1 : (d & IN_DOWN) ? row <= 1 : 0;
+}
 // The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be
-// (left: the actions the input budget still allows -- tight at HOLDTIGHT or under). The frame loop's and the judge's, the one count.
+// -- and only where it ends at the wall -- (left: the actions the input budget still allows -- tight at HOLDTIGHT or under). The frame
+// loop's and the judge's, the one count.
 static int iabs(int v) { return v < 0 ? -v : v; }
 static int actionsFor(int row, int col, int r, int c, int left) {
-  int tight = tightAt(left), legs[2], nl = 0, cost = 1;
-  if (iabs(c - col)) legs[nl++] = iabs(c - col);
-  if (iabs(r - row)) legs[nl++] = iabs(r - row);
+  int tight = tightAt(left), legs[2], walls[2], nl = 0, cost = 1;
+  if (iabs(c - col)) { walls[nl] = (c > col && c >= W - 1) || (c < col && c <= 1); legs[nl++] = iabs(c - col); }
+  if (iabs(r - row)) { walls[nl] = r < row && r <= 1; legs[nl++] = iabs(r - row); }
   for (int k = 0; k < nl; k++) {
     int n = legs[k], inner = k < nl - 1;
-    cost += tight ? (n >= 2 ? 1 : n) : (n >= MIN_LEG + 1 || (n == MIN_LEG && inner)) ? 1 : n;
+    cost += walls[k] && (tight ? n >= 2 : (n >= MIN_LEG + 1 || (n == MIN_LEG && inner))) ? 1 : n;
   }
   return cost;
 }
@@ -56,20 +72,25 @@ static int walkLeg(const int32_t *in, int n, int i, Leg *L) {
   L->v = v; L->base = base; L->cells = cells; L->p = p; L->end = end; L->last = i + cells + REPEAT_FIRST - 2;
   return 1;
 }
-// slowWalks' keys: every walk of two cells or more held, the frames it is late by put in before the next key
-static int slowWalks(const int32_t *in, int n, int32_t *out, int cap) {
+// slowWalks' keys: every walk of two cells or more that ends at the wall held, the frames it is late by put in before the next key (the
+// cursor at (row, col) when the keys begin)
+static int slowWalks(const int32_t *in, int n, int32_t *out, int cap, int row, int col) {
   int k = 0, i = 0;
   while (i < n && k < cap) {
     Leg L;
     if (!walkLeg(in, n, i, &L)) { out[k++] = in[i]; i++; continue; }
     int32_t v = L.v, base = L.base, cnt = L.cells, last = L.last, end = L.end;
-    if (cnt < 2) { for (int f = i; f <= end && k < cap; f++) out[k++] = in[f]; i = end + 1; continue; }
+    legMove(v, cnt, &row, &col);
+    if (cnt < 2 || !legHeld(v, row, col)) { for (int f = i; f <= end && k < cap; f++) out[k++] = in[f]; i = end + 1; continue; }
     for (int g = i; g <= (last > end ? last : end) && k < cap; g++) out[k++] = g <= last ? v : base;
     i = end + 1;
   }
   return k;
 }
 static int32_t pressDelayOf(Ctx *x, int pi, int mr, int mc) {
+  const Board *b0 = ensureBoard(x, pi);
+  if (!b0) return 0;
+  int row = b0->curRow, col = b0->curCol;
   tape = keyBuf; tapeN = 0; tapeCap = (int32_t)(sizeof keyBuf / sizeof keyBuf[0]) / 3;
   int r = advance(x, pi, MK_SWAP, mr, mc, 0);
   tape = 0;
@@ -77,7 +98,7 @@ static int32_t pressDelayOf(Ctx *x, int pi, int mr, int mc) {
   int n = tapeN;
   static LOCAL int32_t in[4096];
   for (int i = 0; i < n; i++) in[i] = keyBuf[3 * i];
-  int tap = firstSwap(in, n), slow = firstSwap(walkBuf, slowWalks(in, n, walkBuf, (int)(sizeof walkBuf / sizeof walkBuf[0])));
+  int tap = firstSwap(in, n), slow = firstSwap(walkBuf, slowWalks(in, n, walkBuf, (int)(sizeof walkBuf / sizeof walkBuf[0]), row, col));
   return tap >= 0 && slow > tap ? slow - tap : 0;
 }
 // (the delay is the board's, every time: the same cursor and swap are later by more or less as the board makes the walk wait)

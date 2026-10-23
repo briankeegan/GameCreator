@@ -131,6 +131,27 @@ EXPORT(gb_frames_ask) int gb_frames_ask(int mode, int64_t work, char *out, int c
 // board's clock; 0 none), whichever is later -- with `allow` actions left in the input window and the walks tapped (tap) or not. Per
 // swap into out: the frame its keys begin, the frame its swap goes down, its keys. The swaps keyed (a swap no keys press ends it).
 static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out);
+// (THE HELD KEYS, OFF THE WALL: the keys played on the board they begin on, every direction held two frames or more and let go with the
+// cursor anywhere but the wall it walks toward -- core/nodes.h legHeld -- counted)
+static int32_t frontHeldOff, frontHeld;
+static Board *heldBoard;
+static int heldOffWall(const Board *b, const Keys *k) {
+  if (!heldBoard) heldBoard = nb_new();
+  Board *g = heldBoard;
+  copyBoard(g, b);
+  int off = 0, held = 0;
+  int32_t dir = 0;
+  for (int q = 0; q <= k->n && g->gameOverClock <= 0; q++) {
+    int32_t bits = q < k->n ? k->ins[q] : 0, d = bits & 15;
+    if (dir && d != dir) { if (held >= 2) { frontHeld++; off += !legHeld(dir, g->curRow, g->curCol); } held = 0; }
+    dir = d; if (d) held++;
+    if (q == k->n) break;
+    g->input = bits & ~IN_SWAP; g->pressSwap = !!(bits & IN_SWAP);
+    run(g);
+  }
+  return off;
+}
+EXPORT(gb_held_off) int gb_held_off(int *held) { *held = frontHeld; int o = frontHeldOff; frontHeldOff = frontHeld = 0; return o; }
 // (on the game's thread, as the frame loop runs: its own board pool, apart from thread 0's that the workers' searches hand out -- native.c)
 EXPORT(gb_front_line) int gb_front_line(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out) {
   paThreadId(MAXTHREADS - 1);
@@ -153,7 +174,8 @@ static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int
     if (!predict(b0, due, 0, 0, arr, narr, F.pr, &hl, &hs)) break;
     if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv[i]), CC(mv[i]), &k)) break;
     pressTap = tap;
-    walkKeys(&k, due);
+    walkKeys(&k, due, F.pr);
+    frontHeldOff += heldOffWall(F.pr, &k);
     int sw = -1;
     for (int q = 0; q < k.n && sw < 0; q++) if (k.ins[q] & IN_SWAP) sw = q;
     for (int q = 0; q < k.n; q++) planSet(due + q, (Planned){ k.ins[q], k.hl[q], k.hs[q], 1, 0 });

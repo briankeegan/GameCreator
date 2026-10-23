@@ -338,13 +338,15 @@ static int keysOf(const Board *b, int32_t holdLeft, int32_t holdStarted, const A
 }
 // A walk of n cells in one direction is played as n taps four frames apart; from four cells up (three where another walk follows) a held
 // key gets the cursor to the same cell on the same frame or sooner, so it is held for as long as the cursor needs and released.
-static void fHoldWalks(Keys *k) {
+// (only a walk that ends at the wall: core/nodes.h legHeld; the cursor at (row, col) when the keys begin)
+static void fHoldWalks(Keys *k, int row, int col) {
   Keys o = *k;
   int held = 0, i = 0, n0 = k->n;
   while (i < n0) {
     Leg L;
     if (!walkLeg(k->ins, n0, i, &L)) { i++; continue; }
-    if (L.cells >= MIN_LEG && L.last <= L.end) { for (int f = i; f <= L.end; f++) o.ins[f] = f <= L.last ? L.v : L.base; held++; }
+    legMove(L.v, L.cells, &row, &col);
+    if (L.cells >= MIN_LEG && L.last <= L.end && legHeld(L.v, row, col)) { for (int f = i; f <= L.end; f++) o.ins[f] = f <= L.last ? L.v : L.base; held++; }
     i = L.p + 1;
   }
   o.held = held;
@@ -352,7 +354,7 @@ static void fHoldWalks(Keys *k) {
 }
 // The same walks held from two cells, when the allowance is tight; the frames the cursor is late by are put in before the next key,
 // each carrying the raise held of the frame it follows.
-static void fSlowWalks(Keys *k) {
+static void fSlowWalks(Keys *k, int row, int col) {
   static Keys o;
   int held = 0, i = 0, n0 = k->n;
   o.n = 0;
@@ -360,7 +362,8 @@ static void fSlowWalks(Keys *k) {
   while (i < n0) {
     Leg L;
     if (!walkLeg(k->ins, n0, i, &L)) { PUSH(k->ins[i], i); i++; continue; }
-    if (L.cells < 2) { for (int f = i; f <= L.end; f++) PUSH(k->ins[f], f); i = L.end + 1; continue; }
+    legMove(L.v, L.cells, &row, &col);
+    if (L.cells < 2 || !legHeld(L.v, row, col)) { for (int f = i; f <= L.end; f++) PUSH(k->ins[f], f); i = L.end + 1; continue; }
     for (int g = i; g <= imax(L.last, L.end); g++) PUSH(g <= L.last ? L.v : L.base, imin(g, L.end));
     held++;
     i = L.end + 1;
@@ -412,7 +415,8 @@ static void countActions(int32_t bits, int32_t now) {
   if (k > F.st.maxWindow) F.st.maxWindow = k;
   if (k > F.limit) F.st.overInput++;
 }
-static void walkKeys(Keys *k, int32_t at) { if (tightAt(allowanceAt(at))) fSlowWalks(k); else fHoldWalks(k); }
+// (b: the board the keys begin on)
+static void walkKeys(Keys *k, int32_t at, const Board *b) { if (tightAt(allowanceAt(at))) fSlowWalks(k, b->curRow, b->curCol); else fHoldWalks(k, b->curRow, b->curCol); }
 
 // ---------------------------------------------------------------- pacing
 // How soon an answer can be had, in frames: half again the slowest of the last few.
@@ -515,7 +519,7 @@ static void take(void) {
     if (a.kind == 0 && a.nhand && a.handAt[0] > at) k.n = imin(k.n, a.handAt[0] - at);
     F.st.played++;
     pressTap = a.tap;
-    walkKeys(&k, at);
+    walkKeys(&k, at, F.pBoard);
     if (!keysFit(at, &k)) {
       F.st.guarded++;
       if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "GUARDED answer for %d taken at %d: its %d keys do not fit the input allowance", a.at, F.now, k.n); flog(l); F.loggedRefused++; }
@@ -559,7 +563,7 @@ static int follow(void) {
   if (F.pending) abortTo(F.pId);
   F.pending = 0;
   pressTap = F.lineTap;
-  walkKeys(&k, due);
+  walkKeys(&k, due, F.pr);
   if (!keysFit(due, &k)) { F.st.guarded++; return lineDropped(due, "its keys do not fit"); }
   int left = allowanceAt(due);
   if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance");
