@@ -400,10 +400,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int32_t mx = lx2 ? x->o.j.readyMat : x->o.matLeft, my = lx2 ? y->o.j.readyMat : y->o.matLeft;
     if (mx >= 0 && my >= 0 && mx != my) return mx > my ? -1 : 1;
   }
-  // 7a'. THE BREAK THAT ATTACKS (the owner: break first, but with the lineup, not a three -- and attack under pressure): of two breaks
-  // under garbage alike so far, the one that throws more blocks, then the one that makes a chain on the way -- the break is a link, and
-  // the attack goes with it
-  if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && !x->hold && !y->hold) {
+  // 7a'. THE BREAK THAT ATTACKS (the owner: break first, but with the lineup, not a three -- attack under pressure, as the mode asks,
+  // and not die): of two breaks under garbage alike so far, on a board with panels to spare (not below the floor: short, the panels a
+  // break spends are the next break's), the one that meets the earlier entry of the list, then the one that throws more blocks, then
+  // the one that makes a chain on the way -- the break is a link, and the attack goes with it
+  if (!lx && decF.under && !decF.belowFloor && x->apBroke > 0 && y->apBroke > 0 && !x->hold && !y->hold) {
+    int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS;
+    if (ax != ay) return ax - ay;
     if (x->o.j.blocks != y->o.j.blocks) return y->o.j.blocks - x->o.j.blocks;
     int cx = x->apWhole >= 2, cy = y->apWhole >= 2;
     if (cx != cy) return cx ? -1 : 1;
