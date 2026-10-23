@@ -299,19 +299,28 @@ static int holdsLine(const Judge *x, const Judge *y) {
   for (int i = 0; i < x->k.nseq && j < y->k.nseq; i++) if (x->k.seq[i] == y->k.seq[j]) j++;
   return j == y->k.nseq;
 }
+// (TRIES: the breaks the next decisions have the time for, a break's time each -- two lines that neither live survive alike when they
+// leave as many, or three or more each: run 446, build, a line lost at 266 taken over one lost at 385 that broke more, two tries against
+// three. Past three the material decides: run 451, the later loss taken there too, spent the panels -- large_garbage's material under
+// garbage 19 where it was 23 -- finish 15 against 17)
+static int lostAlike(const Judge *x, const Judge *y) {
+  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+  int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
+  return lo >= rankSave && (tlo == thi || tlo >= 3);
+}
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
   if (lx != ly) return lx ? -1 : 1;
   // 1a. THE LINE IN PROGRESS KEPT: of two that both live or both do not, the line the last decision was playing, judged again on the
-  // board as it is, before another -- unless the other is lost a break's time later (neither lives) or meets an earlier entry of the
-  // list (both live). A line put down halfway leaves a board its forecast never judged.
+  // board as it is, before another -- unless the other is lost later and not alike (neither lives: lostAlike, as 3 counts them) or meets
+  // an earlier entry of the list (both live). A line put down halfway leaves a board its forecast never judged.
   // (and not over a break where neither lives and the line in progress breaks nothing: the break is put first (2) -- the panels it
   // converts are the board's next, and only a break gives back what a clear spends)
   if (x->carried != y->carried && !x->hold && !y->hold) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
     int oBreaks = o->apBroke > 0 && lostOf(o) >= rankSave && !(c->apBroke > 0) && (decF.belowFloor || lostOf(c) - lostOf(o) < rankSave);
-    int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : lostOf(o) < lostOf(c) + rankSave && !oBreaks;
+    int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : (lostOf(o) <= lostOf(c) || lostAlike(c, o)) && !oBreaks;
     if (keep) return x->carried ? -1 : 1;
   }
   if (lx) {
@@ -340,13 +349,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.
-    double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
-    // (TRIES: the breaks the next decisions have the time for, a break's time each -- two lines survive alike when they leave as many,
-    // or three or more each: run 446, build, a line lost at 266 taken over one lost at 385 that broke more, two tries against three. Past
-    // three the material decides: run 451, the later loss taken there too, spent the panels -- large_garbage's material under garbage 19
-    // where it was 23 -- finish 15 against 17)
-    int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
-    int alike = lo >= rankSave && (tlo == thi || tlo >= 3);
+    double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
+    int alike = lostAlike(x, y);
     // (BOUGHT WITH THE PANELS: with no garbage on the board, the later loss of a line that clears panels below the floor and breaks
     // nothing (spends) is stop time, and stop time holds the stack from rising -- the rows the next panels come in by. Beside one that
     // spends none and leaves the next decision a try, they survive alike: the list (5) puts the one that keeps its panels first. Under

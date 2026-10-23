@@ -1029,3 +1029,7 @@ training's boards rarely make.
   answer; one that comes before the raise is due takes its keys' place.
 Measured (`48abaacb`, runs 829-832, the questions go on while a raise waits): big chain 18, build 23, finish 19, pressure 21 (81 of
 96); 0.13-0.17 wasted threes a minute, 45-53 saves a run. Kept.
+At the turn of the losses of 829-832 the line in progress was kept over lines lost later breaking as much: 831 factory-1, 11602, the
+line in progress lost at 114 over entries lost at 204 (6 broken each); 829 large_garbage-8, 11845, 203 over 276 -- 1a kept it unless
+the other was lost a whole break's time later, where 3 counts two losses alike only when they leave as many tries. Now 1a keeps the
+line in progress only over a line lost no later, or alike as 3 counts it (lostAlike).
