@@ -1048,3 +1048,12 @@ game was lost before: from 7654 to 7958 five breaks of one row each (broke=6) wh
 is a break whose converted panels match again (a row more broken a link).
 Now the touch beam takes the level a break is found on whole, and plays the line that has broken most once its board settles, where it
 played the first line found to break: a break whose converted panels match again is rows more of the slab.
+THE PDR GAMES (ForPDR_CPU, panel-game run 39885790622, d95231f4: 10 won, 7 lost against PDR_Lava, workers 0):
+- 4 and 6: the floor's raise under garbage -- in 4 over four lines that lived and broke (1077, live=4/14), refill=1/1/0: the board
+  lives through no row raised, and one was raised; put off 116 frames with nothing asked (fixed since, 48abaacb), the raise ended the
+  stop (73 frames) and the board was lost at 1333. 6 the same at 3645, stop 156 to 0. The cap -- never more rows than the board lives
+  through -- was asked only with garbage on its way; now with garbage on the board too.
+- 9: the line in progress kept over the survival line lost later (128 against 204, 49 against 135) -- the 1a fixed since (8efd5afc).
+- 11: alive at 10576 with 168 frames of stop, rolled back to 10566 with the opponent's keys in it: 6.
+- 8: breaks judged lost at 435 and later, lost at 51 the decision after, a rollback at the end.
+- 16: short of material (15-18 panels). 7: a tall stack early (41-44 panels) and an attack no line lived through.

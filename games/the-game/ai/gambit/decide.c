@@ -115,9 +115,10 @@ static int readBoard_(Read *R) {
     // the panels are the next break's material, and the opening's raise is held to readiness, never the floor's)
     refillAsked = refill ? rowsUp : 0; refillReady = rows; refillAlive = raiseAlive;
     if (rows <= 0 && refill) rows = raiseAlive;
-    // (and, the opening's raise and the floor's alike: garbage on its way, never more than the board lives through once it lands --
-    // and never the stack's top, garbage on it counted, up to the top row: a raise into the garbage is a death)
-    if (rq.narr > 0 && rows > raiseAlive) rows = raiseAlive;
+    // (and, the opening's raise and the floor's alike: garbage on its way or on the board, never more than the board lives through once
+    // it lands -- a raise ends the stop the board is held up by -- and never the stack's top, garbage on it counted, up to the top row: a
+    // raise into the garbage is a death)
+    if ((rq.narr > 0 || R->under) && rows > raiseAlive) rows = raiseAlive;
     { int32_t h = rq.b->height ? rq.b->height : 12; rows = imin(rows, h - 1 - fullTop(rq.b)); }
     if (rows <= 0) { R->up = R->low = 0; raiseWait = 0; } else to = fullTop(rq.b) + rows;
   }
