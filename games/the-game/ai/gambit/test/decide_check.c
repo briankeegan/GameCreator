@@ -74,3 +74,48 @@ EXPORT(gb_switch_check) int gb_switch_check(int games, int frames, int min, int 
   for (int a = 0; a < nr; a++) for (int b = 0; b < nr; b++) if (a != b && !counts[a * nr + b]) missing++;
   return missing;
 }
+// A BOARD RUN A FRAME AT A TIME (gb_frames, the checks' tool for a board a game dumped): the question's board (gb_question_bytes), the
+// swap at (mr, mc) pressed as the judge presses it (mr 0: none), then `frames` frames left alone; per frame into out: the frame, the
+// chain counter, the panels active, the clears so far -- 4 words a frame. The frames written.
+static int32_t framesR2, framesC2, framesAt2;   // (a second swap, pressed from the frame framesAt2: gb_frames2)
+static int32_t framesAskAt = -1; static Board *framesAsk;   // (the board kept at framesAskAt, for gb_frames_ask)
+EXPORT(gb_frames_keep) void gb_frames_keep(int at) { framesAskAt = at; }
+EXPORT(gb_frames2) void gb_frames2(int r, int c, int at) { framesR2 = r; framesC2 = c; framesAt2 = at; }
+EXPORT(gb_frames) int gb_frames(int mr, int mc, int frames, int32_t *out) {
+  static Ctx *fx; fx = ctxOf(fx);
+  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
+  int n = rootOf(fx, &hostQ);
+  if (n < 0) return -1;
+  if (mr) { int from; n = pressWalk(fx, n, MK_SWAP, mr, mc, stepTapped, &from); if (!liveNode(fx, n)) return -2; }
+  int k = 0, clears = 0;
+  for (int f = 0; f < frames; f++) {
+    int w;
+    if (framesR2 && NODE(fx, n)->t >= framesAt2) { int from; w = pressWalk(fx, n, MK_SWAP, framesR2, framesC2, stepTapped, &from); framesR2 = 0; }
+    else w = step(fx, n, MK_LONG, 0, 0, 1);
+    if (!liveNode(fx, w)) break;
+    Board *b = ensureBoard(fx, w);
+    if (framesAskAt >= 0 && NODE(fx, w)->t == framesAskAt) { if (!framesAsk) framesAsk = nb_new(); cloneBoard(framesAsk, b); }
+    Stats st; if (statsOf(fx, w, &st)) clears += st.n;
+    out[4 * k] = NODE(fx, w)->t; out[4 * k + 1] = b->chainCounter; out[4 * k + 2] = b->nActive; out[4 * k + 3] = clears; k++;
+    n = w;
+  }
+  return k;
+}
+// THE DECISION ON THE BOARD KEPT (gb_frames_ask): answered as gb_replay answers, and the first candidates' chain keys -- for the checks
+EXPORT(gb_frames_ask) int gb_frames_ask(int mode, int64_t work, char *out, int cap) {
+  if (!framesAsk) return -1;
+  if (!hostBoard) hostBoard = nb_new();
+  cloneBoard(hostBoard, framesAsk);
+  hostQ.b = hostBoard; hostQ.narr = 0; hostQ.holdLeft = 0; hostQ.holdStarted = 0;
+  gb_new_game(); modeRule = mode; curQid = abortId + 1;
+  replayWork = work; clockNowOf = replayNow; clockFrameOut = 0; clockWork = 0;
+  answerQuestion(1, 0, fullTop(hostBoard) >= hostBoard->height, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, REPLAY_MS, 0, 0);
+  clockNowOf = 0;
+  int k = snprintf(out, (unsigned long)cap, "ownChainBy %d N %d aloneChain %d | ", ownChainBy, ownChainN, aloneChain);
+  for (int i = 0; i < 6 && i < theAnswer.ncands && k < cap - 200; i++) {
+    const Judge *J = order[i];
+    k += snprintf(out + k, (unsigned long)(cap - k), " [%s lost %d keeps %d whole %d cuts %d broke %d]", J->hold ? "hold" : PLAY_NAME[J->k.play], J->o.lostAt, J->o.j.keepsChain, J->apWhole, cutsShort(J), J->apBroke);
+  }
+  k += snprintf(out + k, (unsigned long)(cap - k), "\n%s", logBuf);
+  return k;
+}

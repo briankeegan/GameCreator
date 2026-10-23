@@ -330,13 +330,19 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     n = out; KB(n);
   }
   pressTight = tight0;
-  // (the board's own chain, kept: the line's board by the frame the chain's last link comes, the chain counter there -- a settled
-  // line waits for the board, and is not asked)
+  // (the board's own chain, kept: the line's board by the frame the chain's last link comes, the chain counter there. A settled line
+  // presses its first swap at once and settles after it: that swap alone, run on to the frame; one that waits for the board first keeps
+  // the chain by waiting)
   j->keepsChain = -1;
-  if (ownChainBy > 0 && !o->settled && !j->late) {
-    int w = NODE(x, kb)->t < ownChainBy ? step(x, kb, MK_LONG, 0, 0, ownChainBy - NODE(x, kb)->t) : kb;
-    Board *wb = liveNode(x, w) ? ensureBoard(x, w) : 0;
-    j->keepsChain = wb && wb->chainCounter >= ownChainN ? 1 : 0;
+  if (ownChainBy > 0 && !j->late && nseq > 0) {
+    if (o->settled && o->waitTo > 0 && o->waitAt == 0) j->keepsChain = 1;
+    else {
+      int at = kb;
+      if (o->settled) { int from; at = pressWalk(x, root, MK_SWAP, CR(seq[0]), CC(seq[0]), stepTapped, &from); }
+      int w = liveNode(x, at) && NODE(x, at)->t < ownChainBy ? step(x, at, MK_LONG, 0, 0, ownChainBy - NODE(x, at)->t) : at;
+      Board *wb = liveNode(x, w) ? ensureBoard(x, w) : 0;
+      j->keepsChain = wb && wb->chainCounter >= ownChainN ? 1 : 0;
+    }
   }
 #undef KB
   j->late = j->late || clockOut();

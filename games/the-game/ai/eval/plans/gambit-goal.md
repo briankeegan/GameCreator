@@ -1110,3 +1110,9 @@ THE THREES LEFT (861, three games, save=0): 5, every one the first swap of a lin
 board's counter at 2 (chain=2 on a waiting line) -- and the frame loop counted the three wasted, which it does only on a settled board
 with no link since. Which side is wrong wants the board of 287 (GAMBITX) run a frame at a time: a replay from the dumped bytes to a
 frame-by-frame step is the tool to build.
+The tool built (test/decide_check.c gb_frames, gb_frames2, gb_frames_keep, gb_frames_ask): a dumped board, a swap pressed as the judge
+presses it, a second from a frame, run a frame at a time (the chain counter, the panels active), and a decision asked on the board of
+any frame. 861 factory-3, 287: (4,2) left alone links at 61 frames and the chain ends at 113; (3,5) pressed from 26 to 50 cuts it, (6,5)
+at 26 does not. Asked on the board of 313 (26 frames on): a settled line -- the first swap pressed at once, the settle after it --
+was never asked whether it keeps the chain (keepsChain -1) and fell to apWhole. Now a settled line's first swap alone is run on to the
+frame of the chain's last link; one that waits for the board first keeps it by waiting.
