@@ -996,3 +996,8 @@ candidates cut for it, a break found); at the turn of 7 of 12 the line in progre
 the break the readiness found once everything lands; at 13548 that break, the line in progress, was cut at its first swap -- its walk
 not begun within a reaction, the board still moving (~180 a run, carryDrop=2:c0w). Now a break the readiness found waits for the
 board to settle, as a settled line does.
+Measured (`9c8dc4d1`, runs 817-820, the readiness's break waits for the board): big chain 20, build 16, finish 20, pressure 21 (77 of
+96); 0.13-0.19 wasted threes a minute (first measured with each key carrying its save: 53-62 saves a run); first walks not begun
+within a reaction 110-147 a run, from 155-191. At the turn of the losses of 813-816 the line in progress, breaking nothing, was kept
+over a break lost no sooner (816 large_garbage-2, 8469: the line in progress lost at 75 breaking none, a break lost at 75 breaking 6)
+-- 1a ran before 2. Now the line in progress is not kept over a break 2 would put first while it breaks nothing.

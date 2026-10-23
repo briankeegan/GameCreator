@@ -306,9 +306,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1a. THE LINE IN PROGRESS KEPT: of two that both live or both do not, the line the last decision was playing, judged again on the
   // board as it is, before another -- unless the other is lost a break's time later (neither lives) or meets an earlier entry of the
   // list (both live). A line put down halfway leaves a board its forecast never judged.
+  // (and not over a break where neither lives and the line in progress breaks nothing: the break is put first (2) -- the panels it
+  // converts are the board's next, and only a break gives back what a clear spends)
   if (x->carried != y->carried && !x->hold && !y->hold) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : lostOf(o) < lostOf(c) + rankSave;
+    int oBreaks = o->apBroke > 0 && lostOf(o) >= rankSave && !(c->apBroke > 0) && (decF.belowFloor || lostOf(c) - lostOf(o) < rankSave);
+    int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : lostOf(o) < lostOf(c) + rankSave && !oBreaks;
     if (keep) return x->carried ? -1 : 1;
   }
   if (lx) {
