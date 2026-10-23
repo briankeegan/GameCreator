@@ -1021,3 +1021,6 @@ THE LIVE RULES (gambit-rules.json, what Ranmaru_CPU and ForPDR_CPU play): "finis
 and its stop is 120 frames or less (an attack made now lands as it runs out -- an estimate, to be held to the live games), its plain
 three gone: a three sends nothing. Before that, the enemy's height picks pressure or build. Training has no enemy, so only the live
 games measure it.
+Measured (`d95231f4`, runs 825-828, a wait that does not end no longer kept first): big chain 18, build 21, finish 22, pressure 16 (77
+of 96, from 82 -- within the spread of one play measured twice, 78 and 82); 0.14-0.21. Kept: it is the live loss 44's fault, which
+training's boards rarely make.
