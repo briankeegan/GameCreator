@@ -1132,3 +1132,5 @@ panels on the one below, out of reach, and the holds are where those land. Which
 Measured (`b77e08c4`, runs 873-876, cutsShort asked of lines lost in their run): big chain 19, build 21, finish 21 of 23 (one game's
 job failed), pressure 17 (78 of 95, against 84-85); 0.06-0.12 wasted threes a minute, against 0.07-0.13. The chain held more often
 under garbage costs breaks (as 869 factory-4's 7-chain): survival down, waste hardly. Reverted.
+Now: 1b asked of lines lost in their run too, but under garbage never of a line that breaks -- the break is the board's life, the
+three before it needed not to die (the owner's rule); the lines 1b holds back are the clears, set-ups and level lines that cut it.
