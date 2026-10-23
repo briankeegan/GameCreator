@@ -1084,3 +1084,7 @@ THE THREES LEFT (855-856, six games, save=0 only): 6. Five from lines judged to 
 board's own chain (own=2/2) and judged the line it played to keep it, and the three stood alone all the same -- the judge's line and
 the line the frame loop pressed part somewhere the boards do not show (truth 0). 854 combo_storm-8, 6043 (a line lost at 311, the next
 decision's best at 64) was a second volley of fifty, not on its way at 6043: nothing to foresee.
+855 combo_storm-2, 5240: an entry, swaps at 0 and 151; its first made a plain three (5271, by=swap, no link) and the judge counted
+none (w3=0): the three falls in the next swap's step, 151 frames long, and a link later in it -- the next swap's own chain -- was read
+as the three's (threesOf: any link after it in the step). Now only the link right after a three makes it a chain's first; a clear
+between that is no link begins a chain of its own.

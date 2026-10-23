@@ -140,7 +140,9 @@ static int32_t threesOf(const Stats *s) {
   int32_t n = 0;
   for (int j = 0; j < s->n; j++) {
     if (s->size[j] != 3 || s->link[j] || s->touch[j]) continue;
-    int later = 0; for (int q = j + 1; q < s->n && !later; q++) later = s->link[q];
+    // (the link right after it makes it the first of a chain; a clear between that is no link begins a chain of its own -- a step long
+    // enough holds the next chain too, and a three that stood alone is not made a link by one begun after)
+    int later = 0; for (int q = j + 1; q < s->n && !later; q++) { if (s->link[q]) later = 1; else break; }
     if (!later) n++;
   }
   return n;
