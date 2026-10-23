@@ -1171,3 +1171,7 @@ Measured (`afb16a24`, runs 905-908, a held key ends at the wall -- the owner's r
 (9 of 96). The rule taps every walk that does not end at the wall, an action a cell, and the input budget (76 actions in 600 frames)
 is spent within ten seconds: 905 factory-1 lost at 628 with 75 of 76 actions used, 18 decisions at an allowance of 1. Asked of the
 owner: the cap raised or dropped under the rule, a slide to the wall and taps back, or the rule reverted.
+Measured (`5790db63`, runs 909-911, the wall rule with a slide to the wall and taps back where that saves actions): finish 6, big chain
+4, pressure 3 (13 of 72; build still playing). Short walks are tapped either way, and the input budget still runs out. The budget is
+this repo's own, not the game's: 456 actions a minute in panel-game's common/engine/computerPlayers/InputBudget.lua (upstream has no
+such limit). Asked of the owner: the budget raised or dropped under the wall rule, or the rule reverted.
