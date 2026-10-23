@@ -248,6 +248,10 @@ EXPORT(gb_front_sim) int gb_front_sim(int frames, int msPerFrame, int mode, int3
   gn_match();
   if (mode >= 0) modeRule = mode;
   cloneBoard(F.truth, hostBoard);
+  // (the garbage on its way with the question, as one sender's telegraph: each piece's transit at the stopWatch it lands on, shown until
+  // it has)
+  int32_t na = hostQ.narr, absAt[MAXARR];
+  for (int i = 0; i < na; i++) absAt[i] = F.truth->stopWatch + hostQ.arr[i].at;
   tele[0] = 0;
   int k = 0;
   double next = clock_ms();
@@ -256,6 +260,10 @@ EXPORT(gb_front_sim) int gb_front_sim(int frames, int msPerFrame, int mode, int3
     next += msPerFrame;
     double t = clock_ms(), per = msPerFrame;
     __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, F.truth->clock, __ATOMIC_SEQ_CST);
+    { int32_t *w = tele, nt = 0; w[0] = na ? 1 : 0; w[1] = F.truth->stopWatch; w[2] = 0; int32_t *ntAt = &w[3]; int x = 4;
+      for (int i = 0; i < na; i++) if (absAt[i] > F.truth->stopWatch) { w[x++] = absAt[i]; w[x++] = 1; w[x++] = hostQ.arr[i].width; w[x++] = hostQ.arr[i].height;
+        w[x++] = hostQ.arr[i].isChain; w[x++] = hostQ.arr[i].isMetal; w[x++] = NUL; w[x++] = 1; nt++; }
+      *ntAt = nt; w[x++] = 0; }
     int32_t clock = F.truth->clock, bits = frontFrame();
     afterFrame(bits);
     out[2 * k] = clock; out[2 * k + 1] = bits;

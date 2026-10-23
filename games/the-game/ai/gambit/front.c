@@ -267,9 +267,16 @@ static int revealed(const Board *w, const Board *g) {
 static Planned *planOf(int32_t t) { int i = t & (PLANN - 1); return F.planAt[i] == t ? &F.plan[i] : 0; }
 static void planSet(int32_t t, Planned p) { int i = t & (PLANN - 1); F.plan[i] = p; F.planAt[i] = t; }
 static void planDrop(int32_t t) { int i = t & (PLANN - 1); if (F.planAt[i] == t) F.planAt[i] = NUL; }
-static void planClearFrom(int32_t t) { for (int i = 0; i < PLANN; i++) if (F.planAt[i] != NUL && F.planAt[i] >= t) F.planAt[i] = NUL; }
+// THE FRAMES TRACED (GAMBITF, the last FTRACE frames, written when the match ends beside the last boards): each frame's clock, the keys
+// pressed, whether they were planned, the question out, the plan's end, the line in hand and its next swap's frame, and what was
+// dropped in it (1 all, 2 from a frame, 4 cleared for an answer's keys) -- where a swap a decision played went, when one never comes down
+#define FTRACE 512
+typedef struct { int32_t clock, bits, planned, pend, nextAt, lineN, lineAt, drops; } FTrace;
+static FTrace ftrace[FTRACE]; static int32_t ftraceN, ftraceDrops;
+static void planClearFrom(int32_t t) { ftraceDrops |= 4; for (int i = 0; i < PLANN; i++) if (F.planAt[i] != NUL && F.planAt[i] >= t) F.planAt[i] = NUL; }
 // Everything planned and asked is dropped: the board is not the one it was made for.
 static void dropAll(void) {
+  ftraceDrops |= 1;
   if (F.pending) abortTo(F.pId);
   F.epoch++; planClearFrom(NUL + 1); F.nextAt = 0; F.lineN = 0; F.pending = 0;
 }
@@ -277,6 +284,7 @@ static void dropAll(void) {
 // sooner: all of it)
 static void dropFrom(int32_t t) {
   if (t <= F.now + 1) { dropAll(); return; }
+  ftraceDrops |= 2;
   if (F.pending) abortTo(F.pId);
   F.epoch++; planClearFrom(t); if (F.nextAt > t) F.nextAt = t; F.lineN = 0; F.pending = 0;
   // (the garbage now on its way is what the keys kept are pressed knowing: told once, not again every frame till they end)
@@ -812,7 +820,18 @@ static int frontFrame(void) {
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
   countActions(bits, now);
   if (bits & IN_SWAP) F.swapSince = 1;
+  { FTrace *r = &ftrace[ftraceN++ % FTRACE];
+    *r = (FTrace){ now, bits, p != 0, F.pending ? F.pAt : -1, F.nextAt, F.lineN, F.lineN ? F.lineAt[0] : -1, ftraceDrops }; ftraceDrops = 0; }
   return bits;
+}
+static void frontTraceOut(void) {
+  int n = ftraceN < FTRACE ? ftraceN : FTRACE;
+  for (int i = 0; i < n; i++) {
+    const FTrace *r = &ftrace[(ftraceN - n + i) % FTRACE];
+    char l[160]; snprintf(l, sizeof l, "GAMBITF %d %d %d %d %d %d %d %d", r->clock, r->bits, r->planned, r->pend, r->nextAt, r->lineN, r->lineAt, r->drops);
+    flog(l);
+  }
+  ftraceN = 0;
 }
 // After the frame: the board it makes, then the line followed on or the next question asked.
 static void afterFrame(int32_t bits) {

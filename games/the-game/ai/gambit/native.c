@@ -334,7 +334,7 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   if (++gnFrames % 600 == 0 || F.truth->gameOverClock > 0) statsOut();
   return bits;
 }
-void gn_end(void) { statsOut(); ringOut(); }
+void gn_end(void) { statsOut(); frontTraceOut(); ringOut(); }
 // A line from the host into the run's log (a slow frame's parts, say)
 void gn_log(const char *s) { flog(s); }
 // (the C checks, built by ./build.sh test)
