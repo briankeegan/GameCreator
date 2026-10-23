@@ -22,9 +22,10 @@ static LOCAL int32_t pressTight;
 #define TAP_DIES 60
 static LOCAL int32_t pressTap;
 static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }
-// A WALK IS TAPPED, a cell at a time; a key is held only when the input allowance is tight (tightAt), and then only to the wall --
-// column 1 or W - 1, or down to row 1 -- as a player slides to the edge and taps back from it (the owner: no sliding unless it is
-// needed, and then only to the end). (The stack's top moves, so a walk up is tapped.) legMove: where a leg of `cells` from (row, col)
+#define MIN_LEG 3          // the shortest walk a held key is no later on
+// A HELD KEY ENDS AT THE WALL: a direction is held only for a walk the board stops -- to column 1 or W - 1, or down to row 1 -- as a
+// player slides to the edge and taps back from it; a walk that ends anywhere else is tapped a cell at a time (the owner: the bot slides
+// only to the end, as a player would). (The stack's top moves, so a walk up is tapped.) legMove: where a leg of `cells` from (row, col)
 // ends; legHeld: whether a leg ending at (row, col) may be held.
 static void legMove(int32_t v, int cells, int *row, int *col) {
   int32_t d = v & 15;
@@ -59,16 +60,15 @@ static int legSlide(int32_t v, int32_t base, int w, int b, int len, int32_t *out
   while (k < len && k < cap) out[k++] = base;
   return k;
 }
-// The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, a cell a tap -- held, tight,
-// where it ends at the wall (left: the actions the input budget still allows -- tight at HOLDTIGHT or under). The frame loop's and the
-// judge's, the one count.
+// The cost in actions of a swap at (r, c) from the cursor at (row, col): its walk, across then up or down, each held when it would be
+// -- and only where it ends at the wall -- (left: the actions the input budget still allows -- tight at HOLDTIGHT or under). The frame
+// loop's and the judge's, the one count.
 static int iabs(int v) { return v < 0 ? -v : v; }
 // (and, tight, slid to the wall and tapped back where that costs fewer: legShape)
 static int legCost(int32_t d, int n, int row, int col, int tight, int inner) {
   int w, b, s = legShape(d, n, row, col, &w, &b);
-  (void)inner;
   if (tight) return s == 1 ? 1 : s == 2 ? 1 + b : n;
-  return n;
+  return s == 1 && (n >= MIN_LEG + 1 || (n == MIN_LEG && inner)) ? 1 : n;
 }
 static int actionsFor(int row, int col, int r, int c, int left) {
   int tight = tightAt(left), cost = 1;
