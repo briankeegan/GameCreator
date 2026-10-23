@@ -168,6 +168,11 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     for (int i = 0; i < q->narr; i++) { left[i] = q->arr[i]; left[i].at = imax(0, q->arr[i].at - f); }
     Board *got = landedAll(st, left, q->narr, imax(0, last - f), at);
     if (!got || nowMs() - t0 > ms) break;
+    // (and once landed, alive a REST left alone (outcome.c): a raise that leaves the board only a break found in its last frames is one
+    // it dies of -- the decisions after it have no time to press it)
+    { static Board *rest; if (!rest) rest = nb_new(); cloneBoard(rest, got);
+      for (int g = 0; g < REST && rest->gameOverClock <= 0; g++) { rest->input = 0; run(rest); }
+      if (rest->gameOverClock > 0) break; }
     raiseAlive = k;
     // (a plan once landed: the readiness every move is held to -- a break within two swaps that the list allows)
     Question q2 = *q; q2.b = got; q2.narr = 0;
