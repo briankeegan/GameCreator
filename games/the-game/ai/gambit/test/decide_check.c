@@ -18,6 +18,9 @@ EXPORT(gb_replay_low) void gb_replay_low(int keep) { replayLow = keep; }
 // end as the native host's frame loop taps them -- -1: none said, as the checks replay)
 static int32_t replayAllow = -1;
 EXPORT(gb_replay_allow) void gb_replay_allow(int allow) { replayAllow = allow; }
+// (THE RAISE OFFERED, gb_replay_raise 1 before a replay: the question asked as the frame loop asks one it may answer with a raise)
+static int32_t replayRaise;
+EXPORT(gb_replay_raise) void gb_replay_raise(int on) { replayRaise = on; }
 static int lowered(Board *b, int keep) {
   const Panel *empty = 0;
   for (int c = 1; c <= W && !empty; c++) if (!b->p[b->nrows - 1][c].f[COLOR] && !b->p[b->nrows - 1][c].f[ISGARBAGE]) empty = &b->p[b->nrows - 1][c];
@@ -42,7 +45,7 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   // (work 0: the wall clock's REPLAY_MS, as a game gives it -- the speed check's; else the work's, the same answer every time)
   double t0 = work > 0 ? 0 : clock_ms(), due = t0 + REPLAY_MS;
   int32_t taps = hostTaps; if (replayAllow >= 0) hostTaps = 1;
-  answerQuestion(1, 0, topped, 0, 0, 0, 0, 0, 0, replayAllow >= 0, imax(0, replayAllow), -1, 0, replayLow && canRaiseOn(hostBoard), due, t0, 0);
+  answerQuestion(1, 0, topped, 0, 0, 0, 0, 0, 0, replayAllow >= 0, imax(0, replayAllow), -1, 0, (replayLow || replayRaise) && canRaiseOn(hostBoard), due, t0, 0);
   hostTaps = taps;   // (the raise asked of a low stack only)
   clockNowOf = 0;
   const Answer *A = &theAnswer;
