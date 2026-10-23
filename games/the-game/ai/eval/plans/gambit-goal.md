@@ -1145,3 +1145,5 @@ quick break (search/plan.c), which the touch beam's preference does not reach. N
 cuts it too (quickBefore: the swap alone run on to the chain's last link -- the planner's steps settle, and by then the chain is over).
 Measured (`cb6cd18c`, runs 885-888, the planner's quick break keeps the chain first): big chain 20, build 22, finish 23, pressure 18 (83
 of 96, against 88); 0.10-0.15 wasted threes a minute (against 0.11-0.19). Both at the spread's edge; kept for the order it keeps.
+Now the touch beam's level, after the chain kept, takes the break that leaves the most material once its board settles, then the most
+broken: a slab broken above another leaves its row on the lower one, out of reach (870 large_garbage-8).
