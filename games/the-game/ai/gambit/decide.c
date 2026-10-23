@@ -125,7 +125,9 @@ static int readBoard_(Read *R) {
   R->to = to;
   R->pop = popLeft(decQ.b) > 0;
   // (what the board left alone makes while a chain falls or a slab pops, as the game counts it -- for the log)
+  ownChainBy = ownChainN = 0;
   if (cascadeLive(decQ.b) || R->pop) {
+    ownChainOf(&decQ);
     Outcome a = leftAlone();
     if (!a.dead) { R->aloneChain = a.j.chainAll; Made z = { 0, 0, 0, 0 }; R->aloneOut = !fitsList(&R->list, z, &a.j, 0); }
   }

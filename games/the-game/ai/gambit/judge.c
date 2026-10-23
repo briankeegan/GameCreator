@@ -26,6 +26,7 @@ typedef struct {
 } JudgeOpts;
 typedef struct {
   Made made;                    // beyond the board left alone: { combo, chain, broke }
+  int32_t keepsChain;           // the board's own chain reached by the frame it reaches it left alone (ownChainBy): 1, 0, -1 not asked
   Made whole;                   // what the board ends up making with the line played, the chain already under way included (garbage
                                 // broken still counted beyond the board left alone): a line that cuts a chain short makes the shorter one
   int32_t aloneChain;           // the chain the board left alone makes
@@ -218,6 +219,28 @@ static int stepTapped(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) 
   pressTight = t;
   return r;
 }
+// THE BOARD'S OWN CHAIN (ownChainOf, each decision a chain falls): the frame the board left alone makes its last link, and that link --
+// a line keeps the chain only where its board has reached that link by that frame (keepsChain). The links of a chain the line begins
+// count from 2 as the board's do (pa.c chainCounter), so what a line's clears make cannot tell them apart; the frame can.
+static int32_t ownChainBy, ownChainN;
+static LOCAL Ctx *chainCtx;
+static void ownChainOf(const Question *q) {
+  ownChainBy = ownChainN = 0;
+  Ctx *x = chainCtx = ctxOf(chainCtx);
+  int n = rootOf(x, q);
+  if (n < 0) return;
+  int32_t most = 0, at = 0;
+  for (int f = 0; f < SETTLE_CAP; f++) {
+    int w = step(x, n, MK_LONG, 0, 0, 1);
+    if (!liveNode(x, w)) break;
+    Board *b = ensureBoard(x, w);
+    if (!b) break;
+    if (b->chainCounter > most) { most = b->chainCounter; at = NODE(x, w)->t; }
+    if ((most > 0 && b->chainCounter == 0) || (f > 3 && b->quiet && !b->chainCounter)) break;
+    n = w;
+  }
+  if (most >= 2) { ownChainBy = at; ownChainN = most; }
+}
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
@@ -233,6 +256,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->base = baseBroke;
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 }, pieces = 0, links = 0;
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
+  int kb = root;   // (the line's last node by ownChainBy)
+#define KB(m) do { if (ownChainBy > 0 && liveNode(x, (m)) && NODE(x, (m))->t <= ownChainBy) kb = (m); } while (0)
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
     if (last && o->settled) break;   // (each step settled already)
@@ -242,6 +267,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
       int calm = settleOf(x, w);
       n = liveNode(x, calm) ? calm : w;
+      KB(n);
     }
     // (the allowance this swap is pressed under: the decision's less what the line's swaps before it spent -- core/nodes.h actionsFor)
     if (!last && pressAllowance >= 0) {
@@ -271,7 +297,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       // where the walk begins)
       if (k == 0 && NODE(x, from)->t - NODE(x, n)->t > cfgReaction) { j->cut = k; j->cutWhy = 3; break; }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
-      n = from;
+      n = from; KB(n);
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
     }
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
@@ -301,9 +327,18 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     broke += st.broke; threes += threesOf(&st);
     j->done = NODE(x, out)->t;
     if (!last) lastAt = j->done;
-    n = out;
+    n = out; KB(n);
   }
   pressTight = tight0;
+  // (the board's own chain, kept: the line's board by the frame the chain's last link comes, the chain counter there -- a settled
+  // line waits for the board, and is not asked)
+  j->keepsChain = -1;
+  if (ownChainBy > 0 && !o->settled && !j->late) {
+    int w = NODE(x, kb)->t < ownChainBy ? step(x, kb, MK_LONG, 0, 0, ownChainBy - NODE(x, kb)->t) : kb;
+    Board *wb = liveNode(x, w) ? ensureBoard(x, w) : 0;
+    j->keepsChain = wb && wb->chainCounter >= ownChainN ? 1 : 0;
+  }
+#undef KB
   j->late = j->late || clockOut();
   // (the garbage the line breaks is what it breaks beyond the board left alone: a slab popping converts its panels whatever is pressed)
   j->made.combo = combo > baseCombo ? combo : 0; j->made.chain = chain > baseChain ? chain : 0; j->made.broke = imax(0, broke - baseBroke);

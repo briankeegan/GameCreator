@@ -1096,3 +1096,6 @@ chain (own=3/3, 2/2) and the chain did not come. 1b's test -- the line's longest
 that cuts the board's chain and makes one of its own: a chain's links count from 2 whichever chain they are (pa.c chainCounter), so the
 step's clears cannot tell them apart. Next: the board's chain held to the frame its last link lands as the hold makes it, and a line
 keeps it only where its own clears reach that link by then.
+Now built: each decision a chain falls, the board left alone is run a frame at a time to the frame its last link comes (judge.c
+ownChainOf); a line not settled keeps the chain only where its own board, at that frame, has the chain counter there (keepsChain), and
+1b reads that. The speed check: 254,153 frames stepped a decision in the wall clock's time, against 244,165 before.

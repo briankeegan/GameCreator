@@ -281,7 +281,11 @@ static void markIdle(Judge **a, int n) {
 // then the kind of line (plans/gambit-next.md 0).
 // A LINE THAT CUTS THE BOARD'S OWN CHAIN SHORT: the board left alone makes a chain (the hold's judging, aloneChain) and with the line
 // played it makes a shorter one
-static int cutsShort(const Judge *J) { return !J->hold && J->apPlayed && aloneChain > 1 && J->apWhole < aloneChain; }
+static int cutsShort(const Judge *J) {
+  if (J->hold || !J->apPlayed) return 0;
+  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
+  return aloneChain > 1 && J->apWhole < aloneChain;
+}
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
