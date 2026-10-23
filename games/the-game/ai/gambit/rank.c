@@ -166,7 +166,7 @@ static void holdCand(const Read *R, int wait, Judge *J) {
   J->o = outcome(0, 0, 0);
   J->material = -1;
   J->met = J->o.dead ? -1 : metOf(&R->asked, (Made){ J->o.j.whole.combo, J->o.j.whole.chain, 0, 0 });
-  aloneChain = J->o.dead ? 0 : J->o.j.whole.chain;
+  aloneChain = J->o.j.whole.chain;   // (made before the board is lost too: judge.c, a settle the board is lost in)
   J->k.play = PLAY_HOLD; J->k.aim = -1; J->hold = 1; J->wait = wait; J->aim = -1;
   J->t.tier = HOLD_TIER; J->t.nsub = 1; J->t.sub[0] = wait ? -1 : 0;
   const Judged *j = J->o.dead ? 0 : &J->o.j;

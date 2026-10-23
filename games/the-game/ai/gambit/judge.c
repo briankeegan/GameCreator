@@ -275,7 +275,20 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
     if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
     if (!last && out == STEP_NULL) { j->cut = k; j->cutWhy = 2; break; }
-    if (!liveNode(x, out)) { j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+    if (!liveNode(x, out)) {
+      j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t;
+      // (a settle the board is lost in: what it made up to the frame before -- the board's own chain is made before it is lost, and a
+      // hold judged dead must still say so: rank.c aloneChain)
+      if (last && out == STEP_DEAD && j->deadAt - 1 > NODE(x, n)->t) {
+        int w = step(x, n, MK_SETTLE, 0, 0, j->deadAt - 1 - NODE(x, n)->t);
+        Stats sd;
+        if (liveNode(x, w) && statsOf(x, w, &sd)) {
+          for (int i = 0; i < sd.n; i++) if (sd.size[i] > combo) combo = sd.size[i];
+          if (chainOfStats(&sd) > chain) chain = chainOfStats(&sd);
+        }
+      }
+      break;
+    }
     Stats st;
     statsOf(x, out, &st);
     for (int i = 0; i < st.n; i++) { if (st.size[i] > combo) combo = st.size[i]; if (!(st.chainAt[i] > 1) && st.size[i] >= 4 && st.size[i] < MAXCOMBOS + 64) single[st.size[i]] = 1; }

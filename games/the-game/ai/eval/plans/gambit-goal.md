@@ -1067,3 +1067,8 @@ THE THREES LEFT (845-848, six games): a GAMBITW line is logged for every three a
 (save=1). Of 24 there, 19 were saves; the 5 wasted were all lines the judge saw no three in (w3=0) that planned more -- a 2-chain from
 one swap (848 combo_storm-2, 6347), an entry for a 2-chain and a combo of 6 (847 factory-3, 6139), one for a 3-chain (847
 combo_storm-2, 16849) -- and made a three alone, with no board predicted otherwise (truth 0).
+848 combo_storm-2, 6347: one swap for a 2-chain breaking 28 (traced on its board, GAMBITX 6352: the three, then column 4's 5s); at 6365,
+the chain falling, a break line lost at 319 swapped a link of it away over the hold lost at 321, and the three stood alone. 1b never
+saw the board's own chain: the hold is judged by a settle of up to 900 frames, the board is lost in it under garbage, and a step the
+board is lost in was read for nothing -- aloneChain 0 (own= on 251 of 926 decisions with a chain falling). Now a settle the board is
+lost in is read to the frame before, and the hold's chain counts whether it dies or not.
