@@ -60,7 +60,7 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
-  int32_t wasted, wastedAlone, wasteRefused, saved, guardLet;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
+  int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
 } FStats;
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 // (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
@@ -106,7 +106,7 @@ static struct {
   uint32_t rnd;
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
-  int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil;   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
+  int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil, guardSpoil;   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
 } F;
 
 static double fNow(void) { return clock_ms(); }
@@ -742,12 +742,15 @@ static int wastedSwap(const Board *t, int32_t bits) {
   copyBoard(guardBoard, t); copyBoard(aloneBoard, t);
   guardBoard->input = bits & ~IN_SWAP; guardBoard->pressSwap = 1;
   aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
+  F.guardSpoil = 0;
   if (wastedThree(guardBoard, aloneBoard)) return 1;
   // (and the board's own chain spoiled by the line from here, as the judge asks it of the whole line: rank.c cutsShort)
   copyBoard(guardBoard, t); copyBoard(aloneBoard, t);
   guardBoard->input = bits & ~IN_SWAP; guardBoard->pressSwap = 1;
   aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
-  return spoilsChain(guardBoard, aloneBoard, planKeyAt);
+  int s = spoilsChain(guardBoard, aloneBoard, planKeyAt);
+  F.guardSpoil = s;
+  return s;
 }
 // THE SAVE: the board played on for GUARD_DIE frames, the garbage on its way landing as the game lands it -- with the swap not pressed
 // and nothing after it (lostIn 0), or with it pressed and the plan's keys after it as they will be pressed (lostIn 1). A three the plan
@@ -834,7 +837,7 @@ static int frontFrame(void) {
   int32_t guard = 0;
   if ((bits & IN_SWAP & ~F.prevBits) && wastedSwap(t, bits)) {
     if (!threeSaves(t, bits, save)) {
-      bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++;
+      bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++; F.st.refusedSpoil += F.guardSpoil;
       // (and its pair kept out of the next decisions' first swaps a while: a three the judge did not see is not planned again)
       if (t->curCol >= 1 && t->curCol + 1 <= W && t->curRow >= 0 && t->curRow < t->nrows) {
         F.refA = t->p[t->curRow][t->curCol].f[ID]; F.refB = t->p[t->curRow][t->curCol + 1].f[ID]; F.refUntil = now + REFUSE_BLOCK;
@@ -934,8 +937,8 @@ static void statsLine(char *out, int cap) {
   }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
   // (the swaps still followed when the match ends are counted by what they came to so far: nothing yet)
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d,\"guardLet\":%d}}",
-                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet);
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d,\"guardLet\":%d,\"refusedSpoil\":%d}}",
+                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet, F.st.refusedSpoil);
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {

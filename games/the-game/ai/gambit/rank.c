@@ -327,6 +327,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
   if (lx != ly) return lx ? -1 : 1;
+  // 1'. THE ALLOWANCE'S RESERVE UNDER GARBAGE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks
+  // the input allowance below a break's walk (BREAK_WALK) after one that keeps it -- the break the board needs next is pressed out of
+  // what is left
+  if (decF.under && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
+    int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
+    if (rx != ry) return rx ? 1 : -1;
+  }
   // 1a. THE LINE IN PROGRESS KEPT: of two that both live or both do not, the line the last decision was playing, judged again on the
   // board as it is, before another -- unless the other is lost later and not alike (neither lives: lostAlike, as 3 counts them) or meets
   // an earlier entry of the list (both live). A line put down halfway leaves a board its forecast never judged.
