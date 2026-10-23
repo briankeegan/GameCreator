@@ -1017,3 +1017,7 @@ THE REAL GAMES (panel-game run 39862813512, panelattack.com, 44 won, 7 lost, 1 a
   held up by a stop -- its aims run down to a plain three.
 Measured (`e2b8998a`, runs 821-824, the line in progress not kept over a break): big chain 20, build 19, finish 23, pressure 20 (82 of
 96, from 77); 0.10-0.18 wasted threes a minute, 30-68 saves a run. Kept.
+THE LIVE RULES (gambit-rules.json, what Ranmaru_CPU and ForPDR_CPU play): "finish them" is in force only where the enemy is topped
+and its stop is 120 frames or less (an attack made now lands as it runs out -- an estimate, to be held to the live games), its plain
+three gone: a three sends nothing. Before that, the enemy's height picks pressure or build. Training has no enemy, so only the live
+games measure it.
