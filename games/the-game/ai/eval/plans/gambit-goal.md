@@ -1119,3 +1119,7 @@ frame of the chain's last link; one that waits for the board first keeps it by w
 Measured (`9cc59cd0`, runs 865-868, a settled line asked whether it keeps the chain): big chain 18, build 22, finish 23, pressure 21
 (84 of 96, against 90 -- big chain's 18 the gap, within the spread); 0.07-0.13 wasted threes a minute, the fewest yet (from 0.18-0.24).
 Kept.
+865 large_garbage-4, 7738: 11 panels, a break found (br=1/9) and its line dropped for a three it wastes, the hold lost at 126 -- no save
+asked (the hold outlasts a break's time), and the board starved. THE THREE TAKEN OUT, which judges such a line again without the swap
+that makes the three, never ran: it was held to leftMs, the searches' share, spent by the rank. Now it runs in the decision's own time
+to its deadline, SAVE_MS and its reserve left for the save (stripRoom); 11 of the 207 replayed decisions moved.

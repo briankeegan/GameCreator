@@ -183,6 +183,7 @@ static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival sea
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
+static int stripRoom(void) { return saveRoomMs() > SAVE_KEEP_MS + SAVE_MS + 2; }
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
   if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
@@ -292,13 +293,14 @@ static int ranked(const Read *R, const Found *S) {
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
-  // without the swap that makes the three, where it does as well, is a line the order below keeps
+  // without the swap that makes the three, where it does as well, is a line the order below keeps. In the decision's own time to its
+  // deadline (the searches' share is spent by now), the save's (SAVE_MS) and its reserve left over
   { int ns = 0, tried = 0, none = !(n && order[0]->o.lives), n0 = n;
-    for (int i = 0; i < n0 && tried < STRIP_LINES && ns < NSTRIP && leftMs() > 0; i++) {
+    for (int i = 0; i < n0 && tried < STRIP_LINES && ns < NSTRIP && stripRoom(); i++) {
       const Judge *J = order[i];
       if (J->hold || !wastesThree(J) || J->k.nseq < 2) continue;
       tried++;
-      for (int s = 0; s < J->k.nseq && ns < NSTRIP && leftMs() > 0; s++) {
+      for (int s = 0; s < J->k.nseq && ns < NSTRIP && stripRoom(); s++) {
         int32_t seq[MAXLINE]; int m = 0;
         for (int q = 0; q < J->k.nseq; q++) if (q != s) seq[m++] = J->k.seq[q];
         Cand k;
