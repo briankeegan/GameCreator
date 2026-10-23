@@ -236,6 +236,8 @@ static int breaksAt(BS *s, int n, const int32_t *path, int len) {
   if (clockOut()) return 0;
   return (!BREAK_LIST || allowedAt(x, n)) && (!path || !BREAK_LIST || lineFits(path, len, 0));
 }
+// (the garbage rows a line has broken once the board it leaves has settled: a break whose converted panels match again breaks on)
+static int32_t brokeSettled(Ctx *x, int n) { int z = settleOf(x, n); return liveNode(x, z) ? NODE(x, z)->brk : NODE(x, n)->brk; }
 static int swapsOfNode(Ctx *x, int n, int32_t *ms) { Board *b = ensureBoard(x, n); return b ? legalSwaps(b, ms) : 0; }
 static void keepPaths(Paths *p, Line **ls, int n) {
   p->n = 0;
@@ -341,18 +343,26 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       }
       bAt[ntl] = nb;
       stepBatch(x, bPar, bMv, MK_SWAP, nb);
-      for (int i = 0; i < ntl && !tpath; i++) {
+      // (the level a break is found on is taken whole: of its lines that break, the one that has broken most once its board settles --
+      // a break whose converted panels match again is rows more of the slab)
+      int32_t bestB = -1, bestKey = 0, bestLen = 0, bestAt = 0, bestPath[MAXPATH];
+      for (int i = 0; i < ntl; i++) {
         for (int b = bAt[i]; b < bAt[i + 1]; b++) {
           int32_t mv = bMv[b];
           int t3 = swapTaken(s, b, tl[i]->n, mv);
           if (!liveNode(x, t3)) continue;
           Line *nl = lineIn(ar); if (!nl) break;
           *nl = *tl[i]; nl->n = t3; if (nl->len < MAXPATH) nl->path[nl->len++] = mv;
-          if (breaksAt(s, t3, nl->path, nl->len)) { found(o, tl[i]->key); setPath(o, nl->path, nl->len); o->at = NODE(x, t3)->t; tpath = 1; break; }
-          if (within(s, t3)) tn[ntn++] = nl;
+          if (breaksAt(s, t3, nl->path, nl->len)) {
+            int32_t bk = brokeSettled(x, t3);
+            if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
+            continue;
+          }
+          if (bestB < 0 && within(s, t3)) tn[ntn++] = nl;
         }
       }
       batchDone();
+      if (bestB >= 0) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; tpath = 1; }
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)
       if (ntn) keepPaths(&o->keepOut, tn, ntn < KEEPN ? ntn : KEEPN);
       for (int i = 0; i < ntn; i++) tl[i] = tn[i];

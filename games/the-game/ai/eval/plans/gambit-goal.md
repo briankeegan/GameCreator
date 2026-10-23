@@ -1046,3 +1046,5 @@ replayed at 200 times the work (test/main.c replay): no break on any board from 
 game was lost before: from 7654 to 7958 five breaks of one row each (broke=6) while the slab above stayed eleven rows (7689: rows
 6-16; 7958: rows 4-14) and the panels under it went from 26 to 14. One row at a time does not keep up with large_garbage; what would
 is a break whose converted panels match again (a row more broken a link).
+Now the touch beam takes the level a break is found on whole, and plays the line that has broken most once its board settles, where it
+played the first line found to break: a break whose converted panels match again is rows more of the slab.
