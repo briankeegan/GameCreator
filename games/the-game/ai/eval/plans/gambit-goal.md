@@ -1063,3 +1063,7 @@ The live workflow (panel-game bramp/multi-player 329c2c4) now gives Gambit the m
 Gambit's thread on the other core.
 Measured (`614c0135`, runs 845-848, the raise held to what the board lives through under garbage): big chain 21, build 22, finish 22,
 pressure 21 (86 of 96); 0.10-0.22, 38-60 saves a run. Kept.
+THE THREES LEFT (845-848, six games): a GAMBITW line is logged for every three a swap makes, the saves too -- it now says which
+(save=1). Of 24 there, 19 were saves; the 5 wasted were all lines the judge saw no three in (w3=0) that planned more -- a 2-chain from
+one swap (848 combo_storm-2, 6347), an entry for a 2-chain and a combo of 6 (847 factory-3, 6139), one for a 3-chain (847
+combo_storm-2, 16849) -- and made a three alone, with no board predicted otherwise (truth 0).
