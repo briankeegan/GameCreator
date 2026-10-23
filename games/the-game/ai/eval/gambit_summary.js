@@ -84,6 +84,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var ru = / rule=([etl])/.exec(l);
       if (ru) { rule[ru[1]] = (rule[ru[1]] || 0) + 1; rule.n = (rule.n || 0) + 1; }
       if (um) { t.dec++; if (+um[1] && mm) { t.under++; t.mat += +mm[1]; t.pan += pm ? +pm[1] : 0; } }
+      // (THE BREAK THE LINEUP MAKES: of the lines played under garbage that break it, the ones that make a chain on the way)
+      var bk = / broke=(\d+)/.exec(l), ch = / chain=(\d+)/.exec(l);
+      if (um && +um[1] && bk && +bk[1] > 0) { t.breaks = (t.breaks || 0) + 1; if (ch && +ch[1] >= 2) t.chainBreaks = (t.chainBreaks || 0) + 1; }
       if (wm) think.wall.push(+wm[1]);
       if (bm) (/ under=1/.test(l) ? think.brUnder : think.br).push(+bm[1]);
       var op = / opts=(\S+)/.exec(l);
@@ -155,8 +158,12 @@ function meetsAim(aim, combo, chain) {
 function aimOf(mode, a) {
   var rule = RULES.filter(function (r) { return r.name === mode; })[0];
   if (!rule) return;
-  var t = aims[mode] || (aims[mode] = { met: 0, all: 0 });
-  var count = function (n, combo, chain) { t.all += n; if ((rule.aims || []).some(function (x) { return meetsAim(x, combo, chain); })) t.met += n; };
+  var t = aims[mode] || (aims[mode] = { met: 0, all: 0, first: 0, head: JSON.stringify((rule.aims || [])[0] || {}) });
+  var count = function (n, combo, chain) {
+    t.all += n;
+    if ((rule.aims || []).some(function (x) { return meetsAim(x, combo, chain); })) t.met += n;
+    if (rule.aims && rule.aims[0] && meetsAim(rule.aims[0], combo, chain)) t.first += n;
+  };
   Object.keys(a.combo || {}).forEach(function (z) { count(a.combo[z], +z, 1); });
   Object.keys(a.chain || {}).forEach(function (z) { count(a.chain[z], 0, +z); });
 }
@@ -166,10 +173,12 @@ Object.keys(modes).sort().forEach(function (k) {
   all += t.survived; games += t.games;
   console.log(k + ': survived ' + t.survived + '/' + t.games + '; lost at ' + (t.lost.sort(function (a, b) { return a - b; }).join(', ') || '-') +
               '; combos ' + fmt(t.combo) + '; chains ' + fmt(t.chain) +
-              (t.dec ? '; under garbage ' + Math.round(100 * t.under / t.dec) + '% of decisions, material there ' + (t.under ? (t.mat / t.under).toFixed(1) : '-') : ''));
+              (t.dec ? '; under garbage ' + Math.round(100 * t.under / t.dec) + '% of decisions, material there ' + (t.under ? (t.mat / t.under).toFixed(1) : '-') : '') +
+              (t.breaks ? '; breaks by a chain ' + (t.chainBreaks || 0) + ' of ' + t.breaks + ' (' + Math.round(100 * (t.chainBreaks || 0) / t.breaks) + '%)' : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
-Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '')); });
+Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') +
+  '; its first aim ' + t.head + ': ' + t.first + (t.all ? ' (' + (100 * t.first / t.all).toFixed(1) + '%)' : '')); });
 if (nturns) {
   console.log('switches: ' + nturns + ' in all, ' + Object.keys(turns).length + ' directions -- ' + Object.keys(turns).sort().map(function (k) { return k + ' x' + turns[k]; }).join(', '));
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
