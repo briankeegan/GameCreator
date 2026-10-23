@@ -1039,3 +1039,5 @@ spread; kept for the one order's own count of alike.
 its first swap; lost at 16325. Its anchor was a bottom-row cell mid-swap with no panel in it -- an empty cell keeps its id and goes up
 the stack as panels fall into its place (pa.c switchPanels). Now a line is anchored only to a coloured panel at rest (judge.c
 anchorIdAt), the line in progress, the intentions and the readiness's break alike.
+Measured (`88d13e52`, runs 837-840, anchored to a panel): big chain 22, build 22, finish 19, pressure 23 (86 of 96, from 79-82); 0.14-0.22
+wasted threes a minute; lines dropped halfway 221-260 a run. Kept.
