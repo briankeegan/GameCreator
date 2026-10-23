@@ -77,20 +77,21 @@ EXPORT(gb_switch_check) int gb_switch_check(int games, int frames, int min, int 
 // A BOARD RUN A FRAME AT A TIME (gb_frames, the checks' tool for a board a game dumped): the question's board (gb_question_bytes), the
 // swap at (mr, mc) pressed as the judge presses it (mr 0: none), then `frames` frames left alone; per frame into out: the frame, the
 // chain counter, the panels active, the clears so far -- 4 words a frame. The frames written.
-static int32_t framesR2, framesC2, framesAt2;   // (a second swap, pressed from the frame framesAt2: gb_frames2)
+#define FRAMESW 16
+static int32_t framesR[FRAMESW], framesC[FRAMESW], framesAt[FRAMESW], framesN, framesI;   // (swaps after the first, each pressed from its frame: gb_frames2)
 static int32_t framesAskAt = -1; static Board *framesAsk;   // (the board kept at framesAskAt, for gb_frames_ask)
 EXPORT(gb_frames_keep) void gb_frames_keep(int at) { framesAskAt = at; }
-EXPORT(gb_frames2) void gb_frames2(int r, int c, int at) { framesR2 = r; framesC2 = c; framesAt2 = at; }
+EXPORT(gb_frames2) void gb_frames2(int r, int c, int at) { if (framesN < FRAMESW) { framesR[framesN] = r; framesC[framesN] = c; framesAt[framesN++] = at; } }
 EXPORT(gb_frames) int gb_frames(int mr, int mc, int frames, int32_t *out) {
   static Ctx *fx; fx = ctxOf(fx);
-  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
+  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0); framesI = 0;
   int n = rootOf(fx, &hostQ);
   if (n < 0) return -1;
   if (mr) { int from; n = pressWalk(fx, n, MK_SWAP, mr, mc, stepTapped, &from); if (!liveNode(fx, n)) return -2; }
   int k = 0, clears = 0;
   for (int f = 0; f < frames; f++) {
     int w;
-    if (framesR2 && NODE(fx, n)->t >= framesAt2) { int from; w = pressWalk(fx, n, MK_SWAP, framesR2, framesC2, stepTapped, &from); framesR2 = 0; }
+    if (framesI < framesN && NODE(fx, n)->t >= framesAt[framesI]) { int from; w = pressWalk(fx, n, MK_SWAP, framesR[framesI], framesC[framesI], stepTapped, &from); framesI++; }
     else w = step(fx, n, MK_LONG, 0, 0, 1);
     if (!liveNode(fx, w)) break;
     Board *b = ensureBoard(fx, w);

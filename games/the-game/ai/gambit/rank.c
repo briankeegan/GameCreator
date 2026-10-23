@@ -282,9 +282,10 @@ static void markIdle(Judge **a, int n) {
 // A LINE THAT CUTS THE BOARD'S OWN CHAIN SHORT: the board left alone makes a chain (the hold's judging, aloneChain) and with the line
 // played it makes a shorter one
 static int cutsShort(const Judge *J) {
-  if (J->hold || !J->apPlayed) return 0;
-  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
-  return aloneChain > 1 && J->apWhole < aloneChain;
+  if (J->hold) return 0;
+  // (judge.c ownChainOf: by the frame its last link comes -- asked of a line lost later too: under garbage most are lost in their run)
+  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;
+  return J->apPlayed && aloneChain > 1 && J->apWhole < aloneChain;
 }
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
