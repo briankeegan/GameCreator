@@ -1027,3 +1027,5 @@ training's boards rarely make.
 - 5 (HARD_CPU), traced: the floor's raise put off 116 frames (refill=1/1/0/w116), until the stack would take it -- and the frame loop
   asked nothing until the raise's keys ended, so nothing was decided for 117 frames. Now the questions go on from the frame after the
   answer; one that comes before the raise is due takes its keys' place.
+Measured (`48abaacb`, runs 829-832, the questions go on while a raise waits): big chain 18, build 23, finish 19, pressure 21 (81 of
+96); 0.13-0.17 wasted threes a minute, 45-53 saves a run. Kept.
