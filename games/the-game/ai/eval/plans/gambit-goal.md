@@ -1080,3 +1080,7 @@ the line's place: the swap was never pressed (the board at 12721 the one of 1269
 question is asked no later than the frame the line in hand's next swap is due.
 Measured (`fe962673`, runs 853-856, asked no later than the line in hand's next swap): big chain 21, build 18, finish 23, pressure 23 (85
 of 96, against 87: the spread); 0.11-0.21. Kept.
+THE THREES LEFT (855-856, six games, save=0 only): 6. Five from lines judged to make a 2-chain or more; the decision after saw the
+board's own chain (own=2/2) and judged the line it played to keep it, and the three stood alone all the same -- the judge's line and
+the line the frame loop pressed part somewhere the boards do not show (truth 0). 854 combo_storm-8, 6043 (a line lost at 311, the next
+decision's best at 64) was a second volley of fifty, not on its way at 6043: nothing to foresee.
