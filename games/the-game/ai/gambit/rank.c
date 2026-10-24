@@ -218,7 +218,8 @@ static Tier tierView(const Judge *J) {
 // -- a later loss, a nearer break, or ready for the next block where the hold is not. (Not more life by its panels: a line that clears
 // nothing leaves the panels the hold does, and two such boards read at different frames differ only by what landed between.) Being offered is never a
 // reason to be played. (markIdle, before every sort of the order: idle lines rank after the hold, tierView)
-static int clears(const Judge *J) { return J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0; }
+// (A LINE THAT CLEARS: panels cleared or garbage broken by what it presses, as judged -- the hold presses nothing. Every reader asks it)
+static int clears(const Judge *J) { return !J->hold && (J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0); }
 // THE IDEAS A LINE LEAVES (search/ideas.c, several ideas at once): the board it ends on, the attacks one swap from fired there -- asked
 // the first time a key compares them, and kept with the line
 // (only with no garbage on the board -- under it the list's entries are breaks, and one a swap away is the break search's to find --

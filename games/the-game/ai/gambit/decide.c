@@ -516,14 +516,13 @@ static void readyStop(void) {
 typedef struct { int32_t set, play, nseq, seq[MAXLINE], settled, anchorRow, anchorCol, anchorId; } Intent;
 static Intent theIntents[NINTENT];
 static int32_t keptOffered, keptPlayed, routeOffered, routePlayed;   // (the log's, this decision)
-static int clearsSomething(const Judge *J) { return !J->hold && (J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0); }
 static void keepIntents(int n, const Judge *played) {
   memset(theIntents, 0, sizeof theIntents);
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
   for (int i = 0, k = 0; i < n && k < NINTENT; i++) {
     const Judge *J = order[i];
-    if (J == played || J->wait || J->o.dead || !clearsSomething(J) || J->k.nseq < 1) continue;
+    if (J == played || J->wait || J->o.dead || !clears(J) || J->k.nseq < 1) continue;
     Intent *I = &theIntents[k];
     if (!anchorFor(row1, J->k.seq, J->k.nseq, &I->anchorRow, &I->anchorCol, &I->anchorId)) continue;
     I->set = 1; I->play = J->k.play; I->nseq = J->k.nseq; I->settled = J->settled;
@@ -554,7 +553,7 @@ static int keptJudged(const Read *R, int n) {
     k.settled = I->settled; k.kept = 1;
     if (judgedHas(n, &k)) continue;
     keptOffered++;
-    if (judgeWalked(R, &k, &theJudged[n]) && clearsSomething(&theJudged[n])) { order[n] = &theJudged[n]; n++; }
+    if (judgeWalked(R, &k, &theJudged[n]) && clears(&theJudged[n])) { order[n] = &theJudged[n]; n++; }
   }
   return n;
 }
@@ -570,7 +569,7 @@ static int routeJudged(const Read *R, int n) {
   const Judge *top[ROUTE_TOP]; int nt = 0;
   for (int i = 0; i < n && nt < ROUTE_TOP; i++) {
     const Judge *J = order[i];
-    if (J->wait || J->o.dead || !clearsSomething(J) || !J->settled || J->k.route) continue;
+    if (J->wait || J->o.dead || !clears(J) || !J->settled || J->k.route) continue;
     top[nt++] = J;
   }
   for (int a = 0; a < nt && routeOffered < NROUTE && !clockOut(); a++)
