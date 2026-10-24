@@ -26,7 +26,7 @@ typedef struct {
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
-  int32_t spends;      // outside it for spending the rules' floor (outcome.c spendsFloor)
+  int32_t spends;      // outside it for spending the rules' floor or the reserve (outcome.c spendsFloor, spendsReserve)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
@@ -104,7 +104,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // outside too)
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
-  if (j && spendsFloor(m, oc.floorKept)) J->outside = J->spends = 1;
+  if (j && (spendsFloor(m, oc.floorKept) || spendsReserve(m, j))) J->outside = J->spends = 1;
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
   // entries, then the one rule's three that breaks)
   // (read off what the board ends up making, the chain already under way included: a swap that cuts it short meets what is left of it,
@@ -296,7 +296,6 @@ static int cutsShort(const Judge *J) {
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
-#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }

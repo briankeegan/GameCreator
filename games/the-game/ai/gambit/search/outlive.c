@@ -10,10 +10,9 @@ typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; } OItem;
 typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts; } Outlived;
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
-// (THE RESERVE: with an input allowance said, the line kept is the latest lost of those that leave OUT_RESERVE actions of it -- unless one
+// (THE RESERVE: with an input allowance said, the line kept is the latest lost of those that leave RESERVE actions of it -- unless one
 // that spends them is lost OUT_LATER frames later still: what a line spends comes back only a window later, and the board's next break is
 // pressed out of what is left)
-#define OUT_RESERVE 20
 #define OUT_LATER 120
 static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best, over; memset(&best, 0, sizeof best); memset(&over, 0, sizeof over);
@@ -26,7 +25,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
   static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ka[PLAN_KIDS], ms1[MAXROWS * W];
   int nlev = 1;
   memset(&level[0], 0, sizeof level[0]); level[0].n = root;
-  int keep = pressAllowance >= 0 ? pressAllowance - OUT_RESERVE : 1 << 20;
+  int keep = pressAllowance >= 0 ? pressAllowance - RESERVE : 1 << 20;
   for (int d = 1; d <= depth && nlev; d++) {
     double tl = nowMs();
     int nsteps = 0;

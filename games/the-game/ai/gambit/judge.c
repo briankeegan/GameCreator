@@ -50,6 +50,7 @@ typedef struct {
   int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
   int32_t late;                 // the clock stopped it: no answer
   int32_t firstMade;            // what the line's first swap made, as the swap back reads it (madeBy)
+  int32_t leftEnd;              // the actions the input window leaves once the line's swaps are pressed (allowLeftAt; -1 none said)
   int32_t aliveTo;              // and the frame from the root the board was judged alive to when it did (0: none)
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
   int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 a first walk not begun within a reaction
@@ -373,6 +374,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     n = out; KB(n);
   }
   pressTight = tight0;
+  j->leftEnd = pressAllowance >= 0 && liveNode(x, n) ? allowLeftAt(NODE(x, n)->t - NODE(x, root)->t, spent) : -1;
   // (the board's own chain, kept: the line's board by the frame the chain's last link comes, the chain counter there. A settled line
   // presses its first swap at once and settles after it: that swap alone, run on to the frame; one that waits for the board first keeps
   // the chain by waiting)

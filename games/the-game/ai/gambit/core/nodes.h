@@ -90,6 +90,10 @@ static int32_t pressAllowance = -1;
 // from the question's: the limit less those still inside the window then, less what the line has spent. nWinAges -1: not said, the
 // decision's allowance less what is spent.
 #define WINMAX 512
+// THE RESERVE: the actions the window keeps for the next break -- what a line spends comes back only a window later, and the break is
+// pressed out of what is left (a few swaps and their walks). A line that breaks nothing leaves it (outcome.c spendsReserve); the
+// survival search keeps it unless spending it buys a later loss (search/outlive.c)
+#define RESERVE 20
 static int32_t winAges[WINMAX], nWinAges = -1, winLen = 600, hostWin;
 static int allowLeftAt(int32_t t, int spent) {
   if (pressAllowance < 0) return -1;

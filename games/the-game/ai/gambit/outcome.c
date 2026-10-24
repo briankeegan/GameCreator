@@ -123,6 +123,9 @@ static int32_t materialOn(const Board *b);   // (facts.c: the panels under the l
 // THE FLOOR SPENT, the one test every reader asks (the shared line check, the rank's keep): a line that clears panels and breaks nothing,
 // leaving a board the rules' keep does not hold (floorKept: floorOf on the board the line leaves -- facts.c keepsFloor)
 static int spendsFloor(Made m, int32_t floorKept) { return floorKept == 0 && (m.combo > 0 || m.chain > 0) && !(m.broke > 0); }
+// THE RESERVE SPENT, beside it: with garbage on the board or on its way, a line that breaks nothing and leaves the window fewer than
+// RESERVE actions (core/nodes.h) has spent what the next break is pressed out of
+static int spendsReserve(Made m, const Judged *j) { return (decF.under || decF.land != NOT_ASKED) && !(m.broke > 0) && j->leftEnd >= 0 && j->leftEnd < RESERVE; }
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
@@ -228,7 +231,7 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   Made m = o.j.made;
   const Board *eb = o.j.dead || o.j.late || !floorOf ? 0 : ensureBoard(judgeCtx, o.j.endNode);
   o.floorKept = eb ? floorOf(eb) : -1;
-  o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN && !spendsFloor(m, o.floorKept);
+  o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN && !spendsFloor(m, o.floorKept) && !spendsReserve(m, &o.j);
   // (a list ended by "default": a line outside it is the default's own, kept while the board lives through it)
   if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN;   // (the host's own check, a line held to no list)
   if (o.j.late) return 0;
