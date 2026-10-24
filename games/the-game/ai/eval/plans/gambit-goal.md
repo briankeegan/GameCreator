@@ -1247,3 +1247,7 @@ A readiness board asks only that a break is there, its line checked on the readi
 19:26 ET): 21 of 48 -- combo_storm 9, factory 5, large_garbage 7 of 16; the twin alike in 835 decisions. The losses left: no break in
 the last 300 frames, the window run dry, and first-wave deaths before frame 1600 (large_garbage-2 at 663: holds and toward lines with
 no break found from frame 471, the board's material 29 to 22).
+Seeds 1-24 again (1090, finished 19:34 ET): 14 -- combo_storm 7, factory 3, large_garbage 4; the same ten games lost as 1089's first
+round, in 6 minutes. Of two lines that break nothing, the line's own swaps counted with the next break's (`fadd3de9`, 1091, 19:43 ET):
+9, gone. The reach report searched every lost board with no break again under a full window: 23 of 382 had one -- the input window
+is not what the losses lack; the panels are.
