@@ -122,11 +122,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       # (after the games, so a check that fails turns the run red without stopping a game)
-      - name: Gambit's C checks (the bits, perched blocks, the decisions replayed against the golden)
-        if: always()
+
+  # GAMBIT'S C CHECKS, each a job of its own beside the games (they check the build, not a game): the bits, perched blocks, the
+  # decisions replayed against the golden; the same on two workers (every check but the golden, which their search may move); and the
+  # workers raced under ThreadSanitizer
+  checks:
+    if: ${{ inputs.report_run == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [test, workers, tsan]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: clang and zlib
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y clang zlib1g-dev && break; sleep 10; done
+      - name: ${{ matrix.check }}
         timeout-minutes: 15
-        # (and again on two workers: the readiness searched on every thread -- every check but the golden, which their search may move)
-        run: cd games/the-game/ai/gambit && ./build.sh test && GC_GAMBIT_WORKERS=2 ./build.sh test && ./build.sh tsan > /dev/null
+        run: |
+          cd games/the-game/ai/gambit
+          case "${{ matrix.check }}" in
+            test) ./build.sh test ;;
+            workers) GC_GAMBIT_WORKERS=2 ./build.sh test ;;
+            tsan) ./build.sh tsan > /dev/null ;;
+          esac
 
   report:
     needs: play
