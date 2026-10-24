@@ -56,8 +56,9 @@ if [ "$BOT" = wasm ]; then
   for i in $(seq 1 300); do grep -q listening "$OUT_DIR/survivor.log" && break; sleep 0.2; done
   grep -q listening "$OUT_DIR/survivor.log" || { cat "$OUT_DIR/survivor.log"; echo "training.sh: WasmSurvivor did not start" >&2; exit 1; }
 elif [ "$BOT" = gambit ]; then
-  # Gambit's library, built for this machine, and the profile as numbers (words.js); its log is the run's survivor.log
-  "$EVAL/../gambit/build.sh" native || exit 1
+  # Gambit's library, built for this machine unless the run built it once for every game (GC_GAMBIT_BUILT), and the profile as numbers
+  # (words.js); its log is the run's survivor.log
+  [ -n "$GC_GAMBIT_BUILT" ] && [ -f "$EVAL/../gambit/libgambit.so" ] || "$EVAL/../gambit/build.sh" native || exit 1
   GC_SURVIVOR_PROFILE="$EVAL/${PROFILE:-survivor-profiles/gambit-finish.json}" node "$EVAL/../gambit/words.js" > "$OUT_DIR/gambit.words" || exit 1
   export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS"
   echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS"

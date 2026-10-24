@@ -45,7 +45,38 @@ permissions:
   actions: read
 
 jobs:
+  # GAMBIT BUILT ONCE (libgambit.so, for every runner: GC_MARCH), and every game plays that build
+  build:
+    if: ${{ inputs.report_run == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: ${{ inputs.gambit_from != '' && '0' || '1' }}
+      - name: The Gambit of another commit
+        if: ${{ inputs.gambit_from != '' }}
+        run: |
+          rm -rf games/the-game/ai/gambit && git checkout "${{ inputs.gambit_from }}" -- games/the-game/ai/gambit
+      - name: clang
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y clang && break; sleep 10; done
+      - name: libgambit.so
+        env:
+          GC_MARCH: x86-64-v2
+        run: games/the-game/ai/gambit/build.sh native
+      - uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: libgambit
+          path: games/the-game/ai/gambit/libgambit.so
+          retention-days: 3
+
   play:
+    needs: build
     if: ${{ inputs.report_run == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
@@ -74,11 +105,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: xvfb, love and clang
+      - uses: actions/download-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: libgambit
+          path: games/the-game/ai/gambit
+      - name: xvfb and love
         timeout-minutes: 15
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
-          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang luajit zlib1g-dev && break; sleep 10; done
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb luajit && break; sleep 10; done
           mkdir -p ~/love2d
           for i in 1 2 3; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep 10; done
           tar -xzf /tmp/love.tar.gz -C ~/love2d
@@ -98,6 +134,7 @@ jobs:
           MINUTES: '60'
           GC_GAMBIT_WORKERS: ${{ inputs.workers }}
           SEED_BASE: ${{ inputs.seed }}
+          GC_GAMBIT_BUILT: '1'
         run: |
           if [ -n "$SEED_BASE" ]; then
             case "${{ matrix.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; *) P=9;; esac
