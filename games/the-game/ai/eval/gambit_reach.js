@@ -19,12 +19,14 @@ var rules = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles',
 var list = rules.attack.filter(function (r) { return r.name === 'finish them'; })[0].aims.filter(function (a) { return typeof a !== 'string'; });
 // (a log's lines up to the game over: after it the frame loop asks on a board that no longer plays)
 function played(lines) { var i = -1; lines.forEach(function (l, k) { if (l.indexOf('GAMEOVER ') === 0) i = k; }); return i < 0 ? lines : lines.slice(0, i); }
+var WORK_PER_MS = G.X.gb_work_per_ms();   // (core/clock.h's: the work a live ms is)
+var needs = [];
 var totals = { missed: 0, impossible: 0, boards: 0, inTime: 0, notInTime: 0, shown: 0 }, turns = {}, how = {}, took = {};
 function add(into, from) { Object.keys(from).forEach(function (k) { into[k] = (into[k] || 0) + from[k]; }); }
 var BUCKETS = [20, 100, 300, 1000, Infinity], bucketOf = function (ms) { for (var i = 0; i < BUCKETS.length; i++) if (ms < BUCKETS[i]) return BUCKETS[i] === Infinity ? '1000+' : '<' + BUCKETS[i]; };
 // One game written up: its lines, and its counts as data (what --game writes, and what a run of games adds up)
 function reachGame(gdir, g) {
-  var R = { name: g, lines: [], missedB: [], totals: { missed: 0, impossible: 0, boards: 0, inTime: 0, notInTime: 0 }, turns: {}, how: {}, took: {} };
+  var R = { name: g, lines: [], missedB: [], needs: [], totals: { missed: 0, impossible: 0, boards: 0, inTime: 0, notInTime: 0 }, turns: {}, how: {}, took: {} };
   var totals = R.totals, turns = R.turns, how = R.how, took = R.took, say = function (l) { R.lines.push(l); };
   var rf = path.join(gdir, 'results.txt'), lf = path.join(gdir, 'survivor.log');
   if (!fs.existsSync(rf) || !fs.existsSync(lf)) return R;
@@ -80,7 +82,9 @@ function reachGame(gdir, g) {
       inTime = again ? ' in its ' + brMsAt[x.at] + 'ms: found' : ' in its ' + brMsAt[x.at] + 'ms: not';
       if (again) totals.inTime++; else totals.notInTime++;
     }
-    out.push(x.at + (found ? ' MISSED(' + line.length + (line.how ? ' ' + line.how + ' ' + line.ms + 'ms' : '') + inTime + ')' : ' none'));
+    // (the work it took, against the work the live search had: what a budget would need to find it)
+    if (found && brMsAt[x.at] !== undefined) { R.needs.push(Math.round(line.work / (brMsAt[x.at] * WORK_PER_MS) * 100) / 100); }
+    out.push(x.at + (found ? ' MISSED(' + line.length + (line.how ? ' ' + line.how + ' ' + line.ms + 'ms ' + line.work + ' steps' : '') + inTime + ')' : ' none'));
   });
   say(g + '  ' + m[1] + ' lost at ' + lostAt + ': ' + (out.length ? out.join(', ') : 'no empty searches logged'));
   // THE TURN: the last frame a break was there -- a decision whose break search found one, or a board searched again that had one --
@@ -114,10 +118,12 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   gotN++;
   R.missedB.forEach(function (l) { if (totals.shown++ < 12) console.log(l); });
   R.lines.forEach(function (l) { console.log(l); });
-  add(totals, R.totals); add(turns, R.turns); add(how, R.how); add(took, R.took);
+  add(totals, R.totals); add(turns, R.turns); add(how, R.how); add(took, R.took); needs = needs.concat(R.needs || []);
 });
 if (gotN !== lostN) { console.error('gambit_reach.js: ' + lostN + ' games lost, ' + gotN + ' written up'); process.exit(1); }
 console.log('\nthe moves at the turn, every loss: ' + JSON.stringify(turns));
 console.log('\n' + totals.boards + ' boards searched again: ' + totals.missed + ' had a break the live search missed, ' + totals.impossible + ' had none to find');
 if (totals.inTime + totals.notInTime) console.log('the missed breaks searched again with the live search\'s own work: ' + totals.inTime + ' found (how it spent the work took them), ' + totals.notInTime + ' not (the work did)');
+if (needs.length) { needs.sort(function (a, b) { return a - b; }); var q = function (f) { return needs[Math.min(needs.length - 1, Math.floor(f * needs.length))]; };
+  console.log('the work a missed break took, over the work its live search had: median ' + q(0.5) + 'x, 75% under ' + q(0.75) + 'x, 90% under ' + q(0.9) + 'x (' + needs.length + ' breaks)'); }
 if (totals.missed) console.log('the missed breaks, by how they were found: ' + JSON.stringify(how) + '; by the ms they took: ' + JSON.stringify(took));

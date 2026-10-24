@@ -225,6 +225,7 @@ Gambit.prototype.breakPath = function (ms, work) {
   // (how it was found -- the first swap, the break built, the touch beam, its wider beam, a slab's line-up -- and the ms it took)
   var line = pl ? path : [first];
   line.how = w[5] ? 'lineup' : w[4] ? 'wide' : w[2] ? 'touch' : pl ? 'built' : 'first'; line.ms = took;
+  line.work = X.gb_clock_work();   // (the engine's frames it stepped to find it: core/clock.h WORK_PER_MS a work ms)
   return line;
 };
 

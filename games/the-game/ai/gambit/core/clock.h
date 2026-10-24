@@ -60,6 +60,7 @@ static void clockCharge(int64_t units) { clockWork += units > 0 ? units : 1; }
 #define WORK_PER_MS 300.0
 static double workNowMs(void) { return (double)clockWork / WORK_PER_MS; }
 EXPORT(gb_clock_on_work) void gb_clock_on_work(int on) { clockNowOf = on ? workNowMs : 0; }
+EXPORT(gb_work_per_ms) double gb_work_per_ms(void) { return WORK_PER_MS; }
 EXPORT(gb_clock_start) void gb_clock_start(double due) { clockStart(due); }
 EXPORT(gb_clock_work) int gb_clock_work(void) { return (int)clockWork; }
 #endif

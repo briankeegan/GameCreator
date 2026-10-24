@@ -220,6 +220,8 @@ jobs:
         run: |
           EV=games/the-game/ai/eval
           mkdir -p report
+          # (a past run written up again by this commit's reports: each game's reach searched again here, not read from its job's)
+          if [ -n "${{ inputs.report_run }}" ]; then find games-of-run -name reach.json -delete; fi
           # (the three side by side: each reads the games alone; reach adds up what each game's job wrote, reach.json)
           node $EV/gambit_summary.js games-of-run > report/summary.txt 2>&1 &
           node $EV/gambit_losses.js games-of-run 10 > report/losses.txt 2>&1 &
