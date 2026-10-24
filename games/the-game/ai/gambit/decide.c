@@ -432,16 +432,23 @@ static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) 
 static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anchorInto(&theCarry, row1, seq, n); }
 // (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
 // (waits: the decisions in a row the line has waited for the board to settle -- carryWaitsOut)
+// (why a line in progress was not kept for the next decision -- read there as its carryDrop: 6 the line played waits and is no carry,
+// 7 its tier past the last and nothing broken, 8 no bottom-row panel its swaps leave untouched to find it again by, 9 nothing played
+// to carry: the hold, or a line with no swap after the one pressed)
+static int32_t carryLost;
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
-  int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
+  int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0, had = theCarry.set;
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.waits = waits;
+  carryLost = 0;
   // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
   // tier, and its swaps after the first are the break it was chosen for)
-  if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1 || (k->t.tier > 4 && !(k->apBroke > 0))) return;
+  if (!k || k->k.nseq < first + 1) { carryLost = had ? 9 : 0; return; }
+  if (k->wait && k->k.play != PLAY_CARRYWAIT) { carryLost = 6; return; }
+  if (k->t.tier > 4 && !(k->apBroke > 0)) { carryLost = 7; return; }
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
-  if (!anchorOf(row1, k->k.seq, k->k.nseq)) return;
+  if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carryLost = 8; return; }
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
   for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
@@ -590,7 +597,8 @@ static int routeJudged(const Read *R, int n) {
 // played on as it is pressed, while every step is legal and it still makes what it was begun for. wait: its next step must wait for
 // the board to settle.
 // (why the line in progress was not carried on, for the log: 0 carried or none, 1 its anchor panel gone, 2 a step no longer there to
-// press, 3 it no longer breaks and its swaps pressed did not, 4 it no longer makes what it was begun for)
+// press, 3 it no longer breaks and its swaps pressed did not, 5 it no longer makes what it was begun for (offered all the same); 6-9 it
+// was not kept when the last decision played it: carryOf)
 static int carryDrop;
 // (and for the log, the line dropped: the steps it had left, and for 2 how the judge ended it -- cut at, the steps it pressed)
 static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, carryDropWhy, carryDropNats;
@@ -602,7 +610,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
     // (the line's own swaps all pressed: the break it lived by is the line in progress now, popping or not as the board is now)
     *C = theCarryNext; memset(&theCarryNext, 0, sizeof theCarryNext); C->popping = popLeft(decQ.b) > 0; skip = 0;
   }
-  if (!C->set || C->nrest <= skip) return 0;
+  if (!C->set || C->nrest <= skip) { if (!C->set) carryDrop = carryLost; carryLost = 0; return 0; }
   int dr = NOT_ASKED;
   // (from the row not yet risen: the board a waited-for break was found on may have risen past this one)
   for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][C->anchorCol].f[ID] == C->anchorId) dr = r - C->anchorRow;

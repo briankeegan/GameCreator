@@ -11,6 +11,9 @@ var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
+// (why a line in progress was not carried on, by decide.c's carryDrop code)
+var carryWhy = {}, CARRY_WHY = { 1: 'its anchor panel gone', 2: 'a step no longer there', 3: 'it no longer breaks', 5: 'no longer what it was begun for (offered all the same)',
+  6: 'played as a wait that is no carry', 7: 'its tier past the last, nothing broken', 8: 'no bottom-row panel to find it by', 9: 'the hold played' };
 var allow = { n: 0, at: [0, 0, 0, 0], drop2: 0, drop2cut0: 0, why: { a: 0, n: 0, w: 0 }, cut: [0, 0, 0], cutBr: [0, 0, 0] };   // (the input allowance each decision was made under: 0-5, 6-20, 21-40, over 40 left; the lines in progress cut at their next swap)
 var walk = { n: 0, cells: 0, far: 0 };   // the cells from one swap the decisions played to the next (want=r,c), and the jumps of 6 or more
 var PA = require(path.join(__dirname, '..', '..', 'pa-engine.js'));
@@ -96,6 +99,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (cw2) for (var q = 0; q < 3; q++) { allow.cut[q] += +cw2[1 + q]; allow.cutBr[q] += +cw2[4 + q]; }
       var al = / allow=(-?\d+)/.exec(l);
       if (al && +al[1] >= 0) { var av = +al[1]; allow.n++; allow.at[av <= 5 ? 0 : av <= 20 ? 1 : av <= 40 ? 2 : 3]++; }
+      var cd = / carryDrop=(\d+)/.exec(l); if (cd) carryWhy[cd[1]] = (carryWhy[cd[1]] || 0) + 1;
       if (/ carryDrop=2/.test(l)) { allow.drop2++; if (/ carryDrop=2:d-1:c0/.test(l)) { allow.drop2cut0++; var cw = / carryDrop=2:d-1:c0([anw])/.exec(l); if (cw) allow.why[cw[1]]++; } }
       var w = / want=(\d+),(\d+)/.exec(l);
       if (w) { var r = +w[1], c = +w[2]; if (last) { var d = Math.abs(r - last[0]) + Math.abs(c - last[1]); walk.n++; walk.cells += d; if (d >= 6) walk.far++; } last = [r, c]; }
@@ -232,6 +236,7 @@ if (rule.keptOff || rule.routeOff || rule.wayOff) console.log('intentions: ' + (
 if (rule.refill) console.log('the floor\'s raise: asked in ' + rule.refill + ' decisions -- ' + (rule.refillReady || 0) + ' raised to a break ready once everything lands, ' + (rule.refillShort || 0) + ' raised on a board too short to break, ' + (rule.refillNone || 0) + ' with no row the board lives through, ' + (rule.refillCasc || 0) + ' where the stack took no raise within 120 frames, ' + (rule.refillLocked || 0) + ' with nothing to raise once it did; ' + (rule.refillTimed || 0) + ' put off to the frame the stack took it (' + (rule.refillTimed ? (rule.refillWait / rule.refillTimed).toFixed(0) : '-') + ' frames on average)' + (rule.shut ? '; shut every frame by: ' + Object.keys(rule.shut).map(function (k) { return k + ' ' + rule.shut[k]; }).join(', ') : ''));
 if (aggr.frames) console.log('aggression: ' + (aggr.blocks * 3600 / aggr.frames).toFixed(1) + ' blocks thrown a minute (' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute; ' + Math.round(aggr.frames / 3600) + ' minutes)');
 if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed + ' of ' + forgone.decisions + ' decisions offered a line that lives and throws more than the one played (' + forgone.blocks + ' blocks)');
+if (Object.keys(carryWhy).length) console.log('lines in progress not carried on: ' + Object.keys(carryWhy).map(function (k) { return carryWhy[k] + ' ' + (CARRY_WHY[k] || 'code ' + k); }).join(', '));
 if (allow.n) console.log('the input allowance: of ' + allow.n + ' decisions, ' + allow.at.map(function (v) { return Math.round(100 * v / allow.n) + '%'; }).join(' / ') +
   ' made with 0-5 / 6-20 / 21-40 / over 40 actions left of the limit; lines in progress dropped at a step no longer there ' + allow.drop2 + ', ' + allow.drop2cut0 + ' at its next swap (' + allow.why.a + ' its walk over the allowance, ' + allow.why.n + ' no swap there, ' + allow.why.w + ' its walk not begun within a reaction)');
 if (allow.cut[0] + allow.cut[1] + allow.cut[2]) console.log('lines the judge cut: ' + allow.cut[0] + ' a first walk over the allowance, ' + allow.cut[1] + ' no swap there, ' + allow.cut[2] +
