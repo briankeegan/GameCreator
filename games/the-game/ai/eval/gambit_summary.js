@@ -33,7 +33,7 @@ var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
 // the ideas left ready on the board a line played leaves, where the rank asked (ideas=)
 var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
-var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, behind: 0, behindGames: 0, behindWorst: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
+var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, pastFrame: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, behind: 0, behindGames: 0, behindWorst: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
 var kept = { n: 0, held: 0 };
 // LOSSES BY CAUSE: the decisions of a lost game's last 600 frames read for why it was lost -- the input window run dry, the panels run
 // out, the hold played over a line lost later, no break found -- the first that holds its tag; the numbers it was read from beside it
@@ -167,7 +167,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     var over2 = lines.filter(function (l) { return l.indexOf('match over: ') >= 0; }).pop();
     if (over2) {
       var o = JSON.parse(over2.slice(over2.indexOf('match over: ') + 12));
-      budget.late += o.late || 0; budget.lateWorst = Math.max(budget.lateWorst, o.late || 0);
+      budget.late += o.late || 0; budget.lateWorst = Math.max(budget.lateWorst, o.late || 0); budget.pastFrame += o.pastFrame || 0;
       budget.diverged += o.diverged || 0; if (o.diverged) budget.divergedGames++;
       budget.behind += o.behind || 0; if (o.behind) budget.behindGames++; budget.behindWorst = Math.max(budget.behindWorst, o.behindWorst || 0);
       budget.starved += o.starved || 0; budget.inHand += o.inHand || 0; budget.guarded += o.guarded || 0; budget.refused += o.refused || 0;
@@ -257,7 +257,7 @@ console.log('several ideas at once: ' + moves.together + ' clears begun while an
             several.ideas2 + ' of ' + several.ideasN + ' times');
 if (Object.keys(links).length) console.log('chain links past two, by cause: ' + ['garbage', 'swap', 'alone'].map(function (w) { return w + ' ' + fmt(links[w] || {}); }).join('; '));
 console.log('budgets: ' + budget.over + ' frames over the think budget, slowest frame ' + budget.worst + ' ms, ' + budget.dropped + ' keys dropped, ' +
-            budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), ' + budget.guarded + ' answers whose keys the input allowance refused, ' + budget.refused + ' with no keys to press them within a reaction, over ' + budget.games + ' games');
+            budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), ' + budget.pastFrame + ' answers taken past their frame (the work clock behind the wall: the game no longer its seed\'s alone), ' + budget.guarded + ' answers whose keys the input allowance refused, ' + budget.refused + ' with no keys to press them within a reaction, over ' + budget.games + ' games');
 if (budget.decisions) console.log('decisions the clock cut: ' + budget.out + ' of ' + budget.decisions + ' (' + (100 * budget.out / budget.decisions).toFixed(1) + '%)');
 // THE TRUTH: every board the frame loop predicted is the one the game made; one that is not is a plan made on a board that never was
 console.log('truth: ' + budget.diverged + ' boards predicted otherwise than the game made them, in ' + budget.divergedGames + ' of ' + budget.games + ' games');

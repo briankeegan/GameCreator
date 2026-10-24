@@ -980,7 +980,7 @@ static void jobsDone(Ctx *x) {
 // the threads' timing, as a host whose answers are the board's alone needs)
 static void jobsAll(Ctx *x) {
   if (!poolBusy) return;
-  for (int32_t i = 0; i < pool.ntasks / 4 && i < jobRes.n + pool.ntasks; i++) while (__atomic_load_n(&jobRes.a[i], __ATOMIC_ACQUIRE) == PENDING) {}
+  for (int32_t i = 0; i < pool.ntasks; i++) while (__atomic_load_n(&jobRes.a[i], __ATOMIC_ACQUIRE) == PENDING) {}
   finishPhase(x);
   pool.job = 0; __atomic_store_n(&poolBusy, 0, __ATOMIC_RELEASE);
 }

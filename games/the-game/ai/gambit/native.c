@@ -36,9 +36,11 @@ int abort_poll(void) { return __atomic_load_n(&abortId, __ATOMIC_SEQ_CST) >= __a
 double clock_ms(void) { return hostNowMs(); }
 // THE DECISION'S CLOCK: the engine's work, never the wall's -- WORK_PER_MS frames stepped a millisecond, each thread its own count
 // (core/clock.h clockWork) -- so a board gets the same answer on any machine and the game is its seed's. The wall stays the guard: a
-// decision the game's frame overtakes is cut there (frameOut) and counted (wallCut). Measured: 900-3,800 frames a wall ms on the game's
-// own machine, 1,500 on average (a 4-core box, the workers on), so the work fits the wall with room.
-#define WORK_PER_MS 1000.0
+// decision the game's frame overtakes is cut there (frameOut) and counted (wallCut), and an answer taken after its own frame is counted
+// by the frame loop (pastFrame). Measured on a 4-core box, the workers and the game on it: 462 frames a wall ms in the slowest of 145
+// decisions, 697 at the 5th percentile, 1,250 the median -- WORK_PER_MS a margin under the slowest (each decision's log line: work= and
+// wallMs=).
+#define WORK_PER_MS 300.0
 static double workNowMs(void) { return (double)clockWork / WORK_PER_MS; }
 static void flog(const char *s) { hostLog(s); }
 

@@ -50,7 +50,7 @@ static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *ar
 static Board *swapRing[SWAPRING]; static int32_t swapRingAt[SWAPRING], swapRingN;
 
 typedef struct {
-  int32_t frames, decisions, played, late, diverged, refused, guarded, unasked, idle, followed, noLine, unforeseen, reasked, revealed,
+  int32_t frames, decisions, played, late, pastFrame, diverged, refused, guarded, unasked, idle, followed, noLine, unforeseen, reasked, revealed,
           raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps, starved, inHand;
   int32_t behind, behindWorst;   // (a line's swaps whose keys began later than the frame the judge pressed them from, and by how much at most)
   int32_t revealCleared;         // (plans dropped for a panel unseen when they were made coming to a clear: front.c revealClears)
@@ -520,6 +520,9 @@ static void take(void) {
     // off, used time it was given, not time the next one needs)
     double took = a.ms - a.idleMs > 0 ? a.ms - a.idleMs : 0, most = (cfgReaction + 1) * F.msPerFrame;
     F.thinking[F.nthinking++] = took < most ? took : most;
+    // (an answer taken after its own frame (native.c readyFrame): the work clock's machine fell behind the wall's, and the game is no
+    // longer the seed's alone -- counted, as the reports read it)
+    if (a.readyFrame < F.now) F.st.pastFrame++;
     if (!F.pending || a.id != F.pId) { F.st.unasked++; continue; }
     F.pending = 0;
     if (a.error || a.kind < 0) continue;
@@ -945,10 +948,10 @@ static void afterFrame(int32_t bits) {
 
 // THE MATCH'S STATS as one JSON line, as the reports read it ("match over: {...}")
 static void statsLine(char *out, int cap) {
-  int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"diverged\":%d,\"refused\":%d,"
+  int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"pastFrame\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
                    "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"attacks\":{\"combo\":{",
-                   F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
+                   F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.pastFrame, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
                    F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.behind, F.st.behindWorst, F.st.revealCleared);
   int first = 1;
