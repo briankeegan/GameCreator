@@ -4,7 +4,7 @@
 //   1. a first swap that breaks;
 //   2. resting garbage, nothing popping: THE TOUCH BEAM -- lines kept by how near a break they are (breakNear, then how even the stack
 //      under the garbage is), grown a swap a level for TOUCH_DEPTH levels, TOUCH_BEAM wide and then TOUCH_WIDER; the lines the last
-//      decision was growing (resume) are played again first and carried on;
+//      decision was growing (resume) are played again first and carried on, half of every level's beam theirs;
 //   3. a slab popping (wait: the frames of pop left): a first swap after which the pop's end breaks; then the first of a pair; then the
 //      aimed lineup (the colours the converting row turns into, met by pairs on top of their columns); then a first swap leaving a
 //      break one swap away once the board has settled; then, the cursor being free, the touch beam on the garbage elsewhere.
@@ -29,7 +29,7 @@ static LOCAL int32_t touchFrom;
 #define LINEUP_AFTER 30
 #define LINEPOOL 8192   // lines one level holds: TOUCH_WIDE x the swaps of a board
 
-typedef struct { int32_t key, n, s, h, len, kept; int32_t path[MAXPATH]; } Line;
+typedef struct { int32_t key, n, s, h, len, kept, res; int32_t path[MAXPATH]; } Line;   // res: grown from a line the last decision carried on
 typedef struct { int32_t n, len[KEEPN]; int32_t path[KEEPN][MAXPATH]; } Paths;
 // THE ANSWER (breakMoves' return): depth 1 with the first swaps that break (moves) and how -- the line (path), the line-up pairs
 // (lines, one per first swap found), or depth 0 with the line nearest a break (toward) and the lines to choose among (towards)
@@ -279,7 +279,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     if (!(s->resume->len[i] > 0 && s->resume->len[i] < LONGEST)) continue;
     Line *a = lineNew(); if (!a) break;
     a->len = s->resume->len[i]; for (int k = 0; k < a->len; k++) a->path[k] = s->resume->path[i][k];
-    a->n = s->root; a->kept = 0;   // kept: the swaps played so far
+    a->n = s->root; a->kept = 0; a->res = 1;   // kept: the swaps played so far
     act[nact++] = a;
   }
   while (nact && !SEARCH_OUT()) {
@@ -335,19 +335,26 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       // (the line nearest a break the beam has seen: TOWARD, returned when no break is found)
       if (ntl && (!s->haveToward || tl[0]->s > s->towardS)) { s->haveToward = 1; s->towardS = tl[0]->s; s->towardLen = tl[0]->len; for (int k = 0; k < tl[0]->len; k++) s->toward[k] = tl[0]->path[k]; }
       keepPaths(&o->keepOut, tl, ntl < KEEPN ? ntl : KEEPN);
-      // Swaps made in another order often leave the same board: each board is kept once, its best-scoring line.
+      // Swaps made in another order often leave the same board: each board is kept once, its best-scoring line. (THE SEARCH CARRIED ON:
+      // half the beam is the lines grown from the ones the last decision carried, best first, the rest the best of all -- so the beam
+      // grows deeper decision after decision while the board is held, beside a search from the board as it is now)
+      static LOCAL uint8_t took[LINEPOOL];
       int nk = 0;
-      for (int i = 0; i < ntl && nk < beam; i++) {
-        Line *l = tl[i];
-        Node *ln = NODE(x, l->n);
-        int dup = 0;
-        for (int q = 0; q < nk && !dup; q++) {
-          Node *kn = NODE(x, kept[q]->n);
-          if ((int32_t)kn->hash != l->h || kn->keyn != ln->keyn) continue;
-          dup = memcmp(kn->key, ln->key, sizeof(int32_t) * ln->keyn) == 0;
+      for (int i = 0; i < ntl; i++) took[i] = 0;
+      for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < ntl && nk < beam && (pass || nk < beam / 2); i++) {
+          Line *l = tl[i];
+          if (took[i] || (!pass && !l->res)) continue;
+          Node *ln = NODE(x, l->n);
+          int dup = 0;
+          for (int q = 0; q < nk && !dup; q++) {
+            Node *kn = NODE(x, kept[q]->n);
+            if ((int32_t)kn->hash != l->h || kn->keyn != ln->keyn) continue;
+            dup = memcmp(kn->key, ln->key, sizeof(int32_t) * ln->keyn) == 0;
+          }
+          took[i] = 1;
+          if (!dup) kept[nk++] = l;
         }
-        if (!dup) kept[nk++] = l;
-      }
       ntl = nk;
       for (int i = 0; i < nk; i++) tl[i] = kept[i];
       int ntn = 0, ar = td & 1;
@@ -527,7 +534,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   int nf = swapsOfNode(x, s.root, ms), nfirsts = 0, at1 = -1;
   for (int i = 0; i < nf; i++) {
     Line *l = lineNew(); if (!l) break;
-    l->key = ms[i]; l->len = 1; l->path[0] = ms[i];
+    l->key = ms[i]; l->len = 1; l->path[0] = ms[i]; l->res = 0;
     l->n = stepMarked(&s, s.root, MK_SWAP, ms[i], 0);
     firsts[nfirsts++] = l;
   }
