@@ -525,6 +525,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey);
     }
   }
+  // (THE LINE IN PROGRESS PUT DOWN: what was played over it and the order's key that did it -- carryBy=play:kKEY, or play:f when the
+  // order's own filter took it out before the ranking)
+  if (carriedJ && top && top != carriedJ) {
+    int ranked = 0; for (int i = 0; i < P.ncands && !ranked; i++) ranked = order[i] == carriedJ;
+    L_s(" carryBy="); L_play(top->hold ? PLAY_HOLD : top->k.play);
+    if (ranked) { compareJudged(top, carriedJ); L_s(":k"); L_i(cmpKey); } else L_s(":f");
+  }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
