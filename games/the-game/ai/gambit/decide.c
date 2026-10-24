@@ -15,7 +15,14 @@ static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise 
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
 // board every line ends on
 static Keep floorKeep; static int32_t floorKeepOn;
-static int decisionFloor(const Board *b) { return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1; }
+// THE FLOOR, the one test (outcome.c spendsFloor reads it of the board a line leaves): the rules' keep (facts.c keepsFloor), and while the
+// owner's saving band holds -- begun topped with four rows' worth of panels or fewer, kept until the board holds eight rows' worth and
+// the panels sure to make the list's largest combo ((size - 1) x colours and one) -- the band's top too. 1 kept, 0 not, -1 no floor.
+static int32_t savingPanels, bandTop;   // (the band across decisions; a new game ends it -- gb_new_game)
+static int decisionFloor(const Board *b) {
+  if (savingPanels && panelsOn(b) < bandTop) return 0;
+  return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1;
+}
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -46,7 +53,15 @@ static int readBoard_(Read *R) {
   R->list = rule->list; R->end = rule->end;
   R->guides = R->list;
   R->by = deadlineOf(F, rule);
-  // (the board as it is under the rules' floor, by the one floor test: decisionFloor)
+  // (the owner's band, begun and ended on the board as it is)
+  {
+    int32_t colours = decQ.b->colors > 0 ? decQ.b->colors : 1, panels = panelsOn(decQ.b), big = 3;
+    for (int i = 0; i < R->list.n; i++) { const Test *t = &R->list.aim[i].combo; if (t->op == OP_GE || t->op == OP_EQ || t->op == OP_GT) big = imax(big, t->n + (t->op == OP_GT)); }
+    bandTop = imax((big - 1) * colours + 1, 8 * W);
+    if (!savingPanels && F->v[FACT_US_TOPPED] && panels <= 4 * W) savingPanels = 1;
+    else if (savingPanels && panels >= bandTop) savingPanels = 0;
+  }
+  // (the board as it is under the floor, by the one floor test: decisionFloor)
   R->belowFloor = decisionFloor(decQ.b) == 0;
   theList = R->list; listOn = 1;
   // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's -- before
