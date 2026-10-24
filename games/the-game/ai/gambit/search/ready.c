@@ -159,6 +159,14 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     return ok;
   }
   Ctx *x = readyCtx = ctxOf(readyCtx);
+  // (THE BOARD UNRAISED, everything landed and left alone a REST: the frame it is lost on, -1 alive -- a raise that leaves the board lost
+  // no sooner than this is no raise into its death: below the floor the board dies either way, and the raised rows are the panels of
+  // its next break)
+  int32_t baseLost = -1;
+  { static Board *b0, *b1; if (!b0) { b0 = nb_new(); b1 = nb_new(); }
+    Board *g0 = landedAll(q->b, q->arr, q->narr, last, b1);
+    if (g0) { cloneBoard(b0, g0); for (int g = 0; g < REST && b0->gameOverClock <= 0; g++) { b0->input = 0; run(b0); if (b0->gameOverClock > 0) baseLost = g; } }
+    else baseLost = 0; }
   for (int k = 1; k <= rows; k++) {
     cloneBoard(st, q->b);
     int32_t f = 0;
@@ -171,8 +179,10 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     // (and once landed, alive a REST left alone (outcome.c): a raise that leaves the board only a break found in its last frames is one
     // it dies of -- the decisions after it have no time to press it)
     { static Board *rest; if (!rest) rest = nb_new(); cloneBoard(rest, got);
-      for (int g = 0; g < REST && rest->gameOverClock <= 0; g++) { rest->input = 0; run(rest); }
-      if (rest->gameOverClock > 0) break; }
+      int32_t lostAt = -1;
+      for (int g = 0; g < REST && rest->gameOverClock <= 0; g++) { rest->input = 0; run(rest); if (rest->gameOverClock > 0) lostAt = g; }
+      if (lostAt >= 0 && !(baseLost >= 0 && lostAt >= baseLost)) break;
+      if (lostAt >= 0) { raiseAlive = k; continue; } }   // (lost no sooner than unraised: raised, no plan asked of it)
     raiseAlive = k;
     // (a plan once landed: the readiness every move is held to -- a break within two swaps that the list allows)
     Question q2 = *q; q2.b = got; q2.narr = 0;
