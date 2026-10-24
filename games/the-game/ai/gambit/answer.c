@@ -310,12 +310,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   memset(A, 0, sizeof *A);
   logN = 0; logBuf[0] = 0;
   double tStart = nowMs();
-  // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks)
-  { const Board *b = decQ.b; double dies = (hostTopped ? b->stopTime + b->preStopTime : framesToTop(b)) + b->health;
-    pressTap = decTap = hostTaps && allowanceKnown && dies <= TAP_DIES; }
-  decQ.tight = allowanceKnown && tightAt(allowance);
-  A->tap = pressTap;
-  pressTight = decQ.tight;
+  pressTap = decTap = 0; decQ.tight = pressTight = 0;   // (decided once the board is read, below)
   pressAllowance = allowanceKnown ? allowance : -1;
   if (!hostWin) nWinAges = -1;   // (the window: a native host's, said with the question -- native.c answerOne)
   hostWin = 0;
@@ -335,6 +330,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
   readyAsked = readyHit = 0; readyStop(); readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
+  // (a board near its end, by the frames the decision reads it is lost in left alone -- the dies fact, the garbage on its way landing)
+  pressTap = decTap = hostTaps && allowanceKnown && R.F.v[FACT_US_DIES] <= TAP_DIES;
+  A->tap = pressTap;
+  // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks)
+  decQ.tight = allowanceKnown && tightAt(allowance);
+  pressTight = decQ.tight;
   readMs = nowMs() - tStart;
   double brMs;
   // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
