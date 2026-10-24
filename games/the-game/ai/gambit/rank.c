@@ -336,10 +336,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
   }
-  // 1''. STARVED UNDER GARBAGE (the allowance at HOLDTIGHT or under): of two that survive alike, a line that breaks before one that breaks
-  // nothing, then the one that walks fewer actions -- the hold walks none: short of actions, only a break is worth what it spends, and
-  // the rest wait for the window to give some back
-  if (decF.under && pressAllowance >= 0 && pressAllowance <= HOLDTIGHT && (lx || lostAlike(x, y))) {
+  // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
+  // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
+  // and the rest wait for it to give some back
+  if (decF.under && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int bx = x->apBroke > 0, by = y->apBroke > 0;
     if (bx != by) return (cmpKey = __LINE__, (bx ? -1 : 1));
     if (!bx) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
