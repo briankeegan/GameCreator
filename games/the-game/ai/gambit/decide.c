@@ -293,12 +293,12 @@ static int ranked(const Read *R, const Found *S) {
   double orderShare = clockShareBegin(searchesEnd());
   // (the line in progress too: a line that lived by a break in reach lives on by it, its landed board the one already searched)
   #define READY_ASKS(J_) (!(J_)->o.lives && !(J_)->o.dead && (J_)->o.ready == NOT_ASKED)
-  // (THE KEPT PLAN'S LINES -- intentions and routes -- take none of the decision's own search: their readiness is what the workers or
-  // the kept breaks already hold, so the time is shared only over the lines the decision would ask with no plan kept)
+  // (THE KEPT PLAN'S LINES -- intentions and routes -- are asked as every line is: a worker's answer or this thread's search, the same
+  // either way; the readiness of a break in reach, below, is asked of the decision's own lines alone)
   #define EXTRA(J_) ((J_)->k.kept || (J_)->k.route)
   readySpread(n);
   int toAsk = 0;
-  for (int i = 0; i < n; i++) toAsk += READY_ASKS(order[i]) && !EXTRA(order[i]);
+  for (int i = 0; i < n; i++) toAsk += READY_ASKS(order[i]);
   // (BY YIELD: a board with a break in reach by the shape math has one found for it half the time; one with none, settled, once in
   // fifty, in nearly all of the time a decision spends on readiness -- so those in reach are asked first, best-ranked first, and the
   // rest in the time left)
@@ -306,8 +306,7 @@ static int ranked(const Read *R, const Found *S) {
   for (int i = 0; i < n && timeLeftMs() > 0; i++) {
     Judge *J = order[i];
     if (!READY_ASKS(J) || (J->o.j.readyNear < NEAR_MISS) != (pass == 0)) continue;
-    readyKnownOnly = EXTRA(J);
-    if (!readyKnownOnly) readyShare(toAsk--);
+    readyShare(toAsk--);
     if (J->hold) holdCand(R, J->wait, J);
     else {
       static Judge again; Cand kc = J->k;
@@ -318,7 +317,7 @@ static int ranked(const Read *R, const Found *S) {
       }
     }
   }
-  readyShare(0); readyFresh = 0; readyKnownOnly = 0;
+  readyShare(0); readyFresh = 0;
   sortJudged(order, n);
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
   if (!(n && order[0]->o.lives)) {

@@ -749,7 +749,6 @@ static int32_t readyPendIn(Ctx *x, int n, Board *b, uint32_t kh, int32_t kn) {
   readyPendN++;
   return readyPendN;
 }
-static int32_t readyKnownOnly;   // (a check answered only from what is known -- the kept breaks, the workers' -- never searched here)
 static int pendClaim(ReadyPend *p) { int32_t w = PEND_WAITING; return __atomic_compare_exchange_n(&p->state, &w, PEND_BUSY, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE); }
 static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   if (breakBusy) return NOT_ASKED;
@@ -759,14 +758,12 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   int32_t kn = readyKey(b, NODE(x, n), decQ.tight, &kh);
   readyAsked++;
   if (kn && readyFind(kh, readyKeyBuf, kn, why, whyN)) { readyHit++; return 1; }
-  // (a check answered only from what is known asks the kept breaks alone: a pend's answer is there or not by the threads' timing)
-  if (readyKnownOnly) return NOT_ASKED;
   ReadyPend *p = kn && readyPendN ? readyPendFind(kh, kn) : 0;
   if (p) {
     // (A BOARD A WORKER HAS: its search is the one this decision would make -- the same budget, p->budget -- so a board being searched is
     // waited for, and its work charged to this decision's clock as if searched here: the answer and the clock alike whichever thread ran it)
     int32_t st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE);
-    if (st == PEND_BUSY && !readyKnownOnly) while ((st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE)) == PEND_BUSY) {}
+    if (st == PEND_BUSY) while ((st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE)) == PEND_BUSY) {}
     // (searched out of its budget -- on a worker or here -- is the answer too: the same whichever thread ran it)
     if (st == PEND_OUT) { readyPre++; clockCharge(p->work); return NOT_ASKED; }
     if (st == PEND_NONE || st == PEND_FOUND) {
@@ -776,10 +773,8 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
       if (kn) readyKeep(kh, readyKeyBuf, kn, p->why, p->whyN);
       return 1;
     }
-    if (readyKnownOnly) return NOT_ASKED;
     if (!(st == PEND_WAITING && pendClaim(p))) p = 0;   // (claimed here: searched here, its budget the pend's)
   }
-  if (readyKnownOnly) return NOT_ASKED;
   static LOCAL Question q;
   memset(&q, 0, sizeof q);
   q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;
