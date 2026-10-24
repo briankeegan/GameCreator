@@ -45,6 +45,7 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   // (work 0: the wall clock's REPLAY_MS, as a game gives it -- the speed check's; else the work's, the same answer every time)
   double t0 = work > 0 ? 0 : clock_ms(), due = t0 + REPLAY_MS;
   int32_t taps = hostTaps; if (replayAllow >= 0) hostTaps = 1;
+  decGap = replayAllow >= 0 ? paceGap(replayAllow, 76, 600) : 0;   // (the pace the frame loop would ask with: the standard budget)
   answerQuestion(1, 0, topped, 0, 0, 0, 0, 0, 0, replayAllow >= 0, imax(0, replayAllow), -1, 0, (replayLow || replayRaise) && canRaiseOn(hostBoard), due, t0, 0);
   hostTaps = taps;   // (the raise asked of a low stack only)
   readyStop();   // (the readiness left searching beside the decision taken back before its clock is: the next decision would discard it)
@@ -167,6 +168,7 @@ EXPORT(gb_front_line) int gb_front_line(int n, const int32_t *mv, const int32_t 
 }
 static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out) {
   frontNew(90, -1, 0);
+  F.keyGap = paceGap(allow, F.limit, F.window);
   Board *b0 = F.truth; cloneBoard(b0, hostBoard);
   int32_t t0 = b0->clock;
   F.now = t0; F.npress = 0;
@@ -195,7 +197,7 @@ static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int
 EXPORT(gb_judge_line) int gb_judge_line(int n, const int32_t *mv, int allow, int tap, int settled, int32_t *out) {
   curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
   decQ = hostQ;
-  pressTap = decTap = tap; decQ.tight = tightAt(allow); pressTight = decQ.tight; pressAllowance = allow;
+  pressTap = decTap = tap; decQ.tight = tightAt(allow); pressTight = decQ.tight; pressAllowance = allow; decGap = paceGap(allow, 76, 600);
   JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0 };
   Judged j;
   judge(&decQ, mv, n, &jo, &j);

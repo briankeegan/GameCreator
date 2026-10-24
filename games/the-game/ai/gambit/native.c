@@ -174,6 +174,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   hostQ.b = hostBoard; hostQ.holdLeft = q->holdLeft; hostQ.holdStarted = q->holdStarted; hostQ.tight = 0;
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
   gb_refused(q->refA, q->refB);
+  __atomic_store_n(&decGap, q->gap, __ATOMIC_RELAXED);   // (the pace the frame loop presses this decision's line with)
   hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
                  canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, 0, 0);

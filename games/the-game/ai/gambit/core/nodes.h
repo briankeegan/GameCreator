@@ -221,9 +221,20 @@ static void batchDone(void) { batchN = 0; }
 #define SWAP_SHOWN 5
 static int32_t cfgReaction = 12, cfgSwapGap = 12, cfgCursor = 4;
 EXPORT(gb_config) void gb_config(int reaction, int swapGap, int cursorMoveFrames) { cfgReaction = reaction; cfgSwapGap = swapGap; cfgCursor = cursorMoveFrames; }
+// THE PACE: the hands slow as the input window empties -- the wait after a swap twice the window's time to give back an action, times
+// the share of the limit spent: SWAP_SHOWN's 5 frames with the window full, 8 at half, 12 at a quarter, 16 empty (the standard budget, 76
+// actions in 600 frames). The frame loop sets it with each question (front.c ask: left, the allowance at the question's frame) and
+// presses each line with the pace it was judged with; the decision's every context is made with it (decGap).
+static int paceGap(int left, int limit, int window) {
+  if (limit <= 0 || window <= 0 || left < 0) return 0;
+  int spent = limit - imin(left, limit);
+  return (2 * window * spent + limit * limit - 1) / (limit * limit);
+}
+static int32_t decGap;
+static int handsGap(int pace) { return imax(imax(cfgSwapGap, SWAP_SHOWN), pace); }
 static Ctx *ctxOf(Ctx *x) {
   if (!x) x = ns_ctx_new();
-  ns_ctx_set(x, cfgReaction, cfgCursor, 0, 0); ns_ctx_gap(x, imax(cfgSwapGap, SWAP_SHOWN));
+  ns_ctx_set(x, cfgReaction, cfgCursor, 0, 0); ns_ctx_gap(x, handsGap(__atomic_load_n(&decGap, __ATOMIC_RELAXED)));
   return x;
 }
 // THE QUESTION: the board a decision is made on, the raise in hand and the garbage on its way -- what every search roots its lines at.

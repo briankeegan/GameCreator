@@ -24,6 +24,7 @@ typedef struct {
   int32_t oppHas, oppOut, oppTop, oppStop;   // the opponent's stop: the frames it is held up by at the question's frame
   int32_t refA, refB, refUntil;              // a pair the press guard refused (a wasted three), its panels' ids, kept out until a frame
   int32_t nages, ages[512], window;          // the input window at the question's frame: how long before it each action inside went down
+  int32_t gap;                               // the pace the decision judges with (core/nodes.h paceGap)
   double ms, posted;
   Arrival arr[MAXARRIVALS];
   Board *b;
@@ -109,6 +110,7 @@ static struct {
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
   int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil, guardSpoil, loggedRefusedBoards;
+  int32_t pGap, lineGap, altGap, keyGap;   // (the pace the question out, the line in hand and the move in hand were judged with; the keys made now)
   int32_t pPosted, lineAsked, altAsked, lastReveal;   // (the frames questions were posted on, and colours were last shown on)   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
 } F;
 
@@ -353,7 +355,7 @@ static Ctx *keyCtx;
 // (keepQueue: room for the MAXARR blocks the search lands) and the garbage on its way -- the keys (keysOf) and the press guard (wastedSwap)
 static Board *keyBoard;
 static int keyRoot(const Board *b, int32_t holdLeft, int32_t holdStarted, const Arrival *arr, int32_t narr) {
-  keyCtx = ctxOf(keyCtx);
+  keyCtx = ctxOf(keyCtx); ns_ctx_gap(keyCtx, handsGap(F.keyGap));   // (the line's own pace, never the decision's being made now)
   if (!keyBoard) keyBoard = nb_new();
   if (!keyBoard) return -1;
   copyBoard(keyBoard, b);
@@ -496,7 +498,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   for (int i = 0; i < npend; i++) if (pend[i].at > b->stopWatch) F.pArr[F.pNarr++] = pend[i];
   memcpy(F.pKnew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.pNknew = F.narr;
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
-  q.allowance = allowanceAt(at); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
+  q.allowance = allowanceAt(at); q.gap = F.pGap = paceGap(q.allowance, F.limit, F.window); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
   { int32_t prev = F.prevBits; q.nages = 0; q.window = F.window;
     for (int i = 0; i < F.npress && q.nages < 512; i++) if (at - F.pressFrames[i] < F.window) q.ages[q.nages++] = at - F.pressFrames[i];
@@ -537,10 +539,10 @@ static void take(void) {
     if (a.kind == 0 && a.empty) {
       F.st.starved++;
       if (F.nalt && F.altMode != modeAt(at)) F.nalt = 0;
-      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineTap = 0; F.lineN = F.nalt; F.lineAsked = F.altAsked; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
+      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineGap = F.altGap; F.lineTap = 0; F.lineN = F.nalt; F.lineAsked = F.altAsked; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
       if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
     }
-    if (!a.empty) { F.altMode = modeAt(a.at); F.altAsked = F.pPosted; F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
+    if (!a.empty) { F.altMode = modeAt(a.at); F.altGap = F.pGap; F.altAsked = F.pPosted; F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
     // (A RAISE PUT OFF: nothing pressed until the frame the stack takes it, then the raise held for its rows -- the keys made here, as a
     // raise's are, on the board as it will be then. The questions go on meanwhile, from the frame after this answer's: the wait is the
@@ -558,6 +560,7 @@ static void take(void) {
       F.lineN = 0; F.haveLineOf = 0;
       continue;
     }
+    F.keyGap = F.pGap;
     if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
       F.st.refused++;
       if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
@@ -589,7 +592,7 @@ static void take(void) {
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
     F.lineWastes = a.wastes;
     unseenOf(F.pBoard);
-    F.lineN = a.nhand; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
+    F.lineN = a.nhand; F.lineGap = F.pGap; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0;
   }
 }
@@ -614,6 +617,7 @@ static int follow(void) {
   }
   int32_t mv = F.line[0], hl, hs;
   if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) return lineDropped(due, "no board predicted");
+  F.keyGap = F.lineGap;
   if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) return lineDropped(due, "no keys press it");
   if (F.pending) abortTo(F.pId);
   F.pending = 0;
@@ -765,6 +769,7 @@ static int wastedSwap(const Board *t, int32_t bits) {
   F.guardSpoil = 0;
   if (wastedThree(guardBoard, aloneBoard)) return 1;
   // (and the board's own chain spoiled by the swap: the judge's own test, on a root made of the board as it is and the garbage on its way)
+  F.keyGap = F.lineGap;
   int root = keyRoot(t, 0, 0, F.arr, F.narr), s = root >= 0 && spoilsAt(keyCtx, root, t->curRow, t->curCol);
   ns_reset(keyCtx);
   F.guardSpoil = s;
