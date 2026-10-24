@@ -106,15 +106,16 @@ static int stepFitsAt(Ctx *x, int i) {
 static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 // (a step's wasted threes: its clears of three, no link of a chain, in a step that breaks nothing and makes no chain)
 // A WASTED THREE -- the one test, the judge's (firstThree) and the press guard's (front.c wastedSwap): g the board on the frame its swap
-// is pressed, a the same board with it not pressed, both played on FIRST_LOOK frames side by side -- the panels g matches that a does
-// not, exactly three, none beside garbage -- and then on till both are still (THREE_SETTLE at most): g's fall no longer a chain than
+// is pressed, a the same board with it not pressed, both played on FIRST_LOOK frames side by side -- the first clear g makes that a does
+// not (the panels matched on the first frame any are, as the game counts a clear), exactly three, none beside garbage -- and then on till
+// both are still (THREE_SETTLE at most): g's fall no longer a chain than
 // a's. g and a are played on (the caller's copies).
 #define FIRST_LOOK 30
 static int garbageCells(const Board *b) { int n = 0; for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) n += !!b->p[r][c].f[ISGARBAGE]; return n; }
 #define THREE_SETTLE 400
 static int wastedThree(Board *g, Board *a) {
   static LOCAL int32_t was[MAXROWS * W * 2], got[MAXROWS * W * 2];
-  int nw = 0, ng = 0, touch = 0;
+  int nw = 0, ng = 0, touch = 0, first = -1;
   static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
   for (int f = 0; f < FIRST_LOOK && g->gameOverClock <= 0; f++) {
     run(g); run(a); g->input = a->input = 0; g->pressSwap = a->pressSwap = 0;
@@ -129,8 +130,8 @@ static int wastedThree(Board *g, Board *a) {
       if (p[STATE] != MATCHED || p[ISGARBAGE]) continue;
       int old = 0; for (int q = 0; q < nw && !old; q++) old = was[q] == p[ID];
       for (int q = 0; q < ng && !old; q++) old = got[q] == p[ID];
-      if (old || ng >= MAXROWS * W * 2) continue;
-      got[ng++] = p[ID];
+      if (old || ng >= MAXROWS * W * 2 || (first >= 0 && f != first)) continue;
+      first = f; got[ng++] = p[ID];
       for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc = c + DC[d]; if (rr >= 1 && rr < g->nrows && cc >= 1 && cc <= W && g->p[rr][cc].f[ISGARBAGE]) touch = 1; }
     }
   }
@@ -364,6 +365,17 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (o->settled || last) links += imax(0, chainOfStats(&st) - 1);
     if (chainOfStats(&st) > chain) chain = chainOfStats(&st);
     broke += st.broke; threes += threesOf(&st);
+    // (A SWAP THAT SPOILS THE BOARD'S OWN CHAIN, a swap at a time: the board it is pressed on left alone to rest makes a chain of two or
+    // more, and with the swap pressed and let rest a shorter one, no more garbage broken -- the three that began that chain made for
+    // nothing, whatever the line's later swaps make; the press guard's test, front.c wastedSwap)
+    if (!last) {
+      int al = settleOf(x, n), sw = step(x, n, MK_SETTLE, mr, mc, 0);
+      Stats sa, ss;
+      if (liveNode(x, al) && liveNode(x, sw) && statsOf(x, al, &sa) && statsOf(x, sw, &ss)) {
+        int32_t ca = sa.cleared > 0 ? chainOfStats(&sa) : 0, cs = ss.cleared > 0 ? chainOfStats(&ss) : 0;
+        if (ca >= 2 && cs < ca && ss.broke <= sa.broke) threes++;
+      }
+    }
     j->done = NODE(x, out)->t;
     if (!last) lastAt = j->done;
     n = out; KB(n);

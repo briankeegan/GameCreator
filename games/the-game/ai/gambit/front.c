@@ -752,13 +752,13 @@ static int wastedSwap(const Board *t, int32_t bits) {
   aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
   F.guardSpoil = 0;
   if (wastedThree(guardBoard, aloneBoard)) return 1;
-  // (and the board's own chain spoiled by the line from here, as the judge asks it of the whole line: rank.c cutsShort)
+  // (and the board's own chain spoiled by the swap, the board left alone after it -- as the judge asks it of every swap of a line)
   copyBoard(guardBoard, t); copyBoard(aloneBoard, t);
   guardBoard->input = bits & ~IN_SWAP; guardBoard->pressSwap = 1;
   aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
   memcpy(guardPendG, F.arr, sizeof(Arrival) * (unsigned long)F.narr); memcpy(guardPendA, F.arr, sizeof(Arrival) * (unsigned long)F.narr);
   guardNpG = guardNpA = F.narr;
-  int s = spoilsChain(guardBoard, aloneBoard, planKeyAt, guardLand);
+  int s = spoilsChain(guardBoard, aloneBoard, 0, guardLand);
   F.guardSpoil = s;
   return s;
 }
