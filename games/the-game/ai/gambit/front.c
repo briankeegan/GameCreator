@@ -64,7 +64,8 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t noneBy[NPLAYS + 1];   // (the swaps that came to nothing, by the kind of line that pressed them)
-  int32_t noneLast, noneOn, noneDropped;   // (and by what became of their line: their swap its last, its later swaps pressed, or dropped before them)
+  int32_t noneLast, noneOn, noneDropped;
+  int32_t converted, spent;   // (THE BOARD'S MATERIAL: garbage cells a break turned to panels, and panels a clear took off the board)   // (and by what became of their line: their swap its last, its later swaps pressed, or dropped before them)
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
   int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
 } FStats;
@@ -661,6 +662,8 @@ static void countAttacks(const Board *b) {
   }
   memcpy(F.matchedIds, now, sizeof(int32_t) * (unsigned long)nn); F.nmatched = nn;
   int brokeNow = gm > F.gMatched;
+  if (brokeNow) F.st.converted += gm - F.gMatched;
+  F.st.spent += fresh;
   int bySwap = movesOn(b, freshIds, fresh, brokeNow); F.gMatched = gm;
   int32_t cc = b->chainCounter;
   // (a clear of three with no garbage broken waits: a chain it starts makes it a link, and it was no waste)
@@ -995,7 +998,7 @@ static void statsLine(char *out, int cap) {
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"noneBy\":{");
   first = 1;
   for (int z = 0; z <= NPLAYS && k < cap; z++) if (F.st.noneBy[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":%d", first ? "" : ",", z < NPLAYS ? PLAY_NAME[z] : "raise", F.st.noneBy[z]); first = 0; }
-  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"noneHow\":{\"last\":%d,\"on\":%d,\"dropped\":%d}", F.st.noneLast, F.st.noneOn, F.st.noneDropped);
+  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"noneHow\":{\"last\":%d,\"on\":%d,\"dropped\":%d},\"material\":{\"converted\":%d,\"spent\":%d}", F.st.noneLast, F.st.noneOn, F.st.noneDropped, F.st.converted, F.st.spent);
   if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d,\"guardLet\":%d,\"refusedSpoil\":%d}}",
                         F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet, F.st.refusedSpoil);
 }
