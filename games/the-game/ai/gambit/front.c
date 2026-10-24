@@ -65,7 +65,9 @@ typedef struct {
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t noneBy[NPLAYS + 1];   // (the swaps that came to nothing, by the kind of line that pressed them)
   int32_t noneLast, noneOn, noneDropped;
-  int32_t converted, spent;   // (THE BOARD'S MATERIAL: garbage cells a break turned to panels, and panels a clear took off the board)   // (and by what became of their line: their swap its last, its later swaps pressed, or dropped before them)
+  int32_t converted, spent, landed;   // (THE BOARD'S MATERIAL: garbage cells a break turned to panels, panels a clear took off the board,
+                                      // and garbage cells landed on it)
+  int32_t gCells;   // (the garbage cells on the board last frame)   // (and by what became of their line: their swap its last, its later swaps pressed, or dropped before them)
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
   int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
 } FStats;
@@ -648,9 +650,10 @@ static uint8_t wasGarbage[WASG];
 static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke);
 static void countAttacks(const Board *b) {
   static int32_t now[MAXROWS * W], freshIds[MAXROWS * W];
-  int nn = 0, fresh = 0, fromGarbage = 0, gm = 0;
+  int nn = 0, fresh = 0, fromGarbage = 0, gm = 0, gc = 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
     const int32_t *f = b->p[r][c].f;
+    gc += f[ISGARBAGE] != 0;
     if (f[ISGARBAGE] && f[ID] != NUL) wasGarbage[f[ID] & (WASG - 1)] = 1;
     if (f[ISGARBAGE] && f[STATE] == MATCHED) gm++;
     if (f[STATE] == MATCHED && !f[ISGARBAGE] && f[COLOR] > 0) {
@@ -664,6 +667,8 @@ static void countAttacks(const Board *b) {
   int brokeNow = gm > F.gMatched;
   if (brokeNow) F.st.converted += gm - F.gMatched;
   F.st.spent += fresh;
+  if (gc > F.st.gCells) F.st.landed += gc - F.st.gCells;
+  F.st.gCells = gc;
   int bySwap = movesOn(b, freshIds, fresh, brokeNow); F.gMatched = gm;
   int32_t cc = b->chainCounter;
   // (a clear of three with no garbage broken waits: a chain it starts makes it a link, and it was no waste)
@@ -998,7 +1003,7 @@ static void statsLine(char *out, int cap) {
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"noneBy\":{");
   first = 1;
   for (int z = 0; z <= NPLAYS && k < cap; z++) if (F.st.noneBy[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":%d", first ? "" : ",", z < NPLAYS ? PLAY_NAME[z] : "raise", F.st.noneBy[z]); first = 0; }
-  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"noneHow\":{\"last\":%d,\"on\":%d,\"dropped\":%d},\"material\":{\"converted\":%d,\"spent\":%d}", F.st.noneLast, F.st.noneOn, F.st.noneDropped, F.st.converted, F.st.spent);
+  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"noneHow\":{\"last\":%d,\"on\":%d,\"dropped\":%d},\"material\":{\"converted\":%d,\"spent\":%d,\"landed\":%d}", F.st.noneLast, F.st.noneOn, F.st.noneDropped, F.st.converted, F.st.spent, F.st.landed);
   if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d,\"guardLet\":%d,\"refusedSpoil\":%d}}",
                         F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet, F.st.refusedSpoil);
 }

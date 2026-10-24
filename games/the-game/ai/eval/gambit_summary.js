@@ -33,7 +33,7 @@ var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wal
 var cutShort = { boards: 0, cut: 0, cutKept: 0, cutAll: 0, cutNone: 0 };
 // EVERY MOVE ON THE WAY: the swaps pressed by what they came to, and the cells the cursor walked (front.c moveOn)
 var noneBy = {}, noneHow = {};
-var balance = { lost: { converted: 0, spent: 0, frames: 0, games: 0 }, survived: { converted: 0, spent: 0, frames: 0, games: 0 } };   // (the board's material: front.c converted, spent)   // (the swaps that came to nothing, by the kind of line that pressed them)
+var balance = { lost: { converted: 0, spent: 0, landed: 0, frames: 0, games: 0 }, survived: { converted: 0, spent: 0, landed: 0, frames: 0, games: 0 } };   // (the board's material: front.c converted, spent)   // (the swaps that came to nothing, by the kind of line that pressed them)
 var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0, wasted: 0, wastedAlone: 0, refusedWaste: 0, saved: 0, guardLet: 0, refusedSpoil: 0 };   // (wasted: clears of three that broke nothing and were no chain's link)
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
 // the ideas left ready on the board a line played leaves, where the rank asked (ideas=)
@@ -201,7 +201,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       aggr.frames += o.frames || 0;
       Object.keys(moves).forEach(function (k) { moves[k] += (o.moves || {})[k] || 0; });
       Object.keys(o.noneHow || {}).forEach(function (k) { noneHow[k] = (noneHow[k] || 0) + o.noneHow[k]; });
-      if (o.material) { var mb = balance[m[2]]; mb.converted += o.material.converted || 0; mb.spent += o.material.spent || 0; mb.frames += o.frames || 0; mb.games++; }
+      if (o.material) { var mb = balance[m[2]]; mb.converted += o.material.converted || 0; mb.spent += o.material.spent || 0; mb.landed += o.material.landed || 0; mb.frames += o.frames || 0; mb.games++; }
       Object.keys(o.noneBy || {}).forEach(function (k) { noneBy[k] = (noneBy[k] || 0) + o.noneBy[k]; });
       Object.keys(a.combo || {}).forEach(function (z) { var g = PA.comboGarbage(+z); aggr.attacks += a.combo[z]; aggr.blocks += a.combo[z] * g.length; aggr.cells += a.combo[z] * g.reduce(function (s, w) { return s + w; }, 0); });
       Object.keys(a.chain || {}).forEach(function (z) { aggr.attacks += a.chain[z]; aggr.blocks += a.chain[z] * (+z - 1); aggr.cells += a.chain[z] * 6 * (+z - 1); });
@@ -264,7 +264,7 @@ if (rule.refill) console.log('the floor\'s raise: asked in ' + rule.refill + ' d
 if (aggr.frames) console.log('aggression: ' + (aggr.blocks * 3600 / aggr.frames).toFixed(1) + ' blocks thrown a minute (' + (aggr.attacks * 3600 / aggr.frames).toFixed(1) + ' attacks, ' + Math.round(aggr.cells * 3600 / aggr.frames) + ' garbage cells a minute; ' + Math.round(aggr.frames / 3600) + ' minutes)');
 if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed + ' of ' + forgone.decisions + ' decisions offered a line that lives and throws more than the one played (' + forgone.blocks + ' blocks)');
 var most = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (k) { return k + ' ' + o[k]; }).join(', '); };
-['survived', 'lost'].forEach(function (k) { var b = balance[k]; if (b.frames) console.log('the board\'s material, games ' + k + ' (' + b.games + '): ' + (b.converted * 3600 / b.frames).toFixed(0) + ' garbage cells turned to panels a minute, ' + (b.spent * 3600 / b.frames).toFixed(0) + ' panels cleared, ' + ((b.converted - b.spent) * 3600 / b.frames).toFixed(0) + ' net'); });
+['survived', 'lost'].forEach(function (k) { var b = balance[k]; if (b.frames) console.log('the board\'s material, games ' + k + ' (' + b.games + '): ' + (b.landed * 3600 / b.frames).toFixed(0) + ' garbage cells landed a minute, ' + (b.converted * 3600 / b.frames).toFixed(0) + ' turned to panels, ' + (b.spent * 3600 / b.frames).toFixed(0) + ' panels cleared, ' + ((b.converted - b.spent) * 3600 / b.frames).toFixed(0) + ' net'); });
 var mid = function (a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] + ' (90% under ' + a[Math.min(a.length - 1, Math.floor(0.9 * a.length))] + ')' : '-'; };
 if (beamDepth.best.length) console.log('the touch beam under garbage with no break found (' + beamDepth.best.length + ' decisions): its best line ' + mid(beamDepth.best) + ' swaps, the deepest it carries on ' + mid(beamDepth.deep) + '; of ' + beamDepth.resIn + ' lines carried on to them, ' + beamDepth.resPlayed + ' played again whole');
 if (putDown.same + putDown.told) console.log('lines in progress put down with nothing new told: ' + putDown.same + ' of ' + (putDown.same + putDown.told) + ' (the garbage the same as the decision before\'s), by the order\'s key ' + most(putDown.sameBy) + '; the carried line judged lost on the frame it was judged when played ' + putDown.alike + ', on another ' + putDown.moved + (putDown.by.length ? ' (by ' + mid(putDown.by) + ' frames)' : ''));
