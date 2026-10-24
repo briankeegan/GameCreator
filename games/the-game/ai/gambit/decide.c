@@ -34,7 +34,7 @@ static int readBoard_(Read *R) {
   // (the frames until the board is lost if nothing is done, from the engine with the garbage the game shows landing when it lands:
   // sooner than the rise alone takes, the garbage on its way decides it -- queueKills)
   int32_t alone = diesIn(&decQ, F->v[FACT_US_DIES]);
-  if (alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
+  if (alone >= 0 && alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
   // (the rule: the mode in force, else the first whose `when` the facts hold -- with no opponent to read, the rule asking `enemy.none`;
   // else the first of the rules, so a board with nobody across still plays)
   int ri = modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
@@ -629,7 +629,8 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];
   // (a step no longer legal: the judge pressed fewer than the line has. A line the board is lost on is offered all the same -- judged
   // lost, as any line is, and ranked by its loss: where every line is lost, the line in progress may be lost latest)
-  if (!j.dead && j.nats < nrest) { carryDrop = 2; carryDropDead = -1; carryDropCut = j.cut; carryDropWhy = j.cutWhy; carryDropNats = j.nats; return 0; }
+  // (a judging the clock stopped is no answer: the line is offered, and the rank reads it as any line the clock cut -- rank.c judgeCand)
+  if (!j.dead && !j.late && j.nats < nrest) { carryDrop = 2; carryDropDead = -1; carryDropCut = j.cut; carryDropWhy = j.cutWhy; carryDropNats = j.nats; return 0; }
   *wait = moving;
   // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
   Made x = { j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
@@ -637,10 +638,10 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
   // (a line begun for a break whose swaps pressed so far made it -- the slab popping now, none when it was begun -- is carried on for
   // what the rest of it makes: the rest is what the line was judged to live by)
-  if (C->broke && !(x.broke > 0) && !(!C->popping && popLeft(decQ.b) > 0)) { carryDrop = 3; return 0; }
+  if (!j.late && C->broke && !(x.broke > 0) && !(!C->popping && popLeft(decQ.b) > 0)) { carryDrop = 3; return 0; }
   // (the rest no longer meeting the entry it was begun for -- the swaps pressed so far made part of it -- it is carried on for no entry,
   // ranked as the line in progress is: rank.c 1a)
-  int aimGone = C->hasAim && !meets(&C->aim, x);
+  int aimGone = !j.late && C->hasAim && !meets(&C->aim, x);
   if (aimGone) carryDrop = 5;
   int aim = -1;
   if (C->hasAim && !aimGone) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;

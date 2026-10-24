@@ -2,7 +2,8 @@
 // those held longest -- the frame the garbage queued could next drop (the line's frames, then the later of stop + pre-stop and the
 // shake) -- then with the most room over the stack, then the least garbage; each step's clears held to the list. The first line whose
 // board, left alone, is still alive at `to` (frames from now) and `rest` past its own end, and passes the shared line check, is the
-// answer; else the line whose board is lost latest. And THE FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn).
+// answer; else the line whose board is lost latest. And THE FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn: lostAlone's
+// answer, NOT_ASKED when there is none).
 
 #define OUT_SEQ 16
 typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor
@@ -88,7 +89,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
 static int32_t diesIn(const Question *q, double horizon) {
   Ctx *x = outCtx = ctxOf(outCtx);
   int root = rootOf(x, q);
-  if (root < 0) return 0;
+  if (root < 0) return NOT_ASKED;   // (no board to play: no answer, as lostAlone's when the clock stops it -- never a loss at 0)
   int32_t h = (int32_t)horizon; if (h < horizon) h++;
   return lostAlone(x, root, imax(1, h));
 }

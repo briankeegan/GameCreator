@@ -184,14 +184,6 @@ static int32_t threesOf(const Stats *s) {
   return n;
 }
 
-// (the garbage the board left alone has broken by frame t, from the board landed: cached per frame)
-static int32_t still_(Ctx *x, int land, int32_t t, int32_t *idleT, int32_t *idleB, int32_t *nIdle) {
-  for (int i = 0; i < *nIdle; i++) if (idleT[i] == t) return idleB[i];
-  int w = t > NODE(x, land)->t ? step(x, land, MK_LONG, 0, 0, t - NODE(x, land)->t) : land;
-  int32_t b = liveNode(x, w) ? NODE(x, w)->brk : NODE(x, land)->brk;
-  if (*nIdle < 64) { idleT[*nIdle] = t; idleB[*nIdle] = b; (*nIdle)++; }
-  return b;
-}
 // (and the board it breaks on lives through the break's settle, its clears within the list)
 static int settles(Ctx *x, int o) { int z = settleOf(x, o); return liveNode(x, z) && stepFitsAt(x, z); }
 // READY ONCE EVERYTHING LANDS (attacker breaksAfterLanding): the board the line ends on run to `wait` frames after the root and let
