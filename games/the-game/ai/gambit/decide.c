@@ -245,6 +245,10 @@ static int ranked(const Read *R, const Found *S) {
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
   // part of the time left each of those still to be asked -- and the order is made again)
   readyDefer = 0; readyCollect = 0; readyFresh = 1;
+  // (THE ORDER'S OWN SEARCHING -- the readiness asked of each line, the survival backup, the three taken out -- is searching, in the
+  // searches' share (propose.c searchesEnd): the judging's quarter stays the judging's and the save's, and an answer comes as soon as
+  // the searching is done)
+  double orderShare = clockShareBegin(searchesEnd());
   // (the line in progress too: a line that lived by a break in reach lives on by it, its landed board the one already searched)
   #define READY_ASKS(J_) (!(J_)->o.lives && !(J_)->o.dead && (J_)->o.ready == NOT_ASKED)
   // (THE KEPT PLAN'S LINES -- intentions and routes -- take none of the decision's own search: their readiness is what the workers or
@@ -316,6 +320,7 @@ static int ranked(const Read *R, const Found *S) {
   // NO WASTED THREE (the owner: only when not doing it would kill it): a line whose clears break nothing and throw nothing is taken out
   // of the order -- unless every other line is lost within a break's time (rankSave) and a three lives, or is lost later: only there is
   // a three a save
+  clockShareEnd(orderShare);
   { int keeps = 0, wasteLives = 0; double wasteLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
       if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
