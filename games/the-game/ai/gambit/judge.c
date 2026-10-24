@@ -146,12 +146,14 @@ static int wastedThree(Board *g, Board *a) {
   return !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
 }
 // THE BOARD'S OWN CHAIN SPOILED (rank.c cutsShort, a line at a time): g the board with the swap pressed and every key after it the line
-// presses (keyAt: the bits on the f-th frame after the press), a the same board left alone, both played to rest -- a's chain two or more
+// presses (keyAt: the bits on the f-th frame after the press), a the same board left alone, both played to rest, the garbage on its way
+// landing on each as the game lands it (land) -- a's chain two or more
 // and g's shorter, no more garbage broken: the three that began the board's chain made for nothing. g and a are played on.
-static int spoilsChain(Board *g, Board *a, int32_t (*keyAt)(int32_t f)) {
+static int spoilsChain(Board *g, Board *a, int32_t (*keyAt)(int32_t f), void (*land)(Board *g, Board *a)) {
   int32_t gc = g->chainCounter, ac = a->chainCounter;
   for (int f = 0; f < FIRST_LOOK + THREE_SETTLE && g->gameOverClock <= 0; f++) {
     run(g); if (a->gameOverClock <= 0) run(a);
+    if (land) land(g, a);
     int32_t k = keyAt ? keyAt(f) : 0;
     g->input = k & ~(IN_SWAP | IN_RAISE); g->pressSwap = !!(k & IN_SWAP); a->input = 0; a->pressSwap = 0;
     gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
@@ -306,16 +308,16 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       n = liveNode(x, calm) ? calm : w;
       KB(n);
     }
-    // (the allowance this swap is pressed under: the decision's less what the line's swaps before it spent -- core/nodes.h actionsFor)
+    // (the allowance this swap is pressed under: the input window at the frame its walk begins, less what the line's swaps before it
+    // spent -- core/nodes.h allowLeftAt, actionsFor)
     if (!last && pressAllowance >= 0) {
       Board *bn = ensureBoard(x, n);
-      int left = pressAllowance - spent;
+      int left = allowLeftAt(NODE(x, n)->t - NODE(x, root)->t, spent);
       pressTight = tightAt(left);
       int acts = bn ? actionsFor(bn->curRow, bn->curCol, mr, mc, left) : 0;
-      // (a first swap whose walk is over what the allowance leaves is not there to press: the frame loop refuses its keys -- front.c
-      // keysFit, GUARDED -- so the line is cut as one whose swap is gone; a later swap is held to the allowance at its own frame, by the
-      // frame loop as it follows the line -- front.c follow)
-      if (k == 0 && acts > left) { j->cut = k; j->cutWhy = 1; break; }
+      // (a swap whose walk is over what the window leaves at its frame is not there to press: the frame loop refuses a first swap's keys
+      // -- front.c keysFit, GUARDED -- and drops a line at a later one -- front.c follow -- so the line is cut there)
+      if (acts > left) { j->cut = k; j->cutWhy = 1; break; }
       spent += acts;
     }
     int kind = last || o->settled ? MK_SETTLE : MK_SWAP, out;

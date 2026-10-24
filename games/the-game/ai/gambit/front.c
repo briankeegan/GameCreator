@@ -23,6 +23,7 @@ typedef struct {
   int32_t id, epoch, at, lead, allowance, topped, lineFrom, linePressed, holdLeft, holdStarted, narr;
   int32_t oppHas, oppOut, oppTop, oppStop;   // the opponent's stop: the frames it is held up by at the question's frame
   int32_t refA, refB, refUntil;              // a pair the press guard refused (a wasted three), its panels' ids, kept out until a frame
+  int32_t nages, ages[512], window;          // the input window at the question's frame: how long before it each action inside went down
   double ms, posted;
   Arrival arr[MAXARRIVALS];
   Board *b;
@@ -485,6 +486,10 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
   q.allowance = allowanceAt(at); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
+  { int32_t prev = F.prevBits; q.nages = 0; q.window = F.window;
+    for (int i = 0; i < F.npress && q.nages < 512; i++) if (at - F.pressFrames[i] < F.window) q.ages[q.nages++] = at - F.pressFrames[i];
+    for (int32_t t = F.now; t < at; t++) { Planned *p = planOf(t); int32_t bits = p ? p->bits : 0, down = bits & COUNTED & ~prev; prev = bits;
+      for (int b = 1; b <= 16; b <<= 1) if ((down & b) && at - t < F.window && q.nages < 512) q.ages[q.nages++] = at - t; } }
   q.refA = F.refUntil > at ? F.refA : 0; q.refB = F.refUntil > at ? F.refB : 0; q.refUntil = F.refUntil;
   q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop; q.oppStop = imax(0, F.oppStop - (at - F.now));
   q.b = F.pBoard;
@@ -735,6 +740,8 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
 #define GUARD_DIE 120   // the frames the board is played on, with the swap and without, to tell a three that saves it
 static Board *guardBoard, *aloneBoard;
 static int32_t planKeyAt(int32_t f) { Planned *q = planOf(F.now + f + 1); return q ? q->bits : 0; }
+static Arrival guardPendG[MAXARRIVALS], guardPendA[MAXARRIVALS]; static int32_t guardNpG, guardNpA;
+static void guardLand(Board *g, Board *a) { landOn(g, guardPendG, &guardNpG); landOn(a, guardPendA, &guardNpA); }
 static int wastedSwap(const Board *t, int32_t bits) {
   if (!guardBoard) guardBoard = nb_new();
   if (!aloneBoard) aloneBoard = nb_new();
@@ -748,7 +755,9 @@ static int wastedSwap(const Board *t, int32_t bits) {
   copyBoard(guardBoard, t); copyBoard(aloneBoard, t);
   guardBoard->input = bits & ~IN_SWAP; guardBoard->pressSwap = 1;
   aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
-  int s = spoilsChain(guardBoard, aloneBoard, planKeyAt);
+  memcpy(guardPendG, F.arr, sizeof(Arrival) * (unsigned long)F.narr); memcpy(guardPendA, F.arr, sizeof(Arrival) * (unsigned long)F.narr);
+  guardNpG = guardNpA = F.narr;
+  int s = spoilsChain(guardBoard, aloneBoard, planKeyAt, guardLand);
   F.guardSpoil = s;
   return s;
 }

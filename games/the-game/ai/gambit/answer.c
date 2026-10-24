@@ -317,6 +317,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   A->tap = pressTap;
   pressTight = decQ.tight;
   pressAllowance = allowanceKnown ? allowance : -1;
+  if (!hostWin) nWinAges = -1;   // (the window: a native host's, said with the question -- native.c answerOne)
+  hostWin = 0;
   towardRestLen = 0;
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
