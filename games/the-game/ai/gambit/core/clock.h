@@ -30,8 +30,12 @@ static int (*clockFrameOut)(void);
 // next decision takes the pool back (jobStop)
 static LOCAL int inJob;
 static int32_t jobStop;
+// (A SEARCH ON ITS OWN BUDGET on the decision's thread -- a pend searched here as a job would search it, search/break.c readySearchOf:
+// its share alone, so its answer and its work are the same whichever thread searched it)
+static LOCAL int ownBudget;
 static int clockOut(void) {
   if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
+  if (ownBudget) return clockShare && nowMs() >= clockShare;
   if (clockAborted) return 1;
 #ifdef __wasm__
   if (clockWork >= clockPoll) { clockPoll = clockWork + 400; if (abort_poll() == 1) { clockAborted = 1; return 1; } }

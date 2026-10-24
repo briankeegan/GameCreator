@@ -672,15 +672,19 @@ static void readyKeptClear(void) { readyLockOn(); for (int i = 0; i < READYN; i+
 // THE BREAK SEARCH ASKED FOR READINESS, on question q until `by`: 1 a break (its line in line, *k), 0 none -- the search ended before its
 // time did -- NOT_ASKED its time out first (its own share or the decision's): none found in the time is no answer. Every thread's: what
 // it reads is the question and its own nodes.
-static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t *k) {
+// (own: a pend's budget, the same whichever thread searches it -- the decision's share no cap on it)
+static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_t *k, int own) {
   int32_t pop = popLeft(q->b), saved = listDefault;
   static LOCAL Broke rb;
-  if (clockShare && clockShare < by) by = clockShare;   // (never past the share of the search that asks)
-  double old = clockShareBegin(by);
+  if (!own && clockShare && clockShare < by) by = clockShare;   // (never past the share of the search that asks)
+  double old = own ? clockShare : clockShareBegin(by);
+  int ownWas = ownBudget;
+  if (own) { clockShare = by; ownBudget = 1; }   // (its budget alone, as on a job's thread: core/clock.h ownBudget)
   listDefault = 1;
   breakMoves(q, pop ? pop + LINEUP_AFTER : 0, 0, &rb);
   listDefault = saved;
   int out = clockOut();   // (the share asked, or the decision's, run out)
+  ownBudget = ownWas;
   clockShareEnd(old);
   *k = 0;
   if (!rb.depth) return out ? NOT_ASKED : 0;
@@ -777,7 +781,7 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;
   q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
   int32_t line[MAXLINE], k = 0;
-  int32_t r = readySearch(&q, nowMs() + (p && p->budget > 0 ? p->budget : readyShareMs >= 0 ? readyShareMs : timeLeftMs() / 2), line, &k);
+  int32_t r = readySearchOf(&q, nowMs() + (p && p->budget > 0 ? p->budget : readyShareMs >= 0 ? readyShareMs : timeLeftMs() / 2), line, &k, p && p->budget > 0);
   if (p) { if (r == 1) { for (int i = 0; i < k; i++) p->why[i] = line[i]; p->whyN = k; } __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE); }
   if (r != 1) return r;
   if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }
@@ -798,7 +802,7 @@ static void readyJob(int32_t i) {
   inJob = 1; pressTight = p->tight; pressFrom = p->from; pressSpent = p->spent;
   int32_t line[MAXLINE], k = 0;
   int64_t w0 = clockWork;
-  int32_t r = readySearch(&p->q, nowMs() + p->budget, line, &k);
+  int32_t r = readySearchOf(&p->q, nowMs() + p->budget, line, &k, 1);
   p->work = clockWork - w0;
   inJob = 0; pressFrom = pressSpent = 0;
   // (kept across decisions only by the decision that reads it: readyBreakOf)
