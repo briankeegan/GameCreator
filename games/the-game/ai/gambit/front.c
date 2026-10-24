@@ -15,7 +15,7 @@
 #define FTHINK 8           // the answers' times kept, for how soon the next comes
 
 typedef struct { int32_t at, capped; Incoming g; } Arrival;   // at: the stopWatch it is received on; capped: held back (search.h CAPPED_AT)
-typedef struct { int32_t bits, holdLeft, holdStarted, swap, save, asked, play; } Planned;   // save: a key of a line the survival search found the board needed; asked: the frame the question it came of was posted on; play: the kind of line it is a key of (facts.c PLAY_NAME; NPLAYS a raise)
+typedef struct { int32_t bits, holdLeft, holdStarted, swap, save, asked, play, line, idx, left; } Planned;   // save: a key of a line the survival search found the board needed; asked: the frame the question it came of was posted on; play: the kind of line it is a key of (facts.c PLAY_NAME; NPLAYS a raise); line, idx, left: the answer its line came of, the swap's place in it and the swaps after it
 typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys;
 
 // what the worker is asked, and what it answers (native.c carries them across)
@@ -64,6 +64,7 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t noneBy[NPLAYS + 1];   // (the swaps that came to nothing, by the kind of line that pressed them)
+  int32_t noneLast, noneOn, noneDropped;   // (and by what became of their line: their swap its last, its later swaps pressed, or dropped before them)
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
   int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
 } FStats;
@@ -74,7 +75,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_IDS 32
 #define MOVE_FOR 600
 #define MOVE_FALL 60
-typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play; } MoveOpen;   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
+typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, line, idx, left; } MoveOpen;   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
@@ -556,7 +557,7 @@ static void take(void) {
       F.nextAt = at + 1;
       at += a.raiseWait;
       F.st.played++;
-      for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 0, 0, F.pPosted, NPLAYS });
+      for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 0, 0, F.pPosted, NPLAYS, -1, 0, 0 });
       F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
       memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
       F.lineN = 0; F.haveLineOf = 0;
@@ -587,7 +588,7 @@ static void take(void) {
     F.st.heldWalks += k.held;
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
-    for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play });
+    for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play, a.id, 0, a.nhand });
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
@@ -629,7 +630,7 @@ static int follow(void) {
   int left = allowanceAt(due);
   if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance");
   F.st.heldWalks += k.held;
-  for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay });
+  for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay, F.lineOfId, F.lineOfPressed + 1, F.lineN - 1 });
   F.nextAt = due + k.n;
   F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1;
   memmove(F.line, F.line + 1, sizeof(int32_t) * (unsigned long)(F.lineN - 1)); memmove(F.lineAt, F.lineAt + 1, sizeof(int32_t) * (unsigned long)(F.lineN - 1)); F.lineN--;
@@ -711,11 +712,18 @@ static void countAttacks(const Board *b) {
 // A swap pressed is followed by the ids of the panels it moves -- the two swapped, and those above them that fall in the MOVE_FALL
 // frames after it -- until one of them is matched or MOVE_FOR frames pass: matched before the next swap is pressed, the swap cleared;
 // after it, the swap set the clear up; a clear that breaks garbage, a break; none matched, a swap that did nothing.
-static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play) {
+// (the furthest swap pressed of each recent line, by its answer's id: what a swap that came to nothing tells of its line)
+#define LINERING 64
+static void noneOf(const MoveOpen *m);
+static int32_t lineRingId[LINERING], lineRingIdx[LINERING];
+static void moveBegin(const Board *b, int32_t save, int32_t guard, const Planned *p) {
+  int32_t play = p ? p->play : NPLAYS;
+  if (p && p->line >= 0) { int r = p->line & (LINERING - 1); if (lineRingId[r] != p->line) { lineRingId[r] = p->line; lineRingIdx[r] = p->idx; } else lineRingIdx[r] = imax(lineRingIdx[r], p->idx); }
   { int i = swapRingN++ % SWAPRING; if (!swapRing[i]) swapRing[i] = nb_new(); if (swapRing[i]) { cloneBoard(swapRing[i], b); swapRingAt[i] = b->clock; } }
   for (int i = 0; i < F.nmoves; i++) F.moves[i].swapsAfter++;
-  if (F.nmoves == MOVE_OPEN) { F.st.moveNone++; F.st.noneBy[F.moves[0].play]++; memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
+  if (F.nmoves == MOVE_OPEN) { noneOf(&F.moves[0]); memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
   MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock; m->save = save; m->guard = guard; m->play = play >= 0 && play < NPLAYS ? play : NPLAYS;
+  m->line = p ? p->line : -1; m->idx = p ? p->idx : 0; m->left = p ? p->left : 0;
   int r0 = b->curRow;
   for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
     for (int r = r0; r < b->nrows && m->n < MOVE_IDS; r++) {
@@ -723,6 +731,14 @@ static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play)
       if (f[COLOR] <= 0 || f[ISGARBAGE] || f[ID] == NUL) continue;
       m->ids[m->n] = f[ID]; m->moved[m->n++] = r == r0;
     }
+}
+// (a swap that came to nothing, counted by its line's kind and by what became of the line)
+static void noneOf(const MoveOpen *m) {
+  F.st.moveNone++; F.st.noneBy[m->play]++;
+  int r = m->line >= 0 ? m->line & (LINERING - 1) : -1;
+  if (m->line < 0 || m->left == 0) F.st.noneLast++;
+  else if (lineRingId[r] == m->line && lineRingIdx[r] > m->idx) F.st.noneOn++;
+  else F.st.noneDropped++;
 }
 // (1 when a panel a followed swap moved is among the fresh matches: the clear is the swap's)
 static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) {
@@ -745,7 +761,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
       if (m->moved[j]) for (int q = 0; q < nfresh && !done; q++) done = fresh[q] == m->ids[j];
     }
     if (done) { bySwap = 1; F.matchAt = m->at; F.matchAfter = m->swapsAfter; F.matchSave = m->save; F.matchGuard = m->guard; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
-    if (!alive || b->clock - m->at > MOVE_FOR) { F.st.moveNone++; F.st.noneBy[m->play]++; continue; }
+    if (!alive || b->clock - m->at > MOVE_FOR) { noneOf(m); continue; }
     if (k != i) F.moves[k] = *m;
     k++;
   }
@@ -843,9 +859,9 @@ static int frontFrame(void) {
   if (F.nextAt > now) { int32_t u = unforeseenFirst(F.knew, F.nknew, F.arr, F.narr); if (u <= F.nextAt - off) { dropFrom(u + off - 1); F.st.unforeseen++; } }
   if (F.pending && unforeseenBy(F.pKnew, F.pNknew, F.arr, F.narr, F.pAt - off)) { abortTo(F.pId); F.pending = 0; F.st.reasked++; }
   take();
-  int32_t bits, save = 0, asked = 0, play = NPLAYS;
-  Planned *p = planOf(now);
-  if (p) { bits = p->bits; save = p->save; asked = p->asked; play = p->play; F.holdLeft = p->holdLeft; F.holdStarted = p->holdStarted; planDrop(now); }
+  int32_t bits, save = 0, asked = 0;
+  Planned *p = planOf(now), pk = { 0 }; pk.play = NPLAYS; pk.line = -1;
+  if (p) { pk = *p; bits = p->bits; save = p->save; asked = p->asked; F.holdLeft = p->holdLeft; F.holdStarted = p->holdStarted; planDrop(now); }
   else {
     bits = 0;
     if (F.holdLeft > 0) holdRaise(t, &F.holdLeft, &F.holdStarted, &bits);
@@ -883,7 +899,7 @@ static int frontFrame(void) {
       }
     } else { guard = 2; F.st.guardLet++; }
   }
-  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save, guard, play);
+  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save, guard, &pk);
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
   countActions(bits, now);
   if (bits & IN_SWAP) F.swapSince = 1;
@@ -979,7 +995,7 @@ static void statsLine(char *out, int cap) {
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"noneBy\":{");
   first = 1;
   for (int z = 0; z <= NPLAYS && k < cap; z++) if (F.st.noneBy[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":%d", first ? "" : ",", z < NPLAYS ? PLAY_NAME[z] : "raise", F.st.noneBy[z]); first = 0; }
-  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
+  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"noneHow\":{\"last\":%d,\"on\":%d,\"dropped\":%d}", F.st.noneLast, F.st.noneOn, F.st.noneDropped);
   if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d,\"guardLet\":%d,\"refusedSpoil\":%d}}",
                         F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet, F.st.refusedSpoil);
 }
