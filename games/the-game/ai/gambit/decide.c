@@ -421,15 +421,21 @@ static int carryWaitsOut(void) { return theCarry.waits >= CARRY_WAITS; }
 static int32_t carryFrom = -1, carryPressed;
 // THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
 // into theCarry; 0 when every one is touched. carryOf and carryReady ask it.
-static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) {
+static int anchorFor(const int32_t *row1, const int32_t *seq, int n, int32_t *row, int32_t *col, int32_t *id) {
   for (int c = 1; c <= W; c++) {
     if (row1[c] == NUL) continue;
     int touched = 0;
     for (int i = 0; i < n; i++) if (CR(seq[i]) == 1 && (CC(seq[i]) == c || CC(seq[i]) + 1 == c)) touched = 1;
-    if (!touched) { C->anchorRow = 1; C->anchorCol = c; C->anchorId = row1[c]; return 1; }
+    if (!touched) { *row = 1; *col = c; *id = row1[c]; return 1; }
   }
   return 0;
 }
+// (and the rows the board has risen since, by that panel found again: NOT_ASKED when it is gone -- the carry's and the intentions')
+static int anchorShift(int32_t row, int32_t col, int32_t id) {
+  for (int r = 0; r < decQ.b->nrows; r++) if (decQ.b->p[r][col].f[ID] == id) return r - row;
+  return NOT_ASKED;
+}
+static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) { return anchorFor(row1, seq, n, &C->anchorRow, &C->anchorCol, &C->anchorId); }
 static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anchorInto(&theCarry, row1, seq, n); }
 // (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
 // (waits: the decisions in a row the line has waited for the board to settle -- carryWaitsOut)
@@ -511,15 +517,6 @@ typedef struct { int32_t set, play, nseq, seq[MAXLINE], settled, anchorRow, anch
 static Intent theIntents[NINTENT];
 static int32_t keptOffered, keptPlayed, routeOffered, routePlayed;   // (the log's, this decision)
 static int clearsSomething(const Judge *J) { return !J->hold && (J->apCombo > 0 || J->apChain > 0 || J->apBroke > 0); }
-static int anchorFor(const int32_t *row1, const int32_t *seq, int n, int32_t *row, int32_t *col, int32_t *id) {
-  for (int c = 1; c <= W; c++) {
-    if (row1[c] == NUL) continue;
-    int touched = 0;
-    for (int i = 0; i < n; i++) if (CR(seq[i]) == 1 && (CC(seq[i]) == c || CC(seq[i]) + 1 == c)) touched = 1;
-    if (!touched) { *row = 1; *col = c; *id = row1[c]; return 1; }
-  }
-  return 0;
-}
 static void keepIntents(int n, const Judge *played) {
   memset(theIntents, 0, sizeof theIntents);
   int32_t row1[W + 1];
@@ -548,8 +545,7 @@ static int keptJudged(const Read *R, int n) {
   for (int i = 0; i < NINTENT && !clockOut(); i++) {
     const Intent *I = &theIntents[i];
     if (!I->set) continue;
-    int dr = NOT_ASKED;
-    for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][I->anchorCol].f[ID] == I->anchorId) dr = r - I->anchorRow;
+    int dr = anchorShift(I->anchorRow, I->anchorCol, I->anchorId);
     if (dr == NOT_ASKED) continue;
     int32_t seq[MAXLINE];
     for (int q = 0; q < I->nseq; q++) seq[q] = (CR(I->seq[q]) + dr) * 8 + CC(I->seq[q]);
@@ -612,9 +608,8 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
     *C = theCarryNext; memset(&theCarryNext, 0, sizeof theCarryNext); C->popping = popLeft(decQ.b) > 0; skip = 0;
   }
   if (!C->set || C->nrest <= skip) { if (!C->set) carryDrop = carryLost; carryLost = 0; return 0; }
-  int dr = NOT_ASKED;
   // (from the row not yet risen: the board a waited-for break was found on may have risen past this one)
-  for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][C->anchorCol].f[ID] == C->anchorId) dr = r - C->anchorRow;
+  int dr = anchorShift(C->anchorRow, C->anchorCol, C->anchorId);
   if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
   int32_t rest[MAXLINE], nrest = C->nrest - skip;
   for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);

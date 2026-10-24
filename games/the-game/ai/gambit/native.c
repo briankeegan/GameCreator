@@ -77,9 +77,7 @@ static void abortTo(int32_t id) {
   hostUnlock();
 }
 // Whether the stack would take a raise now: the engine acts on one only while nothing holds the floor.
-static int canRaiseOn(Board *b) {
-  return !b->preventManualRaise && !b->manualRaise && !isToppedOut(b) && !hasFallingGarbage(b) && !b->riseLock && !hasActivePanels(b) && !(b->shakeTime > 0);
-}
+static int canRaiseOn(Board *b) { return raiseOpen(b); }   // (the raise open: search/ready.c raiseShutOf, the one test)
 // (and the raise the frame loop would press there: the engine step its keys are made from -- front.c keysOf -- asked on the question's
 // board, so a raise is offered only where it can be pressed)
 static Ctx *raiseCtx;

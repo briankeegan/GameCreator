@@ -106,7 +106,7 @@ static Board *landedAll(const Board *b0, const Arr *arr, int narr, int32_t last,
   return 0;
 }
 // THE FRAMES UNTIL THE STACK TAKES A RAISE (raiseOpenIn): the board left alone, run a frame at a time with the garbage shown landing as the
-// game lands it, to the first frame the engine would act on a raise (raiseOpen, the host's own test: native.c canRaiseOn) -- that board
+// game lands it, to the first frame the engine would act on a raise (raiseOpen: raiseShutOf, the one test, the host's too -- native.c canRaiseOn) -- that board
 // into `at`; NOT_ASKED when it does not within `most` frames, or the board is lost first -- and raiseShut, what held it shut on every
 // frame searched (a bit each: 1 a raise prevented, 2 one held, 4 topped, 8 garbage falling, 16 the rise locked, 32 panels moving, 64 the
 // shake), the log's
