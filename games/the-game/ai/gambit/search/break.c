@@ -658,8 +658,9 @@ static void readyKeep(uint32_t h, const unsigned char *key, int32_t nb, const in
   readyLockOff();
 }
 static void readyKeptClear(void) { readyLockOn(); for (int i = 0; i < READYN; i++) readyKept[i].h = 0, readyKept[i].nbytes = 0; readyLockOff(); }
-// THE BREAK SEARCH ASKED FOR READINESS, on question q until `by`: 1 a break (its line in line, *k), 0 none in the time, NOT_ASKED the
-// decision's time out. Every thread's: what it reads is the question and its own nodes.
+// THE BREAK SEARCH ASKED FOR READINESS, on question q until `by`: 1 a break (its line in line, *k), 0 none -- the search ended before its
+// time did -- NOT_ASKED its time out first (its own share or the decision's): none found in the time is no answer. Every thread's: what
+// it reads is the question and its own nodes.
 static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t *k) {
   int32_t pop = popLeft(q->b), saved = listDefault;
   static LOCAL Broke rb;
@@ -668,9 +669,10 @@ static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t 
   listDefault = 1;
   breakMoves(q, pop ? pop + LINEUP_AFTER : 0, 0, &rb);
   listDefault = saved;
+  int out = clockOut();   // (the share asked, or the decision's, run out)
   clockShareEnd(old);
   *k = 0;
-  if (!rb.depth) return clockOut() ? NOT_ASKED : 0;
+  if (!rb.depth) return out ? NOT_ASKED : 0;
   if (rb.pathLen) for (; *k < rb.pathLen && *k < MAXLINE; (*k)++) line[*k] = rb.path[*k];
   else if (rb.nmoves) line[(*k)++] = rb.moves[0];
   return 1;
