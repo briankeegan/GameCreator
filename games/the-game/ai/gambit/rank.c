@@ -340,6 +340,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // break and never preferred by it; two that live, the list first (3). Of two that break nothing, the next break lined up: the fewer
   // swaps to it on the board the line leaves (outcome.c nearAfter) -- a line that only buys time leaves the garbage as far from breaking
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0) {
+    // (THE GARBAGE AN ACTION BREAKS first: the board lives by breaking garbage as fast as it lands, and the input window is what every
+    // break is pressed out of -- the cells broken over the actions the line spends, its swaps and its walks)
+    { int64_t ax = x->k.nseq + lineWalk(x), ay = y->k.nseq + lineWalk(y);
+      if (ax > 0 && ay > 0 && (int64_t)x->apBroke * ay != (int64_t)y->apBroke * ax) K(1, (int64_t)x->apBroke * ay > (int64_t)y->apBroke * ax ? -1 : 1); }
     if (x->material >= 0 && y->material >= 0 && x->material != y->material) K(1, x->material - y->material);
     int bothReady = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
     int32_t mx = bothReady ? x->o.j.readyMat : x->o.matLeft, my = bothReady ? y->o.j.readyMat : y->o.matLeft;
