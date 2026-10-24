@@ -211,11 +211,15 @@ static void batchDone(void) { batchN = 0; }
 
 // THE BOT'S HANDS, as the host has them (gb_config): the frames it waits after a decision, after a swap, and a cursor step. Every
 // context a search makes is set so (surviveFrames and surviveRest 0).
+// (A SWAP'S OWN TIME: a swap step ends no sooner than SWAP_SHOWN frames after its press -- the swapped panels move for 4 frames (pa.c,
+// the SWAPPING timer) and match the frame after -- so the board a swap step leaves shows what the swap made; the profile's swapGap is
+// any wait the hands add beyond it)
+#define SWAP_SHOWN 5
 static int32_t cfgReaction = 12, cfgSwapGap = 12, cfgCursor = 4;
 EXPORT(gb_config) void gb_config(int reaction, int swapGap, int cursorMoveFrames) { cfgReaction = reaction; cfgSwapGap = swapGap; cfgCursor = cursorMoveFrames; }
 static Ctx *ctxOf(Ctx *x) {
   if (!x) x = ns_ctx_new();
-  ns_ctx_set(x, cfgReaction, cfgCursor, 0, 0); ns_ctx_gap(x, cfgSwapGap);
+  ns_ctx_set(x, cfgReaction, cfgCursor, 0, 0); ns_ctx_gap(x, imax(cfgSwapGap, SWAP_SHOWN));
   return x;
 }
 // THE QUESTION: the board a decision is made on, the raise in hand and the garbage on its way -- what every search roots its lines at.
