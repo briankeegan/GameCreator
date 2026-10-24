@@ -47,9 +47,9 @@ static int readBoard_(Read *R) {
   R->list = rule->list; R->end = rule->end;
   R->guides = R->list;
   R->by = deadlineOf(F, rule);
-  // (below the material floor a step that clears and breaks nothing is out, as the judge drops it)
-  R->belowFloor = R->keepOn && R->keep.t[KEEP_MATERIAL].op && !test(F->v[FACT_US_MATERIAL], R->keep.t[KEEP_MATERIAL]);
-  theList = R->list; listOn = 1; decF.belowFloor = R->belowFloor;
+  // (the board as it is under the rules' floor, by the one floor test: decisionFloor)
+  R->belowFloor = decisionFloor(decQ.b) == 0;
+  theList = R->list; listOn = 1;
   // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's -- before
   // the board dies; the rule's `by` is an attack's)
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];

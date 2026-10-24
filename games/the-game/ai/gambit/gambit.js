@@ -194,7 +194,7 @@ Gambit.prototype.breakOn = function (board, arrivals, aims, ms, listOn) {
   this.S.reset();
   var r = this.S.root(board.copy(), { left: 0, started: false }, arrivals || [], false), X = this.X;
   this.G.list(aims); X.gb_list_on(listOn === 0 ? 0 : 1);
-  X.gb_decision_start(this.S.ctx, r._i, 0, -1, 0, 1, 0);
+  X.gb_decision_start(this.S.ctx, r._i, 0, -1, 0, 1);
   return this.breakPath(ms);
 };
 // The same from a board as a native host logs it (GAMBITB C<size>:<base64>) and its arrivals ([at, width, height], frames from it).
@@ -206,7 +206,7 @@ Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms, listOn) {
   arrivals.forEach(function (a) { w[k++] = a[0]; w[k++] = a[1]; w[k++] = a[2]; });
   if (X.gb_question_bytes(bytes.length, arrivals.length) < 0) throw new Error('gambit: the board bytes were refused');
   this.G.list(aims); X.gb_list_on(listOn === 0 ? 0 : 1);
-  X.gb_decision_on(-1, 0, 1, 0);
+  X.gb_decision_on(-1, 0, 1);
   return this.breakPath(ms);
 };
 Gambit.prototype.breakPath = function (ms) {

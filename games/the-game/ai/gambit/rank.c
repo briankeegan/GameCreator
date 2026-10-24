@@ -26,7 +26,7 @@ typedef struct {
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
-  int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
+  int32_t spends;      // outside it for spending the rules' floor (outcome.c spendsFloor)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
@@ -102,11 +102,11 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   }
   if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), m.broke > 0 ? 2 : m.combo > 0 || m.chain > 0)) { dropAs(play, DROP_BACK); return 0; }
   // (it fits the list -- the chain as the game counts it -- or it is outside it: ranked after every line within it that lives, and kept,
-  // so a list never chooses a death. Below the rule's material floor a line that clears panels and breaks no garbage spends what the
-  // board needs: outside too)
+  // so a list never chooses a death. A line that spends the rules' floor (outcome.c spendsFloor, the shared line check's own test) is
+  // outside too)
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
-  if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = J->spends = 1;
+  if (j && spendsFloor(m, oc.floorKept)) J->outside = J->spends = 1;
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
   // entries, then the one rule's three that breaks)
   // (read off what the board ends up making, the chain already under way included: a swap that cuts it short meets what is left of it,
@@ -349,7 +349,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 3. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
   // order). Under garbage the rule is to break (the rules' underGarbage): a break that meets an entry, by the entry; then a plain break
   // outside the list -- a three, the last choice; then a line that breaks nothing; and last of all a line the rules' keep puts outside
-  // (judgeCand: below the material floor, panels cleared and nothing broken -- spends)
+  // (judgeCand: the rules' floor spent -- outcome.c spendsFloor)
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS;
     if (decF.under) { ax += x->apBroke > 0 ? 0 : MAXAIMS + 1; ay += y->apBroke > 0 ? 0 : MAXAIMS + 1; }
     ax += x->spends ? 2 * MAXAIMS + 2 : 0; ay += y->spends ? 2 * MAXAIMS + 2 : 0;

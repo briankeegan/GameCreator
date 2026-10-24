@@ -12,7 +12,6 @@ typedef struct {
   int32_t land;        // frames until the last block shown lands (NOT_ASKED: none coming) -- JUDGE.lastLanding
   int32_t topped;      // the board is topped out
   int32_t timeLeft;    // the decision's searches still have time (c.left() > 0): readiness is asked only then
-  int32_t belowFloor;  // below the rule's material floor: a line that clears panels and breaks nothing is no candidate
   int32_t under;       // garbage on the board, as the decision reads it (decide.c read: R->under) -- the one under-garbage test
   int32_t next;        // frames until the next block shown lands (NOT_ASKED: none coming)
 } Facts;
@@ -120,6 +119,9 @@ static int32_t aloneBuildable(void) {
 static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
+// THE FLOOR SPENT, the one test every reader asks (the shared line check, the rank's keep): a line that clears panels and breaks nothing,
+// leaving a board the rules' keep does not hold (floorKept: floorOf on the board the line leaves -- facts.c keepsFloor)
+static int spendsFloor(Made m, int32_t floorKept) { return floorKept == 0 && (m.combo > 0 || m.chain > 0) && !(m.broke > 0); }
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
@@ -223,8 +225,9 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
   Made m = o.j.made;
-  o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN &&
-           !(decF.belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0));
+  const Board *eb = o.j.dead || o.j.late || !floorOf ? 0 : ensureBoard(judgeCtx, o.j.endNode);
+  o.floorKept = eb ? floorOf(eb) : -1;
+  o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN && !spendsFloor(m, o.floorKept);
   // (a list ended by "default": a line outside it is the default's own, kept while the board lives through it)
   if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN;   // (the host's own check, a line held to no list)
   if (o.j.late) return 0;
@@ -234,15 +237,16 @@ static int lineFits(const int32_t *seq, int n, int settled) {
 
 // ---- a decision begun: the question (from a node of a host search, until the decision reads its own) and the facts; every line is
 // judged again
-EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, int belowFloor);
-EXPORT(gb_decision_start) int gb_decision_start(Ctx *hx, int i, int tight, int land, int topped, int timeLeft, int belowFloor) {
+EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft);
+EXPORT(gb_decision_start) int gb_decision_start(Ctx *hx, int i, int tight, int land, int topped, int timeLeft) {
   if (gb_question(hx, i, tight) < 0) return -1;
-  return gb_decision_on(land, topped, timeLeft, belowFloor);
+  return gb_decision_on(land, topped, timeLeft);
 }
 // the same, on the question already set (gb_question_bytes)
-EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, int belowFloor) {
+EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft) {
   decQ = hostQ; decQ.b = hostBoard; backBoard = hostBoard;
-  Facts f = { land, topped, timeLeft, belowFloor };
+  Facts f = { land, topped, timeLeft };
+  floorOf = 0;   // (a host's question holds no rules' keep: decide.c sets the decision's)
   decF = f;
   ncache = 0; rootBuildable = NOT_ASKED;
   return 0;
