@@ -58,7 +58,7 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   for (int i = 0; i < 3 && i < A->ncands && k < cap - 160; i++) {
     const Judge *J = order[i];
     k += snprintf(out + k, (unsigned long)(cap - k), " %d:%d,%d,%d,%d,%d,%d,%d,t%d", J->hold ? PLAY_HOLD : J->k.play, J->o.lives, J->o.lostAt, J->outside,
-                  J->met, J->material, J->saving, J->o.lifeLeft, tierView(J).tier);
+                  J->met, J->material, 0, J->o.lifeLeft, tierView(J).tier);
   }
   return k;
 }

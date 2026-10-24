@@ -12,7 +12,6 @@ static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: t
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define RAISE_WAIT 120   // the frames the floor's raise waits for the stack to take one, at most
-static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
 // board every line ends on
 static Keep floorKeep; static int32_t floorKeepOn;
@@ -65,19 +64,6 @@ static int readBoard_(Read *R) {
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)
   R->topped = !!F->v[FACT_US_TOPPED]; R->breakWaits = !!F->v[FACT_US_BREAKWAITS];
-  // (SAVING UP PANELS, as the raise holds a band: begun topped with four rows' worth of panels or fewer, and kept until the board holds
-  // eight rows' worth and the panels sure to make the list's largest combo ((size - 1) x colours and one); then it spends again)
-  {
-    int32_t colours = decQ.b->colors > 0 ? decQ.b->colors : 1, panels = panelsOn(decQ.b), big = 3;
-    for (int i = 0; i < R->list.n; i++) { const Test *t = &R->list.aim[i].combo; if (t->op == OP_GE || t->op == OP_EQ || t->op == OP_GT) big = imax(big, t->n + (t->op == OP_GT)); }
-    int32_t low = 4 * W, high = imax((big - 1) * colours + 1, 8 * W);
-    if (!savingPanels && R->topped && panels <= low) savingPanels = 1;
-    else if (savingPanels && panels >= high) savingPanels = 0;
-    R->saving = savingPanels;
-    // (the board fuller than it lives longest with -- the life table's peak -- and not saving: while the owner's band saves panels up,
-    // the band decides, never the table)
-    R->full = !savingPanels && panels > lifePeakOf();
-  }
   if (R->under || R->topped) R->by = NOT_ASKED;
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
   R->readyAt = NOT_ASKED;

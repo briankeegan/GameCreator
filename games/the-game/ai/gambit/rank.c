@@ -33,7 +33,6 @@ typedef struct {
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
   double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
-  int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
 } Judge;
@@ -57,8 +56,6 @@ typedef struct {
   // three that breaks -- the searches', a proposal's aim indexes it; asked: the same, the rank's)
   int32_t by;                      // NOT_ASKED: none
   int32_t under, topped, breakWaits, belowFloor;
-  int32_t saving;                  // saving panels up: breaks that leave the most come before the list (decide.c read)
-  int32_t full;                    // more panels than the board lives longest with (outcome.c lifePeakOf): every line's life by them before the list
   Keep keep; int32_t keepOn;
   int32_t readyAt;                 // NOT_ASKED: none
   int32_t pop, to, low, up;
@@ -114,7 +111,6 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // and leaving it alone -- the hold -- meets what it makes)
   int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
   J->met = j ? entry : -1;
-  J->saving = R->saving && R->under && m.broke > 0;
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
   J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;
   // (the entry a line is ranked for is the one the judged line meets; the search's word only where the judge could not play it out)
