@@ -280,6 +280,9 @@ static int32_t aloneBrokeAt(Ctx *x, int root, int32_t t) {
 // cleared, 0 nothing. Asked of a line's first swap's node: by the searches as they grow it, by the judge as it presses it
 // (Judged.firstMade), which the rank and the readiness read.
 static int madeBy(Ctx *x, int n, int root) { Stats st; if (!liveNode(x, n) || !statsOf(x, n, &st)) return 0; return NODE(x, n)->brk > aloneBrokeAt(x, root, NODE(x, n)->t) ? 2 : st.cleared > 0; }
+// A LINE THAT WASTES A THREE, as the judge saw it: a clear of three it makes for nothing, or the board's own chain left short of the
+// link it reaches alone (keepsChain) -- the one test the shared line check (outcome.c lineFits) and the order (rank.c wastesThree) ask
+static int judgedWastes(const Judged *j) { return j->threes > 0 || (ownChainBy > 0 && j->keepsChain == 0); }
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);

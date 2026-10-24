@@ -250,8 +250,8 @@ static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 static int cutsShort(const Judge *J);
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
-  if (J->o.j.threes > 0) return 1;   // (any clear of three the line makes for nothing, whatever else it makes -- a line lost too)
-  if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
+  if (judgedWastes(&J->o.j)) return 1;   // (any clear of three the line makes for nothing, whatever else it makes -- a line lost too -- or
+  if (cutsShort(J)) return 1;            // the board's own chain cut short: the three that began it made for nothing)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
 // (each loss as the order reads it -- lostOf, the readiness break's loss with it -- where both are known)
