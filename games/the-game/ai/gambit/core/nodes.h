@@ -22,6 +22,9 @@ static LOCAL int32_t pressTight;
 #define TAP_DIES 60
 static LOCAL int32_t pressTap;
 static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }
+// THE BOARD STILL MOVING: a chain counting, panels chaining or active (clearing, falling), or a pair swapping -- the one test every reader
+// asks (a step judged once it is still, a press that waits for its pair, a wasted three played on until both boards stop)
+static int boardMoving(const Board *b) { Board *m = (Board *)b; return b->chainCounter > 0 || hasChainingPanels(m) || hasActivePanels(m) || b->swappingCount > 0; }
 #define MIN_LEG 3          // the shortest walk a held key is no later on
 // A HELD KEY ENDS AT THE WALL: a direction is held only for a walk the board stops -- to column 1 or W - 1, or down to row 1 -- as a
 // player slides to the edge and taps back from it; a walk that ends anywhere else is tapped a cell at a time (the owner: the bot slides
@@ -254,7 +257,7 @@ static int pressWalk(Ctx *x, int n, int kind, int mr, int mc, int (*walk)(Ctx *,
     if (r != STEP_NULL) return r;
     tapeN = mark;
     Board *b = ensureBoard(x, n);
-    if (k >= PRESS_WAIT || !b || !(hasActivePanels(b) || b->swappingCount > 0)) return STEP_NULL;
+    if (k >= PRESS_WAIT || !b || !boardMoving(b)) return STEP_NULL;
     int w = walk(x, n, MK_LONG, 0, 0, 1);
     if (w == STEP_NULL || w == STEP_ERR) return w;
     if (w == STEP_DEAD || NODE(x, w)->dead) { if (w >= 0) deadAt = NODE(x, w)->t; *from = -1; return STEP_DEAD; }

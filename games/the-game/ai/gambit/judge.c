@@ -102,7 +102,7 @@ static int stepFitsAt(Ctx *x, int i) {
   if (chain > MAXCHAIN) return 0;
   if (lastResort(sm, chain)) return 1;
   Board *b = ensureBoard(x, i);
-  return b && (b->chainCounter > 0 || hasChainingPanels(b) || hasActivePanels(b));
+  return b && boardMoving(b);
 }
 static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 // (a step's wasted threes: its clears of three, no link of a chain, in a step that breaks nothing and makes no chain)
@@ -143,7 +143,7 @@ static int wastedThree(Board *g, Board *a) {
   for (int k = 0; k < THREE_SETTLE && g->gameOverClock <= 0; k++) {
     run(g); if (a->gameOverClock <= 0) run(a);
     gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
-    if (g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
+    if (!boardMoving(g) && !boardMoving(a)) break;
   }
   return !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
 }
