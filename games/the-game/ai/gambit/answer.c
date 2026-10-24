@@ -501,7 +501,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" live="); L_i(P.nlive); L_s("/"); L_i(P.ncands);
   if (cutWhy[1] + cutWhy[2] + cutWhy[3]) { L_s(" cutWhy="); for (int w = 1; w <= 3; w++) { if (w > 1) L_s("/"); L_i(cutWhy[w]); } L_s(":"); for (int w = 1; w <= 3; w++) { if (w > 1) L_s("/"); L_i(cutWhyBreak[w]); } }
   if (unbroken.set) { L_s(" unbroken="); L_play(unbroken.play); L_s(":"); for (int i = 0; i < unbroken.nseq; i++) { if (i) L_s(";"); L_mv(unbroken.seq[i]); } L_s(":"); L_i(unbroken.said); L_s("/"); L_i(unbroken.judged); }
-  // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it breaks)
+  // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it
+  // breaks, :e the later frame the order reads it lost at, where its readiness break leads)
   if (carryDrop) {
     L_s(" carryDrop="); L_i(carryDrop);
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
@@ -514,6 +515,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_play(j->hold ? PLAY_HOLD : j->k.play); if (j == carriedJ) L_s("*"); if (j->outside) L_s("~");
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
     L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
+    if (!j->o.lives && lostOf(j) > lostAtOf(j->o.lostAt, j->hold)) { L_s(":e"); if (lostOf(j) >= 1e299) L_s("inf"); else L_i((int64_t)lostOf(j)); }   // (lost where its readiness break leads)
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
