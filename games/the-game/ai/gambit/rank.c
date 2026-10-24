@@ -329,10 +329,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
-  // 1'. THE ALLOWANCE'S RESERVE UNDER GARBAGE, OR WITH GARBAGE ON ITS WAY: of two that survive alike (both live, or lost alike), a line
-  // that breaks nothing and walks the input allowance below a break's walk (BREAK_WALK) after one that keeps it -- the break the board
-  // needs next is pressed out of what is left, and what is spent comes back only a window later
-  if ((decF.under || decF.land != NOT_ASKED) && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
+  // 1'. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
+  // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
+  // spent comes back only a window later, the garbage it is needed for may be told of by then or not
+  if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
   }
