@@ -13,6 +13,7 @@ var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/g
 var aims = {};   // by the mode a game played throughout: { met, all }
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
 var beamDepth = { best: [], deep: [], resIn: 0, resPlayed: 0 };   // (under garbage, no break found: the touch beam's best line and its deepest carried on)
+var putDown = { same: 0, told: 0, sameBy: {} };   // (lines in progress put down: with nothing new told, or after something was)
 var carryByKey = {}, carryByPlay = {};   // (the line in progress put down: by the order's key that did it, and by what was played over it)
 var carryWhy = {}, CARRY_WHY = { 1: 'its anchor panel gone', 2: 'a step no longer there', 3: 'it no longer breaks', 5: 'no longer what it was begun for (offered all the same)',
   6: 'played as a wait that is no carry', 7: 'its tier past the last, nothing broken', 8: 'no bottom-row panel to find it by', 9: 'the hold played' };
@@ -93,6 +94,15 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (da.indexOf(' v=lives') < 0 || da.indexOf(' under=1') < 0 || num(da, 'land') === null || num(db, 'land') === null) continue;
       if (+da.split(' ')[1] + num(da, 'land') !== +db.split(' ')[1] + num(db, 'land') || num(da, 'qk') !== num(db, 'qk')) continue;
       kept.n++; if (num(db, 'live') > 0) kept.held++;
+    }
+    // (THE LINE PUT DOWN WITH NOTHING NEW TOLD: a decision that put the line in progress down for another (carryBy), its garbage the
+    // same as the decision before's -- the next block landing on the same frame, as many queued -- so the engine's prediction was all
+    // either had: the one trajectory judged two ways)
+    for (var dj = 0; dj + 1 < ds.length; dj++) {
+      var pa = ds[dj], pb = ds[dj + 1], cb = / carryBy=(\S+?):(k\d+|f)/.exec(pb);
+      if (!cb || num(pa, 'land') === null || num(pb, 'land') === null) continue;
+      var same = +pa.split(' ')[1] + num(pa, 'land') === +pb.split(' ')[1] + num(pb, 'land') && num(pa, 'qk') === num(pb, 'qk');
+      putDown[same ? 'same' : 'told']++; if (same) putDown.sameBy[cb[2]] = (putDown.sameBy[cb[2]] || 0) + 1;
     }
     // (SWITCHING: each switch by its direction -- the mode before it to the mode after -- and the mode a lost game was lost in)
     var was = null, one = null, switched = false, last = null;
@@ -247,6 +257,7 @@ if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed
 var most = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (k) { return k + ' ' + o[k]; }).join(', '); };
 var mid = function (a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] + ' (90% under ' + a[Math.min(a.length - 1, Math.floor(0.9 * a.length))] + ')' : '-'; };
 if (beamDepth.best.length) console.log('the touch beam under garbage with no break found (' + beamDepth.best.length + ' decisions): its best line ' + mid(beamDepth.best) + ' swaps, the deepest it carries on ' + mid(beamDepth.deep) + '; of ' + beamDepth.resIn + ' lines carried on to them, ' + beamDepth.resPlayed + ' played again whole');
+if (putDown.same + putDown.told) console.log('lines in progress put down with nothing new told: ' + putDown.same + ' of ' + (putDown.same + putDown.told) + ' (the garbage the same as the decision before\'s), by the order\'s key ' + most(putDown.sameBy));
 if (Object.keys(carryByKey).length) console.log('lines in progress put down for another: by the order\'s key (k1 survival, k2 own chain, k3 the list, k4 within an entry, k5 thrown, k6 later loss, k7 fewer actions, k8 kind, k9 nearer; f the order\'s filter) ' + most(carryByKey) + '; by what was played over it ' + most(carryByPlay));
 if (Object.keys(carryWhy).length) console.log('lines in progress not carried on: ' + Object.keys(carryWhy).map(function (k) { return carryWhy[k] + ' ' + (CARRY_WHY[k] || 'code ' + k); }).join(', '));
 if (allow.n) console.log('the input allowance: of ' + allow.n + ' decisions, ' + allow.at.map(function (v) { return Math.round(100 * v / allow.n) + '%'; }).join(' / ') +
