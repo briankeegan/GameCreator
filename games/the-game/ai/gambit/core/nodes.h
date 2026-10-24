@@ -22,6 +22,9 @@ static LOCAL int32_t pressTight;
 #define TAP_DIES 60
 static LOCAL int32_t pressTap;
 static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }
+// THE FRAMES A GARBAGE GROUP OF `cells` CELLS POPS IN once matched: flash, face, a pop a cell and three (pa.c matchGarbagePanels) -- the
+// facts' wait for a break, the order's break time (decide.c rankSave: a full-width row)
+static int32_t popFrames(const Board *b, int32_t cells) { return b->fFLASH + b->fFACE + b->fPOP * (3 + cells); }
 // THE BOARD STILL MOVING: a chain counting, panels chaining or active (clearing, falling), or a pair swapping -- the one test every reader
 // asks (a step judged once it is still, a press that waits for its pair, a wasted three played on until both boards stop)
 static int boardMoving(const Board *b) { Board *m = (Board *)b; return b->chainCounter > 0 || hasChainingPanels(m) || hasActivePanels(m) || b->swappingCount > 0; }

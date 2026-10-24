@@ -83,7 +83,7 @@ static void factsOf(const Board *b, const Arr *arr, int narr, int topped, FactSe
     int32_t gtop, onScreen;
     lowestGroupTop(b, H, &gtop, &onScreen);
     int inAir = hasFallingGarbage((Board *)b);
-    int32_t pop = gtop ? b->fFLASH + b->fFACE + b->fPOP * (3 + onScreen) : 0;
+    int32_t pop = gtop ? popFrames(b, onScreen) : 0;
     breakWaits = gtop && gtop == top && top < (b->height ? b->height : H) && (inAir || (next != NUL && next <= pop));
   }
   int hi = peaks[1], lo = peaks[1];
