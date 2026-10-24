@@ -476,6 +476,7 @@ static int soon(void) {
   if (F.nthinking) { worst = 0; for (int i = 0; i < F.nthinking; i++) if (F.thinking[i] > worst) worst = F.thinking[i]; }
   return imax(6, imin(600, (int)__builtin_ceil(worst / F.msPerFrame * 1.5)));
 }
+#define OUT_LEAD 3
 static int aheadOf(void) { return imax(F.ahead, soon()); }
 static uint32_t frand(void) { F.rnd = F.rnd * 1664525u + 1013904223u; return F.rnd >> 8; }
 // THE SLACK: after a swap whose decision found the hold lives and nothing urgent, the next swap waits the profile's gap and a jitter.
@@ -936,11 +937,11 @@ static void afterFrame(int32_t bits) {
   // (and one due before an answer could be had is pressed then, the question asked after it)
   while (F.lineN && F.lineAt[0] && lineDue() - now < soon() && follow()) {}
   int lead = F.nextAt > now ? soon() : imax(soon(), imin(aheadOf(), popLeft(next) / 4));
-  // (A BOARD ON ITS WAY OUT WITH NO BREAK FOUND: the last answer held a board that dies and its break search found none -- asked a
-  // reaction ahead at least, so the decision has a reaction's time to find one where it had the few ms recent answers took (run 448: 4
-  // of 5 breaks missed were not found again in the live search's own 3 to 27 ms); a board lost before then is asked for its last frame
-  // alive, below)
-  if (F.havePace && !F.lastHold && !F.lastBrk && F.nextAt <= now) lead = imax(lead, imin(aheadOf(), cfgReaction + 1));
+  // (A BOARD ON ITS WAY OUT WITH NO BREAK FOUND: the last answer held a board that dies and its break search found none -- asked
+  // OUT_LEAD reactions ahead at least, so the break search has that long to find one: the board is held meanwhile either way (run 1060:
+  // 54 of 275 boards searched again after a loss had a break the live search missed, given a reaction); a board lost before then is
+  // asked for its last frame alive, below)
+  if (F.havePace && !F.lastHold && !F.lastBrk && F.nextAt <= now) lead = imax(lead, imin(aheadOf(), OUT_LEAD * (cfgReaction + 1)));
   int32_t at = imax(F.nextAt > now ? F.nextAt : 0, now + lead);
   int paced = 0;
   if (gap >= 0 && F.lastSwapEnd + gap > at) { at = F.lastSwapEnd + gap; paced = 1; }
