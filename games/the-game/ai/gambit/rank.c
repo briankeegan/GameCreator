@@ -259,12 +259,15 @@ static int wastesThree(const Judge *J) {
   if (cutsShort(J)) return 1;            // the board's own chain cut short: the three that began it made for nothing)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
+// (THE SWAPS TO THE NEXT BREAK: the line's own, then the nearest break's on the board it leaves -- outcome.c nearAfter -- a line that
+// brings the break nearer by fewer swaps than it presses only spends the input window)
+static int nearBy(const Judge *J) { return (J->hold ? 0 : J->k.nseq) + J->o.nearAfter; }
 // (each loss as the order reads it -- lostOf, the readiness break's loss with it -- where both are known)
 static int beatsHold(const Judge *L, const Judge *H) {
   int known = L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED;
   // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
   if (known && (!L->o.dead || H->o.dead) && lostOf(L) > lostOf(H)) return 1;
-  if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
+  if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && nearBy(L) < nearBy(H)) return 1;
   // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
   // breaks lost at 44 put after a hold lost at 44)
   if (L->apBroke > 0 && known && lostOf(L) >= lostOf(H)) return 1;
@@ -338,15 +341,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
   // break and never preferred by it; two that live, the list first (3). Of two that break nothing, the next break lined up: the fewer
-  // swaps to it on the board the line leaves (outcome.c nearAfter) -- a line that only buys time leaves the garbage as far from breaking
+  // swaps to it, the line's own counted (nearBy) -- a line that only buys time leaves the garbage as far from breaking
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0) {
     if (x->material >= 0 && y->material >= 0 && x->material != y->material) K(1, x->material - y->material);
     int bothReady = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
     int32_t mx = bothReady ? x->o.j.readyMat : x->o.matLeft, my = bothReady ? y->o.j.readyMat : y->o.matLeft;
     if (mx >= 0 && my >= 0 && mx != my) K(1, mx > my ? -1 : 1);
   }
-  if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && x->o.nearAfter != y->o.nearAfter)
-    K(1, x->o.nearAfter - y->o.nearAfter);
+  if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && nearBy(x) != nearBy(y))
+    K(1, nearBy(x) - nearBy(y));
   // 2. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(2, cutsShort(x) ? 1 : -1);
   // 3. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
