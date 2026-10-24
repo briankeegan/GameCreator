@@ -1208,3 +1208,11 @@ run -- the guard asked the spoil of a swap alone where the judge asks it of the 
 the swap, and a line put in the place of the line in progress cuts its chain short when it makes a shorter one (`2e45e656`). A line
 the clock stopped the judge on ranks as lost where it was judged alive to (947 combo_storm-4: every candidate dropped unjudged, the
 hold played, lost with 53 panels) (`b23002d5`).
+Measured on the standard input budget (InputBudget.standard, 456 a minute in a 600-frame window), the walks tapped, a held key only to the
+wall (`062bd73a`, runs 959-962): 21 of 96 -- 93% of decisions made with 40 actions or fewer left, 213-273 swaps refused at the press a run.
+Then, one infra fix at a time: survival first in the order (`251a36dc`, 22 of 96); the judge presses a line in the frame loop's own input
+window, cutting a line at any swap the window cannot pay for (`ecec7fd5`, 42 of 96); the guard only where colours were shown since its
+question (`9c4d0280`, 47); no swap spoils the board's own chain, a swap at a time (`080c2c20`, 50 of 96, 0-2 wasted threes); starved
+under garbage, a break or the fewest actions (`22ff6536`, 58); the break search's cheaper break (`aaace2c5`, 51); the same at any
+allowance (`82376367`, runs 987-990): 57 of 96, 0 wasted threes in all 96 games. The losses left are the window spent before it is needed:
+an opening that spends 44 of 76 actions before the first garbage lands has them back only a window later.
