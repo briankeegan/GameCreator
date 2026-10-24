@@ -1241,3 +1241,9 @@ kept for nothing new told (`f99c8afb`, 1081 0, gone). DETERMINISM: a readiness b
 it and on its own budget on any thread (`a8fb900e`, `e012a494`); every run plays factory's first game twice and the report holds
 the two to every decision alike (1084, finished 18:29 ET: 1111 decisions alike; 9 -- combo_storm 2, factory 3, large_garbage 4).
 The board's material (1080): games lost land 126 garbage cells a minute against 107 in games survived, and break less of it.
+Garbage per action before the cheaper break (1085, 4); the order's tallies kept per candidate (1086, 8, the twin not alike); every
+readiness pend keyed by its press and searched to the end on its own budget (1087, 4, the twin alike in 633 decisions; 1088, 7).
+A readiness board asks only that a break is there, its line checked on the readiness question (`eacd7230`, 1089, seeds 1-48, finished
+19:26 ET): 21 of 48 -- combo_storm 9, factory 5, large_garbage 7 of 16; the twin alike in 835 decisions. The losses left: no break in
+the last 300 frames, the window run dry, and first-wave deaths before frame 1600 (large_garbage-2 at 663: holds and toward lines with
+no break found from frame 471, the board's material 29 to 22).
