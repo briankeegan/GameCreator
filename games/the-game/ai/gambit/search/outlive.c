@@ -15,8 +15,28 @@ static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(
 // that spends them is lost OUT_LATER frames later still: what a line spends comes back only a window later, and the board's next break is
 // pressed out of what is left)
 #define OUT_LATER 120
+// (THE LINES TAKEN: the latest lost of each kind -- within the reserve, and over it -- kept in order, OUT_POOL of each, and the first the
+// one line check passes is the answer, asked on the search's own question: ranked first, checked after, so only a check that decides
+// anything is paid for)
+#define OUT_POOL 16
+typedef struct { int32_t n; Outlived o[OUT_POOL]; } OPool;
+static void poolAdd(OPool *p, const OItem *it) {
+  int at = p->n;
+  while (at > 0 && (it->lost > p->o[at - 1].lostAt || (it->lost == p->o[at - 1].lostAt && it->acts < p->o[at - 1].acts))) at--;
+  if (at >= OUT_POOL) return;
+  int last = p->n < OUT_POOL ? p->n : OUT_POOL - 1;
+  for (int i = last; i > at; i--) p->o[i] = p->o[i - 1];
+  Outlived *o = &p->o[at]; o->set = 1; o->acts = it->acts; o->nseq = it->nseq; o->lostAt = it->lost;
+  for (int s2 = 0; s2 < it->nseq; s2++) o->seq[s2] = it->seq[s2];
+  if (p->n < OUT_POOL) p->n++;
+}
+static Outlived poolFirst(const OPool *p, const Question *q) {
+  for (int i = 0; i < p->n; i++) if (lineKeptOn(q, p->o[i].seq, p->o[i].nseq, 0)) return p->o[i];
+  Outlived none; memset(&none, 0, sizeof none); return none;
+}
 static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best, over; memset(&best, 0, sizeof best); memset(&over, 0, sizeof over);
+  static LOCAL OPool bestP, overP; bestP.n = overP.n = 0;
   double t0 = nowMs(), perStep = 0;
   Ctx *x = outCtx = ctxOf(outCtx);
   int root = rootOf(x, q);
@@ -72,13 +92,12 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     for (int i = 0; i < nkeep; i++) top[i] = kids[idx[i]];
     for (int i = 0; i < nkeep; i++) {
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
-      Outlived *o = top[i].acts <= keep ? &best : &over;
-      int better = !o->set || top[i].lost > o->lostAt || (top[i].lost == o->lostAt && top[i].acts < o->acts);
-      // (a line taken only through the one line check, lost or living -- outcome.c lineKept: pressed whole, as the order presses it; asked
-      // of a line that would be taken, so the search pays for no other's)
-      if ((better || top[i].lost == FOREVER) && !lineKept(top[i].seq, top[i].nseq, 0)) { top[i].lost = -1; continue; }
-      if (better) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
-      if (top[i].lost == FOREVER && o == &best) return best;
+      // (a line that lives within the reserve is the answer at once, through the one check)
+      if (top[i].lost == FOREVER && top[i].acts <= keep) {
+        if (lineKeptOn(q, top[i].seq, top[i].nseq, 0)) { poolAdd(&bestP, &top[i]); return bestP.o[0].lostAt == FOREVER ? bestP.o[0] : poolFirst(&bestP, q); }
+        top[i].lost = -1; continue;
+      }
+      poolAdd(top[i].acts <= keep ? &bestP : &overP, &top[i]);
     }
     for (int i = 0; i < nkeep; i++) { idx[i] = i; kl[i] = top[i].lost; }
     sortByKeyDesc(idx, nkeep, kl, tmpI);
@@ -86,6 +105,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     for (int i = 0; i < nlev; i++) level[i] = top[idx[i]];
     perStep = nsteps ? (nowMs() - tl) / nsteps : 0;
   }
+  best = poolFirst(&bestP, q); over = poolFirst(&overP, q);
   if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt + OUT_LATER))) return over;
   return best;
 }
