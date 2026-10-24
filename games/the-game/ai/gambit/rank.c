@@ -181,9 +181,10 @@ static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
 }
+static double lostOf(const Judge *x);
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
-         k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react;
+         lostOf(k) <= lostOf(H) && lostOf(H) - k->o.j.done > react;
 }
 // THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own (a
 // list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one whose board is lost later,
@@ -252,14 +253,15 @@ static int wastesThree(const Judge *J) {
   if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
+// (each loss as the order reads it -- lostOf, the readiness break's loss with it -- where both are known)
 static int beatsHold(const Judge *L, const Judge *H) {
-  int32_t l = L->o.lostAt, h = H->o.lostAt;
+  int known = L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED;
   // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
-  if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
+  if (known && (!L->o.dead || H->o.dead) && lostOf(L) > lostOf(H)) return 1;
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
   // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
   // breaks lost at 44 put after a hold lost at 44)
-  if (L->apBroke > 0 && l != NOT_ASKED && h != NOT_ASKED && (l == FOREVER || (h != FOREVER && l >= h))) return 1;
+  if (L->apBroke > 0 && known && lostOf(L) >= lostOf(H)) return 1;
   if (L->o.ready == 1 && H->o.ready != 1) return 1;
   if (L->readyNext == 1 && H->readyNext != NOT_ASKED && H->readyNext != 1) return 1;
   // (A SET-UP: with no garbage on the board, a line that lives where the hold does and leaves more ideas ready than the hold -- an attack
@@ -267,7 +269,6 @@ static int beatsHold(const Judge *L, const Judge *H) {
   if (!decF.under && L->o.lives && H->o.lives && moreIdeas(L, H)) return 1;
   return 0;
 }
-static double lostOf(const Judge *x);
 // (FLATTENING WHEN THERE IS NOTHING TO DO: a level line -- the stack walked flatter, nothing cleared -- known to do no worse than
 // holding beats holding; it is still the last of the lines that do something, tier 4's last)
 static int levelsFree(const Judge *L, const Judge *H) {
