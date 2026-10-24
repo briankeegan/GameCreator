@@ -165,7 +165,7 @@ EXPORT(gb_front_line) int gb_front_line(int n, const int32_t *mv, const int32_t 
   return keyed;
 }
 static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int tap, int32_t *out) {
-  frontNew(cfgReaction, 90, -1, 0);
+  frontNew(90, -1, 0);
   Board *b0 = F.truth; cloneBoard(b0, hostBoard);
   int32_t t0 = b0->clock;
   F.now = t0; F.npress = 0;

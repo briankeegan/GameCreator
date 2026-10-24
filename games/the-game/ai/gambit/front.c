@@ -103,7 +103,7 @@ static struct {
   // the swaps pressed still followed, the garbage cells matched last frame, and the cursor where it was and whether it was walked
   MoveOpen moves[MOVE_OPEN]; int32_t nmoves, gMatched, curRowWas, curColWas, curWalked;
   int32_t unseenIds[MAXROWS * W], nunseen;   // (the panels whose colours the plan in force was made without: revealClears)
-  int32_t reaction, ahead, gap, jitter;
+  int32_t ahead, gap, jitter;
   uint32_t rnd;
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
@@ -363,7 +363,7 @@ static int keysOf(const Board *b, int32_t holdLeft, int32_t holdStarted, const A
   int32_t waited = from >= 0 ? NODE(keyCtx, from)->t - NODE(keyCtx, root)->t : 0;
   tape = 0;
   ns_reset(keyCtx);
-  if (r == STEP_NULL || r == STEP_ERR || from < 0 || waited > F.reaction) return 0;
+  if (r == STEP_NULL || r == STEP_ERR || from < 0 || waited > cfgReaction) return 0;
   k->n = tapeN; k->held = 0;
   for (int i = 0; i < tapeN; i++) { k->ins[i] = buf[3 * i]; k->hl[i] = buf[3 * i + 1]; k->hs[i] = buf[3 * i + 2]; }
   return 1;
@@ -507,7 +507,7 @@ static void take(void) {
     if (F.nthinking == FTHINK) { memmove(F.thinking, F.thinking + 1, sizeof(double) * (FTHINK - 1)); F.nthinking--; }
     // (how soon an answer can be had: what it took, up to a reaction's frames -- a decision given longer, because its move was further
     // off, used time it was given, not time the next one needs)
-    double took = a.ms - a.idleMs > 0 ? a.ms - a.idleMs : 0, most = (F.reaction + 1) * F.msPerFrame;
+    double took = a.ms - a.idleMs > 0 ? a.ms - a.idleMs : 0, most = (cfgReaction + 1) * F.msPerFrame;
     F.thinking[F.nthinking++] = took < most ? took : most;
     if (!F.pending || a.id != F.pId) { F.st.unasked++; continue; }
     F.pending = 0;
@@ -906,7 +906,7 @@ static void afterFrame(int32_t bits) {
   // reaction ahead at least, so the decision has a reaction's time to find one where it had the few ms recent answers took (run 448: 4
   // of 5 breaks missed were not found again in the live search's own 3 to 27 ms); a board lost before then is asked for its last frame
   // alive, below)
-  if (F.havePace && !F.lastHold && !F.lastBrk && F.nextAt <= now) lead = imax(lead, imin(aheadOf(), F.reaction + 1));
+  if (F.havePace && !F.lastHold && !F.lastBrk && F.nextAt <= now) lead = imax(lead, imin(aheadOf(), cfgReaction + 1));
   int32_t at = imax(F.nextAt > now ? F.nextAt : 0, now + lead);
   int paced = 0;
   if (gap >= 0 && F.lastSwapEnd + gap > at) { at = F.lastSwapEnd + gap; paced = 1; }
@@ -919,7 +919,7 @@ static void afterFrame(int32_t bits) {
   // (the board predicted lost by then: asked a reaction before the last frame it is still alive, or as soon as an answer can be had
   // when that is later -- never for the last frame itself, where no swap pressed comes down before the board is lost)
   if (ok && F.pr->gameOverClock > 0) {
-    int32_t alive = F.pr->gameOverClock - 1, want = imin(alive - 1, imax(now + soon(), alive - F.reaction));
+    int32_t alive = F.pr->gameOverClock - 1, want = imin(alive - 1, imax(now + soon(), alive - cfgReaction));
     ok = want > now + 1 && predict(next, want, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs) && F.pr->gameOverClock <= 0;
     if (ok) at = want;
   }
@@ -962,7 +962,7 @@ static void statsLine(char *out, int cap) {
                         F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet, F.st.refusedSpoil);
 }
 
-static void frontNew(int reaction, int ahead, int gap, int jitter) {
+static void frontNew(int ahead, int gap, int jitter) {
   if (F.pending) abortTo(F.pId);
   Board *keep[4] = { F.truth, F.expect, F.pr, F.pBoard };
   int32_t nextId = F.nextId;
@@ -970,7 +970,7 @@ static void frontNew(int reaction, int ahead, int gap, int jitter) {
   F.truth = keep[0] ? keep[0] : nb_new(); F.expect = keep[1] ? keep[1] : nb_new(); F.pr = keep[2] ? keep[2] : nb_new(); F.pBoard = keep[3];
   for (int i = 0; i < PLANN; i++) F.planAt[i] = NUL;
   F.nextId = nextId ? nextId : 1;
-  F.reaction = reaction; F.ahead = ahead; F.gap = gap; F.jitter = jitter;
+  F.ahead = ahead; F.gap = gap; F.jitter = jitter;
   F.msPerFrame = 1000.0 / 60; F.limit = 76; F.window = 600;
   F.rnd = (uint32_t)fNow();
   memset(wasGarbage, 0, sizeof wasGarbage);

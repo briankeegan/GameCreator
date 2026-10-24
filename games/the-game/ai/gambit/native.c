@@ -288,7 +288,7 @@ static void statsOut(void) { static char line[4096]; if (!F.st.frames) return; s
 // A match begins: nothing of the last is carried on.
 void gn_match(void) {
   statsOut();
-  frontNew(gnReaction, gnAhead, gnGap, gnJitter);
+  frontNew(gnAhead, gnGap, gnJitter);
   gb_switch_game((uint32_t)clock_ms());
   gnFrames = 0;
   hostLock();
