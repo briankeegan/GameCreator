@@ -694,7 +694,7 @@ static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t 
 // decision asks them best-ranked first in its own shares, exactly as with no workers: whichever thread begins a board first searches
 // it (its state claimed), and the other reads the answer -- a break found, or none in the time it had. A worker's break is kept across
 // decisions as any is. Only with workers.
-#define READYPEND 256   // (every line a decision judges may land on a board of its own: decide.c MAXCANDS, walked or not)
+#define READYPEND 512   // (every line a decision judges, walked or not, may land on a board and a window of its own: decide.c MAXCANDS)
 typedef struct { int32_t gen, h, nb, tight, from, spent, state, whyN, why[MAXLINE]; double budget; int64_t work; Node nd; Question q; unsigned char *key; } ReadyPend;   // (from, spent: the window its breaks are pressed in, core/nodes.h pressFrom)   // (budget: the work-ms its search is given, whichever thread searches it; work: what that search did)
 #define PEND_WAITING 0
 #define PEND_FOUND 1
@@ -704,10 +704,12 @@ typedef struct { int32_t gen, h, nb, tight, from, spent, state, whyN, why[MAXLIN
 static ReadyPend readyPend[READYPEND];
 static int32_t readyPendN, readyPendGen, readyPre;   // (readyPre: the checks answered here, this decision -- the log's)
 static void readyPendClear(void) { readyPendN = 0; readyPendGen++; readyPre = 0; }
+// (a board and the window its break is pressed in, core/nodes.h pressFrom, pressSpent: two lines landing on one board having spent
+// differently are two searches -- whichever thread lands its line first, each is searched in its own window)
 static ReadyPend *readyPendFind(uint32_t h, int32_t nb) {
   for (int i = 0; i < readyPendN; i++) {
     ReadyPend *p = &readyPend[i];
-    if (p->h == (int32_t)h && p->nb == nb && !memcmp(p->key, readyKeyBuf, (unsigned long)nb)) return p;
+    if (p->h == (int32_t)h && p->nb == nb && p->from == pressFrom && p->spent == pressSpent && p->tight == pressTight && !memcmp(p->key, readyKeyBuf, (unsigned long)nb)) return p;
   }
   return 0;
 }
