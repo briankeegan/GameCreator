@@ -1220,3 +1220,5 @@ Then the searches made to pay for actions: the reserve on every board (`a235c19b
 (`7fe12036`, runs 999-1002, 59); the survival search keeps a reserve of 20 actions unless spending them buys 120 frames (`18fc2d52`,
 runs 1003-1006, 61); the planner's ties to the line of fewer actions (`e43866ff`, runs 1007-1010): finish 22, big chain 15, pressure 13,
 build 15 -- 65 of 96, 0-1 wasted threes a run.
+The break search one swap on for a cheaper break (`c3bac893`, runs 1015-1018, 60); two lines lost under a break's time apart survive
+alike (`92272757`, runs 1019-1022): 18, 19, 17, 16 -- 70 of 96, combo_storm 28 of 32, large_garbage 26, factory 16; 0-1 wasted threes.

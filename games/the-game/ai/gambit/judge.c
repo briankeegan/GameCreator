@@ -420,7 +420,16 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     // until the next decision)
     int32_t from = nseq ? 0 : cfgReaction;
     j->readyWait = imax(1, imax(o->readyAt, from) + 2);
-    j->ready = breaksAfterLanding(x, n, j->readyWait, o->why ? j->readyLine : 0, &j->readyN);
+    // (and the break it finds is one the input window pays for at that frame: a break the cursor cannot walk to on what is left is not in
+    // reach -- core/nodes.h allowLeftAt, actionsFor)
+    static LOCAL int32_t rl[MAXLINE]; int32_t rn = 0, *wl = o->why ? j->readyLine : (pressAllowance >= 0 ? rl : 0), *wn = o->why ? &j->readyN : &rn;
+    j->ready = breaksAfterLanding(x, n, j->readyWait, wl, wn);
+    if (j->ready == 1 && pressAllowance >= 0 && wl && *wn > 0) {
+      const Board *eb = ensureBoard(x, n);
+      int left = allowLeftAt(j->readyWait, spent), r = eb ? eb->curRow : 0, c = eb ? eb->curCol : 0, acts = 0;
+      for (int k = 0; k < *wn && eb; k++) { acts += actionsFor(r, c, CR(wl[k]), CC(wl[k]), left - acts); r = CR(wl[k]); c = CC(wl[k]); }
+      if (eb && acts > left) j->ready = 0;
+    }
     j->readyPend = readyPendLast; j->readyNear = readyNearLast; j->readyMat = readyMatLast;
     memcpy(j->readyRow1, readyRow1Buf, sizeof j->readyRow1);
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
