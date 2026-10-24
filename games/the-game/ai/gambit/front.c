@@ -741,8 +741,6 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
 #define GUARD_DIE 120   // the frames the board is played on, with the swap and without, to tell a three that saves it
 static Board *guardBoard, *aloneBoard;
 static int32_t planKeyAt(int32_t f) { Planned *q = planOf(F.now + f + 1); return q ? q->bits : 0; }
-static Arrival guardPendG[MAXARRIVALS], guardPendA[MAXARRIVALS]; static int32_t guardNpG, guardNpA;
-static void guardLand(Board *g, Board *a) { landOn(g, guardPendG, &guardNpG); landOn(a, guardPendA, &guardNpA); }
 static int wastedSwap(const Board *t, int32_t bits) {
   if (!guardBoard) guardBoard = nb_new();
   if (!aloneBoard) aloneBoard = nb_new();
@@ -752,13 +750,12 @@ static int wastedSwap(const Board *t, int32_t bits) {
   aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
   F.guardSpoil = 0;
   if (wastedThree(guardBoard, aloneBoard)) return 1;
-  // (and the board's own chain spoiled by the swap, the board left alone after it -- as the judge asks it of every swap of a line)
-  copyBoard(guardBoard, t); copyBoard(aloneBoard, t);
-  guardBoard->input = bits & ~IN_SWAP; guardBoard->pressSwap = 1;
-  aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
-  memcpy(guardPendG, F.arr, sizeof(Arrival) * (unsigned long)F.narr); memcpy(guardPendA, F.arr, sizeof(Arrival) * (unsigned long)F.narr);
-  guardNpG = guardNpA = F.narr;
-  int s = spoilsChain(guardBoard, aloneBoard, 0, guardLand);
+  // (and the board's own chain spoiled by the swap: the judge's own test, on a root made of the board as it is and the garbage on its way)
+  keyCtx = ctxOf(keyCtx);
+  Question q; memset(&q, 0, sizeof q);
+  q.b = (Board *)t; q.narr = arrivalsFrom(t, F.arr, F.narr, q.arr);
+  int root = rootOf(keyCtx, &q), s = root >= 0 && spoilsAt(keyCtx, root, t->curRow, t->curCol);
+  ns_reset(keyCtx);
   F.guardSpoil = s;
   return s;
 }

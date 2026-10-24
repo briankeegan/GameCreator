@@ -146,22 +146,6 @@ static int wastedThree(Board *g, Board *a) {
   }
   return !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
 }
-// THE BOARD'S OWN CHAIN SPOILED (rank.c cutsShort, a line at a time): g the board with the swap pressed and every key after it the line
-// presses (keyAt: the bits on the f-th frame after the press), a the same board left alone, both played to rest, the garbage on its way
-// landing on each as the game lands it (land) -- a's chain two or more
-// and g's shorter, no more garbage broken: the three that began the board's chain made for nothing. g and a are played on.
-static int spoilsChain(Board *g, Board *a, int32_t (*keyAt)(int32_t f), void (*land)(Board *g, Board *a)) {
-  int32_t gc = g->chainCounter, ac = a->chainCounter;
-  for (int f = 0; f < FIRST_LOOK + THREE_SETTLE && g->gameOverClock <= 0; f++) {
-    run(g); if (a->gameOverClock <= 0) run(a);
-    if (land) land(g, a);
-    int32_t k = keyAt ? keyAt(f) : 0;
-    g->input = k & ~(IN_SWAP | IN_RAISE); g->pressSwap = !!(k & IN_SWAP); a->input = 0; a->pressSwap = 0;
-    gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
-    if (f >= FIRST_LOOK && g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
-  }
-  return ac >= 2 && gc < ac && garbageCells(g) >= garbageCells(a);
-}
 // THE FIRST SWAP'S OWN CLEAR (the line's wasted three, as the game makes it): the board the swap is pressed on beside the board left
 // alone as long, by the one test
 static int32_t firstThree(Ctx *x, int root, int mr, int mc) {
@@ -175,6 +159,16 @@ static int32_t firstThree(Ctx *x, int root, int mr, int mc) {
   if (g) nb_free(g);
   if (h) nb_free(h);
   return w;
+}
+// THE BOARD'S OWN CHAIN SPOILED -- the one test, the judge's (a swap of a line at a time) and the press guard's (front.c wastedSwap): the
+// board at node n left alone to rest makes a chain of two or more, and with the swap at (mr, mc) pressed and let rest a shorter one, no
+// more garbage broken -- the three that began the board's chain made for nothing, whatever the line's later swaps make
+static int spoilsAt(Ctx *x, int n, int mr, int mc) {
+  int al = settleOf(x, n), sw = step(x, n, MK_SETTLE, mr, mc, 0);
+  Stats sa, ss;
+  if (!liveNode(x, al) || !liveNode(x, sw) || !statsOf(x, al, &sa) || !statsOf(x, sw, &ss)) return 0;
+  int32_t ca = sa.cleared > 0 ? chainOfStats(&sa) : 0, cs = ss.cleared > 0 ? chainOfStats(&ss) : 0;
+  return ca >= 2 && cs < ca && ss.broke <= sa.broke;
 }
 // (a step's wasted threes, as the game's own count reads them (front.c countAttacks), a clear at a time: a clear of three that is no link
 // of a chain and has no garbage joined to it -- and no chain's link after it in the step, which its fall may have made)
@@ -368,14 +362,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     // (A SWAP THAT SPOILS THE BOARD'S OWN CHAIN, a swap at a time: the board it is pressed on left alone to rest makes a chain of two or
     // more, and with the swap pressed and let rest a shorter one, no more garbage broken -- the three that began that chain made for
     // nothing, whatever the line's later swaps make; the press guard's test, front.c wastedSwap)
-    if (!last) {
-      int al = settleOf(x, n), sw = step(x, n, MK_SETTLE, mr, mc, 0);
-      Stats sa, ss;
-      if (liveNode(x, al) && liveNode(x, sw) && statsOf(x, al, &sa) && statsOf(x, sw, &ss)) {
-        int32_t ca = sa.cleared > 0 ? chainOfStats(&sa) : 0, cs = ss.cleared > 0 ? chainOfStats(&ss) : 0;
-        if (ca >= 2 && cs < ca && ss.broke <= sa.broke) threes++;
-      }
-    }
+    if (!last && spoilsAt(x, n, mr, mc)) threes++;
     j->done = NODE(x, out)->t;
     if (!last) lastAt = j->done;
     n = out; KB(n);
