@@ -283,6 +283,9 @@ static int madeBy(Ctx *x, int n, int root) { Stats st; if (!liveNode(x, n) || !s
 // A LINE THAT WASTES A THREE, as the judge saw it: a clear of three it makes for nothing, or the board's own chain left short of the
 // link it reaches alone (keepsChain) -- the one test the shared line check (outcome.c lineFits) and the order (rank.c wastesThree) ask
 static int judgedWastes(const Judged *j) { return j->threes > 0 || (ownChainBy > 0 && j->keepsChain == 0); }
+// A LINE THE JUDGE CUT SHORT -- a walk over the allowance, a swap no longer there, a walk not begun within a reaction -- on a board it
+// lives on: the line pressed is not the line judged (asked by lineFits and by the order, rank.c judgeCand)
+static int judgedCut(const Judged *j) { return !j->dead && j->cut >= 0; }
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);

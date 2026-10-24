@@ -218,8 +218,8 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
   keep(seq, n, settled, 2, &o);
   return o.ready;
 }
-// THE SHARED LINE CHECK: what the line makes and sets off fits the list, the chain is within MAXCHAIN, it wastes no three (judge.c
-// judgedWastes: a search looks on past a line the order would drop), and below the rule's material floor it does not clear panels and
+// THE SHARED LINE CHECK: what the line makes and sets off fits the list, the chain is within MAXCHAIN, it wastes no three and the judge
+// pressed all of it (judge.c judgedWastes, judgedCut: a search looks on past a line the order would drop), and below the rule's material floor it does not clear panels and
 // break nothing. A check not begun by the decision's deadline keeps no line.
 static int lineFits(const int32_t *seq, int n, int settled) {
   Outcome *hit = cached(seq, n, settled, 1);
@@ -232,9 +232,9 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   Made m = o.j.made;
   const Board *eb = o.j.dead || o.j.late || !floorOf ? 0 : ensureBoard(judgeCtx, o.j.endNode);
   o.floorKept = eb ? floorOf(eb) : -1;
-  o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN && !judgedWastes(&o.j) && !spendsFloor(m, o.floorKept) && !spendsReserve(m, &o.j);
+  o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN && !judgedWastes(&o.j) && !judgedCut(&o.j) && !spendsFloor(m, o.floorKept) && !spendsReserve(m, &o.j);
   // (a list ended by "default": a line outside it is the default's own, kept while the board lives through it)
-  if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN && !judgedWastes(&o.j);   // (the host's own check, a line held to no list)
+  if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN && !judgedWastes(&o.j) && !judgedCut(&o.j);   // (the host's own check, a line held to no list)
   if (o.j.late) return 0;
   keep(seq, n, settled, 1, &o);
   return o.fits;
