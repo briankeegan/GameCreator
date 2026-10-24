@@ -482,6 +482,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     for (int i = 0; i < no; i++) {
       if (!olen[i]) continue;
       if (seenDigHas(decQ.b, ord[i][0])) continue;
+      if (!lineCheck(ord[i], olen[i], 0, CHECK_WASTE)) continue;   // (the first the order would press whole: outcome.c lineCheck)
       ADD(PLAY_TOWARD, ord[i], olen[i], -1, 0);
       break;
     }

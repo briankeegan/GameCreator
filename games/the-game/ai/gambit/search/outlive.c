@@ -2,7 +2,8 @@
 // those held longest -- the frame the garbage queued could next drop (the line's frames, then the later of stop + pre-stop and the
 // shake) -- then with the most room over the stack, then the least garbage; each step's clears held to the list. The first line whose
 // board, left alone, is still alive at `to` (frames from now) and `rest` past its own end, and that the order keeps (outcome.c
-// lineKept: a line that lives is taken whatever list it is outside), is the answer; else the line whose board is lost latest. And THE
+// lineKept: a line that lives is taken whatever list it is outside), is the answer; else the line whose board is lost latest, through the
+// same check. And THE
 // FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn: lostAlone's answer, NOT_ASKED when there is none).
 
 #define OUT_SEQ 16
@@ -71,9 +72,12 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     for (int i = 0; i < nkeep; i++) top[i] = kids[idx[i]];
     for (int i = 0; i < nkeep; i++) {
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
-      if (top[i].lost == FOREVER && !lineKept(top[i].seq, top[i].nseq, 0)) { top[i].lost = -1; continue; }
       Outlived *o = top[i].acts <= keep ? &best : &over;
-      if (!o->set || top[i].lost > o->lostAt || (top[i].lost == o->lostAt && top[i].acts < o->acts)) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
+      int better = !o->set || top[i].lost > o->lostAt || (top[i].lost == o->lostAt && top[i].acts < o->acts);
+      // (a line taken only through the one line check, lost or living -- outcome.c lineKept: pressed whole, as the order presses it; asked
+      // of a line that would be taken, so the search pays for no other's)
+      if ((better || top[i].lost == FOREVER) && !lineKept(top[i].seq, top[i].nseq, 0)) { top[i].lost = -1; continue; }
+      if (better) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
       if (top[i].lost == FOREVER && o == &best) return best;
     }
     for (int i = 0; i < nkeep; i++) { idx[i] = i; kl[i] = top[i].lost; }
