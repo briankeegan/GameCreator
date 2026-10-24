@@ -147,6 +147,11 @@ jobs:
       - name: Results
         if: always()
         run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }} r${{ matrix.round }}::/' || true
+      # (the game written up by its own job, beside the others: a loss's empty break searches searched again -- the report adds them up)
+      - name: The game written up
+        if: always()
+        timeout-minutes: 20
+        run: node games/the-game/ai/eval/gambit_reach.js --game out "gambit-${{ matrix.pattern }}-${{ matrix.game }}${{ matrix.round > 1 && format('-r{0}', matrix.round) || '' }}" 300 3000 || true
       - uses: actions/upload-artifact@v4
         if: always()
         timeout-minutes: 5
@@ -156,6 +161,7 @@ jobs:
             out/results.txt
             out/survivor.log
             out/client-*.log
+            out/reach.json
           if-no-files-found: warn
           retention-days: 14
       # (after the games, so a check that fails turns the run red without stopping a game)
@@ -214,7 +220,7 @@ jobs:
         run: |
           EV=games/the-game/ai/eval
           mkdir -p report
-          # (the three side by side: each reads the games alone)
+          # (the three side by side: each reads the games alone; reach adds up what each game's job wrote, reach.json)
           node $EV/gambit_summary.js games-of-run > report/summary.txt 2>&1 &
           node $EV/gambit_losses.js games-of-run 10 > report/losses.txt 2>&1 &
           node $EV/gambit_reach.js games-of-run 300 3000 > report/reach.txt 2>&1 &
