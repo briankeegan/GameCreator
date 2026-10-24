@@ -235,8 +235,11 @@ static int breaksAt(BS *s, int n, const int32_t *path, int len) {
   Ctx *x = s->x;
   if (!liveNode(x, n) || !within(s, n) || !(NODE(x, n)->brk > stillAt(s, NODE(x, n)->t))) return 0;
   if (clockOut()) return 0;
-  // (off the list, the line still through the order's own checks: not dead, pressed whole, no three wasted -- outcome.c lineCheck)
-  return (!BREAK_LIST || allowedAt(x, n)) && (!path || lineCheckOn(s->q, path, len, 0, BREAK_LIST ? CHECK_LIST | CHECK_WASTE : CHECK_WASTE));
+  // (off the list, the line still through the order's own checks: not dead, pressed whole, no three wasted -- outcome.c lineCheck. A
+  // readiness search, rooted at a line's board once everything lands, asks only that a break is there: the decisions until then judge
+  // the line that presses it, each through the check)
+  int ready = s->q != &decQ;
+  return (!BREAK_LIST || allowedAt(x, n)) && (!path || ready || lineCheckOn(s->q, path, len, 0, BREAK_LIST ? CHECK_LIST | CHECK_WASTE : CHECK_WASTE));
 }
 // (what a break leaves once its board has settled: the garbage rows broken -- a break whose converted panels match again breaks on --
 // and the material, the panels under each column's first garbage: a slab broken above another leaves its panels on the lower one,
