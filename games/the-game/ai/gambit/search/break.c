@@ -13,6 +13,7 @@
 // ends with what it has.
 
 #define TOUCH_DEPTH 12
+#define CHEAP_BREAK 6    // the actions a break may walk for before the level after it is searched for a cheaper one
 #define TOUCH_BEAM 60
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
@@ -309,6 +310,10 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   int tpath = 0;
   for (int tb = touchFrom; tb < 2 && !tpath && !SEARCH_OUT(); tb++) {
     int beam = tb ? TOUCH_WIDE : TOUCH_BEAM, ntl = n0;
+    // (A CHEAPER BREAK ONE SWAP ON: a break found that the cursor walks more than CHEAP_BREAK actions for is kept, and the level after
+    // searched too -- one more swap near the cursor can cost fewer actions than one far from it; the better of the two by the level's
+    // own key, actions before the material)
+    int64_t heldB = -1; int foundTd = -1;
     for (int i = 0; i < n0; i++) tl[i] = tl0[i];
     for (int td = 2; td <= TOUCH_DEPTH && ntl && !tpath && !SEARCH_OUT(); td++) {
       // (how near a break each line's board is, read on the board once what the line cleared has fallen -- settled a batch at a
@@ -385,12 +390,15 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
         }
       }
       batchDone();
-      if (bestB >= 0) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; tpath = 1; }
+      if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; }
+      if (bestB >= 0 && foundTd < 0) foundTd = td;
+      if (foundTd >= 0 && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == TOUCH_DEPTH)) tpath = 1;
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)
       if (ntn) keepPaths(&o->keepOut, tn, ntn < KEEPN ? ntn : KEEPN);
       for (int i = 0; i < ntn; i++) tl[i] = tn[i];
       ntl = ntn;
     }
+    if (foundTd >= 0) tpath = 1;   // (the break held, the level after it ended short: the clock or no lines)
     if (tpath) { o->touch = 1; o->wide = tb; return 1; }
   }
   return 0;
