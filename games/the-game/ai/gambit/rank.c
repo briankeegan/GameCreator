@@ -342,7 +342,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (decF.under && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int bx = x->apBroke > 0, by = y->apBroke > 0;
     if (bx != by) return (cmpKey = __LINE__, (bx ? -1 : 1));
-    if (!bx) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+    // (of two that break nothing: the later loss, then the fewer actions -- a hold alike only by a margin, played again each decision,
+    // is a board left to come to its end a decision at a time)
+    if (!bx) {
+      if (!lx && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+      int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
+    }
     // (of two that break: the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
     else { int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x)); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1)); }
   }
