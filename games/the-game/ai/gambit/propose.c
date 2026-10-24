@@ -351,7 +351,7 @@ static int wayLines(Cand *out, int n, int cap) {
   }
   if (!no) return n;
   const Board *b0 = ensureBoard(x, root);
-  int under = garbageOn(decQ.b);
+  int under = decF.under;   // (the one under-garbage test: decide.c read)
   int32_t near0 = under ? nearOf(b0) : 0, conn0 = connectedOf(b0);
   stepBatch(x, par, on, MK_SETTLE, no);
   int nu = 0;

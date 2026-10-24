@@ -149,7 +149,8 @@ static void perchedOf(const Bits *B, Perches *P) {
 static void perchedDrops(const Board *b, Perches *P) { bitsOf(b, &scratchBits); perchedOf(&scratchBits, P); }
 static int nearOf(const Board *b) { return imin(breakNear(b), NEAR_MISS); }
 static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
-static int garbageOn(const Board *b) { bitsOf(b, &scratchBits); return bitsLowestG(&scratchBits) <= scratchBits.rows; }
+// (garbage on the board: the board's shape's, the one reading -- search/bits.c bitsShape, every row the board holds, as the facts read it)
+static int garbageOn(const Board *b) { static LOCAL BoardShape GS; bitsOf(b, &scratchBits); bitsShape(&scratchBits, &GS); return GS.garbage; }
 // the panels on the board, garbage not counted -- the material every break is made from
 static int32_t panelsOn(const Board *b) { bitsOf(b, &scratchBits); return bitsPanels(&scratchBits); }
 static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) - uneven(b); }
