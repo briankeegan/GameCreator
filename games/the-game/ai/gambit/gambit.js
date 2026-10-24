@@ -199,7 +199,9 @@ Gambit.prototype.breakOn = function (board, arrivals, aims, ms, listOn) {
 };
 // The same from a board as a native host logs it (GAMBITB C<size>:<base64>) and its arrivals ([at, width, height], frames from it).
 // listOn 0: no line held to the list (a list ended by "default", as every list is under garbage)
-Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms, listOn) {
+// (press: the decision's own -- { allow, gap } as native.c dumpBoard logs them, and work: true for ms on the work clock, the work the
+// live search had -- core/clock.h WORK_PER_MS)
+Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms, listOn, press) {
   var bytes = Buffer.from(b64, 'base64'), X = this.X, io = new Uint8Array(X.memory.buffer, X.gb_io() >>> 0, bytes.length);
   io.set(bytes);
   var w = this.G.body(Math.ceil(bytes.length / 4) + 3 * arrivals.length), k = Math.ceil(bytes.length / 4);
@@ -207,12 +209,14 @@ Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms, listOn) {
   if (X.gb_question_bytes(bytes.length, arrivals.length) < 0) throw new Error('gambit: the board bytes were refused');
   this.G.list(aims); X.gb_list_on(listOn === 0 ? 0 : 1);
   X.gb_decision_on(-1, 0, 1);
-  return this.breakPath(ms);
+  if (press) X.gb_press(press.allow, press.gap);
+  X.gb_clock_on_work(press && press.work ? 1 : 0);
+  try { return this.breakPath(ms, press && press.work); } finally { X.gb_clock_on_work(0); if (press) X.gb_press(-1, 0); }
 };
-Gambit.prototype.breakPath = function (ms) {
+Gambit.prototype.breakPath = function (ms, work) {
   var X = this.X;
   var t0 = Date.now();
-  X.gb_clock_start(t0 + ms);
+  X.gb_clock_start(work ? ms : t0 + ms);
   var w = this.G.body(X.gb_break(0, 0)), depth = w[0], k = 7, nm = w[k++], took = Date.now() - t0;
   if (!depth) return null;
   var first = nm ? [w[k] >> 3, w[k] & 7] : null; k += 3 * nm;

@@ -47,14 +47,18 @@ function reachGame(gdir, g) {
     return (seenAt[at] = 1);
   });
   // (the match's own: the last run of boards before the loss, clock forward)
-  var bs = lines.map(function (l) { var p = l.split(' '); return { at: +p[1], b64: p[2], arr: JSON.parse(p[3] || '[]') }; }).filter(function (x) { return x.at <= lostAt && x.at >= lostAt - LAST; });
+  // (each board with its decision's press, where the log gives it: the allowance left and the pace -- native.c dumpBoard's a, g)
+  var bs = lines.map(function (l) {
+    var p = l.split(' '), a = /^a(-?\d+)$/.exec(p[4] || ''), gp = /^g(\d+)$/.exec(p[5] || '');
+    return { at: +p[1], b64: p[2], arr: JSON.parse(p[3] || '[]'), press: a && gp ? { allow: +a[1], gap: +gp[1] } : null };
+  }).filter(function (x) { return x.at <= lostAt && x.at >= lostAt - LAST; });
   var out = [];
   bs.forEach(function (x) {
     // (Gambit's own break search, its list and line check, with MS to spend: on a board a native host logged as the C engine's bytes, or
     // on one the JavaScript host logged, judged again on the engine)
     var line, found;
     if (/^C\d+:/.test(x.b64)) {
-      line = G.breakOnBytes(x.b64.slice(x.b64.indexOf(':') + 1), x.arr, list, MS, 0);
+      line = G.breakOnBytes(x.b64.slice(x.b64.indexOf(':') + 1), x.arr, list, MS, 0, x.press);
       found = !!line;
     } else {
       var board = PA.revive(v8.deserialize(require('zlib').gunzipSync(Buffer.from(x.b64, 'base64'))));
@@ -67,11 +71,12 @@ function reachGame(gdir, g) {
     // (a break the search's own first step finds is one the live search could not have missed on this board: the board, whole, for a replay)
     if (found && line.how === 'first' && R.missedB.length < 12) R.missedB.push('MISSEDB ' + g + ' ' + x.at + ' ' + x.b64 + ' ' + JSON.stringify(x.arr));
     if (found && line.how) { how[line.how] = (how[line.how] || 0) + 1; var bk = bucketOf(line.ms); took[bk] = (took[bk] || 0) + 1; }
-    // (IN ITS OWN TIME: the board searched again in the ms the live search had (its decision's brMs) -- found, the live search lost the
-    // break to the machine it ran on (its thread's share of the CPU); not found, to the time it was given)
+    // (IN ITS OWN WORK: the board searched again with the work the live search had -- its decision's brMs on the work clock, under the
+    // decision's press -- found, the live search lost the break to how it spent that work (its resumed frontier, its share); not
+    // found, to the work it was given)
     var inTime = '';
-    if (found && /^C\d+:/.test(x.b64) && brMsAt[x.at] !== undefined) {
-      var again = G.breakOnBytes(x.b64.slice(x.b64.indexOf(':') + 1), x.arr, list, Math.max(1, brMsAt[x.at]), 0);
+    if (found && /^C\d+:/.test(x.b64) && brMsAt[x.at] !== undefined && x.press) {
+      var again = G.breakOnBytes(x.b64.slice(x.b64.indexOf(':') + 1), x.arr, list, Math.max(1, brMsAt[x.at]), 0, { allow: x.press.allow, gap: x.press.gap, work: true });
       inTime = again ? ' in its ' + brMsAt[x.at] + 'ms: found' : ' in its ' + brMsAt[x.at] + 'ms: not';
       if (again) totals.inTime++; else totals.notInTime++;
     }
@@ -114,5 +119,5 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
 if (gotN !== lostN) { console.error('gambit_reach.js: ' + lostN + ' games lost, ' + gotN + ' written up'); process.exit(1); }
 console.log('\nthe moves at the turn, every loss: ' + JSON.stringify(turns));
 console.log('\n' + totals.boards + ' boards searched again: ' + totals.missed + ' had a break the live search missed, ' + totals.impossible + ' had none to find');
-if (totals.inTime + totals.notInTime) console.log('the missed breaks searched again in the live search\'s own time: ' + totals.inTime + ' found (the machine took them), ' + totals.notInTime + ' not (the time did)');
+if (totals.inTime + totals.notInTime) console.log('the missed breaks searched again with the live search\'s own work: ' + totals.inTime + ' found (how it spent the work took them), ' + totals.notInTime + ' not (the work did)');
 if (totals.missed) console.log('the missed breaks, by how they were found: ' + JSON.stringify(how) + '; by the ms they took: ' + JSON.stringify(took));
