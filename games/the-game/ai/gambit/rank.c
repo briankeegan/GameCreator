@@ -335,9 +335,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (cutsShort(x) != cutsShort(y)) K(2, cutsShort(x) ? 1 : -1);
   // 3. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
   // order). Under garbage the rule is to break (the rules' underGarbage): a break that meets an entry, by the entry; then a plain break
-  // outside the list -- a three, the last choice; then a line that breaks nothing
+  // outside the list -- a three, the last choice; then a line that breaks nothing; and last of all a line the rules' keep puts outside
+  // (judgeCand: below the material floor, panels cleared and nothing broken -- spends)
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS;
     if (decF.under) { ax += x->apBroke > 0 ? 0 : MAXAIMS + 1; ay += y->apBroke > 0 ? 0 : MAXAIMS + 1; }
+    ax += x->spends ? 2 * MAXAIMS + 2 : 0; ay += y->spends ? 2 * MAXAIMS + 2 : 0;
     if (ax != ay) K(3, ax - ay); }
   // 4. WITHIN ONE ENTRY: the line in progress kept -- a line put down halfway leaves a board its forecast never judged -- then the plan
   // the last decision kept (an intention)
