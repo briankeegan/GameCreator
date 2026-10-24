@@ -105,6 +105,8 @@ static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on t
 static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
 // (THE BOARD LEFT ALONE, settled as a line is: whether it still has a break to build -- or no garbage to break. Asked once a decision:
 // what a line is measured against when it spends the next break's material)
+// (THE NEXT BREAK TO BUILD on a board, the one test: a break its panels touching garbage can be walked into, or no garbage to break)
+static int buildsNext(const Board *b) { return !garbageOn(b) || breakBuildable(b); }
 static int32_t rootBuildable = NOT_ASKED;
 static int32_t aloneBuildable(void) {
   if (rootBuildable != NOT_ASKED) return rootBuildable;
@@ -113,7 +115,7 @@ static int32_t aloneBuildable(void) {
   judge(&decQ, 0, 0, &jo, &a);
   const Board *eb = a.dead || a.late ? 0 : ensureBoard(judgeCtx, a.endNode);
   if (!eb) return 0;   // (no answer: nothing measured, nothing spent -- asked again)
-  return rootBuildable = !garbageOn(eb) || breakBuildable(eb);
+  return rootBuildable = buildsNext(eb);
 }
 static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
@@ -150,13 +152,13 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
-      if (breaks) o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1;
+      if (breaks) o.nextBuild = eb ? buildsNext(eb) : -1;
     }
-    // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board left
+    // (THE NEXT BREAK SPENT: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board left
     // alone keeps one has spent what the next break needs -- it is lost the frame it is done)
     if (n > 0 && !breaks && !stands && !waitTo && decF.under) {
       const Board *eb = alone ? ensureBoard(judgeCtx, o.j.endNode) : 0;
-      if (eb && !breakBuildable(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
+      if (eb && !buildsNext(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
     }
     // (A PROMISED BREAK IS A REAL ONE: a line that lives only by being ready lives only when its readiness break, played where the
     // readiness found it, lives too -- one that cannot be played out (no line kept, too long, the clock) promises nothing)
