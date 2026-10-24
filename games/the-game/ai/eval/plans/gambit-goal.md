@@ -1222,3 +1222,13 @@ runs 1003-1006, 61); the planner's ties to the line of fewer actions (`e43866ff`
 build 15 -- 65 of 96, 0-1 wasted threes a run.
 The break search one swap on for a cheaper break (`c3bac893`, runs 1015-1018, 60); two lines lost under a break's time apart survive
 alike (`92272757`, runs 1019-1022): 18, 19, 17, 16 -- 70 of 96, combo_storm 28 of 32, large_garbage 26, factory 16; 0-1 wasted threes.
+Finish them on seeds 1-24 (a seed each game, the same games every run). The work clock (`core/clock.h`, 300 engine frames a ms, under
+a runner's slowest) and the reserve on the wall-paced client (`2e96f75a`, run 1055): 3 of 22, two games crashed (combo_storm-3,
+factory-4). LOCKSTEP (`32fb0ff4`, run 1056: the game waits on every answer and plays unpaced, so a seed is one game on any runner and a
+run takes 5 minutes, not 25): 0 of 24, every loss with the input window run dry -- no wait after a swap spent it. A 12-frame gap
+measured on the same seeds: 10. THE PACE (`41e9bc3d`, run 1058: the wait after a swap grows as the window empties): 12 (4, 3, 5), 0
+wasted threes. Moves that came to nothing: 15% of swaps, 87% of them a line put down before its later swaps -- by survival (1730),
+the list (637). The line in progress before the list (`9c7c8948`, 1061): 8. Asked three reactions ahead on a board on its way out
+(`c63d971c`, 1063): 10. The reach report under the live search's own press and work (`231055de`, 1064, finished 15:22 ET): 12 (4, 3,
+5); 47 of 275 boards searched again after a loss had a break the live search missed, and 3 of the 47 are found again with the work it
+had -- the search is short of work, not spending it wrongly.
