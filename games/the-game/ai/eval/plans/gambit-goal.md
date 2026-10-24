@@ -1251,3 +1251,5 @@ Seeds 1-24 again (1090, finished 19:34 ET): 14 -- combo_storm 7, factory 3, larg
 round, in 6 minutes. Of two lines that break nothing, the line's own swaps counted with the next break's (`fadd3de9`, 1091, 19:43 ET):
 9, gone. The reach report searched every lost board with no break again under a full window: 23 of 382 had one -- the input window
 is not what the losses lack; the panels are.
+Readiness asks that its break be pressed whole in the window as it will be (`5836931c`, 1092, 19:55 ET): 11 -- combo_storm 3, factory
+2, large_garbage 6; gone.
