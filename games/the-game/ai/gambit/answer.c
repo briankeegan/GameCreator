@@ -666,7 +666,7 @@ static int32_t modeAt(int32_t at) {
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
   decQ = hostQ; decQ.b = hostBoard;
-  ncache = 0; rootBuildable = NOT_ASKED;
+  ncache = 0; cacheGen = __atomic_add_fetch(&decGen, 1, __ATOMIC_RELAXED); rootBuildable = NOT_ASKED;
   // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
   switchedNow = 0;
   if (nswitch) { int32_t m = modeAt(at); if (m != modeRule) { if (modeRule >= 0) { modeLeft(); switchedNow = 1; } modeRule = m; } }

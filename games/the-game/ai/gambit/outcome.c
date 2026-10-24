@@ -57,7 +57,11 @@ static uint32_t lineHash(const int32_t *seq, int n, int settled, int kind) {
 static int readyFresh;   // (the readiness asked now: an outcome kept without it is judged again, and replaced)
 static int endWanted;    // (lineEnd: the line is judged again and the board it ends on kept)
 static int endNoKeep;    // (and that judging not kept in the cache: asked once the rank has the line's whole outcome -- rank.c ideasOf)
+// (each thread's cache is the decision's: begun again when a decision begins -- decGen -- whichever thread it is)
+static int32_t decGen; static LOCAL int32_t cacheGen;
+static void cacheFresh(void) { int32_t g = __atomic_load_n(&decGen, __ATOMIC_RELAXED); if (cacheGen != g) { ncache = 0; cacheGen = g; } }
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
+  cacheFresh();
   if ((readyFresh || endWanted) && kind == 0) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
   for (int i = 0; i < ncache; i++) {
@@ -70,6 +74,7 @@ static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
   return 0;
 }
 static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Outcome *o) {
+  cacheFresh();
   if (!cache) cache = (Cached *)grab(sizeof(Cached) * CACHEN);
   if (!cache || n > MAXLINE) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
@@ -271,7 +276,7 @@ EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft) {
   Facts f = { land, topped, timeLeft };
   floorOf = 0;   // (a host's question holds no rules' keep: decide.c sets the decision's)
   decF = f;
-  ncache = 0; rootBuildable = NOT_ASKED;
+  ncache = 0; cacheGen = __atomic_add_fetch(&decGen, 1, __ATOMIC_RELAXED); rootBuildable = NOT_ASKED;
   return 0;
 }
 // (and the decision's press, for a search asked of a logged board: the allowance left, and the pace's gap -- native.c dumpBoard's a, g)

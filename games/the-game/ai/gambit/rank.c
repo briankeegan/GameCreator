@@ -39,14 +39,18 @@ typedef struct {
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press, w a wasted three, j the clock stopped its judging)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, NDROPS };
-static int32_t dropped[NPLAYS][NDROPS], offered[NPLAYS];
+// (each thread's own -- the judging runs on every thread, decide.c judgeJob, and each candidate's are added in order after)
+static LOCAL int32_t dropped[NPLAYS][NDROPS];
+static int32_t offered[NPLAYS];
 static void dropAs(int play, int why) { dropped[play][why]++; }
 // (the lines cut, by why the judge cut them: judge.c cutWhy -- 1 a first walk over the allowance, 2 no swap there, 3 a walk not begun
 // within a reaction -- and how many of them the break search found)
-static int32_t cutWhy[4], cutWhyBreak[4];
+static LOCAL int32_t cutWhy[4], cutWhyBreak[4];
 // THE FIRST LINE OF A DECISION THE BREAK SEARCH SAID BREAKS AND THE JUDGE SAYS DOES NOT: its play, swaps and both counts, for the log
 // and the board's dump (two measures of one fact)
-static struct { int32_t set, play, nseq, seq[MAXLINE], said, judged; } unbroken;
+typedef struct { int32_t set, play, nseq, seq[MAXLINE], said, judged; } Unbroken;
+static LOCAL Unbroken unbroken;
+static LOCAL int32_t besideJudge;   // (judging on a worker: decide.c judgeJob -- the ideas are asked by the decision's own thread)
 
 // the decision's reading of the board, which every candidate is judged by (decide.c read)
 typedef struct {
@@ -229,6 +233,7 @@ static const List *ideaAims;   // (the list they meet: the rank's, decide.c rank
 static int32_t ideasAsks;      // (asked this decision)
 static int ideasOf(const Judge *J0) {
   Judge *J = (Judge *)J0;
+  if (besideJudge) return -1;   // (not asked here: the order asks it on the decision's thread)
   if (!J->ideasAsked) {
     J->ideasAsked = 1;
     if (decF.under || ideasAsks >= IDEAS_ASKS) { J->ideas = -1; return -1; }
@@ -320,7 +325,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 }
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
-static int32_t cmpKey;
+static LOCAL int32_t cmpKey;
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
 #define K(rule, v) return (cmpKey = (rule), (v))
@@ -377,8 +382,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
 // for a short line (WALK_ALL swaps or fewer), the nearest swap next for a longer one; of two orders that walk alike, the line's own first.
 // 0 when the line's own order walks least.
 #define WALK_ALL 6
-static int32_t walkSeq[MAXLINE], walkBest[MAXLINE], walkCost;
-static int walkUsed[MAXLINE];
+static LOCAL int32_t walkSeq[MAXLINE], walkBest[MAXLINE], walkCost;
+static LOCAL int walkUsed[MAXLINE];
 static int sharesCell(int32_t a, int32_t b) { return CR(a) == CR(b) && iabs(CC(a) - CC(b)) <= 1; }
 static int walkFree(const Cand *k, int i) {
   for (int p = 0; p < i; p++) if (!walkUsed[p] && sharesCell(k->seq[p], k->seq[i])) return 0;
@@ -425,7 +430,7 @@ static int compareJudged(const Judge *x, const Judge *y);
 // what it makes is the engine's, as for every line; only the drops and the log's count are the line's own order's
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int ok = judgeCand(R, k, J);
-  static Cand w; static Judge JW;
+  static LOCAL Cand w; static LOCAL Judge JW;
   if (clockOut() || !walkOrder(k, &w)) return ok;
   int32_t keepDrops[NPLAYS][NDROPS], keepCut[4], keepCutBr[4]; memcpy(keepDrops, dropped, sizeof dropped); memcpy(keepCut, cutWhy, sizeof cutWhy); memcpy(keepCutBr, cutWhyBreak, sizeof cutWhyBreak);
   int keepUnbroken = unbroken.set;

@@ -202,6 +202,48 @@ static double contLostOf(const Judge *J, double give) {
   if (lost < 0) return -1;
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
+// THE JUDGING ON EVERY THREAD: the candidates judged on the workers, each from the work the decision had done when the judging began
+// and in the share it had, into a slot of its own with what it adds to the decision's tallies (rank.c dropped, cutWhy, unbroken) --
+// added in candidate order after, so the order is the same whichever thread judged what. The decision's clock is charged the judging's
+// work over the threads that did it: what the machine's cores do in that much real time. The ideas a line leaves, and every later
+// judging, stay the decision's own (rank.c besideJudge).
+static const Read *jbR; static int64_t jbWork0; static double jbShare; static int32_t jbTap;
+static Judge jbJ[MAXCANDS]; static int32_t jbOk[MAXCANDS]; static int64_t jbWork[MAXCANDS];
+static int32_t jbDrops[MAXCANDS][NPLAYS][NDROPS], jbCut[MAXCANDS][4], jbCutBr[MAXCANDS][4]; static Unbroken jbUnb[MAXCANDS];
+static Ctx *jbCtx;   // (the phase's own: the jobs make nodes only on their threads' contexts)
+static void judgeJob(int32_t i) {
+  clockWork = jbWork0; clockShare = jbShare; clockAborted = 0; clockPoll = 0; clockWentOut = 0; inJob = 0;
+  pressTight = decQ.tight; pressTap = jbTap; pressFrom = pressSpent = 0; besideJudge = 1;
+  cacheFresh(); ncache = 0;   // (judged from nothing: its work the same on whichever thread, and so the decision's clock)
+  memset(dropped, 0, sizeof dropped); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak); unbroken.set = 0;
+  jbOk[i] = judgeWalked(jbR, &theCands[i], &jbJ[i]);
+  memcpy(jbDrops[i], dropped, sizeof dropped); memcpy(jbCut[i], cutWhy, sizeof cutWhy); memcpy(jbCutBr[i], cutWhyBreak, sizeof cutWhyBreak);
+  jbUnb[i] = unbroken; jbWork[i] = clockWork - jbWork0;
+  besideJudge = 0;
+}
+// (the candidates judged, in order, into theJudged/order from n: on every thread where the pool is free, else here)
+static int judgeAll(const Read *R, int nc, int n) {
+  if (pool.nworkers > 0 && !poolBusy && nc > 1) {
+    if (decF.under) aloneBuildable();   // (asked once, here: every judging reads it)
+    if (!jbCtx) jbCtx = ctxOf(0);
+    jbR = R; jbWork0 = clockWork; jbShare = clockShare; jbTap = pressTap;
+    if (startJobs(jbCtx, judgeJob, nc)) {
+      jobsAll(jbCtx);
+      int64_t sum = 0;
+      for (int i = 0; i < nc; i++) {
+        sum += jbWork[i];
+        for (int p = 0; p < NPLAYS; p++) for (int w = 0; w < NDROPS; w++) dropped[p][w] += jbDrops[i][p][w];
+        for (int w = 0; w < 4; w++) { cutWhy[w] += jbCut[i][w]; cutWhyBreak[w] += jbCutBr[i][w]; }
+        if (!unbroken.set && jbUnb[i].set) unbroken = jbUnb[i];
+        if (jbOk[i]) { theJudged[n] = jbJ[i]; order[n] = &theJudged[n]; n++; }
+      }
+      clockCharge(sum / pool.nworkers);
+      return n;
+    }
+  }
+  for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+  return n;
+}
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
@@ -214,7 +256,7 @@ static int ranked(const Read *R, const Found *S) {
   readyStop(); readyPendClear(); readyCollect = 1;   // (and keeps each landed board: searched once, its nearest break measured)
   rankReact = C2.reaction + 1;
   rankSave = rankReact + popFrames(decQ.b, W);   // (a row of W cells)
-  for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+  n = judgeAll(R, nc, n);
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)

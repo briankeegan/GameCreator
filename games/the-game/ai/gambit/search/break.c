@@ -619,7 +619,7 @@ static void readyShare(int asks) { readyShareMs = asks > 0 ? timeLeftMs() / (2.0
 typedef struct { uint32_t h; int32_t nbytes, whyN, at; int32_t why[MAXLINE]; unsigned char *bytes; } ReadyKept;
 static ReadyKept readyKept[READYN];
 static int32_t readyLock;
-static unsigned char *readyKeyBuf;
+static LOCAL unsigned char *readyKeyBuf;   // (each thread's own: the judging runs on every thread -- decide.c judgeJob)
 static int32_t readyClock, readyAsked, readyHit;   // (the log's: asked and found kept, this decision)
 static void readyLockOn(void) { while (__atomic_exchange_n(&readyLock, 1, __ATOMIC_ACQUIRE)) {} }
 static void readyLockOff(void) { __atomic_store_n(&readyLock, 0, __ATOMIC_RELEASE); }
@@ -694,7 +694,7 @@ static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t 
 // decision asks them best-ranked first in its own shares, exactly as with no workers: whichever thread begins a board first searches
 // it (its state claimed), and the other reads the answer -- a break found, or none in the time it had. A worker's break is kept across
 // decisions as any is. Only with workers.
-#define READYPEND 48
+#define READYPEND 256   // (every line a decision judges may land on a board of its own: decide.c MAXCANDS, walked or not)
 typedef struct { int32_t gen, h, nb, tight, from, spent, state, whyN, why[MAXLINE]; double budget; int64_t work; Node nd; Question q; unsigned char *key; } ReadyPend;   // (from, spent: the window its breaks are pressed in, core/nodes.h pressFrom)   // (budget: the work-ms its search is given, whichever thread searches it; work: what that search did)
 #define PEND_WAITING 0
 #define PEND_FOUND 1
@@ -712,12 +712,21 @@ static ReadyPend *readyPendFind(uint32_t h, int32_t nb) {
   return 0;
 }
 // (node n's board kept to be searched beside the decision: its index + 1, 0 when it is not -- no room, a break already found, no key)
+// (kept under its own lock: the judging runs on every thread, each landing its lines -- decide.c judgeJob)
+static int32_t pendLock;
+static int32_t readyPendIn(Ctx *x, int n, Board *b, uint32_t kh, int32_t kn);
 static int32_t readyPendOf(Ctx *x, int n) {
   Board *b = ensureBoard(x, n);
   if (!b) return 0;
   uint32_t kh = 0;
   int32_t kn = readyKey(b, NODE(x, n), decQ.tight, &kh);
   if (!kn || readyFind(kh, readyKeyBuf, kn, 0, 0)) return 0;
+  while (__atomic_exchange_n(&pendLock, 1, __ATOMIC_ACQUIRE)) {}
+  int32_t r = readyPendIn(x, n, b, kh, kn);
+  __atomic_store_n(&pendLock, 0, __ATOMIC_RELEASE);
+  return r;
+}
+static int32_t readyPendIn(Ctx *x, int n, Board *b, uint32_t kh, int32_t kn) {
   ReadyPend *p = readyPendFind(kh, kn);
   if (p) return (int32_t)(p - readyPend) + 1;
   if (readyPendN >= READYPEND) return 0;
@@ -761,7 +770,7 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
     if (!(st == PEND_WAITING && pendClaim(p))) p = 0;   // (claimed here: searched here, its budget the pend's)
   }
   if (readyKnownOnly) return NOT_ASKED;
-  static Question q;
+  static LOCAL Question q;
   memset(&q, 0, sizeof q);
   q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;
   q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
