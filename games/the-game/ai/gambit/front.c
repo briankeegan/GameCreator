@@ -94,7 +94,7 @@ static struct {
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
   double thinking[FTHINK]; int32_t nthinking;
-  double msPerFrame, wall;
+  double msPerFrame, wall, wallPerFrame;   // a frame on the work clock (the game's 1/60 s, every decision's) and on the wall's (native.c's guard)
   // the input budget: its limit and window, the frames the keys still inside it were pressed, the keys held last frame
   int32_t limit, window, pressFrames[512], npress, prevBits;
   int32_t oppHas, oppOut, oppTop, oppStop;
@@ -807,7 +807,7 @@ static int frontFrame(void) {
   F.toppedNow = isToppedOut(t);
   F.st.frames++;
   double wall = fNow();
-  if (F.wall) F.msPerFrame += ((wall - F.wall < 100 ? wall - F.wall : 100) - F.msPerFrame) / 60;
+  if (F.wall) F.wallPerFrame += ((wall - F.wall < 100 ? wall - F.wall : 100) - F.wallPerFrame) / 60;
   F.wall = wall;
   int diverged = 0;
   if (F.haveExpect && differ(F.expect, t, why, sizeof why)) {
@@ -982,7 +982,7 @@ static void frontNew(int ahead, int gap, int jitter) {
   for (int i = 0; i < PLANN; i++) F.planAt[i] = NUL;
   F.nextId = nextId ? nextId : 1;
   F.ahead = ahead; F.gap = gap; F.jitter = jitter;
-  F.msPerFrame = 1000.0 / 60; F.limit = 76; F.window = 600;
+  F.msPerFrame = F.wallPerFrame = 1000.0 / 60; F.limit = 76; F.window = 600;
   F.rnd = 2463534242u;   // (the slack's draw the same every game: the game is its seed's, whatever the machine)
   memset(wasGarbage, 0, sizeof wasGarbage);
 }

@@ -15,7 +15,8 @@ int hostFutexWait(int *p, int v), hostFutexWake(int *p, int n);
 void *paHeap(unsigned long n);
 double hostNowMs(void);
 void hostThreadStats(double *out);
-void hostLock(void), hostUnlock(void), hostWait(void), hostSignal(void);
+void hostLock(void), hostUnlock(void), hostWait(void), hostSignal(void), hostWaitDone(void), hostSignalDone(void);
+int hostLockstep(void);
 int hostThread(void *(*fn)(void *));
 int hostWorkers(void *(*fn)(void *), int most);
 int hostOpenLog(const char *path);
@@ -49,7 +50,7 @@ static void flog(const char *s) { hostLog(s); }
 // ---------------------------------------------------------------- Gambit's thread
 // One question waits at most: a newer one takes its place. Answers wait in order for the frame loop to take them.
 #define ANSN 16
-static int workerOn, qHas, qReset;
+static int workerOn, qHas, qReset, qBusy;
 static FQuestion qSlot;
 static Board *qSlotBoard;
 static FAnswer answers[ANSN];
@@ -148,7 +149,11 @@ static double moveStartMs(int32_t at) {
 }
 // (the client runs frames back to back to catch up: the longest such run seen, which a decision's frame comes that much sooner by)
 static int32_t gameBurst, wallCut;
+// LOCKSTEP (GC_GAMBIT_LOCKSTEP=1, the training runs): the frame loop waits for every answer asked, so no wall reaches a decision -- its
+// time is the work clock's alone, and the game runs as fast as Gambit and the engine can play it, the same game on any machine
+static int gnLockstep;
 static int frameOut(void) {
+  if (gnLockstep) return 0;
   int out = __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST) ||
             clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
   if (out) wallCut = 1;
@@ -244,17 +249,20 @@ static void *workerMain(void *arg) {
   for (;;) {
     hostLock();
     while (!qHas && !qReset) hostWait();
-    if (qReset) { qReset = 0; ringCount = 0; hostUnlock(); gb_new_game(); continue; }
-    q = qSlot; copyBoard(b, qSlotBoard); q.b = b; qHas = 0;
+    if (qReset) { qReset = 0; ringCount = 0; hostUnlock(); gb_new_game(); hostLock(); hostSignalDone(); hostUnlock(); continue; }
+    q = qSlot; copyBoard(b, qSlotBoard); q.b = b; qHas = 0; qBusy = 1;
     __atomic_store_n(&curQid, q.id, __ATOMIC_SEQ_CST);
     hostUnlock();
     FAnswer a;
-    if (abort_poll() == 1) continue;
-    answerOne(&q, b, &a);
-    if (abort_poll() == 1) continue;
+    int kept = 0;
+    if (abort_poll() != 1) { answerOne(&q, b, &a); kept = abort_poll() != 1; }
     hostLock();
-    if (ansN == ANSN) { ansHead = (ansHead + 1) % ANSN; ansN--; }
-    answers[(ansHead + ansN) % ANSN] = a; ansN++;
+    if (kept) {
+      if (ansN == ANSN) { ansHead = (ansHead + 1) % ANSN; ansN--; }
+      answers[(ansHead + ansN) % ANSN] = a; ansN++;
+    }
+    qBusy = 0;
+    hostSignalDone();
     hostUnlock();
   }
   return 0;
@@ -272,6 +280,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   // (THE GAME'S THREAD, which calls this and plays the frame loop -- its keys are engine steps (front.c keyCtx) -- is the engine's last
   // thread, its own board pool: thread 0 is Gambit's, the one the workers' phases hand boards out of)
   paThreadId(MAXTHREADS - 1);
+  gnLockstep = hostLockstep();
   gnReaction = reaction; gnAhead = ahead; gnGap = gap; gnJitter = jitter; gnPlanHealth = planHealth;
   gb_config(reaction, swapGap, cursor);
   clockNowOf = workNowMs;   // (every thread's decisions on the work clock)
@@ -325,7 +334,7 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   lastClock = clock;
   // (the game over, once: what is logged after it is the frame loop asking on a board that no longer plays)
   if (F.truth->gameOver && !F.overLogged) { char l[64]; snprintf(l, sizeof l, "GAMEOVER clock %d", clock); flog(l); F.overLogged = 1; }
-  { double t = clock_ms(), per = F.msPerFrame, last;
+  { double t = clock_ms(), per = F.wallPerFrame, last;
     static int32_t run;
     __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
     run = last && t - last < per / 2 ? run + 1 : 0;
@@ -336,6 +345,8 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
     for (int i = 0; i < nb; i++) if (clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
     __atomic_store_n(&gameBurst, worst, __ATOMIC_SEQ_CST);
     __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST); }
+  // (lockstep: every question asked answered before the frame is played -- its answer then taken on its own frame, as the work clock says)
+  if (gnLockstep && workerOn) { hostLock(); while (qHas || qBusy || qReset) hostWaitDone(); hostUnlock(); }
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
   F.npress = 0;

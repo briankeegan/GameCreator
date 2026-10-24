@@ -60,6 +60,9 @@ elif [ "$BOT" = gambit ]; then
   # (words.js); its log is the run's survivor.log
   [ -n "$GC_GAMBIT_BUILT" ] && [ -f "$EVAL/../gambit/libgambit.so" ] || "$EVAL/../gambit/build.sh" native || exit 1
   GC_SURVIVOR_PROFILE="$EVAL/${PROFILE:-survivor-profiles/gambit-finish.json}" node "$EVAL/../gambit/words.js" > "$OUT_DIR/gambit.words" || exit 1
+  # (LOCKSTEP and UNPACED: the game waits on every answer Gambit was asked and plays its frames back to back -- each decision's time the
+  # work clock's alone, so a seed is the same game on any runner, as fast as the runner plays it; live play sets neither)
+  export GC_GAMBIT_LOCKSTEP="${GC_GAMBIT_LOCKSTEP:-1}" PA_UNPACED="${PA_UNPACED:-1}"
   export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS"
   echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS"
   : > "$OUT_DIR/survivor.log"

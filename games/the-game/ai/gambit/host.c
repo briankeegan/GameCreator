@@ -28,6 +28,11 @@ void hostLock(void) { pthread_mutex_lock(&mu); }
 void hostUnlock(void) { pthread_mutex_unlock(&mu); }
 void hostWait(void) { pthread_cond_wait(&cv, &mu); }
 void hostSignal(void) { pthread_cond_signal(&cv); }
+// (and the frame loop's own wait, in lockstep: for Gambit's thread to be done with every question asked -- native.c gn_frame)
+static pthread_cond_t cvDone = PTHREAD_COND_INITIALIZER;
+void hostWaitDone(void) { pthread_cond_wait(&cvDone, &mu); }
+void hostSignalDone(void) { pthread_cond_signal(&cvDone); }
+int hostLockstep(void) { const char *l = getenv("GC_GAMBIT_LOCKSTEP"); return l && *l == '1'; }
 // GAMBIT'S THREAD: the room the main thread has for its stack (the searches keep their scratch there), and the cores GC_GAMBIT_CPUS
 // names ("1-3", "2,3"), so it thinks beside the game rather than on the game's own core; the workers on GC_GAMBIT_WORKER_CPUS's
 // (else Gambit's), so they take a core of their own rather than Gambit's.
