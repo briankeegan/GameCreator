@@ -699,7 +699,7 @@ static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_
 // it (its state claimed), and the other reads the answer -- a break found, or none in the time it had. A worker's break is kept across
 // decisions as any is. Only with workers.
 #define READYPEND 512   // (every line a decision judges, walked or not, may land on a board and a window of its own: decide.c MAXCANDS)
-typedef struct { int32_t gen, h, nb, tight, from, spent, state, whyN, why[MAXLINE]; double budget; int64_t work; Node nd; Question q; unsigned char *key; } ReadyPend;   // (from, spent: the window its breaks are pressed in, core/nodes.h pressFrom)   // (budget: the work-ms its search is given, whichever thread searches it; work: what that search did)
+typedef struct { int32_t gen, h, nb, tight, tap, from, spent, state, whyN, why[MAXLINE]; double budget; int64_t work; Node nd; Question q; unsigned char *key; } ReadyPend;   // (from, spent: the window its breaks are pressed in, core/nodes.h pressFrom)   // (budget: the work-ms its search is given, whichever thread searches it; work: what that search did)
 #define PEND_WAITING 0
 #define PEND_FOUND 1
 #define PEND_NONE 2
@@ -713,7 +713,7 @@ static void readyPendClear(void) { readyPendN = 0; readyPendGen++; readyPre = 0;
 static ReadyPend *readyPendFind(uint32_t h, int32_t nb) {
   for (int i = 0; i < readyPendN; i++) {
     ReadyPend *p = &readyPend[i];
-    if (p->h == (int32_t)h && p->nb == nb && p->from == pressFrom && p->spent == pressSpent && p->tight == pressTight && !memcmp(p->key, readyKeyBuf, (unsigned long)nb)) return p;
+    if (p->h == (int32_t)h && p->nb == nb && p->from == pressFrom && p->spent == pressSpent && p->tight == pressTight && p->tap == pressTap && !memcmp(p->key, readyKeyBuf, (unsigned long)nb)) return p;
   }
   return 0;
 }
@@ -745,7 +745,7 @@ static int32_t readyPendIn(Ctx *x, int n, Board *b, uint32_t kh, int32_t kn) {
   p->nd = *NODE(x, n);
   p->q.holdLeft = p->nd.holdLeft; p->q.holdStarted = p->nd.holdStarted; p->q.tight = decQ.tight;
   p->q.narr = p->nd.narr; for (int i = 0; i < p->q.narr; i++) p->q.arr[i] = p->nd.arr[i];
-  p->tight = pressTight; p->from = pressFrom; p->spent = pressSpent; p->state = PEND_WAITING; p->whyN = 0; p->gen = readyPendGen; p->budget = 0; p->work = 0;
+  p->tight = pressTight; p->tap = pressTap; p->from = pressFrom; p->spent = pressSpent; p->state = PEND_WAITING; p->whyN = 0; p->gen = readyPendGen; p->budget = 0; p->work = 0;
   readyPendN++;
   return readyPendN;
 }
@@ -799,7 +799,7 @@ static void readyJob(int32_t i) {
   ReadyPend *p = &readyPend[readyJobs[i]];
   if (!pendClaim(p)) return;
   clockWork = readyJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
-  inJob = 1; pressTight = p->tight; pressFrom = p->from; pressSpent = p->spent;
+  inJob = 1; pressTight = p->tight; pressTap = p->tap; pressFrom = p->from; pressSpent = p->spent;
   int32_t line[MAXLINE], k = 0;
   int64_t w0 = clockWork;
   int32_t r = readySearchOf(&p->q, nowMs() + p->budget, line, &k, 1);
