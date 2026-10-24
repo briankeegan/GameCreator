@@ -234,7 +234,8 @@ static int breaksAt(BS *s, int n, const int32_t *path, int len) {
   Ctx *x = s->x;
   if (!liveNode(x, n) || !within(s, n) || !(NODE(x, n)->brk > stillAt(s, NODE(x, n)->t))) return 0;
   if (clockOut()) return 0;
-  return (!BREAK_LIST || allowedAt(x, n)) && (!path || !BREAK_LIST || lineFits(path, len, 0));
+  // (off the list, the line still through the order's own checks: not dead, pressed whole, no three wasted -- outcome.c lineCheck)
+  return (!BREAK_LIST || allowedAt(x, n)) && (!path || lineCheck(path, len, 0, BREAK_LIST ? CHECK_LIST | CHECK_WASTE : CHECK_WASTE));
 }
 // (what a break leaves once its board has settled: the garbage rows broken -- a break whose converted panels match again breaks on --
 // and the material, the panels under each column's first garbage: a slab broken above another leaves its panels on the lower one,

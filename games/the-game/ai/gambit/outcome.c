@@ -126,6 +126,10 @@ static int spendsFloor(Made m, int32_t floorKept) { return floorKept == 0 && (m.
 // THE RESERVE SPENT, beside it: with garbage on the board or on its way, a line that breaks nothing and leaves the window fewer than
 // RESERVE actions (core/nodes.h) has spent what the next break is pressed out of
 static int spendsReserve(Made m, const Judged *j) { return (decF.under || decF.land != NOT_ASKED) && !(m.broke > 0) && j->leftEnd >= 0 && j->leftEnd < RESERVE; }
+// (what the one line check asks of the list, a last resort too with last, and of the floor and the reserve -- lineOk below, the order's
+// outcome and rank.c judgeCand asking the same)
+static int lineInList(const Judged *j, int last) { return fitsList(&theList, j->made, j, last) && imax(j->made.chain, j->chainAll) <= MAXCHAIN; }
+static int lineSpends(const Judged *j, int32_t floorKept) { return spendsFloor(j->made, floorKept) || spendsReserve(j->made, j); }
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
@@ -145,7 +149,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     int breaks = o.j.made.broke > 0, stands = o.j.lostAt == FOREVER;
     o.dead = 0; o.ready = ready;
     o.lives = breaks || !coming ? (stands || ready == 1) : (ready == 1 || (ready == NOT_ASKED && stands));
-    o.fits = fitsList(&theList, o.j.made, &o.j, 1) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
+    o.fits = lineInList(&o.j, 1);
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
     o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
@@ -218,37 +222,38 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
   keep(seq, n, settled, 2, &o);
   return o.ready;
 }
-// THE SHARED LINE CHECK: what the line makes and sets off fits the list, the chain is within MAXCHAIN, it wastes no three and the judge
-// pressed all of it (judge.c judgedWastes, judgedCut: a search looks on past a line the order would drop), and below the rule's material floor it does not clear panels and
-// break nothing. A check not begun by the decision's deadline keeps no line.
-static int lineFits(const int32_t *seq, int n, int settled) {
+// THE ONE LINE CHECK, every search's and the order's: of a line judged (judge.c), what the caller holds it to. Always: not dead, its
+// chain within MAXCHAIN, pressed whole (judgedCut). With CHECK_WASTE, no three wasted (judgedWastes); with CHECK_LIST and a list held,
+// within the list (lineInList, a last resort too) spending neither the rules' floor nor the reserve (lineSpends). The order drops what
+// fails the first two and ranks outside what fails the list (rank.c judgeCand), so a search held to them looks on past a line the order
+// would drop. Each line judged once a decision (the cache), whatever it is held to; a check not begun by the deadline keeps no line.
+#define CHECK_LIST 1
+#define CHECK_WASTE 2
+static int lineOk(const Outcome *o, int flags) {
+  const Judged *j = &o->j;
+  if (j->dead || j->late || imax(j->made.chain, j->chainAll) > MAXCHAIN || judgedCut(j)) return 0;
+  if ((flags & CHECK_WASTE) && judgedWastes(j)) return 0;
+  if ((flags & CHECK_LIST) && listOn && !(lineInList(j, 1) && !lineSpends(j, o->floorKept))) return 0;
+  return 1;
+}
+static int lineCheck(const int32_t *seq, int n, int settled, int flags) {
   Outcome *hit = cached(seq, n, settled, 1);
-  if (hit) return hit->fits;
+  if (hit) return lineOk(hit, flags);
   if (clockOut()) return 0;
   JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
-  Made m = o.j.made;
-  const Board *eb = o.j.dead || o.j.late || !floorOf ? 0 : ensureBoard(judgeCtx, o.j.endNode);
-  o.floorKept = eb ? floorOf(eb) : -1;
-  o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN && !judgedWastes(&o.j) && !judgedCut(&o.j) && !spendsFloor(m, o.floorKept) && !spendsReserve(m, &o.j);
-  // (a list ended by "default": a line outside it is the default's own, kept while the board lives through it)
-  if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN && !judgedWastes(&o.j) && !judgedCut(&o.j);   // (the host's own check, a line held to no list)
   if (o.j.late) return 0;
+  const Board *eb = o.j.dead || !floorOf ? 0 : ensureBoard(judgeCtx, o.j.endNode);
+  o.floorKept = eb ? floorOf(eb) : -1;
   keep(seq, n, settled, 1, &o);
-  return o.fits;
+  return lineOk(&o, flags);
 }
-// THE LINE THE ORDER KEEPS, whatever list it is outside: judged not dead and its chain within MAXCHAIN -- the order drops nothing else
-// (rank.c judgeCand: a line off the list, or one that spends the floor, is outside, ranked after those within it, and a line that lives
-// comes before every one that does not). The survival search's check on a line that lives.
-static int lineKept(const int32_t *seq, int n, int settled) {
-  if (clockOut()) return 0;
-  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
-  Judged j;
-  judge(&decQ, seq, n, &jo, &j);
-  return !j.late && !j.dead && imax(j.made.chain, j.chainAll) <= MAXCHAIN;
-}
+// (the searches' check: the list, no three wasted; the survival search's: neither -- a line that lives is taken whatever list it is
+// outside, and a three the board needs comes from it)
+static int lineFits(const int32_t *seq, int n, int settled) { return lineCheck(seq, n, settled, CHECK_LIST | CHECK_WASTE); }
+static int lineKept(const int32_t *seq, int n, int settled) { return lineCheck(seq, n, settled, 0); }
 
 // ---- a decision begun: the question (from a node of a host search, until the decision reads its own) and the facts; every line is
 // judged again
