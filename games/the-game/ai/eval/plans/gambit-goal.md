@@ -1232,3 +1232,12 @@ the list (637). The line in progress before the list (`9c7c8948`, 1061): 8. Aske
 (`c63d971c`, 1063): 10. The reach report under the live search's own press and work (`231055de`, 1064, finished 15:22 ET): 12 (4, 3,
 5); 47 of 275 boards searched again after a loss had a break the live search missed, and 3 of the 47 are found again with the work it
 had -- the search is short of work, not spending it wrongly.
+Seeds 1-24, finish them, each change one run: the break search's frontier carried on under garbage, its beam half the carried
+lines' (`9e16f1c1`, `367b9140`; 1067 13, 1068 10); one line check (`lineCheck`: not dead, pressed whole, no three wasted, the list),
+asked by every search and the order, on the search's own question (`fc723ddc`..`c290c6b8`; 1069 13, 1070 11, 1071 4 -- the check on the
+wrong board, 1072 10); the survival search ranks its lines and checks them after (`5fd65bfd`; 1074 0 with the toward line checked
+on Gambit's own thread, 1075 10 without); the order's candidates judged on every thread (`905544f3`, 1076 8); the line in progress
+kept for nothing new told (`f99c8afb`, 1081 0, gone). DETERMINISM: a readiness board searched in the window of the line that lands
+it and on its own budget on any thread (`a8fb900e`, `e012a494`); every run plays factory's first game twice and the report holds
+the two to every decision alike (1084, finished 18:29 ET: 1111 decisions alike; 9 -- combo_storm 2, factory 3, large_garbage 4).
+The board's material (1080): games lost land 126 garbage cells a minute against 107 in games survived, and break less of it.
