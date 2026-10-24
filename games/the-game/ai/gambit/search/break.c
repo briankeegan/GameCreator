@@ -361,10 +361,10 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       stepBatch(x, bPar, bMv, MK_SWAP, nb);
       // (the level a break is found on is taken whole: of its lines that break, one that keeps the board's own chain first -- a chain cut
       // leaves the three that began it wasted -- then the one that leaves the most material once its board settles, then the one that
-      // has broken most: a break whose converted panels match again is rows more of the slab -- and, short of actions (the allowance at
-      // HOLDTIGHT or under), the one the cursor walks fewer actions for before the material: the window pays for every cell of it
+      // has broken most: a break whose converted panels match again is rows more of the slab -- and, with an input allowance to keep (a
+      // host that says it), the one the cursor walks fewer actions for before the material: the window pays for every cell of it
       const Board *rb = ensureBoard(x, s->root);
-      int starved = pressAllowance >= 0 && pressAllowance <= HOLDTIGHT && rb;
+      int starved = pressAllowance >= 0 && rb;
       int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestPath[MAXPATH];
       for (int i = 0; i < ntl; i++) {
         for (int b = bAt[i]; b < bAt[i + 1]; b++) {

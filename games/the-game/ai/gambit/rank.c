@@ -343,6 +343,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int bx = x->apBroke > 0, by = y->apBroke > 0;
     if (bx != by) return (cmpKey = __LINE__, (bx ? -1 : 1));
     if (!bx) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+    // (of two that break: the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
+    else { int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x)); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1)); }
   }
   // 1a. THE LINE IN PROGRESS KEPT: of two that both live or both do not, the line the last decision was playing, judged again on the
   // board as it is, before another -- unless the other is lost later and not alike (neither lives: lostAlike, as 3 counts them) or meets
