@@ -100,6 +100,13 @@ for g in $(seq 1 "$GAMES"); do
   sleep 3; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null
   cp "$OUT" "$OUT_DIR/pa_out-$g.txt"
   r=$(grep -h '^training ' "$OUT" | tail -1); echo "game $g $PATTERN ${r:-no result}" | tee -a "$OUT_DIR/results.txt"
+  # (a game the client died in: the crash its handler wrote (gambit/host.c crashOut), the frames in libgambit.so resolved by addr2line)
+  if [ -z "$r" ]; then
+    grep -h '^GAMBIT CRASH' "$OUT_DIR/client-$g.log" 2>/dev/null | head -1 | sed "s/^/game $g /" | tee -a "$OUT_DIR/results.txt"
+    grep -h '^GAMBIT FRAME' "$OUT_DIR/client-$g.log" 2>/dev/null | while read -r _ _ n lib off; do
+      case "$lib" in *libgambit.so) echo "game $g crash frame $n $(addr2line -f -i -C -e "$lib" "$off" 2>/dev/null | paste -sd' ')";; *) echo "game $g crash frame $n $lib $off";; esac
+    done | tee -a "$OUT_DIR/results.txt"
+  fi
   for i in $(seq 1 20); do [ -s "$OUT_DIR/cpu-$g.txt" ] && break; sleep 1; done
   [ -s "$OUT_DIR/cpu-$g.txt" ] && echo "game $g $(cat "$OUT_DIR/cpu-$g.txt")" | tee -a "$OUT_DIR/results.txt"
   # the first frame this game's health fell: where a game of one health (levels 10 and 11) is lost

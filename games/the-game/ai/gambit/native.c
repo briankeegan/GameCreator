@@ -19,6 +19,7 @@ void hostLock(void), hostUnlock(void), hostWait(void), hostSignal(void);
 int hostThread(void *(*fn)(void *));
 int hostWorkers(void *(*fn)(void *), int most);
 int hostOpenLog(const char *path);
+void hostCrashHandler(void);
 void hostLog(const char *s);
 int snprintf(char *s, unsigned long n, const char *fmt, ...);
 int strncmp(const char *a, const char *b, unsigned long n);
@@ -261,6 +262,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   gnReaction = reaction; gnAhead = ahead; gnGap = gap; gnJitter = jitter; gnPlanHealth = planHealth;
   gb_config(reaction, swapGap, cursor);
   if (logPath && *logPath) hostOpenLog(logPath);
+  hostCrashHandler();
   static int started;
   if (!started) {
     started = 1;

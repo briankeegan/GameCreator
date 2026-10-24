@@ -7,6 +7,10 @@
 #include <sched.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <signal.h>
+#include <unistd.h>
+#include <execinfo.h>
+#include <dlfcn.h>
 
 void *paHeap(unsigned long n) { return calloc(1, (n + 15) & ~15ul); }
 // The calling thread's own account: its CPU time (ms), the times it was taken off its core and gave it up, its page faults.
@@ -90,6 +94,34 @@ int hostWorkers(void *(*fn)(void *), int most) {
 static FILE *logFile;
 static pthread_mutex_t logMu = PTHREAD_MUTEX_INITIALIZER;
 int hostOpenLog(const char *path) { if (!logFile) logFile = fopen(path, "a"); return logFile ? 0 : -1; }
+// A CRASH, SAID WHERE IT HAPPENED: on a fault in any thread of the game's process, the faulting thread's stack -- each frame its file
+// and its offset in it -- to stderr (the client's log) and the run's log, then the fault let through as the process would take it.
+// training.sh resolves the frames in libgambit.so (built with -g) with addr2line.
+static void crashFrames(int fd, int sig) {
+  void *f[64]; int n = backtrace(f, 64);
+  dprintf(fd, "GAMBIT CRASH signal %d, %d frames\n", sig, n);
+  for (int i = 0; i < n; i++) {
+    Dl_info d;
+    if (dladdr(f[i], &d) && d.dli_fname) dprintf(fd, "GAMBIT FRAME %d %s 0x%lx\n", i, d.dli_fname, (unsigned long)((char *)f[i] - (char *)d.dli_fbase));
+    else dprintf(fd, "GAMBIT FRAME %d ? %p\n", i, f[i]);
+  }
+}
+static void crashOut(int sig) {
+  crashFrames(2, sig);
+  if (logFile) crashFrames(fileno(logFile), sig);
+  signal(sig, SIG_DFL);
+  raise(sig);
+}
+void hostCrashHandler(void) {
+  static char alt[1 << 16];
+  stack_t ss = { .ss_sp = alt, .ss_size = sizeof alt, .ss_flags = 0 };
+  sigaltstack(&ss, 0);   // (the handler's own stack: a fault from a stack run out still says where)
+  { void *f[1]; backtrace(f, 1); }   // (its library loaded now, not inside a handler)
+  struct sigaction sa; memset(&sa, 0, sizeof sa);
+  sa.sa_handler = crashOut; sa.sa_flags = SA_ONSTACK | SA_RESETHAND;
+  int sigs[] = { SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT };
+  for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa, 0);
+}
 void hostLog(const char *s) {
   if (!logFile) return;
   pthread_mutex_lock(&logMu);

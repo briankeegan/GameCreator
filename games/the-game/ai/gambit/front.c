@@ -348,11 +348,21 @@ static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdSta
 // ---------------------------------------------------------------- the keys
 // One decision from a board as keys: the search's own walk, swap and wait (search.h advance), every frame it plays.
 static Ctx *keyCtx;
-static int keysOf(const Board *b, int32_t holdLeft, int32_t holdStarted, const Arrival *arr, int32_t narr, int kind, int mr, int mc, Keys *k) {
+// THE FRAME LOOP'S ROOT, the one every engine step it takes starts from: the board copied with its queue kept as a question's is
+// (keepQueue: room for the MAXARR blocks the search lands) and the garbage on its way -- the keys (keysOf) and the press guard (wastedSwap)
+static Board *keyBoard;
+static int keyRoot(const Board *b, int32_t holdLeft, int32_t holdStarted, const Arrival *arr, int32_t narr) {
   keyCtx = ctxOf(keyCtx);
+  if (!keyBoard) keyBoard = nb_new();
+  if (!keyBoard) return -1;
+  copyBoard(keyBoard, b);
+  keepQueue(keyBoard, MAXINC - MAXARR);
   Question q; memset(&q, 0, sizeof q);
-  q.b = (Board *)b; q.holdLeft = holdLeft; q.holdStarted = holdStarted; q.narr = arrivalsFrom(b, arr, narr, q.arr);
-  int root = rootOf(keyCtx, &q);
+  q.b = keyBoard; q.holdLeft = holdLeft; q.holdStarted = holdStarted; q.narr = arrivalsFrom(keyBoard, arr, narr, q.arr);
+  return rootOf(keyCtx, &q);
+}
+static int keysOf(const Board *b, int32_t holdLeft, int32_t holdStarted, const Arrival *arr, int32_t narr, int kind, int mr, int mc, Keys *k) {
+  int root = keyRoot(b, holdLeft, holdStarted, arr, narr);
   if (root < 0) return 0;
   static LOCAL int32_t buf[3 * MAXKEYS];
   tape = buf; tapeN = 0; tapeCap = MAXKEYS;
@@ -751,10 +761,7 @@ static int wastedSwap(const Board *t, int32_t bits) {
   F.guardSpoil = 0;
   if (wastedThree(guardBoard, aloneBoard)) return 1;
   // (and the board's own chain spoiled by the swap: the judge's own test, on a root made of the board as it is and the garbage on its way)
-  keyCtx = ctxOf(keyCtx);
-  Question q; memset(&q, 0, sizeof q);
-  q.b = (Board *)t; q.narr = arrivalsFrom(t, F.arr, F.narr, q.arr);
-  int root = rootOf(keyCtx, &q), s = root >= 0 && spoilsAt(keyCtx, root, t->curRow, t->curCol);
+  int root = keyRoot(t, 0, 0, F.arr, F.narr), s = root >= 0 && spoilsAt(keyCtx, root, t->curRow, t->curCol);
   ns_reset(keyCtx);
   F.guardSpoil = s;
   return s;
