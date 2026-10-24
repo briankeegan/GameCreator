@@ -331,6 +331,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, lx ? -1 : 1);
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
+  // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
+  // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
+  // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
+  // break and never preferred by it; two that live, the list first (3)
+  if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0) {
+    if (x->material >= 0 && y->material >= 0 && x->material != y->material) K(1, x->material - y->material);
+    int bothReady = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
+    int32_t mx = bothReady ? x->o.j.readyMat : x->o.matLeft, my = bothReady ? y->o.j.readyMat : y->o.matLeft;
+    if (mx >= 0 && my >= 0 && mx != my) K(1, mx > my ? -1 : 1);
+  }
   // 2. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(2, cutsShort(x) ? 1 : -1);
   // 3. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
