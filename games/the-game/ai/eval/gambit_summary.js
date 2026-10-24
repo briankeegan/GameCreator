@@ -29,6 +29,7 @@ var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wal
 // latest)
 var cutShort = { boards: 0, cut: 0, cutKept: 0, cutAll: 0, cutNone: 0 };
 // EVERY MOVE ON THE WAY: the swaps pressed by what they came to, and the cells the cursor walked (front.c moveOn)
+var noneBy = {};   // (the swaps that came to nothing, by the kind of line that pressed them)
 var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0, wasted: 0, wastedAlone: 0, refusedWaste: 0, saved: 0, guardLet: 0, refusedSpoil: 0 };   // (wasted: clears of three that broke nothing and were no chain's link)
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
 // the ideas left ready on the board a line played leaves, where the rank asked (ideas=)
@@ -176,6 +177,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (one && !switched) aimOf(one, a);
       aggr.frames += o.frames || 0;
       Object.keys(moves).forEach(function (k) { moves[k] += (o.moves || {})[k] || 0; });
+      Object.keys(o.noneBy || {}).forEach(function (k) { noneBy[k] = (noneBy[k] || 0) + o.noneBy[k]; });
       Object.keys(a.combo || {}).forEach(function (z) { var g = PA.comboGarbage(+z); aggr.attacks += a.combo[z]; aggr.blocks += a.combo[z] * g.length; aggr.cells += a.combo[z] * g.reduce(function (s, w) { return s + w; }, 0); });
       Object.keys(a.chain || {}).forEach(function (z) { aggr.attacks += a.chain[z]; aggr.blocks += a.chain[z] * (+z - 1); aggr.cells += a.chain[z] * 6 * (+z - 1); });
       // (every chain link past two, by its cause: garbage's colours, a swap since the link before, or the stack alone)
@@ -250,6 +252,7 @@ var nmv = moves.clear + moves.setup + moves.break + moves.none + moves.open, sha
 if (nmv) console.log('every move on the way: the cursor walked ' + (aggr.frames ? (moves.cells * 3600 / aggr.frames).toFixed(0) : '-') + ' cells a minute; of ' + nmv +
                      ' swaps pressed ' + share(moves.clear) + ' cleared, ' + share(moves.setup) + ' set a clear up, ' + share(moves.break) + ' broke garbage, ' +
                      share(moves.none) + ' came to nothing (' + share(moves.open) + ' still open when the game ended)');
+if (moves.none) console.log('moves wasted: ' + moves.none + ' swaps that came to nothing, by the line that pressed them: ' + Object.keys(noneBy).sort(function (a, b) { return noneBy[b] - noneBy[a]; }).map(function (k) { return k + ' ' + noneBy[k]; }).join(', '));
 console.log('wasted threes: ' + moves.wasted + ' clears of three that broke no garbage and were no link of a chain, made by a swap' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') + '; ' + moves.wastedAlone + ' more the stack made alone; ' + moves.refusedWaste + ' swaps refused at the press for one (' + moves.refusedSpoil + ' of them spoiling the board\'s own chain); ' + moves.saved + ' threes the board needed not to die (a save the survival search confirmed, not counted as wasted); ' + moves.guardLet + ' let through at the press as the board\'s save (lost without it in 120 frames, alive with it)');
 console.log('several ideas at once: ' + moves.together + ' clears begun while another was still clearing; lines firing two ideas ' + several.pairOff +
             ' offered, ' + several.pairPlayed + ' played; of ' + several.thrownLines + ' lines played that threw, ' + several.thrown2 + ' threw two blocks or more (' +
