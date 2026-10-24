@@ -18,13 +18,19 @@
 #define PLAN_SEQ 16
 // (a board of the beam, or a kid of one; ideas: its swaps that fire an entry; fired, firedCells, firedAim: the entries its line fired on
 // the way, what they sent, the first's entry)
-typedef struct { int32_t n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ], h, set; double reach; int32_t kid0, nkids, ideas, fired, firedCells, firedAim; } PItem;
+typedef struct { int32_t n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ], h, set; double reach; int32_t kid0, nkids, ideas, fired, firedCells, firedAim, acts; } PItem;   // acts: the cursor's actions for its swaps
 typedef struct {
   int32_t set, n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ];
   int32_t brk, cells, chain, combo, broke, earned, done, fire, floor, aimIndex, top;
   int32_t kc;   // (quick: the break keeps the board's own chain -- search/break.c keepsOwnChain)
+  int32_t acts; // the cursor's actions for its swaps, from the root's cursor (core/nodes.h actionsFor)
   double near;
 } PLine;
+// (the cursor's actions for swap m from the board of item it, the allowance what is left of the decision's after its line)
+static int32_t actOf(Ctx *x, const PItem *it, int32_t m) {
+  const Board *b = ensureBoard(x, it->n);
+  return b ? actionsFor(b->curRow, b->curCol, CR(m), CC(m), pressAllowance >= 0 ? pressAllowance - it->acts : HOLDTIGHT + 1) : 0;
+}
 // (THE QUICK BREAK: one that keeps the board's own chain before one that cuts it, then the more broken, then the sooner)
 static int quickBefore(const PLine *q, int kc, int32_t broke, int32_t done) {
   if (!q->set) return 1;
@@ -205,16 +211,19 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         for (int k = 0; k < it->nseq && ns < PLAN_SEQ; k++) seqTmp[ns++] = it->seq[k];
         seqTmp[ns++] = m;
         int endOk = -1;
+        int32_t acts = it->acts + actOf(x, it, m);
+        // (of two lines alike, the one the cursor walks fewer actions for, then the fewer swaps: the input window pays for each)
+        #define LESS(L) (acts < (L).acts || (acts == (L).acts && ns < (L).nseq))
         #define OKE() (endOk < 0 ? (endOk = allowedAt(x, out) && lineFits(seqTmp, ns, 1)) : endOk)
         Made made = { bigC, chain, BROKE_OF(it, st), imax(0, sentCells(&st) - base) };
         Board *ob = ensureBoard(x, out);
         int inTime = !(o->by != NOT_ASKED && fire > o->by), kept = keepsFloor(o->keep, ob, made.broke), floor = keepsFloor(o->keep, ob, 0);
         #define FILL(L, ai) do { memset(&(L), 0, sizeof (L)); lineFrom(&(L), it, m, out, fire); (L).cells = made.cells; (L).chain = chain; (L).combo = bigC; \
-                                 (L).broke = made.broke; (L).earned = st.earned; (L).done = done; (L).floor = floor; (L).aimIndex = (ai); (L).brk = made.broke > 0; } while (0)
+                                 (L).broke = made.broke; (L).earned = st.earned; (L).done = done; (L).floor = floor; (L).aimIndex = (ai); (L).brk = made.broke > 0; (L).acts = acts; } while (0)
         if (!(o->dies > 0 && done > o->dies)) {
           Shape shp = shapeOf(ob);
-          if ((!P->lowest.set || shp.top < P->lowest.top || (shp.top == P->lowest.top && ns < P->lowest.nseq)) && OKE()) { FILL(P->lowest, -1); P->lowest.top = shp.top; }
-          if (st.earned > 0 && (!P->stopBest.set || st.earned > P->stopBest.earned || (st.earned == P->stopBest.earned && ns < P->stopBest.nseq)) && OKE()) FILL(P->stopBest, -1);
+          if ((!P->lowest.set || shp.top < P->lowest.top || (shp.top == P->lowest.top && LESS(P->lowest))) && OKE()) { FILL(P->lowest, -1); P->lowest.top = shp.top; }
+          if (st.earned > 0 && (!P->stopBest.set || st.earned > P->stopBest.earned || (st.earned == P->stopBest.earned && LESS(P->stopBest))) && OKE()) FILL(P->stopBest, -1);
         }
         if (inTime && kept && made.broke > 0) {
           // (the chain kept as the swap leaves it, before the settle the step runs on: by then the chain has run its course)
@@ -230,23 +239,24 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
           // (A PAIR: the line had fired an idea on its way, and fires another here -- both sent)
           if (firesAim >= 0 && it->fired > 0) {
             int32_t both = it->firedCells + made.cells;
-            if ((!P->pair.set || both > P->pair.cells || (both == P->pair.cells && ns < P->pair.nseq)) && OKE()) { FILL(P->pair, imin(firesAim, it->firedAim)); P->pair.cells = both; }
+            if ((!P->pair.set || both > P->pair.cells || (both == P->pair.cells && LESS(P->pair))) && OKE()) { FILL(P->pair, imin(firesAim, it->firedAim)); P->pair.cells = both; }
           }
-          if (nr > 0 && (!P->nearest.set || nr > P->nearest.near || (nr == P->nearest.near && ns < P->nearest.nseq)) && OKE()) { FILL(P->nearest, -1); P->nearest.near = nr; }
+          if (nr > 0 && (!P->nearest.set || nr > P->nearest.near || (nr == P->nearest.near && LESS(P->nearest))) && OKE()) { FILL(P->nearest, -1); P->nearest.near = nr; }
           for (int ai = 0; ai < na; ai++) {
             if (!meets(&o->aims->aim[ai], made)) continue;
             PLine *pa = &P->perAim[ai];
-            if ((!pa->set || made.cells > pa->cells || (made.cells == pa->cells && ns < pa->nseq)) && OKE()) FILL(*pa, ai);
+            if ((!pa->set || made.cells > pa->cells || (made.cells == pa->cells && LESS(*pa))) && OKE()) FILL(*pa, ai);
           }
         }
         #undef FILL
         #undef OKE
+        #undef LESS
       }
       if (nk < PLAN_KIDS) {
         PItem *k = &kids[nk]; memset(k, 0, sizeof *k); k->n = out; k->nseq = imin(it->nseq + 1, PLAN_SEQ);
         for (int q2 = 0; q2 < it->nseq && q2 < PLAN_SEQ; q2++) { k->seq[q2] = it->seq[q2]; k->ats[q2] = it->ats[q2]; }
         if (it->nseq < PLAN_SEQ) { k->seq[it->nseq] = m; k->ats[it->nseq] = NODE(x, it->n)->t; }
-        k->fired = it->fired; k->firedCells = it->firedCells; k->firedAim = it->firedAim;
+        k->fired = it->fired; k->firedCells = it->firedCells; k->firedAim = it->firedAim; k->acts = it->acts + actOf(x, it, m);
         if (firesAim >= 0) { k->firedCells += firesCells; k->firedAim = k->fired ? imin(k->firedAim, firesAim) : firesAim; k->fired++; }
         if (!it->nkids) it->kid0 = nk;   // (a parent's kids are made one after another: its swaps are one run of jobs)
         nk++; it->nkids++;
