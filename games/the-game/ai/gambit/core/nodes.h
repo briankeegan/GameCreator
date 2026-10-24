@@ -95,8 +95,12 @@ static int32_t pressAllowance = -1;
 // survival search keeps it unless spending it buys a later loss (search/outlive.c)
 #define RESERVE 20
 static int32_t winAges[WINMAX], nWinAges = -1, winLen = 600, hostWin;
+// (A SEARCH ROOTED LATER: a readiness search's board is a line's once everything lands, pressFrom frames after the question with the line
+// having spent pressSpent -- its breaks are pressed in the window as it is then, every search asking it here; 0 for the question's own)
+static LOCAL int32_t pressFrom, pressSpent;
 static int allowLeftAt(int32_t t, int spent) {
   if (pressAllowance < 0) return -1;
+  t += pressFrom; spent += pressSpent;
   if (nWinAges < 0) return pressAllowance - spent;
   int in = 0; for (int i = 0; i < nWinAges; i++) in += winAges[i] + t < winLen;
   return imax(0, pressAllowance + nWinAges - in - spent);

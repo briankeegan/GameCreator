@@ -236,20 +236,23 @@ static int lineOk(const Outcome *o, int flags) {
   if ((flags & CHECK_LIST) && listOn && !(lineInList(j, 1) && !lineSpends(j, o->floorKept))) return 0;
   return 1;
 }
-static int lineCheck(const int32_t *seq, int n, int settled, int flags) {
-  Outcome *hit = cached(seq, n, settled, 1);
+// (judged on the question the asking search is rooted at -- the decision's, kept in its cache, or a readiness search's landed board)
+static int lineCheckOn(const Question *q, const int32_t *seq, int n, int settled, int flags) {
+  int own = q == &decQ;
+  Outcome *hit = own ? cached(seq, n, settled, 1) : 0;
   if (hit) return lineOk(hit, flags);
   if (clockOut()) return 0;
-  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  JudgeOpts jo = { settled, q->tight, NOT_ASKED, 0, 0, -1, 0, 0 };
   Outcome o;
   memset(&o, 0, sizeof o);
-  judge(&decQ, seq, n, &jo, &o.j);
+  judge(q, seq, n, &jo, &o.j);
   if (o.j.late) return 0;
   const Board *eb = o.j.dead || !floorOf ? 0 : ensureBoard(judgeCtx, o.j.endNode);
   o.floorKept = eb ? floorOf(eb) : -1;
-  keep(seq, n, settled, 1, &o);
+  if (own) keep(seq, n, settled, 1, &o);
   return lineOk(&o, flags);
 }
+static int lineCheck(const int32_t *seq, int n, int settled, int flags) { return lineCheckOn(&decQ, seq, n, settled, flags); }
 // (the searches' check: the list, no three wasted; the survival search's: neither -- a line that lives is taken whatever list it is
 // outside, and a three the board needs comes from it)
 static int lineFits(const int32_t *seq, int n, int settled) { return lineCheck(seq, n, settled, CHECK_LIST | CHECK_WASTE); }

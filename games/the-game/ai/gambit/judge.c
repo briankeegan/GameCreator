@@ -423,7 +423,10 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     // (and the break it finds is one the input window pays for at that frame: a break the cursor cannot walk to on what is left is not in
     // reach -- core/nodes.h allowLeftAt, actionsFor)
     static LOCAL int32_t rl[MAXLINE]; int32_t rn = 0, *wl = o->why ? j->readyLine : (pressAllowance >= 0 ? rl : 0), *wn = o->why ? &j->readyN : &rn;
-    j->ready = breaksAfterLanding(x, n, j->readyWait, wl, wn);
+    { int32_t from0 = pressFrom, spent0 = pressSpent;
+      pressFrom = from0 + imax(j->readyWait, NODE(x, n)->t); pressSpent = spent0 + spent;   // (the readiness search's window: core/nodes.h pressFrom)
+      j->ready = breaksAfterLanding(x, n, j->readyWait, wl, wn);
+      pressFrom = from0; pressSpent = spent0; }
     if (j->ready == 1 && pressAllowance >= 0 && wl && *wn > 0) {
       const Board *eb = ensureBoard(x, n);
       int left = allowLeftAt(j->readyWait, spent), r = eb ? eb->curRow : 0, c = eb ? eb->curCol : 0, acts = 0;

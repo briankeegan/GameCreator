@@ -184,6 +184,7 @@ static int converting(const Board *b, int32_t *want) {
 // ---- the search
 typedef struct {
   Ctx *x; int root, wait;
+  const Question *q;   // (the board the search is rooted at: the decision's, or a readiness search's landed board -- what a line is judged on)
   Broke *out;
   const Paths *resume;
   int32_t *outside;      // per node: made off the rules (stepOk) -- a break counts only on a line within them from its first swap
@@ -235,7 +236,7 @@ static int breaksAt(BS *s, int n, const int32_t *path, int len) {
   if (!liveNode(x, n) || !within(s, n) || !(NODE(x, n)->brk > stillAt(s, NODE(x, n)->t))) return 0;
   if (clockOut()) return 0;
   // (off the list, the line still through the order's own checks: not dead, pressed whole, no three wasted -- outcome.c lineCheck)
-  return (!BREAK_LIST || allowedAt(x, n)) && (!path || lineCheck(path, len, 0, BREAK_LIST ? CHECK_LIST | CHECK_WASTE : CHECK_WASTE));
+  return (!BREAK_LIST || allowedAt(x, n)) && (!path || lineCheckOn(s->q, path, len, 0, BREAK_LIST ? CHECK_LIST | CHECK_WASTE : CHECK_WASTE));
 }
 // (what a break leaves once its board has settled: the garbage rows broken -- a break whose converted panels match again breaks on --
 // and the material, the panels under each column's first garbage: a slab broken above another leaves its panels on the lower one,
@@ -529,7 +530,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   if (lowestG(q->b) >= gridLen(q->b)) return;   // (no garbage: no break)
   BS s;
   memset(&s, 0, sizeof s);
-  s.x = x; s.out = out; s.wait = wait; s.resume = resume; s.outside = outsideBuf;
+  s.x = x; s.q = q; s.out = out; s.wait = wait; s.resume = resume; s.outside = outsideBuf;
   s.root = rootOf(x, q);
   if (s.root < 0) return;
   static LOCAL int32_t ms[MAXROWS * W];
@@ -694,7 +695,7 @@ static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t 
 // it (its state claimed), and the other reads the answer -- a break found, or none in the time it had. A worker's break is kept across
 // decisions as any is. Only with workers.
 #define READYPEND 48
-typedef struct { int32_t gen, h, nb, tight, state, whyN, why[MAXLINE]; double budget; int64_t work; Node nd; Question q; unsigned char *key; } ReadyPend;   // (budget: the work-ms its search is given, whichever thread searches it; work: what that search did)
+typedef struct { int32_t gen, h, nb, tight, from, spent, state, whyN, why[MAXLINE]; double budget; int64_t work; Node nd; Question q; unsigned char *key; } ReadyPend;   // (from, spent: the window its breaks are pressed in, core/nodes.h pressFrom)   // (budget: the work-ms its search is given, whichever thread searches it; work: what that search did)
 #define PEND_WAITING 0
 #define PEND_FOUND 1
 #define PEND_NONE 2
@@ -729,7 +730,7 @@ static int32_t readyPendOf(Ctx *x, int n) {
   p->nd = *NODE(x, n);
   p->q.holdLeft = p->nd.holdLeft; p->q.holdStarted = p->nd.holdStarted; p->q.tight = decQ.tight;
   p->q.narr = p->nd.narr; for (int i = 0; i < p->q.narr; i++) p->q.arr[i] = p->nd.arr[i];
-  p->tight = pressTight; p->state = PEND_WAITING; p->whyN = 0; p->gen = readyPendGen; p->budget = 0; p->work = 0;
+  p->tight = pressTight; p->from = pressFrom; p->spent = pressSpent; p->state = PEND_WAITING; p->whyN = 0; p->gen = readyPendGen; p->budget = 0; p->work = 0;
   readyPendN++;
   return readyPendN;
 }
@@ -783,12 +784,12 @@ static void readyJob(int32_t i) {
   ReadyPend *p = &readyPend[readyJobs[i]];
   if (!pendClaim(p)) return;
   clockWork = readyJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
-  inJob = 1; pressTight = p->tight;
+  inJob = 1; pressTight = p->tight; pressFrom = p->from; pressSpent = p->spent;
   int32_t line[MAXLINE], k = 0;
   int64_t w0 = clockWork;
   int32_t r = readySearch(&p->q, nowMs() + p->budget, line, &k);
   p->work = clockWork - w0;
-  inJob = 0;
+  inJob = 0; pressFrom = pressSpent = 0;
   // (kept across decisions only by the decision that reads it: readyBreakOf)
   if (r == 1) { for (int q = 0; q < k; q++) p->why[q] = line[q]; p->whyN = k; }
   __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE);

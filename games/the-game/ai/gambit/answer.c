@@ -221,7 +221,7 @@ static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as 
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
   clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
-  inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
+  inJob = 1; pressTight = decQ.tight; pressTap = decTap; pressFrom = pressSpent = 0; ncache = 0;
   int kind = jobKinds[i];
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
   else if (kind == JOB_PLAN) planJob();
