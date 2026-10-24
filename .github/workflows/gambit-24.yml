@@ -28,7 +28,7 @@ on:
         description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
         default: 'gambit'
       seed:
-        description: 'The panel seed base (PA_SEED = base*100 + pattern*10 + game: every game the same panels every run); empty (the default) for random -- every run new games'
+        description: 'The panel seed base (PA_SEED = base*100 + pattern*10 + game: every game the same panels every run); 1-24 for seeds 1 to 24, a game each (combo_storm 1-8, factory 9-16, large_garbage 17-24; round r adds 24(r - 1)); empty (the default) for random -- every run new games'
         default: ''
       patterns:
         description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games; the goal is measured on all three)'
@@ -101,7 +101,8 @@ jobs:
         run: |
           if [ -n "$SEED_BASE" ]; then
             case "${{ matrix.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; *) P=9;; esac
-            export PA_SEED=$(((SEED_BASE + ${{ matrix.round }} - 1) * 100 + P * 10 + ${{ matrix.game }}))
+            if [ "$SEED_BASE" = 1-24 ]; then export PA_SEED=$(((${{ matrix.round }} - 1) * 24 + (P - 1) * 8 + ${{ matrix.game }}))
+            else export PA_SEED=$(((SEED_BASE + ${{ matrix.round }} - 1) * 100 + P * 10 + ${{ matrix.game }})); fi
             echo "::notice title=seed::${{ matrix.pattern }} ${{ matrix.game }} round ${{ matrix.round }}: PA_SEED=$PA_SEED"
           fi
           echo "::notice title=cores::$(nproc) threads, $(lscpu | awk -F: '/^Core\(s\) per socket|^Thread\(s\) per core/ {gsub(/ +/, " ", $2); printf "%s:%s, ", $1, $2}')cpu:core $(lscpu -e=CPU,CORE | tail -n +2 | awk '{printf "%s:%s ", $1, $2}'), GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
