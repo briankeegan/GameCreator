@@ -111,7 +111,7 @@ static int readBoard_(Read *R) {
   }
   // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed -- and alive while they rise)
   if (R->up) {
-    double l = leftMs(); if (l < 1) l = 1;
+    double l = timeLeftMs(); if (l < 1) l = 1;
     int32_t rows = raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
     // (THE FLOOR'S RAISE ON A BOARD TOO SHORT TO BREAK: below the floor, no row count leaves a break once everything lands -- the panels
     // a break is made of are what the board lacks -- so the rows the board lives through once everything lands are raised all the same:
@@ -185,7 +185,6 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
-static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
   if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
@@ -258,7 +257,7 @@ static int ranked(const Read *R, const Found *S) {
   // fifty, in nearly all of the time a decision spends on readiness -- so those in reach are asked first, best-ranked first, and the
   // rest in the time left)
   for (int pass = 0; pass < 2; pass++)
-  for (int i = 0; i < n && leftMs() > 0; i++) {
+  for (int i = 0; i < n && timeLeftMs() > 0; i++) {
     Judge *J = order[i];
     if (!READY_ASKS(J) || (J->o.j.readyNear < NEAR_MISS) != (pass == 0)) continue;
     readyKnownOnly = EXTRA(J);
@@ -286,9 +285,9 @@ static int ranked(const Read *R, const Found *S) {
   // (the survival search's line, the backup where nothing lives: the worker's whenever it has finished -- it was searched beside the
   // decision, in the searches' time -- else searched here in what time the decision has left)
   int svDone = __atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE);
-  if (!(n && order[0]->o.lives) && (svDone || leftMs() > 0)) {
+  if (!(n && order[0]->o.lives) && (svDone || timeLeftMs() > 0)) {
     surviveAsked = 1;
-    Outlived sv = svDone ? svJob : outlive(&decQ, HORIZON + REST, REST, leftMs(), 6, 30);
+    Outlived sv = svDone ? svJob : outlive(&decQ, HORIZON + REST, REST, timeLeftMs(), 6, 30);
     offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
@@ -297,11 +296,11 @@ static int ranked(const Read *R, const Found *S) {
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps
   { int ns = 0, tried = 0, none = !(n && order[0]->o.lives), n0 = n;
-    for (int i = 0; i < n0 && tried < STRIP_LINES && ns < NSTRIP && leftMs() > 0; i++) {
+    for (int i = 0; i < n0 && tried < STRIP_LINES && ns < NSTRIP && timeLeftMs() > 0; i++) {
       const Judge *J = order[i];
       if (J->hold || !wastesThree(J) || J->k.nseq < 2) continue;
       tried++;
-      for (int s = 0; s < J->k.nseq && ns < NSTRIP && leftMs() > 0; s++) {
+      for (int s = 0; s < J->k.nseq && ns < NSTRIP && timeLeftMs() > 0; s++) {
         int32_t seq[MAXLINE]; int m = 0;
         for (int q = 0; q < J->k.nseq; q++) if (q != s) seq[m++] = J->k.seq[q];
         Cand k;
@@ -328,7 +327,7 @@ static int ranked(const Read *R, const Found *S) {
     // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way
     // landing as it would. A three whose board, with the best line on, outlasts the other's by nothing was not needed not to die: it
     // is wasted)
-    if (!keeps && saveRoomMs() > SAVE_KEEP_MS + 2) {
+    if (!keeps && timeLeftMs() > SAVE_KEEP_MS + 2) {
       const Judge *bw = 0, *bk = 0;
       for (int i = 0; i < n; i++) {
         const Judge *J = order[i];
@@ -343,11 +342,11 @@ static int ranked(const Read *R, const Found *S) {
         // otherwise is the side without searched, in what time is left)
         int have = svLost >= 0 && svClean;
         double kLow = lostOf(bk); if (have && svLost > kLow) kLow = svLost;
-        double give = saveRoomMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
+        double give = timeLeftMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
         double cw = contLostOf(bw, give), ck = -1;
         if (cw >= 0 && kLow >= cw) ck = kLow;
         else if (cw >= 0) {
-          double give2 = saveRoomMs() - SAVE_KEEP_MS; if (give2 > SAVE_MS) give2 = SAVE_MS;
+          double give2 = timeLeftMs() - SAVE_KEEP_MS; if (give2 > SAVE_MS) give2 = SAVE_MS;
           double c2 = give2 >= 1 ? contLostOf(bk, give2) : -1;
           ck = c2 > kLow ? c2 : (c2 >= 0 ? kLow : -1);
         }
@@ -489,7 +488,7 @@ static void carryReady(const Judge *H, int32_t qid) {
 // decision itself runs as it would with no workers.
 static Ctx *jobCtx;   // (the phase's own: the jobs make nodes only on their threads' contexts)
 static void readySpread(int n) {
-  if (pool.nworkers <= 0 || !readyPendN || leftMs() <= 0) return;
+  if (pool.nworkers <= 0 || !readyPendN || timeLeftMs() <= 0) return;
   uint8_t queued[READYPEND] = { 0 };
   int nj = 0;
   for (int i = n - 1; i >= 0 && nj < READYPEND; i--) {

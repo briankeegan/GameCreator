@@ -17,8 +17,6 @@ static Ctx2 C2;
 // what the searches may take: the decision's time less the answer's margin and a quarter of it kept for judging what they found --
 // searchesEnd, the share every search runs in (answer.c answerTurn), so no search runs into the judging's quarter
 static double searchesEnd(void) { return C2.due ? C2.due - C2.margin - (C2.due - C2.t0) / 4 : 0; }
-static double leftMs(void) { return C2.due ? searchesEnd() - nowMs() : 1e9; }
-static double leftMsOf(void) { return leftMs(); }
 
 // ---- the board's state the proposers read
 static int cascadeLive(Board *b) {
@@ -112,13 +110,13 @@ static void searchPrep(const Read *R, Found *S) {
   }
   if (pool.nworkers < 3 || !C2.due || poolBusy) return;
   extBeside = !GP->extendOff && ((cascadeLive(board) || R->pop) || wantsChain(&R->guides));
-  extMsBeside = leftMs();
+  extMsBeside = timeLeftMs();
   if (R->guides.n >= 2) {
     planSplitAt = (R->guides.n + 1) / 2;
     planHalfA = R->guides; planHalfA.n = planSplitAt;
     memset(&planHalfB, 0, sizeof planHalfB);
     for (int i = planSplitAt; i < R->guides.n; i++) planHalfB.aim[planHalfB.n++] = R->guides.aim[i];
-    planOptsB = planOptsOf(R, &planHalfB, leftMs());
+    planOptsB = planOptsOf(R, &planHalfB, timeLeftMs());
     planSplit = 1;
   }
 }
@@ -167,17 +165,17 @@ static void searchMerge(const Read *R, Found *S) {
     for (int i = 0; i < planOutB.n; i++) planKeep(planOutB.path[i], planOutB.len[i]);
   }
   // (a chain the workers did not begin: extended or begun here, in what is left)
-  if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, leftMs() / 2);
+  if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, timeLeftMs() / 2);
 }
 static void searchAll(const Read *R, Found *S) {
   if (!R->guides.n) return;
-  // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
+  // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- timeLeftMs, in the searches' share, already keeps back the
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
-  if (!extBeside) { double xMs = leftMs() / 2; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
+  if (!extBeside) { double xMs = timeLeftMs() / 2; searchExt(R, S, xMs < timeLeftMs() ? xMs : timeLeftMs()); }
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
-  double usual = searchBeside ? leftMs() * 0.8 : leftMs() / 2;
+  double usual = searchBeside ? timeLeftMs() * 0.8 : timeLeftMs() / 2;
   int idle = C2.idle && leftAlone().lives;
-  double ms = idle ? (usual > leftMs() ? usual : leftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
+  double ms = idle ? (usual > timeLeftMs() ? usual : timeLeftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
   if (ms >= 20) {
     S->tried++;
     PlanOpts po = planOptsOf(R, planSplit ? &planHalfA : &R->guides, ms);
@@ -186,12 +184,12 @@ static void searchAll(const Read *R, Found *S) {
   }
   int32_t nl = R->F.known[FACT_US_NEXTLANDS] ? (int32_t)R->F.v[FACT_US_NEXTLANDS] : 0;
   S->lvU = R->under ? level(&decQ, nl > 0 ? nl : (R->by ? R->by : NOT_ASKED)) : 0;
-  if (!R->under && R->readyAt != NOT_ASKED && decQ.narr) { double m2 = leftMs() < 60 ? leftMs() : 60; S->rd = readyFor(&decQ, m2 > 1 ? m2 : 1); S->haveRd = 1; }
+  if (!R->under && R->readyAt != NOT_ASKED && decQ.narr) { double m2 = timeLeftMs() < 60 ? timeLeftMs() : 60; S->rd = readyFor(&decQ, m2 > 1 ? m2 : 1); S->haveRd = 1; }
   // (the board left alone with no plan once everything shown has landed: a line of one or two swaps that leaves one)
   int32_t lastLand = NOT_ASKED;
   for (int i = 0; i < decQ.narr; i++) if (lastLand == NOT_ASKED || decQ.arr[i].at > lastLand) lastLand = decQ.arr[i].at;
   if (lastLand != NOT_ASKED && !leftAlone().lives) {
-    double m3 = leftMs() / 2 < READY_LINE_MS ? leftMs() / 2 : READY_LINE_MS;
+    double m3 = timeLeftMs() / 2 < READY_LINE_MS ? timeLeftMs() / 2 : READY_LINE_MS;
     S->haveRl = readyLines(&decQ, lastLand, m3 > 1 ? m3 : 1, S->rl, &S->rlN, &S->rlAt);
   }
   S->lvG = !R->under && R->readyAt != NOT_ASKED && !(S->haveRd && !S->rd.ready && S->rd.setup) ? level(&decQ, R->readyAt ? R->readyAt : NOT_ASKED) : 0;

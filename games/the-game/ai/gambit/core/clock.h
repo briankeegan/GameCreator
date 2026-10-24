@@ -46,6 +46,12 @@ static int clockOut(void) {
   if (clockDue && t >= clockDue && !clockWentOut) clockWentOut = t;
   return (clockShare && t >= clockShare) || (clockDue && t >= clockDue);
 }
+// THE TIME LEFT, the one reading every caller asks: to the share in force, else the decision's deadline (1e9: neither) -- the searches'
+// time while their share holds (propose.c searchesEnd), the judging's once it ends, a job's within its own
+static double timeLeftMs(void) {
+  double by = clockShare && (!clockDue || clockShare < clockDue) ? clockShare : clockDue;
+  return by ? by - nowMs() : 1e9;
+}
 static void clockCharge(int64_t units) { clockWork += units > 0 ? units : 1; }
 EXPORT(gb_clock_start) void gb_clock_start(double due) { clockStart(due); }
 EXPORT(gb_clock_work) int gb_clock_work(void) { return (int)clockWork; }

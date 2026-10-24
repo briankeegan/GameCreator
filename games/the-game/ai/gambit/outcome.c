@@ -4,7 +4,6 @@
 //
 // What the decision knows of the board (Facts) comes from its reading of it.
 
-static double leftMsOf(void);   // (propose.c leftMs: the time the decision's searches have left)
 #define HORIZON 240   // a board stands when it is alive this long after now
 #define REST 120      // and this long after the line's last swap
 
@@ -129,7 +128,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   // (the board left alone asked first: its judging is the judge's own nodes, which the line's end board is read from below)
   int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
-  int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
+  int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : timeLeftMs() > 0;
   JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
   Outcome o;
   memset(&o, 0, sizeof o);

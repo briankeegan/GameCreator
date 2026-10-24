@@ -596,7 +596,7 @@ EXPORT(gb_break) int gb_break(int wait, int nresume) {
 // answers NOT_ASKED: the search's own context is in use.
 static int32_t popLeft(const Board *b);   // (propose.c: the frames a popping slab has left)
 static double readyShareMs = -1;
-static void readyShare(int asks) { readyShareMs = asks > 0 ? leftMsOf() / (2.0 * asks) : -1; }
+static void readyShare(int asks) { readyShareMs = asks > 0 ? timeLeftMs() / (2.0 * asks) : -1; }
 // THE BREAKS ALREADY FOUND, kept across decisions (the kept plan's first piece, plans/gambit-infra.md F): a board a line lands on is
 // the same board the next decision's line lands on whenever nothing new was told -- the engine predicts every frame -- so the break
 // found on it is found again. Keyed by the whole board as it plays on (its state, the garbage queued, the rows it is fed: the step's
@@ -745,7 +745,7 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;
   q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
   int32_t line[MAXLINE], k = 0;
-  int32_t r = readySearch(&q, nowMs() + (readyShareMs >= 0 ? readyShareMs : leftMsOf() / 2), line, &k);
+  int32_t r = readySearch(&q, nowMs() + (readyShareMs >= 0 ? readyShareMs : timeLeftMs() / 2), line, &k);
   if (p) { if (r == 1) { for (int i = 0; i < k; i++) p->why[i] = line[i]; p->whyN = k; } __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE); }
   if (r != 1) return r;
   if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }

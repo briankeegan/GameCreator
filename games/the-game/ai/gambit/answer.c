@@ -2,7 +2,7 @@
 // decision, the move. What carries from one decision to the next lives here: the break search's lines, the boards this dig has stood
 // on, the line toward a break begun, the line in progress, the pair the last swap swapped.
 
-#define BREAK_SHARE 0.4    // of the searches' time (propose.c leftMs), for the break search
+#define BREAK_SHARE 0.4    // of the searches' time (core/clock.h timeLeftMs, while their share holds), for the break search
 #define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
 // (the profile's own, in percent, where it gives one: gb_share)
 static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
@@ -188,11 +188,11 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
   // (no break search on a question due sooner than it could take: the answer would come late -- the searches' time is what it takes
   // first, and short of that, the judging's quarter: a board this near its end has a break one swap away or none (run 447, combo_storm-2
   // at 13038: a one-swap break, found in 3 ms, not searched for))
-  double t = nowMs(), room = C2.due ? C2.due - C2.margin - t : 1e9;
+  double t = nowMs(), room = timeLeftMs();
   if (C2.due && room < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
-  // (its share of what the searches have, propose.c leftMs: the other searches the rest, the judging its quarter)
-  double by = C2.due ? t + (BREAK_MIN_MS > leftMs() * share ? BREAK_MIN_MS : leftMs() * share) : t + BREAK_MAX_MS;
+  // (its share of what the searches have, core/clock.h timeLeftMs: the other searches the rest, the judging its quarter)
+  double by = C2.due ? t + (BREAK_MIN_MS > timeLeftMs() * share ? BREAK_MIN_MS : timeLeftMs() * share) : t + BREAK_MAX_MS;
   breakRun(R, by);
   brCut = nowMs() >= by; brResumed = brHave ? brResume.n : 0;
   *ms = nowMs() - t;
@@ -236,7 +236,7 @@ static void breakJob(int32_t i) {
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
   brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
-  if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
+  if (pool.nworkers <= 0 || poolBusy || !C2.due || timeLeftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
   if (!brCtx) brCtx = ctxOf(0);
@@ -255,7 +255,7 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 // 120 boards searched again, run 415, where 1 to 3 had been)
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
   jobsDone(brCtx);
-  if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = leftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
+  if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = timeLeftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;
   if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
   *ms = brJobMs; brCut = brJobT0 + brJobMs >= brJobBy; brResumed = brHave ? brResume.n : 0;
@@ -346,7 +346,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!beside) searchUnsplit();
   searchBeside = beside;
   brWhere = 0; brGiven = 0;
-  if (!beside) { brWhere = 3; brGiven = leftMs(); }
+  if (!beside) { brWhere = 3; brGiven = timeLeftMs(); }
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   double ts = nowMs();
   searchAll(&R, &S);
