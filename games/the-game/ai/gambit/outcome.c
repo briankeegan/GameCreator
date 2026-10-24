@@ -235,6 +235,16 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   keep(seq, n, settled, 1, &o);
   return o.fits;
 }
+// THE LINE THE ORDER KEEPS, whatever list it is outside: judged not dead and its chain within MAXCHAIN -- the order drops nothing else
+// (rank.c judgeCand: a line off the list, or one that spends the floor, is outside, ranked after those within it, and a line that lives
+// comes before every one that does not). The survival search's check on a line that lives.
+static int lineKept(const int32_t *seq, int n, int settled) {
+  if (clockOut()) return 0;
+  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  Judged j;
+  judge(&decQ, seq, n, &jo, &j);
+  return !j.late && !j.dead && imax(j.made.chain, j.chainAll) <= MAXCHAIN;
+}
 
 // ---- a decision begun: the question (from a node of a host search, until the decision reads its own) and the facts; every line is
 // judged again
