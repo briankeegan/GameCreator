@@ -759,12 +759,16 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   int32_t kn = readyKey(b, NODE(x, n), decQ.tight, &kh);
   readyAsked++;
   if (kn && readyFind(kh, readyKeyBuf, kn, why, whyN)) { readyHit++; return 1; }
+  // (a check answered only from what is known asks the kept breaks alone: a pend's answer is there or not by the threads' timing)
+  if (readyKnownOnly) return NOT_ASKED;
   ReadyPend *p = kn && readyPendN ? readyPendFind(kh, kn) : 0;
   if (p) {
     // (A BOARD A WORKER HAS: its search is the one this decision would make -- the same budget, p->budget -- so a board being searched is
     // waited for, and its work charged to this decision's clock as if searched here: the answer and the clock alike whichever thread ran it)
     int32_t st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE);
     if (st == PEND_BUSY && !readyKnownOnly) while ((st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE)) == PEND_BUSY) {}
+    // (searched out of its budget -- on a worker or here -- is the answer too: the same whichever thread ran it)
+    if (st == PEND_OUT) { readyPre++; clockCharge(p->work); return NOT_ASKED; }
     if (st == PEND_NONE || st == PEND_FOUND) {
       readyPre++; clockCharge(p->work);
       if (st == PEND_NONE) return 0;
@@ -781,7 +785,9 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;
   q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
   int32_t line[MAXLINE], k = 0;
+  int64_t w0 = clockWork;
   int32_t r = readySearchOf(&q, nowMs() + (p && p->budget > 0 ? p->budget : readyShareMs >= 0 ? readyShareMs : timeLeftMs() / 2), line, &k, p && p->budget > 0);
+  if (p) p->work = clockWork - w0;   // (what a later check of it is charged, as for a worker's)
   if (p) { if (r == 1) { for (int i = 0; i < k; i++) p->why[i] = line[i]; p->whyN = k; } __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE); }
   if (r != 1) return r;
   if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }
