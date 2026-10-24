@@ -201,7 +201,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
       s = at + 2; while (*s >= '0' && *s <= '9') s++;
     }
   }
-  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d work=%lld%s", s, (int)(clock_ms() - t0), clockWentOut ? (int)(nowMs() - clockWentOut) + 1 : 0, (long long)clockWork, wallCut ? " wallCut=1" : "");
+  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d pre=%d/%d work=%lld%s", s, (int)(clock_ms() - t0), clockWentOut ? (int)(nowMs() - clockWentOut) + 1 : 0, (int)readyPre, (int)readyPendN, (long long)clockWork, wallCut ? " wallCut=1" : "");
   flog(line);
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
   if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) { int32_t a = dumpAllow, g = dumpGap; dumpAllow = ringAllow[last]; dumpGap = ringGap[last]; dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last]); dumpAllow = a; dumpGap = g; } hostUnlock(); }
