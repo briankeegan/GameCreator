@@ -249,12 +249,15 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
+  // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
+  // is this thread's whole)
+  while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; }
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
 // 120 boards searched again, run 415, where 1 to 3 had been)
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  jobsDone(brCtx);
+  jobsAll(brCtx);
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = timeLeftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;
   if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }

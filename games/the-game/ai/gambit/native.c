@@ -30,9 +30,16 @@ void *memmove(void *d, const void *s, unsigned long n);
 
 // ---------------------------------------------------------------- what the engine and Gambit take from a host
 static int32_t abortId, curQid;
+static int32_t gameFrame;   // (the frame the game last published: gn_frame)
 // 1 once the question being answered is no longer wanted: every question up to abortId is not
 int abort_poll(void) { return __atomic_load_n(&abortId, __ATOMIC_SEQ_CST) >= __atomic_load_n(&curQid, __ATOMIC_SEQ_CST) ? 1 : 0; }
 double clock_ms(void) { return hostNowMs(); }
+// THE DECISION'S CLOCK: the engine's work, never the wall's -- WORK_PER_MS frames stepped a millisecond, each thread its own count
+// (core/clock.h clockWork) -- so a board gets the same answer on any machine and the game is its seed's. The wall stays the guard: a
+// decision the game's frame overtakes is cut there (frameOut) and counted (wallCut). Measured: 900-3,800 frames a wall ms on the game's
+// own machine, 1,500 on average (a 4-core box, the workers on), so the work fits the wall with room.
+#define WORK_PER_MS 1000.0
+static double workNowMs(void) { return (double)clockWork / WORK_PER_MS; }
 static void flog(const char *s) { hostLog(s); }
 
 #include "front.c"
@@ -58,7 +65,7 @@ static void postQuestion(FQuestion *q) {
 }
 static int takeAnswer(FAnswer *a) {
   hostLock();
-  int got = ansN > 0;
+  int got = ansN > 0 && answers[ansHead].readyFrame <= __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST);   // (on its frame, not before)
   if (got) { *a = answers[ansHead]; ansHead = (ansHead + 1) % ANSN; ansN--; }
   hostUnlock();
   return got;
@@ -66,7 +73,7 @@ static int takeAnswer(FAnswer *a) {
 static int answerWaiting(int32_t id) {
   hostLock();
   int has = 0;
-  for (int i = 0; i < ansN && !has; i++) has = answers[(ansHead + i) % ANSN].id == id;
+  for (int i = 0; i < ansN && !has; i++) has = answers[(ansHead + i) % ANSN].id == id && answers[(ansHead + i) % ANSN].readyFrame <= __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST);
   hostUnlock();
   return has;
 }
@@ -126,7 +133,7 @@ static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *ar
 // before its move has begun, or sooner when what it still has to do once out (its closing work, the slowest of the last CLOSEN
 // decisions') would not be done before its move's frame begins. Its searches share the time until then.
 #define CLOSEN 32
-static int32_t gameFrame, dueFrame;
+static int32_t dueFrame;
 static double gameFrameMs, gameMsPerFrame = 1000.0 / 60, closeMs[CLOSEN];
 static int32_t nclose; static uint32_t frameCounter;
 static double closeWorst(void) { double w = 0; for (int i = 0; i < nclose; i++) if (closeMs[i] > w) w = closeMs[i]; return w; }
@@ -138,19 +145,22 @@ static double moveStartMs(int32_t at) {
   return began + (at - f) * per;
 }
 // (the client runs frames back to back to catch up: the longest such run seen, which a decision's frame comes that much sooner by)
-static int32_t gameBurst;
+static int32_t gameBurst, wallCut;
 static int frameOut(void) {
-  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) return 1;
-  return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
+  int out = __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST) ||
+            clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
+  if (out) wallCut = 1;
+  return out;
 }
 static void ringKeep(int32_t at);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
+  wallCut = 0;
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
   dueFrame = q->at - 1; clockFrameOut = frameOut;
-  // (the searches' deadline is the frame loop's own: the start of the frame the decision is cut at -- the one before its move, sooner by
-  // the burst -- less its closing work)
-  double due = moveStartMs(dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) - closeWorst();
+  // (the searches' deadline on the work clock: the frames from the question's frame to the one before its move, less one for its
+  // closing work -- clockStart begins the count at 0)
+  double due = imax(1, q->lead - 2) * (1000.0 / 60);
   if (!hostBoard) hostBoard = nb_new();
   cloneBoard(hostBoard, b);
   memset(&hostQ, 0, sizeof hostQ);
@@ -159,9 +169,9 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   gb_refused(q->refA, q->refB);
   hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
-                 canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
+                 canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, 0, 0);
   // (the closing work: from the moment it ran out of time to its answer)
-  if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
+  if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = nowMs() - clockWentOut; }   // (on the work clock: the wall guard's estimate)
   Answer *A = &theAnswer;
   memset(out, 0, sizeof *out);
   out->id = q->id; out->epoch = q->epoch; out->at = q->at; out->kind = A->d.kind; out->move = A->d.move;
@@ -170,7 +180,8 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   out->wastes = A->wastes;
   out->holdLives = A->holdLives; out->brk = A->brk; out->urgent = A->urgent; out->idleMs = A->idleMs;
   out->empty = A->empty; out->nalt = A->nalt; for (int i = 0; i < A->nalt; i++) out->alt[i] = A->alt[i];
-  out->ms = clock_ms() - t0; out->closeMs = clockWentOut ? clock_ms() - clockWentOut : 0;
+  out->ms = nowMs(); out->closeMs = clockWentOut ? nowMs() - clockWentOut : 0;
+  out->readyFrame = (q->at - q->lead) + (int32_t)__builtin_ceil(out->ms / (1000.0 / 60));
   // the log line, its rule named and its wall time added
   static char line[sizeof logBuf + 128];
   const char *s = logBuf;
@@ -183,7 +194,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
       s = at + 2; while (*s >= '0' && *s <= '9') s++;
     }
   }
-  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0);
+  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d work=%lld%s", s, (int)(clock_ms() - t0), clockWentOut ? (int)(nowMs() - clockWentOut) + 1 : 0, (long long)clockWork, wallCut ? " wallCut=1" : "");
   flog(line);
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
   if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last]); hostUnlock(); }
@@ -261,6 +272,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   paThreadId(MAXTHREADS - 1);
   gnReaction = reaction; gnAhead = ahead; gnGap = gap; gnJitter = jitter; gnPlanHealth = planHealth;
   gb_config(reaction, swapGap, cursor);
+  clockNowOf = workNowMs;   // (every thread's decisions on the work clock)
   if (logPath && *logPath) hostOpenLog(logPath);
   hostCrashHandler();
   static int started;
@@ -291,7 +303,7 @@ static void statsOut(void) { static char line[4096]; if (!F.st.frames) return; s
 void gn_match(void) {
   statsOut();
   frontNew(gnAhead, gnGap, gnJitter);
-  gb_switch_game((uint32_t)clock_ms());
+  gb_switch_game(1);   // (the switches the same every game: the game is its seed's)
   gnFrames = 0;
   hostLock();
   qHas = 0; qReset = 1; ansN = 0;

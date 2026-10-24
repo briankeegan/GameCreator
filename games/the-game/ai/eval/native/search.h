@@ -976,6 +976,14 @@ static void jobsDone(Ctx *x) {
   finishPhase(x);
   pool.job = 0; __atomic_store_n(&poolBusy, 0, __ATOMIC_RELEASE);
 }
+// (EVERY JOB DONE, by the threads that took them -- none begun here, none left out: a job's work and answer are then the same whatever
+// the threads' timing, as a host whose answers are the board's alone needs)
+static void jobsAll(Ctx *x) {
+  if (!poolBusy) return;
+  for (int32_t i = 0; i < pool.ntasks / 4 && i < jobRes.n + pool.ntasks; i++) while (__atomic_load_n(&jobRes.a[i], __ATOMIC_ACQUIRE) == PENDING) {}
+  finishPhase(x);
+  pool.job = 0; __atomic_store_n(&poolBusy, 0, __ATOMIC_RELEASE);
+}
 // Steps on every thread: the io body holds n records (parent, kind, row,
 // col, frames), each the step ns_advance would make from them. Out, in the io
 // body, per step: the node, or -1 refused, or -2; the frame it died on; the

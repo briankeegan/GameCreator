@@ -245,6 +245,7 @@ EXPORT(gb_reveal_apply) int gb_reveal_apply(void) {
 // `msPerFrame` of the wall clock, under the rule `mode` (-1: the profile's). Per frame into out: the clock, the keys. The frames played (the game lost: the last).
 EXPORT(gb_front_sim) int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out) {
   paThreadId(MAXTHREADS - 1);
+  clockNowOf = workNowMs;   // (the native host's own clock: native.c, the replays above leave the wall's)
   gn_match();
   if (mode >= 0) modeRule = mode;
   cloneBoard(F.truth, hostBoard);

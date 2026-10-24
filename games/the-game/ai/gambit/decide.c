@@ -504,7 +504,11 @@ static void readySpread(int n) {
   }
   if (!nj) return;
   if (!jobCtx) jobCtx = ctxOf(0);
-  readyJobWork = clockWork; readyJobEnd = 0;   // (no share: each searched whole, unless the next decision comes first)
+  // (each board's budget the share the decision would give it when it asks them all: the time left over twice the asks -- readyShare)
+  int asks = 0; for (int i = 0; i < n; i++) asks += READY_ASKS(order[i]) && !EXTRA(order[i]);
+  double each = timeLeftMs() / (2.0 * imax(1, asks));
+  for (int j = 0; j < nj; j++) { readyPend[readyJobs[j]].budget = each; readyPend[readyJobs[j]].work = 0; }
+  readyJobWork = clockWork; readyJobEnd = 0;
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
   startJobs(jobCtx, readyJob, nj);
 }

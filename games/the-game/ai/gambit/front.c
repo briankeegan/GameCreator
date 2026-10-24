@@ -37,6 +37,7 @@ typedef struct {
   int32_t wastes;              // the line makes a three for nothing, kept by the order as the board's save (answer.c)
   int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
   double ms, idleMs, closeMs;
+  int32_t readyFrame;          // the frame the frame loop takes it on: the question's frame and its work's frames (native.c answerOne)
 } FAnswer;
 static void postQuestion(FQuestion *q);   // native.c
 static int takeAnswer(FAnswer *a);        // native.c: 1 when one was waiting
@@ -979,6 +980,6 @@ static void frontNew(int ahead, int gap, int jitter) {
   F.nextId = nextId ? nextId : 1;
   F.ahead = ahead; F.gap = gap; F.jitter = jitter;
   F.msPerFrame = 1000.0 / 60; F.limit = 76; F.window = 600;
-  F.rnd = (uint32_t)fNow();
+  F.rnd = 2463534242u;   // (the slack's draw the same every game: the game is its seed's, whatever the machine)
   memset(wasGarbage, 0, sizeof wasGarbage);
 }

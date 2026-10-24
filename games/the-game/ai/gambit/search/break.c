@@ -684,7 +684,7 @@ static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t 
 // it (its state claimed), and the other reads the answer -- a break found, or none in the time it had. A worker's break is kept across
 // decisions as any is. Only with workers.
 #define READYPEND 48
-typedef struct { int32_t gen, h, nb, tight, state, whyN, why[MAXLINE]; Node nd; Question q; unsigned char *key; } ReadyPend;
+typedef struct { int32_t gen, h, nb, tight, state, whyN, why[MAXLINE]; double budget; int64_t work; Node nd; Question q; unsigned char *key; } ReadyPend;   // (budget: the work-ms its search is given, whichever thread searches it; work: what that search did)
 #define PEND_WAITING 0
 #define PEND_FOUND 1
 #define PEND_NONE 2
@@ -719,7 +719,7 @@ static int32_t readyPendOf(Ctx *x, int n) {
   p->nd = *NODE(x, n);
   p->q.holdLeft = p->nd.holdLeft; p->q.holdStarted = p->nd.holdStarted; p->q.tight = decQ.tight;
   p->q.narr = p->nd.narr; for (int i = 0; i < p->q.narr; i++) p->q.arr[i] = p->nd.arr[i];
-  p->tight = pressTight; p->state = PEND_WAITING; p->whyN = 0; p->gen = readyPendGen;
+  p->tight = pressTight; p->state = PEND_WAITING; p->whyN = 0; p->gen = readyPendGen; p->budget = 0; p->work = 0;
   readyPendN++;
   return readyPendN;
 }
@@ -735,11 +735,19 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   if (kn && readyFind(kh, readyKeyBuf, kn, why, whyN)) { readyHit++; return 1; }
   ReadyPend *p = kn && readyPendN ? readyPendFind(kh, kn) : 0;
   if (p) {
+    // (A BOARD A WORKER HAS: its search is the one this decision would make -- the same budget, p->budget -- so a board being searched is
+    // waited for, and its work charged to this decision's clock as if searched here: the answer and the clock alike whichever thread ran it)
     int32_t st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE);
-    if (st == PEND_NONE) { readyPre++; return 0; }
-    if (st == PEND_FOUND) { readyPre++; if (why) { for (int i = 0; i < p->whyN; i++) why[i] = p->why[i]; *whyN = p->whyN; } return 1; }
+    if (st == PEND_BUSY && !readyKnownOnly) while ((st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE)) == PEND_BUSY) {}
+    if (st == PEND_NONE || st == PEND_FOUND) {
+      readyPre++; clockCharge(p->work);
+      if (st == PEND_NONE) return 0;
+      if (why) { for (int i = 0; i < p->whyN; i++) why[i] = p->why[i]; *whyN = p->whyN; }
+      if (kn) readyKeep(kh, readyKeyBuf, kn, p->why, p->whyN);
+      return 1;
+    }
     if (readyKnownOnly) return NOT_ASKED;
-    if (!(st == PEND_WAITING && pendClaim(p))) p = 0;   // (begun beside the decision: searched here too, as it would be alone)
+    if (!(st == PEND_WAITING && pendClaim(p))) p = 0;   // (claimed here: searched here, its budget the pend's)
   }
   if (readyKnownOnly) return NOT_ASKED;
   static Question q;
@@ -747,7 +755,7 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   q.b = b; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted; q.tight = decQ.tight;
   q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
   int32_t line[MAXLINE], k = 0;
-  int32_t r = readySearch(&q, nowMs() + (readyShareMs >= 0 ? readyShareMs : timeLeftMs() / 2), line, &k);
+  int32_t r = readySearch(&q, nowMs() + (p && p->budget > 0 ? p->budget : readyShareMs >= 0 ? readyShareMs : timeLeftMs() / 2), line, &k);
   if (p) { if (r == 1) { for (int i = 0; i < k; i++) p->why[i] = line[i]; p->whyN = k; } __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE); }
   if (r != 1) return r;
   if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }
@@ -756,8 +764,8 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   return 1;
 }
 // THE JOBS: readySpread's boards in the order it hands them (readyJobs), each searched on whichever worker takes it, if no thread has
-// begun it, until its search is done -- or until the next decision takes the pool back (jobStop). A worker's clock begins at the work
-// the decision had done (the replay's clock runs on it).
+// begun it, in the pend's budget -- or until the next decision takes the pool back (jobStop). A worker's clock begins at the work the
+// decision had done.
 static int32_t readyJobs[READYPEND];
 static int64_t readyJobWork;
 static double readyJobEnd;
@@ -767,9 +775,12 @@ static void readyJob(int32_t i) {
   clockWork = readyJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
   inJob = 1; pressTight = p->tight;
   int32_t line[MAXLINE], k = 0;
-  int32_t r = readySearch(&p->q, readyJobEnd, line, &k);
+  int64_t w0 = clockWork;
+  int32_t r = readySearch(&p->q, nowMs() + p->budget, line, &k);
+  p->work = clockWork - w0;
   inJob = 0;
-  if (r == 1) { for (int q = 0; q < k; q++) p->why[q] = line[q]; p->whyN = k; readyKeep((uint32_t)p->h, p->key, p->nb, line, k); }
+  // (kept across decisions only by the decision that reads it: readyBreakOf)
+  if (r == 1) { for (int q = 0; q < k; q++) p->why[q] = line[q]; p->whyN = k; }
   __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE);
 }
 static int32_t (*readyBreak)(Ctx *x, int n, int32_t *why, int32_t *whyN) = readyBreakOf;
