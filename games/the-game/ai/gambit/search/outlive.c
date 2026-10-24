@@ -6,7 +6,7 @@
 
 #define OUT_SEQ 16
 typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor
-typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt; } Outlived;
+typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts; } Outlived;
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
 // (THE RESERVE: with an input allowance said, the line kept is the latest lost of those that leave OUT_RESERVE actions of it -- unless one
@@ -22,7 +22,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
   if (root < 0) return best;
   BS still; memset(&still, 0, sizeof still); still.x = x; still.root = root;
   static OItem level[PLAN_POOL], kids[PLAN_KIDS];
-  static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ms1[MAXROWS * W];
+  static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ka[PLAN_KIDS], ms1[MAXROWS * W];
   int nlev = 1;
   memset(&level[0], 0, sizeof level[0]); level[0].n = root;
   int keep = pressAllowance >= 0 ? pressAllowance - OUT_RESERVE : 1 << 20;
@@ -62,9 +62,10 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
       }
     }
     batchDone();
-    // the boards held longest, then with the most room, then the least garbage; each run on alone to the frame it is lost
-    for (int i = 0; i < nk; i++) { idx[i] = i; kh[i] = kids[i].h; kr[i] = kids[i].room; kg[i] = -kids[i].g; }
-    sortByKeyDesc(idx, nk, kg, tmpI); sortByKeyDesc(idx, nk, kr, tmpI); sortByKeyDesc(idx, nk, kh, tmpI);
+    // the boards held longest, then with the most room, then the least garbage, then the fewest actions walked; each run on alone to the
+    // frame it is lost
+    for (int i = 0; i < nk; i++) { idx[i] = i; kh[i] = kids[i].h; kr[i] = kids[i].room; kg[i] = -kids[i].g; ka[i] = -kids[i].acts; }
+    sortByKeyDesc(idx, nk, ka, tmpI); sortByKeyDesc(idx, nk, kg, tmpI); sortByKeyDesc(idx, nk, kr, tmpI); sortByKeyDesc(idx, nk, kh, tmpI);
     int nkeep = imin(nk, 2 * width);
     static OItem top[PLAN_POOL];
     for (int i = 0; i < nkeep; i++) top[i] = kids[idx[i]];
@@ -72,7 +73,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
       if (top[i].lost == FOREVER && !lineFits(top[i].seq, top[i].nseq, 0)) { top[i].lost = -1; continue; }
       Outlived *o = top[i].acts <= keep ? &best : &over;
-      if (!o->set || top[i].lost > o->lostAt) { o->set = 1; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
+      if (!o->set || top[i].lost > o->lostAt || (top[i].lost == o->lostAt && top[i].acts < o->acts)) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
       if (top[i].lost == FOREVER && o == &best) return best;
     }
     for (int i = 0; i < nkeep; i++) { idx[i] = i; kl[i] = top[i].lost; }

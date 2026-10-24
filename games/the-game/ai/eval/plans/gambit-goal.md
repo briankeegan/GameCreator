@@ -1216,3 +1216,7 @@ question (`9c4d0280`, 47); no swap spoils the board's own chain, a swap at a tim
 under garbage, a break or the fewest actions (`22ff6536`, 58); the break search's cheaper break (`aaace2c5`, 51); the same at any
 allowance (`82376367`, runs 987-990): 57 of 96, 0 wasted threes in all 96 games. The losses left are the window spent before it is needed:
 an opening that spends 44 of 76 actions before the first garbage lands has them back only a window later.
+Then the searches made to pay for actions: the reserve on every board (`a235c19b`, 50 of 96); of two breaks the more garbage per action
+(`7fe12036`, runs 999-1002, 59); the survival search keeps a reserve of 20 actions unless spending them buys 120 frames (`18fc2d52`,
+runs 1003-1006, 61); the planner's ties to the line of fewer actions (`e43866ff`, runs 1007-1010): finish 22, big chain 15, pressure 13,
+build 15 -- 65 of 96, 0-1 wasted threes a run.
