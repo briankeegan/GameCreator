@@ -32,6 +32,34 @@ var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together
 var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, behind: 0, behindGames: 0, behindWorst: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
 var kept = { n: 0, held: 0 };
+// LOSSES BY CAUSE: the decisions of a lost game's last 600 frames read for why it was lost -- the input window run dry, the panels run
+// out, the hold played over a line lost later, no break found -- the first that holds its tag; the numbers it was read from beside it
+var causes = { by: {}, list: [] };
+function causeOf(game, pattern, at, lines) {
+  var ds = [];
+  lines.forEach(function (l) {
+    if (l.indexOf('GAMBITD ') !== 0) return;
+    var t = +l.split(' ')[1];
+    if (t <= at && t >= at - 600) ds.push({ t: t, l: l });
+  });
+  if (!ds.length) return;
+  var num = function (l, k) { var m = new RegExp(' ' + k + '=(-?\\d+)').exec(l); return m ? +m[1] : null; };
+  var last = ds.filter(function (d) { return d.t >= at - 300; });
+  var minAllow = 99, holdSooner = 0, noBreak = 0, raises = 0, cut = 0;
+  last.forEach(function (d) {
+    var a = num(d.l, 'allow'); if (a !== null && a >= 0 && a < minAllow) minAllow = a;
+    if (/ play=(hold|carry_wait) /.test(d.l) && / sooner=/.test(d.l)) holdSooner++;
+    if (/ br=(0\/|none)/.test(d.l)) noBreak++;
+    if (/ out=1/.test(d.l)) cut++;
+  });
+  ds.forEach(function (d) { if (/ play=raise /.test(d.l)) raises++; });
+  var matEnd = num(ds[ds.length - 1].l, 'mat'), mat600 = num(ds[0].l, 'mat');
+  var tag = minAllow <= 5 ? 'actions' : (matEnd !== null && matEnd < 20) || (mat600 !== null && mat600 < 22) ? 'panels' :
+            holdSooner >= 3 ? 'hold-creep' : last.length && noBreak / last.length > 0.6 ? 'no-break' : 'other';
+  causes.by[tag] = (causes.by[tag] || 0) + 1;
+  causes.list.push({ game: game, at: at, tag: tag, why: 'allow min ' + minAllow + ', panels ' + mat600 + ' to ' + matEnd + ', holds lost sooner ' + holdSooner +
+                     ', no break ' + noBreak + ' of ' + last.length + ', raises ' + raises + ', decisions the clock cut ' + cut });
+}
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
@@ -41,6 +69,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   var t = modes[m[1]] || (modes[m[1]] = { survived: 0, games: 0, lost: [], combo: {}, chain: {}, dec: 0, under: 0, mat: 0, pan: 0 });
   t.games++;
   if (m[2] === 'survived') t.survived++; else t.lost.push(+m[3]);
+  if (m[2] === 'lost' && fs.existsSync(lf)) causeOf(g, m[1], +m[3], fs.readFileSync(lf, 'utf8').split('\n'));
   var over = /thinkOver=(\d+)/.exec(res), worst = /thinkWorstMs=([\d.]+)/.exec(res), drop = /inputDropped=(\d+)/.exec(res);
   budget.games++;
   if (over) budget.over += +over[1];
@@ -182,6 +211,12 @@ Object.keys(modes).sort().forEach(function (k) {
               (t.breaks ? '; breaks by a chain ' + (t.chainBreaks || 0) + ' of ' + t.breaks + ' (' + Math.round(100 * (t.chainBreaks || 0) / t.breaks) + '%)' : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
+// (WHY EACH GAME WAS LOST: causeOf, a tag a loss, the first that holds; the losses counted by tag, then each loss with its numbers)
+{ var tags = Object.keys(causes.by).sort(function (a, b) { return causes.by[b] - causes.by[a]; });
+  console.log('losses by cause: ' + (tags.map(function (k) { return k + ' x' + causes.by[k]; }).join(', ') || '-') +
+              ' (actions: the input window at 5 or fewer in the last 300 frames; panels: under 20 at the end or 22 600 frames before; hold-creep: ' +
+              '3 or more holds lost sooner than a line offered; no-break: the break search found none in most of the last 300 frames)');
+  causes.list.forEach(function (c) { console.log('  lost ' + c.game + ' at ' + c.at + ': ' + c.tag + ' -- ' + c.why); }); }
 Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') +
   '; its first aim ' + t.head + ': ' + t.first + (t.all ? ' (' + (100 * t.first / t.all).toFixed(1) + '%)' : '')); });
 if (nturns) {
