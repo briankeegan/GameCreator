@@ -186,17 +186,18 @@ typedef struct {
   Broke *out;
   const Paths *resume;
   int32_t *outside;      // per node: made off the rules (stepOk) -- a break counts only on a line within them from its first swap
-  int32_t aloneBrk, haveAlone;
+  int32_t idleT[256], idleB[256], nIdle;
   int32_t anyFound;
   int32_t towardS, haveToward, towardLen, toward[MAXPATH];
   int32_t tries;
 } BS;
 static LOCAL int32_t outsideBuf[1 << 20];
-// A break is more broken than standing still breaks (stillOf): the root left alone until it settles -- the judge's baseline
-// (judge.c baseBroke), so a line the searches count a break is one the judge counts one. Asked once a search.
-static int32_t stillOf(BS *s) {
-  if (!s->haveAlone) { Ctx *x = s->x; int w = settleOf(x, s->root); s->aloneBrk = NODE(x, liveNode(x, w) ? w : s->root)->brk; s->haveAlone = 1; }
-  return s->aloneBrk;
+// A break is more broken than standing still breaks by the same frame (stillAt: judge.c aloneBrokeAt, kept per frame a search)
+static int32_t stillAt(BS *s, int32_t t) {
+  for (int i = 0; i < s->nIdle; i++) if (s->idleT[i] == t) return s->idleB[i];
+  int32_t b = aloneBrokeAt(s->x, s->root, t);
+  if (s->nIdle < 256) { s->idleT[s->nIdle] = t; s->idleB[s->nIdle++] = b; }
+  return b;
 }
 static int within(BS *s, int i) { return !(BREAK_LIST && i >= 0 && i < (1 << 20) && s->outside[i]); }
 // (every node a step makes is marked as the rules see it: off them when its parent was, when it is a first swap that is a swap back,
@@ -206,7 +207,7 @@ static void markStep(BS *s, int par, int kind, int mv, int o) {
   if (!BREAK_LIST || !liveNode(x, o) || o >= (1 << 20)) return;
   int fromRoot = par == s->root, firstBad = 0;
   if (fromRoot && kind == MK_SWAP) {
-    firstBad = !firstOk(CR(mv), CC(mv), madeBy(x, o, stillOf(s)));
+    firstBad = !firstOk(CR(mv), CC(mv), madeBy(x, o, s->root));
   }
   s->outside[o] = (par >= 0 && par < (1 << 20) && s->outside[par]) || firstBad || !stepFitsAt(x, o);
 }
@@ -230,7 +231,7 @@ static int allowedAt(Ctx *x, int o) {
 }
 static int breaksAt(BS *s, int n, const int32_t *path, int len) {
   Ctx *x = s->x;
-  if (!liveNode(x, n) || !within(s, n) || !(NODE(x, n)->brk > stillOf(s))) return 0;
+  if (!liveNode(x, n) || !within(s, n) || !(NODE(x, n)->brk > stillAt(s, NODE(x, n)->t))) return 0;
   if (clockOut()) return 0;
   return (!BREAK_LIST || allowedAt(x, n)) && (!path || !BREAK_LIST || lineFits(path, len, 0));
 }
