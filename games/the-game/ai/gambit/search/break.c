@@ -42,6 +42,7 @@ typedef struct {
   int32_t towardLen, toward[MAXPATH];
   Paths towards;                                    // keepOut's lines, then toward
   Paths keepOut;                                    // what the next decision carries on
+  int32_t resIn, resPlayed;                         // the lines the last decision carried on, and of them the ones played again whole
 } Broke;
 
 static LOCAL Ctx *breakCtx;
@@ -296,6 +297,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     for (int i = 0; i < nn; i++) act[i] = nxt[i];
     nact = nn;
   }
+  o->resIn = s->resume ? s->resume->n : 0; o->resPlayed = nseeds;
   if (nseeds) keepPaths(&o->keepOut, seeds, nseeds);
   for (int i = 0; i < nseeds; i++)
     if (breaksAt(s, seeds[i]->n, seeds[i]->path, seeds[i]->len)) {

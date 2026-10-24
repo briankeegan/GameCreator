@@ -167,12 +167,14 @@ static void breakRunTo(const Read *R, double by, Broke *into) {
   double old = clockShareBegin(by);
   // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
   // is searched first, quick to find, so a break to play is in hand however long the list's own takes; the rest of the share then goes
-  // to a break within the list, which is played instead if found)
+  // to a break within the list, which is played instead if found). Both carry on the frontier the last decision kept: under garbage
+  // with no break found, the off-list search is the only one asked, and a search begun again from the first swap every decision never
+  // grows past a few swaps)
   listDefault = 0;
   if (R->end == 1) {
     static LOCAL Broke off;
     listDefault = 1;
-    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, 0, into);
+    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, into);
     listDefault = 0;
     off = *into;
     if (off.depth && !clockOut()) {
@@ -484,7 +486,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }
   else L_s("none");
   // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
-  if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); }
+  if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); L_s(" brRes="); L_i(theBr.resPlayed); L_s("/"); L_i(theBr.resIn); }
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
