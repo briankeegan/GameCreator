@@ -205,8 +205,7 @@ static void markStep(BS *s, int par, int kind, int mv, int o) {
   if (!BREAK_LIST || !liveNode(x, o) || o >= (1 << 20)) return;
   int fromRoot = par == s->root, firstBad = 0;
   if (fromRoot && kind == MK_SWAP) {
-    Stats st; statsOf(x, o, &st);
-    firstBad = !firstOk(CR(mv), CC(mv), NODE(x, o)->brk > stillOf(s) ? 2 : st.cleared > 0);
+    firstBad = !firstOk(CR(mv), CC(mv), madeBy(x, o, stillOf(s)));
   }
   s->outside[o] = (par >= 0 && par < (1 << 20) && s->outside[par]) || firstBad || !stepFitsAt(x, o);
 }

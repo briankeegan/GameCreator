@@ -147,7 +147,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
       int32_t m = o->seeds->path[i][k], at = NODE(x, nd)->t;
       int out = step(x, nd, MK_SETTLE, CR(m), CC(m), 0);
       if (!liveNode(x, out) || !stepFitsAt(x, out)) { ok = 0; break; }
-      if (!k) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(m), CC(m), NODE(x, out)->brk > stillOf(&still) ? 2 : st.cleared > 0)) { ok = 0; break; } }
+      if (!k && !firstOk(CR(m), CC(m), madeBy(x, out, stillOf(&still)))) { ok = 0; break; }
       it.seq[k] = m; it.ats[k] = at; nd = out;
     }
     if (!ok) continue;
@@ -203,7 +203,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         }
         continue;
       }
-      if (!it->nseq && !firstOk(CR(m), CC(m), NODE(x, out)->brk > stillOf(&still) ? 2 : st.cleared > 0)) continue;
+      if (!it->nseq && !firstOk(CR(m), CC(m), madeBy(x, out, stillOf(&still)))) continue;
       int32_t firesAim = -1, firesCells = 0;   // (the entry this step fires, -1 none: an idea of its parent's; and what it sends)
       if (st.cleared > 0) {
         int32_t fire = NODE(x, it->n)->t, chain = chainOfStats(&st), bigC = biggestOf(&st), done = NODE(x, out)->t;

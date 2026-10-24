@@ -49,6 +49,7 @@ typedef struct {
                                 // garbage), -1 not asked
   int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
   int32_t late;                 // the clock stopped it: no answer
+  int32_t firstMade;            // what the line's first swap made, as the swap back reads it (madeBy)
   int32_t aliveTo;              // and the frame from the root the board was judged alive to when it did (0: none)
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
   int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 a first walk not begun within a reaction
@@ -267,6 +268,10 @@ static void ownChainOf(const Question *q) {
   }
   if (most >= 2) { ownChainBy = at; ownChainN = most; }
 }
+// WHAT A SWAP MADE, as the swap back reads it (rules.c swapBack): 2 garbage broken beyond the board left alone (alone: its rows broken
+// once settled -- the judge's baseline, break.c stillOf), 1 panels cleared, 0 nothing. Asked of a line's first swap's node: by the
+// searches as they grow it, by the judge as it presses it (Judged.firstMade), which the rank and the readiness read.
+static int madeBy(Ctx *x, int n, int32_t alone) { Stats st; if (!liveNode(x, n) || !statsOf(x, n, &st)) return 0; return NODE(x, n)->brk > alone ? 2 : st.cleared > 0; }
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
@@ -280,6 +285,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   int32_t baseThrees = 0, threes = 0;
   if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; baseThrees = threesOf(&bs); if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
   j->base = baseBroke;
+  int32_t aloneBrk = NODE(x, liveNode(x, base) ? base : root)->brk;
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 }, pieces = 0, links = 0;
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
   int kb = root;   // (the line's last node by ownChainBy)
@@ -343,6 +349,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       }
       break;
     }
+    if (k == 0 && !last) j->firstMade = madeBy(x, out, aloneBrk);
     Stats st;
     statsOf(x, out, &st);
     for (int i = 0; i < st.n; i++) { if (st.size[i] > combo) combo = st.size[i]; if (!(st.chainAt[i] > 1) && st.size[i] >= 4 && st.size[i] < MAXCOMBOS + 64) single[st.size[i]] = 1; }

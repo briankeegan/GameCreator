@@ -100,7 +100,8 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
     dropAs(play, DROP_UNBROKEN);
     if (!unbroken.set) { unbroken.set = 1; unbroken.play = play; unbroken.nseq = k->nseq; for (int i = 0; i < k->nseq; i++) unbroken.seq[i] = k->seq[i]; unbroken.said = k->x.broke; unbroken.judged = j->made.broke; }
   }
-  if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), m.broke > 0 ? 2 : m.combo > 0 || m.chain > 0)) { dropAs(play, DROP_BACK); return 0; }
+  // (the swap back asks what the first swap made -- judge.c madeBy, as the searches ask it; a line judged dead, what it was offered for)
+  if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), j ? j->firstMade : m.broke > 0 ? 2 : m.combo > 0 || m.chain > 0)) { dropAs(play, DROP_BACK); return 0; }
   // (it fits the list -- the chain as the game counts it -- or it is outside it: ranked after every line within it that lives, and kept,
   // so a list never chooses a death. A line that spends the rules' floor (outcome.c spendsFloor, the shared line check's own test) is
   // outside too)

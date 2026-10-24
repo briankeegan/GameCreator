@@ -49,7 +49,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
         ms1[j] = bMv[b];
         int out = stepTake(x, b, level[i].n, MK_SWAP, bMv[b]);
         if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
-        if (d == 1) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(ms1[j]), CC(ms1[j]), NODE(x, out)->brk > stillOf(&still) ? 2 : st.cleared > 0)) continue; }
+        if (d == 1 && !firstOk(CR(ms1[j]), CC(ms1[j]), madeBy(x, out, stillOf(&still)))) continue;
         Node *on = NODE(x, out);
         int dup = 0;
         for (int q2 = 0; q2 < nk && !dup; q2++) { Node *kn = NODE(x, kids[q2].n); dup = kn->hash == on->hash && kn->keyn == on->keyn && !memcmp(kn->key, on->key, sizeof(int32_t) * on->keyn); }
