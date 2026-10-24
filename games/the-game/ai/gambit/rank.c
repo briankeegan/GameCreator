@@ -293,6 +293,8 @@ static int cutsShort(const Judge *J) {
   if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
   return aloneChain > 1 && J->apWhole < aloneChain;
 }
+// (the line in progress, still clearing and spending nothing the rules keep: rule 3)
+static int finishes(const Judge *J) { return J->carried && clears(J) && !J->spends; }
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
@@ -344,16 +346,21 @@ static int compareJudged(const Judge *x, const Judge *y) {
     K(1, x->o.nearAfter - y->o.nearAfter);
   // 2. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(2, cutsShort(x) ? 1 : -1);
-  // 3. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
+  // 3. WHAT WAS BEGUN, FINISHED: the line in progress that still clears, before any line begun now -- its swaps pressed so far are what
+  // the rest is made of, and a line put down halfway wastes them (the summary's moves wasted, by what became of their line). Under
+  // garbage within its kind only: a break before a line that breaks nothing, whichever was begun.
+  { int fx = finishes(x), fy = finishes(y);
+    if (fx != fy && (!decF.under || (x->apBroke > 0) == (y->apBroke > 0))) K(3, fx ? -1 : 1); }
+  // 4. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
   // order). Under garbage the rule is to break (the rules' underGarbage): a break that meets an entry, by the entry; then a plain break
   // outside the list -- a three, the last choice; then a line that breaks nothing; and last of all a line the rules' keep puts outside
   // (judgeCand: the rules' floor spent -- outcome.c spendsFloor)
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS;
     if (decF.under) { ax += x->apBroke > 0 ? 0 : MAXAIMS + 1; ay += y->apBroke > 0 ? 0 : MAXAIMS + 1; }
     ax += x->spends ? 2 * MAXAIMS + 2 : 0; ay += y->spends ? 2 * MAXAIMS + 2 : 0;
-    if (ax != ay) K(3, ax - ay); }
-  // 4. WITHIN ONE ENTRY: the line in progress kept -- a line put down halfway leaves a board its forecast never judged -- then the plan
-  // the last decision kept (an intention)
+    if (ax != ay) K(4, ax - ay); }
+  // -- and within one entry, the line in progress kept -- a line put down halfway leaves a board its forecast never judged -- then the
+  // plan the last decision kept (an intention)
   if (x->carried != y->carried && !x->hold && !y->hold) K(4, x->carried ? -1 : 1);
   if (x->k.kept != y->k.kept) K(4, x->k.kept ? -1 : 1);
   // 5. MORE THROWN: the more blocks the line sends, every attack its own
