@@ -122,9 +122,9 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   int32_t base = 0;
   Stats bs;
   if (liveNode(x, baseOut) && statsOf(x, baseOut, &bs) && bs.cleared > 0) base = sentCells(&bs);
-  // (a step that converts garbage breaks what the line has broken by its settle beyond the board left alone by then -- the break
-  // search's and the judge's measure: a slab already popping, or a cascade of the board's own, converts whatever is pressed)
-  #define BROKE_OF(it, st) ((st).broke > 0 ? imax(0, NODE(x, out)->brk - stillAt(&still, NODE(x, out)->t)) : 0)
+  // (a step that converts garbage breaks what the line has broken beyond the board left alone until it settles -- break.c stillOf, the
+  // judge's baseline: a slab already popping, or a cascade of the board's own, converts whatever is pressed)
+  #define BROKE_OF(it, st) ((st).broke > 0 ? imax(0, NODE(x, out)->brk - stillOf(&still)) : 0)
   P->base = base;
   int32_t rootH = connectedOf(ensureBoard(x, root));
   int32_t setH = rootH, haveSetup = 0, setIdeas = 0; double setReachD = 0;
@@ -147,7 +147,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
       int32_t m = o->seeds->path[i][k], at = NODE(x, nd)->t;
       int out = step(x, nd, MK_SETTLE, CR(m), CC(m), 0);
       if (!liveNode(x, out) || !stepFitsAt(x, out)) { ok = 0; break; }
-      if (!k) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(m), CC(m), NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) { ok = 0; break; } }
+      if (!k) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(m), CC(m), NODE(x, out)->brk > stillOf(&still) ? 2 : st.cleared > 0)) { ok = 0; break; } }
       it.seq[k] = m; it.ats[k] = at; nd = out;
     }
     if (!ok) continue;
@@ -175,7 +175,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         int32_t m = jobM[j];
         int sw = step(x, it->n, MK_SWAP, CR(m), CC(m), 0);
         if (!liveNode(x, sw) || !stepFitsAt(x, sw)) continue;
-        int32_t bk = NODE(x, sw)->brk - stillAt(&still, NODE(x, sw)->t);
+        int32_t bk = NODE(x, sw)->brk - stillOf(&still);
         if (o->by != NOT_ASKED && NODE(x, it->n)->t > o->by) bk = 0;
         int kc = bk > 0 ? keepsOwnChain(x, sw) : 0;
         if (bk > 0 && quickBefore(&P->quick, kc, bk, NODE(x, sw)->t)) {
@@ -203,7 +203,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         }
         continue;
       }
-      if (!it->nseq && !firstOk(CR(m), CC(m), NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) continue;
+      if (!it->nseq && !firstOk(CR(m), CC(m), NODE(x, out)->brk > stillOf(&still) ? 2 : st.cleared > 0)) continue;
       int32_t firesAim = -1, firesCells = 0;   // (the entry this step fires, -1 none: an idea of its parent's; and what it sends)
       if (st.cleared > 0) {
         int32_t fire = NODE(x, it->n)->t, chain = chainOfStats(&st), bigC = biggestOf(&st), done = NODE(x, out)->t;
