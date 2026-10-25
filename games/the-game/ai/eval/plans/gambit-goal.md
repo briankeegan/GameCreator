@@ -1382,3 +1382,6 @@ resumes from the answer the frame loop last put in its plan, logs `resumed=`/`lo
 WHAT WAS FOUND IS KEPT: the ring held the intentions too, so an unplayed answer's ideas were rolled back with its line. Now only what was
 pressed follows the answer played; the intentions are one pool every decision adds to, and the line an unplayed answer chose joins it
 whole (decide.c intentOfCarry), judged again on the board as it is now.
+The ring, ideas rolled back with the line (`502b3de2`, 1159): 15 -- combo_storm 3, factory 5, large_garbage 1; actions 5, no-break 3,
+panels 1; the truth held. 134 decisions resumed from the answer played. Its "lost" count read the line's own `lost=` field (the
+frame it is lost at): the state's is `stateLost=` now.

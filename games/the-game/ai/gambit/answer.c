@@ -604,7 +604,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" lifePeak="); L_i(lifePeakOf());
   if (switchedNow) L_s(" switched=1");
   if (carriedResumed >= 0) { L_s(" resumed="); L_i(carriedResumed); L_s("/"); L_i(carriedIdeas); }
-  if (carriedLost >= 0) { L_s(" lost="); L_i(carriedLost); }
+  if (carriedLost >= 0) { L_s(" stateLost="); L_i(carriedLost); }
   // (the enemy as the rules read it: its height, topped out, the frames of its stop -- what picked the rule)
   if (theOpp.has) { L_s(" enemy="); L_i(theOpp.top); L_s("/"); L_i(theOpp.out); L_s("/"); L_i(theOpp.stopKnown ? theOpp.stop : -1); }
   if (P.line && P.line->k.grown) L_s(" grown=1");

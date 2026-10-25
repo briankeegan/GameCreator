@@ -29,7 +29,7 @@ decision's. What was found: kept, from every decision, played or not -- the line
    found again by its anchor and judged whole, like every intention.
 4. A host that does not say (no `gb_played`: the JavaScript host, the C checks) gets the last decision's state.
 5. It is counted, not trusted: each decision logs `resumed=ID/N` when it started from an answer older than the last decision (N: the
-   lines not pressed kept as ideas), `lost=ID` when the ring no longer held the answer played; the summary counts them (`state:`), and
+   lines not pressed kept as ideas), `stateLost=ID` when the ring no longer held the answer played; the summary counts them (`state:`), and
    Gambit 24 is red on a lost one ("The state held").
 
 The board itself is never carried: every decision reads it from its question. The dig (`digSeen`), the readiness kept

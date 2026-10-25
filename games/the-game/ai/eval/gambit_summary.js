@@ -155,10 +155,10 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var bt = / beaten=\w+:k(\d+)/.exec(l);
       if (bt) { beaten.n++; beaten.by[bt[1]] = (beaten.by[bt[1]] || 0) + 1; }
       // (THE STATE CARRIED: answer.c resumed=ID/IDEAS, a decision started from the answer the frame loop played, not the last decision's,
-      // and the lines the answers not played chose kept as ideas; lost=, the ring no longer held it)
+      // and the lines the answers not played chose kept as ideas; stateLost=, the ring no longer held it)
       var rs = / resumed=\d+\/(\d+)/.exec(l);
       if (rs) { carried.resumed++; carried.ideas += +rs[1]; }
-      if (/ lost=\d+/.test(l)) carried.lost++;
+      if (/ stateLost=\d+/.test(l)) carried.lost++;
       if (um) sooner.dec++;
       if (bm) (/ under=1/.test(l) ? think.brUnder : think.br).push(+bm[1]);
       var op = / opts=(\S+)/.exec(l);
