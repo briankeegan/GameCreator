@@ -1379,3 +1379,6 @@ truth held. Kept.
 THE STATE A DECISION STARTS FROM IS THE ANSWER PLAYED'S (plans/gambit-state.md): an answer the frame loop never played (unasked, late,
 refused, guarded) had already changed what the next decision built on. Every carried piece is kept per answer in one ring; a decision
 resumes from the answer the frame loop last put in its plan, logs `resumed=`/`lost=`, and Gambit 24 is red on a lost one.
+WHAT WAS FOUND IS KEPT: the ring held the intentions too, so an unplayed answer's ideas were rolled back with its line. Now only what was
+pressed follows the answer played; the intentions are one pool every decision adds to, and the line an unplayed answer chose joins it
+whole (decide.c intentOfCarry), judged again on the board as it is now.

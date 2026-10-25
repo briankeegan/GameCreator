@@ -474,7 +474,7 @@ static Played playOf(const Read *R, int n) {
 // only when none was then)
 // (ready: a break found on the board once everything lands, carried from a swap played for it -- offered, not put first: it was found
 // on a board the stack is not yet)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], restAt[MAXLINE], tap, settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, move, moveAt; Aim aim; } Carry;   // restAt: the frame each swap was judged pressed at, -1 not said; move, moveAt: the answer's own first swap (the move, not handed on) and its frame, 0 none
+typedef struct { int32_t set, id, play, nrest, rest[MAXLINE], restAt[MAXLINE], tap, settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, move, moveAt; Aim aim; } Carry;   // restAt: the frame each swap was judged pressed at, -1 not said; move, moveAt: the answer's own first swap (the move, not handed on) and its frame, 0 none; play: the kind of line it was chosen as
 static Carry theCarry;
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
@@ -520,7 +520,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carryLost = 8; return; }
-  theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
+  theCarry.set = 1; theCarry.id = qid; theCarry.play = k->k.play == PLAY_CARRYWAIT ? PLAY_CARRY : k->k.play; theCarry.nrest = k->k.nseq - first;
   if (first) { theCarry.move = k->k.seq[0]; theCarry.moveAt = decAt + (!k->hold && k->o.j.nats > 0 ? k->o.j.ats[0] : 0); }
   for (int i = first; i < k->k.nseq; i++) { theCarry.rest[i - first] = k->k.seq[i]; theCarry.restAt[i - first] = !k->hold && i < k->o.j.nats ? decAt + k->o.j.ats[i] : -1; }
   theCarry.tap = k->k.tapOf ? k->k.tapOf - 1 : decTap; theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
@@ -535,7 +535,7 @@ static void carryNextOf(const Judge *L) {
   const Judged *j = L ? &L->o.j : 0;
   if (!j || L->hold || L->o.ready != 1 || j->readyN < 1 || !theCarry.set) return;
   if (!anchorInto(&theCarryNext, j->readyRow1, j->readyLine, j->readyN)) return;
-  theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.nrest = j->readyN;
+  theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.play = PLAY_CARRY; theCarryNext.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarryNext.rest[i] = j->readyLine[i];
   theCarryNext.settled = 0; theCarryNext.broke = 1; theCarryNext.ready = 1;
 }
@@ -544,7 +544,7 @@ static void carryReady(const Judge *H, int32_t qid) {
   if ((!H->hold && H->k.nseq != 1) || H->o.ready != 1 || j->readyN < 1) return;
   memset(&theCarry, 0, sizeof theCarry);
   if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
-  theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
+  theCarry.set = 1; theCarry.id = qid; theCarry.play = PLAY_CARRY; theCarry.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
   theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0; theCarry.ready = !H->hold;
   theCarry.tap = decTap; theCarry.restAt[0] = decAt + j->readyWait;   // (pressed where the readiness found it: the board run to readyWait)
@@ -599,6 +599,20 @@ static void keepIntents(int n, const Judge *played) {
     for (int q = 0; q < J->k.nseq; q++) I->seq[q] = J->k.seq[q];
     k++;
   }
+}
+// AN IDEA FROM A LINE NOT PRESSED: a line in progress whose answer the frame loop never played is no line in progress, but what it
+// makes is still on the board -- it goes first among the intentions, whole (its move too), found again by its anchor and judged as each
+// is (answer.c carriedResume)
+static int intentOfCarry(const Carry *C) {
+  int n = (C->move ? 1 : 0) + C->nrest;
+  if (!C->set || n < 1 || n > MAXLINE) return 0;
+  for (int i = NINTENT - 1; i > 0; i--) theIntents[i] = theIntents[i - 1];
+  Intent *I = &theIntents[0];
+  memset(I, 0, sizeof *I);
+  I->set = 1; I->play = C->play; I->settled = C->settled; I->anchorRow = C->anchorRow; I->anchorCol = C->anchorCol; I->anchorId = C->anchorId;
+  if (C->move) I->seq[I->nseq++] = C->move;
+  for (int q = 0; q < C->nrest; q++) I->seq[I->nseq++] = C->rest[q];
+  return 1;
 }
 // (a line judged already this decision -- the same swaps, pressed the same way -- is the same answer: never judged twice)
 static int judgedHas(int n, const Cand *k) {

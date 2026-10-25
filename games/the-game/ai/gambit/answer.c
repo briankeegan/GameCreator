@@ -310,20 +310,22 @@ static int32_t lastA, lastB, pairRuns, blockA, blockB, blockUntil, emptyAt = NUL
 #define MAXSWITCH 256
 static int32_t switchMin, switchMax, nswitch, switchAt[MAXSWITCH], switchMode[MAXSWITCH], switchedNow;
 static double readMs;   // (the board's reading, for the log)
-// THE STATE CARRIED (plans/gambit-state.md): what a decision leaves the next -- the line in progress, the break search's and the
-// planner's lines, the intentions, the pair kept from being swapped back, the hold -- kept per answer, and the next decision starts from
-// the state the answer the frame loop last played left (gb_played; -1, a host that does not say: the last decision's). The decision's
-// own variables are what it works on; the ring is what is true.
+// THE STATE CARRIED (plans/gambit-state.md): what a decision PRESSED follows the answer the frame loop played -- the line in progress,
+// the break search's and the planner's lines past the move, the pair kept from being swapped back, the hold -- kept per answer, and the
+// next decision starts from the state the answer last played left (gb_played; -1, a host that does not say: the last decision's).
+// What a decision FOUND is the board's whatever was played: the intentions are one pool every decision adds to, and a line chosen by
+// an answer never played joins them (decide.c intentOfCarry).
 #define CARRIEDN 16
 typedef struct {
   int32_t id, mode, carryLost, lastA, lastB, pairRuns, blockA, blockB, blockUntil, idle;
-  Kept kept, planKept; Carry carry, carryNext; Intent intents[NINTENT];
+  Kept kept, planKept; Carry carry, carryNext;
 } Carried;
 static Carried carriedRing[CARRIEDN];
 static int32_t carriedN, carriedHead;
 static int32_t carriedOf = -1;      // the answer whose state the decision's variables hold (-1: a decision's own, not finished)
 static int32_t carriedPlayed = -1;  // the answer the frame loop last played, for the next decision (gb_played)
-static int32_t carriedResumed = -1, carriedLost = -1;   // (the log's: the answer resumed from, or the one the ring no longer held)
+static int32_t carriedResumed = -1, carriedLost = -1, carriedIdeas;   // (the log's: the answer resumed from, or the one the ring no longer held; the lines not pressed made ideas)
+static int sameCarry(const Carry *a, const Carry *b) { return a->set == b->set && a->id == b->id && a->move == b->move && a->nrest == b->nrest && !memcmp(a->rest, b->rest, sizeof a->rest[0] * (unsigned long)a->nrest); }
 static void modeLeft(void);
 static void carriedKeep(int32_t id) {
   Carried *c = &carriedRing[carriedHead];
@@ -331,12 +333,11 @@ static void carriedKeep(int32_t id) {
   c->id = id; c->mode = modeRule; c->carryLost = carryLost;
   c->lastA = lastA; c->lastB = lastB; c->pairRuns = pairRuns; c->blockA = blockA; c->blockB = blockB; c->blockUntil = blockUntil; c->idle = C2.idle;
   c->kept = theKept; c->planKept = thePlanKept; c->carry = theCarry; c->carryNext = theCarryNext;
-  memcpy(c->intents, theIntents, sizeof theIntents);
   carriedOf = id;
 }
 static void carriedResume(void) {
   int32_t played = carriedPlayed;
-  carriedPlayed = -1; carriedResumed = -1; carriedLost = -1;
+  carriedPlayed = -1; carriedResumed = -1; carriedLost = -1; carriedIdeas = 0;
   if (played >= 0 && played != carriedOf) {
     const Carried *c = 0;
     for (int k = 1; k <= carriedN && !c; k++) { const Carried *e = &carriedRing[(carriedHead - k + CARRIEDN) % CARRIEDN]; if (e->id == played) c = e; }
@@ -344,8 +345,10 @@ static void carriedResume(void) {
     else {
       carryLost = c->carryLost;
       lastA = c->lastA; lastB = c->lastB; pairRuns = c->pairRuns; blockA = c->blockA; blockB = c->blockB; blockUntil = c->blockUntil; C2.idle = c->idle;
+      // (the lines the answers not played chose: ideas still, the next decision's to judge)
+      if (theCarryNext.set && !sameCarry(&theCarryNext, &c->carryNext)) carriedIdeas += intentOfCarry(&theCarryNext);
+      if (theCarry.set && !sameCarry(&theCarry, &c->carry)) carriedIdeas += intentOfCarry(&theCarry);
       theKept = c->kept; thePlanKept = c->planKept; theCarry = c->carry; theCarryNext = c->carryNext;
-      memcpy(theIntents, c->intents, sizeof theIntents);
       gb_back(lastA, lastB, pairRuns, blockA, blockB, blockUntil, 0);
       if (c->mode != modeRule) modeLeft();   // (kept under another mode: let go, as a switch lets it go)
       carriedResumed = played;
@@ -600,7 +603,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
   L_s(" lifePeak="); L_i(lifePeakOf());
   if (switchedNow) L_s(" switched=1");
-  if (carriedResumed >= 0) { L_s(" resumed="); L_i(carriedResumed); }
+  if (carriedResumed >= 0) { L_s(" resumed="); L_i(carriedResumed); L_s("/"); L_i(carriedIdeas); }
   if (carriedLost >= 0) { L_s(" lost="); L_i(carriedLost); }
   // (the enemy as the rules read it: its height, topped out, the frames of its stop -- what picked the rule)
   if (theOpp.has) { L_s(" enemy="); L_i(theOpp.top); L_s("/"); L_i(theOpp.out); L_s("/"); L_i(theOpp.stopKnown ? theOpp.stop : -1); }
