@@ -1336,3 +1336,6 @@ combo_storm 5, factory 7, large_garbage 8; combo_storm-5 lost to hold-creep: the
 (rule 7, from 1132), decision after decision.
 The fewer actions line against line only, not the hold (`de14d13a`, 1139, 06:04 ET): 18 -- combo_storm 5, factory 5, large_garbage 8;
 the hold-creep gone, the window dry again. The continuation (19, 20, 18) gone with it: the code as 1132's.
+Of two lines lost alike, the line in progress first (`9fdfddfa`, 1140, 06:14 ET): 17 -- combo_storm 4, factory 6, large_garbage 7;
+lines put down with nothing new told 1139 (from ~1900), swaps that came to nothing 1820 (from ~2100), the score no better; gone, the
+code as 1132's.

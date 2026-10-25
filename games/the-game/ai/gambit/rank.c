@@ -353,8 +353,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
   // break and never preferred by it; two that live, the list first (3). Of two that break nothing, the next break lined up: the fewer
   // swaps to it on the board the line leaves (outcome.c nearAfter) -- a line that only buys time leaves the garbage as far from breaking
-  // -- and of two lost alike, the line in progress first: a line put down halfway spends the swaps it pressed for nothing
-  if (!lx && x->carried != y->carried && !x->hold && !y->hold) K(1, x->carried ? -1 : 1);
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0) {
     if (x->material >= 0 && y->material >= 0 && x->material != y->material) K(1, x->material - y->material);
     int bothReady = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
