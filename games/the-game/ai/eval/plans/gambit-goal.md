@@ -1399,3 +1399,9 @@ NO PAIR PUT BACK, ANYWHERE IN A LINE (1161 factory-5): level lines of 9-12 swaps
 One rule (judge.c movedUndoes): a swap that puts back two panels one of the line's own swaps moved -- by their ids, wherever the stack
 has risen them -- is no swap; the judge cuts a line there, whoever proposed it, and every search grows none (any of the line's last
 eight pairs, not only the last). The levelling walk never walks a panel back to the column it came from.
+No pair put back anywhere in a line (`b44fe169`, 1162): 16 -- combo_storm 3 (one at 604, the opening), factory 3, large_garbage 2;
+actions 4, no-break 3, panels 1; the state and the truth held.
+NEARER IS COUNTED IN ACTIONS (1162 large_garbage-4): toward lines of 6-10 swaps were played over a hold lost at the same frame because
+they left the garbage a swap or two nearer breaking (rule 1, nearAfter), and the allowance sat at 5-17 for 800 frames -- nothing left
+to walk to a break when one was there. Nearer is now one measure (rank.c nearActsOf), read by the order, by a move beating the hold
+and by the tier: the line's own walk and two actions (a swap and a cell's walk) for each swap it leaves to the break.

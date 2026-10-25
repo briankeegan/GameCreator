@@ -83,6 +83,7 @@ static void tierInsert(Tier *t, int pos, double v) {
 static LOCAL int32_t unTap;
 static void asLine(const Cand *k) { lineAt0 = k->at0; lineWaitTo = k->waitTo; unTap = pressTap; if (k->tapOf) pressTap = k->tapOf - 1; }
 static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
+static int nearActsOf(const Judge *J, int32_t near);
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
@@ -159,10 +160,10 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // more life by the panels left on it, then the one nearer its next break -- right after the list's own keys)
   // -- under garbage the nearer break first: the next break is the board's life there, and the panels kept by doing nothing never make it
   if (oc.panelsLeft >= 0) {
-    if (R->under && oc.nearAfter >= 0) { tierInsert(&J->t, J->t.nlist, oc.nearAfter); tierInsert(&J->t, J->t.nlist + 1, -(double)oc.lifeLeft); }
+    if (R->under && oc.nearAfter >= 0) { tierInsert(&J->t, J->t.nlist, nearActsOf(J, oc.nearAfter)); tierInsert(&J->t, J->t.nlist + 1, -(double)oc.lifeLeft); }
     else {
       tierInsert(&J->t, J->t.nlist, -(double)oc.lifeLeft);
-      if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, oc.nearAfter);
+      if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, nearActsOf(J, oc.nearAfter));
     }
   }
   J->settled = st; J->aim = aim; J->o = oc;
@@ -278,7 +279,7 @@ static int beatsHold(const Judge *L, const Judge *H) {
   int known = L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED;
   // (a known loss beats holding when it comes later, the line's own death or the hold's forecast alike: two losses are two frames)
   if (known && lostOf(L) > lostOf(H)) return 1;
-  if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
+  if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && nearActsOf(L, L->o.nearAfter) < nearActsOf(H, H->o.nearAfter)) return 1;
   // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
   // breaks lost at 44 put after a hold lost at 44)
   if (L->apBroke > 0 && known && lostOf(L) >= lostOf(H)) return 1;
@@ -315,11 +316,16 @@ static int cutsShort(const Judge *J) {
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), walkLeft()); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
+#define NEAR_ACTS 2     // the actions a swap toward a break costs: the swap and a cell's walk (breakNear walks a panel a column a swap)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), walkLeft()); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
   return n;
 }
+// HOW NEAR THE NEXT BREAK A LINE LEAVES THE BOARD, the one measure every reader asks (the order's survival key, a move beating the hold,
+// the tier): the swaps to it (outcome.c nearAfter) -- and with an input window to keep, the actions: the line's own walk and NEAR_ACTS
+// a swap left, so a line that walks more than the swaps it saves brings the break no nearer
+static int nearActsOf(const Judge *J, int32_t near) { return pressAllowance >= 0 ? lineWalk(J) + NEAR_ACTS * near : near; }
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
 // break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
 static int holdsLine(const Judge *x, const Judge *y) {
@@ -352,15 +358,19 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
   // break and never preferred by it; two that live, the list first (3). Of two that break nothing, the next break lined up: the fewer
-  // swaps to it on the board the line leaves (outcome.c nearAfter) -- a line that only buys time leaves the garbage as far from breaking
+  // swaps to it on the board the line leaves (outcome.c nearAfter) -- a line that only buys time leaves the garbage as far from breaking.
+  // With an input window to keep, nearer is counted in actions: the line's own walk and NEAR_ACTS for each swap it leaves to the break
+  // -- a line that walks more to bring the break nearer than the swaps it saves is no nearer; of two alike, the nearer board
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0) {
     if (x->material >= 0 && y->material >= 0 && x->material != y->material) K(1, x->material - y->material);
     int bothReady = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
     int32_t mx = bothReady ? x->o.j.readyMat : x->o.matLeft, my = bothReady ? y->o.j.readyMat : y->o.matLeft;
     if (mx >= 0 && my >= 0 && mx != my) K(1, mx > my ? -1 : 1);
   }
-  if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && x->o.nearAfter != y->o.nearAfter)
-    K(1, x->o.nearAfter - y->o.nearAfter);
+  if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0) {
+    { int ax = nearActsOf(x, x->o.nearAfter), ay = nearActsOf(y, y->o.nearAfter); if (ax != ay) K(1, ax - ay); }
+    if (x->o.nearAfter != y->o.nearAfter) K(1, x->o.nearAfter - y->o.nearAfter);
+  }
   // 2. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(2, cutsShort(x) ? 1 : -1);
   // 3. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
