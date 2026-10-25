@@ -60,8 +60,9 @@ static void clockCharge(int64_t units) { clockWork += units > 0 ? units : 1; }
 // THE WORK CLOCK: the engine's frames stepped, WORK_PER_MS a millisecond -- a decision's time the same on any machine. A native host
 // plays every decision on it (native.c); a tool that searches a logged board again does too (gb_clock_on_work), so it is given the work
 // the live search had. Measured on a 4-core runner with the game on it: 354 frames a wall ms at the 5th percentile of decisions, 603
-// the median (run 1055) -- WORK_PER_MS under the slowest, so a decision never needs more than real time.
-#define WORK_PER_MS 300.0
+// the median (run 1055) -- WORK_PER_MS the median: a decision searches what the runner does in its time, and the wall guard cuts the
+// slower ones (wallCut=, the report's answers taken past their frame).
+#define WORK_PER_MS 600.0
 static double workNowMs(void) { return (double)clockWork / WORK_PER_MS; }
 EXPORT(gb_clock_on_work) void gb_clock_on_work(int on) { clockNowOf = on ? workNowMs : 0; }
 EXPORT(gb_work_per_ms) double gb_work_per_ms(void) { return WORK_PER_MS; }
