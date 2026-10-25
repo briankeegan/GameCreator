@@ -484,7 +484,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     } else for (int i = 0; i < nl; i++) { olen[no] = lens[i]; for (int k = 0; k < lens[i]; k++) ord[no][k] = lines[i][k]; no++; }
     for (int i = 0; i < no; i++) {
       if (!olen[i]) continue;
-      if (seenDigHas(decQ.b, ord[i][0])) continue;
+      if (seenDigHas(decQ.b, ord[i][0]) || !linePlayable(ord[i], olen[i], 0)) continue;   // (one the order keeps: outcome.c linePlayable)
       ADD(PLAY_TOWARD, ord[i], olen[i], -1, 0);
       break;
     }
@@ -499,7 +499,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // while a chain falls spoil what the board makes alone)
   if (!R->pop && (R->topped || R->under || (!hasActivePanels(decQ.b) && decQ.b->chainCounter == 0))) {
     static int32_t lv[MAXLINE]; int nl = levelLine(decQ.b, lv, MAXLINE);
-    if (nl > 0) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; } }
+    if (nl > 0 && linePlayable(lv, nl, 1)) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; } }
   if (R->topped || R->under) {
     static Perches pd; perchedDrops(decQ.b, &pd);
     for (int i = 0; i < pd.n; i++) { int m0 = n; ADD(PLAY_LEVEL, pd.seq[i], pd.len[i], -1, 0); if (n > m0) out[m0].drop = 1; }

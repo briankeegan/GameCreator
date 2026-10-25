@@ -273,9 +273,10 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
 // would drop. Each line judged once a decision (the cache), whatever it is held to; a check not begun by the deadline keeps no line.
 #define CHECK_LIST 1
 #define CHECK_WASTE 2
+#define CHECK_DIES 4   // a line the board is lost on is a line still: the order ranks it by its loss (a search's lines under garbage)
 static int lineOk(const Outcome *o, int flags) {
   const Judged *j = &o->j;
-  if (j->dead || j->late || imax(j->made.chain, j->chainAll) > MAXCHAIN || judgedCut(j)) return 0;
+  if ((j->dead && !(flags & CHECK_DIES)) || j->late || imax(j->made.chain, j->chainAll) > MAXCHAIN || judgedCut(j)) return 0;
   if ((flags & CHECK_WASTE) && judgedWastes(j)) return 0;
   if ((flags & CHECK_LIST) && listOn && !(lineInList(j, 1) && !lineSpends(j, o->floorKept))) return 0;
   return 1;
@@ -297,10 +298,13 @@ static int lineCheckOn(const Question *q, const int32_t *seq, int n, int settled
   return lineOk(&o, flags);
 }
 static int lineCheck(const int32_t *seq, int n, int settled, int flags) { return lineCheckOn(&decQ, seq, n, settled, flags); }
-// (the searches' check: the list, no three wasted; the survival search's: neither -- a line that lives is taken whatever list it is
-// outside, and a three the board needs comes from it)
+// (the searches' check: the list, no three wasted; the survival search's: no three wasted where its pool holds such a line, else none --
+// a line that lives is taken whatever list it is outside, and a three the board needs comes from it)
 static int lineFits(const int32_t *seq, int n, int settled) { return lineCheck(seq, n, settled, CHECK_LIST | CHECK_WASTE); }
 static int lineKeptOn(const Question *q, const int32_t *seq, int n, int settled) { return lineCheckOn(q, seq, n, settled, 0); }
+// A LINE THE ORDER WILL KEEP, as a search asks it before offering one: pressed whole, in time, no three wasted -- the order drops the rest
+// (rank.c judgeCand, decide.c), so a search that offers one has spent its time on nothing. Lost or not: the order ranks a loss
+static int linePlayable(const int32_t *seq, int n, int settled) { return lineCheck(seq, n, settled, CHECK_WASTE | CHECK_DIES); }
 
 // ---- a decision begun: the question (from a node of a host search, until the decision reads its own) and the facts; every line is
 // judged again
