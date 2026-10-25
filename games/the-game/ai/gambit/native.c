@@ -17,6 +17,7 @@ double hostNowMs(void);
 void hostThreadStats(double *out);
 void hostLock(void), hostUnlock(void), hostWait(void), hostSignal(void), hostWaitDone(void), hostSignalDone(void);
 int hostLockstep(void);
+int hostForce(int *at, int *k);
 int hostThread(void *(*fn)(void *));
 int hostWorkers(void *(*fn)(void *), int most);
 int hostOpenLog(const char *path);
@@ -281,6 +282,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   // thread, its own board pool: thread 0 is Gambit's, the one the workers' phases hand boards out of)
   paThreadId(MAXTHREADS - 1);
   gnLockstep = hostLockstep();
+  { int fa, fk; if (hostForce(&fa, &fk)) gb_force(fa, fk); }
   gnReaction = reaction; gnAhead = ahead; gnGap = gap; gnJitter = jitter; gnPlanHealth = planHealth;
   gb_config(reaction, swapGap, cursor);
   gb_clock_on_work(1);   // (every thread's decisions on the work clock)

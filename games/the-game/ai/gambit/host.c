@@ -33,6 +33,9 @@ static pthread_cond_t cvDone = PTHREAD_COND_INITIALIZER;
 void hostWaitDone(void) { pthread_cond_wait(&cvDone, &mu); }
 void hostSignalDone(void) { pthread_cond_signal(&cvDone); }
 int hostLockstep(void) { const char *l = getenv("GC_GAMBIT_LOCKSTEP"); return l && *l == '1'; }
+// (A REPLAY'S FORCED OPTION: GC_GAMBIT_FORCE=F:K -- the first decision at or after frame F plays the order's option K, 0 its first;
+// -1 none)
+int hostForce(int *at, int *k) { const char *f = getenv("GC_GAMBIT_FORCE"); *at = -1; *k = 0; return f && sscanf(f, "%d:%d", at, k) == 2 && *at >= 0; }
 // GAMBIT'S THREAD: the room the main thread has for its stack (the searches keep their scratch there), and the cores GC_GAMBIT_CPUS
 // names ("1-3", "2,3"), so it thinks beside the game rather than on the game's own core; the workers on GC_GAMBIT_WORKER_CPUS's
 // (else Gambit's), so they take a core of their own rather than Gambit's.

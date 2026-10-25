@@ -314,6 +314,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   Answer *A = &theAnswer;
   memset(A, 0, sizeof *A);
   logN = 0; logBuf[0] = 0;
+  decAt = at;
   double tStart = nowMs();
   pressTap = decTap = 0; decQ.tight = pressTight = 0;   // (decided once the board is read, below)
   pressAllowance = allowanceKnown ? allowance : -1;
@@ -540,6 +541,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
+  if (forcedNow != -1) { L_s(" forced="); L_i(forcedNow); }   // (a replay's forced option: K played, 0 none to swap, -2 fewer options than K)
   if (savingPanels) L_s(" saving=1");
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
   L_s(" lifePeak="); L_i(lifePeakOf());
@@ -617,7 +619,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); lifeDumps = 0;
+  modeLeft(); lifeDumps = 0; forceDone = 0;
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
   memset(theIntents, 0, sizeof theIntents);

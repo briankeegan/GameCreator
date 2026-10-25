@@ -412,8 +412,18 @@ static int ranked(const Read *R, const Found *S) {
 // 5. PLAY: the raise when the opening calls for it, a hold while the raise waits for a busy board, else the first candidate in the one
 // order -- a line's first swap, or the hold
 typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred; } Played;
+// (A REPLAY'S FORCED OPTION, gb_force: the first decision at or after frame forceAt plays the order's option forceK in place of its first,
+// once a game -- a lost game played again from a decision with another choice, to find the decision that lost it)
+static int32_t forceAt = -1, forceK = 0, forceDone, forcedNow, decAt;
+EXPORT(gb_force) void gb_force(int at, int k) { forceAt = at; forceK = k; forceDone = 0; }
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
+  forcedNow = -1;
+  if (forceAt >= 0 && !forceDone && decAt >= forceAt) {
+    forceDone = 1;
+    if (forceK > 0 && forceK < n) { Judge *t = order[0]; order[0] = order[forceK]; order[forceK] = t; forcedNow = forceK; }
+    else forcedNow = forceK < n ? 0 : -2;
+  }
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
   // is never passed over for a raise to come)
   int holdLivesNow = 0;
