@@ -1273,3 +1273,7 @@ What fell, from the history (runs 1043-1052, seeds 1-24 on the wall clock: 15-19
 REPLAYED (gambit-replay.yml: a game of the 24 again, one decision forced): factory-6, lost at 8230, survives with frame 7810's fourth
 option (a setup ready for the next block over a break lost later that leaves none) and with the second at 7000, 7200, 7600. Readiness
 before the later loss in every decision (`cc040a35`, 1109, 23:07 ET): 9 -- games lost later, more of them; gone.
+Replayed, seven more losses of 1107: each lost game survives with another option at its turn or a decision before it in five of seven
+(large_garbage-3, -5, -7, factory-2, factory-6); factory-2's line in progress, a break of 24 judged at 14093, was judged at 14121 with
+the window's pace a frame slower and put down. The pace of a swap the window's at its frame, for the judge and the frame loop alike
+(`5ad14bdf`, 1110, 23:31 ET): **17** -- combo_storm 6, factory 4, large_garbage 7; the twin alike.
