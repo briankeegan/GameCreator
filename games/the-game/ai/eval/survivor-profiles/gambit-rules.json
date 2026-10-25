@@ -6,6 +6,26 @@
   "to": 11
  },
  "underGarbage": "break",
+ "opener": [
+  {
+   "name": "opener",
+   "aims": [
+    {
+     "chain": ">=8"
+    },
+    {
+     "chain": ">=6"
+    },
+    {
+     "chain": ">=4"
+    },
+    {
+     "chain": ">=3"
+    },
+    "default"
+   ]
+  }
+ ],
  "attack": [
   {
    "name": "time attack",

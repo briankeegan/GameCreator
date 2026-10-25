@@ -1354,3 +1354,6 @@ With garbage on its way, a line that breaks nothing meets no entry (`3b945d4d`, 
 large_garbage 8 (the checks' tsan timed out at 15 minutes; it passes in 7 here). The owner: attack, and be ready to break.
 Attack and be ready, under garbage and with it on its way (`76bdf904`, 1149, 08:13 ET): 15 -- combo_storm 4, factory 4,
 large_garbage 7; under garbage the break-only rule kept, the readiness asked only of garbage on its way.
+Attack and be ready, only with garbage on its way (`0dbaade9`, 1150, 08:44 ET): 18 -- combo_storm 5, factory 5, large_garbage 8;
+gone, rule 3 as 1132's. THE OPENER (the owner: openers are big chains, the pressure from the start -- an opener mode): the rules'
+opener table, played from a game's start until garbage first touches the board, whatever the mode: chain >=8, >=6, >=4, >=3, default.

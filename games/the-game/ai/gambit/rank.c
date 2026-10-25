@@ -369,13 +369,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (judgeCand: the rules' floor spent -- outcome.c spendsFloor)
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS;
     // (under garbage a line that breaks nothing meets no entry: the rule is to break, and an attack that breaks nothing spends the
-    // window the next break is pressed out of. With garbage on its way, attack and be ready to break: a line that breaks nothing
-    // meets its entry when it lives or leaves a break in reach once the garbage lands (outcome.c ready))
+    // window the next break is pressed out of)
     if (decF.under) { ax = x->apBroke > 0 ? ax : 2 * MAXAIMS + 1; ay = y->apBroke > 0 ? ay : 2 * MAXAIMS + 1; }
-    else if (decF.land != NOT_ASKED) {
-      if (!(x->apBroke > 0 || x->o.lives || x->o.ready == 1)) ax = 2 * MAXAIMS + 1;
-      if (!(y->apBroke > 0 || y->o.lives || y->o.ready == 1)) ay = 2 * MAXAIMS + 1;
-    }
     ax += x->spends ? 2 * MAXAIMS + 2 : 0; ay += y->spends ? 2 * MAXAIMS + 2 : 0;
     if (ax != ay) K(3, ax - ay); }
   // 4. WITHIN ONE ENTRY: the line in progress kept -- a line put down halfway leaves a board its forecast never judged -- then the plan
