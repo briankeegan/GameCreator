@@ -1420,3 +1420,9 @@ ages until then. A line that breaks nothing spends the reserve when its own walk
 the window at that landing (outcome.c leftAtLanding, spendsReserve) -- not at the line's end, as the old reserve read it. Every reader
 of the reserve asks it: the order ranks such a line after one that keeps the break in hand (rule 3, under survival), the searches' line
 check looks past it. Attacks and walks are free while the next break stays affordable.
+The window as a schedule (`cb346b2c`, 1166): 17 -- combo_storm 3 (502, 1920, 9271), factory 3, large_garbage 1; actions 6, no-break 1.
+Kept: the rule is the owner's and the score is the build's.
+THE LINE THAT SAVES IS JUDGED FIRST (combo_storm-3, lost at 502 on every build since 1162, survived in 1158): at 303 the survival
+search's line -- lost at 255 where the hold is lost at 85, the line 1158 played -- was offered and never judged (survive:1-j1, the
+judge's clock out): it was judged after every other line had been asked its readiness. Where nothing lives it is judged now before the
+readiness pass (decide.c): not dying comes first.

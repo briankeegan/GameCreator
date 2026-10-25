@@ -328,16 +328,11 @@ static int ranked(const Read *R, const Found *S) {
   }
   readyShare(0); readyFresh = 0;
   sortJudged(order, n);
-  // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
-  if (!(n && order[0]->o.lives)) {
-    int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
-    for (int i = 0; i < n; i++) if (!EXTRA(order[i])) { readyShare(own--); readyNextFor(order[i]); }
-    readyShare(0); sortJudged(order, n);
-  }
   double t2 = nowMs();
   surviveAsked = 0;
   // (the survival search's line, the backup where nothing lives: the worker's whenever it has finished -- it was searched beside the
-  // decision, in the searches' time -- else searched here in what time the decision has left)
+  // decision, in the searches' time -- else searched here in what time the decision has left. Judged before any line is asked its
+  // readiness: not dying comes first, and a line the clock leaves unjudged is no line)
   int svDone = __atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE);
   if (!(n && order[0]->o.lives) && (svDone || timeLeftMs() > 0)) {
     surviveAsked = 1;
@@ -346,6 +341,12 @@ static int ranked(const Read *R, const Found *S) {
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
+  }
+  // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
+  if (!(n && order[0]->o.lives)) {
+    int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
+    for (int i = 0; i < n; i++) if (!EXTRA(order[i])) { readyShare(own--); readyNextFor(order[i]); }
+    readyShare(0); sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps
