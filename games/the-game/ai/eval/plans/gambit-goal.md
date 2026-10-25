@@ -1315,3 +1315,5 @@ life kept 31 of 36 (86%, from 63-73%). The five left: the line in progress judge
 (pressTap, read off the decision's frame), and a readiness break carried pressed once the board settles, not where its promise found it.
 The line in progress judged as it was chosen -- its walks tapped or held as then, a readiness break pressed where its promise found it
 (`09c2ad80`, 1131, 04:19 ET): 17 -- combo_storm 6, factory 6, large_garbage 5; a life kept 51 of 58 (88%).
+Of two lines lost alike, the fewer actions before the later loss (`ce0da41d`, 1132, 04:30 ET): **21** -- combo_storm 6, factory 7,
+large_garbage 8; two of the three lost in the opening (836, 961), the window at 0.
