@@ -1280,3 +1280,5 @@ the window's pace a frame slower and put down. The pace of a swap the window's a
 With nothing new told, the line in progress before one lost alike (`9dc002df`, 1112, 23:56 ET): 8; gone.
 Every walk as cheaply as the walls allow, whatever the window (`bb44c817`, 1114, 00:38 ET): 16 -- combo_storm 6, factory 5,
 large_garbage 5; the window run dry in 4 losses where it was 8.
+A walk's cost read as the frame loop will walk it, by every reader (`3f180d63`, 1115, 00:48 ET): **18** -- combo_storm 7, factory 5,
+large_garbage 6.
