@@ -350,7 +350,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
 #define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
@@ -367,6 +367,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (!spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER,
                      kp->hold ? 0 : kp->o.j.endAt)) K(1, "reserve", rx ? 1 : -1); } }
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
+  // (and a hold lost sooner than a line that keeps the board's own chain never comes first by anything after: it leaves the board as it
+  // is with less time, so the walk it saves, the break it leaves where it was, are the next decision's to spend again)
+  if (!lx && x->hold != y->hold) { const Judge *h = x->hold ? x : y, *o = x->hold ? y : x;
+    if (lostOf(h) < lostOf(o) && !cutsShort(o)) K(1, "hold", h == x ? 1 : -1); }
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
   // (survival first: two lines that live, or two lost less than a break's time apart -- never one lost sooner by more)
@@ -377,16 +381,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // break and never preferred by it; two that live, the list first (3). Of two that break nothing, the next break lined up: the fewer
   // swaps to it on the board the line leaves (outcome.c nearAfter) -- a line that only buys time leaves the garbage as far from breaking.
   // With an input window to keep, nearer is counted in actions: the line's own walk and NEAR_ACTS for each swap it leaves to the break
-  // -- a line that walks more to bring the break nearer than the swaps it saves is no nearer; of two alike, the nearer board. A hold
-  // lost sooner is never nearer by it: it leaves the break where it is, with less time to press it at the next decision
+  // -- a line that walks more to bring the break nearer than the swaps it saves is no nearer; of two alike, the nearer board
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0) {
     if (x->material >= 0 && y->material >= 0 && x->material != y->material) K(1, "material", x->material - y->material);
     int bothReady = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
     int32_t mx = bothReady ? x->o.j.readyMat : x->o.matLeft, my = bothReady ? y->o.j.readyMat : y->o.matLeft;
     if (mx >= 0 && my >= 0 && mx != my) K(1, "ready", mx > my ? -1 : 1);
   }
-  if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0
-      && !(x->hold && lostOf(x) < lostOf(y)) && !(y->hold && lostOf(y) < lostOf(x))) {
+  if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0) {
     { int ax = nearActsOf(x, x->o.nearAfter), ay = nearActsOf(y, y->o.nearAfter); if (ax != ay) K(1, "nearer", ax - ay); }
     if (x->o.nearAfter != y->o.nearAfter) K(1, "near", x->o.nearAfter - y->o.nearAfter);
   }

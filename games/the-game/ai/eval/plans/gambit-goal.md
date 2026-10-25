@@ -1542,3 +1542,8 @@ nearer, while it leaves the break where it is with less time. A HOLD LOST SOONER
 EVERY DECISION SAYS WHY: the order's key now names its clause (rank.c cmpWhy): sooner=play:lost:kRULE.CLAUSE and beaten=play:kRULE.CLAUSE
 -- lives, reserve, later, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; tier; first -- and the
 summary counts by both.
+Measured (`ae1f2a50`, 1189): **16** -- combo_storm 7 (combo_storm-3 lives), factory 4, large_garbage 5; panels 3, actions 3, hold-creep
+2; 1 wasted three. Read by the clauses now logged: factory-6 at 349-380 held three times over lines lost 65 frames later by rule
+7's walk (the two lost alike); factory-2's holds and waits came by rule 1's nearer.
+A HOLD LOST SOONER NEVER WINS AFTER SURVIVAL (rank.c rule 1, clause `hold`): of a hold and a line lost later that keeps the board's own
+chain, the line comes first -- whatever walk the hold saves or break it leaves where it was is the next decision's to spend again.
