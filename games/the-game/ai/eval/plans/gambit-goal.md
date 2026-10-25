@@ -1288,3 +1288,4 @@ at a step no longer there 75 where they were 242.
 Replayed, 1119's five losses: large_garbage-3 survives with the line in progress or the survival line (lost at 192) where it held
 (119) at 19826; large_garbage-7 with the clear (326) over the hold (260) at 9315. A line lost later than the hold beats it, its own
 death or not (`475680fa`, 1120, 01:54 ET): **20** -- combo_storm 8, factory 7, large_garbage 5.
+Of two lines that break nothing lost alike, the later loss before the nearer next break (`2b2d1c14`, 1121, 02:05 ET): 13; gone.

@@ -345,8 +345,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int32_t mx = bothReady ? x->o.j.readyMat : x->o.matLeft, my = bothReady ? y->o.j.readyMat : y->o.matLeft;
     if (mx >= 0 && my >= 0 && mx != my) K(1, mx > my ? -1 : 1);
   }
-  // (of two that break nothing lost alike, the later loss first -- the board lasting longer is time for the break -- then the nearer)
-  if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
   if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && x->o.nearAfter != y->o.nearAfter)
     K(1, x->o.nearAfter - y->o.nearAfter);
   // 2. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
