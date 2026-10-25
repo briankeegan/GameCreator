@@ -1518,3 +1518,6 @@ Measured (`99a504b8`, 1183): 13 -- combo_storm 5, factory 4, large_garbage 4; ac
 threes. The window still runs dry: the rule held only where the line keeping the walk lived the window's regain time itself.
 THE RESERVE ON EVERY PAIR OF MOVES: of two lines that do not live, the one that keeps the next break's walk comes first unless the
 spender is lost later by the window's regain time -- wherever the keeper is lost. The hold stays out of it (1181's hold-creep).
+Measured (`4b7229b8`, 1184): 14 -- combo_storm 6, factory 3, large_garbage 5; actions 6, no-break 2, panels 2; no hold-creep; 1 wasted
+three. THE HOLD UNDER THE SAME RULE: the hold keeps the walk, and comes first by it only while the spender buys less than the
+window's own regain time -- not 1181's fixed 120 frames, so it cannot creep past the time the window takes to give the walk back.
