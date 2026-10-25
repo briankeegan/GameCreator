@@ -326,6 +326,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
+static int32_t carryUntold;   // (nothing new told since the line in progress was chosen: decide.c untoldSince)
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
 #define K(rule, v) return (cmpKey = (rule), (v))
@@ -334,6 +335,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, lx ? -1 : 1);
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
+  // -- and with nothing new told since it was chosen (decide.c untoldSince), the line in progress before another that lives as it does
+  // or is lost alike: it was the best the same prediction gave, and a line put down halfway wastes the swaps pressed of it
+  if (carryUntold && x->carried != y->carried) K(1, x->carried ? -1 : 1);
   // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no

@@ -174,6 +174,7 @@ static Outlived svJob; static int32_t svJobDone;   // (the survival search alrea
 static int carriedCand(const Read *R, Cand *k, int *wait);
 static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
+static int untoldNow(void);   // (nothing new told since the line in progress was chosen: below, with the line in progress)
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
@@ -246,6 +247,7 @@ static int judgeAll(const Read *R, int nc, int n) {
 }
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
+  carryUntold = untoldNow();
   carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
@@ -465,7 +467,8 @@ static Played playOf(const Read *R, int n) {
 // only when none was then)
 // (ready: a break found on the board once everything lands, carried from a swap played for it -- offered, not put first: it was found
 // on a board the stack is not yet)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits; Aim aim; } Carry;
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits; Aim aim;
+                 int32_t ntold; Arr told[MAXARR]; } Carry;   // (told: the garbage on its way when it was chosen, each at the board's own frame)
 static Carry theCarry;
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
@@ -515,7 +518,24 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
+  theCarry.ntold = decQ.narr;
+  for (int i = 0; i < decQ.narr; i++) { theCarry.told[i] = decQ.arr[i]; theCarry.told[i].at += decQ.b->stopWatch; }
 }
+// NOTHING NEW TOLD since the line in progress was chosen: the garbage on its way now is what was on its way then, less what has landed
+// since -- the engine's prediction all either decision had, so the line chosen on it stands (rank.c carryUntold)
+static int untoldSince(const Carry *C) {
+  if (!C->set) return 0;
+  int32_t now = decQ.b->stopWatch, k = 0;
+  for (int i = 0; i < C->ntold; i++) {
+    const Arr *a = &C->told[i];
+    if (a->at <= now) continue;
+    if (k >= decQ.narr) return 0;
+    const Arr *b = &decQ.arr[k++];
+    if (b->at + now != a->at || b->width != a->width || b->height != a->height || b->isChain != a->isChain) return 0;
+  }
+  return k == decQ.narr;
+}
+static int untoldNow(void) { return untoldSince(&theCarry); }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
 // as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the
