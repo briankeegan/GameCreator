@@ -86,6 +86,8 @@ static int actionsFor(int row, int col, int r, int c, int left) {
 // THE ALLOWANCE A JUDGED LINE PRESSES UNDER: the decision's (NOT_ASKED: the host did not say), less what the line's own swaps spend --
 // a line long enough walks held from two cells once its own presses bring the budget to HOLDTIGHT, as the frame loop walks it
 static int32_t pressAllowance = -1;
+// (the allowance a walk's cost is asked at, for a reader that ranks or proposes by it: the decision's, as the frame loop will walk it)
+static int walkLeft(void) { return pressAllowance >= 0 ? pressAllowance : HOLDTIGHT + 1; }
 // THE INPUT WINDOW THE LINE IS PRESSED IN (a native host's frame loop says it, front.c ask): how many frames before the question's frame
 // each action still inside the window went down -- planned ones up to it too -- and the window's length. The actions left at frame t
 // from the question's: the limit less those still inside the window then, less what the line has spent. nWinAges -1: not said, the

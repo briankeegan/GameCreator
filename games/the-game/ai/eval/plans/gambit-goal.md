@@ -1278,3 +1278,5 @@ Replayed, seven more losses of 1107: each lost game survives with another option
 the window's pace a frame slower and put down. The pace of a swap the window's at its frame, for the judge and the frame loop alike
 (`5ad14bdf`, 1110, 23:31 ET): **17** -- combo_storm 6, factory 4, large_garbage 7; the twin alike.
 With nothing new told, the line in progress before one lost alike (`9dc002df`, 1112, 23:56 ET): 8; gone.
+Every walk as cheaply as the walls allow, whatever the window (`bb44c817`, 1114, 00:38 ET): 16 -- combo_storm 6, factory 5,
+large_garbage 5; the window run dry in 4 losses where it was 8.

@@ -321,7 +321,7 @@ static int32_t wayOffered, wayPlayed;   // (the lines on the way this decision o
 static int32_t pairOffered;              // (the lines firing two ideas this decision offered: the log's)
 static int waySharesCell(int32_t a, int32_t b) { return CR(a) == CR(b) && iabs(CC(a) - CC(b)) <= 1; }
 static int onWay(int r0, int c0, int32_t s, int32_t first, int d) {
-  return actionsFor(r0, c0, CR(s), CC(s), HOLDTIGHT + 1) + actionsFor(CR(s), CC(s), CR(first), CC(first), HOLDTIGHT + 1) <= d + 1;
+  return actionsFor(r0, c0, CR(s), CC(s), walkLeft()) + actionsFor(CR(s), CC(s), CR(first), CC(first), walkLeft()) <= d + 1;
 }
 static int wayLines(Cand *out, int n, int cap) {
   wayOffered = 0;
@@ -336,7 +336,7 @@ static int wayLines(Cand *out, int n, int cap) {
   for (int i = 0; i < n && nw < WAY_LINES; i++) {
     const Cand *k = &out[i];
     if (k->nseq < 1 || k->nseq >= MAXLINE || k->way || k->grown || !(k->settled >= 0 ? k->settled : settledPlay(k->play))) continue;
-    int d = actionsFor(r0, c0, CR(k->seq[0]), CC(k->seq[0]), HOLDTIGHT + 1);
+    int d = actionsFor(r0, c0, CR(k->seq[0]), CC(k->seq[0]), walkLeft());
     if (d < WAY_MIN) continue;
     want[nw] = i; wantD[nw++] = d;
   }
@@ -395,10 +395,10 @@ static int wayLines(Cand *out, int n, int cap) {
       for (int u = q + 1; u < nu && !done2 && n < cap; u++) {
         int32_t b = on[idx[u]], s1 = a, s2 = b;
         if (waySharesCell(a, b)) continue;
-        int da = actionsFor(r0, c0, CR(a), CC(a), HOLDTIGHT + 1), db = actionsFor(r0, c0, CR(b), CC(b), HOLDTIGHT + 1);
+        int da = actionsFor(r0, c0, CR(a), CC(a), walkLeft()), db = actionsFor(r0, c0, CR(b), CC(b), walkLeft());
         if (db < da) { s1 = b; s2 = a; }
-        int walk = actionsFor(r0, c0, CR(s1), CC(s1), HOLDTIGHT + 1) + actionsFor(CR(s1), CC(s1), CR(s2), CC(s2), HOLDTIGHT + 1) +
-                   actionsFor(CR(s2), CC(s2), CR(first), CC(first), HOLDTIGHT + 1);
+        int walk = actionsFor(r0, c0, CR(s1), CC(s1), walkLeft()) + actionsFor(CR(s1), CC(s1), CR(s2), CC(s2), walkLeft()) +
+                   actionsFor(CR(s2), CC(s2), CR(first), CC(first), walkLeft());
         if (walk > wantD[w] + 2) continue;
         int shared = 0;
         for (int m = 0; m < k0.nseq && !shared; m++) shared = waySharesCell(s1, k0.seq[m]) || waySharesCell(s2, k0.seq[m]);
