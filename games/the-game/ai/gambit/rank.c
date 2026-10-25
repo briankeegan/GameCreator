@@ -342,21 +342,24 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // (THE RESERVE, as the survival search keeps it -- search/outlive.c: a line that breaks nothing and leaves the next landing
 // without a break's walk in the window -- outcome.c spendsReserve, the window plan)
 static int reserveSpent(const Judge *J) { return !J->hold && spendsReserve((Made){ J->apCombo, J->apChain, J->apBroke, 0 }, &J->o.j); }
-static int lostAlike(const Judge *x, const Judge *y) {
-  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
-  return lo >= 3 * rankSave;   // (death is never a choice: within three breaks' time the later loss decides, frame by frame)
-}
+// (THE TIME TO MOVE: a line that does not live leaves the board the frames from its end to its loss; with the time to make the next move
+// in them (core/nodes.h moveFrames) it is alive for that move, without them it is death -- and death is never a choice)
+static double roomOf(const Judge *J) { return lostOf(J) - (J->hold ? 0 : J->o.j.endAt); }
+static int timeToMove(const Judge *J) { return roomOf(J) >= moveFrames(); }
+static int lostAlike(const Judge *x, const Judge *y) { return timeToMove(x) && timeToMove(y); }
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, time, reserve, later, hold, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
 #define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
-  // 1. SURVIVAL: a line that lives before one that does not; of two that do not, the later loss, frame by frame -- death is never a
-  // choice -- unless both are lost three breaks' time away or more (lostAlike: no death in sight, the board's next breaks decide). What a line can press is the judge's: the input window it is pressed
+  // 1. SURVIVAL: a line that lives before one that does not; of two that do not, first the one that leaves time to make the next
+  // move (timeToMove: death is never a choice); of two without it, the later loss, frame by frame; of two with it (lostAlike), the
+  // board's next break decides. What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, "lives", lx ? -1 : 1);
+  if (!lx && timeToMove(x) != timeToMove(y)) K(1, "time", timeToMove(x) ? -1 : 1);
   // (of two that do not live, one that spends the next break's walk comes first only where the spend pays (core/nodes.h spendPays): lost
   // after the window has given the walk back, or the line that keeps it lost before it could press it. The break the board needs is
   // pressed out of what is left -- the survival search's own rule. Breaks first, never dying on the way. The hold is a move like any

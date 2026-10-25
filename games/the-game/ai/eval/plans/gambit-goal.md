@@ -1552,3 +1552,8 @@ wasted threes. Still 7775 decisions played a line lost sooner than one offered: 
 clauses, reached because two losses within a break's time, or in the same break's-time band, counted as alike.
 DEATH IS NEVER A CHOICE (the owner): two lines lost are alike only when both are lost three breaks' time away or more; nearer, the
 later loss decides frame by frame, before any clause after it (rank.c lostAlike).
+THE TIME TO MOVE (the owner: it is about the time to make the move): a line that does not live leaves the board the frames from its
+end to its loss. With the time to make the next move in them -- a reaction and the nearest break's walk a cursor step each
+(core/nodes.h moveFrames) -- it is alive for that move; without, it is death. Rule 1: lives, then time to move (clause `time`), then
+of two without it the later loss frame by frame, of two with it the board's next break (rank.c timeToMove, lostAlike). The reserve's
+keeper is asked the same time.

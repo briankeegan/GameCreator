@@ -117,8 +117,8 @@ static int allowLeftAt(int32_t t, int spent) {
 // from the question, -1 none), with `spent` pressed by its end and every action before aged as the window ages; regainAfter, the frames
 // from then until the window gives that walk back to a line short of it; and spendPays, whether a line that spends the walk is worth it
 // over one that keeps it: it is, lost after the window has given the walk back (it never dies on the way, the walk in hand again), or
-// where the line that keeps it is lost before it could press that walk where it is needed -- the walk's own frames past the landing,
-// or past the keeper's end (survival first: a walk kept by a board dead before it is pressed keeps nothing)
+// where the line that keeps it is lost before it could press that walk where it is needed -- the move's own frames (moveFrames) past
+// the landing, or past the keeper's end (survival first: a walk kept by a board dead before it is pressed keeps nothing)
 static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
 static int windowKeepsBreak(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 1;
@@ -143,9 +143,10 @@ static int32_t regainAfter(int32_t endAt, int spent) {
   // (short by more than the actions before it: the line's own come back, the first a window after it was pressed)
   return k < shortBy ? imax(1, winLen - t0) : winLen - oldest[shortBy - 1];
 }
+static int32_t moveFrames(void);
 static int spendPays(int32_t lostSpender, int32_t endAt, int spent, int32_t lostKeeper, int32_t keeperEnd) {
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt, k0 = tl > keeperEnd ? tl : keeperEnd;
-  if (lostKeeper < k0 + breakWalk) return 1;
+  if (lostKeeper < k0 + moveFrames()) return 1;
   return lostSpender >= t0 + regainAfter(endAt, spent);
 }
 static LOCAL int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
@@ -268,6 +269,10 @@ static void batchDone(void) { batchN = 0; }
 #define SWAP_SHOWN 5
 static int32_t cfgReaction = 12, cfgSwapGap = 12, cfgCursor = 4;
 EXPORT(gb_config) void gb_config(int reaction, int swapGap, int cursorMoveFrames) { cfgReaction = reaction; cfgSwapGap = swapGap; cfgCursor = cursorMoveFrames; }
+// THE TIME TO MAKE THE NEXT MOVE: the frames from a decision to the board's next break pressed -- a reaction, then the break's walk
+// (breakWalk, the actions this board's nearest break takes) a cursor step each. A board lost sooner than that after a line ends has no
+// move left: it is dead whatever it does
+static int32_t moveFrames(void) { return cfgReaction + breakWalk * cfgCursor; }
 // THE PACE: the hands slow as the input window empties -- the wait after a swap twice the window's time to give back an action, times
 // the share of the limit spent: SWAP_SHOWN's 5 frames with the window full, 8 at half, 12 at a quarter, 16 empty (the standard budget, 76
 // actions in 600 frames). The frame loop sets it with each question (front.c ask: left, the allowance at the question's frame) and
