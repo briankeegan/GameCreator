@@ -1500,3 +1500,8 @@ THE PRESS GUARD LETS A THREE THROUGH WHERE NOT PRESSING IT KILLS (1179 combo_sto
 pressed, refused at 8597 for a three a row shown since made -- the judge could not see it -- and the board lost at 8623; the next
 decisions had no save to find in eight frames): a three the plan did not make is let through where the board is lost without it and
 not with it, the plan's keys after it (front.c threeSaves); else refused, as before.
+Measured (`f232e95d`, 1180): 15 -- combo_storm 3, factory 3, large_garbage 3; actions 5, no-break 2, panels 2; 4 wasted threes.
+combo_storm-7 lives. The reach report: of 211 boards with no break, 23 had one under a full window -- the window spent before.
+THE RESERVE IN THE ORDER, AS THE SURVIVAL SEARCH KEEPS IT: of two lines that do not live, one that breaks nothing and leaves the next
+landing without a break's walk (outcome.c spendsReserve) comes first only lost OUT_LATER (120) frames later (rank.c rule 1) -- the
+survival search's own rule (search/outlive.c), now the order's too.

@@ -339,6 +339,9 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // leave as many, or three or more each: run 446, build, a line lost at 266 taken over one lost at 385 that broke more, two tries against
 // three. Past three the material decides: run 451, the later loss taken there too, spent the panels -- large_garbage's material under
 // garbage 19 where it was 23 -- finish 15 against 17)
+// (THE RESERVE, as the survival search keeps it -- search/outlive.c OUT_RESERVE, OUT_LATER: a line that breaks nothing and leaves the
+// next landing without a break's walk in the window -- outcome.c spendsReserve, the one test)
+static int reserveSpent(const Judge *J) { return !J->hold && spendsReserve((Made){ J->apCombo, J->apChain, J->apBroke, 0 }, &J->o.j); }
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
@@ -354,6 +357,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, lx ? -1 : 1);
+  // (of two that do not live, one that spends the next break's walk comes first only lost OUT_LATER frames later: the window it spends
+  // comes back only a window later, and the break the board needs is pressed out of what is left -- the survival search's own rule)
+  if (!lx) { int rx = reserveSpent(x), ry = reserveSpent(y);
+    if (rx != ry) { double d = rx ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x); if (d < OUT_LATER) K(1, rx ? 1 : -1); } }
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
