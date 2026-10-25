@@ -1285,3 +1285,6 @@ large_garbage 6.
 A line in progress judged again as the frame loop presses it -- on the rows it was judged on (`0528ba5e`, 1116: 18), from the frame
 its next swap was judged pressed at (`9c7e17f4`, 1119, 01:34 ET): **19** -- combo_storm 7, factory 6, large_garbage 6; lines put down
 at a step no longer there 75 where they were 242.
+Replayed, 1119's five losses: large_garbage-3 survives with the line in progress or the survival line (lost at 192) where it held
+(119) at 19826; large_garbage-7 with the clear (326) over the hold (260) at 9315. A line lost later than the hold beats it, its own
+death or not (`475680fa`, 1120, 01:54 ET): **20** -- combo_storm 8, factory 7, large_garbage 5.
