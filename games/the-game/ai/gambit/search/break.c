@@ -17,8 +17,6 @@
 #define TOUCH_BEAM 60
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
-#define EXT_LINES 8      // a level's breaks carried on while their chains run: the best of them
-#define EXT_DEPTH 2      // and the swaps more each is carried on
 #define KEEPN TOUCH_BEAM            // the lines carried on
 #define LINEUP_BUDGET 400
 // (the touch beam from its wider beam on, its narrower left to another thread searching the same board: answer.c's wide job)
@@ -39,7 +37,6 @@ typedef struct {
   int32_t depth, nmoves, moves[MAXROWS * W];
   int32_t at, touch, carried, wide, lineup;        // lineup: 0 none, 1 the pop's end, 2 a pair, 3 aimed, 4 ready
   int32_t built;                                    // the line breakNear builds (the nearest break walked to)
-  int32_t ext;                                      // the break carried on while its chain runs, for rows more
   int32_t pathLen, path[MAXPATH];
   int32_t pairs[MAXROWS * W][2];                    // lines, beside moves (lineup 2 and 4)
   int32_t towardLen, toward[MAXPATH];
@@ -386,7 +383,6 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       const Board *rb = ensureBoard(x, s->root);
       int starved = pressAllowance >= 0 && rb;
       int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestPath[MAXPATH];
-      static LOCAL Line *brkL[LINEPOOL]; static LOCAL int64_t brkB[LINEPOOL]; int nbrk = 0, bestExt = 0;
       for (int i = 0; i < ntl; i++) {
         for (int b = bAt[i]; b < bAt[i + 1]; b++) {
           int32_t mv = bMv[b];
@@ -400,59 +396,13 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
             if (starved) { int r = rb->curRow, c = rb->curCol; for (int k = 0; k < nl->len; k++) { acts += actionsFor(r, c, CR(nl->path[k]), CC(nl->path[k]), pressAllowance - acts); r = CR(nl->path[k]); c = CC(nl->path[k]); } }
             int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
             if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
-            if (nbrk < LINEPOOL) { brkL[nbrk] = nl; brkB[nbrk++] = bk; }
             continue;
           }
           if (bestB < 0 && within(s, t3)) tn[ntn++] = nl;
         }
       }
       batchDone();
-      // (A BREAK CARRIED ON WHILE ITS CHAIN RUNS: the level's best breaks, EXT_LINES of them by the level's key, grown EXT_DEPTH swaps
-      // more -- a swap pressed while the break's clear still pops can be its chain's next link, and a link that touches garbage breaks
-      // rows more; a line that breaks more rows once its board settles, through the line check, is taken over the break: the most rows,
-      // then the fewer actions)
-      if (bestB >= 0 && nbrk && !SEARCH_OUT()) {
-        static LOCAL Line *ec[EXT_LINES], *en[EXT_LINES * MAXROWS * W]; static LOCAL int32_t enBr[EXT_LINES * MAXROWS * W];
-        int nc = 0;
-        while (nc < EXT_LINES) {
-          int bi = -1;
-          for (int q = 0; q < nbrk; q++) if (brkL[q] && (bi < 0 || brkB[q] > brkB[bi])) bi = q;
-          if (bi < 0) break;
-          ec[nc++] = brkL[bi]; brkL[bi] = 0;
-        }
-        int32_t extBr = (int32_t)(bestB & 255), extActs = 0, extLen = 0, extAt = 0, extKey = 0, extPath[MAXPATH];
-        for (int e = 0; e < EXT_DEPTH && nc && !SEARCH_OUT(); e++) {
-          int nn = 0;
-          for (int i = 0; i < nc && !SEARCH_OUT(); i++) {
-            if (ec[i]->len >= MAXPATH) continue;
-            int nm = swapsOfNode(x, ec[i]->n, ms);
-            for (int j = 0; j < nm && !SEARCH_OUT(); j++) {
-              int t = stepMarked(s, ec[i]->n, MK_SWAP, ms[j], 0);
-              if (!liveNode(x, t) || !within(s, t)) continue;
-              Line *el = lineNew(); if (!el) break;
-              *el = *ec[i]; el->n = t; el->path[el->len++] = ms[j];
-              int32_t mat, br = brokeSettled(x, t, &mat);
-              if (nn < (int)(sizeof en / sizeof en[0])) { en[nn] = el; enBr[nn++] = br; }
-              if (br < extBr || !breaksAt(s, t, el->path, el->len)) continue;
-              int acts = 0;
-              if (starved) { int r = rb->curRow, c = rb->curCol; for (int k = 0; k < el->len; k++) { acts += actionsFor(r, c, CR(el->path[k]), CC(el->path[k]), pressAllowance - acts); r = CR(el->path[k]); c = CC(el->path[k]); } }
-              if (br > extBr || (extLen && acts < extActs)) {
-                if (br == (int32_t)(bestB & 255) && !extLen) continue;
-                extBr = br; extActs = acts; extLen = el->len; extAt = NODE(x, t)->t; extKey = el->key; for (int k = 0; k < el->len; k++) extPath[k] = el->path[k];
-              }
-            }
-          }
-          nc = 0;
-          while (nc < EXT_LINES) {
-            int bi = -1;
-            for (int q = 0; q < nn; q++) if (en[q] && (bi < 0 || enBr[q] > enBr[bi])) bi = q;
-            if (bi < 0) break;
-            ec[nc++] = en[bi]; en[bi] = 0;
-          }
-        }
-        if (extLen) { bestKey = extKey; bestLen = extLen; bestAt = extAt; for (int k = 0; k < extLen; k++) bestPath[k] = extPath[k]; bestExt = 1; }
-      }
-      if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; o->ext = bestExt; }
+      if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; }
       if (bestB >= 0 && foundTd < 0) foundTd = td;
       if (foundTd >= 0 && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == TOUCH_DEPTH)) tpath = 1;
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)

@@ -1262,3 +1262,6 @@ The break search takes two breaks as the order does, the material before the act
 The owner's reserve: the floor's material (`keep.material`, 30) at 36 (`gambit-finish-m36.json`, 1097, 20:59 ET): 11 -- combo_storm
 3, factory 1, large_garbage 7; at 42 (`gambit-finish-m42.json`, 1098, 20:56 ET): 8 -- combo_storm 0, factory 4, large_garbage 4.
 The floor stays at 30.
+A floor of its own under heavy garbage (`746cd764`, 1099, 21:07 ET): 14, the same games -- gone. The break search's breaks grown two
+swaps more while their chains run (`47d55079`, 1101, 21:27 ET): 9 -- combo_storm 4, factory 2, large_garbage 3; links made by a swap 7,
+as before; gone.
