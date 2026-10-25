@@ -1526,3 +1526,8 @@ gives back a whole walk's worth of actions -- a full window (600) when it held f
 REGAIN PER LINE: the frames after the line's own end (or the landing) until the window gives back what THAT line leaves it short of the
 next break's walk, from the actions still in the window then (core/nodes.h regainAfter); zero for a line not short. The order, the
 survival search and the hold all read it.
+Measured (`509e3cb3`, 1186): 13 -- panels 4, actions 3, no-break 2, hold-creep 1, other 1. The hold still came first over lines lost
+later (combo_storm-7 at 19079: hold lost at 151 over survive lines lost at 162-173, decision after decision).
+THE SPEND THAT PAYS (the owner: break things, but do not die on the way): a line that spends the next break's walk comes first over
+one that keeps it where it is lost only after the window has given the walk back -- it never dies on the way -- or where the keeper is
+lost before it could press that walk at all (core/nodes.h spendPays). The order and the survival search ask it alike.

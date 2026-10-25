@@ -12,8 +12,8 @@ typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts, endAt; } Outlive
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
 // (THE RESERVE: with an input allowance said, the line kept is the latest lost of those that leave the next landing a break's walk -- the
-// window plan, core/nodes.h windowKeepsBreak -- unless one that spends it is lost later still by the frames the window takes to give a
-// break's walk back to it (regainAfter): what a line spends comes back only as the window ages, and the next break is pressed out of what is left)
+// window plan, core/nodes.h windowKeepsBreak -- unless one that spends it is lost later and the walk is worth spending (core/nodes.h
+// spendPays): what a line spends comes back only as the window ages, and the next break is pressed out of what is left)
 // (THE LINES TAKEN: the latest lost of each kind -- within the reserve, and over it -- kept in order, OUT_POOL of each, and the first the
 // one line check passes is the answer, asked on the search's own question: ranked first, checked after, so only a check that decides
 // anything is paid for)
@@ -110,7 +110,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     perStep = nsteps ? (nowMs() - tl) / nsteps : 0;
   }
   best = poolFirst(&bestP, q); over = poolFirst(&overP, q);
-  if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt + regainAfter(over.endAt, over.acts)))) return over;
+  if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt && spendPays(over.lostAt, over.endAt, over.acts, best.lostAt)))) return over;
   return best;
 }
 static int32_t diesIn(const Question *q, double horizon) {
