@@ -1426,9 +1426,15 @@ THE LINE THAT SAVES IS JUDGED FIRST (combo_storm-3, lost at 502 on every build s
 search's line -- lost at 255 where the hold is lost at 85, the line 1158 played -- was offered and never judged (survive:1-j1, the
 judge's clock out): it was judged after every other line had been asked its readiness. Where nothing lives it is judged now before the
 readiness pass (decide.c): not dying comes first.
+<<<<<<< HEAD
 Measured (`41b593b8`, 1167): **20** -- combo_storm 2 (502, 9392), factory 1, large_garbage 1; actions 2, no-break 1, hold-creep 1;
 the state and the truth held. combo_storm-3 at 502 still: its survival line unjudged even so.
 THE SURVIVAL SEARCH'S LINE IS NEVER DROPPED FOR THE CLOCK: on every build, 45-55% of the survival lines offered were left unjudged
 (survive:N-jN: 192 of 391 in 1161 factory-5, 391 of 703 in factory-6) -- the line that keeps the board alive thrown away because the
 decision's clock ran out. The survival search played it on the engine to its loss: one the judge has not played a frame of is ranked
 lost there, on the search's word (rank.c judgeCand, Cand xLost).
+=======
+>>>>>>> parent of 1b17c749 (The survival search's line is ranked on its own word when the clock leaves it unjudged)
+Measured (`1b17c749`, 1168): 17 -- combo_storm 4, factory 2, large_garbage 1; actions 4, panels 3 -- and the C checks red: "the answers,
+2 lost a break's time sooner than one offered" (a survival line on the search's word, lost at 360, played over a hold the judge saw lost
+at 412). The search's word is not the judge's: gone, Gambit as `41b593b8` (1167, 20).
