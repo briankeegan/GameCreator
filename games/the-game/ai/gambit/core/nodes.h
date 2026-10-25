@@ -90,10 +90,10 @@ static int32_t pressAllowance = -1;
 // from the question's: the limit less those still inside the window then, less what the line has spent. nWinAges -1: not said, the
 // decision's allowance less what is spent.
 #define WINMAX 512
-// THE RESERVE: the actions the window keeps for the next break -- what a line spends comes back only a window later, and the break is
-// pressed out of what is left (a few swaps and their walks). A line that breaks nothing leaves it (outcome.c spendsReserve); the
-// survival search keeps it unless spending it buys a later loss (search/outlive.c)
-#define RESERVE 20
+// THE RESERVE: the actions the window keeps for the next break, a line that breaks nothing leaving it (outcome.c spendsReserve) and the
+// survival search keeping it unless spending it buys a later loss (search/outlive.c). None: the pace keeps the window
+// (paceGap), and the line check presses every line in the window as it will be
+#define RESERVE 0
 static int32_t winAges[WINMAX], nWinAges = -1, winLen = 600, hostWin;
 // (A SEARCH ROOTED LATER: a readiness search's board is a line's once everything lands, pressFrom frames after the question with the line
 // having spent pressSpent -- its breaks are pressed in the window as it is then, every search asking it here; 0 for the question's own)
