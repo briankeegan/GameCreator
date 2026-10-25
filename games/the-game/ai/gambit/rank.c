@@ -262,8 +262,8 @@ static int wastesThree(const Judge *J) {
 // (each loss as the order reads it -- lostOf, the readiness break's loss with it -- where both are known)
 static int beatsHold(const Judge *L, const Judge *H) {
   int known = L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED;
-  // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
-  if (known && (!L->o.dead || H->o.dead) && lostOf(L) > lostOf(H)) return 1;
+  // (a known loss beats holding when it comes later, the line's own death or the hold's forecast alike: two losses are two frames)
+  if (known && lostOf(L) > lostOf(H)) return 1;
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
   // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
   // breaks lost at 44 put after a hold lost at 44)
