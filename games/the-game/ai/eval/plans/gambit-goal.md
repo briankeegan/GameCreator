@@ -1496,3 +1496,7 @@ where it outlasts them by a break's time.
 Measured (`dbcd9b11`, 1179): 13 -- combo_storm 4, factory 4, large_garbage 3 (two at 776 and 787); actions 7, no-break 2, panels 2;
 2 wasted threes. Its twin red: factory-1 and its twin alike in all 969 decisions but for ms_c, 263 against 262 -- the work charged from
 the workers rounds a millisecond either way. "The game the same twice" compares the decisions now, not the time they took.
+THE PRESS GUARD LETS A THREE THROUGH WHERE NOT PRESSING IT KILLS (1179 combo_storm-7: the survival line, a break of 24, lost at 256
+pressed, refused at 8597 for a three a row shown since made -- the judge could not see it -- and the board lost at 8623; the next
+decisions had no save to find in eight frames): a three the plan did not make is let through where the board is lost without it and
+not with it, the plan's keys after it (front.c threeSaves); else refused, as before.

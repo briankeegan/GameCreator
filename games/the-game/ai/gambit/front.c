@@ -812,8 +812,9 @@ static int wastedSwap(const Board *t, int32_t bits) {
 // THE SAVE: the board played on for GUARD_DIE frames, the garbage on its way landing as the game lands it -- with the swap not pressed
 // and nothing after it (lostIn 0), or with it pressed and the plan's keys after it as they will be pressed (lostIn 1). A three the plan
 // made as the board's save (the survival search found it needed: Planned.save) is let through when the board is lost without it; any
-// other -- one the judge did not see, a colour it could not know shown -- never: the swap is refused and the next decision asked, where
-// the survival search finds the save if the board needs one.
+// other -- one the judge did not see, a colour it could not know shown -- only when the board is lost without it and not with it, the
+// plan's keys after it (the owner: a three only where not doing it kills): else the swap is refused and the next decision asked. (A
+// board lost in a few frames leaves the next decision no save to find: 1179 combo_storm-7, a break of 24 refused at 8597, lost at 8623)
 static Board *dieBoard;
 static int lostIn(const Board *t, int32_t bits, int press) {
   Board *g = dieBoard;
@@ -832,7 +833,8 @@ static int lostIn(const Board *t, int32_t bits, int press) {
 static int threeSaves(const Board *t, int32_t bits, int planned) {
   if (!dieBoard) dieBoard = nb_new();
   if (!dieBoard) return 0;
-  return planned && lostIn(t, bits, 0);
+  if (!lostIn(t, bits, 0)) return 0;
+  return planned || !lostIn(t, bits, 1);
 }
 // ---------------------------------------------------------------- one frame
 static int frontFrame(void) {
