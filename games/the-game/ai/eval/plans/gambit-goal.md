@@ -1486,3 +1486,5 @@ THE MATERIAL LEDGER (the owner: it is about breaking blocks -- low, get more blo
 converts and what its clears take, beyond the board left alone (judge.c netPanels); under its floor (the rules' keep, the saving
 band), of two lines that survive alike, the one not in debt comes first (rank.c rule 1). Low is panels alone: the keep's material test or the saving band (decide.c lowOnPanels), never the height or evenness the floor also tests.
 Measured (`268fcd7a`, 1176): 12 -- combo_storm 5, factory 5, large_garbage 2; actions 8, panels 2, no-break 2; 1 wasted three. On.
+SURVIVAL FIRST, THE LEDGER UNDER IT (the owner: survival matters most): "alike" also holds two lines with three breaks' time left each
+however far apart they are lost; the ledger now decides only between two that live or two lost less than a break's time apart.

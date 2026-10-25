@@ -357,7 +357,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
-  if (rankLow) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, gx ? -1 : 1); }
+  // (survival first: two lines that live, or two lost less than a break's time apart -- never one lost sooner by more)
+  if (rankLow && (lx || (lostOf(x) > lostOf(y) ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) < rankSave)) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, gx ? -1 : 1); }
   // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
