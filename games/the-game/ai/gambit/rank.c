@@ -350,13 +350,14 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
-#define K(rule, v) return (cmpKey = (rule), (v))
+#define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
   // 1. SURVIVAL: a line that lives before one that does not; of two that do not, the later loss -- unless they are lost alike (lostAlike:
   // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
-  if (lx != ly) K(1, lx ? -1 : 1);
+  if (lx != ly) K(1, "lives", lx ? -1 : 1);
   // (of two that do not live, one that spends the next break's walk comes first only where the spend pays (core/nodes.h spendPays): lost
   // after the window has given the walk back, or the line that keeps it lost before it could press it. The break the board needs is
   // pressed out of what is left -- the survival search's own rule. Breaks first, never dying on the way. The hold is a move like any
@@ -364,31 +365,33 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx) { int rx = reserveSpent(x), ry = reserveSpent(y);
     if (rx != ry) { const Judge *sp = rx ? x : y, *kp = rx ? y : x;
       if (!spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER,
-                     kp->hold ? 0 : kp->o.j.endAt)) K(1, rx ? 1 : -1); } }
-  if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
+                     kp->hold ? 0 : kp->o.j.endAt)) K(1, "reserve", rx ? 1 : -1); } }
+  if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
   // (survival first: two lines that live, or two lost less than a break's time apart -- never one lost sooner by more)
-  if (rankLow && (lx || (lostOf(x) > lostOf(y) ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) < rankSave)) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, gx ? -1 : 1); }
+  if (rankLow && (lx || (lostOf(x) > lostOf(y) ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) < rankSave)) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, "ledger", gx ? -1 : 1); }
   // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
   // break and never preferred by it; two that live, the list first (3). Of two that break nothing, the next break lined up: the fewer
   // swaps to it on the board the line leaves (outcome.c nearAfter) -- a line that only buys time leaves the garbage as far from breaking.
   // With an input window to keep, nearer is counted in actions: the line's own walk and NEAR_ACTS for each swap it leaves to the break
-  // -- a line that walks more to bring the break nearer than the swaps it saves is no nearer; of two alike, the nearer board
+  // -- a line that walks more to bring the break nearer than the swaps it saves is no nearer; of two alike, the nearer board. A hold
+  // lost sooner is never nearer by it: it leaves the break where it is, with less time to press it at the next decision
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0) {
-    if (x->material >= 0 && y->material >= 0 && x->material != y->material) K(1, x->material - y->material);
+    if (x->material >= 0 && y->material >= 0 && x->material != y->material) K(1, "material", x->material - y->material);
     int bothReady = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
     int32_t mx = bothReady ? x->o.j.readyMat : x->o.matLeft, my = bothReady ? y->o.j.readyMat : y->o.matLeft;
-    if (mx >= 0 && my >= 0 && mx != my) K(1, mx > my ? -1 : 1);
+    if (mx >= 0 && my >= 0 && mx != my) K(1, "ready", mx > my ? -1 : 1);
   }
-  if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0) {
-    { int ax = nearActsOf(x, x->o.nearAfter), ay = nearActsOf(y, y->o.nearAfter); if (ax != ay) K(1, ax - ay); }
-    if (x->o.nearAfter != y->o.nearAfter) K(1, x->o.nearAfter - y->o.nearAfter);
+  if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0
+      && !(x->hold && lostOf(x) < lostOf(y)) && !(y->hold && lostOf(y) < lostOf(x))) {
+    { int ax = nearActsOf(x, x->o.nearAfter), ay = nearActsOf(y, y->o.nearAfter); if (ax != ay) K(1, "nearer", ax - ay); }
+    if (x->o.nearAfter != y->o.nearAfter) K(1, "near", x->o.nearAfter - y->o.nearAfter);
   }
   // 2. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
-  if (cutsShort(x) != cutsShort(y)) K(2, cutsShort(x) ? 1 : -1);
+  if (cutsShort(x) != cutsShort(y)) K(2, "chain", cutsShort(x) ? 1 : -1);
   // 3. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
   // order). Under garbage the rule is to break (the rules' underGarbage): a break that meets an entry, by the entry; then a plain break
   // outside the list -- a three, the last choice; then a line that breaks nothing; and last of all a line the rules' keep puts outside
@@ -398,26 +401,26 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // window the next break is pressed out of)
     if (decF.under) { ax = x->apBroke > 0 ? ax : 2 * MAXAIMS + 1; ay = y->apBroke > 0 ? ay : 2 * MAXAIMS + 1; }
     ax += x->spends ? 2 * MAXAIMS + 2 : 0; ay += y->spends ? 2 * MAXAIMS + 2 : 0;
-    if (ax != ay) K(3, ax - ay); }
+    if (ax != ay) K(3, "list", ax - ay); }
   // 4. WITHIN ONE ENTRY: the line in progress kept -- a line put down halfway leaves a board its forecast never judged -- then the plan
   // the last decision kept (an intention)
-  if (x->carried != y->carried && !x->hold && !y->hold) K(4, x->carried ? -1 : 1);
-  if (x->k.kept != y->k.kept) K(4, x->k.kept ? -1 : 1);
+  if (x->carried != y->carried && !x->hold && !y->hold) K(4, "carried", x->carried ? -1 : 1);
+  if (x->k.kept != y->k.kept) K(4, "kept", x->k.kept ? -1 : 1);
   // 5. MORE THROWN: the more blocks the line sends, every attack its own
-  { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) K(5, ty - tx); }
+  { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) K(5, "thrown", ty - tx); }
   // 7. THE FEWER ACTIONS: the input window pays for every cell the cursor walks -- before the later loss, which two lines lost alike
   // differ by less than a break's time in: the actions are the next break's
-  if (pressAllowance >= 0) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) K(7, wx - wy); }
+  if (pressAllowance >= 0) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) K(7, "walk", wx - wy); }
   // 6. THE LATER LOSS, of two lost alike
-  if (!lx && lostOf(x) != lostOf(y)) K(6, lostOf(y) > lostOf(x) ? 1 : -1);
+  if (!lx && lostOf(x) != lostOf(y)) K(6, "later", lostOf(y) > lostOf(x) ? 1 : -1);
   // 8. THE KIND OF LINE: its tier, then the tier's own keys (facts.c tierOf)
   { Tier tx = tierView(x), ty = tierView(y);
-    if (tx.tier != ty.tier) K(8, tx.tier - ty.tier);
+    if (tx.tier != ty.tier) K(8, "tier", tx.tier - ty.tier);
     int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
-    for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) K(8, tx.sub[q] < ty.sub[q] ? -1 : 1); }
+    for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) K(8, "tier", tx.sub[q] < ty.sub[q] ? -1 : 1); }
   // 9. THE NEARER FIRST SWAP (core/nodes.h actionsFor, as the frame loop walks) -- the hold presses nothing, nearest of all
-  { int nx = firstWalk(x), ny = firstWalk(y); if (nx != ny) K(9, nx - ny); }
-  K(9, 0);
+  { int nx = firstWalk(x), ny = firstWalk(y); if (nx != ny) K(9, "first", nx - ny); }
+  K(9, "tie", 0);
 #undef K
 }
 // A LINE IN WALKING ORDER: its swaps pressed in the order the cursor reaches them soonest -- from where the cursor is, each swap's walk

@@ -1536,3 +1536,9 @@ Measured (`24dbe2ae`, 1187): **16** -- combo_storm 6, factory 5, large_garbage 5
 (90, 77, ... 25) over a toward lost 26-61 frames later (rule 1, the reserve) -- a walk kept by a board dead when it lands.
 THE KEEPER MUST LIVE TO PRESS IT: a line keeping the walk counts as keeping it only lost after the walk's own frames past the landing
 (or its own end); else the spender comes first by the later loss (core/nodes.h spendPays).
+Measured (`e418e4ed`, 1188): 13 -- actions 4, panels 4, no-break 2, hold-creep 1; 2 wasted threes. combo_storm-3 lost at 792 still.
+Its board at 387: the hold (lost at 132) over an attack lost at 186, by rule 1's nearer break -- the hold walks nothing, so it reads
+nearer, while it leaves the break where it is with less time. A HOLD LOST SOONER IS NEVER NEARER BY IT (rank.c rule 1).
+EVERY DECISION SAYS WHY: the order's key now names its clause (rank.c cmpWhy): sooner=play:lost:kRULE.CLAUSE and beaten=play:kRULE.CLAUSE
+-- lives, reserve, later, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; tier; first -- and the
+summary counts by both.

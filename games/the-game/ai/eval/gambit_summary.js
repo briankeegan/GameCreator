@@ -149,10 +149,10 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (um && +um[1] && bk && +bk[1] > 0) { t.breaks = (t.breaks || 0) + 1; if (ch && +ch[1] >= 2) t.chainBreaks = (t.chainBreaks || 0) + 1; }
       if (wm) think.wall.push(+wm[1]);
       // (THE LINE PLAYED OVER ONE LOST LATER: answer.c sooner=, by the order's key that decided it, rank.c cmpKey)
-      var so = / sooner=(\w+):(L|-?\d+):k(\d+)/.exec(l);
+      var so = / sooner=(\w+):(L|-?\d+):k(\d+(?:\.\w+)?)/.exec(l);
       if (so) { sooner.n++; sooner.by[so[3]] = (sooner.by[so[3]] || 0) + 1; }
       // (THE ORDER NOT ONE ORDER: answer.c beaten=, the line played beaten head to head by one ranked under it)
-      var bt = / beaten=\w+:k(\d+)/.exec(l);
+      var bt = / beaten=\w+:k(\d+(?:\.\w+)?)/.exec(l);
       if (bt) { beaten.n++; beaten.by[bt[1]] = (beaten.by[bt[1]] || 0) + 1; }
       // (THE STATE CARRIED: answer.c resumed=ID/IDEAS, a decision started from the answer the frame loop played, not the last decision's,
       // and the lines the answers not played chose kept as ideas; stateLost=, the ring no longer held it)

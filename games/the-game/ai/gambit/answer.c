@@ -572,14 +572,14 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
-  // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey: sooner=play:lost:kLINE)
+  // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey and cmpWhy: sooner=play:lost:kRULE.CLAUSE)
   A->sooner = 0;
   if (top && !top->o.lives) {
     const Judge *late = 0;
     for (int i = 0; i < P.ncands; i++) { const Judge *j = order[i]; if (j != top && (j->o.lives || lostOf(j) > lostOf(top)) && (!late || (j->o.lives && !late->o.lives) || (j->o.lives == late->o.lives && lostOf(j) > lostOf(late)))) late = j; }
     A->sooner = late && !late->o.lives && !lostAlike(top, late);
     if (late && compareJudged(top, late) < 0) {
-      L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey);
+      L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey); L_s("."); L_s(cmpWhy);
     }
   }
   // (THE LINE IN PROGRESS PUT DOWN: what was played over it and the order's key that did it -- carryBy=play:kKEY, or play:f when the
@@ -587,13 +587,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (carriedJ && top && top != carriedJ) {
     int ranked = 0; for (int i = 0; i < P.ncands && !ranked; i++) ranked = order[i] == carriedJ;
     L_s(" carryBy="); L_play(top->hold ? PLAY_HOLD : top->k.play);
-    if (ranked) { compareJudged(top, carriedJ); L_s(":k"); L_i(cmpKey); } else L_s(":f");
+    if (ranked) { compareJudged(top, carriedJ); L_s(":k"); L_i(cmpKey); L_s("."); L_s(cmpWhy); } else L_s(":f");
   }
   // (THE ORDER NOT ONE ORDER: a line ranked under the line played that beats it head to head -- its play and the key it wins on,
   // beaten=play:kKEY; the order's keys must make one order, or its first is not the best of the lines)
   { int ti = -1; for (int i = 0; top && i < P.ncands && ti < 0; i++) if (order[i] == top) ti = i;
     for (int i = ti + 1; ti >= 0 && i < P.ncands; i++) if (compareJudged(order[i], top) < 0) {
-      L_s(" beaten="); L_play(order[i]->hold ? PLAY_HOLD : order[i]->k.play); L_s(":k"); L_i(cmpKey); break;
+      L_s(" beaten="); L_play(order[i]->hold ? PLAY_HOLD : order[i]->k.play); L_s(":k"); L_i(cmpKey); L_s("."); L_s(cmpWhy); break;
     } }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
