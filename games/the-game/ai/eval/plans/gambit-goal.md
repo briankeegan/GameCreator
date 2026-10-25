@@ -1605,3 +1605,11 @@ MARGIN (the owner): of two lines lost alike, the one that leaves the board more 
 the stack and the rows of panels under its garbage, the fewer of the two, every line read on the board the same garbage landed on
 (judge.c readyTop and readyMat, rank.c marginOf, clause `margin`), before the ledger, ready and nearer clauses. (1197's floor read each
 line's own end board -- a hold's before its garbage lands -- and was a yes or no.)
+Measured (`1461c644`, save confirmed played, 1199): 16 -- actions 6. Measured (`441dcc32`, margin in the order, 1200): 15 -- factory and
+large_garbage the same games lost as 1199: the clause all but never decides.
+THE DECISION PATTERN BEFORE DEATH (1199 factory-2, combo_storm-8, their last 900 frames): 1-3 decisions broke garbage; the rest were
+survival lines of 4-12 swaps clearing panels to push the loss later -- material 38 to 7 and 44 to 7, the window 37 to 5 -- until there
+was nothing to break with and no actions to break it. The survival search ranked its lines by the frame lost alone.
+MARGIN IN THE SURVIVAL SEARCH: of its lines lost within the same break's time, the one whose board keeps more room (the rows over the
+stack and the rows of panels under its garbage, the fewer) comes first; then the later lost, then the fewer actions (search/outlive.c
+outBefore).

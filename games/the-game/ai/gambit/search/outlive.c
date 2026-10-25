@@ -7,8 +7,8 @@
 // FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn: lostAlone's answer, NOT_ASKED when there is none).
 
 #define OUT_SEQ 16
-typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts, t; Moved last; } OItem;   // t: the line's end, frames from the root; acts: the cursor's actions for its swaps, from the root's cursor; last: the pairs its swaps moved (judge.c Moved)
-typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts, endAt; } Outlived;
+typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts, t; double margin; Moved last; } OItem;   // t: the line's end, frames from the root; acts: the cursor's actions for its swaps, from the root's cursor; last: the pairs its swaps moved (judge.c Moved)
+typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts, endAt; double margin; } Outlived;
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
 // (THE RESERVE: with an input allowance said, the line kept is the latest lost of those that leave the next landing a break's walk -- the
@@ -19,13 +19,26 @@ static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(
 // anything is paid for)
 #define OUT_POOL 16
 typedef struct { int32_t n; Outlived o[OUT_POOL]; } OPool;
+// (THE MARGIN a survival line keeps: of lines lost within the same break's time (outBand), the one whose board keeps more room -- the
+// rows over its stack and the rows of panels under its garbage, the fewer of the two -- then the later lost, then the fewer actions. A
+// line that buys a few frames by clearing the panels the next break is made of spends the board's life, not saves it)
+static int32_t rankSave;   // (rank.c: the frames one break takes)
+static int32_t outBand(int32_t lost) { return lost == FOREVER ? 0x7fffffff : lost / imax(1, rankSave > 0 ? rankSave : 60); }
+static double outMargin(const Board *b) { if (!b) return -1; double room = 12 - topOn(b), mat = (double)materialOn(b) / W; return room < mat ? room : mat; }
+static int outBefore(const OItem *it, const Outlived *o) {
+  int32_t bi = outBand(it->lost), bo = outBand(o->lostAt);
+  if (bi != bo) return bi > bo;
+  if (it->margin != o->margin) return it->margin > o->margin;
+  if (it->lost != o->lostAt) return it->lost > o->lostAt;
+  return it->acts < o->acts;
+}
 static void poolAdd(OPool *p, const OItem *it) {
   int at = p->n;
-  while (at > 0 && (it->lost > p->o[at - 1].lostAt || (it->lost == p->o[at - 1].lostAt && it->acts < p->o[at - 1].acts))) at--;
+  while (at > 0 && outBefore(it, &p->o[at - 1])) at--;
   if (at >= OUT_POOL) return;
   int last = p->n < OUT_POOL ? p->n : OUT_POOL - 1;
   for (int i = last; i > at; i--) p->o[i] = p->o[i - 1];
-  Outlived *o = &p->o[at]; o->set = 1; o->acts = it->acts; o->endAt = it->t; o->nseq = it->nseq; o->lostAt = it->lost;
+  Outlived *o = &p->o[at]; o->set = 1; o->acts = it->acts; o->endAt = it->t; o->margin = it->margin; o->nseq = it->nseq; o->lostAt = it->lost;
   for (int s2 = 0; s2 < it->nseq; s2++) o->seq[s2] = it->seq[s2];
   if (p->n < OUT_POOL) p->n++;
 }
@@ -94,6 +107,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     for (int i = 0; i < nkeep; i++) {
       top[i].t = NODE(x, top[i].n)->t - NODE(x, root)->t;
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
+      top[i].margin = outMargin(ensureBoard(x, top[i].n));
       // (a line that lives within the reserve is the answer at once, through the one check)
       if (top[i].lost == FOREVER && windowKeepsBreak(top[i].t, top[i].acts)) {
         if (lineCheckOn(q, top[i].seq, top[i].nseq, 0, CHECK_WASTE)) { poolAdd(&bestP, &top[i]); return bestP.o[0].lostAt == FOREVER ? bestP.o[0] : poolFirst(&bestP, q); }
