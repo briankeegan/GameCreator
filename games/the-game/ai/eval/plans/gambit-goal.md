@@ -1508,3 +1508,9 @@ survival search's own rule (search/outlive.c), now the order's too.
 Measured (`702ab916`, 1181): **16** -- combo_storm 2, factory 5, large_garbage 1 (7/8); hold-creep 3, panels 2, no-break 2, actions 1
 (from 5); 1 wasted three; 10 boards with a break under a full window (from 23). The holds came: combo_storm-7 held 59 times lost sooner.
 Survival first in the reserve rule: it holds only where the line that keeps the walk is itself lost OUT_LATER frames on or later.
+Measured (`8f154f7b`, 1182): 12 -- combo_storm 3, factory 4, large_garbage 5; actions 9, panels 2, hold-creep 1. Bound that rarely,
+the rule let the window run dry: dying on the way to the break.
+ONE WINDOW PLAN (the owner: break things, but do not die on the way): `windowKeepsBreak` and `regainFrames` (core/nodes.h) are read by
+the order, the line check and the survival search alike. The walk a break needs is the board's own (two actions a swap of its nearest
+break, plus two); the frames a line must outlive the spender by are the window's own (until it holds that walk again). The hold never
+comes first by the reserve.
