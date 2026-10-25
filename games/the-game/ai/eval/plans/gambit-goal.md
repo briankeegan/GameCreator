@@ -1547,3 +1547,8 @@ Measured (`ae1f2a50`, 1189): **16** -- combo_storm 7 (combo_storm-3 lives), fact
 7's walk (the two lost alike); factory-2's holds and waits came by rule 1's nearer.
 A HOLD LOST SOONER NEVER WINS AFTER SURVIVAL (rank.c rule 1, clause `hold`): of a hold and a line lost later that keeps the board's own
 chain, the line comes first -- whatever walk the hold saves or break it leaves where it was is the next decision's to spend again.
+Measured (`a1be3f32`, 1190): **17** -- combo_storm 7, factory 3, large_garbage 7; no-break 2, panels 2, actions 2, hold-creep 1; 2
+wasted threes. Still 7775 decisions played a line lost sooner than one offered: nearer 2165, ready 1369, ledger 1253 -- rule 1's own
+clauses, reached because two losses within a break's time, or in the same break's-time band, counted as alike.
+DEATH IS NEVER A CHOICE (the owner): two lines lost are alike only when both are lost three breaks' time away or more; nearer, the
+later loss decides frame by frame, before any clause after it (rank.c lostAlike).
