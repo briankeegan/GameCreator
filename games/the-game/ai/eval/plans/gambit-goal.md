@@ -1585,3 +1585,8 @@ predicted lost at 140 against 475 -- and it survives. On this board almost any c
 loss (left alone, or carried on) can settle two close lines there. The board lives on a knife edge; 24/24 asks a board with margin.
 Back to the 17 (1190/1193's code, `04bfbafb`'s Gambit): the recheck is as often wrong as right (replay 28). Next: the losses of the 17
 replayed, to find the pieces that fail in more than one game.
+Replays 29-31 on the 17's code (`9f977401`): factory-4 (lost 7366) survives forced at 6700 and 6936, lives to 18786 / 11000 / 14660 at
+6300 / 6500 / 6902; large_garbage-8 (lost 10413) survives at 10000 and 10245 (option 2), lives to 20067 at 9600; factory-6 (lost 9593)
+survives at 8900 and 9118, lives to 18570-21486 at 9000-9087. Even after the reach report's turn (no break anywhere: factory-4 6936,
+factory-6 9118) another move survives. In every lost game, about half the decisions changed survive or live thousands of frames more:
+the losses are paths, not single decisions, and the board under them has no margin.
