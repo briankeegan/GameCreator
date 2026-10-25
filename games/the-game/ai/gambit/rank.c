@@ -445,25 +445,17 @@ static int walkOrder(const Cand *k, Cand *out) {
 static int compareJudged(const Judge *x, const Judge *y);
 // A CANDIDATE JUDGED, and in walking order too when that walks less: the walking order is played when the one order puts it no lower --
 // what it makes is the engine's, as for every line; only the drops and the log's count are the line's own order's
-// (a variant judged beside the line, its drops and the log's counts the line's own: the variant kept when the one order puts it higher)
-static int judgeAlso(const Read *R, const Cand *v, Judge *J, int ok) {
-  static LOCAL Judge JV;
-  int32_t keepDrops[NPLAYS][NDROPS], keepCut[4], keepCutBr[4]; memcpy(keepDrops, dropped, sizeof dropped); memcpy(keepCut, cutWhy, sizeof cutWhy); memcpy(keepCutBr, cutWhyBreak, sizeof cutWhyBreak);
-  int keepUnbroken = unbroken.set;
-  int vok = judgeCand(R, v, &JV);
-  memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
-  if (!vok || (ok && compareJudged(&JV, J) > 0)) return ok;
-  *J = JV;
-  return 1;
-}
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int ok = judgeCand(R, k, J);
-  static LOCAL Cand w;
-  if (!clockOut() && walkOrder(k, &w)) ok = judgeAlso(R, &w, J, ok);
-  // (A SETTLED LINE PRESSED AS SOON AS ITS PAIRS ARE STILL: under garbage, the same swaps without the wait for the whole board to settle
-  // between them -- a press needs only its own pair still -- judged too)
-  if (ok && decF.under && J->settled && J->k.nseq >= 2 && !clockOut()) { w = J->k; w.settled = 0; ok = judgeAlso(R, &w, J, ok); }
-  return ok;
+  static LOCAL Cand w; static LOCAL Judge JW;
+  if (clockOut() || !walkOrder(k, &w)) return ok;
+  int32_t keepDrops[NPLAYS][NDROPS], keepCut[4], keepCutBr[4]; memcpy(keepDrops, dropped, sizeof dropped); memcpy(keepCut, cutWhy, sizeof cutWhy); memcpy(keepCutBr, cutWhyBreak, sizeof cutWhyBreak);
+  int keepUnbroken = unbroken.set;
+  int wok = judgeCand(R, &w, &JW);
+  memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
+  if (!wok || (ok && compareJudged(&JW, J) > 0)) return ok;
+  *J = JW;
+  return 1;
 }
 // sorted stably by the one order
 static void sortJudged(Judge **a, int n) {
