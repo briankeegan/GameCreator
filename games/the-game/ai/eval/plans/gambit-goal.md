@@ -1331,3 +1331,6 @@ the continuation gone, the code as 1132's.
 Under garbage, the blocks thrown rank only a line that breaks (`baf4bf59`, 1137, 05:39 ET): 16 -- combo_storm 5, factory 5,
 large_garbage 6; the same games lost as 1133's; gone, the code as 1132's. Over 1124-1137 every one of the 24 games was lost at least
 twice: no game is the hard one -- the play is about 73% a game, and each loss has several decisions a replay saves it at.
+The continuation again, each line and the hold played on with what the window leaves at its end (`4d751981`, 1138, 05:52 ET): 20 --
+combo_storm 5, factory 7, large_garbage 8; combo_storm-5 lost to hold-creep: the hold put over a line lost later by the fewer actions
+(rule 7, from 1132), decision after decision.

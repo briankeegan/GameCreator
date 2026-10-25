@@ -382,7 +382,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) K(5, ty - tx); }
   // 7. THE FEWER ACTIONS: the input window pays for every cell the cursor walks -- before the later loss, which two lines lost alike
   // differ by less than a break's time in: the actions are the next break's
-  if (pressAllowance >= 0) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) K(7, wx - wy); }
+  // (not the hold against a line: the hold presses nothing now, but a line lost later than it is the one the next decision presses)
+  if (pressAllowance >= 0 && !x->hold && !y->hold) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) K(7, wx - wy); }
   // 6. THE LATER LOSS, of two lost alike
   if (!lx && lostOf(x) != lostOf(y)) K(6, lostOf(y) > lostOf(x) ? 1 : -1);
   // 8. THE KIND OF LINE: its tier, then the tier's own keys (facts.c tierOf)
