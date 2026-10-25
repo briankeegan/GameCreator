@@ -1319,3 +1319,6 @@ Of two lines lost alike, the fewer actions before the later loss (`ce0da41d`, 11
 large_garbage 8; two of the three lost in the opening (836, 961), the window at 0.
 Of two lines lost alike that meet the same entry, the fewer actions before the more thrown (`0397101d`, 1133, 04:42 ET): 15 --
 combo_storm 6, factory 3, large_garbage 6; five lost short of panels (none in 1132) -- the more thrown is the more converted; gone.
+REPLAYED (1132's openings): combo_storm-3 survives with frame 216's second option (a level line lost at 303 for the hold lost at
+218 -- lost alike by "less than a break's time apart", though it leaves two breaks' time to the hold's one), 432's and 487's;
+factory-2 with 327's, 366's and 544's.
