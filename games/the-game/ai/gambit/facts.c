@@ -112,7 +112,7 @@ typedef struct {
 } Rule;
 // (a rule for nobody across -- its `when` asks enemy.none: time attack -- is no mode a match against someone switches into)
 static int asksNoEnemy(const Rule *r) { for (int i = 0; i < r->nwhen; i++) if (r->when[i].fact == FACT_ENEMY_NONE) return 1; return 0; }
-typedef struct { int32_t n; Rule r[MAXRULES]; Keep keep; int32_t raiseTo, underIgnore; } Tables;
+typedef struct { int32_t n; Rule r[MAXRULES]; Keep keep, keepHeavy; int32_t raiseTo, underIgnore; } Tables;   // keepHeavy: the floor while us.heavy holds
 static Tables theTables;
 
 static int holds(const FactSet *F, const Rule *r) {

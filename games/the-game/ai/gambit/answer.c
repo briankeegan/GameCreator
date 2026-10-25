@@ -569,7 +569,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
 // ---- THE HOST'S SIDE: the rules, the profile, a question, the log
 // The rules (the loader encodes the rules file): rule count, then per rule -- table, name, nwhen, when (fact, op, n, near each), naims,
 // aims (ten words each), end, byFact, byFrames, keep (on, then height, material, evenness tests: op, n, near each), raiseTo -- then the
-// file's keep (as a rule's), raiseTo and underIgnore.
+// file's keep (as a rule's), raiseTo and underIgnore, then the keep while us.heavy holds (as a rule's).
 static int readTest(const int32_t **w, Test *t) { t->op = (*w)[0]; t->n = (*w)[1]; t->near = (*w)[2]; *w += 3; return 1; }
 EXPORT(gb_rules) int gb_rules(int n) {
   if (n < 0 || n > MAXRULES) return -1;
@@ -590,6 +590,7 @@ EXPORT(gb_rules) int gb_rules(int n) {
   theTables.n = n;
   theTables.keep.on = *w++; for (int k = 0; k < NKEEP; k++) readTest(&w, &theTables.keep.t[k]);
   theTables.raiseTo = *w++; theTables.underIgnore = *w++;
+  theTables.keepHeavy.on = *w++; for (int k = 0; k < NKEEP; k++) readTest(&w, &theTables.keepHeavy.t[k]);
   return n;
 }
 // The profile: the mode played the whole game (the rule's name, -1: chosen by the facts each decision), the gambit's numbers, the
