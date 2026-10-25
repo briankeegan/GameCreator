@@ -1572,3 +1572,9 @@ THE REPLAY FOUND IT (gambit-replay 27, factory-8, lost at 2608): forced at 2401,
 to the order's second option at 2363 it lives to 5819, at 2267 to 4976, at 2240 to 3498. All three second options were the line lost
 later, put under by rule 1's clauses because the two were "alike" (2363: 246 against 299, by ready; 2267: 271 against 308, by the
 ledger; 2240: 298 against 331, by the ledger). The later loss now decides unless both are three breaks' time away (rank.c lostAlike).
+Measured (`6bcb73bd`, 1195): 12 -- combo_storm **8/8**, factory 2, large_garbage 2. The later loss by the board left alone helps one
+mode and costs the others: the loss left alone is too rough to settle two lines close together, either way.
+THE ORDER ASKED AGAIN (the save's own question, for every decision that puts a sooner loss first): the first line and the latest
+lost are each played to their end and the survival search asked of the boards they leave (decide.c contLostOf); the later comes first
+where carried on it outlasts the other by a break's time, never cutting the board's own chain. lostAlike is 1190's again. Logged
+recheck=first/latest[/moved]. On factory-8's board at 2332: the hold carried on is lost at 28, the survive line at 260 -- moved.
