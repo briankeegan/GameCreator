@@ -1322,3 +1322,4 @@ combo_storm 6, factory 3, large_garbage 6; five lost short of panels (none in 11
 REPLAYED (1132's openings): combo_storm-3 survives with frame 216's second option (a level line lost at 303 for the hold lost at
 218 -- lost alike by "less than a break's time apart", though it leaves two breaks' time to the hold's one), 432's and 487's;
 factory-2 with 327's, 366's and 544's.
+Lost alike by tries alone again (`238d8da5`, 1134, 05:03 ET): 17 -- combo_storm 6, factory 5, large_garbage 6; gone.
