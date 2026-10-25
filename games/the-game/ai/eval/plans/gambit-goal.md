@@ -1304,3 +1304,5 @@ large_garbage 7; gone, the pairwise rule again. 313 of 21761 decisions played a 
 beaten=).
 The line in progress judged from its planned frame by every reader -- the rank, its readiness, its plan (`3a1a2820`, 1127, 03:24 ET):
 **19** -- combo_storm 6, factory 6, large_garbage 7; carried lines judged lost on another frame, nothing new told, 85 (from 139).
+The line in progress waiting for the board pressed no sooner than its planned frame too (`75eff719`, 1128, 03:36 ET): 15 --
+combo_storm 5, factory 4, large_garbage 6; judged lost on another frame 101; gone.

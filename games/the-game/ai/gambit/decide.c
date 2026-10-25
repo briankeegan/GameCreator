@@ -683,10 +683,9 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // step is judged once it has settled -- waitTo -- not cut for a walk that cannot begin within a reaction; and a break the readiness
   // found, on the board once everything lands, is pressed on that board: on one still moving it waits as a settled line does)
   int moving = (C->settled || C->ready) && boardMoving(decQ.b);
-  // (its next swap pressed no sooner than the frame it was judged pressed from, as the frame loop presses a line in hand: front.c lineDue --
-  // on a board still moving, once it has settled and no sooner)
+  // (its next swap pressed no sooner than the frame it was judged pressed from, as the frame loop presses a line in hand: front.c lineDue)
   int32_t at0 = C->restAt[skip] > decAt ? C->restAt[skip] - decAt : 0;
-  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0, 0, 0, 0, at0 };
+  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0, 0, 0, 0, moving ? 0 : at0 };
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];
@@ -710,7 +709,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   int aim = -1;
   if (C->hasAim && !aimGone) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;
   if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, nrest, aim, 0)) return 0;
-  k->settled = C->settled; k->at0 = at0;
+  k->settled = C->settled; k->at0 = moving ? 0 : at0;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;
   k->xNats = nats; for (int i = 0; i < nats; i++) k->xAts[i] = ats[i];
   return 1;
