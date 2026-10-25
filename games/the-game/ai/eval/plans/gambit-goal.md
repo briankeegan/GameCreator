@@ -1361,3 +1361,6 @@ default.
 The opener until either board tops out (`f0ac2613`, 1152, 09:02 ET): 18 -- combo_storm 4, factory 7, large_garbage 7; the two
 openings lost in every run since 1132 survive (combo_storm-3 to 19538, factory-2 whole), the opener over at the first top-out
 (combo_storm-1: 744); six others lost.
+The opener's chains big ones only, >=8, >=6, >=4 (`24a46a0e`, 1153): 19 -- combo_storm 5, factory 7, large_garbage 7. A settled
+line's swap pressed once its own blocks settle (`3ba7b3c6`, 1154): 12 -- combo_storm 2, factory 4, large_garbage 6; reverted, to be
+found again: the line's done is its last press now, where every deadline and the life it is judged to read the settle's end.
