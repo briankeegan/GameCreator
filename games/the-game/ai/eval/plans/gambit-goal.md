@@ -1341,3 +1341,5 @@ lines put down with nothing new told 1139 (from ~1900), swaps that came to nothi
 code as 1132's.
 Toward a break, three of the break search's lines offered (`ddb423b8`, 1141, 06:28 ET): 11 -- combo_storm 3, factory 2,
 large_garbage 6; more ways to dig, more digging, the window spent; gone, the code as 1132's.
+MEASURED ON NEW SEEDS (round 2, seeds 25-48): 1132's code (the fewer actions before the later loss) 19 -- combo_storm 5, factory 6,
+large_garbage 8 (run 1142); 1131's (`09c2ad80`) 13 -- 5, 3, 5 (run 1143). Over 48 games 40 against 30: the window kept is the gain.

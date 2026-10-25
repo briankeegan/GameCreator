@@ -335,7 +335,7 @@ static int holdsLine(const Judge *x, const Judge *y) {
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
-  return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
+  return lo >= rankSave && (tlo == thi || tlo >= 2 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
 }
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
@@ -344,7 +344,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
 #define K(rule, v) return (cmpKey = (rule), (v))
   // 1. SURVIVAL: a line that lives before one that does not; of two that do not, the later loss -- unless they are lost alike (lostAlike:
-  // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
+  // as many breaks' time left, two or more each, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, lx ? -1 : 1);
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
