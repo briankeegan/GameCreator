@@ -1350,3 +1350,5 @@ tapped walk near the end is worth its actions; gone, the code as 1132's.
 THE WINDOW SPENT (1147, 1132's code with the count -- 21 again, the same three games: every run its seeds' alone): games lost 336
 actions a minute -- entry 103, carry 75, survive 35, extend 24; games survived 325 -- carry 104, entry 69, break search 30. The
 lost spend half again as much on attacks; two of their three are openings, attacking while the first garbage falls.
+With garbage on its way, a line that breaks nothing meets no entry (`3b945d4d`, 1148, 07:44 ET): 19 -- combo_storm 6, factory 5,
+large_garbage 8 (the checks' tsan timed out at 15 minutes; it passes in 7 here). The owner: attack, and be ready to break.
