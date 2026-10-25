@@ -1439,6 +1439,8 @@ THE SURVIVAL LINE IN THE JUDGING'S OWN TIME: 1167 judged it before the second re
 whether a break is there once everything lands, in the searches' share -- so the share was spent and the line still went unjudged
 (combo_storm-3 at 502). The survival search's line is now asked first of the order's own searching, right after the order is made, and
 judged in the judging's quarter, not the searches' share (decide.c ranked).
+Measured (`e1b8f895`, 1169): 16 -- combo_storm 2 (8012, 13527: combo_storm-3 lives now), factory 3 (one at 419), large_garbage 3;
+panels 3, no-break 3, hold-creep 1, actions 1.
 ONLY LINES THE ORDER KEEPS ARE OFFERED (the owner: target only what will be used; no time on what is dropped): 35% of the lines offered
 were dropped after their judging (11,732 offered, 4,053 dropped in six games: 1,469 a wasted three, 1,126 cut, 913 unjudged, 368 a swap
 back) -- the survival search's line dropped for a wasted three 235 times, the levelling walk cut 520 of 1,370. One check, outcome.c
