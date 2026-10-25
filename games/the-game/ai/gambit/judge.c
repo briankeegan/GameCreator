@@ -417,7 +417,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       }
       break;
     }
-    if (k == 0 && !last) j->firstMade = madeBy(x, out, root);
+    // (what the first swap made: a settled line's read once the board has settled from it, as it was found -- its step ends at the press)
+    if (k == 0 && !last) j->firstMade = madeBy(x, o->settled && liveNode(x, out) ? settleOf(x, out) : out, root);
     ACC(out);
     // (a settled step's chain ends before the next swap's blocks are pressed, so each is an attack of its own; steps pressed at once are
     // one chain, counted at its longest)
