@@ -300,21 +300,6 @@ static int ranked(const Read *R, const Found *S) {
   // searches' share (propose.c searchesEnd): the judging's quarter stays the judging's and the save's, and an answer comes as soon as
   // the searching is done)
   double orderShare = clockShareBegin(searchesEnd());
-  surviveAsked = 0;
-  // (the survival search's line, the backup where nothing lives: the worker's whenever it has finished -- it was searched beside the
-  // decision, in the searches' time -- else searched here in what time the decision has left. Asked before any line is asked its
-  // readiness, and judged in the judging's quarter, not the searches' share: not dying comes first, and a line the clock leaves
-  // unjudged is no line)
-  int svDone = __atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE);
-  if (!(n && order[0]->o.lives) && (svDone || timeLeftMs() > 0)) {
-    surviveAsked = 1;
-    Outlived sv = svDone ? svJob : outlive(&decQ, HORIZON + REST, REST, timeLeftMs(), 6, 30);
-    offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
-    Cand sk;
-    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; double sh = clockShare; clockShare = orderShare; int ok = judgeCand(R, &sk, &theJudged[n + 1]); clockShare = sh;
-      if (ok) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
-    if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
-  }
   // (the line in progress too: a line that lived by a break in reach lives on by it, its landed board the one already searched)
   #define READY_ASKS(J_) (!(J_)->o.lives && !(J_)->o.dead && (J_)->o.ready == NOT_ASKED)
   // (THE KEPT PLAN'S LINES -- intentions and routes -- are asked as every line is: a worker's answer or this thread's search, the same
@@ -344,6 +329,19 @@ static int ranked(const Read *R, const Found *S) {
   readyShare(0); readyFresh = 0;
   sortJudged(order, n);
   double t2 = nowMs();
+  surviveAsked = 0;
+  // (the survival search's line, the backup where nothing lives: the worker's whenever it has finished -- it was searched beside the
+  // decision, in the searches' time -- else searched here in what time the decision has left. Judged before any line is asked its
+  // readiness: not dying comes first, and a line the clock leaves unjudged is no line)
+  int svDone = __atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE);
+  if (!(n && order[0]->o.lives) && (svDone || timeLeftMs() > 0)) {
+    surviveAsked = 1;
+    Outlived sv = svDone ? svJob : outlive(&decQ, HORIZON + REST, REST, timeLeftMs(), 6, 30);
+    offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
+    Cand sk;
+    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
+    if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
+  }
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
   if (!(n && order[0]->o.lives)) {
     int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);

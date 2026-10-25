@@ -1448,3 +1448,6 @@ linePlayable (pressed whole, in time, no three wasted, lost or not -- the judgin
 nothing): the line toward a break is the first of the break search's that passes it, the levelling walk is offered only when it
 passes, and the survival search returns the best line in its pool that wastes no three, one that does only where it has no other (a
 three the board needs comes from it: the save).
+Measured (`76cda3f8`, 1170): 5 -- combo_storm 5, factory 8, large_garbage 6; hold-creep 6, actions 5, panels 4, no-break 4. The checks
+asked before offering judged lines the decision's searches had the time for (the line toward a break tried path after path), and the
+order judged fewer. Gone with 1169's survival line in the judging's time: Gambit as `41b593b8` (1167, 20).
