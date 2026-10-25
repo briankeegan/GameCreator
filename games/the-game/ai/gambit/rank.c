@@ -342,24 +342,25 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // (THE RESERVE, as the survival search keeps it -- search/outlive.c: a line that breaks nothing and leaves the next landing
 // without a break's walk in the window -- outcome.c spendsReserve, the window plan)
 static int reserveSpent(const Judge *J) { return !J->hold && spendsReserve((Made){ J->apCombo, J->apChain, J->apBroke, 0 }, &J->o.j); }
-// (THE TIME TO MOVE: a line that does not live leaves the board the frames from its end to its loss; with the time to make the next move
-// in them (core/nodes.h moveFrames) it is alive for that move, without them it is death -- and death is never a choice)
-static double roomOf(const Judge *J) { return lostOf(J) - (J->hold ? 0 : J->o.j.endAt); }
-static int timeToMove(const Judge *J) { return roomOf(J) >= moveFrames(); }
-static int lostAlike(const Judge *x, const Judge *y) { return timeToMove(x) && timeToMove(y); }
+static int lostAlike(const Judge *x, const Judge *y) {
+  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+  int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
+  return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
+}
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, time, reserve, later, hold, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
+// (A LINE LIVES where its board does left alone, or where its plan does: the line, the break its readiness found and the breaks after
+// it, played on the engine -- outcome.c readyNextOf, extLost FOREVER)
+static int livesOf(const Judge *J) { return J->o.lives || (!J->hold && J->extLost == FOREVER); }
 static int compareJudged(const Judge *x, const Judge *y) {
-  int lx = !!x->o.lives, ly = !!y->o.lives;
+  int lx = livesOf(x), ly = livesOf(y);
 #define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
-  // 1. SURVIVAL: a line that lives before one that does not; of two that do not, first the one that leaves time to make the next
-  // move (timeToMove: death is never a choice); of two without it, the later loss, frame by frame; of two with it (lostAlike), the
-  // board's next break decides. What a line can press is the judge's: the input window it is pressed
+  // 1. SURVIVAL: a line that lives before one that does not; of two that do not, the later loss -- unless they are lost alike (lostAlike:
+  // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, "lives", lx ? -1 : 1);
-  if (!lx && timeToMove(x) != timeToMove(y)) K(1, "time", timeToMove(x) ? -1 : 1);
   // (of two that do not live, one that spends the next break's walk comes first only where the spend pays (core/nodes.h spendPays): lost
   // after the window has given the walk back, or the line that keeps it lost before it could press it. The break the board needs is
   // pressed out of what is left -- the survival search's own rule. Breaks first, never dying on the way. The hold is a move like any
@@ -375,8 +376,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (lostOf(h) < lostOf(o) && !cutsShort(o)) K(1, "hold", h == x ? 1 : -1); }
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
-  // (survival first: two lines that live, or two lost alike -- never one lost sooner)
-  if (rankLow && (lx || lostAlike(x, y) || lostOf(x) == lostOf(y))) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, "ledger", gx ? -1 : 1); }
+  // (survival first: two lines that live, or two lost less than a break's time apart -- never one lost sooner by more)
+  if (rankLow && (lx || (lostOf(x) > lostOf(y) ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) < rankSave)) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, "ledger", gx ? -1 : 1); }
   // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no

@@ -1557,3 +1557,8 @@ end to its loss. With the time to make the next move in them -- a reaction and t
 (core/nodes.h moveFrames) -- it is alive for that move; without, it is death. Rule 1: lives, then time to move (clause `time`), then
 of two without it the later loss frame by frame, of two with it the board's next break (rank.c timeToMove, lostAlike). The reserve's
 keeper is asked the same time.
+Measured (`906e1007`, 1192): 9 -- actions 9; C checks red ("the answers": 9 lines played lost a break's time sooner). The time rule and
+the three-breaks alike were new rules on a broken piece; the order is 1190's again (the owner: stop adding rules, fix the infra).
+THE BROKEN PIECE: "lives" asked only the board left alone -- 5% of a survived game's decisions had any line that lives, so rule 1's
+first key all but never decided and the clauses under it decided instead. The plan infra already plays a line on: the readiness
+break and the breaks after it (outcome.c readyNextOf, extLost). A line whose plan lives now lives (rank.c livesOf).
