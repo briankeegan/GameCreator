@@ -345,9 +345,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int32_t mx = bothReady ? x->o.j.readyMat : x->o.matLeft, my = bothReady ? y->o.j.readyMat : y->o.matLeft;
     if (mx >= 0 && my >= 0 && mx != my) K(1, mx > my ? -1 : 1);
   }
-  // (the hold, pressing nothing, is no nearer a break than a line lost later: that line has the time the hold does not)
-  if (!lx && decF.under && x->hold != y->hold && x->apBroke <= 0 && y->apBroke <= 0 && lostOf(x) != lostOf(y) && lostOf(x->hold ? y : x) > lostOf(x->hold ? x : y))
-    K(1, x->hold ? 1 : -1);
   if (!lx && decF.under && x->apBroke <= 0 && y->apBroke <= 0 && x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && x->o.nearAfter != y->o.nearAfter)
     K(1, x->o.nearAfter - y->o.nearAfter);
   // 2. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)

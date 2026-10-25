@@ -1291,3 +1291,5 @@ death or not (`475680fa`, 1120, 01:54 ET): **20** -- combo_storm 8, factory 7, l
 Of two lines that break nothing lost alike, the later loss before the nearer next break (`2b2d1c14`, 1121, 02:05 ET): 13; gone.
 Two lines lost alike only with as many breaks' time left, or three and more (`d207ca98`, 1122, 02:16 ET): 16; gone. The order of 1120
 (`475680fa`) stands, at 20.
+Under garbage, a line that breaks nothing lost later than the hold before it (`fd0ca6e5`, 1123, 02:29 ET): 15; gone. Changing the
+order's keys has scored below 20 three times in a row (13, 16, 15): what moved it was making two readings of one fact agree.
