@@ -1306,3 +1306,7 @@ The line in progress judged from its planned frame by every reader -- the rank, 
 **19** -- combo_storm 6, factory 6, large_garbage 7; carried lines judged lost on another frame, nothing new told, 85 (from 139).
 The line in progress waiting for the board pressed no sooner than its planned frame too (`75eff719`, 1128, 03:36 ET): 15 --
 combo_storm 5, factory 4, large_garbage 6; judged lost on another frame 101; gone.
+The order's first put first again when a line under it beats it head to head (`3cb10066`, 1129, 03:48 ET): 18 -- combo_storm 7,
+factory 7, large_garbage 4; the count unchanged (938: the order's cycles have no first), gone. A LIFE NOT KEPT (1127 combo_storm-2,
+7883): the line in progress waiting for the board judged to live by a readiness break never played -- a judging with a wait before
+it (waitTo) was taken for the readiness break's own, which asks no promise and reads no end board.

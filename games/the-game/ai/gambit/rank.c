@@ -461,17 +461,4 @@ static void sortJudged(Judge **a, int n) {
       while (j < hi) tmp[k++] = a[j++];
       for (k = lo; k < hi; k++) a[k] = tmp[k];
     }
-  // (THE FIRST IS THE BEST: lost alike is no order of its own -- a line lost alike with one lost alike with a third is not alike with the
-  // third -- so the sort can leave a line under the first that beats it head to head. Such a line is put first, each line once at most,
-  // until none under the first beats it)
-  static unsigned char up[512];
-  memset(up, 0, sizeof up);
-  for (int moved = 1; moved && n > 1 && n <= 512; ) {
-    moved = 0;
-    for (int i = 1; i < n; i++) if (!up[i] && compareJudged(a[i], a[0]) < 0) {
-      Judge *t = a[i];
-      for (int q = i; q > 0; q--) { a[q] = a[q - 1]; up[q] = up[q - 1]; }
-      a[0] = t; up[0] = 1; moved = 1; break;
-    }
-  }
 }

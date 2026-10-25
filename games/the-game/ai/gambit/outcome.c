@@ -139,14 +139,21 @@ static int lineInList(const Judged *j, int last) { return fitsList(&theList, j->
 static int lineSpends(const Judged *j, int32_t floorKept) { return spendsFloor(j->made, floorKept) || spendsReserve(j->made, j); }
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) { return outcomeOfW(seq, n, settled, waitAt, waitTo, 0, 0, 0); }
+// (A PROMISED BREAK JUDGED: the line and the break a readiness found, played where it found it -- the promise's own judging, which
+// asks no promise of its own and reads no end board. Any other judging is a line's whole, a wait before it (waitTo) or not)
+static LOCAL int promiseDepth;
+static Outcome promised(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo, int nmore, const int32_t *moreAt, const int32_t *moreTo) {
+  promiseDepth++; Outcome e = outcomeOfW(seq, n, settled, waitAt, waitTo, nmore, moreAt, moreTo); promiseDepth--; return e;
+}
 static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo, int nmore, const int32_t *moreAt, const int32_t *moreTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
   if (hit) return *hit;
+  int whole = !promiseDepth;
   // (the board left alone asked first: its judging is the judge's own nodes, which the line's end board is read from below)
-  int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
+  int32_t alone = n > 0 && whole && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : timeLeftMs() > 0;
-  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1, nmore, moreAt, moreTo };
+  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, whole, waitAt, waitTo, 1, nmore, moreAt, moreTo };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
@@ -161,7 +168,7 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
     o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
-    if (!waitTo) {
+    if (whole) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
       if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
@@ -171,18 +178,18 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
     }
     // (THE NEXT BREAK SPENT: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board left
     // alone keeps one has spent what the next break needs -- it is lost the frame it is done)
-    if (n > 0 && !breaks && !stands && !waitTo && decF.under) {
+    if (n > 0 && !breaks && !stands && whole && decF.under) {
       const Board *eb = alone ? ensureBoard(judgeCtx, o.j.endNode) : 0;
       if (eb && !buildsNext(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
     }
     // (A PROMISED BREAK IS A REAL ONE: a line that lives only by being ready lives only when its readiness break, played where the
     // readiness found it, lives too -- one that cannot be played out (no line kept, too long, the clock) promises nothing)
-    if (o.lives && !breaks && ready == 1 && !(stands && !coming) && !waitTo) {
+    if (o.lives && !breaks && ready == 1 && !(stands && !coming) && whole) {
       if (o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
         int32_t ext[MAXLINE];
         for (int k = 0; k < n; k++) ext[k] = seq[k];
         for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
-        Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
+        Outcome e = promised(ext, n + o.j.readyN, settled, n, o.j.readyWait, 0, 0, 0);
         if (e.late) o.late = 1;
         if (e.late || !e.lives) o.lives = 0;
       } else o.lives = 0;
@@ -224,7 +231,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
     int32_t ext[MAXLINE], en = n + o.j.readyN, w0To = o.j.readyWait, mAt[READY_STEPS], mTo[READY_STEPS], nm = 0;
     for (int k = 0; k < n; k++) ext[k] = seq[k];
     for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
-    Outcome e = outcomeOf(ext, en, settled, n, w0To);
+    Outcome e = promised(ext, en, settled, n, w0To, 0, 0, 0);
     if (!e.late) o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
     // (A PLAN OF SEVERAL STEPS: the board the break leaves, once it has settled, asked again for a break in reach -- played where its
     // readiness finds it, and so on, READY_STEPS breaks at most: the line is lost where the plan is, the owner's ready with a plan)
@@ -236,7 +243,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
       mAt[nm] = en; mTo[nm] = q.readyWait; nm++;
       for (int k = 0; k < q.readyN; k++) ext[en + k] = q.readyLine[k];
       en += q.readyN;
-      e = outcomeOfW(ext, en, settled, n, w0To, nm, mAt, mTo);
+      e = promised(ext, en, settled, n, w0To, nm, mAt, mTo);
       if (e.late) break;
       int32_t lost = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
       if (lost == NOT_ASKED || (lost != FOREVER && o.lostAt != FOREVER && lost <= o.lostAt)) break;
