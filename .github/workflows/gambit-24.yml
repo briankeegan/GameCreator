@@ -25,7 +25,7 @@ on:
         description: "Gambit's worker threads (GC_GAMBIT_WORKERS; none when empty): four -- the break search, the planner's second half and the chain, the survival search, the break search's wider beam"
         default: '4'
       bot:
-        description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
+        description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit), gambit-paced (the same on the wall clock: no lockstep, the game paced -- a Gambit from before lockstep) or wasm (survivor.js beside it)'
         default: 'gambit'
       seed:
         description: 'The panel seed base (PA_SEED = base*100 + pattern*10 + game: every game the same panels every run); 1-24 for seeds 1 to 24, a game each (combo_storm 1-8, factory 9-16, large_garbage 17-24; round r adds 24(r - 1)); empty (the default) for random -- every run new games'
@@ -147,7 +147,9 @@ jobs:
             echo "::notice title=seed::${{ matrix.pattern }} ${{ matrix.game }} round ${{ matrix.round }}: PA_SEED=$PA_SEED"
           fi
           echo "::notice title=cores::$(nproc) threads, $(lscpu | awk -F: '/^Core\(s\) per socket|^Thread\(s\) per core/ {gsub(/ +/, " ", $2); printf "%s:%s, ", $1, $2}')cpu:core $(lscpu -e=CPU,CORE | tail -n +2 | awk '{printf "%s:%s ", $1, $2}'), GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
-          bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
+          BOT="${{ inputs.bot || 'gambit' }}"
+          if [ "$BOT" = gambit-paced ]; then BOT=gambit; export GC_GAMBIT_LOCKSTEP=0 PA_UNPACED=0; fi
+          bash games/the-game/ai/eval/training.sh "$BOT" "${{ matrix.pattern }}" 1
       - name: Results
         if: always()
         run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }} r${{ matrix.round }}::/' || true
