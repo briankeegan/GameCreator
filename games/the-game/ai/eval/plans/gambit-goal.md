@@ -1267,3 +1267,6 @@ swaps more while their chains run (`47d55079`, 1101, 21:27 ET): 9 -- combo_storm
 as before; gone.
 On the wall clock, the game paced (bot gambit-paced, 1103, 21:37 ET): 6 -- lockstep is not what holds it back. The 12-frame wait after
 a swap again (`c85a14cb`, 1104, 21:39 ET): 10 -- combo_storm 1, factory 3, large_garbage 6; gone, the pace alone again.
+What fell, from the history (runs 1043-1052, seeds 1-24 on the wall clock: 15-19): the work clock at 600 a ms (`70a2e191`, 1106,
+22:24 ET: decisions 195 ms against 92, 11) -- the search's time is not it; no reserve of actions, the pace keeping the window
+(`f74e676e`, 1107, 22:33 ET): **16** -- combo_storm 7, factory 5, large_garbage 4; actions x7, no-break x1.
