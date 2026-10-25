@@ -169,12 +169,14 @@ static int32_t firstThree(Ctx *x, int root, int mr, int mc) {
 // THE BOARD'S OWN CHAIN SPOILED -- the one test, the judge's (a swap of a line at a time) and the press guard's (front.c wastedSwap): the
 // board at node n left alone to rest makes a chain of two or more, and with the swap at (mr, mc) pressed and let rest a shorter one, no
 // more garbage broken -- the three that began the board's chain made for nothing, whatever the line's later swaps make
+// (the swap's settle ends when its own blocks rest -- eval/native/search.h ns_ctx_blocks -- so the board with it pressed is let rest
+// whole after, as the board left alone is: the one board read both ways)
 static int spoilsAt(Ctx *x, int n, int mr, int mc) {
-  int al = settleOf(x, n), sw = step(x, n, MK_SETTLE, mr, mc, 0);
-  Stats sa, ss;
-  if (!liveNode(x, al) || !liveNode(x, sw) || !statsOf(x, al, &sa) || !statsOf(x, sw, &ss)) return 0;
-  int32_t ca = sa.cleared > 0 ? chainOfStats(&sa) : 0, cs = ss.cleared > 0 ? chainOfStats(&ss) : 0;
-  return ca >= 2 && cs < ca && ss.broke <= sa.broke;
+  int al = settleOf(x, n), sw = step(x, n, MK_SETTLE, mr, mc, 0), rs = liveNode(x, sw) ? settleOf(x, sw) : sw;
+  Stats sa, ss, sr;
+  if (!liveNode(x, al) || !liveNode(x, sw) || !liveNode(x, rs) || !statsOf(x, al, &sa) || !statsOf(x, sw, &ss) || !statsOf(x, rs, &sr)) return 0;
+  int32_t ca = sa.cleared > 0 ? chainOfStats(&sa) : 0, cs = imax(ss.cleared > 0 ? chainOfStats(&ss) : 0, sr.cleared > 0 ? chainOfStats(&sr) : 0);
+  return ca >= 2 && cs < ca && ss.broke + sr.broke <= sa.broke;
 }
 // (a step's wasted threes, as the game's own count reads them (front.c countAttacks), a clear at a time: a clear of three that is no link
 // of a chain and has no garbage joined to it -- and no chain's link after it in the step, which its fall may have made)
@@ -310,12 +312,23 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
   int kb = root;   // (the line's last node by ownChainBy)
 #define KB(m) do { if (ownChainBy > 0 && liveNode(x, (m)) && NODE(x, (m))->t <= ownChainBy) kb = (m); } while (0)
+  int32_t lastChain = 0;   // (the chain the step before reached)
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
-    if (last && o->settled) break;   // (each step settled already)
     { int32_t to = o->waitTo > 0 && k == o->waitAt ? o->waitTo : k == 0 && !last ? lineWaitTo : 0;
       for (int m = 0; !to && m < o->nmore; m++) if (o->moreTo[m] > 0 && k == o->moreAt[m]) to = o->moreTo[m];
-      if (to > 0) {
+      // (a settled line waiting for the board -- the line in progress, waitTo 1 -- waits for its next swap's blocks to rest, as its steps
+      // were judged: eval/native/search.h ns_ctx_blocks; any other wait, for the whole board)
+      if (to == 1 && o->settled && k == 0 && !last) {
+        uint32_t mask = 3u << mc; int g = 0;
+        while (liveNode(x, n) && !blocksQuiet(ensureBoard(x, n), &mask) && g < SETTLE_CAP) {
+          int w = step(x, n, MK_LONG, 0, 0, 2);
+          if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
+          if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+          n = w; KB(n); g += 2;
+        }
+        if (j->late || j->dead) break;
+      } else if (to > 0) {
         int w = step(x, n, MK_LONG, 0, 0, imax(1, to - NODE(x, n)->t));
         if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
         if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
@@ -386,8 +399,11 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     statsOf(x, out, &st);
     for (int i = 0; i < st.n; i++) { if (st.size[i] > combo) combo = st.size[i]; if (!(st.chainAt[i] > 1) && st.size[i] >= 4 && st.size[i] < MAXCOMBOS + 64) single[st.size[i]] = 1; }
     for (int i = 0; i < st.n; i++) if (!(st.chainAt[i] > 1)) pieces += blocksOf(st.size[i], 0);
-    // (a settled step's chain ends in it, so each is an attack of its own; steps pressed at once are one chain, counted at its longest)
-    if (o->settled || last) links += imax(0, chainOfStats(&st) - 1);
+    // (a settled step's chain ends in it, so each is an attack of its own -- the board let rest after the last, a chain the last swap
+    // began going on in it counted once; steps pressed at once are one chain, counted at its longest)
+    if (o->settled && last) links += imax(0, chainOfStats(&st) - imax(1, lastChain));
+    else if (o->settled || last) links += imax(0, chainOfStats(&st) - 1);
+    lastChain = chainOfStats(&st);
     if (chainOfStats(&st) > chain) chain = chainOfStats(&st);
     broke += st.broke; threes += threesOf(&st);
     // (A SWAP THAT SPOILS THE BOARD'S OWN CHAIN, a swap at a time: the board it is pressed on left alone to rest makes a chain of two or
