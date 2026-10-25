@@ -681,7 +681,9 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // step is judged once it has settled -- waitTo -- not cut for a walk that cannot begin within a reaction; and a break the readiness
   // found, on the board once everything lands, is pressed on that board: on one still moving it waits as a settled line does)
   int moving = (C->settled || C->ready) && boardMoving(decQ.b);
-  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0 };
+  // (its next swap pressed no sooner than the frame it was judged pressed from, as the frame loop presses a line in hand: front.c lineDue)
+  int32_t at0 = C->restAt[skip] > decAt ? C->restAt[skip] - decAt : 0;
+  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0, 0, 0, 0, moving ? 0 : at0 };
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];

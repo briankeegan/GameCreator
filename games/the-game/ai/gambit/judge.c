@@ -25,6 +25,8 @@ typedef struct {
                                      // stop stands only if it outlives it
   int32_t nmore;                     // (and more waits so, each before swap moreAt[i], run to frame moreTo[i]: a plan's later breaks, each
   const int32_t *moreAt, *moreTo;    // played where its readiness found it -- outcome.c readyNextOf)
+  int32_t pressAt0;                  // (> 0: the first swap's walk begins no sooner than this frame -- a line in progress, pressed as the frame
+                                     // loop presses it, on the frame it was judged pressed from: decide.c carriedCand)
 } JudgeOpts;
 typedef struct {
   Made made;                    // beyond the board left alone: { combo, chain, broke }
@@ -318,6 +320,12 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         n = liveNode(x, calm) ? calm : w;
         KB(n);
       } }
+    if (k == 0 && !last && o->pressAt0 > NODE(x, n)->t) {
+      int w = step(x, n, MK_LONG, 0, 0, o->pressAt0 - NODE(x, n)->t);
+      if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
+      if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+      n = w; KB(n);
+    }
     // (the allowance this swap is pressed under: the input window at the frame its walk begins, less what the line's swaps before it
     // spent -- core/nodes.h allowLeftAt, actionsFor)
     if (!last && pressAllowance >= 0) {
