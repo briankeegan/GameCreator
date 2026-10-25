@@ -23,6 +23,8 @@ typedef struct {
                                      // played where the readiness found it
   int32_t lifeStop;                  // lostAt asked past the stop and shake the line ends on too (dropAt + lifeRest): a board held up by a
                                      // stop stands only if it outlives it
+  int32_t nmore;                     // (and more waits so, each before swap moreAt[i], run to frame moreTo[i]: a plan's later breaks, each
+  const int32_t *moreAt, *moreTo;    // played where its readiness found it -- outcome.c readyNextOf)
 } JudgeOpts;
 typedef struct {
   Made made;                    // beyond the board left alone: { combo, chain, broke }
@@ -306,14 +308,16 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
     if (last && o->settled) break;   // (each step settled already)
-    if (o->waitTo > 0 && k == o->waitAt) {
-      int w = step(x, n, MK_LONG, 0, 0, imax(1, o->waitTo - NODE(x, n)->t));
-      if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
-      if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
-      int calm = settleOf(x, w);
-      n = liveNode(x, calm) ? calm : w;
-      KB(n);
-    }
+    { int32_t to = o->waitTo > 0 && k == o->waitAt ? o->waitTo : 0;
+      for (int m = 0; !to && m < o->nmore; m++) if (o->moreTo[m] > 0 && k == o->moreAt[m]) to = o->moreTo[m];
+      if (to > 0) {
+        int w = step(x, n, MK_LONG, 0, 0, imax(1, to - NODE(x, n)->t));
+        if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
+        if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+        int calm = settleOf(x, w);
+        n = liveNode(x, calm) ? calm : w;
+        KB(n);
+      } }
     // (the allowance this swap is pressed under: the input window at the frame its walk begins, less what the line's swaps before it
     // spent -- core/nodes.h allowLeftAt, actionsFor)
     if (!last && pressAllowance >= 0) {
