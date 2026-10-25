@@ -1649,3 +1649,7 @@ THE BREAK ON THE BOARD TO COME (the owner: timing): readiness was asked only wit
 readyFor). Every decision with a block landing within LANDED_AHEAD (240) frames now runs the break search on the board that block lands
 on and settles (landedBreak), and offers its line as PLAY_READY for the judge to try; logged landed= (0 found, 2 lost before it lands,
 3 no garbage then, 4 none found), counted in the summary.
+Measured (`fe8e28f4`, the break on the board to come, 1208): **14** -- combo_storm 5, factory 5, large_garbage 4; actions 7, panels 2,
+no-break 1. Asked 17829 times: 1278 found, 10570 none in its 40 ms, 5716 the board lost before the block lands.
+CARRIED TO THE LANDING: the board-to-come search's beam is carried from decision to decision while it is the same block landing on the
+same frame, so it grows deeper until the block is down (search/ready.c landedBreak, landedKeep).

@@ -58,10 +58,15 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   int32_t dt = imax(0, landedB->clock - q->b->clock);
   Question q2 = *q; q2.b = landedB; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
   for (int a = 0; a < q->narr; a++) if (q->arr[a].at > dt) { q2.arr[q2.narr] = q->arr[a]; q2.arr[q2.narr++].at -= dt; }
-  static LOCAL Broke lbr;
+  // (CARRIED TO THE LANDING: the lines the last decision's search was growing on the same board to come -- the same block, landing on
+  // the same frame -- are its beam's seeds, so the search grows deeper decision after decision until the block is down)
+  static Paths landedKeep; static int32_t landedFor = -1; static LOCAL Broke lbr;
+  int32_t landsOn = q->b->clock + wait;
+  int carried = landedFor == landsOn && landedKeep.n > 0;
   double old = clockShareBegin(nowMs() + ms);
-  breakMoves(&q2, 0, 0, &lbr);
+  breakMoves(&q2, 0, carried ? &landedKeep : 0, &lbr);
   clockShareEnd(old);
+  landedKeep = lbr.keepOut; landedFor = landsOn;
   landedWhy = 4;
   if (lbr.pathLen <= 0) return 0;
   landedWhy = 0;
