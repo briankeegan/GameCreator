@@ -1413,3 +1413,5 @@ A LAST SWAP THAT ONLY LETS TIME PASS (1164): 1,1 -- the first swap a search leve
 of 30 of the planner's lowest stacks (one cell in thirty by chance): a search scores the board after its line and the time it took,
 so a corner swap bought the score, at a walk across the board. Each of those lines is offered beside itself without its last swap,
 both judged on the engine (propose.c ADD_SHORT); the order's fewer actions takes the shorter where they are alike.
+Measured (`359a030b`, 1165): 11 -- combo_storm 5, factory 7, large_garbage 1; actions 10. Gone, as `7c4610a9`: the trailing swap
+is the search's own score's, and a line offered without it walked the allowance dry -- the shorter line is not the search's line.
