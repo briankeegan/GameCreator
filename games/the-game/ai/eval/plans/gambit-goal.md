@@ -1302,3 +1302,5 @@ loss (`dc9f8917`, 1125, 02:58 ET): 16 -- combo_storm 6, factory 6, large_garbage
 Chained (a line lost alike with the one lost next later is of its class; `8e6d1eea`, 1126, 03:09 ET): 15 -- combo_storm 5, factory 3,
 large_garbage 7; gone, the pairwise rule again. 313 of 21761 decisions played a line beaten head to head by one under it (answer.c
 beaten=).
+The line in progress judged from its planned frame by every reader -- the rank, its readiness, its plan (`3a1a2820`, 1127, 03:24 ET):
+**19** -- combo_storm 6, factory 6, large_garbage 7; carried lines judged lost on another frame, nothing new told, 85 (from 139).
