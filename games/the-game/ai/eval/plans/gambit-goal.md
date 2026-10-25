@@ -1505,3 +1505,6 @@ combo_storm-7 lives. The reach report: of 211 boards with no break, 23 had one u
 THE RESERVE IN THE ORDER, AS THE SURVIVAL SEARCH KEEPS IT: of two lines that do not live, one that breaks nothing and leaves the next
 landing without a break's walk (outcome.c spendsReserve) comes first only lost OUT_LATER (120) frames later (rank.c rule 1) -- the
 survival search's own rule (search/outlive.c), now the order's too.
+Measured (`702ab916`, 1181): **16** -- combo_storm 2, factory 5, large_garbage 1 (7/8); hold-creep 3, panels 2, no-break 2, actions 1
+(from 5); 1 wasted three; 10 boards with a break under a full window (from 23). The holds came: combo_storm-7 held 59 times lost sooner.
+Survival first in the reserve rule: it holds only where the line that keeps the walk is itself lost OUT_LATER frames on or later.

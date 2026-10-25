@@ -358,9 +358,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, lx ? -1 : 1);
   // (of two that do not live, one that spends the next break's walk comes first only lost OUT_LATER frames later: the window it spends
-  // comes back only a window later, and the break the board needs is pressed out of what is left -- the survival search's own rule)
+  // comes back only a window later, and the break the board needs is pressed out of what is left -- the survival search's own rule.
+  // Survival first: where the line that keeps the walk is itself lost within OUT_LATER, the later loss decides)
   if (!lx) { int rx = reserveSpent(x), ry = reserveSpent(y);
-    if (rx != ry) { double d = rx ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x); if (d < OUT_LATER) K(1, rx ? 1 : -1); } }
+    if (rx != ry) { double keepLost = rx ? lostOf(y) : lostOf(x), d = rx ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x);
+                    if (keepLost >= OUT_LATER && d < OUT_LATER) K(1, rx ? 1 : -1); } }
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
