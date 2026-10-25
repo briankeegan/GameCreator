@@ -53,6 +53,7 @@ typedef struct Ctx {
   int32_t rootBrk;   // the root's rows broken: a line breaks garbage when a node's brk is past it
   int32_t par;   // threads are making nodes: newNode takes a reserved slot
   Vec later;     // nodes let go while a phase ran, their boards freed at its end (release)
+  int32_t blocks;   // a settle after a swap ends once the swap's own blocks are at rest, not the whole board (ns_ctx_blocks; BLOCKS_QUIET)
 } Ctx;
 #define NODE(x, i) (&(x)->nodes[i])
 
@@ -92,6 +93,9 @@ EXPORT(ns_ctx_set) void ns_ctx_set(Ctx *x, int reaction, int cursorMoveFrames, i
 EXPORT(ns_ctx_cap) int ns_ctx_cap(Ctx *x) { return x->cap; }
 // After a swap the bot acts again `gap` frames on; a hold or a wait is still reaction + 1.
 EXPORT(ns_ctx_gap) void ns_ctx_gap(Ctx *x, int gap) { x->swapGap = gap; }
+// THE SWAP'S BLOCKS SETTLED (engines with BLOCKS_QUIET): an MK_SETTLE that presses a swap ends once the columns its blocks are in are at
+// rest -- the swap's two, and every column next to them its clear spreads into -- the rest of the board moving or not
+EXPORT(ns_ctx_blocks) void ns_ctx_blocks(Ctx *x, int on) { x->blocks = on; }
 // Every node gone and every board back in the pool.
 EXPORT(ns_reset) void ns_reset(Ctx *x) {
   for (int i = 0; i < x->n; i++) if (x->nodes[i].st && !x->nodes[i].fromPrev) nb_free(x->nodes[i].st);
@@ -244,6 +248,13 @@ static int advanceRest(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames,
   Bot bot = *botp;
   int32_t due[2];
   dueOf(arr, narr, due);
+#ifdef BLOCKS_QUIET
+  uint32_t bmask = mr > 0 && mc > 0 ? 3u << mc : 0;
+  int blocksOn = kind == MK_SETTLE && x->blocks && bmask;
+#else
+  int blocksOn = 0; uint32_t bmask = 0; (void)bmask;
+#define BLOCKS_QUIET(st, m) 0
+#endif
 #define REFUSED (swapping && !bot.w.active && !bot.lastSwap)
 #define GIVE(code) do { nb_free(st); return (code); } while (0)
 #define FRAME() do { if (tape) { if (tapeN >= tapeCap) GIVE(STEP_ERR); \
@@ -257,6 +268,9 @@ static int advanceRest(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames,
   for (int guard = guard0; guard < 4000; guard++) {
     if (kind == MK_LONG && f >= frames) break;
     input = 0;
+    // (the swap's blocks asked every frame -- the columns its clear spreads into are found as it spreads -- and the step ended once they
+    // rest, before a countdown could run past it)
+    if (blocksOn && BLOCKS_QUIET(st, &bmask) && f >= 3 && !bot.w.active && bot.cooldown <= 0) break;
     raiseStep(&bot, st, &input);
 #ifdef COUNTDOWN
     // Frames on which only timers run are played at once (countdown), up to
@@ -279,7 +293,7 @@ static int advanceRest(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames,
     if (kind != MK_LONG) {
       if (bot.cooldown > 0) { bot.cooldown--; FRAME(); continue; }
 #ifdef STEP_STATS
-      if (kind == MK_SETTLE && (f < 3 || !st->quiet) && f < (frames > 0 ? frames : SETTLE_CAP)) { FRAME(); continue; }
+      if (kind == MK_SETTLE && (f < 3 || !(blocksOn ? BLOCKS_QUIET(st, &bmask) : st->quiet)) && f < (frames > 0 ? frames : SETTLE_CAP)) { FRAME(); continue; }
 #endif
       break;
     }

@@ -1361,3 +1361,7 @@ default.
 The opener until either board tops out (`f0ac2613`, 1152, 09:02 ET): 18 -- combo_storm 4, factory 7, large_garbage 7; the two
 openings lost in every run since 1132 survive (combo_storm-3 to 19538, factory-2 whole), the opener over at the first top-out
 (combo_storm-1: 744); six others lost.
+A settled line's swap pressed once its own blocks settle, the first swap's making read settled (`21207e31`, 1155): 16 -- combo_storm
+6, factory 3, large_garbage 7; breaks by a chain in combo_storm 234 (from ~400): the searches still found the lines on the board settled
+whole, the judge pressed them sooner -- two readings. Now the step itself: a settle after a swap ends when the swap's own blocks rest
+(eval/native/search.h ns_ctx_blocks), for every search and the judge alike.

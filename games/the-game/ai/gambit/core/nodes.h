@@ -242,6 +242,7 @@ static int handsGap(int pace) { return imax(imax(cfgSwapGap, SWAP_SHOWN), pace);
 static Ctx *ctxOf(Ctx *x) {
   if (!x) x = ns_ctx_new();
   ns_ctx_set(x, cfgReaction, cfgCursor, 0, 0); ns_ctx_gap(x, handsGap(__atomic_load_n(&decGap, __ATOMIC_RELAXED)));
+  ns_ctx_blocks(x, 1);   // (a settled step ends when the swap's own blocks rest: eval/native/search.h ns_ctx_blocks)
   return x;
 }
 // THE QUESTION: the board a decision is made on, the raise in hand and the garbage on its way -- what every search roots its lines at.
