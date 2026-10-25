@@ -63,7 +63,7 @@ static void cacheFresh(void) { int32_t g = __atomic_load_n(&decGen, __ATOMIC_REL
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
   cacheFresh();
   if ((readyFresh || endWanted) && kind == 0) return 0;
-  if (lineAt0 > 0) return 0;   // (the line in progress is judged from its own frame: kept apart from the same swaps pressed now)
+  if (lineAt0 > 0 || lineWaitTo > 0) return 0;   // (the line in progress is judged from its own frame: kept apart from the same swaps pressed now)
   uint32_t h = lineHash(seq, n, settled, kind);
   for (int i = 0; i < ncache; i++) {
     Cached *c = &cache[i];
@@ -77,7 +77,7 @@ static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
 static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Outcome *o) {
   cacheFresh();
   if (!cache) cache = (Cached *)grab(sizeof(Cached) * CACHEN);
-  if (!cache || n > MAXLINE || lineAt0 > 0) return 0;
+  if (!cache || n > MAXLINE || lineAt0 > 0 || lineWaitTo > 0) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
   Cached *c = 0;
   for (int i = 0; i < ncache && !c; i++) {

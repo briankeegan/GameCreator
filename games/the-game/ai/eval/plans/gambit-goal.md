@@ -1310,3 +1310,6 @@ The order's first put first again when a line under it beats it head to head (`3
 factory 7, large_garbage 4; the count unchanged (938: the order's cycles have no first), gone. A LIFE NOT KEPT (1127 combo_storm-2,
 7883): the line in progress waiting for the board judged to live by a readiness break never played -- a judging with a wait before
 it (waitTo) was taken for the readiness break's own, which asks no promise and reads no end board.
+A line judged with a wait before it judged whole (`63a94a1c`, 1130, 04:04 ET): 18 -- combo_storm 6, factory 5, large_garbage 7; a
+life kept 31 of 36 (86%, from 63-73%). The five left: the line in progress judged again with its walks tapped where it was chosen held
+(pressTap, read off the decision's frame), and a readiness break carried pressed once the board settles, not where its promise found it.

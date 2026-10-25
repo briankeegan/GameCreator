@@ -14,6 +14,8 @@ typedef struct {
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
   int32_t at0;     // the line in progress: its first swap's walk begun no sooner than this frame, as it was chosen (decide.c carriedCand)
+  int32_t tapOf;   // and its walks tapped or held as they were when it was chosen: 1 + that pressTap (0: the decision's)
+  int32_t waitTo;  // and the frame its board is run to and let settle before its first swap (0: none)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -76,6 +78,11 @@ static void tierInsert(Tier *t, int pos, double v) {
   t->nsub = imin(t->nsub + 1, MAXSUB);
   if (pos <= t->nlist) t->nlist++;
 }
+// (THE LINE IN PROGRESS AS IT WAS CHOSEN, every judging of it: from its planned frame, its walks as they were -- asLine before, unLine
+// after; any other line, the decision's own)
+static LOCAL int32_t unTap;
+static void asLine(const Cand *k) { lineAt0 = k->at0; lineWaitTo = k->waitTo; unTap = pressTap; if (k->tapOf) pressTap = k->tapOf - 1; }
+static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
@@ -86,9 +93,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (what it makes is the whole line on the engine, as the judge counts it -- not what the search that found it counted; a line the
   // judge could not play out is judged on the search's word)
   // (the line in progress waiting for the board to settle: judged on the board settled, as carriedCand found it)
-  lineAt0 = k->at0;
-  Outcome oc = play == PLAY_CARRYWAIT ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
-  lineAt0 = 0;
+  asLine(k);
+  Outcome oc = play == PLAY_CARRYWAIT && !k->waitTo ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
+  unLine();
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
   if (judgedCut(&oc.j)) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
@@ -186,9 +193,9 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 // more decision (react frames)
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
-  lineAt0 = J->hold ? 0 : J->k.at0;
+  if (!J->hold) asLine(&J->k);
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
-  lineAt0 = 0;
+  if (!J->hold) unLine();
 }
 static double lostOf(const Judge *x);
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
@@ -244,9 +251,9 @@ static int ideasOf(const Judge *J0) {
     if (decF.under || ideasAsks >= IDEAS_ASKS) { J->ideas = -1; return -1; }
     ideasAsks++;
     endNoKeep = 1;
-    lineAt0 = J->hold ? 0 : J->k.at0;
+    if (!J->hold) asLine(&J->k);
     const Board *e = clockOut() || J->o.dead ? 0 : J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
-    lineAt0 = 0;
+    if (!J->hold) unLine();
     endNoKeep = 0;
     J->ideas = e ? ideasOn(e, ideaAims) : -1;
   }

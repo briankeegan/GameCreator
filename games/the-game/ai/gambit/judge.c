@@ -293,7 +293,7 @@ static int judgedCut(const Judged *j) { return !j->dead && j->cut >= 0; }
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 // (THE LINE IN PROGRESS, every judging of it -- the rank's, its readiness, its plan -- pressed as the frame loop presses it: its first
 // swap's walk begun no sooner than the frame it was judged pressed from when it was chosen; 0 any other line. decide.c carriedCand)
-static LOCAL int32_t lineAt0;
+static LOCAL int32_t lineAt0, lineWaitTo;   // (and lineWaitTo: its board run to that frame and let settle before its first swap)
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
   j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1;
@@ -313,7 +313,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
     if (last && o->settled) break;   // (each step settled already)
-    { int32_t to = o->waitTo > 0 && k == o->waitAt ? o->waitTo : 0;
+    { int32_t to = o->waitTo > 0 && k == o->waitAt ? o->waitTo : k == 0 && !last ? lineWaitTo : 0;
       for (int m = 0; !to && m < o->nmore; m++) if (o->moreTo[m] > 0 && k == o->moreAt[m]) to = o->moreTo[m];
       if (to > 0) {
         int w = step(x, n, MK_LONG, 0, 0, imax(1, to - NODE(x, n)->t));

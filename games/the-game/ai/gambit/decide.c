@@ -191,9 +191,9 @@ static double contLostOf(const Judge *J, double give) {
   if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
   if (!eb) return -1;
   endNoKeep = 1;
-  lineAt0 = J->hold ? 0 : J->k.at0;
+  if (!J->hold) asLine(&J->k);
   const Board *e = J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
-  lineAt0 = 0;
+  if (!J->hold) unLine();
   endNoKeep = 0;
   if (!e) return -1;
   cloneBoard(eb, e);
@@ -516,7 +516,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carryLost = 8; return; }
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
   for (int i = first; i < k->k.nseq; i++) { theCarry.rest[i - first] = k->k.seq[i]; theCarry.restAt[i - first] = !k->hold && i < k->o.j.nats ? decAt + k->o.j.ats[i] : -1; }
-  theCarry.tap = decTap; theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
+  theCarry.tap = k->k.tapOf ? k->k.tapOf - 1 : decTap; theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
@@ -540,6 +540,7 @@ static void carryReady(const Judge *H, int32_t qid) {
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
   theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0; theCarry.ready = !H->hold;
+  theCarry.tap = decTap; theCarry.restAt[0] = decAt + j->readyWait;   // (pressed where the readiness found it: the board run to readyWait)
 }
 // THE READINESS BESIDE THE DECISION (search/break.c readyJob): the boards the order will ask readiness of handed to the workers,
 // worst-ranked first -- the decision asks them best-ranked first -- each searched by whichever thread begins it first. They search on
@@ -685,16 +686,19 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   int moving = (C->settled || C->ready) && boardMoving(decQ.b);
   // (its next swap pressed no sooner than the frame it was judged pressed from, as the frame loop presses a line in hand: front.c lineDue)
   int32_t at0 = C->restAt[skip] > decAt ? C->restAt[skip] - decAt : 0;
-  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0, 0, 0, 0, moving ? 0 : at0 };
+  // (a readiness break not yet begun is pressed as its promise was judged: the board run to the frame the readiness found it on, let
+  // settle, then pressed -- outcome.c promised)
+  int32_t wTo = C->ready && skip == 0 ? imax(1, at0) : moving ? 1 : 0;
+  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, wTo, 0, 0, 0, 0, wTo ? 0 : at0 };
   Judged j;
-  judge(&decQ, rest, nrest, &jo, &j);
+  { int32_t t = pressTap; pressTap = C->tap; judge(&decQ, rest, nrest, &jo, &j); pressTap = t; }
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];
   carryDropPlan = C->restAt[skip]; carryDropAt = j.nats ? decAt + j.ats[0] : -1; carryDropTap = C->tap * 2 + decTap;
   // (a step no longer legal: the judge pressed fewer than the line has. A line the board is lost on is offered all the same -- judged
   // lost, as any line is, and ranked by its loss: where every line is lost, the line in progress may be lost latest)
   // (a judging the clock stopped is no answer: the line is offered, and the rank reads it as any line the clock cut -- rank.c judgeCand)
   if (!j.dead && !j.late && j.nats < nrest) { carryDrop = 2; carryDropDead = -1; carryDropCut = j.cut; carryDropWhy = j.cutWhy; carryDropNats = j.nats; return 0; }
-  *wait = moving;
+  *wait = moving || wTo > 1;
   // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
   Made x = { j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
   int32_t done = j.done, fire = j.fire, nats = j.nats, ats[MAXLINE];
@@ -709,7 +713,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   int aim = -1;
   if (C->hasAim && !aimGone) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;
   if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, nrest, aim, 0)) return 0;
-  k->settled = C->settled; k->at0 = moving ? 0 : at0;
+  k->settled = C->settled; k->at0 = wTo ? 0 : at0; k->waitTo = wTo; k->tapOf = 1 + C->tap;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;
   k->xNats = nats; for (int i = 0; i < nats; i++) k->xAts[i] = ats[i];
   return 1;
