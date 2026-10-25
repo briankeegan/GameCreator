@@ -1474,3 +1474,8 @@ combo_storm-3 and loses factory to a window run dry: the line that buys frames s
 THE SURVIVAL LINE JUDGED AND KEPT WITHIN THE WINDOW: the order's own share again (as `6918e92a`), and the survival search's reserve a
 break's walk (search/outlive.c OUT_RESERVE, 20 actions; it read RESERVE, 0): the line it keeps leaves 20 actions of the allowance
 unless one that spends them is lost 120 frames later still.
+Measured (`34603111`, 1174): 16 -- combo_storm 3, factory 3, large_garbage 2; actions 4, no-break 3, panels 1; 6 wasted threes. Kept,
+and on from it (the owner: no reverts, forward).
+A THREE ONLY WHERE NOT PLAYING IT KILLS (the owner): the save let a three through whenever the board without it was lost sooner, both
+lost; now only where the board with it lives on and the board without it is lost (decide.c the save). And the survival search's line
+wastes no three where its pool holds one that does not (`27463e0f`, back).

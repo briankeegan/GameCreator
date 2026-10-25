@@ -408,8 +408,9 @@ static int ranked(const Read *R, const Found *S) {
         }
         saveAsked++;
         saveCw = cw; saveCk = ck;
-        if (cw >= 0 && ck >= 0 && ck >= cw) { keeps = 1; saveNot++; }
-        else if (cw >= 0 && ck >= 0) saveOk = 1;
+        // (needed not to die: with the three the board lives on, without it it is lost -- a three that only puts the loss off is wasted)
+        if (cw >= 0 && ck >= 0 && cw >= 1e9 && ck < 1e9) saveOk = 1;
+        else if (cw >= 0 && ck >= 0) { keeps = 1; saveNot++; }
       }
     }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses

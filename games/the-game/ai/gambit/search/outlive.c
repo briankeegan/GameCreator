@@ -32,7 +32,10 @@ static void poolAdd(OPool *p, const OItem *it) {
   if (p->n < OUT_POOL) p->n++;
 }
 static Outlived poolFirst(const OPool *p, const Question *q) {
-  for (int i = 0; i < p->n; i++) if (lineKeptOn(q, p->o[i].seq, p->o[i].nseq, 0)) return p->o[i];
+  // (one that wastes no three first -- the order drops a three the save does not confirm, and with it the board's backup -- and only
+  // else one that does: a three the board needs not to die comes from here, decide.c the save)
+  for (int pass = 0; pass < 2; pass++)
+    for (int i = 0; i < p->n; i++) if (lineCheckOn(q, p->o[i].seq, p->o[i].nseq, 0, pass ? 0 : CHECK_WASTE)) return p->o[i];
   Outlived none; memset(&none, 0, sizeof none); return none;
 }
 static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
@@ -95,7 +98,9 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
       // (a line that lives within the reserve is the answer at once, through the one check)
       if (top[i].lost == FOREVER && top[i].acts <= keep) {
-        if (lineKeptOn(q, top[i].seq, top[i].nseq, 0)) { poolAdd(&bestP, &top[i]); return bestP.o[0].lostAt == FOREVER ? bestP.o[0] : poolFirst(&bestP, q); }
+        if (lineCheckOn(q, top[i].seq, top[i].nseq, 0, CHECK_WASTE)) { poolAdd(&bestP, &top[i]); return bestP.o[0].lostAt == FOREVER ? bestP.o[0] : poolFirst(&bestP, q); }
+        // (one that lives by wasting a three is kept for the save, and the search goes on for one that does not)
+        if (lineKeptOn(q, top[i].seq, top[i].nseq, 0)) { poolAdd(&bestP, &top[i]); continue; }
         top[i].lost = -1; continue;
       }
       poolAdd(top[i].acts <= keep ? &bestP : &overP, &top[i]);
