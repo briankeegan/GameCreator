@@ -507,6 +507,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (carryDrop) {
     L_s(" carryDrop="); L_i(carryDrop);
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
+    if (carryDrop >= 2) { L_s(" carryAt="); L_i(carryDropPlan); L_s("/"); L_i(carryDropAt); }   // (its next swap: judged pressed at when chosen / now)
     if (carryDrop >= 2) { L_s(" carryRest="); for (int i = 0; i < carryDropN; i++) { if (i) L_s(";"); L_mv(carryDropRest[i]); } }
   }
   L_s(" opts=");

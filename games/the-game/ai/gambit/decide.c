@@ -465,7 +465,7 @@ static Played playOf(const Read *R, int n) {
 // only when none was then)
 // (ready: a break found on the board once everything lands, carried from a swap played for it -- offered, not put first: it was found
 // on a board the stack is not yet)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits; Aim aim; } Carry;
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], restAt[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits; Aim aim; } Carry;   // restAt: the frame each swap was judged pressed at, -1 not said
 static Carry theCarry;
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
@@ -512,7 +512,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carryLost = 8; return; }
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
-  for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
+  for (int i = first; i < k->k.nseq; i++) { theCarry.rest[i - first] = k->k.seq[i]; theCarry.restAt[i - first] = !k->hold && i < k->o.j.nats ? decAt + k->o.j.ats[i] : -1; }
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }
@@ -656,10 +656,10 @@ static int routeJudged(const Read *R, int n) {
 // was not kept when the last decision played it: carryOf)
 static int carryDrop;
 // (and for the log, the line dropped: the steps it had left, and for 2 how the judge ended it -- cut at, the steps it pressed)
-static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, carryDropWhy, carryDropNats;
+static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, carryDropWhy, carryDropNats, carryDropPlan, carryDropAt;   // (Plan, At: the frame the rest's next swap was judged pressed at when chosen, and judged again)
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
-  *wait = 0; carryDrop = 0;
+  *wait = 0; carryDrop = 0; carryDropPlan = carryDropAt = -1;
   int skip = C->id == carryFrom ? carryPressed : 0;
   if (C->set && C->nrest <= skip && theCarryNext.set) {
     // (the line's own swaps all pressed: the break it lived by is the line in progress now, popping or not as the board is now)
@@ -684,6 +684,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];
+  carryDropPlan = C->restAt[skip]; carryDropAt = j.nats ? decAt + j.ats[0] : -1;
   // (a step no longer legal: the judge pressed fewer than the line has. A line the board is lost on is offered all the same -- judged
   // lost, as any line is, and ranked by its loss: where every line is lost, the line in progress may be lost latest)
   // (a judging the clock stopped is no answer: the line is offered, and the rank reads it as any line the clock cut -- rank.c judgeCand)
