@@ -35,6 +35,8 @@ static int32_t popLeft(const Board *b) {
   return t;
 }
 
+#define LANDED_AHEAD 240   // the frames ahead a block's landing is searched for the break it will need (search/ready.c landedBreak)
+#define LANDED_MS 40       // and the time it is given
 #define MAXSTARTS 8
 // THE SEARCHES, run once a decision: the planner, the extension of a chain falling or a slab popping, readiness, levelling
 typedef struct {
@@ -43,6 +45,7 @@ typedef struct {
   int32_t haveRd; Readied rd;
   int32_t lvU, lvG;                       // a level swap (0: none)
   int32_t haveRl, rlN, rl[2], rlAt;
+  int32_t haveLb, lbN, lb[MAXLINE];   // (the break on the board to come: search/ready.c landedBreak)
   int32_t nstart; XLine start[MAXSTARTS];  // chains begun: a swap that starts a clear, and the links its fall is continued by
   int32_t tried; double idleMs, searchMs;
 } Found;
@@ -195,6 +198,11 @@ static void searchAll(const Read *R, Found *S) {
   if (lastLand != NOT_ASKED && !leftAlone().lives) {
     double m3 = timeLeftMs() / 2 < READY_LINE_MS ? timeLeftMs() / 2 : READY_LINE_MS;
     S->haveRl = readyLines(&decQ, lastLand, m3 > 1 ? m3 : 1, S->rl, &S->rlN, &S->rlAt);
+  }
+  // (the break the next block will need, searched on the board it lands on: while it is still to come, every decision asks it)
+  if (decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) {
+    double m4 = timeLeftMs() / 3 < LANDED_MS ? timeLeftMs() / 3 : LANDED_MS;
+    if (m4 > 1) S->haveLb = landedBreak(&decQ, decF.next + 2, m4, S->lb, &S->lbN);
   }
   S->lvG = !R->under && R->readyAt != NOT_ASKED && !(S->haveRd && !S->rd.ready && S->rd.setup) ? level(&decQ, R->readyAt ? R->readyAt : NOT_ASKED) : 0;
 }
@@ -496,6 +504,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // READY: the swap that leaves the next block breakable when it lands, and the line that leaves a plan once everything has landed
   if (S->haveRd && !S->rd.ready && S->rd.setup) { int32_t one = S->rd.setup; ADD(PLAY_READY, &one, 1, -1, 0); }
   if (S->haveRl) { int m0 = n; ADD(PLAY_READY, S->rl, S->rlN, -1, 0); if (n > m0) out[m0].xDone = S->rlAt; }
+  if (S->haveLb) ADD(PLAY_READY, S->lb, S->lbN, -1, 0);
   // (LOWERING THE STACK: the tallest column's top walked onto a lower one, each step settled -- on any board with a column two above
   // its neighbour, the move when there is nothing better to do (rank.c markIdle); topped or under garbage, a perched block let down too
   // -- its supports walked out from under it (search/break.c perchedDrops). Each judged as any line: a lower stack is a later loss)

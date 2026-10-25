@@ -1642,3 +1642,10 @@ under 11), 39% of its lines played again whole.
 WHERE THE CARRY IS LOST, LOGGED: brRes=played/in/held[/gid|/anchor] -- the lines kept, and a carry dropped whole for the garbage dug
 at changed or the anchor panel gone -- and brResWhy= the lines not played again whole: a swap not there / a pair put back / the board
 lost / outside the rules; the summary counts both.
+Measured (`e3524ddb`, logging only, 1207): 12, 1206's games. The carry: of 541524 lines kept, 174568 played again whole; 99505 the
+board lost before the line could be played out, 52348 a swap no longer there; 236 decisions dropped the carry for the garbage changed.
+The break is found too late: once the block is down, the board dies before a deep line can be pressed.
+THE BREAK ON THE BOARD TO COME (the owner: timing): readiness was asked only with no garbage on the board, a swap deep (search/ready.c
+readyFor). Every decision with a block landing within LANDED_AHEAD (240) frames now runs the break search on the board that block lands
+on and settles (landedBreak), and offers its line as PLAY_READY for the judge to try; logged landed= (0 found, 2 lost before it lands,
+3 no garbage then, 4 none found), counted in the summary.

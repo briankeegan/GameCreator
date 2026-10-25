@@ -34,6 +34,41 @@ static Readied readyFor(const Question *q, double ms) {
   return out;
 }
 
+// THE BREAK ON THE BOARD TO COME (landedBreak): the board run with nothing pressed to the frame the next block lands and settles, the
+// break search asked of that board -- the break the board will need, found while there is still time to press it, not once the block
+// is down. Its line, as the board stands now, is the proposer's to offer and the judge's to try: pressed early, its swaps meet the block
+// as the judge plays them. 1 and the line; 0 none (nothing coming, the board lost first, no garbage on it then, none found)
+static Board *landedB;
+static int32_t landedWhy = -1;   // (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found; -1 not asked)
+static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path, int *n) {
+  *n = 0; landedWhy = 1;
+  Ctx *x = readyCtx = ctxOf(readyCtx);
+  int root = rootOf(x, q);
+  if (root < 0) return 0;
+  int land = step(x, root, MK_LONG, 0, 0, wait);
+  landedWhy = 2;
+  if (!liveNode(x, land)) return 0;
+  int calm = settleOf(x, land); if (liveNode(x, calm)) land = calm;
+  const Board *lb = ensureBoard(x, land);
+  landedWhy = 3;
+  if (!lb || !garbageOn(lb)) return 0;
+  if (!landedB) landedB = nb_new();
+  if (!landedB) return 0;
+  cloneBoard(landedB, lb);
+  int32_t dt = imax(0, landedB->clock - q->b->clock);
+  Question q2 = *q; q2.b = landedB; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+  for (int a = 0; a < q->narr; a++) if (q->arr[a].at > dt) { q2.arr[q2.narr] = q->arr[a]; q2.arr[q2.narr++].at -= dt; }
+  static LOCAL Broke lbr;
+  double old = clockShareBegin(nowMs() + ms);
+  breakMoves(&q2, 0, 0, &lbr);
+  clockShareEnd(old);
+  landedWhy = 4;
+  if (lbr.pathLen <= 0) return 0;
+  landedWhy = 0;
+  for (int k = 0; k < lbr.pathLen && k < MAXLINE; k++) path[(*n)++] = lbr.path[k];
+  return *n > 0;
+}
+
 // THE ORDER OF THE FIRST SWAPS: nearest the top of the stack first. The comparator says "b first" only when b is strictly nearer; the
 // order it leaves (a run found and turned, then binary insertion) is part of what the search finds first, so it is kept exactly
 static int nearerFirst(int32_t a, int32_t b, int32_t top) { int da = CR(a) - top, db = CR(b) - top; if (da < 0) da = -da; if (db < 0) db = -db; return db < da ? 1 : -1; }
