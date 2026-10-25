@@ -12,7 +12,7 @@ if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2);
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
-var beamDepth = { best: [], deep: [], resIn: 0, resPlayed: 0 };   // (under garbage, no break found: the touch beam's best line and its deepest carried on)
+var beamDepth = { best: [], deep: [], resIn: 0, resPlayed: 0, held: 0, gid: 0, anchor: 0, why: [0, 0, 0, 0] };   // (under garbage, no break found: the touch beam's best line and its deepest carried on)
 var putDown = { same: 0, told: 0, sameBy: {}, alike: 0, moved: 0, by: [] };   // (lines in progress put down: with nothing new told, or after something was)
 var carryByKey = {}, carryByPlay = {};   // (the line in progress put down: by the order's key that did it, and by what was played over it)
 var carryWhy = {}, CARRY_WHY = { 1: 'its anchor panel gone', 2: 'a step no longer there', 3: 'it no longer breaks', 5: 'no longer what it was begun for (offered all the same)',
@@ -123,7 +123,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var al = / allow=(-?\d+)/.exec(l);
       if (al && +al[1] >= 0) { var av = +al[1]; allow.n++; allow.at[av <= 5 ? 0 : av <= 20 ? 1 : av <= 40 ? 2 : 3]++; }
       // (the touch beam's depth under garbage with no break found: its best line's length, t, and the deepest it carries on, brDeep)
-      var bt = / br=0\/t(\d+)/.exec(l), bd = / brDeep=(\d+)/.exec(l), brr = / brRes=(\d+)\/(\d+)/.exec(l); if (bt && bd && / under=1 /.test(l)) { beamDepth.best.push(+bt[1]); beamDepth.deep.push(+bd[1]); if (brr) { beamDepth.resIn += +brr[2]; beamDepth.resPlayed += +brr[1]; } }
+      var bt = / br=0\/t(\d+)/.exec(l), bd = / brDeep=(\d+)/.exec(l), brr = / brRes=(\d+)\/(\d+)/.exec(l); if (bt && bd && / under=1 /.test(l)) { beamDepth.best.push(+bt[1]); beamDepth.deep.push(+bd[1]); if (brr) { beamDepth.resIn += +brr[2]; beamDepth.resPlayed += +brr[1]; }
+        var bh = / brRes=\d+\/\d+\/(\d+)(\/(gid|anchor))?/.exec(l); if (bh) { beamDepth.held += +bh[1]; if (bh[3]) beamDepth[bh[3]]++; }
+        var bw = / brResWhy=(\d+)\/(\d+)\/(\d+)\/(\d+)/.exec(l); if (bw) for (var q = 0; q < 4; q++) beamDepth.why[q] += +bw[q + 1]; }
       var cd = / carryDrop=(\d+)/.exec(l); if (cd) carryWhy[cd[1]] = (carryWhy[cd[1]] || 0) + 1;
       var cb = / carryBy=(\S+?):(k\d+|f)/.exec(l); if (cb) { carryByKey[cb[2]] = (carryByKey[cb[2]] || 0) + 1; carryByPlay[cb[1]] = (carryByPlay[cb[1]] || 0) + 1; }
       if (/ carryDrop=2/.test(l)) { allow.drop2++; if (/ carryDrop=2:d-1:c0/.test(l)) { allow.drop2cut0++; var cw = / carryDrop=2:d-1:c0([anw])/.exec(l); if (cw) allow.why[cw[1]]++; } }
@@ -279,7 +281,9 @@ if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed
 var most = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (k) { return k + ' ' + o[k]; }).join(', '); };
 ['survived', 'lost'].forEach(function (k) { var b = balance[k]; if (b.frames) console.log('the board\'s material, games ' + k + ' (' + b.games + '): ' + (b.landed * 3600 / b.frames).toFixed(0) + ' garbage cells landed a minute, ' + (b.converted * 3600 / b.frames).toFixed(0) + ' turned to panels, ' + (b.spent * 3600 / b.frames).toFixed(0) + ' panels cleared, ' + ((b.converted - b.spent) * 3600 / b.frames).toFixed(0) + ' net'); });
 var mid = function (a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] + ' (90% under ' + a[Math.min(a.length - 1, Math.floor(0.9 * a.length))] + ')' : '-'; };
-if (beamDepth.best.length) console.log('the touch beam under garbage with no break found (' + beamDepth.best.length + ' decisions): its best line ' + mid(beamDepth.best) + ' swaps, the deepest it carries on ' + mid(beamDepth.deep) + '; of ' + beamDepth.resIn + ' lines carried on to them, ' + beamDepth.resPlayed + ' played again whole');
+if (beamDepth.best.length) console.log('the touch beam under garbage with no break found (' + beamDepth.best.length + ' decisions): its best line ' + mid(beamDepth.best) + ' swaps, the deepest it carries on ' + mid(beamDepth.deep) + '; of ' + beamDepth.resIn + ' lines carried on to them, ' + beamDepth.resPlayed + ' played again whole' +
+  ' -- of ' + beamDepth.held + ' the decisions before kept: ' + beamDepth.gid + ' decisions dropped them all for the garbage dug at changed, ' + beamDepth.anchor + ' for the anchor panel gone; not played again whole: ' +
+  beamDepth.why[0] + ' a swap not there, ' + beamDepth.why[1] + ' a pair put back, ' + beamDepth.why[2] + ' the board lost, ' + beamDepth.why[3] + ' outside the rules');
 if (putDown.same + putDown.told) console.log('lines in progress put down with nothing new told: ' + putDown.same + ' of ' + (putDown.same + putDown.told) + ' (the garbage the same as the decision before\'s), by the order\'s key ' + most(putDown.sameBy) + '; the carried line judged lost on the frame it was judged when played ' + putDown.alike + ', on another ' + putDown.moved + (putDown.by.length ? ' (by ' + mid(putDown.by) + ' frames)' : ''));
 if (Object.keys(carryByKey).length) console.log('lines in progress put down for another: by the order\'s key (k1 survival, k2 own chain, k3 the list, k4 within an entry, k5 thrown, k6 later loss, k7 fewer actions, k8 kind, k9 nearer; f the order\'s filter) ' + most(carryByKey) + '; by what was played over it ' + most(carryByPlay));
 if (Object.keys(carryWhy).length) console.log('lines in progress not carried on: ' + Object.keys(carryWhy).map(function (k) { return carryWhy[k] + ' ' + (CARRY_WHY[k] || 'code ' + k); }).join(', '));

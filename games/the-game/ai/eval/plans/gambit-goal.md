@@ -1636,3 +1636,9 @@ the games. combo_storm-1's holds by the reserve: a hold lost at 31, 18, 14 over 
 "keeping" a walk its own window did not hold.
 A KEEPER KEEPS ONLY WHAT ITS WINDOW HOLDS: the reserve puts the keeper first only where the keeper's own window holds the next break's
 walk (rank.c, windowKeepsBreak on the keeper).
+Measured (`37af0407`, a keeper keeps only what its window holds, 1206): 12 -- actions 9, panels 3, no hold-creep. The holds and the
+window trade one for the other; under both, no break found in the last 300 frames of nearly every loss. The carried beam: 6 deep (90%
+under 11), 39% of its lines played again whole.
+WHERE THE CARRY IS LOST, LOGGED: brRes=played/in/held[/gid|/anchor] -- the lines kept, and a carry dropped whole for the garbage dug
+at changed or the anchor panel gone -- and brResWhy= the lines not played again whole: a swap not there / a pair put back / the board
+lost / outside the rules; the summary counts both.

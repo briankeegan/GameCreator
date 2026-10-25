@@ -79,12 +79,15 @@ static int touchedBy(const int32_t *p, int np, const int32_t *pre, int npre) {
   return 0;
 }
 static int startsWith(const int32_t *p, int np, const int32_t *pre, int npre) { if (np <= npre) return 0; for (int i = 0; i < npre; i++) if (p[i] != pre[i]) return 0; return 1; }
+static int32_t carryHeld, carryWhy;   // (the log's: the lines the last decision kept, and why none came on: 1 the garbage dug at changed, 2 the anchor panel gone)
 static int carriedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, Paths *out) {
   out->n = 0;
   Kept *K = &theKept;
-  if (!K->set || !K->paths.n || digTargetOf(b) != K->gid) return 0;
+  carryHeld = K->set ? K->paths.n : 0; carryWhy = 0;
+  if (!K->set || !K->paths.n) return 0;
+  if (digTargetOf(b) != K->gid) { carryWhy = 1; return 0; }
   int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId);
-  if (dr == NOT_ASKED) return 0;
+  if (dr == NOT_ASKED) { carryWhy = 2; return 0; }
   int32_t pre[MAXLINE + 1];
   int npre = playedSince(K, lineFrom, linePressed, pre);
   // (THE LINE TOWARD A BREAK BEGUN: the rest of the one played last, the same moves taken off)
@@ -546,7 +549,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }
   else L_s("none");
   // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
-  if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); L_s(" brRes="); L_i(theBr.resPlayed); L_s("/"); L_i(theBr.resIn); }
+  if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); L_s(" brRes="); L_i(theBr.resPlayed); L_s("/"); L_i(theBr.resIn); L_s("/"); L_i(carryHeld); if (carryWhy) { L_s(carryWhy == 1 ? "/gid" : "/anchor"); }
+    if (theBr.resIn > theBr.resPlayed) { L_s(" brResWhy="); for (int k = 0; k < 4; k++) { if (k) L_s("/"); L_i(theBr.resWhy[k]); } } }   // (the carried lines not played again whole: a swap not there / a pair put back / the board lost / outside the rules)
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");

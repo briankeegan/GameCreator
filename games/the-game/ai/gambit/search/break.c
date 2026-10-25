@@ -43,6 +43,7 @@ typedef struct {
   Paths towards;                                    // keepOut's lines, then toward
   Paths keepOut;                                    // what the next decision carries on
   int32_t resIn, resPlayed;                         // the lines the last decision carried on, and of them the ones played again whole
+  int32_t resWhy[4];                                // and why the rest were not: a swap not there, a pair put back, the board lost, outside the rules
 } Broke;
 
 static LOCAL Ctx *breakCtx;
@@ -296,10 +297,12 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     for (int i = 0; i < nact; i++) {
       Line *a = act[i];
       int mv = a->path[a->kept];
-      if (!legalAt(x, a->n, CR(mv), CC(mv)) || undoesMoved(x, a->n, mv, &a->last)) continue;
+      if (!legalAt(x, a->n, CR(mv), CC(mv))) { o->resWhy[0]++; continue; }
+      if (undoesMoved(x, a->n, mv, &a->last)) { o->resWhy[1]++; continue; }
       a->last = movedOn(x, a->n, mv, &a->last);
       int out = stepMarked(s, a->n, MK_SWAP, mv, 0);
-      if (!liveNode(x, out) || !within(s, out)) continue;
+      if (!liveNode(x, out)) { o->resWhy[2]++; continue; }
+      if (!within(s, out)) { o->resWhy[3]++; continue; }
       a->n = out; a->kept++;
       if (a->kept == a->len) { a->key = a->path[0]; seeds[nseeds++] = a; } else nxt[nn++] = a;
     }
