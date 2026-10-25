@@ -1593,3 +1593,5 @@ the losses are paths, not single decisions, and the board under them has no marg
 MARGIN FIRST WHERE THE LOSS CANNOT TELL (the cheapest test of it, on the infra that exists): of two lines lost alike, the one whose board
 keeps the rules' floor -- the mode's own keep, material, height, evenness (outcome.c floorKept) -- comes first, before the ledger,
 ready and nearer clauses (rank.c rule 1, clause `floor`).
+Measured (`7114babb`, 1197): 9 -- actions 8, panels 3, hold-creep 3. The floor first among lines lost alike: worse. Out; Gambit is the
+17's code again (`04bfbafb`).

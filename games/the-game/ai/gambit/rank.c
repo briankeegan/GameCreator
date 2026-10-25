@@ -350,7 +350,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, floor, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
 // (A LINE LIVES where its board does left alone, or where its plan does: the line, the break its readiness found and the breaks after
 // it, played on the engine -- outcome.c readyNextOf, extLost FOREVER)
 static int livesOf(const Judge *J) { return J->o.lives || (!J->hold && J->extLost == FOREVER); }
@@ -374,9 +374,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // is with less time, so the walk it saves, the break it leaves where it was, are the next decision's to spend again)
   if (!lx && x->hold != y->hold) { const Judge *h = x->hold ? x : y, *o = x->hold ? y : x;
     if (lostOf(h) < lostOf(o) && !cutsShort(o)) K(1, "hold", h == x ? 1 : -1); }
-  // -- and of two lost alike, the one whose board keeps the rules' floor (outcome.c floorKept: the mode's keep, its material, height and
-  // evenness): where the loss cannot tell two lines apart, the margin the board keeps can
-  if (!lx && lostAlike(x, y) && x->o.floorKept >= 0 && y->o.floorKept >= 0 && x->o.floorKept != y->o.floorKept) K(1, "floor", x->o.floorKept ? -1 : 1);
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
   // (survival first: two lines that live, or two lost less than a break's time apart -- never one lost sooner by more)
