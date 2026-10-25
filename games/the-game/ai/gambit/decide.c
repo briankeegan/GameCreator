@@ -666,9 +666,12 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
     *C = theCarryNext; memset(&theCarryNext, 0, sizeof theCarryNext); C->popping = popLeft(decQ.b) > 0; skip = 0;
   }
   if (!C->set || C->nrest <= skip) { if (!C->set) carryDrop = carryLost; carryLost = 0; return 0; }
-  // (from the row not yet risen: the board a waited-for break was found on may have risen past this one)
+  // (a line's swaps are rows of the board at the frame each is pressed, every rise until then counted -- judged again here, each is
+  // pressed then, as it was judged and as the frame loop presses it; only a readiness break, found on the board once everything lands,
+  // is moved by the rows that board has risen past this one -- the board a waited-for break was found on)
   int dr = anchorShift(C->anchorRow, C->anchorCol, C->anchorId);
   if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
+  if (!C->ready) dr = 0;
   int32_t rest[MAXLINE], nrest = C->nrest - skip;
   for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
   // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
