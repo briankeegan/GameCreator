@@ -1282,3 +1282,6 @@ Every walk as cheaply as the walls allow, whatever the window (`bb44c817`, 1114,
 large_garbage 5; the window run dry in 4 losses where it was 8.
 A walk's cost read as the frame loop will walk it, by every reader (`3f180d63`, 1115, 00:48 ET): **18** -- combo_storm 7, factory 5,
 large_garbage 6.
+A line in progress judged again as the frame loop presses it -- on the rows it was judged on (`0528ba5e`, 1116: 18), from the frame
+its next swap was judged pressed at (`9c7e17f4`, 1119, 01:34 ET): **19** -- combo_storm 7, factory 6, large_garbage 6; lines put down
+at a step no longer there 75 where they were 242.
