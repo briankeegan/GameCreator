@@ -1352,3 +1352,5 @@ actions a minute -- entry 103, carry 75, survive 35, extend 24; games survived 3
 lost spend half again as much on attacks; two of their three are openings, attacking while the first garbage falls.
 With garbage on its way, a line that breaks nothing meets no entry (`3b945d4d`, 1148, 07:44 ET): 19 -- combo_storm 6, factory 5,
 large_garbage 8 (the checks' tsan timed out at 15 minutes; it passes in 7 here). The owner: attack, and be ready to break.
+Attack and be ready, under garbage and with it on its way (`76bdf904`, 1149, 08:13 ET): 15 -- combo_storm 4, factory 4,
+large_garbage 7; under garbage the break-only rule kept, the readiness asked only of garbage on its way.

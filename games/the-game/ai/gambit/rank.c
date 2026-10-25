@@ -368,10 +368,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // outside the list -- a three, the last choice; then a line that breaks nothing; and last of all a line the rules' keep puts outside
   // (judgeCand: the rules' floor spent -- outcome.c spendsFloor)
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS;
-    // (under garbage, or with garbage on its way: attack and be ready to break -- a line that breaks nothing meets its entry only when
-    // it lives or leaves a break in reach once the garbage lands (outcome.c ready); else it meets none, the window the next break is
-    // pressed out of spent for nothing)
-    if (decF.under || decF.land != NOT_ASKED) {
+    // (under garbage a line that breaks nothing meets no entry: the rule is to break, and an attack that breaks nothing spends the
+    // window the next break is pressed out of. With garbage on its way, attack and be ready to break: a line that breaks nothing
+    // meets its entry when it lives or leaves a break in reach once the garbage lands (outcome.c ready))
+    if (decF.under) { ax = x->apBroke > 0 ? ax : 2 * MAXAIMS + 1; ay = y->apBroke > 0 ? ay : 2 * MAXAIMS + 1; }
+    else if (decF.land != NOT_ASKED) {
       if (!(x->apBroke > 0 || x->o.lives || x->o.ready == 1)) ax = 2 * MAXAIMS + 1;
       if (!(y->apBroke > 0 || y->o.lives || y->o.ready == 1)) ay = 2 * MAXAIMS + 1;
     }
