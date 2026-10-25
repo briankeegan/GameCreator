@@ -66,8 +66,6 @@ function rulesWords(tables, names) {
     });
   });
   w = w.concat(keepWords(tables.keep), [(tables.raise && tables.raise.to) || 0, tables.underGarbage === 'ignore' ? 1 : 0]);
-  // (the floor while us.heavy holds -- facts.c: more than 8 rows of garbage on its way -- in place of the file's keep)
-  w = w.concat(keepWords(tables.keepHeavy));
   return { n: n, words: w };
 }
 

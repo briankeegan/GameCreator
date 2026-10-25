@@ -48,8 +48,7 @@ static int readBoard_(Read *R) {
   if (ri < 0) return 0;
   const Rule *rule = &theTables.r[ri];
   R->rule = ri;
-  // (the floor: the rule's own, else the file's -- its heavy one while more than 8 rows of garbage are on their way, us.heavy)
-  R->keep = rule->keep.on ? rule->keep : theTables.keepHeavy.on && F->v[FACT_US_HEAVY] ? theTables.keepHeavy : theTables.keep; R->keepOn = R->keep.on;
+  R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
   R->guides = R->list;

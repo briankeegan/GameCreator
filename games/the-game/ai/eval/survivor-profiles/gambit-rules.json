@@ -2,9 +2,6 @@
  "keep": {
   "material": ">=30"
  },
- "keepHeavy": {
-  "material": ">=36"
- },
  "raise": {
   "to": 11
  },
