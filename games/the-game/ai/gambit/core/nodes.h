@@ -18,9 +18,9 @@ EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 static LOCAL int32_t pressTight;
 // A BOARD NEAR ITS END (pressTap): lost within TAP_DIES frames left alone, as the decision reads it (the dies fact: decide.c read) -- its
 // walks tapped, on time, while the allowance keeps TAP_RESERVE actions to spare; held as when tight below that. The decision says so
-// (answer.c), the frame loop presses its line so. TAP_DIES -1: never -- every walk held as the walls allow, the window kept.
+// (answer.c), the frame loop presses its line so.
 #define TAP_RESERVE 16
-#define TAP_DIES -1
+#define TAP_DIES 60
 static LOCAL int32_t pressTap;
 static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }
 // THE FRAMES A GARBAGE GROUP OF `cells` CELLS POPS IN once matched: flash, face, a pop a cell and three (pa.c matchGarbagePanels) -- the

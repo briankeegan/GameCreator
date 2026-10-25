@@ -1345,3 +1345,5 @@ MEASURED ON NEW SEEDS (round 2, seeds 25-48): 1132's code (the fewer actions bef
 large_garbage 8 (run 1142); 1131's (`09c2ad80`) 13 -- 5, 3, 5 (run 1143). Over 48 games 40 against 30: the window kept is the gain.
 Lost alike at two breaks' time each (`23bd32e2`, 1144, 06:56 ET): 15 -- combo_storm 4, factory 4, large_garbage 7; gone, the code as
 1132's.
+A board near its end walked held, never tapped (`8818b250`, 1146, 07:18 ET): 18 -- combo_storm 6, factory 5, large_garbage 7; the
+tapped walk near the end is worth its actions; gone, the code as 1132's.
