@@ -1479,3 +1479,6 @@ and on from it (the owner: no reverts, forward).
 A THREE ONLY WHERE NOT PLAYING IT KILLS (the owner): the save let a three through whenever the board without it was lost sooner, both
 lost; now only where the board with it lives on and the board without it is lost (decide.c the save). And the survival search's line
 wastes no three where its pool holds one that does not (`27463e0f`, back).
+Measured (`ca3ab3ae`, 1175): 1 -- no-break 15: a board that lives on past the save's horizon after a three is all but never, so every
+line with a three in it went, the breaks among them. On from it: the rule asks the save only where every line without a three is lost
+within a break's time; the save confirms the three where the board with it lives, or outlasts the board without it by a break's time.

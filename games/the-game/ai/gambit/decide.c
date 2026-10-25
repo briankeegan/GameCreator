@@ -408,8 +408,9 @@ static int ranked(const Read *R, const Found *S) {
         }
         saveAsked++;
         saveCw = cw; saveCk = ck;
-        // (needed not to die: with the three the board lives on, without it it is lost -- a three that only puts the loss off is wasted)
-        if (cw >= 0 && ck >= 0 && cw >= 1e9 && ck < 1e9) saveOk = 1;
+        // (needed not to die -- the rule above asks it only where every line without one is lost within a break's time: with the three
+        // the board lives on, or outlasts the board without it by a break's time at least; a three that puts the loss off by less is wasted)
+        if (cw >= 0 && ck >= 0 && ck < 1e9 && (cw >= 1e9 || cw - ck >= rankSave)) saveOk = 1;
         else if (cw >= 0 && ck >= 0) { keeps = 1; saveNot++; }
       }
     }
