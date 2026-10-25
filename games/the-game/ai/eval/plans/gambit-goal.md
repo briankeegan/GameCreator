@@ -1385,3 +1385,11 @@ whole (decide.c intentOfCarry), judged again on the board as it is now.
 The ring, ideas rolled back with the line (`502b3de2`, 1159): 15 -- combo_storm 3, factory 5, large_garbage 1; actions 5, no-break 3,
 panels 1; the truth held. 134 decisions resumed from the answer played. Its "lost" count read the line's own `lost=` field (the
 frame it is lost at): the state's is `stateLost=` now.
+What was found kept as ideas (`3eea03fb`, 1160): 17 -- combo_storm 3, factory 4; actions 4, panels 2, no-break 1; the state held
+(0 lost, 159 resumed, 110 lines not pressed kept as ideas), the truth held.
+NO SWAP BACK INSIDE A LINE (1160 factory-4): lines toward a break of 10-12 swaps ended `1,1;1,1;1,1` -- the same two panels swapped
+and swapped back, the only way the searches had to wait, two swaps' actions each -- and walked the allowance from 36 to 7 before the
+break was there; then nothing was left for it. 7-9% of the lines played held such a pair. Every search that grows a line a swap at a
+time (the break search's beam, its line-ups and pairs, the planner, the chain continued, the survival search) now grows no swap that
+undoes the line's last -- by the panels' ids, so a panel pushed into a gap and the next one pushed after it are still two moves
+(search/break.c undoesLast).

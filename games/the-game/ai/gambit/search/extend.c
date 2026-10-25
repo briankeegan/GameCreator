@@ -47,10 +47,11 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
     for (int pi = 0; pi < npool && !clockOut(); pi++) {
       int nm = swapsOfNode(x, pool[pi].n, ms);
       for (int j = 0; j < nm && nn < PLAN_POOL; j++) {
+        if (undoesLast(x, pool[pi].n, ms[j], &pool[pi].last)) continue;
         int out = step(x, pool[pi].n, MK_SWAP, CR(ms[j]), CC(ms[j]), 0);
         if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
         PItem *k = &next[nn]; memset(k, 0, sizeof *k);
-        k->n = out; k->nseq = imin(pool[pi].nseq + 1, PLAN_SEQ);
+        k->n = out; k->nseq = imin(pool[pi].nseq + 1, PLAN_SEQ); k->last = lastSwapOf(x, pool[pi].n, ms[j]);
         for (int q2 = 0; q2 < pool[pi].nseq && q2 < PLAN_SEQ; q2++) k->seq[q2] = pool[pi].seq[q2];
         if (pool[pi].nseq < PLAN_SEQ) k->seq[pool[pi].nseq] = ms[j];
         nn++;

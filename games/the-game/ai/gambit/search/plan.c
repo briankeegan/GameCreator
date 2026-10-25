@@ -18,7 +18,7 @@
 #define PLAN_SEQ 16
 // (a board of the beam, or a kid of one; ideas: its swaps that fire an entry; fired, firedCells, firedAim: the entries its line fired on
 // the way, what they sent, the first's entry)
-typedef struct { int32_t n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ], h, set; double reach; int32_t kid0, nkids, ideas, fired, firedCells, firedAim, acts; } PItem;   // acts: the cursor's actions for its swaps
+typedef struct { int32_t n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ], h, set; double reach; int32_t kid0, nkids, ideas, fired, firedCells, firedAim, acts; LastSwap last; } PItem;   // acts: the cursor's actions for its swaps; last: search/break.c undoesLast
 typedef struct {
   int32_t set, n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ];
   int32_t brk, cells, chain, combo, broke, earned, done, fire, floor, aimIndex, top;
@@ -145,6 +145,8 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     PItem it; memset(&it, 0, sizeof it);
     for (int k = 0; k < len && ok; k++) {
       int32_t m = o->seeds->path[i][k], at = NODE(x, nd)->t;
+      if (undoesLast(x, nd, m, &it.last)) { ok = 0; break; }
+      it.last = lastSwapOf(x, nd, m);
       int out = step(x, nd, MK_SETTLE, CR(m), CC(m), 0);
       if (!liveNode(x, out) || !stepFitsAt(x, out)) { ok = 0; break; }
       if (!k && !firstOk(CR(m), CC(m), madeBy(x, out, root))) { ok = 0; break; }
@@ -160,7 +162,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     static LOCAL int32_t jobP[PLAN_KIDS], jobM[PLAN_KIDS], jobOut[PLAN_KIDS];
     for (int pi = 0; pi < npool; pi++) { pool[pi].reach = 0; pool[pi].nkids = 0; pool[pi].ideas = 0; }
     // the level's jobs: every legal swap of every board in the pool, played to the board's settle
-    for (int pi = 0; pi < npool; pi++) { int nm = swapsOfNode(x, pool[pi].n, ms); for (int j = 0; j < nm && nj < PLAN_KIDS; j++) { jobP[nj] = pi; jobM[nj++] = ms[j]; } }
+    for (int pi = 0; pi < npool; pi++) { int nm = swapsOfNode(x, pool[pi].n, ms); for (int j = 0; j < nm && nj < PLAN_KIDS; j++) if (!undoesLast(x, pool[pi].n, ms[j], &pool[pi].last)) { jobP[nj] = pi; jobM[nj++] = ms[j]; } }
     { static LOCAL int32_t jobN[PLAN_KIDS]; for (int j = 0; j < nj; j++) jobN[j] = pool[jobP[j]].n;
       stepBatch(x, jobN, jobM, MK_SETTLE, nj);   // (every thread: core/nodes.h stepBatch)
       for (int j = 0; j < nj; j++) jobOut[j] = stepTake(x, j, jobN[j], MK_SETTLE, jobM[j]);
@@ -253,7 +255,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         #undef LESS
       }
       if (nk < PLAN_KIDS) {
-        PItem *k = &kids[nk]; memset(k, 0, sizeof *k); k->n = out; k->nseq = imin(it->nseq + 1, PLAN_SEQ);
+        PItem *k = &kids[nk]; memset(k, 0, sizeof *k); k->n = out; k->nseq = imin(it->nseq + 1, PLAN_SEQ); k->last = lastSwapOf(x, it->n, m);
         for (int q2 = 0; q2 < it->nseq && q2 < PLAN_SEQ; q2++) { k->seq[q2] = it->seq[q2]; k->ats[q2] = it->ats[q2]; }
         if (it->nseq < PLAN_SEQ) { k->seq[it->nseq] = m; k->ats[it->nseq] = NODE(x, it->n)->t; }
         k->fired = it->fired; k->firedCells = it->firedCells; k->firedAim = it->firedAim; k->acts = it->acts + actOf(x, it, m);
