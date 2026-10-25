@@ -1259,3 +1259,6 @@ lost later by the material, of two breaks lost alike. Without the material there
 breaks a break's time away, alike or not (`a6c5feb0`, 1095, 20:18 ET): 8. Both gone; the order is 1090's.
 The break search takes two breaks as the order does, the material before the actions (`dd8f3788`, 1096, 20:27 ET): 10 -- combo_storm
 2, factory 4, large_garbage 4; gone. A chain through converted garbage cannot be searched for: its colours are unseen until drawn.
+The owner's reserve: the floor's material (`keep.material`, 30) at 36 (`gambit-finish-m36.json`, 1097, 20:59 ET): 11 -- combo_storm
+3, factory 1, large_garbage 7; at 42 (`gambit-finish-m42.json`, 1098, 20:56 ET): 8 -- combo_storm 0, factory 4, large_garbage 4.
+The floor stays at 30.
