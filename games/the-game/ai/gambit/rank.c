@@ -378,7 +378,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // other here: it keeps the walk)
   if (!lx) { int rx = reserveSpent(x), ry = reserveSpent(y);
     if (rx != ry) { const Judge *sp = rx ? x : y, *kp = rx ? y : x;
-      if (!spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER,
+      // (a keeper keeps the walk only where its own window holds it: one whose window is short of it already keeps nothing to keep)
+      if (windowKeepsBreak(kp->hold ? 0 : kp->o.j.endAt, kp->hold ? 0 : kp->o.j.spent) && !spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER,
                      kp->hold ? 0 : kp->o.j.endAt)) K(1, "reserve", rx ? 1 : -1); } }
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
   // (and a hold lost sooner than a line that keeps the board's own chain never comes first by anything after: it leaves the board as it

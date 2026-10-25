@@ -1631,3 +1631,8 @@ to 2 by the death at 10168). Survived and lost games spend alike, ~350 of 456 ac
 THE RESERVE'S KEEPER TEST OUT: it counted the walk's actions as frames, and let a spender through wherever the keeper was lost within
 20 frames of the landing -- under garbage, most boards. The keeper about to die is the save's to answer now (a confirmed save is
 played); the reserve asks only whether the spender lives until the window gives the walk back (core/nodes.h spendPays).
+Measured (`283717ec`, the reserve without its keeper test, 1205): 12 -- actions 2 (from 8), panels 6, hold-creep 3; losses later in
+the games. combo_storm-1's holds by the reserve: a hold lost at 31, 18, 14 over lines lost at 83, 67, 62, the window at 9 -- the hold
+"keeping" a walk its own window did not hold.
+A KEEPER KEEPS ONLY WHAT ITS WINDOW HOLDS: the reserve puts the keeper first only where the keeper's own window holds the next break's
+walk (rank.c, windowKeepsBreak on the keeper).
