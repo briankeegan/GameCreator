@@ -28,8 +28,6 @@ typedef struct {
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
-  double contLost;     // and where the next decisions lead from the line's end: the survival search played on, lost then (decide.c, the
-                       // continuation); 0 not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for spending the rules' floor or the reserve (outcome.c spendsFloor, spendsReserve)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
@@ -218,8 +216,9 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
-  if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
-  return x->contLost > own ? x->contLost : own;
+  if (x->hold || x->extLost == NOT_ASKED) return own;
+  double ext = lostAtOf(x->extLost, 0);
+  return ext > own ? ext : own;
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
 // is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding
@@ -354,6 +353,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
   // break and never preferred by it; two that live, the list first (3). Of two that break nothing, the next break lined up: the fewer
   // swaps to it on the board the line leaves (outcome.c nearAfter) -- a line that only buys time leaves the garbage as far from breaking
+  // -- and of two lost alike, the line in progress first: a line put down halfway spends the swaps it pressed for nothing
+  if (!lx && x->carried != y->carried && !x->hold && !y->hold) K(1, x->carried ? -1 : 1);
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0) {
     if (x->material >= 0 && y->material >= 0 && x->material != y->material) K(1, x->material - y->material);
     int bothReady = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
@@ -382,8 +383,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) K(5, ty - tx); }
   // 7. THE FEWER ACTIONS: the input window pays for every cell the cursor walks -- before the later loss, which two lines lost alike
   // differ by less than a break's time in: the actions are the next break's
-  // (not the hold against a line: the hold presses nothing now, but a line lost later than it is the one the next decision presses)
-  if (pressAllowance >= 0 && !x->hold && !y->hold) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) K(7, wx - wy); }
+  if (pressAllowance >= 0) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) K(7, wx - wy); }
   // 6. THE LATER LOSS, of two lost alike
   if (!lx && lostOf(x) != lostOf(y)) K(6, lostOf(y) > lostOf(x) ? 1 : -1);
   // 8. THE KIND OF LINE: its tier, then the tier's own keys (facts.c tierOf)

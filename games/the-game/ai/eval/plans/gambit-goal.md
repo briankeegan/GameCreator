@@ -1334,3 +1334,5 @@ twice: no game is the hard one -- the play is about 73% a game, and each loss ha
 The continuation again, each line and the hold played on with what the window leaves at its end (`4d751981`, 1138, 05:52 ET): 20 --
 combo_storm 5, factory 7, large_garbage 8; combo_storm-5 lost to hold-creep: the hold put over a line lost later by the fewer actions
 (rule 7, from 1132), decision after decision.
+The fewer actions line against line only, not the hold (`de14d13a`, 1139, 06:04 ET): 18 -- combo_storm 5, factory 5, large_garbage 8;
+the hold-creep gone, the window dry again. The continuation (19, 20, 18) gone with it: the code as 1132's.
