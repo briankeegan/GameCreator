@@ -42,6 +42,10 @@ static int readBoard_(Read *R) {
   for (int i = 0; i < decQ.narr; i++) if (decF.land == NOT_ASKED || decQ.arr[i].at > decF.land) decF.land = decQ.arr[i].at;
   if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
   decF.next = F->known[FACT_US_NEXTLANDS] ? (int32_t)F->v[FACT_US_NEXTLANDS] : NOT_ASKED;
+  landingAt = decF.next != NOT_ASKED ? decF.next : -1;   // (the window plan's landing: core/nodes.h windowKeepsBreak)
+  // (and its walk: the nearest break's on this board by the shape math, two actions a swap -- a swap and a cell -- with the swap that
+  // breaks; nothing on the board yet, a break's walk as measured)
+  { int32_t nr = garbageOn(decQ.b) ? nearOf(decQ.b) : NEAR_MISS; breakWalk = nr < NEAR_MISS ? imin(LAND_RESERVE * 2, imax(4, NEAR_ACTS * nr + 2)) : LAND_RESERVE; }
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
   // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
   factSet(F, FACT_ENEMY_NONE, !theOpp.has);
@@ -274,6 +278,7 @@ static int ranked(const Read *R, const Found *S) {
   rankReact = C2.reaction + 1;
   rankSave = rankReact + popFrames(decQ.b, W);   // (a row of W cells)
   rankLow = lowOnPanels(decQ.b);
+  rankBuy = regainFrames(breakWalk);
   n = judgeAll(R, nc, n);
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
