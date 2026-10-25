@@ -3,7 +3,7 @@
  "planHealth": 1,
  "weights": "trained.pbt.pbt-r22-s322.0926-142336.g03120.json",
  "reaction": 12,
- "swapGap": 0,
+ "swapGap": 12,
  "cursorMoveFrames": 4,
  "depth": 2,
  "ahead": 90,
