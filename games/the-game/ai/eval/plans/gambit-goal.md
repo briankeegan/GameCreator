@@ -1328,3 +1328,6 @@ THE CONTINUATION: where nothing lives, the order's first four lines played on fr
 is any line's).
 The continuation asked of the lines, not the hold (`4a95586a`, 1136, 05:27 ET): 10 -- every line put above holding, the window spent;
 the continuation gone, the code as 1132's.
+Under garbage, the blocks thrown rank only a line that breaks (`baf4bf59`, 1137, 05:39 ET): 16 -- combo_storm 5, factory 5,
+large_garbage 6; the same games lost as 1133's; gone, the code as 1132's. Over 1124-1137 every one of the 24 games was lost at least
+twice: no game is the hard one -- the play is about 73% a game, and each loss has several decisions a replay saves it at.
