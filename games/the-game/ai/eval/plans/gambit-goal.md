@@ -1370,3 +1370,7 @@ progress waiting -- each now reads the swap's blocks, the one step, and the boar
 A swap's settle ending when its own blocks rest, every reader (`94d34688`, 1157): 8 -- combo_storm 1, factory 2, large_garbage 5;
 the truth held, breaks by a chain in combo_storm 178 of 907: the searches build chains on the whole board at rest between swaps, and
 on the swap's blocks alone they find worse ones. Gone, Gambit and the engine as 24a46a0e (1153, 19).
+THE LINE IN PROGRESS BEFORE ITS ANSWER IS THE FRAME LOOP'S (1153 combo_storm-6, 14936/14919): a break of 28 asked ahead, its move due
+at 14936; a question for 14919 came before that answer was the frame loop's, the carry held the line without its move -- judged so it
+broke nothing (carryDrop 3) and was dropped, a level line played, the break never made. The carry keeps its answer's move: a question
+for a frame no later than it, the frame loop holding another line, judges the line whole.
