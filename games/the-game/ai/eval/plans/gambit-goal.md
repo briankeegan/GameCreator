@@ -1462,3 +1462,9 @@ THE SURVIVAL LINE FIRST, IN THE SEARCHES' SHARE: as 1169 asked it -- first of th
 answers, not 16 (1171 lost two).
 Measured (`589bba2d`, 1172): 16 -- combo_storm 2 (502 still), factory 2, large_garbage 4; actions 4, no-break 2, panels 2. The order's
 searching as 1167 had it; the ring's 64 kept (it changes nothing a ring of 16 held).
+THE ORDER SEARCHED IN A SHARE ALREADY OUT (every build): the order's own searching -- the readiness asked of each line, the survival
+backup, the three taken out -- began its share at the searches' end (propose.c searchesEnd), and the searches spend theirs to its end:
+in 4,888 of 7,295 decisions the searches ran past 80% of the decision, the order then searched nothing (the survival line unjudged,
+64% of them), and the decision ended with the judging's quarter unspent (out=0: the deadline never reached). The order's searching has
+its own share now, half of what the decision has left once the order is made (propose.c orderEnd); the rest is the save's and the
+answer's. Everything within the decision's budget, and the budget spent.
