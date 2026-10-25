@@ -178,9 +178,9 @@ static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 }
 
 // MANY STEPS AT ONCE: a batch of steps (each a parent and a move) played on every thread the host gave the engine's pool (search.h
-// runPhase: native.c's workers), then TAKEN one at a time in the batch's order (stepTake): each charged to the clock as step() charges
-// it, and none taken once the clock is out -- so a search that takes its batch in order, and stops where it would have stopped, makes
-// the same children and spends the same clock as one step at a time. With no workers, a batch too small to share, or a swap whose press
+// runPhase: native.c's workers), then TAKEN one at a time in the batch's order (stepTake): each charged to the clock as the threads
+// spent it -- its frames over the workers that shared the batch, as the order's judging is charged (decide.c judgeAll) -- and none
+// taken once the clock is out, so a search that takes its batch in order makes the same children on every run. With no workers, a batch too small to share, or a swap whose press
 // waits its walk first (pressDelay), the step is made when it is taken.
 // A search run as a job on the threads (search/break.c readyJob) is a thread's whole: its steps are its own, never a batch; and while jobs
 // hold the pool (search.h poolBusy) the decision's own steps are made one at a time.
@@ -209,8 +209,8 @@ static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int 
 static int stepTake(Ctx *x, int j, int pi, int kind, int32_t mv) {
   if (j >= batchN || batchRes.a[j] == UNBATCHED || batchRes.a[j] == PENDING) return clockOut() ? STEP_NULL : step(x, pi, kind, CR(mv), CC(mv), 0);
   if (clockOut()) return STEP_NULL;
-  int32_t r = batchRes.a[j], t0 = NODE(x, pi)->t;
-  clockCharge(r >= 0 ? NODE(x, r)->t - t0 : r == STEP_DEAD ? batchDead.a[j] - t0 : 1);
+  int32_t r = batchRes.a[j], t0 = NODE(x, pi)->t, u = r >= 0 ? NODE(x, r)->t - t0 : r == STEP_DEAD ? batchDead.a[j] - t0 : 1, nw = imax(pool.nworkers, 1);
+  clockCharge((u + nw - 1) / nw);
   if (r == STEP_DEAD) deadAt = batchDead.a[j];
   return r;
 }
