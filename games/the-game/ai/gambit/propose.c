@@ -457,7 +457,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     }
     #undef BX
   }
-#define TOWARD_OFFER 3   // the lines toward a break offered, each begun with a swap of its own
   // TOWARD A BREAK: under garbage with none in reach, the line begun last gone on with first, then the break search's lines: the first
   // whose first swap does not bring back a board this dig has already stood on
   if (R->under && br) {
@@ -480,15 +479,11 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
         }
       }
     } else for (int i = 0; i < nl; i++) { olen[no] = lens[i]; for (int k = 0; k < lens[i]; k++) ord[no][k] = lines[i][k]; no++; }
-    // (the first TOWARD_OFFER of them, each begun with a swap of its own: the order chooses which way to dig, by what each leads to)
-    int32_t firsts[TOWARD_OFFER]; int nf = 0;
-    for (int i = 0; i < no && nf < TOWARD_OFFER; i++) {
+    for (int i = 0; i < no; i++) {
       if (!olen[i]) continue;
       if (seenDigHas(decQ.b, ord[i][0])) continue;
-      int dup = 0; for (int f = 0; f < nf && !dup; f++) dup = firsts[f] == ord[i][0];
-      if (dup) continue;
-      firsts[nf++] = ord[i][0];
       ADD(PLAY_TOWARD, ord[i], olen[i], -1, 0);
+      break;
     }
   }
   // READY: the swap that leaves the next block breakable when it lands, and the line that leaves a plan once everything has landed

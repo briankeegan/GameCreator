@@ -1339,3 +1339,5 @@ the hold-creep gone, the window dry again. The continuation (19, 20, 18) gone wi
 Of two lines lost alike, the line in progress first (`9fdfddfa`, 1140, 06:14 ET): 17 -- combo_storm 4, factory 6, large_garbage 7;
 lines put down with nothing new told 1139 (from ~1900), swaps that came to nothing 1820 (from ~2100), the score no better; gone, the
 code as 1132's.
+Toward a break, three of the break search's lines offered (`ddb423b8`, 1141, 06:28 ET): 11 -- combo_storm 3, factory 2,
+large_garbage 6; more ways to dig, more digging, the window spent; gone, the code as 1132's.
