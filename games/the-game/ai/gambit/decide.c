@@ -201,7 +201,6 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 // board the search finds no line on is lost where it is lost left alone.
 #define SAVE_MS 10
 #define SAVE_KEEP_MS 4
-static double checkCt, checkCl; static int32_t checkMoved;   // (the order asked again: the first line's board carried on, the latest lost's, and whether it moved)
 static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
@@ -430,23 +429,6 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; } }
-  // THE ORDER ASKED AGAIN WHERE IT PUTS A SOONER LOSS FIRST: the line first and the one lost latest, each played to its end and the
-  // survival search asked of the board it leaves -- the save's own question. The line lost later comes first where its board, carried
-  // on, outlasts the other's by a break's time; the board's own chain never cut short for it
-  checkCt = checkCl = -1; checkMoved = 0;
-  if (n > 1 && !order[0]->o.lives && timeLeftMs() > SAVE_KEEP_MS + 2) {
-    int li = -1;
-    for (int i = 1; i < n; i++) if (!order[i]->o.lives && lostOf(order[i]) > lostOf(order[0]) && !cutsShort(order[i]) && (li < 0 || lostOf(order[i]) > lostOf(order[li]))) li = i;
-    if (li > 0) {
-      double give = timeLeftMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
-      checkCt = contLostOf(order[0], give);
-      double give2 = timeLeftMs() - SAVE_KEEP_MS; if (give2 > SAVE_MS) give2 = SAVE_MS;
-      if (checkCt >= 0 && checkCt < 1e9 && give2 >= 1) checkCl = contLostOf(order[li], give2);
-      if (checkCt >= 0 && checkCl >= 0 && checkCt < 1e9 && (checkCl >= 1e9 || checkCl - checkCt >= rankSave)) {
-        Judge *L = order[li]; for (int i = li; i > 0; i--) order[i] = order[i - 1]; order[0] = L; checkMoved = 1;
-      }
-    }
-  }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
 }

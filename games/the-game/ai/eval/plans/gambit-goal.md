@@ -1583,3 +1583,5 @@ gambit-replay 28, large_garbage-5 (lost at 1529): forced to the order's second o
 lost at 799, at 693 at 1529. The recheck's three moves: right at 394, wrong at 307 and 585. At 626 the second option was a line
 predicted lost at 140 against 475 -- and it survives. On this board almost any change of path survives about half the time: neither
 loss (left alone, or carried on) can settle two close lines there. The board lives on a knife edge; 24/24 asks a board with margin.
+Back to the 17 (1190/1193's code, `04bfbafb`'s Gambit): the recheck is as often wrong as right (replay 28). Next: the losses of the 17
+replayed, to find the pieces that fail in more than one game.

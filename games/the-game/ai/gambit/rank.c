@@ -358,7 +358,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOf(x), ly = livesOf(y);
 #define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
   // 1. SURVIVAL: a line that lives before one that does not; of two that do not, the later loss -- unless they are lost alike (lostAlike:
-  // as many breaks' time left, or less than a break's time apart; decide.c asks the two again, carried on). What a line can press is the judge's: the input window it is pressed
+  // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, "lives", lx ? -1 : 1);
   // (of two that do not live, one that spends the next break's walk comes first only where the spend pays (core/nodes.h spendPays): lost
