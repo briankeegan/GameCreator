@@ -21,6 +21,7 @@ typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys
 // what the worker is asked, and what it answers (native.c carries them across)
 typedef struct {
   int32_t id, epoch, at, lead, allowance, topped, lineFrom, linePressed, holdLeft, holdStarted, narr;
+  int32_t played;                            // the answer last put in the plan (0: none yet) -- the state the decision starts from (answer.c gb_played)
   int32_t oppHas, oppOut, oppTop, oppStop;   // the opponent's stop: the frames it is held up by at the question's frame
   int32_t refA, refB, refUntil;              // a pair the press guard refused (a wasted three), its panels' ids, kept out until a frame
   int32_t nages, ages[512], window;          // the input window at the question's frame: how long before it each action inside went down
@@ -98,6 +99,7 @@ static struct {
   // the line after the move, pressed as it was decided: its swaps, each from the frame it was judged pressed from (lineAt, 0: as soon as
   // the one before is done)
   int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
+  int32_t playedId;   // the answer last put in the plan: its swap, its hold, its raise put off (0: none yet)
   int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
@@ -510,6 +512,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   memcpy(F.pKnew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.pNknew = F.narr;
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
   q.allowance = allowanceAt(at); q.gap = F.pGap = paceGap(q.allowance, F.limit, F.window); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
+  q.played = F.playedId;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
   { int32_t prev = F.prevBits; q.nages = 0; q.window = F.window;
     for (int i = 0; i < F.npress && q.nages < 512; i++) if (at - F.pressFrames[i] < F.window) q.ages[q.nages++] = at - F.pressFrames[i];
@@ -568,7 +571,7 @@ static void take(void) {
       for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 0, 0, F.pPosted, NPLAYS, -1, 0, 0 });
       F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
       memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
-      F.lineN = 0; F.haveLineOf = 0;
+      F.lineN = 0; F.haveLineOf = 0; F.playedId = a.id;
       continue;
     }
     F.keyGap = fPace(at);
@@ -604,7 +607,7 @@ static void take(void) {
     F.lineWastes = a.wastes;
     unseenOf(F.pBoard);
     F.lineN = a.nhand; F.lineGap = F.pGap; F.linePlay = a.play; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
-    F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0;
+    F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0; F.playedId = a.id;
   }
 }
 // The frame the line's next swap is pressed from: where the plan ends, or later when it was judged pressed later.

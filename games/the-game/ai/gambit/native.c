@@ -175,6 +175,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   __atomic_store_n(&decGap, q->gap, __ATOMIC_RELAXED);   // (the pace the frame loop presses this decision's line with)
   dumpAllow = q->allowance; dumpGap = q->gap;
   hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
+  gb_played(q->played);
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
                  canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, 0, 0);
   // (the closing work: from the moment it ran out of time to its answer)

@@ -68,6 +68,7 @@ function causeOf(game, pattern, at, lines) {
   causes.list.push({ game: game, at: at, tag: tag, why: 'allow min ' + minAllow + ', panels ' + mat600 + ' to ' + matEnd + ', holds lost sooner ' + holdSooner +
                      ', no break ' + noBreak + ' of ' + last.length + ', raises ' + raises + ', decisions the clock cut ' + cut });
 }
+var carried = { resumed: 0, lost: 0 };   // (decisions started from the answer played, and ones whose state was lost: answer.c carriedResume)
 var beaten = { n: 0, by: {} };   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
@@ -153,6 +154,10 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       // (THE ORDER NOT ONE ORDER: answer.c beaten=, the line played beaten head to head by one ranked under it)
       var bt = / beaten=\w+:k(\d+)/.exec(l);
       if (bt) { beaten.n++; beaten.by[bt[1]] = (beaten.by[bt[1]] || 0) + 1; }
+      // (THE STATE CARRIED: answer.c resumed=, a decision started from the answer the frame loop played, not the last decision's; lost=, the
+      // ring no longer held it)
+      if (/ resumed=\d+/.test(l)) carried.resumed++;
+      if (/ lost=\d+/.test(l)) carried.lost++;
       if (um) sooner.dec++;
       if (bm) (/ under=1/.test(l) ? think.brUnder : think.br).push(+bm[1]);
       var op = / opts=(\S+)/.exec(l);
@@ -304,6 +309,8 @@ console.log('budgets: ' + budget.over + ' frames over the think budget, slowest 
             budget.late + ' late moves (at most ' + budget.lateWorst + ' in a game), ' + budget.pastFrame + ' answers taken past their frame (the work clock behind the wall: the game no longer its seed\'s alone), ' + budget.guarded + ' answers whose keys the input allowance refused, ' + budget.refused + ' with no keys to press them within a reaction, over ' + budget.games + ' games');
 if (budget.decisions) console.log('decisions the clock cut: ' + budget.out + ' of ' + budget.decisions + ' (' + (100 * budget.out / budget.decisions).toFixed(1) + '%)');
 // THE TRUTH: every board the frame loop predicted is the one the game made; one that is not is a plan made on a board that never was
+// THE STATE CARRIED: every decision starts from the state the answer the frame loop last played left; a lost one started from another's
+console.log('state: ' + carried.lost + ' decisions started from a state no answer played left (lost), ' + carried.resumed + ' resumed from the answer played');
 console.log('truth: ' + budget.diverged + ' boards predicted otherwise than the game made them, in ' + budget.divergedGames + ' of ' + budget.games + ' games');
 // THE LINE AS JUDGED: every swap of a line handed on is keyed from the frame the judge pressed it from; one keyed later is pressed on a board
 // the judge never judged

@@ -1374,3 +1374,8 @@ THE LINE IN PROGRESS BEFORE ITS ANSWER IS THE FRAME LOOP'S (1153 combo_storm-6, 
 at 14936; a question for 14919 came before that answer was the frame loop's, the carry held the line without its move -- judged so it
 broke nothing (carryDrop 3) and was dropped, a level line played, the break never made. The carry keeps its answer's move: a question
 for a frame no later than it, the frame loop holding another line, judges the line whole.
+The carry keeping its answer's move (`dc006c16`, 1158): 21 -- combo_storm 1, factory 1, large_garbage 1; actions 2, panels 1; the
+truth held. Kept.
+THE STATE A DECISION STARTS FROM IS THE ANSWER PLAYED'S (plans/gambit-state.md): an answer the frame loop never played (unasked, late,
+refused, guarded) had already changed what the next decision built on. Every carried piece is kept per answer in one ring; a decision
+resumes from the answer the frame loop last put in its plan, logs `resumed=`/`lost=`, and Gambit 24 is red on a lost one.

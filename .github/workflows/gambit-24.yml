@@ -261,6 +261,10 @@ jobs:
       - name: The truth held
         run: |
           grep -q '^truth: 0 ' report/summary.txt || { grep '^truth:' report/summary.txt | sed 's/^/::error title=truth::/'; exit 1; }
+      # THE STATE CARRIED: every decision starts from the state the answer the frame loop last played left (plans/gambit-state.md)
+      - name: The state held
+        run: |
+          grep -q '^state: 0 ' report/summary.txt || { grep '^state:' report/summary.txt | sed 's/^/::error title=state::/'; exit 1; }
       # THE SAME GAME TWICE: on a seed, factory's first game and its twin make every decision alike (the wall's fields, wallMs and out,
       # aside) -- a game that is not its seed's alone is red, with the first decision the two part at
       - name: The game the same twice
