@@ -1595,3 +1595,5 @@ keeps the rules' floor -- the mode's own keep, material, height, evenness (outco
 ready and nearer clauses (rank.c rule 1, clause `floor`).
 Measured (`7114babb`, 1197): 9 -- actions 8, panels 3, hold-creep 3. The floor first among lines lost alike: worse. Out; Gambit is the
 17's code again (`04bfbafb`).
+Measured (`46f81ed7`, the 17's code, round 2 -- seeds 25-48, games it never played): 15 -- combo_storm 4, factory 4, large_garbage 7;
+actions 5, panels 3, no-break 1. The 17 is about 15-17 on fresh games: large_garbage holds, combo_storm and factory are near half.
