@@ -1295,3 +1295,7 @@ Under garbage, a line that breaks nothing lost later than the hold before it (`f
 order's keys has scored below 20 three times in a row (13, 16, 15): what moved it was making two readings of one fact agree.
 Under garbage a line that breaks nothing meets no entry of the list (`2ec1c235`, 1124, 02:43 ET): **20** -- combo_storm 8, factory 4,
 large_garbage 8.
+REPLAYED (1124's four factory losses): each survives with another option forced 100-300 frames before the loss (factory-1 10706,
+factory-2 9035, factory-5 2700, factory-7 4600), each a choice between lines lost alike, the window at 7 or fewer for hundreds of frames.
+Lost alike is not transitive, so the sort could put a line under one it beats head to head; survival in classes headed by the latest
+loss (`dc9f8917`, 1125, 02:58 ET): 16 -- combo_storm 6, factory 6, large_garbage 4 (two lost before 1200, the window at 0).

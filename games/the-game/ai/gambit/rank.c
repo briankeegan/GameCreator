@@ -445,9 +445,9 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   *J = JW;
   return 1;
 }
-// SURVIVAL CLASSES: lost alike as one relation for the whole order -- the line lost latest heads a class, and every line lost alike with
-// that head is of it; the first line not alike heads the next. Two lines are compared by their classes, never by each other, so a line
-// lost alike with one lost alike with a third is not taken for alike with the third (the sort's order is one order)
+// SURVIVAL CLASSES: lost alike as one relation for the whole order -- the lines in the order they are lost, latest first, a line lost
+// alike with the one lost next later is of its class, and the first not alike begins the next. Two lines are compared by their classes,
+// never by each other, so the sort's order is one order
 static void survClasses(Judge **a, int n) {
   static Judge *s[512];
   int m = 0;
@@ -460,7 +460,7 @@ static void survClasses(Judge **a, int n) {
   const Judge *head = 0;
   for (int i = 0, c = 0; i < m; i++) {
     if (!head) head = s[i];
-    else if (lostOf(s[i]) != lostOf(head) && !lostAlike(head, s[i])) { c++; head = s[i]; }
+    else { if (lostOf(s[i]) != lostOf(head) && !lostAlike(head, s[i])) c++; head = s[i]; }
     s[i]->surv = c; s[i]->survGen = survGen;
   }
 }
