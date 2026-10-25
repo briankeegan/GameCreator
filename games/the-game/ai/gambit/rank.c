@@ -363,7 +363,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // other here: it keeps the walk)
   if (!lx) { int rx = reserveSpent(x), ry = reserveSpent(y);
     if (rx != ry) { const Judge *sp = rx ? x : y, *kp = rx ? y : x;
-      if (!spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER)) K(1, rx ? 1 : -1); } }
+      if (!spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER,
+                     kp->hold ? 0 : kp->o.j.endAt)) K(1, rx ? 1 : -1); } }
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back

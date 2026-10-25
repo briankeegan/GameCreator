@@ -1531,3 +1531,8 @@ later (combo_storm-7 at 19079: hold lost at 151 over survive lines lost at 162-1
 THE SPEND THAT PAYS (the owner: break things, but do not die on the way): a line that spends the next break's walk comes first over
 one that keeps it where it is lost only after the window has given the walk back -- it never dies on the way -- or where the keeper is
 lost before it could press that walk at all (core/nodes.h spendPays). The order and the survival search ask it alike.
+Measured (`24dbe2ae`, 1187): **16** -- combo_storm 6, factory 5, large_garbage 5; panels 3, no-break 2, actions 2, hold-creep 1;
+0 wasted threes. combo_storm-3, lost near 800 every run since 1179: from 631 it held thirteen times, the hold lost at the landing
+(90, 77, ... 25) over a toward lost 26-61 frames later (rule 1, the reserve) -- a walk kept by a board dead when it lands.
+THE KEEPER MUST LIVE TO PRESS IT: a line keeping the walk counts as keeping it only lost after the walk's own frames past the landing
+(or its own end); else the spender comes first by the later loss (core/nodes.h spendPays).

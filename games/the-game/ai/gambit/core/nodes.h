@@ -117,7 +117,8 @@ static int allowLeftAt(int32_t t, int spent) {
 // from the question, -1 none), with `spent` pressed by its end and every action before aged as the window ages; regainAfter, the frames
 // from then until the window gives that walk back to a line short of it; and spendPays, whether a line that spends the walk is worth it
 // over one that keeps it: it is, lost after the window has given the walk back (it never dies on the way, the walk in hand again), or
-// where the line that keeps it is lost before it could press that walk at all (survival first)
+// where the line that keeps it is lost before it could press that walk where it is needed -- the walk's own frames past the landing,
+// or past the keeper's end (survival first: a walk kept by a board dead before it is pressed keeps nothing)
 static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
 static int windowKeepsBreak(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 1;
@@ -142,9 +143,9 @@ static int32_t regainAfter(int32_t endAt, int spent) {
   // (short by more than the actions before it: the line's own come back, the first a window after it was pressed)
   return k < shortBy ? imax(1, winLen - t0) : winLen - oldest[shortBy - 1];
 }
-static int spendPays(int32_t lostSpender, int32_t endAt, int spent, int32_t lostKeeper) {
-  if (lostKeeper < breakWalk) return 1;
-  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt;
+static int spendPays(int32_t lostSpender, int32_t endAt, int spent, int32_t lostKeeper, int32_t keeperEnd) {
+  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt, k0 = tl > keeperEnd ? tl : keeperEnd;
+  if (lostKeeper < k0 + breakWalk) return 1;
   return lostSpender >= t0 + regainAfter(endAt, spent);
 }
 static LOCAL int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];

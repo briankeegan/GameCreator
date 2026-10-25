@@ -110,7 +110,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     perStep = nsteps ? (nowMs() - tl) / nsteps : 0;
   }
   best = poolFirst(&bestP, q); over = poolFirst(&overP, q);
-  if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt && spendPays(over.lostAt, over.endAt, over.acts, best.lostAt)))) return over;
+  if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt && spendPays(over.lostAt, over.endAt, over.acts, best.lostAt, best.endAt)))) return over;
   return best;
 }
 static int32_t diesIn(const Question *q, double horizon) {
