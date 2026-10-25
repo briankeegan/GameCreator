@@ -1313,3 +1313,5 @@ it (waitTo) was taken for the readiness break's own, which asks no promise and r
 A line judged with a wait before it judged whole (`63a94a1c`, 1130, 04:04 ET): 18 -- combo_storm 6, factory 5, large_garbage 7; a
 life kept 31 of 36 (86%, from 63-73%). The five left: the line in progress judged again with its walks tapped where it was chosen held
 (pressTap, read off the decision's frame), and a readiness break carried pressed once the board settles, not where its promise found it.
+The line in progress judged as it was chosen -- its walks tapped or held as then, a readiness break pressed where its promise found it
+(`09c2ad80`, 1131, 04:19 ET): 17 -- combo_storm 6, factory 6, large_garbage 5; a life kept 51 of 58 (88%).

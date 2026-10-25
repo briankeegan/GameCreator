@@ -379,10 +379,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (x->k.kept != y->k.kept) K(4, x->k.kept ? -1 : 1);
   // 5. MORE THROWN: the more blocks the line sends, every attack its own
   { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) K(5, ty - tx); }
+  // 7. THE FEWER ACTIONS: the input window pays for every cell the cursor walks -- before the later loss, which two lines lost alike
+  // differ by less than a break's time in: the actions are the next break's
+  if (pressAllowance >= 0) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) K(7, wx - wy); }
   // 6. THE LATER LOSS, of two lost alike
   if (!lx && lostOf(x) != lostOf(y)) K(6, lostOf(y) > lostOf(x) ? 1 : -1);
-  // 7. THE FEWER ACTIONS: the input window pays for every cell the cursor walks
-  if (pressAllowance >= 0) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) K(7, wx - wy); }
   // 8. THE KIND OF LINE: its tier, then the tier's own keys (facts.c tierOf)
   { Tier tx = tierView(x), ty = tierView(y);
     if (tx.tier != ty.tier) K(8, tx.tier - ty.tier);
