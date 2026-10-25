@@ -1613,3 +1613,10 @@ was nothing to break with and no actions to break it. The survival search ranked
 MARGIN IN THE SURVIVAL SEARCH: of its lines lost within the same break's time, the one whose board keeps more room (the rows over the
 stack and the rows of panels under its garbage, the fewer) comes first; then the later lost, then the fewer actions (search/outlive.c
 outBefore).
+Measured (`c1bbc7ae`, margin in the survival search, 1201): 13 -- panels 4, actions 4, hold-creep 2, no-break 1; 0 wasted threes.
+A BROKEN PIECE (1201 large_garbage-2, lost at 700, broke nothing all game): at 345 a 6x12 slab on an 8-row stack, five more queued; the
+break search finds its break (6 broken, lost 344 against 159) at 50 times a decision's work, not at 1 or 10. The beam is carried
+across decisions to grow deeper -- but only the lines that begin with the swaps played since; any other swap played (a level, a clear,
+a survival line) dropped every carried line, and the search began again from the board as it was (brRes 0/0).
+THE BEAM CARRIED PAST A SWAP ELSEWHERE: a carried line no swap played since touched (no swap on a cell it moves, or beside one) is
+carried on whole (answer.c carriedPaths, touchedBy); the beam plays it again swap by swap within the rules before it grows it.

@@ -74,6 +74,10 @@ static int playedSince(const Kept *K, int32_t lineFrom, int32_t linePressed, int
   for (int i = 0; i < n; i++) pre[k++] = K->handed[i];
   return k;
 }
+static int touchedBy(const int32_t *p, int np, const int32_t *pre, int npre) {
+  for (int i = 0; i < npre; i++) for (int k = 0; k < np; k++) if (CR(pre[i]) == CR(p[k]) && CC(pre[i]) - CC(p[k]) <= 1 && CC(p[k]) - CC(pre[i]) <= 1) return 1;
+  return 0;
+}
 static int startsWith(const int32_t *p, int np, const int32_t *pre, int npre) { if (np <= npre) return 0; for (int i = 0; i < npre; i++) if (p[i] != pre[i]) return 0; return 1; }
 static int carriedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, Paths *out) {
   out->n = 0;
@@ -88,11 +92,17 @@ static int carriedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
     towardRestLen = K->ntoward - npre;
     for (int i = 0; i < towardRestLen; i++) towardRest[i] = (CR(K->toward[npre + i]) + dr) * 8 + CC(K->toward[npre + i]);
   }
-  for (int i = 0; i < K->paths.n; i++) {
-    if (!startsWith(K->paths.path[i], K->paths.len[i], pre, npre)) continue;
+  // (a line the swaps played since began is carried on from where they left it; one they never touched -- no swap played on a cell its
+  // swaps move, or beside one -- is carried on whole: what was played elsewhere changed nothing it presses, and the beam plays it again
+  // swap by swap within the rules before it grows it)
+  for (int i = 0; i < K->paths.n && out->n < KEEPN; i++) {
+    int from;
+    if (startsWith(K->paths.path[i], K->paths.len[i], pre, npre)) from = npre;
+    else if (!touchedBy(K->paths.path[i], K->paths.len[i], pre, npre)) from = 0;
+    else continue;
     int t = out->n++;
-    out->len[t] = K->paths.len[i] - npre;
-    for (int k = 0; k < out->len[t]; k++) out->path[t][k] = (CR(K->paths.path[i][npre + k]) + dr) * 8 + CC(K->paths.path[i][npre + k]);
+    out->len[t] = K->paths.len[i] - from;
+    for (int k = 0; k < out->len[t]; k++) out->path[t][k] = (CR(K->paths.path[i][from + k]) + dr) * 8 + CC(K->paths.path[i][from + k]);
   }
   return 1;
 }
