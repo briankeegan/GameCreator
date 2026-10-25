@@ -50,7 +50,7 @@ function keepWords(keep) {
   return w;
 }
 // the words of a table set ({ defend, attack, opener, keep, raise, underGarbage }), its rules' names numbered in `names` (the opener: the
-// rule played from a game's start until garbage first touches the board, whatever the mode -- decide.c read)
+// rule played from a game's start until either board tops out, whatever the mode -- decide.c read)
 function rulesWords(tables, names) {
   var w = [], n = 0;
   [['defend', 0], ['attack', 1], ['opener', 2]].forEach(function (tb) {
