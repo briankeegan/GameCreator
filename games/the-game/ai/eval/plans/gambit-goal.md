@@ -1358,3 +1358,6 @@ Attack and be ready, only with garbage on its way (`0dbaade9`, 1150, 08:44 ET): 
 gone, rule 3 as 1132's. THE OPENER (the owner: openers are big chains, the pressure from the start -- an opener mode): the rules'
 opener table, played from a game's start until either board tops out (the owner), whatever the mode: chain >=8, >=6, >=4, >=3,
 default.
+The opener until either board tops out (`f0ac2613`, 1152, 09:02 ET): 18 -- combo_storm 4, factory 7, large_garbage 7; the two
+openings lost in every run since 1132 survive (combo_storm-3 to 19538, factory-2 whole), the opener over at the first top-out
+(combo_storm-1: 744); six others lost.
