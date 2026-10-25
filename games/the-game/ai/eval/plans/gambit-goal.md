@@ -1257,3 +1257,5 @@ The order's options log the frame each is read lost at where its readiness break
 games -- and at the turn of the losses no line played was read later than its own loss: the line lost sooner was taken over a break
 lost later by the material, of two breaks lost alike. Without the material there (`4bb4d1b7`, 1094): 4. The material between any two
 breaks a break's time away, alike or not (`a6c5feb0`, 1095, 20:18 ET): 8. Both gone; the order is 1090's.
+The break search takes two breaks as the order does, the material before the actions (`dd8f3788`, 1096, 20:27 ET): 10 -- combo_storm
+2, factory 4, large_garbage 4; gone. A chain through converted garbage cannot be searched for: its colours are unseen until drawn.
