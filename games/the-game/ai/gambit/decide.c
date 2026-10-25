@@ -182,9 +182,6 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 // it could not be asked. The hold's board is the board left alone. A line lost before its end is lost where the judge saw it lost, and a
 // board the search finds no line on is lost where it is lost left alone.
 #define SAVE_MS 10
-#define CONT_LINES 4   // the continuation: the lines of the order played on from their end, where nothing lives
-#define CONT_MS 10     // and the most each is given
-static int32_t contAsked, contLater;   // (for the log: the lines played on, and those it found lost later)
 #define SAVE_KEEP_MS 4
 static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
 static double saveCw = -1, saveCk = -1;
@@ -368,24 +365,6 @@ static int ranked(const Read *R, const Found *S) {
   // of the order -- unless every other line is lost within a break's time (rankSave) and a three lives, or is lost later: only there is
   // a three a save
   clockShareEnd(orderShare);
-  // THE CONTINUATION: where nothing lives, the first CONT_LINES of the order each played on from its end by the survival search -- the
-  // board left alone is not what follows a line: the next decisions play on -- and lost where that leads (rank.c lostOf); the order
-  // sorted again. Not the hold: holding and then playing on is every line's own continuation, the one it does not press
-  contAsked = contLater = 0;
-  if (n && !order[0]->o.lives) {
-    int k = 0;
-    for (int i = 0; i < n && k < CONT_LINES && timeLeftMs() > SAVE_KEEP_MS + 2; i++) {
-      Judge *J = order[i];
-      if (J->o.lives || J->o.dead || J->hold) continue;
-      double give = (timeLeftMs() - SAVE_KEEP_MS) / (CONT_LINES - k); if (give > CONT_MS) give = CONT_MS;
-      double was = lostOf(J), c = contLostOf(J, give);
-      if (c > 0) J->contLost = c;
-      contLater += lostOf(J) > was;
-      k++;
-    }
-    contAsked = k;
-    if (k) sortJudged(order, n);
-  }
   { int keeps = 0, wasteLives = 0; double wasteLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
       if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }

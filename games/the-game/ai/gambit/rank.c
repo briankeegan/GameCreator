@@ -28,8 +28,6 @@ typedef struct {
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
-  double contLost;     // and where the next decisions lead from the line's end: the survival search played on, lost then (decide.c, the
-                       // continuation); 0 not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for spending the rules' floor or the reserve (outcome.c spendsFloor, spendsReserve)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
@@ -218,8 +216,9 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
-  if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
-  return x->contLost > own ? x->contLost : own;
+  if (x->hold || x->extLost == NOT_ASKED) return own;
+  double ext = lostAtOf(x->extLost, 0);
+  return ext > own ? ext : own;
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
 // is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding

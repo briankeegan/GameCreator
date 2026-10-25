@@ -521,7 +521,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (!j->o.lives && lostOf(j) > lostAtOf(j->o.lostAt, j->hold)) { L_s(":e"); if (lostOf(j) >= 1e299) L_s("inf"); else L_i((int64_t)lostOf(j)); }   // (lost where its readiness break leads)
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
-  if (contAsked) { L_s(" cont="); L_i(contAsked); L_s("/"); L_i(contLater); }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
   // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey: sooner=play:lost:kLINE)

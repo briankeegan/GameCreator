@@ -1326,3 +1326,5 @@ Lost alike by tries alone again (`238d8da5`, 1134, 05:03 ET): 17 -- combo_storm 
 THE CONTINUATION: where nothing lives, the order's first four lines played on from their end by the survival search (`52dafa56`,
 1135, 05:17 ET): 19 -- combo_storm 7, factory 5, large_garbage 7; two lost to hold-creep (the hold's continuation, wait and play on,
 is any line's).
+The continuation asked of the lines, not the hold (`4a95586a`, 1136, 05:27 ET): 10 -- every line put above holding, the window spent;
+the continuation gone, the code as 1132's.
