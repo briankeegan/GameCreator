@@ -342,15 +342,16 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // (THE RESERVE, as the survival search keeps it -- search/outlive.c: a line that breaks nothing and leaves the next landing
 // without a break's walk in the window -- outcome.c spendsReserve, the window plan)
 static int reserveSpent(const Judge *J) { return !J->hold && spendsReserve((Made){ J->apCombo, J->apChain, J->apBroke, 0 }, &J->o.j); }
-// (THE MARGIN a line leaves: on the board once everything shown has landed (judge.c readyTop, readyMat), the rows over the stack and the
-// rows of panels under its garbage, the fewer of the two -- a board dies of the one it runs out of first. In rows, both: the stack's 12,
-// a row of panels W; -1 not asked)
+// (THE MARGIN a line leaves: on the board once everything shown has landed (judge.c readyTop, readyMat), the rows over the stack, the
+// rows of panels under its garbage, and the input window's actions then (core/nodes.h windowShareAt) -- each a share of its whole (the
+// stack's 12 rows, the window's limit), the least of the three: a board dies of the one it runs out of first; -1 not asked)
 #define MARGIN_ROWS 12
 static double marginOf(const Judge *J) {
   int32_t t = J->o.j.readyTop, m = J->o.j.readyMat;
   if (t < 0 || m < 0) return -1;
-  double room = MARGIN_ROWS - t, mat = (double)m / W;
-  return room < mat ? room : mat;
+  double room = (MARGIN_ROWS - t) / (double)MARGIN_ROWS, mat = (double)m / W / MARGIN_ROWS, r = room < mat ? room : mat;
+  double win = J->hold ? windowShareAt(0, 0) : windowShareAt(J->o.j.endAt, J->o.j.spent);
+  return win >= 0 && win < r ? win : r;
 }
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);

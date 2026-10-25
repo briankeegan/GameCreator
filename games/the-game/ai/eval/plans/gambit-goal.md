@@ -1620,3 +1620,8 @@ across decisions to grow deeper -- but only the lines that begin with the swaps 
 a survival line) dropped every carried line, and the search began again from the board as it was (brRes 0/0).
 THE BEAM CARRIED PAST A SWAP ELSEWHERE: a carried line no swap played since touched (no swap on a cell it moves, or beside one) is
 carried on whole (answer.c carriedPaths, touchedBy); the beam plays it again swap by swap within the rules before it grows it.
+Measured (`6a791de9`, the beam carried past swaps elsewhere, 1203): 13 -- combo_storm 3, factory 4, large_garbage 6 (large_garbage-2
+lives); actions 8, panels 3. Lines carried 416510, played again whole 160258 (1182: 406026 / 126928).
+THE WINDOW, THE THIRD MARGIN: actions deaths are 8 of 11. The margin a line keeps is now the least of three shares -- the rows over the
+stack, the rows of panels under its garbage, and the input window's actions left at its end or the landing, of the window's limit
+(core/nodes.h windowShareAt) -- in the order's margin clause and the survival search's alike.

@@ -120,6 +120,14 @@ static int allowLeftAt(int32_t t, int spent) {
 // where the line that keeps it is lost before it could press that walk where it is needed -- the walk's own frames past the landing,
 // or past the keeper's end (survival first: a walk kept by a board dead before it is pressed keeps nothing)
 static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
+// (THE WINDOW'S SHARE a line leaves: the actions left at its end, or at the landing when that is later, of the window's whole limit --
+// the third margin beside the stack's room and its material; -1 with no allowance said)
+static double windowShareAt(int32_t endAt, int spent) {
+  if (pressAllowance < 0) return -1;
+  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1;
+  int32_t lim = pressAllowance + (nWinAges > 0 ? nWinAges : 0);
+  return (double)allowLeftAt(tl > endAt ? tl : endAt, spent) / (lim > 0 ? lim : 1);
+}
 static int windowKeepsBreak(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 1;
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1;
