@@ -423,6 +423,10 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   pairOffered = 0;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
+  // (A LINE WITHOUT ITS LAST SWAP, offered beside it: a search scores a board after its line's last swap and the time it took, so a line
+  // can end in a swap that only lets time pass -- 1,1, the first swap a level tries, ended 15 of 51 lines toward a break and 12 of 30 of the
+  // planner's lowest stacks. Judged on the engine both, the order's fewer actions takes the shorter where the two are alike)
+  #define ADD_SHORT(play_, seq_, n_) do { if ((n_) > 1) ADD(play_, seq_, (n_) - 1, -1, 0); } while (0)
   // AN ENTRY: the planner's line for each entry of the list it found one for
   if (S->haveAp) for (int i = 0; i < R->guides.n; i++) if (S->ap.perAim[i].set) { int m0 = n; ADD(PLAY_ENTRY, S->ap.perAim[i].seq, S->ap.perAim[i].nseq, i, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.perAim[i]); }
   // TWO IDEAS FIRED (search/plan.c pair): the planner's line that fires two entries of the list, each step once the board settles -- and
@@ -486,6 +490,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
       if (!olen[i]) continue;
       if (seenDigHas(decQ.b, ord[i][0])) continue;
       ADD(PLAY_TOWARD, ord[i], olen[i], -1, 0);
+      ADD_SHORT(PLAY_TOWARD, ord[i], olen[i]);
       break;
     }
   }
@@ -515,7 +520,8 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     if (S->ap.nsetupLine > 1) { int m0 = n; ADD(PLAY_SETUP, S->ap.setupLine, S->ap.nsetupLine, -1, 0); if (n > m0) out[m0].settled = 1; }
     int32_t one = S->ap.setup; ADD(PLAY_SETUP, &one, 1, -1, 0);
   }
-  if (S->haveAp && S->ap.lowest.set) { int m0 = n; ADD(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.lowest); }
+  if (S->haveAp && S->ap.lowest.set) { int m0 = n; ADD(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.lowest); ADD_SHORT(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq); }
+  #undef ADD_SHORT
   #undef ADD
   // (and from the lines above: the converted row's chain, then every three grown -- the converted lines' own among them)
   n = convertLines(R, out, n, cap);

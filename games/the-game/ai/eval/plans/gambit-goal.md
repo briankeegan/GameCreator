@@ -1407,3 +1407,9 @@ to walk to a break when one was there. Nearer is now one measure (rank.c nearAct
 and by the tier: the line's own walk and two actions (a swap and a cell's walk) for each swap it leaves to the break.
 The same build with the ring off (`c73a4b4b` on the working branch, 1163): 17 -- combo_storm 2, factory 4, large_garbage 1; actions 5,
 no-break 2. Against 16 with it on: the ring is not what the runs since 1158 lost.
+Nearer counted in actions (`7c4610a9`, 1164): 17 -- combo_storm 5 (502, 1920, 7224, 10656, 15343), factory 2, large_garbage 0;
+actions 5, panels 1, no-break 1; the state and the truth held.
+A LAST SWAP THAT ONLY LETS TIME PASS (1164): 1,1 -- the first swap a search level tries -- ended 15 of 51 lines toward a break and 12
+of 30 of the planner's lowest stacks (one cell in thirty by chance): a search scores the board after its line and the time it took,
+so a corner swap bought the score, at a walk across the board. Each of those lines is offered beside itself without its last swap,
+both judged on the engine (propose.c ADD_SHORT); the order's fewer actions takes the shorter where they are alike.
