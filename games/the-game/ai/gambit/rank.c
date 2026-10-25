@@ -35,6 +35,7 @@ typedef struct {
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
+  int32_t surv, survGen;       // of the lines that do not live, its survival class in the sort survGen made (sortJudged survClasses)
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press, w a wasted three, j the clock stopped its judging)
@@ -326,6 +327,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
+static LOCAL int32_t survGen;
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
 #define K(rule, v) return (cmpKey = (rule), (v))
@@ -333,7 +335,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, lx ? -1 : 1);
-  if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
+  if (!lx && x->survGen == survGen && y->survGen == survGen) { if (x->surv != y->surv) K(1, x->surv - y->surv); }
+  else if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
   // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
@@ -442,10 +445,30 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   *J = JW;
   return 1;
 }
+// SURVIVAL CLASSES: lost alike as one relation for the whole order -- the line lost latest heads a class, and every line lost alike with
+// that head is of it; the first line not alike heads the next. Two lines are compared by their classes, never by each other, so a line
+// lost alike with one lost alike with a third is not taken for alike with the third (the sort's order is one order)
+static void survClasses(Judge **a, int n) {
+  static Judge *s[512];
+  int m = 0;
+  if (++survGen == 0) survGen = 1;
+  for (int i = 0; i < n; i++) if (!a[i]->o.lives) {
+    int j = m++;
+    while (j > 0 && lostOf(s[j - 1]) < lostOf(a[i])) { s[j] = s[j - 1]; j--; }
+    s[j] = a[i];
+  }
+  const Judge *head = 0;
+  for (int i = 0, c = 0; i < m; i++) {
+    if (!head) head = s[i];
+    else if (lostOf(s[i]) != lostOf(head) && !lostAlike(head, s[i])) { c++; head = s[i]; }
+    s[i]->surv = c; s[i]->survGen = survGen;
+  }
+}
 // sorted stably by the one order
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   markIdle(a, n);
+  survClasses(a, n);
   for (int w = 1; w < n; w *= 2)
     for (int lo = 0; lo < n; lo += 2 * w) {
       int mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n, i = lo, j = mid, k = lo;
