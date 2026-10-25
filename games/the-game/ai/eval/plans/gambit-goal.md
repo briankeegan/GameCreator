@@ -1590,3 +1590,6 @@ Replays 29-31 on the 17's code (`9f977401`): factory-4 (lost 7366) survives forc
 survives at 8900 and 9118, lives to 18570-21486 at 9000-9087. Even after the reach report's turn (no break anywhere: factory-4 6936,
 factory-6 9118) another move survives. In every lost game, about half the decisions changed survive or live thousands of frames more:
 the losses are paths, not single decisions, and the board under them has no margin.
+MARGIN FIRST WHERE THE LOSS CANNOT TELL (the cheapest test of it, on the infra that exists): of two lines lost alike, the one whose board
+keeps the rules' floor -- the mode's own keep, material, height, evenness (outcome.c floorKept) -- comes first, before the ledger,
+ready and nearer clauses (rank.c rule 1, clause `floor`).
