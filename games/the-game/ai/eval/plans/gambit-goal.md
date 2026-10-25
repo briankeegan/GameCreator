@@ -1317,3 +1317,5 @@ The line in progress judged as it was chosen -- its walks tapped or held as then
 (`09c2ad80`, 1131, 04:19 ET): 17 -- combo_storm 6, factory 6, large_garbage 5; a life kept 51 of 58 (88%).
 Of two lines lost alike, the fewer actions before the later loss (`ce0da41d`, 1132, 04:30 ET): **21** -- combo_storm 6, factory 7,
 large_garbage 8; two of the three lost in the opening (836, 961), the window at 0.
+Of two lines lost alike that meet the same entry, the fewer actions before the more thrown (`0397101d`, 1133, 04:42 ET): 15 --
+combo_storm 6, factory 3, large_garbage 6; five lost short of panels (none in 1132) -- the more thrown is the more converted; gone.
