@@ -317,8 +317,8 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     int beam = tb ? TOUCH_WIDE : TOUCH_BEAM, ntl = n0;
     // (A CHEAPER BREAK ONE SWAP ON: a break found that the cursor walks more than CHEAP_BREAK actions for is kept, and the level after
     // searched too -- one more swap near the cursor can cost fewer actions than one far from it; the better of the two by the level's
-    // own key, actions before the material)
-    int64_t heldB = -1; int foundTd = -1;
+    // own key)
+    int64_t heldB = -1; int foundTd = -1, heldActs = 0;
     for (int i = 0; i < n0; i++) tl[i] = tl0[i];
     for (int td = 2; td <= TOUCH_DEPTH && ntl && !tpath && !SEARCH_OUT(); td++) {
       // (how near a break each line's board is, read on the board once what the line cleared has fallen -- settled a batch at a
@@ -377,12 +377,13 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       bAt[ntl] = nb;
       stepBatch(x, bPar, bMv, MK_SWAP, nb);
       // (the level a break is found on is taken whole: of its lines that break, one that keeps the board's own chain first -- a chain cut
-      // leaves the three that began it wasted -- then the one that leaves the most material once its board settles, then the one that
-      // has broken most: a break whose converted panels match again is rows more of the slab -- and, with an input allowance to keep (a
-      // host that says it), the one the cursor walks fewer actions for before the material: the window pays for every cell of it
+      // leaves the three that began it wasted -- then the one that leaves the most material once its board settles, as the order takes
+      // two breaks (rank.c compareJudged: what a break converts is what the next is made of), then, with an input allowance to keep (a
+      // host that says it), the one the cursor walks fewer actions for -- the window pays for every cell of it -- then the one that has
+      // broken most: a break whose converted panels match again is rows more of the slab
       const Board *rb = ensureBoard(x, s->root);
       int starved = pressAllowance >= 0 && rb;
-      int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestPath[MAXPATH];
+      int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestActs = 0, bestPath[MAXPATH];
       for (int i = 0; i < ntl; i++) {
         for (int b = bAt[i]; b < bAt[i + 1]; b++) {
           int32_t mv = bMv[b];
@@ -394,17 +395,17 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
             int32_t mat, br = brokeSettled(x, t3, &mat);
             int acts = 0;
             if (starved) { int r = rb->curRow, c = rb->curCol; for (int k = 0; k < nl->len; k++) { acts += actionsFor(r, c, CR(nl->path[k]), CC(nl->path[k]), pressAllowance - acts); r = CR(nl->path[k]); c = CC(nl->path[k]); } }
-            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
-            if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
+            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)imin(mat, 4095) << 16) + ((int64_t)(255 - imin(acts, 255)) << 8) + imin(br, 255);
+            if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestLen = nl->len; bestAt = NODE(x, t3)->t; bestActs = acts; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
             continue;
           }
           if (bestB < 0 && within(s, t3)) tn[ntn++] = nl;
         }
       }
       batchDone();
-      if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; }
+      if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; heldActs = bestActs; }
       if (bestB >= 0 && foundTd < 0) foundTd = td;
-      if (foundTd >= 0 && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == TOUCH_DEPTH)) tpath = 1;
+      if (foundTd >= 0 && (!starved || td > foundTd || heldActs <= CHEAP_BREAK || td == TOUCH_DEPTH)) tpath = 1;
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)
       if (ntn) keepPaths(&o->keepOut, tn, ntn < KEEPN ? ntn : KEEPN);
       for (int i = 0; i < ntn; i++) tl[i] = tn[i];
