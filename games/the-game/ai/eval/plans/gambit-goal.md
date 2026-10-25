@@ -1562,8 +1562,9 @@ the three-breaks alike were new rules on a broken piece; the order is 1190's aga
 THE BROKEN PIECE: "lives" asked only the board left alone -- 5% of a survived game's decisions had any line that lives, so rule 1's
 first key all but never decided and the clauses under it decided instead. The plan infra already plays a line on: the readiness
 break and the breaks after it (outcome.c readyNextOf, extLost). A line whose plan lives now lives (rank.c livesOf).
-Measured (`aae74fad`, 1193): 17 -- move for move 1190's game (the same losses at the same frames): no line's plan lives either, under
-garbage that never stops. Every loss has a turn after which no break exists anywhere (reach: none, not a miss).
-A BROKEN PIECE FOUND ON factory-8's boards: at 2332 the save was asked and confirmed (lost at 260 with its three, 28 without) and the
-hold, lost at 28, was played by rule 1's reserve -- spendPays asked whether the keeper lives a break's walk counted in ACTIONS (20)
-as if they were frames. It now asks the walk's frames: a reaction and a cursor step an action (core/nodes.h walkFrames).
+Measured (`aae74fad`, 1193): 17 -- move for move 1190's games: no line's plan lives under garbage that never stops. Every loss has a
+turn after which no break exists anywhere (reach: none, not a miss).
+Measured (`aa11b0e6`, 1194): 11 -- actions 7, panels 6. The reserve's keeper asked to live the walk's frames (92) rather than its
+count of actions (20): right on factory-8's board at 2332, but under garbage nearly every keeper is lost within 92 frames, so the
+reserve all but stopped holding and the window ran dry. Back to 1193's code; the decision that loses each game is found by the replay
+(gambit-replay.yml: the same game, one decision forced to another option -- the one where another option survives lost it).
