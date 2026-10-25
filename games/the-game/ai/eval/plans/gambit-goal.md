@@ -1460,3 +1460,5 @@ decisions whose played answer the ring no longer held). Gone: Gambit as `41b593b
 THE SURVIVAL LINE FIRST, IN THE SEARCHES' SHARE: as 1169 asked it -- first of the order's own searching, before the first readiness pass
 -- but judged in the searches' share as before, the judging's quarter left the save's and the answer's. And the state's ring holds 64
 answers, not 16 (1171 lost two).
+Measured (`589bba2d`, 1172): 16 -- combo_storm 2 (502 still), factory 2, large_garbage 4; actions 4, no-break 2, panels 2. The order's
+searching as 1167 had it; the ring's 64 kept (it changes nothing a ring of 16 held).
