@@ -1482,3 +1482,6 @@ wastes no three where its pool holds one that does not (`27463e0f`, back).
 Measured (`ca3ab3ae`, 1175): 1 -- no-break 15: a board that lives on past the save's horizon after a three is all but never, so every
 line with a three in it went, the breaks among them. On from it: the rule asks the save only where every line without a three is lost
 within a break's time; the save confirms the three where the board with it lives, or outlasts the board without it by a break's time.
+THE MATERIAL LEDGER (the owner: it is about breaking blocks -- low, get more blocks than you spend): the judge counts what a line
+converts and what its clears take, beyond the board left alone (judge.c netPanels); under its floor (the rules' keep, the saving
+band), of two lines that survive alike, the one not in debt comes first (rank.c rule 1).
