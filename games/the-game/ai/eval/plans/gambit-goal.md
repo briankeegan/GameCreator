@@ -1562,3 +1562,8 @@ the three-breaks alike were new rules on a broken piece; the order is 1190's aga
 THE BROKEN PIECE: "lives" asked only the board left alone -- 5% of a survived game's decisions had any line that lives, so rule 1's
 first key all but never decided and the clauses under it decided instead. The plan infra already plays a line on: the readiness
 break and the breaks after it (outcome.c readyNextOf, extLost). A line whose plan lives now lives (rank.c livesOf).
+Measured (`aae74fad`, 1193): 17 -- move for move 1190's game (the same losses at the same frames): no line's plan lives either, under
+garbage that never stops. Every loss has a turn after which no break exists anywhere (reach: none, not a miss).
+A BROKEN PIECE FOUND ON factory-8's boards: at 2332 the save was asked and confirmed (lost at 260 with its three, 28 without) and the
+hold, lost at 28, was played by rule 1's reserve -- spendPays asked whether the keeper lives a break's walk counted in ACTIONS (20)
+as if they were frames. It now asks the walk's frames: a reaction and a cursor step an action (core/nodes.h walkFrames).
