@@ -1568,3 +1568,7 @@ Measured (`aa11b0e6`, 1194): 11 -- actions 7, panels 6. The reserve's keeper ask
 count of actions (20): right on factory-8's board at 2332, but under garbage nearly every keeper is lost within 92 frames, so the
 reserve all but stopped holding and the window ran dry. Back to 1193's code; the decision that loses each game is found by the replay
 (gambit-replay.yml: the same game, one decision forced to another option -- the one where another option survives lost it).
+THE REPLAY FOUND IT (gambit-replay 27, factory-8, lost at 2608): forced at 2401, 2423 or 2438 it is lost at 2608 all the same; forced
+to the order's second option at 2363 it lives to 5819, at 2267 to 4976, at 2240 to 3498. All three second options were the line lost
+later, put under by rule 1's clauses because the two were "alike" (2363: 246 against 299, by ready; 2267: 271 against 308, by the
+ledger; 2240: 298 against 331, by the ledger). The later loss now decides unless both are three breaks' time away (rank.c lostAlike).
