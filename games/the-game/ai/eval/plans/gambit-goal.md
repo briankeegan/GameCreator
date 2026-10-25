@@ -1265,3 +1265,5 @@ The floor stays at 30.
 A floor of its own under heavy garbage (`746cd764`, 1099, 21:07 ET): 14, the same games -- gone. The break search's breaks grown two
 swaps more while their chains run (`47d55079`, 1101, 21:27 ET): 9 -- combo_storm 4, factory 2, large_garbage 3; links made by a swap 7,
 as before; gone.
+On the wall clock, the game paced (bot gambit-paced, 1103, 21:37 ET): 6 -- lockstep is not what holds it back. The 12-frame wait after
+a swap again (`c85a14cb`, 1104, 21:39 ET): 10 -- combo_storm 1, factory 3, large_garbage 6; gone, the pace alone again.
