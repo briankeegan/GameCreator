@@ -1578,3 +1578,8 @@ THE ORDER ASKED AGAIN (the save's own question, for every decision that puts a s
 lost are each played to their end and the survival search asked of the boards they leave (decide.c contLostOf); the later comes first
 where carried on it outlasts the other by a break's time, never cutting the board's own chain. lostAlike is 1190's again. Logged
 recheck=first/latest[/moved]. On factory-8's board at 2332: the hold carried on is lost at 28, the survive line at 260 -- moved.
+Measured (`cc136b80`, 1196): 14 -- combo_storm 6, factory **6**, large_garbage 2; panels 6, actions 4; 1 wasted three.
+gambit-replay 28, large_garbage-5 (lost at 1529): forced to the order's second option at 307, 585, 626 or 654 it SURVIVES; at 394 it is
+lost at 799, at 693 at 1529. The recheck's three moves: right at 394, wrong at 307 and 585. At 626 the second option was a line
+predicted lost at 140 against 475 -- and it survives. On this board almost any change of path survives about half the time: neither
+loss (left alone, or carried on) can settle two close lines there. The board lives on a knife edge; 24/24 asks a board with margin.
