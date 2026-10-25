@@ -32,7 +32,7 @@ var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wal
 // latest)
 var cutShort = { boards: 0, cut: 0, cutKept: 0, cutAll: 0, cutNone: 0 };
 // EVERY MOVE ON THE WAY: the swaps pressed by what they came to, and the cells the cursor walked (front.c moveOn)
-var noneBy = {}, noneHow = {};
+var noneBy = {}, noneHow = {}, actsBy = {};
 var balance = { lost: { converted: 0, spent: 0, landed: 0, frames: 0, games: 0 }, survived: { converted: 0, spent: 0, landed: 0, frames: 0, games: 0 } };   // (the board's material: front.c converted, spent)   // (the swaps that came to nothing, by the kind of line that pressed them)
 var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0, wasted: 0, wastedAlone: 0, refusedWaste: 0, saved: 0, guardLet: 0, refusedSpoil: 0 };   // (wasted: clears of three that broke nothing and were no chain's link)
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
@@ -207,6 +207,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       Object.keys(o.noneHow || {}).forEach(function (k) { noneHow[k] = (noneHow[k] || 0) + o.noneHow[k]; });
       if (o.material) { var mb = balance[m[2]]; mb.converted += o.material.converted || 0; mb.spent += o.material.spent || 0; mb.landed += o.material.landed || 0; mb.frames += o.frames || 0; mb.games++; }
       Object.keys(o.noneBy || {}).forEach(function (k) { noneBy[k] = (noneBy[k] || 0) + o.noneBy[k]; });
+      // (THE WINDOW SPENT: the actions keyed, by the kind of line, in games survived and lost apart -- a minute's worth each)
+      if (o.actsBy) { var ab = actsBy[m[2]] || (actsBy[m[2]] = { frames: 0, by: {} }); ab.frames += o.frames || 0; Object.keys(o.actsBy).forEach(function (k) { ab.by[k] = (ab.by[k] || 0) + o.actsBy[k]; }); }
       Object.keys(a.combo || {}).forEach(function (z) { var g = PA.comboGarbage(+z); aggr.attacks += a.combo[z]; aggr.blocks += a.combo[z] * g.length; aggr.cells += a.combo[z] * g.reduce(function (s, w) { return s + w; }, 0); });
       Object.keys(a.chain || {}).forEach(function (z) { aggr.attacks += a.chain[z]; aggr.blocks += a.chain[z] * (+z - 1); aggr.cells += a.chain[z] * 6 * (+z - 1); });
       // (every chain link past two, by its cause: garbage's colours, a swap since the link before, or the stack alone)
@@ -288,6 +290,8 @@ var nmv = moves.clear + moves.setup + moves.break + moves.none + moves.open, sha
 if (nmv) console.log('every move on the way: the cursor walked ' + (aggr.frames ? (moves.cells * 3600 / aggr.frames).toFixed(0) : '-') + ' cells a minute; of ' + nmv +
                      ' swaps pressed ' + share(moves.clear) + ' cleared, ' + share(moves.setup) + ' set a clear up, ' + share(moves.break) + ' broke garbage, ' +
                      share(moves.none) + ' came to nothing (' + share(moves.open) + ' still open when the game ended)');
+Object.keys(actsBy).sort().forEach(function (w) { var ab = actsBy[w], min = ab.frames / 3600; if (!min) return; var tot = 0; Object.keys(ab.by).forEach(function (k) { tot += ab.by[k]; });
+  console.log('the window spent, games ' + w + ': ' + Math.round(tot / min) + ' actions a minute -- ' + Object.keys(ab.by).sort(function (a, b) { return ab.by[b] - ab.by[a]; }).map(function (k) { return k + ' ' + Math.round(ab.by[k] / min); }).join(', ')); });
 if (moves.none) console.log('moves wasted: ' + moves.none + ' swaps that came to nothing, by the line that pressed them: ' + Object.keys(noneBy).sort(function (a, b) { return noneBy[b] - noneBy[a]; }).map(function (k) { return k + ' ' + noneBy[k]; }).join(', ') +
                              '; by what became of their line: ' + (noneHow.dropped || 0) + ' dropped before its later swaps, ' + (noneHow.on || 0) + ' its later swaps pressed, ' + (noneHow.last || 0) + ' the line\'s last swap');
 console.log('wasted threes: ' + moves.wasted + ' clears of three that broke no garbage and were no link of a chain, made by a swap' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') + '; ' + moves.wastedAlone + ' more the stack made alone; ' + moves.refusedWaste + ' swaps refused at the press for one (' + moves.refusedSpoil + ' of them spoiling the board\'s own chain); ' + moves.saved + ' threes the board needed not to die (a save the survival search confirmed, not counted as wasted); ' + moves.guardLet + ' let through at the press as the board\'s save (lost without it in 120 frames, alive with it)');

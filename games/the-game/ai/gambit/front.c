@@ -64,6 +64,7 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t noneBy[NPLAYS + 1];   // (the swaps that came to nothing, by the kind of line that pressed them)
+  int32_t actsBy[NPLAYS + 2];   // (the actions keyed, by the kind of line they are keys of; NPLAYS a raise, NPLAYS + 1 none planned)
   int32_t noneLast, noneOn, noneDropped;
   int32_t converted, spent, landed;   // (THE BOARD'S MATERIAL: garbage cells a break turned to panels, panels a clear took off the board,
                                       // and garbage cells landed on it)
@@ -463,10 +464,10 @@ static int keysFit(int32_t at, const Keys *k) {
   }
   return 1;
 }
-static void countActions(int32_t bits, int32_t now) {
+static void countActions(int32_t bits, int32_t now, int32_t play) {
   int32_t down = bits & COUNTED & ~F.prevBits;
   F.prevBits = bits;
-  for (int b = 1; b <= 16; b <<= 1) if ((down & b) && F.npress < 512) { F.pressFrames[F.npress++] = now; F.st.actions++; }
+  for (int b = 1; b <= 16; b <<= 1) if ((down & b) && F.npress < 512) { F.pressFrames[F.npress++] = now; F.st.actions++; F.st.actsBy[play >= 0 && play <= NPLAYS ? play : NPLAYS + 1]++; }
   int k = 0;
   for (int i = 0; i < F.npress; i++) if (now - F.pressFrames[i] < F.window) F.pressFrames[k++] = F.pressFrames[i];
   F.npress = k;
@@ -913,7 +914,7 @@ static int frontFrame(void) {
   }
   if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save, guard, &pk);
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
-  countActions(bits, now);
+  countActions(bits, now, p ? pk.play : NPLAYS + 1);
   if (bits & IN_SWAP) F.swapSince = 1;
   { FTrace *r = &ftrace[ftraceN++ % FTRACE];
     *r = (FTrace){ now, bits, p != 0, F.pending ? F.pAt : -1, F.nextAt, F.lineN, F.lineN ? F.lineAt[0] : -1, ftraceDrops }; ftraceDrops = 0; }
@@ -1007,6 +1008,9 @@ static void statsLine(char *out, int cap) {
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"noneBy\":{");
   first = 1;
   for (int z = 0; z <= NPLAYS && k < cap; z++) if (F.st.noneBy[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":%d", first ? "" : ",", z < NPLAYS ? PLAY_NAME[z] : "raise", F.st.noneBy[z]); first = 0; }
+  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"actsBy\":{");
+  first = 1;
+  for (int z = 0; z <= NPLAYS + 1 && k < cap; z++) if (F.st.actsBy[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":%d", first ? "" : ",", z < NPLAYS ? PLAY_NAME[z] : z == NPLAYS ? "raise" : "unplanned", F.st.actsBy[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"noneHow\":{\"last\":%d,\"on\":%d,\"dropped\":%d},\"material\":{\"converted\":%d,\"spent\":%d,\"landed\":%d}", F.st.noneLast, F.st.noneOn, F.st.noneDropped, F.st.converted, F.st.spent, F.st.landed);
   if (k < cap) snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d,\"guardLet\":%d,\"refusedSpoil\":%d}}",
                         F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet, F.st.refusedSpoil);
