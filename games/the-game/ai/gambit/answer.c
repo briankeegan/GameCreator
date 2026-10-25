@@ -315,7 +315,7 @@ static double readMs;   // (the board's reading, for the log)
 // next decision starts from the state the answer last played left (gb_played; -1, a host that does not say: the last decision's).
 // What a decision FOUND is the board's whatever was played: the intentions are one pool every decision adds to, and a line chosen by
 // an answer never played joins them (decide.c intentOfCarry).
-#define CARRIEDN 16
+#define CARRIEDN 64
 typedef struct {
   int32_t id, mode, carryLost, lastA, lastB, pairRuns, blockA, blockB, blockUntil, idle;
   Kept kept, planKept; Carry carry, carryNext;

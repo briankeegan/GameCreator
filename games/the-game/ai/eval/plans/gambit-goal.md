@@ -1457,3 +1457,6 @@ wastes no three, one that does only where its pool holds no other (the save's th
 it searches on: no time of the decision's.
 Measured (`27463e0f`, 1171): 13 -- combo_storm 4, factory 5, large_garbage 2; actions 6, no-break 3, panels 2; the state not held (2
 decisions whose played answer the ring no longer held). Gone: Gambit as `41b593b8` (1167, 20).
+THE SURVIVAL LINE FIRST, IN THE SEARCHES' SHARE: as 1169 asked it -- first of the order's own searching, before the first readiness pass
+-- but judged in the searches' share as before, the judging's quarter left the save's and the answer's. And the state's ring holds 64
+answers, not 16 (1171 lost two).
