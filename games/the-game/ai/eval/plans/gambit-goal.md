@@ -1426,3 +1426,7 @@ THE LINE THAT SAVES IS JUDGED FIRST (combo_storm-3, lost at 502 on every build s
 search's line -- lost at 255 where the hold is lost at 85, the line 1158 played -- was offered and never judged (survive:1-j1, the
 judge's clock out): it was judged after every other line had been asked its readiness. Where nothing lives it is judged now before the
 readiness pass (decide.c): not dying comes first.
+THE SURVIVAL SEARCH'S LINE IS NEVER DROPPED FOR THE CLOCK: on every build, 45-55% of the survival lines offered were left unjudged
+(survive:N-jN: 192 of 391 in 1161 factory-5, 391 of 703 in factory-6) -- the line that keeps the board alive thrown away because the
+decision's clock ran out. The survival search played it on the engine to its loss: one the judge has not played a frame of is ranked
+lost there, on the search's word (rank.c judgeCand, Cand xLost).

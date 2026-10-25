@@ -17,6 +17,7 @@ typedef struct {
   int32_t tapOf;   // and its walks tapped or held as they were when it was chosen: 1 + that pressTap (0: the decision's)
   int32_t waitTo;  // and the frame its board is run to and let settle before its first swap (0: none)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
+  int32_t xLost;   // the frame the search that found it played it lost at, on the engine (0: not said) -- the survival search's word
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
 typedef struct {
@@ -102,7 +103,10 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (judgedCut(&oc.j)) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
   // (ONE THE CLOCK STOPPED THE JUDGE ON: its board past that frame unknown -- ranked as a line lost on the frame it was judged alive to,
   // what it makes on the search's word: never a board that lasts, and never dropped for a hold that dies sooner)
+  // (and the survival search's line, the clock out before the judge played a frame of it: the search played it on the engine to its
+  // loss, so it is ranked lost there on the search's word -- the line that keeps the board alive is never dropped for the clock)
   if (oc.late) {
+    if (oc.j.aliveTo <= 0 && k->xLost > 0) oc.j.aliveTo = k->xLost;
     if (oc.j.aliveTo <= 0) { dropAs(play, DROP_UNJUDGED); return 0; }
     oc.late = 0; oc.dead = 1; oc.lives = 0; oc.lostAt = oc.j.aliveTo; oc.ready = NOT_ASKED;
   }
