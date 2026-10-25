@@ -1601,3 +1601,7 @@ A SAVE CONFIRMED IS PLAYED: the save found the board lives on with the three, or
 it only let the three back into the order, where the reserve or a clause could still put a line lost sooner over it (factory-8
 2332: the save confirmed 260 against 28, the hold lost at 28 played). The confirmed line now comes first (decide.c saveLine).
 Next (the owner: margin): the order ranks lines by the margin the board keeps, not by the frame it is lost left alone.
+MARGIN (the owner): of two lines lost alike, the one that leaves the board more room once everything shown has landed -- the rows over
+the stack and the rows of panels under its garbage, the fewer of the two, every line read on the board the same garbage landed on
+(judge.c readyTop and readyMat, rank.c marginOf, clause `margin`), before the ledger, ready and nearer clauses. (1197's floor read each
+line's own end board -- a hold's before its garbage lands -- and was a yes or no.)

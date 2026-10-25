@@ -342,6 +342,16 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // (THE RESERVE, as the survival search keeps it -- search/outlive.c: a line that breaks nothing and leaves the next landing
 // without a break's walk in the window -- outcome.c spendsReserve, the window plan)
 static int reserveSpent(const Judge *J) { return !J->hold && spendsReserve((Made){ J->apCombo, J->apChain, J->apBroke, 0 }, &J->o.j); }
+// (THE MARGIN a line leaves: on the board once everything shown has landed (judge.c readyTop, readyMat), the rows over the stack and the
+// rows of panels under its garbage, the fewer of the two -- a board dies of the one it runs out of first. In rows, both: the stack's 12,
+// a row of panels W; -1 not asked)
+#define MARGIN_ROWS 12
+static double marginOf(const Judge *J) {
+  int32_t t = J->o.j.readyTop, m = J->o.j.readyMat;
+  if (t < 0 || m < 0) return -1;
+  double room = MARGIN_ROWS - t, mat = (double)m / W;
+  return room < mat ? room : mat;
+}
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
@@ -350,7 +360,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, margin, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
 // (A LINE LIVES where its board does left alone, or where its plan does: the line, the break its readiness found and the breaks after
 // it, played on the engine -- outcome.c readyNextOf, extLost FOREVER)
 static int livesOf(const Judge *J) { return J->o.lives || (!J->hold && J->extLost == FOREVER); }
@@ -374,6 +384,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // is with less time, so the walk it saves, the break it leaves where it was, are the next decision's to spend again)
   if (!lx && x->hold != y->hold) { const Judge *h = x->hold ? x : y, *o = x->hold ? y : x;
     if (lostOf(h) < lostOf(o) && !cutsShort(o)) K(1, "hold", h == x ? 1 : -1); }
+  // -- and of two lost alike, the one that leaves the board more MARGIN once everything shown has landed (marginOf): where the loss
+  // cannot tell two lines apart, the room the board keeps can -- every line read on the board the same garbage has landed on
+  if (!lx && lostAlike(x, y)) { double mx = marginOf(x), my = marginOf(y); if (mx >= 0 && my >= 0 && mx != my) K(1, "margin", mx > my ? -1 : 1); }
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
   // (survival first: two lines that live, or two lost less than a break's time apart -- never one lost sooner by more)
