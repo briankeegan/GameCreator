@@ -1625,3 +1625,9 @@ lives); actions 8, panels 3. Lines carried 416510, played again whole 160258 (11
 THE WINDOW, THE THIRD MARGIN: actions deaths are 8 of 11. The margin a line keeps is now the least of three shares -- the rows over the
 stack, the rows of panels under its garbage, and the input window's actions left at its end or the landing, of the window's limit
 (core/nodes.h windowShareAt) -- in the order's margin clause and the survival search's alike.
+Measured (`c66af130`, the window as the third margin, 1204): 13 -- most losses at 1203's frames: the margin clause decides only between
+lines lost alike, and the lines that empty the window are not alike (factory-6: a toward of 13 swaps at 9646 over a hold, the window 36
+to 2 by the death at 10168). Survived and lost games spend alike, ~350 of 456 actions a minute.
+THE RESERVE'S KEEPER TEST OUT: it counted the walk's actions as frames, and let a spender through wherever the keeper was lost within
+20 frames of the landing -- under garbage, most boards. The keeper about to die is the save's to answer now (a confirmed save is
+played); the reserve asks only whether the spender lives until the window gives the walk back (core/nodes.h spendPays).
