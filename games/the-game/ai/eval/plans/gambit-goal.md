@@ -1468,3 +1468,6 @@ in 4,888 of 7,295 decisions the searches ran past 80% of the decision, the order
 64% of them), and the decision ended with the judging's quarter unspent (out=0: the deadline never reached). The order's searching has
 its own share now, half of what the decision has left once the order is made (propose.c orderEnd); the rest is the save's and the
 answer's. Everything within the decision's budget, and the budget spent.
+Measured (`6918e92a`, 1173): 17 -- combo_storm 1 (combo_storm-3 lives), factory 4, large_garbage 2; actions 7; 2 wasted threes. Gone:
+Gambit as `94949a3f` (1167's, the ring at 64). Every way of giving the survival line its judging -- 1169 16, 1172 16, 1173 17 -- saves
+combo_storm-3 and loses factory to a window run dry: the line that buys frames spends the actions the next break needs.
