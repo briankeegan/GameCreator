@@ -17,6 +17,10 @@ static Ctx2 C2;
 // what the searches may take: the decision's time less the answer's margin and a quarter of it kept for judging what they found --
 // searchesEnd, the share every search runs in (answer.c answerTurn), so no search runs into the judging's quarter
 static double searchesEnd(void) { return C2.due ? C2.due - C2.margin - (C2.due - C2.t0) / 4 : 0; }
+// THE ORDER'S OWN SHARE (decide.c ranked: the readiness asked of each line, the survival backup, the three taken out): half the time the
+// decision has left once the order is first made -- the other half the save's and the answer's. Its own, not the searches': the searches
+// spend theirs to its end, and an order searched in a share already out searches nothing
+static double orderEnd(void) { if (!C2.due) return 0; double now = nowMs(), end = C2.due - C2.margin; return now < end ? now + (end - now) / 2 : end; }
 
 // ---- the board's state the proposers read
 static int cascadeLive(Board *b) {

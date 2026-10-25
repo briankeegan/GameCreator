@@ -1471,3 +1471,6 @@ answer's. Everything within the decision's budget, and the budget spent.
 Measured (`6918e92a`, 1173): 17 -- combo_storm 1 (combo_storm-3 lives), factory 4, large_garbage 2; actions 7; 2 wasted threes. Gone:
 Gambit as `94949a3f` (1167's, the ring at 64). Every way of giving the survival line its judging -- 1169 16, 1172 16, 1173 17 -- saves
 combo_storm-3 and loses factory to a window run dry: the line that buys frames spends the actions the next break needs.
+THE SURVIVAL LINE JUDGED AND KEPT WITHIN THE WINDOW: the order's own share again (as `6918e92a`), and the survival search's reserve a
+break's walk (search/outlive.c OUT_RESERVE, 20 actions; it read RESERVE, 0): the line it keeps leaves 20 actions of the allowance
+unless one that spends them is lost 120 frames later still.
