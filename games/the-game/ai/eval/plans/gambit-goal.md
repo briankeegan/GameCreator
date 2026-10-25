@@ -1521,3 +1521,8 @@ spender is lost later by the window's regain time -- wherever the keeper is lost
 Measured (`4b7229b8`, 1184): 14 -- combo_storm 6, factory 3, large_garbage 5; actions 6, no-break 2, panels 2; no hold-creep; 1 wasted
 three. THE HOLD UNDER THE SAME RULE: the hold keeps the walk, and comes first by it only while the spender buys less than the
 window's own regain time -- not 1181's fixed 120 frames, so it cannot creep past the time the window takes to give the walk back.
+Measured (`d52d964c`, 1185): 10 -- hold-creep 7, panels 3, actions 2, no-break 2. The regain time was wrong: the frames until the window
+gives back a whole walk's worth of actions -- a full window (600) when it held fewer than that -- however little the line was short by.
+REGAIN PER LINE: the frames after the line's own end (or the landing) until the window gives back what THAT line leaves it short of the
+next break's walk, from the actions still in the window then (core/nodes.h regainAfter); zero for a line not short. The order, the
+survival search and the hold all read it.

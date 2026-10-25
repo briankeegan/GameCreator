@@ -214,7 +214,6 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
 static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
 static int32_t rankLow;     // (the board low on panels: decide.c lowOnPanels)
-static int32_t rankBuy;     // (the frames the window takes to give back the next break's walk: core/nodes.h regainFrames -- decide.c ranked)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
@@ -359,11 +358,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, lx ? -1 : 1);
   // (of two that do not live, one that spends the next break's walk comes first only lost later by the frames the window takes to give
-  // that walk back (rankBuy): the break the board needs is pressed out of what is left -- the survival search's own rule. Breaks
+  // that walk back to it (core/nodes.h regainAfter): the break the board needs is pressed out of what is left -- the survival search's own rule. Breaks
   // first, never dying on the way: life the spender buys short of that is life the window has no walk left to use. The hold is a
   // move like any other here: it keeps the walk, and comes first only while the window has not given it back)
   if (!lx) { int rx = reserveSpent(x), ry = reserveSpent(y);
-    if (rx != ry && (rx ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) < rankBuy) K(1, rx ? 1 : -1); }
+    if (rx != ry) { const Judge *sp = rx ? x : y;
+      if ((rx ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) < regainAfter(sp->o.j.endAt, sp->o.j.spent)) K(1, rx ? 1 : -1); } }
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back

@@ -278,7 +278,6 @@ static int ranked(const Read *R, const Found *S) {
   rankReact = C2.reaction + 1;
   rankSave = rankReact + popFrames(decQ.b, W);   // (a row of W cells)
   rankLow = lowOnPanels(decQ.b);
-  rankBuy = regainFrames(breakWalk);
   n = judgeAll(R, nc, n);
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold

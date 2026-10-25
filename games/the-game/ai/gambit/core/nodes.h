@@ -114,26 +114,31 @@ static int allowLeftAt(int32_t t, int spent) {
 // THE WINDOW PLAN, the one reading every reader asks of a line (the order's reserve, the line check, the survival search), its values the
 // decision's own: whether the window keeps the next break's walk -- breakWalk, the actions this board's nearest break takes (decide.c
 // read) -- the frame the next block lands, or the line's end when it is still pressing then or nothing is on its way (landingAt: frames
-// from the question, -1 none), with `spent` pressed by its end and every action before aged as the window ages; and regainFrames, the
-// frames from the question until the window gives back n actions -- what a line that spends the walk must buy to be worth it
+// from the question, -1 none), with `spent` pressed by its end and every action before aged as the window ages; and regainAfter, the
+// frames from then until the window gives that walk back to a line short of it -- what a line that spends the walk must buy to be worth it
 static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
 static int windowKeepsBreak(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 1;
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1;
   return allowLeftAt(tl > endAt ? tl : endAt, spent) >= breakWalk;
 }
-static int32_t regainFrames(int n) {
-  if (nWinAges < 0 || n <= 0) return 0;
-  if (n > nWinAges) return winLen;
-  int32_t oldest[WINMAX]; int k = 0;   // (the n oldest actions' ages, the n-th of them the last to go)
+static int32_t regainAfter(int32_t endAt, int spent) {
+  if (pressAllowance < 0) return 0;
+  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt;
+  int shortBy = breakWalk - allowLeftAt(t0, spent);
+  if (shortBy <= 0) return 0;
+  if (nWinAges < 0) return winLen;
+  int32_t oldest[WINMAX]; int k = 0;   // (the actions still in the window then, oldest first, as many as it is short by)
   for (int i = 0; i < nWinAges; i++) {
-    int32_t a = winAges[i]; int at = k < n ? k++ : n;
-    if (at == n && a <= oldest[n - 1]) continue;
-    if (at == n) at = n - 1;
+    int32_t a = winAges[i] + t0 + pressFrom; if (a >= winLen) continue;
+    int at = k < shortBy ? k++ : shortBy;
+    if (at == shortBy && a <= oldest[shortBy - 1]) continue;
+    if (at == shortBy) at = shortBy - 1;
     while (at > 0 && oldest[at - 1] < a) { oldest[at] = oldest[at - 1]; at--; }
     oldest[at] = a;
   }
-  return imax(0, winLen - oldest[n - 1]);
+  // (short by more than the actions before it: the line's own come back, the first a window after it was pressed)
+  return k < shortBy ? imax(1, winLen - t0) : winLen - oldest[shortBy - 1];
 }
 static LOCAL int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
 static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }

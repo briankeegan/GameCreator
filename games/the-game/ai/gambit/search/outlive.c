@@ -7,14 +7,13 @@
 // FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn: lostAlone's answer, NOT_ASKED when there is none).
 
 #define OUT_SEQ 16
-typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; Moved last; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor; last: the pairs its swaps moved (judge.c Moved)
-typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts; } Outlived;
+typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts, t; Moved last; } OItem;   // t: the line's end, frames from the root; acts: the cursor's actions for its swaps, from the root's cursor; last: the pairs its swaps moved (judge.c Moved)
+typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts, endAt; } Outlived;
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
 // (THE RESERVE: with an input allowance said, the line kept is the latest lost of those that leave the next landing a break's walk -- the
 // window plan, core/nodes.h windowKeepsBreak -- unless one that spends it is lost later still by the frames the window takes to give a
-// break's walk back (regainFrames): what a line spends comes back only as the window ages, and the next break is pressed out of what is left)
-#define OUT_LATER regainFrames(breakWalk)
+// break's walk back to it (regainAfter): what a line spends comes back only as the window ages, and the next break is pressed out of what is left)
 // (THE LINES TAKEN: the latest lost of each kind -- within the reserve, and over it -- kept in order, OUT_POOL of each, and the first the
 // one line check passes is the answer, asked on the search's own question: ranked first, checked after, so only a check that decides
 // anything is paid for)
@@ -26,7 +25,7 @@ static void poolAdd(OPool *p, const OItem *it) {
   if (at >= OUT_POOL) return;
   int last = p->n < OUT_POOL ? p->n : OUT_POOL - 1;
   for (int i = last; i > at; i--) p->o[i] = p->o[i - 1];
-  Outlived *o = &p->o[at]; o->set = 1; o->acts = it->acts; o->nseq = it->nseq; o->lostAt = it->lost;
+  Outlived *o = &p->o[at]; o->set = 1; o->acts = it->acts; o->endAt = it->t; o->nseq = it->nseq; o->lostAt = it->lost;
   for (int s2 = 0; s2 < it->nseq; s2++) o->seq[s2] = it->seq[s2];
   if (p->n < OUT_POOL) p->n++;
 }
@@ -93,15 +92,16 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     static OItem top[PLAN_POOL];
     for (int i = 0; i < nkeep; i++) top[i] = kids[idx[i]];
     for (int i = 0; i < nkeep; i++) {
+      top[i].t = NODE(x, top[i].n)->t - NODE(x, root)->t;
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
       // (a line that lives within the reserve is the answer at once, through the one check)
-      if (top[i].lost == FOREVER && windowKeepsBreak(NODE(x, top[i].n)->t - NODE(x, root)->t, top[i].acts)) {
+      if (top[i].lost == FOREVER && windowKeepsBreak(top[i].t, top[i].acts)) {
         if (lineCheckOn(q, top[i].seq, top[i].nseq, 0, CHECK_WASTE)) { poolAdd(&bestP, &top[i]); return bestP.o[0].lostAt == FOREVER ? bestP.o[0] : poolFirst(&bestP, q); }
         // (one that lives by wasting a three is kept for the save, and the search goes on for one that does not)
         if (lineKeptOn(q, top[i].seq, top[i].nseq, 0)) { poolAdd(&bestP, &top[i]); continue; }
         top[i].lost = -1; continue;
       }
-      poolAdd(windowKeepsBreak(NODE(x, top[i].n)->t - NODE(x, root)->t, top[i].acts) ? &bestP : &overP, &top[i]);
+      poolAdd(windowKeepsBreak(top[i].t, top[i].acts) ? &bestP : &overP, &top[i]);
     }
     for (int i = 0; i < nkeep; i++) { idx[i] = i; kl[i] = top[i].lost; }
     sortByKeyDesc(idx, nkeep, kl, tmpI);
@@ -110,7 +110,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     perStep = nsteps ? (nowMs() - tl) / nsteps : 0;
   }
   best = poolFirst(&bestP, q); over = poolFirst(&overP, q);
-  if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt + OUT_LATER))) return over;
+  if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt + regainAfter(over.endAt, over.acts)))) return over;
   return best;
 }
 static int32_t diesIn(const Question *q, double horizon) {
