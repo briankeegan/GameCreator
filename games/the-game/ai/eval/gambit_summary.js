@@ -68,6 +68,7 @@ function causeOf(game, pattern, at, lines) {
   causes.list.push({ game: game, at: at, tag: tag, why: 'allow min ' + minAllow + ', panels ' + mat600 + ' to ' + matEnd + ', holds lost sooner ' + holdSooner +
                      ', no break ' + noBreak + ' of ' + last.length + ', raises ' + raises + ', decisions the clock cut ' + cut });
 }
+var beaten = { n: 0, by: {} };   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
@@ -149,6 +150,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       // (THE LINE PLAYED OVER ONE LOST LATER: answer.c sooner=, by the order's key that decided it, rank.c cmpKey)
       var so = / sooner=(\w+):(L|-?\d+):k(\d+)/.exec(l);
       if (so) { sooner.n++; sooner.by[so[3]] = (sooner.by[so[3]] || 0) + 1; }
+      // (THE ORDER NOT ONE ORDER: answer.c beaten=, the line played beaten head to head by one ranked under it)
+      var bt = / beaten=\w+:k(\d+)/.exec(l);
+      if (bt) { beaten.n++; beaten.by[bt[1]] = (beaten.by[bt[1]] || 0) + 1; }
       if (um) sooner.dec++;
       if (bm) (/ under=1/.test(l) ? think.brUnder : think.br).push(+bm[1]);
       var op = / opts=(\S+)/.exec(l);
@@ -256,6 +260,7 @@ if (nturns) {
 }
 if (rule.n) console.log('the one rule: of ' + rule.n + ' lines played that met a part of it, ' + Math.round(100 * (rule.e || 0) / rule.n) + '% an entry of the list, ' + Math.round(100 * (rule.t || 0) / rule.n) + '% a three that breaks, ' + Math.round(100 * (rule.l || 0) / rule.n) + '% a last resort');
 if (rule.preKept) console.log('boards searched once: ' + rule.preHit + ' readiness checks answered by a board this decision had searched already (or a worker), of ' + rule.preKept + ' boards kept');
+if (sooner.dec) console.log('the order not one order: ' + beaten.n + ' of ' + sooner.dec + ' decisions played a line beaten head to head by one ranked under it (answer.c beaten=) -- ' + (Object.keys(beaten.by).sort(function (a, b) { return beaten.by[b] - beaten.by[a]; }).map(function (k) { return 'rule ' + k + ' x' + beaten.by[k]; }).join(', ') || '-'));
 if (sooner.dec) console.log('played a line lost sooner than one offered: ' + sooner.n + ' of ' + sooner.dec + ' decisions, by the rule of the order that put it first (rank.c compareJudged) -- ' + (Object.keys(sooner.by).sort(function (a, b) { return sooner.by[b] - sooner.by[a]; }).map(function (k) { return 'rule ' + k + ' x' + sooner.by[k]; }).join(', ') || '-'));
 if (kept.n) console.log('a life kept: ' + kept.held + ' of ' + kept.n + ' lines that lived, nothing new told, lived on at the next decision (' + Math.round(100 * kept.held / kept.n) + '%)');
 if (rule.rdyAsked) console.log('kept plan: ' + rule.rdyHit + ' of ' + rule.rdyAsked + ' readiness checks answered by a break already found (' + Math.round(100 * rule.rdyHit / rule.rdyAsked) + '%)');

@@ -539,6 +539,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(" carryBy="); L_play(top->hold ? PLAY_HOLD : top->k.play);
     if (ranked) { compareJudged(top, carriedJ); L_s(":k"); L_i(cmpKey); } else L_s(":f");
   }
+  // (THE ORDER NOT ONE ORDER: a line ranked under the line played that beats it head to head -- its play and the key it wins on,
+  // beaten=play:kKEY; the order's keys must make one order, or its first is not the best of the lines)
+  { int ti = -1; for (int i = 0; top && i < P.ncands && ti < 0; i++) if (order[i] == top) ti = i;
+    for (int i = ti + 1; ti >= 0 && i < P.ncands; i++) if (compareJudged(order[i], top) < 0) {
+      L_s(" beaten="); L_play(order[i]->hold ? PLAY_HOLD : order[i]->k.play); L_s(":k"); L_i(cmpKey); break;
+    } }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
