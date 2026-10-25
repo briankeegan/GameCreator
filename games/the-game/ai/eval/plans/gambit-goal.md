@@ -1323,3 +1323,6 @@ REPLAYED (1132's openings): combo_storm-3 survives with frame 216's second optio
 218 -- lost alike by "less than a break's time apart", though it leaves two breaks' time to the hold's one), 432's and 487's;
 factory-2 with 327's, 366's and 544's.
 Lost alike by tries alone again (`238d8da5`, 1134, 05:03 ET): 17 -- combo_storm 6, factory 5, large_garbage 6; gone.
+THE CONTINUATION: where nothing lives, the order's first four lines played on from their end by the survival search (`52dafa56`,
+1135, 05:17 ET): 19 -- combo_storm 7, factory 5, large_garbage 7; two lost to hold-creep (the hold's continuation, wait and play on,
+is any line's).

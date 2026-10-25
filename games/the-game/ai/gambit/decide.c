@@ -370,13 +370,13 @@ static int ranked(const Read *R, const Found *S) {
   clockShareEnd(orderShare);
   // THE CONTINUATION: where nothing lives, the first CONT_LINES of the order each played on from its end by the survival search -- the
   // board left alone is not what follows a line: the next decisions play on -- and lost where that leads (rank.c lostOf); the order
-  // sorted again. The hold's is the board let settle, then played on.
+  // sorted again. Not the hold: holding and then playing on is every line's own continuation, the one it does not press
   contAsked = contLater = 0;
   if (n && !order[0]->o.lives) {
     int k = 0;
     for (int i = 0; i < n && k < CONT_LINES && timeLeftMs() > SAVE_KEEP_MS + 2; i++) {
       Judge *J = order[i];
-      if (J->o.lives || J->o.dead) continue;
+      if (J->o.lives || J->o.dead || J->hold) continue;
       double give = (timeLeftMs() - SAVE_KEEP_MS) / (CONT_LINES - k); if (give > CONT_MS) give = CONT_MS;
       double was = lostOf(J), c = contLostOf(J, give);
       if (c > 0) J->contLost = c;
