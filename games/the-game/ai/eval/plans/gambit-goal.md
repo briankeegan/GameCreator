@@ -1597,3 +1597,7 @@ Measured (`7114babb`, 1197): 9 -- actions 8, panels 3, hold-creep 3. The floor f
 17's code again (`04bfbafb`).
 Measured (`46f81ed7`, the 17's code, round 2 -- seeds 25-48, games it never played): 15 -- combo_storm 4, factory 4, large_garbage 7;
 actions 5, panels 3, no-break 1. The 17 is about 15-17 on fresh games: large_garbage holds, combo_storm and factory are near half.
+A SAVE CONFIRMED IS PLAYED: the save found the board lives on with the three, or outlasts every line without one by a break's time;
+it only let the three back into the order, where the reserve or a clause could still put a line lost sooner over it (factory-8
+2332: the save confirmed 260 against 28, the hold lost at 28 played). The confirmed line now comes first (decide.c saveLine).
+Next (the owner: margin): the order ranks lines by the margin the board keeps, not by the frame it is lost left alone.
