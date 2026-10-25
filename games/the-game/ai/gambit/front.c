@@ -360,6 +360,10 @@ static Ctx *keyCtx;
 // THE FRAME LOOP'S ROOT, the one every engine step it takes starts from: the board copied with its queue kept as a question's is
 // (keepQueue: room for the MAXARR blocks the search lands) and the garbage on its way -- the keys (keysOf) and the press guard (wastedSwap)
 static Board *keyBoard;
+// (THE PACE OF THE WINDOW AT A FRAME: the wait after a swap whose keys begin then -- the judge presses every swap of a line with the same,
+// judge.c, so a line is pressed as it was judged whichever decision judged it)
+static int allowanceAt(int32_t at);
+static int fPace(int32_t at) { return F.limit > 0 ? paceGap(allowanceAt(at), F.limit, F.window) : F.lineGap; }
 static int keyRoot(const Board *b, int32_t holdLeft, int32_t holdStarted, const Arrival *arr, int32_t narr) {
   keyCtx = ctxOf(keyCtx); ns_ctx_gap(keyCtx, handsGap(F.keyGap));   // (the line's own pace, never the decision's being made now)
   if (!keyBoard) keyBoard = nb_new();
@@ -566,7 +570,7 @@ static void take(void) {
       F.lineN = 0; F.haveLineOf = 0;
       continue;
     }
-    F.keyGap = F.pGap;
+    F.keyGap = fPace(at);
     if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
       F.st.refused++;
       if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
@@ -623,7 +627,7 @@ static int follow(void) {
   }
   int32_t mv = F.line[0], hl, hs;
   if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) return lineDropped(due, "no board predicted");
-  F.keyGap = F.lineGap;
+  F.keyGap = fPace(due);
   if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) return lineDropped(due, "no keys press it");
   if (F.pending) abortTo(F.pId);
   F.pending = 0;
@@ -795,7 +799,7 @@ static int wastedSwap(const Board *t, int32_t bits) {
   F.guardSpoil = 0;
   if (wastedThree(guardBoard, aloneBoard)) return 1;
   // (and the board's own chain spoiled by the swap: the judge's own test, on a root made of the board as it is and the garbage on its way)
-  F.keyGap = F.lineGap;
+  F.keyGap = fPace(F.now);
   int root = keyRoot(t, 0, 0, F.arr, F.narr), s = root >= 0 && spoilsAt(keyCtx, root, t->curRow, t->curCol);
   ns_reset(keyCtx);
   F.guardSpoil = s;

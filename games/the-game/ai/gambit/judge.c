@@ -321,6 +321,9 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       int left = allowLeftAt(NODE(x, n)->t - NODE(x, root)->t, spent);
       pressTight = tightAt(left);
       int acts = bn ? actionsFor(bn->curRow, bn->curCol, mr, mc, left) : 0;
+      // (THE PACE AT THIS SWAP: the wait after it as the window it is pressed in sets it -- the frame loop keys every swap with the pace of
+      // the window at its frame (front.c fPace), so a line is judged pressed as it will be, at whatever decision it is judged)
+      if (nWinAges >= 0) ns_ctx_gap(x, handsGap(paceGap(left, pressAllowance + nWinAges, winLen)));
       // (a swap whose walk is over what the window leaves at its frame is not there to press: the frame loop refuses a first swap's keys
       // -- front.c keysFit, GUARDED -- and drops a line at a later one -- front.c follow -- so the line is cut there)
       if (acts > left) { j->cut = k; j->cutWhy = 1; break; }
@@ -408,6 +411,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   // through takes its first clear into a step its later chain is counted in, where the step's count does not see it)
   if (nseq > 0 && !j->threes) j->threes = firstThree(x, root, CR(seq[0]), CC(seq[0]));
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
+  ns_ctx_gap(x, handsGap(__atomic_load_n(&decGap, __ATOMIC_RELAXED)));   // (the decision's pace again for what is searched from the line's end)
   Node *e = NODE(x, n);
   j->endNode = n;
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
