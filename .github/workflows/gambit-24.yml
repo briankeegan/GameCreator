@@ -273,7 +273,9 @@ jobs:
           a=games-of-run/gambit-factory-1/survivor.log; b=twins/twin-factory-1/survivor.log
           [ -f "$a" ] && [ -f "$b" ] || { echo "::warning title=twice::no twin to compare"; exit 0; }
           # (up to the frames a game counts: past them the client is quitting, as soon as the wall lets it)
-          d() { grep '^GAMBITD ' "$1" | awk -v F="${{ inputs.frames }}" '$2 <= F' | sed 's/ wallMs=.*//'; }
+          # (the decisions, not the time they took: the work charged from the workers rounds a millisecond either way, so the time
+          # fields -- brMs, brAt's time, ms, ms_c, ms_r -- are no part of the game)
+          d() { grep '^GAMBITD ' "$1" | awk -v F="${{ inputs.frames }}" '$2 <= F' | sed 's/ wallMs=.*//; s/ brMs=[^ ]*//; s/ brAt=\([0-9]*\)\/[0-9]*/ brAt=\1/; s/ ms=[^ ]*//; s/ ms_c=[^ ]*//; s/ ms_r=[^ ]*//'; }
           if cmp -s <(d "$a") <(d "$b"); then echo "::notice title=twice::$(d "$a" | wc -l) decisions alike"
           else diff <(d "$a") <(d "$b") | head -4 | cut -c1-300 | sed 's/^/::error title=twice::/'; exit 1; fi
       # THE LINE AS JUDGED: every swap of a line handed on keyed from the frame the judge pressed it from, never later

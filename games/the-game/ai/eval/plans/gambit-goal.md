@@ -1493,3 +1493,6 @@ THE SAVE ASKED WHEREVER EVERY LINE WITHOUT A THREE IS LOST (1178 factory-5, lost
 dropped for its three decision after decision, the hold lost at 145, 132, 99 -- the save never asked, for every line without a three
 was lost more than a break's time away): the rule asks the save wherever every line without one is lost; the save confirms the three
 where it outlasts them by a break's time.
+Measured (`dbcd9b11`, 1179): 13 -- combo_storm 4, factory 4, large_garbage 3 (two at 776 and 787); actions 7, no-break 2, panels 2;
+2 wasted threes. Its twin red: factory-1 and its twin alike in all 969 decisions but for ms_c, 263 against 262 -- the work charged from
+the workers rounds a millisecond either way. "The game the same twice" compares the decisions now, not the time they took.
