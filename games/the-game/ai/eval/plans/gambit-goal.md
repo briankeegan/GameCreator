@@ -1451,3 +1451,7 @@ three the board needs comes from it: the save).
 Measured (`76cda3f8`, 1170): 5 -- combo_storm 5, factory 8, large_garbage 6; hold-creep 6, actions 5, panels 4, no-break 4. The checks
 asked before offering judged lines the decision's searches had the time for (the line toward a break tried path after path), and the
 order judged fewer. Gone with 1169's survival line in the judging's time: Gambit as `41b593b8` (1167, 20).
+THE SURVIVAL SEARCH'S LINE WASTES NO THREE WHERE IT HAS ONE THAT DOES NOT (1169 factory-7, lost at 419: at 294 and 308 the board lost
+in 120 frames, the survival line dropped for its three -- survive:1-w1): the survival search returns the best line of its pool that
+wastes no three, one that does only where its pool holds no other (the save's three still comes from it). Its own check, on the worker
+it searches on: no time of the decision's.
