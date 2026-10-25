@@ -378,15 +378,14 @@ static int ranked(const Read *R, const Found *S) {
     if (ns) sortJudged(order, n);
   }
   // NO WASTED THREE (the owner: only when not doing it would kill it): a line whose clears break nothing and throw nothing is taken out
-  // of the order -- unless every other line is lost within a break's time (rankSave) and a three lives, or is lost later: only there is
-  // a three a save
+  // of the order -- unless every other line is lost and a three lives, or is lost later: only there is a three a save, and the save asks
+  // whether it outlasts them by a break's time
   clockShareEnd(orderShare);
   { int keeps = 0, wasteLives = 0; double wasteLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
       if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
-    if (!keeps && keptLost >= rankSave) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
     // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way

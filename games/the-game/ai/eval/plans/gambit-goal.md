@@ -1488,3 +1488,8 @@ band), of two lines that survive alike, the one not in debt comes first (rank.c 
 Measured (`268fcd7a`, 1176): 12 -- combo_storm 5, factory 5, large_garbage 2; actions 8, panels 2, no-break 2; 1 wasted three. On.
 SURVIVAL FIRST, THE LEDGER UNDER IT (the owner: survival matters most): "alike" also holds two lines with three breaks' time left each
 however far apart they are lost; the ledger now decides only between two that live or two lost less than a break's time apart.
+Measured (`039f90d0`, 1177): 14 -- actions 9, panels 1. Measured (`915f29a8`, 1178): 14 -- actions 9, panels 1; 1 wasted three.
+THE SAVE ASKED WHEREVER EVERY LINE WITHOUT A THREE IS LOST (1178 factory-5, lost at 4619 every run since 1175: its survival line
+dropped for its three decision after decision, the hold lost at 145, 132, 99 -- the save never asked, for every line without a three
+was lost more than a break's time away): the rule asks the save wherever every line without one is lost; the save confirms the three
+where it outlasts them by a break's time.
