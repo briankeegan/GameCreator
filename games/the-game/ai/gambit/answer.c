@@ -216,7 +216,7 @@ static Broke theBrWide; static int32_t wideDone;
 // (where the break search ran, for the log: 0 not run, 1 a worker beside the searches, 2 the decision after a worker had not finished it,
 // 3 the decision with no worker free; and the ms it was given)
 static int32_t brWhere; static double brGiven;
-static int32_t decTap;   // (the decision's pressTap, for its jobs' threads)
+// (decTap, decide.c: the decision's pressTap, for its jobs' threads)
 static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as the answer says: the native one, native.c gn_setup)
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
@@ -507,7 +507,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (carryDrop) {
     L_s(" carryDrop="); L_i(carryDrop);
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
-    if (carryDrop >= 2) { L_s(" carryAt="); L_i(carryDropPlan); L_s("/"); L_i(carryDropAt); }   // (its next swap: judged pressed at when chosen / now)
+    if (carryDrop >= 2) { L_s(" carryAt="); L_i(carryDropPlan); L_s("/"); L_i(carryDropAt); L_s(":t"); L_i(carryDropTap); }   // (its next swap: judged pressed at when chosen / now)
     if (carryDrop >= 2) { L_s(" carryRest="); for (int i = 0; i < carryDropN; i++) { if (i) L_s(";"); L_mv(carryDropRest[i]); } }
   }
   L_s(" opts=");
