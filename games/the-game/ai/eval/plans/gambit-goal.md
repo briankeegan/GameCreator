@@ -1405,3 +1405,5 @@ NEARER IS COUNTED IN ACTIONS (1162 large_garbage-4): toward lines of 6-10 swaps 
 they left the garbage a swap or two nearer breaking (rule 1, nearAfter), and the allowance sat at 5-17 for 800 frames -- nothing left
 to walk to a break when one was there. Nearer is now one measure (rank.c nearActsOf), read by the order, by a move beating the hold
 and by the tier: the line's own walk and two actions (a swap and a cell's walk) for each swap it leaves to the break.
+The same build with the ring off (`c73a4b4b` on the working branch, 1163): 17 -- combo_storm 2, factory 4, large_garbage 1; actions 5,
+no-break 2. Against 16 with it on: the ring is not what the runs since 1158 lost.
