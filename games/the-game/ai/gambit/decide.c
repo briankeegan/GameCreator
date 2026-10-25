@@ -191,7 +191,9 @@ static double contLostOf(const Judge *J, double give) {
   if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
   if (!eb) return -1;
   endNoKeep = 1;
+  lineAt0 = J->hold ? 0 : J->k.at0;
   const Board *e = J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
+  lineAt0 = 0;
   endNoKeep = 0;
   if (!e) return -1;
   cloneBoard(eb, e);
@@ -707,7 +709,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   int aim = -1;
   if (C->hasAim && !aimGone) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;
   if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, nrest, aim, 0)) return 0;
-  k->settled = C->settled;
+  k->settled = C->settled; k->at0 = moving ? 0 : at0;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;
   k->xNats = nats; for (int i = 0; i < nats; i++) k->xAts[i] = ats[i];
   return 1;

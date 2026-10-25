@@ -1299,3 +1299,6 @@ REPLAYED (1124's four factory losses): each survives with another option forced 
 factory-2 9035, factory-5 2700, factory-7 4600), each a choice between lines lost alike, the window at 7 or fewer for hundreds of frames.
 Lost alike is not transitive, so the sort could put a line under one it beats head to head; survival in classes headed by the latest
 loss (`dc9f8917`, 1125, 02:58 ET): 16 -- combo_storm 6, factory 6, large_garbage 4 (two lost before 1200, the window at 0).
+Chained (a line lost alike with the one lost next later is of its class; `8e6d1eea`, 1126, 03:09 ET): 15 -- combo_storm 5, factory 3,
+large_garbage 7; gone, the pairwise rule again. 313 of 21761 decisions played a line beaten head to head by one under it (answer.c
+beaten=).

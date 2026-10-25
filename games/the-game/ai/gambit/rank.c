@@ -13,6 +13,7 @@ typedef struct {
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
+  int32_t at0;     // the line in progress: its first swap's walk begun no sooner than this frame, as it was chosen (decide.c carriedCand)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -35,7 +36,6 @@ typedef struct {
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
-  int32_t surv, survGen;       // of the lines that do not live, its survival class in the sort survGen made (sortJudged survClasses)
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press, w a wasted three, j the clock stopped its judging)
@@ -86,7 +86,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (what it makes is the whole line on the engine, as the judge counts it -- not what the search that found it counted; a line the
   // judge could not play out is judged on the search's word)
   // (the line in progress waiting for the board to settle: judged on the board settled, as carriedCand found it)
+  lineAt0 = k->at0;
   Outcome oc = play == PLAY_CARRYWAIT ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
+  lineAt0 = 0;
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
   if (judgedCut(&oc.j)) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
@@ -184,7 +186,9 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 // more decision (react frames)
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
+  lineAt0 = J->hold ? 0 : J->k.at0;
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
+  lineAt0 = 0;
 }
 static double lostOf(const Judge *x);
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
@@ -240,7 +244,9 @@ static int ideasOf(const Judge *J0) {
     if (decF.under || ideasAsks >= IDEAS_ASKS) { J->ideas = -1; return -1; }
     ideasAsks++;
     endNoKeep = 1;
+    lineAt0 = J->hold ? 0 : J->k.at0;
     const Board *e = clockOut() || J->o.dead ? 0 : J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
+    lineAt0 = 0;
     endNoKeep = 0;
     J->ideas = e ? ideasOn(e, ideaAims) : -1;
   }
@@ -327,7 +333,6 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL int32_t survGen;
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
 #define K(rule, v) return (cmpKey = (rule), (v))
@@ -335,8 +340,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, lx ? -1 : 1);
-  if (!lx && x->survGen == survGen && y->survGen == survGen) { if (x->surv != y->surv) K(1, x->surv - y->surv); }
-  else if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
+  if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
   // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
@@ -445,30 +449,10 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   *J = JW;
   return 1;
 }
-// SURVIVAL CLASSES: lost alike as one relation for the whole order -- the lines in the order they are lost, latest first, a line lost
-// alike with the one lost next later is of its class, and the first not alike begins the next. Two lines are compared by their classes,
-// never by each other, so the sort's order is one order
-static void survClasses(Judge **a, int n) {
-  static Judge *s[512];
-  int m = 0;
-  if (++survGen == 0) survGen = 1;
-  for (int i = 0; i < n; i++) if (!a[i]->o.lives) {
-    int j = m++;
-    while (j > 0 && lostOf(s[j - 1]) < lostOf(a[i])) { s[j] = s[j - 1]; j--; }
-    s[j] = a[i];
-  }
-  const Judge *head = 0;
-  for (int i = 0, c = 0; i < m; i++) {
-    if (!head) head = s[i];
-    else { if (lostOf(s[i]) != lostOf(head) && !lostAlike(head, s[i])) c++; head = s[i]; }
-    s[i]->surv = c; s[i]->survGen = survGen;
-  }
-}
 // sorted stably by the one order
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   markIdle(a, n);
-  survClasses(a, n);
   for (int w = 1; w < n; w *= 2)
     for (int lo = 0; lo < n; lo += 2 * w) {
       int mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n, i = lo, j = mid, k = lo;

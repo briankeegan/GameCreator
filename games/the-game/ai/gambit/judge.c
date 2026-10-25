@@ -291,6 +291,9 @@ static int judgedWastes(const Judged *j) { return j->threes > 0 || (ownChainBy >
 // lives on: the line pressed is not the line judged (asked by lineFits and by the order, rank.c judgeCand)
 static int judgedCut(const Judged *j) { return !j->dead && j->cut >= 0; }
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
+// (THE LINE IN PROGRESS, every judging of it -- the rank's, its readiness, its plan -- pressed as the frame loop presses it: its first
+// swap's walk begun no sooner than the frame it was judged pressed from when it was chosen; 0 any other line. decide.c carriedCand)
+static LOCAL int32_t lineAt0;
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
   j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1;
@@ -320,8 +323,9 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         n = liveNode(x, calm) ? calm : w;
         KB(n);
       } }
-    if (k == 0 && !last && o->pressAt0 > NODE(x, n)->t) {
-      int w = step(x, n, MK_LONG, 0, 0, o->pressAt0 - NODE(x, n)->t);
+    int32_t at0 = o->pressAt0 > 0 ? o->pressAt0 : lineAt0;
+    if (k == 0 && !last && at0 > NODE(x, n)->t) {
+      int w = step(x, n, MK_LONG, 0, 0, at0 - NODE(x, n)->t);
       if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
       if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
       n = w; KB(n);
