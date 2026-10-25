@@ -1270,3 +1270,6 @@ a swap again (`c85a14cb`, 1104, 21:39 ET): 10 -- combo_storm 1, factory 3, large
 What fell, from the history (runs 1043-1052, seeds 1-24 on the wall clock: 15-19): the work clock at 600 a ms (`70a2e191`, 1106,
 22:24 ET: decisions 195 ms against 92, 11) -- the search's time is not it; no reserve of actions, the pace keeping the window
 (`f74e676e`, 1107, 22:33 ET): **16** -- combo_storm 7, factory 5, large_garbage 4; actions x7, no-break x1.
+REPLAYED (gambit-replay.yml: a game of the 24 again, one decision forced): factory-6, lost at 8230, survives with frame 7810's fourth
+option (a setup ready for the next block over a break lost later that leaves none) and with the second at 7000, 7200, 7600. Readiness
+before the later loss in every decision (`cc040a35`, 1109, 23:07 ET): 9 -- games lost later, more of them; gone.

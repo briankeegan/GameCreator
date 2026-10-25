@@ -191,8 +191,9 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
          lostOf(k) <= lostOf(H) && lostOf(H) - k->o.j.done > react;
 }
 // THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own (a
-// list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one with a break in reach once
-// the next block lands, then the one whose board is lost later; then the tier, then each sub-key in turn
+// list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one whose board is lost later,
+// then the one with a break in reach once the next block lands (a death sooner is never taken for readiness); then the tier, then each
+// sub-key in turn
 // (a line whose judging the clock cut is not known to die: it ranks after every board that stands and before every known loss -- a
 // death known is never chosen over a line that may live)
 // (a line ready for the next block is lost where its readiness break leads, when that is later; a hold is not credited for the break
@@ -332,9 +333,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, lx ? -1 : 1);
-  // -- of two that do not live, one ready for the next block (readyNextOf: a break in reach once it lands, the window paying for it)
-  // before one asked and not ready, whatever either's loss: a board left with no break is lost however late its forecast says
-  if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) K(1, x->readyNext == 1 ? -1 : 1);
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, lostOf(y) > lostOf(x) ? 1 : -1);
   // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
