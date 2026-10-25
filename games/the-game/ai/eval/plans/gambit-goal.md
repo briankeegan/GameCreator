@@ -1293,3 +1293,5 @@ Two lines lost alike only with as many breaks' time left, or three and more (`d2
 (`475680fa`) stands, at 20.
 Under garbage, a line that breaks nothing lost later than the hold before it (`fd0ca6e5`, 1123, 02:29 ET): 15; gone. Changing the
 order's keys has scored below 20 three times in a row (13, 16, 15): what moved it was making two readings of one fact agree.
+Under garbage a line that breaks nothing meets no entry of the list (`2ec1c235`, 1124, 02:43 ET): **20** -- combo_storm 8, factory 4,
+large_garbage 8.
