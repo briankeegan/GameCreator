@@ -1393,3 +1393,9 @@ break was there; then nothing was left for it. 7-9% of the lines played held suc
 time (the break search's beam, its line-ups and pairs, the planner, the chain continued, the survival search) now grows no swap that
 undoes the line's last -- by the panels' ids, so a panel pushed into a gap and the next one pushed after it are still two moves
 (search/break.c undoesLast).
+No swap back inside a line (`13514bef`, 1161): 18 -- combo_storm 3, factory 3; actions 5, panels 1; the state and the truth held.
+NO PAIR PUT BACK, ANYWHERE IN A LINE (1161 factory-5): level lines of 9-12 swaps -- `11,5;9,4;10,5;9,4;...`, the levelling walk
+(propose.c levelLine) walking a panel onto a column and later back -- spent the allowance from 27 to 5 under garbage, breaking nothing.
+One rule (judge.c movedUndoes): a swap that puts back two panels one of the line's own swaps moved -- by their ids, wherever the stack
+has risen them -- is no swap; the judge cuts a line there, whoever proposed it, and every search grows none (any of the line's last
+eight pairs, not only the last). The levelling walk never walks a panel back to the column it came from.

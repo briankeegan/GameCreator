@@ -293,6 +293,25 @@ static int judgedCut(const Judged *j) { return !j->dead && j->cut >= 0; }
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 // (THE LINE IN PROGRESS, every judging of it -- the rank's, its readiness, its plan -- pressed as the frame loop presses it: its first
 // swap's walk begun no sooner than the frame it was judged pressed from when it was chosen; 0 any other line. decide.c carriedCand)
+// A SWAP BACK IN A LINE: a swap that puts two panels back where one of the line's own swaps took them from -- the same two, by their
+// ids, wherever the stack has risen them to -- undoes it, two swaps' actions for a wait. No line holds one: the judge cuts a line there
+// (cutWhy 2, no swap there to press), and every search that grows a line a swap at a time grows none (search/break.c undoesMoved). A
+// swap into a gap moves one panel, and is no pair to put back. (Moved: the line's latest MOVED_N pairs, a left of b before the swap)
+#define MOVED_N 8
+typedef struct { int32_t a, b; } MovedPair;
+typedef struct { int32_t n; MovedPair p[MOVED_N]; } Moved;
+static void movedAdd(const Board *b, int32_t mv, Moved *m) {
+  if (!b) return;
+  MovedPair p = { b->p[CR(mv)][CC(mv)].f[ID], b->p[CR(mv)][CC(mv) + 1].f[ID] };
+  m->p[m->n % MOVED_N] = p; m->n++;
+}
+static int movedUndoes(const Board *b, int32_t mv, const Moved *m) {
+  if (!b) return 0;
+  int32_t l = b->p[CR(mv)][CC(mv)].f[ID], r = b->p[CR(mv)][CC(mv) + 1].f[ID];
+  if (l == NUL || r == NUL) return 0;
+  for (int i = 0; i < m->n && i < MOVED_N; i++) if (m->p[i].a == r && m->p[i].b == l) return 1;
+  return 0;
+}
 static LOCAL int32_t lineAt0, lineWaitTo;   // (and lineWaitTo: its board run to that frame and let settle before its first swap)
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
@@ -309,6 +328,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 }, pieces = 0, links = 0;
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
   int kb = root;   // (the line's last node by ownChainBy)
+  Moved moved = { 0 };   // (the pairs the line's swaps moved: movedUndoes)
 #define KB(m) do { if (ownChainBy > 0 && liveNode(x, (m)) && NODE(x, (m))->t <= ownChainBy) kb = (m); } while (0)
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
@@ -360,6 +380,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       // not there; a later one is pressed from the frame its walk begins (ats), handed on with that frame, its keys made on the board
       // where the walk begins)
       if (k == 0 && NODE(x, from)->t - NODE(x, n)->t > cfgReaction) { j->cut = k; j->cutWhy = 3; break; }
+      { Board *fb = ensureBoard(x, from); if (movedUndoes(fb, seq[k], &moved)) { j->cut = k; j->cutWhy = 2; break; } movedAdd(fb, seq[k], &moved); }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from; KB(n);
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;

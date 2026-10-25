@@ -197,21 +197,24 @@ static void searchAll(const Read *R, Found *S) {
 
 // THE LEVEL BUILT: topped or under garbage, the line that walks the tallest column's top panel onto a lower
 // column beside it, panel after panel, until the stack is level (no column more than one above another) -- each step settled, the
-// whole line judged on the engine. Its length into seq; 0 for none
+// whole line judged on the engine. A panel walked onto a column is never walked back to the one it came from (judge.c movedUndoes).
+// Its length into seq; 0 for none
 static int levelLine(const Board *b, int32_t *seq, int cap) {
-  int h[W + 2], top = gridLen(b) - 2, n = 0;
-  for (int c = 1; c <= W; c++) { h[c] = 0; for (int r = 1; r <= top; r++) if (cellAt(b, r, c) > 0) h[c] = r; }
+  int h[W + 2], top = gridLen(b) - 2, n = 0, cameAt[W + 2], cameFrom[W + 2];   // (the height and column of the panel last walked onto a column)
+  for (int c = 1; c <= W; c++) { h[c] = 0; cameAt[c] = 0; cameFrom[c] = 0; for (int r = 1; r <= top; r++) if (cellAt(b, r, c) > 0) h[c] = r; }
   while (n < cap) {
     int best = 0, to = 0;
     for (int c = 1; c <= W; c++)
       for (int d = -1; d <= 1; d += 2) {
         int nb = c + d;
-        if (nb < 1 || nb > W || h[nb] >= h[c] - 1) continue;
+        if (nb < 1 || nb > W || h[nb] >= h[c] - 1 || (cameAt[c] == h[c] && cameFrom[c] == nb)) continue;
         if (!best || h[c] > h[best] || (h[c] == h[best] && h[nb] < h[to])) { best = c; to = nb; }
       }
     if (!best) break;
     seq[n++] = h[best] * 8 + (to > best ? best : to);
+    if (cameAt[best] == h[best]) cameAt[best] = 0;
     h[best]--; h[to]++;
+    cameAt[to] = h[to]; cameFrom[to] = best;
   }
   return n;
 }

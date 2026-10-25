@@ -29,9 +29,7 @@ static LOCAL int32_t touchFrom;
 #define LINEUP_AFTER 30
 #define LINEPOOL 8192   // lines one level holds: TOUCH_WIDE x the swaps of a board
 
-// (a line's last swap and the ids of the two panels it swapped, left then right before it: lastSwapOf, undoesLast)
-typedef struct { int32_t mv, a, b; } LastSwap;
-typedef struct { int32_t key, n, s, h, len, kept, res; int32_t path[MAXPATH]; LastSwap last; } Line;   // res: grown from a line the last decision carried on
+typedef struct { int32_t key, n, s, h, len, kept, res; int32_t path[MAXPATH]; Moved last; } Line;   // res: grown from a line the last decision carried on
 typedef struct { int32_t n, len[KEEPN]; int32_t path[KEEPN][MAXPATH]; } Paths;
 // THE ANSWER (breakMoves' return): depth 1 with the first swaps that break (moves) and how -- the line (path), the line-up pairs
 // (lines, one per first swap found), or depth 0 with the line nearest a break (toward) and the lines to choose among (towards)
@@ -262,20 +260,9 @@ static int keepsOwnChain(Ctx *x, int n) {
   return b && b->chainCounter >= ownChainN;
 }
 static int swapsOfNode(Ctx *x, int n, int32_t *ms) { Board *b = ensureBoard(x, n); return b ? legalSwaps(b, ms) : 0; }
-// A SWAP BACK IN A LINE: the line's last swap undone -- the same two panels swapped back where they were, a wait bought with two swaps'
-// actions. Every search that grows a line a swap at a time grows none. (The same swap again is a move of its own once what it moved
-// has gone: a panel pushed into a gap falls, and the swap moves the next.)
-static LastSwap lastSwapOf(Ctx *x, int n, int32_t mv) {
-  LastSwap s = { mv, NUL, NUL };
-  Board *b = ensureBoard(x, n);
-  if (b) { s.a = b->p[CR(mv)][CC(mv)].f[ID]; s.b = b->p[CR(mv)][CC(mv) + 1].f[ID]; }
-  return s;
-}
-static int undoesLast(Ctx *x, int n, int32_t mv, const LastSwap *l) {
-  if (!l->mv || mv != l->mv || l->a == NUL || l->b == NUL) return 0;
-  Board *b = ensureBoard(x, n);
-  return b && b->p[CR(mv)][CC(mv)].f[ID] == l->b && b->p[CR(mv)][CC(mv) + 1].f[ID] == l->a;
-}
+// (the searches' side of judge.c's swap back: a child that swaps back what its line moved is grown by none of them)
+static int undoesMoved(Ctx *x, int n, int32_t mv, const Moved *m) { return movedUndoes(ensureBoard(x, n), mv, m); }
+static Moved movedOn(Ctx *x, int n, int32_t mv, const Moved *m) { Moved o = *m; movedAdd(ensureBoard(x, n), mv, &o); return o; }
 static void keepPaths(Paths *p, Line **ls, int n) {
   p->n = 0;
   for (int i = 0; i < n && p->n < KEEPN; i++) {
@@ -301,7 +288,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     if (!(s->resume->len[i] > 0 && s->resume->len[i] < LONGEST)) continue;
     Line *a = lineNew(); if (!a) break;
     a->len = s->resume->len[i]; for (int k = 0; k < a->len; k++) a->path[k] = s->resume->path[i][k];
-    a->n = s->root; a->kept = 0; a->res = 1; a->last.mv = 0;   // kept: the swaps played so far
+    a->n = s->root; a->kept = 0; a->res = 1; a->last.n = 0;   // kept: the swaps played so far
     act[nact++] = a;
   }
   while (nact && !SEARCH_OUT()) {
@@ -309,8 +296,8 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     for (int i = 0; i < nact; i++) {
       Line *a = act[i];
       int mv = a->path[a->kept];
-      if (!legalAt(x, a->n, CR(mv), CC(mv)) || undoesLast(x, a->n, mv, &a->last)) continue;
-      a->last = lastSwapOf(x, a->n, mv);
+      if (!legalAt(x, a->n, CR(mv), CC(mv)) || undoesMoved(x, a->n, mv, &a->last)) continue;
+      a->last = movedOn(x, a->n, mv, &a->last);
       int out = stepMarked(s, a->n, MK_SWAP, mv, 0);
       if (!liveNode(x, out) || !within(s, out)) continue;
       a->n = out; a->kept++;
@@ -389,7 +376,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       for (int i = 0; i < ntl; i++) {
         bAt[i] = nb;
         int nm = swapsOfNode(x, tl[i]->n, ms);
-        for (int j = 0; j < nm && nb < (int)(sizeof bPar / sizeof bPar[0]); j++) if (!undoesLast(x, tl[i]->n, ms[j], &tl[i]->last)) { bPar[nb] = tl[i]->n; bMv[nb++] = ms[j]; }
+        for (int j = 0; j < nm && nb < (int)(sizeof bPar / sizeof bPar[0]); j++) if (!undoesMoved(x, tl[i]->n, ms[j], &tl[i]->last)) { bPar[nb] = tl[i]->n; bMv[nb++] = ms[j]; }
       }
       bAt[ntl] = nb;
       stepBatch(x, bPar, bMv, MK_SWAP, nb);
@@ -406,7 +393,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
           int t3 = swapTaken(s, b, tl[i]->n, mv);
           if (!liveNode(x, t3)) continue;
           Line *nl = lineIn(ar); if (!nl) break;
-          *nl = *tl[i]; nl->n = t3; nl->last = lastSwapOf(x, tl[i]->n, mv); if (nl->len < MAXPATH) nl->path[nl->len++] = mv;
+          *nl = *tl[i]; nl->n = t3; nl->last = movedOn(x, tl[i]->n, mv, &tl[i]->last); if (nl->len < MAXPATH) nl->path[nl->len++] = mv;
           if (breaksAt(s, t3, nl->path, nl->len)) {
             int32_t mat, br = brokeSettled(x, t3, &mat);
             int acts = 0;
@@ -445,7 +432,7 @@ static void linedAll(BS *s, const int *ns, int n, int32_t end, int *out) {
 }
 // Each parent's swaps in turn, as many as `cap` tries leave, till one of them hits: a hit marks the parent's first move and its pair,
 // and the next parent goes on (inTurn). hits: 0 the pop's end breaks after the second swap, 1 the second swap itself breaks.
-typedef struct { int32_t key, n, m; LastSwap last; } Parent;
+typedef struct { int32_t key, n, m; Moved last; } Parent;
 static void inTurn(BS *s, const Parent *ps, int np, int cap, int hits, int32_t end) {
   Ctx *x = s->x;
   Broke *o = s->out;
@@ -453,7 +440,7 @@ static void inTurn(BS *s, const Parent *ps, int np, int cap, int hits, int32_t e
   for (int k = 0; k < np && s->tries < cap && !SEARCH_OUT(); k++) {
     int nm = swapsOfNode(x, ps[k].n, ms);
     for (int j = 0; j < nm && s->tries < cap; j++) {
-      if (undoesLast(x, ps[k].n, ms[j], &ps[k].last)) continue;
+      if (undoesMoved(x, ps[k].n, ms[j], &ps[k].last)) continue;
       s->tries++;
       int n2 = step(x, ps[k].n, MK_SWAP, CR(ms[j]), CC(ms[j]), 0), hit;
       markStep(s, ps[k].n, MK_SWAP, ms[j], n2);
@@ -496,7 +483,7 @@ static int lineups(BS *s, Line **firsts, int nfirsts) {
       for (int i = 0; i < nl; i++) {
         int nm = swapsOfNode(x, level[i]->n, ms);
         for (int j = 0; j < nm && n3 < LINEPOOL; j++) {
-          if (undoesLast(x, level[i]->n, ms[j], &level[i]->last)) continue;
+          if (undoesMoved(x, level[i]->n, ms[j], &level[i]->last)) continue;
           int t3 = stepMarked(s, level[i]->n, MK_SWAP, ms[j], 0);
           n3s[n3] = t3; m3[n3] = ms[j]; from[n3] = i;
           scs[n3] = !liveNode(x, t3) || NODE(x, t3)->t >= end ? -1 : pairsOf(ensureBoard(x, t3), want);
@@ -509,7 +496,7 @@ static int lineups(BS *s, Line **firsts, int nfirsts) {
       for (int q = 0; q < n3 && !found3; q++) {
         if (scs[q] < 0) continue;
         Line *l = lineIn(ar); if (!l) break;
-        *l = *level[from[q]]; l->n = n3s[q]; l->s = scs[q]; l->last = lastSwapOf(x, level[from[q]]->n, m3[q]); if (l->len < MAXPATH) l->path[l->len++] = m3[q];
+        *l = *level[from[q]]; l->n = n3s[q]; l->s = scs[q]; l->last = movedOn(x, level[from[q]]->n, m3[q], &level[from[q]]->last); if (l->len < MAXPATH) l->path[l->len++] = m3[q];
         if (l3[q]) { found(o, level[from[q]]->key); setPath(o, l->path, l->len); found3 = 1; break; }
         next[nn++] = l;
       }
@@ -560,7 +547,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   int nf = swapsOfNode(x, s.root, ms), nfirsts = 0, at1 = -1;
   for (int i = 0; i < nf; i++) {
     Line *l = lineNew(); if (!l) break;
-    l->key = ms[i]; l->len = 1; l->path[0] = ms[i]; l->res = 0; l->last = lastSwapOf(x, s.root, ms[i]);
+    l->key = ms[i]; l->len = 1; l->path[0] = ms[i]; l->res = 0; { static const Moved none; l->last = movedOn(x, s.root, ms[i], &none); }
     l->n = stepMarked(&s, s.root, MK_SWAP, ms[i], 0);
     firsts[nfirsts++] = l;
   }

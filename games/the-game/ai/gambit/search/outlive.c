@@ -7,7 +7,7 @@
 // FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn: lostAlone's answer, NOT_ASKED when there is none).
 
 #define OUT_SEQ 16
-typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; LastSwap last; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor; last: search/break.c undoesLast
+typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; Moved last; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor; last: the pairs its swaps moved (judge.c Moved)
 typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts; } Outlived;
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
@@ -60,7 +60,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     for (int i = 0; i < nlev; i++) {
       bAt[i] = nb;
       int nm = swapsOfNode(x, level[i].n, ms1);
-      for (int j = 0; j < nm && nb < PLAN_KIDS; j++) if (!undoesLast(x, level[i].n, ms1[j], &level[i].last)) { bPar[nb] = level[i].n; bMv[nb++] = ms1[j]; }
+      for (int j = 0; j < nm && nb < PLAN_KIDS; j++) if (!undoesMoved(x, level[i].n, ms1[j], &level[i].last)) { bPar[nb] = level[i].n; bMv[nb++] = ms1[j]; }
     }
     bAt[nlev] = nb;
     stepBatch(x, bPar, bMv, MK_SWAP, nb);
@@ -75,7 +75,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
         for (int q2 = 0; q2 < nk && !dup; q2++) { Node *kn = NODE(x, kids[q2].n); dup = kn->hash == on->hash && kn->keyn == on->keyn && !memcmp(kn->key, on->key, sizeof(int32_t) * on->keyn); }
         if (dup) continue;
         OItem *k = &kids[nk++]; memset(k, 0, sizeof *k);
-        k->n = out; k->nseq = imin(level[i].nseq + 1, OUT_SEQ); k->last = lastSwapOf(x, level[i].n, ms1[j]);
+        k->n = out; k->nseq = imin(level[i].nseq + 1, OUT_SEQ); k->last = movedOn(x, level[i].n, ms1[j], &level[i].last);
         for (int s2 = 0; s2 < level[i].nseq && s2 < OUT_SEQ; s2++) k->seq[s2] = level[i].seq[s2];
         if (level[i].nseq < OUT_SEQ) k->seq[level[i].nseq] = ms1[j];
         k->room = ensureBoard(x, out)->height - on->top; k->h = heldOf(x, out); k->g = on->garb;
