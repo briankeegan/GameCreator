@@ -130,9 +130,21 @@ static int32_t materialOn(const Board *b);   // (facts.c: the panels under the l
 // THE FLOOR SPENT, the one test every reader asks (the shared line check, the rank's keep): a line that clears panels and breaks nothing,
 // leaving a board the rules' keep does not hold (floorKept: floorOf on the board the line leaves -- facts.c keepsFloor)
 static int spendsFloor(Made m, int32_t floorKept) { return floorKept == 0 && (m.combo > 0 || m.chain > 0) && !(m.broke > 0); }
-// THE RESERVE SPENT, beside it: with garbage on the board or on its way, a line that breaks nothing and leaves the window fewer than
-// RESERVE actions (core/nodes.h) has spent what the next break is pressed out of
-static int spendsReserve(Made m, const Judged *j) { return (decF.under || decF.land != NOT_ASKED) && !(m.broke > 0) && j->leftEnd >= 0 && j->leftEnd < RESERVE; }
+// THE WINDOW AT THE NEXT LANDING (the window as a schedule): the actions it will have the frame the next block lands, the line's own spent
+// and every action before them aged as the window ages -- the line's end when it is still pressing then, or nothing lands (-1 none said)
+static int32_t leftAtLanding(const Judged *j) {
+  if (j->leftEnd < 0) return -1;
+  int32_t tl = decF.next != NOT_ASKED ? decF.next - pressFrom : -1;
+  return tl > j->endAt ? allowLeftAt(tl, j->spent) : j->leftEnd;
+}
+// THE RESERVE SPENT, beside it: with garbage on the board or on its way, a line that breaks nothing and walks the window below a break's
+// walk (LAND_RESERVE, core/nodes.h) at the next landing has spent what that break is pressed out of -- attacks and walks are free while
+// the next break stays in hand
+static int spendsReserve(Made m, const Judged *j) {
+  if (!(decF.under || decF.land != NOT_ASKED) || m.broke > 0 || j->spent <= 0) return 0;
+  int32_t left = leftAtLanding(j);
+  return left >= 0 && left < LAND_RESERVE;
+}
 // (what the one line check asks of the list, a last resort too with last, and of the floor and the reserve -- lineOk below, the order's
 // outcome and rank.c judgeCand asking the same)
 static int lineInList(const Judged *j, int last) { return fitsList(&theList, j->made, j, last) && imax(j->made.chain, j->chainAll) <= MAXCHAIN; }

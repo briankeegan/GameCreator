@@ -97,6 +97,9 @@ static int walkLeft(void) { return pressAllowance >= 0 ? pressAllowance : HOLDTI
 // survival search keeping it unless spending it buys a later loss (search/outlive.c). None: the pace keeps the window
 // (paceGap), and the line check presses every line in the window as it will be
 #define RESERVE 0
+// THE NEXT LANDING'S BREAK: the actions a break's walk takes, kept in the window for the frame the next block lands (outcome.c
+// leftAtLanding, spendsReserve) -- what a line spends before then the window has back only as it ages
+#define LAND_RESERVE 20
 static int32_t winAges[WINMAX], nWinAges = -1, winLen = 600, hostWin;
 // (A SEARCH ROOTED LATER: a readiness search's board is a line's once everything lands, pressFrom frames after the question with the line
 // having spent pressSpent -- its breaks are pressed in the window as it is then, every search asking it here; 0 for the question's own)

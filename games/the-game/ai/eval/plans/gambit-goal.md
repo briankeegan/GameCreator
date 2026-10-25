@@ -1415,3 +1415,8 @@ so a corner swap bought the score, at a walk across the board. Each of those lin
 both judged on the engine (propose.c ADD_SHORT); the order's fewer actions takes the shorter where they are alike.
 Measured (`359a030b`, 1165): 11 -- combo_storm 5, factory 7, large_garbage 1; actions 10. Gone, as `7c4610a9`: the trailing swap
 is the search's own score's, and a line offered without it walked the allowance dry -- the shorter line is not the search's line.
+THE WINDOW AS A SCHEDULE (the owner: keep the pressure on and stay alive): the telegraph says when the next block lands, and the window
+ages until then. A line that breaks nothing spends the reserve when its own walk leaves fewer than a break's walk (LAND_RESERVE, 20) in
+the window at that landing (outcome.c leftAtLanding, spendsReserve) -- not at the line's end, as the old reserve read it. Every reader
+of the reserve asks it: the order ranks such a line after one that keeps the break in hand (rule 3, under survival), the searches' line
+check looks past it. Attacks and walks are free while the next break stays affordable.
