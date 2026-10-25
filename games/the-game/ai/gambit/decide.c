@@ -686,9 +686,9 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
   // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
   // settled line waits while the board still moves)
-  // (a settled line's next step is pressed on its blocks settled from the step before, as it was judged: on a board still moving the
-  // step is judged once they rest -- waitTo, judge.c -- not cut for a walk that cannot begin within a reaction; and a break the readiness
-  // found, on the board once everything lands, is pressed on that board: on one still moving it waits for the whole board)
+  // (a settled line's next step is pressed on the board settled from the step before, as it was judged: on a board still moving the
+  // step is judged once it has settled -- waitTo -- not cut for a walk that cannot begin within a reaction; and a break the readiness
+  // found, on the board once everything lands, is pressed on that board: on one still moving it waits as a settled line does)
   int moving = (C->settled || C->ready) && boardMoving(decQ.b);
   // (its next swap pressed no sooner than the frame it was judged pressed from, as the frame loop presses a line in hand: front.c lineDue)
   int32_t at0 = C->restAt[skip] > decAt ? C->restAt[skip] - decAt : 0;

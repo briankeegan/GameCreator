@@ -1344,28 +1344,6 @@ EXPORT(pa_outcome) int pa_outcome(int r, int c, int at, int horizon) { return pa
 #define SHARED_WALK 1
 #define TOUCH_SCORE 1
 #define SETTLE_CAP 900   // frames a settle runs at most, as the bot's resolve (engineboard.js settle)
-// (a swap's blocks at rest: the columns in *mask -- grown by every column next to them a clear has reached -- each cell holding a panel
-// or garbage normal, nothing falling, hovering, clearing or popping, no flag a neighbour reads)
-static int blocksQuiet(const Board *b, uint32_t *mask) {
-  for (int grew = 1; grew; ) {
-    grew = 0;
-    for (int c = 1; c <= W; c++) {
-      if ((*mask >> c & 1) || !((*mask >> (c - 1) & 1) || (*mask >> (c + 1) & 1))) continue;
-      for (int r = 1; r < b->nrows; r++) {
-        const int32_t *f = b->p[r][c].f;
-        if (f[STATE] == MATCHED || f[STATE] == POPPING || f[STATE] == POPPED || f[MATCHING]) { *mask |= 1u << c; grew = 1; break; }
-      }
-    }
-  }
-  for (int c = 1; c <= W; c++) if (*mask >> c & 1)
-    for (int r = 1; r < b->nrows; r++) {
-      const int32_t *f = b->p[r][c].f;
-      if (!f[COLOR] && !f[ISGARBAGE] && f[STATE] == NORMAL) continue;
-      if (f[STATE] != NORMAL || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
-    }
-  return 1;
-}
-#define BLOCKS_QUIET(st, m) blocksQuiet((st), (m))
 #include "search.h"
 // What node i's step did (MK_SETTLE), into the io body: clears, panels
 // cleared, garbage cells converted, the most stop time one clear paid, then

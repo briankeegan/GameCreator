@@ -1367,3 +1367,6 @@ whole, the judge pressed them sooner -- two readings. Now the step itself: a set
 (eval/native/search.h ns_ctx_blocks), for every search and the judge alike.
 (1156 cancelled: three readers still read a swap's settle as the whole board's -- spoilsAt, a settled line's end board, the line in
 progress waiting -- each now reads the swap's blocks, the one step, and the board let rest whole only where a whole board is asked.)
+A swap's settle ending when its own blocks rest, every reader (`94d34688`, 1157): 8 -- combo_storm 1, factory 2, large_garbage 5;
+the truth held, breaks by a chain in combo_storm 178 of 907: the searches build chains on the whole board at rest between swaps, and
+on the swap's blocks alone they find worse ones. Gone, Gambit and the engine as 24a46a0e (1153, 19).
