@@ -1514,3 +1514,7 @@ ONE WINDOW PLAN (the owner: break things, but do not die on the way): `windowKee
 the order, the line check and the survival search alike. The walk a break needs is the board's own (two actions a swap of its nearest
 break, plus two); the frames a line must outlive the spender by are the window's own (until it holds that walk again). The hold never
 comes first by the reserve.
+Measured (`99a504b8`, 1183): 13 -- combo_storm 5, factory 4, large_garbage 4; actions 7, no-break 2, hold-creep 1, panels 1; 2 wasted
+threes. The window still runs dry: the rule held only where the line keeping the walk lived the window's regain time itself.
+THE RESERVE ON EVERY PAIR OF MOVES: of two lines that do not live, the one that keeps the next break's walk comes first unless the
+spender is lost later by the window's regain time -- wherever the keeper is lost. The hold stays out of it (1181's hold-creep).
