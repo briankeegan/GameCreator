@@ -20,6 +20,14 @@ static Keep floorKeep; static int32_t floorKeepOn;
 // owner's saving band holds -- begun topped with four rows' worth of panels or fewer, kept until the board holds eight rows' worth and
 // the panels sure to make the list's largest combo ((size - 1) x colours and one) -- the band's top too. 1 kept, 0 not, -1 no floor.
 static int32_t savingPanels, bandTop;   // (the band across decisions; a new game ends it -- gb_new_game)
+// LOW ON PANELS, the ledger's test (rank.c rankLow): under the rules' material floor (the keep's material test alone), or in the saving
+// band below its top -- the height and the evenness the floor also tests are no shortage of panels
+static int lowOnPanels(const Board *b) {
+  if (savingPanels && panelsOn(b) < bandTop) return 1;
+  if (!floorKeepOn || !floorKeep.t[KEEP_MATERIAL].op) return 0;
+  int32_t h, m, e; endFacts(b, &h, &m, &e);
+  return !test(m, floorKeep.t[KEEP_MATERIAL]);
+}
 static int decisionFloor(const Board *b) {
   if (savingPanels && panelsOn(b) < bandTop) return 0;
   return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1;
@@ -265,7 +273,7 @@ static int ranked(const Read *R, const Found *S) {
   readyStop(); readyPendClear(); readyCollect = 1;   // (and keeps each landed board: searched once, its nearest break measured)
   rankReact = C2.reaction + 1;
   rankSave = rankReact + popFrames(decQ.b, W);   // (a row of W cells)
-  rankLow = floorOf && floorOf(decQ.b) == 0;
+  rankLow = lowOnPanels(decQ.b);
   n = judgeAll(R, nc, n);
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
