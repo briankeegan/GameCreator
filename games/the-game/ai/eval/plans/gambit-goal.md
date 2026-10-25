@@ -1253,3 +1253,7 @@ round, in 6 minutes. Of two lines that break nothing, the line's own swaps count
 is not what the losses lack; the panels are.
 Readiness asks that its break be pressed whole in the window as it will be (`5836931c`, 1092, 19:55 ET): 11 -- combo_storm 3, factory
 2, large_garbage 6; gone.
+The order's options log the frame each is read lost at where its readiness break leads (`3ec36fda`, 1093, 20:04 ET): 14, the same
+games -- and at the turn of the losses no line played was read later than its own loss: the line lost sooner was taken over a break
+lost later by the material, of two breaks lost alike. Without the material there (`4bb4d1b7`, 1094): 4. The material between any two
+breaks a break's time away, alike or not (`a6c5feb0`, 1095, 20:18 ET): 8. Both gone; the order is 1090's.
