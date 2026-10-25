@@ -1347,3 +1347,6 @@ Lost alike at two breaks' time each (`23bd32e2`, 1144, 06:56 ET): 15 -- combo_st
 1132's.
 A board near its end walked held, never tapped (`8818b250`, 1146, 07:18 ET): 18 -- combo_storm 6, factory 5, large_garbage 7; the
 tapped walk near the end is worth its actions; gone, the code as 1132's.
+THE WINDOW SPENT (1147, 1132's code with the count -- 21 again, the same three games: every run its seeds' alone): games lost 336
+actions a minute -- entry 103, carry 75, survive 35, extend 24; games survived 325 -- carry 104, entry 69, break search 30. The
+lost spend half again as much on attacks; two of their three are openings, attacking while the first garbage falls.
