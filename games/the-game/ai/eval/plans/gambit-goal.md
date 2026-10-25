@@ -1435,3 +1435,7 @@ lost there, on the search's word (rank.c judgeCand, Cand xLost).
 Measured (`1b17c749`, 1168): 17 -- combo_storm 4, factory 2, large_garbage 1; actions 4, panels 3 -- and the C checks red: "the answers,
 2 lost a break's time sooner than one offered" (a survival line on the search's word, lost at 360, played over a hold the judge saw lost
 at 412). The search's word is not the judge's: gone, Gambit as `41b593b8` (1167, 20).
+THE SURVIVAL LINE IN THE JUDGING'S OWN TIME: 1167 judged it before the second readiness pass but after the first -- every line asked
+whether a break is there once everything lands, in the searches' share -- so the share was spent and the line still went unjudged
+(combo_storm-3 at 502). The survival search's line is now asked first of the order's own searching, right after the order is made, and
+judged in the judging's quarter, not the searches' share (decide.c ranked).
