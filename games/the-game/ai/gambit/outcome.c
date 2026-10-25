@@ -297,8 +297,8 @@ static int lineCheckOn(const Question *q, const int32_t *seq, int n, int settled
   return lineOk(&o, flags);
 }
 static int lineCheck(const int32_t *seq, int n, int settled, int flags) { return lineCheckOn(&decQ, seq, n, settled, flags); }
-// (the searches' check: the list, no three wasted; the survival search's: no three wasted where its pool holds such a line, else none --
-// a line that lives is taken whatever list it is outside, and a three the board needs comes from it)
+// (the searches' check: the list, no three wasted; the survival search's: neither -- a line that lives is taken whatever list it is
+// outside, and a three the board needs comes from it)
 static int lineFits(const int32_t *seq, int n, int settled) { return lineCheck(seq, n, settled, CHECK_LIST | CHECK_WASTE); }
 static int lineKeptOn(const Question *q, const int32_t *seq, int n, int settled) { return lineCheckOn(q, seq, n, settled, 0); }
 

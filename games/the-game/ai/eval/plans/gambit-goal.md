@@ -1455,3 +1455,5 @@ THE SURVIVAL SEARCH'S LINE WASTES NO THREE WHERE IT HAS ONE THAT DOES NOT (1169 
 in 120 frames, the survival line dropped for its three -- survive:1-w1): the survival search returns the best line of its pool that
 wastes no three, one that does only where its pool holds no other (the save's three still comes from it). Its own check, on the worker
 it searches on: no time of the decision's.
+Measured (`27463e0f`, 1171): 13 -- combo_storm 4, factory 5, large_garbage 2; actions 6, no-break 3, panels 2; the state not held (2
+decisions whose played answer the ring no longer held). Gone: Gambit as `41b593b8` (1167, 20).
