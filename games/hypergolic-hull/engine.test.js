@@ -3493,25 +3493,38 @@ assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "the round after, it
   );
 }
 
-// IT BACKS AWAY FROM A CHASE rather than closing, which is what makes the
-// Autocannon you launch with a real problem to solve rather than a thing
-// that happens on its own.
+// IT WORKS ITS WAY ONTO A LINE, which is the point of keeping its distance
+// rather than the other way round. Chased from OFF its axis it manoeuvres
+// until the flagship is in one of its six lanes and then holds that lane —
+// a hull that only ever maximised distance was measured walking the edge of
+// the board for six straight rounds, never lined up and never firing, which
+// is not a threat, it is a thing running away.
 {
   const kite = Engine.createGameState({ ...initiativeLevel, id: 981 });
-  kite.enemies[0].q = 2;
-  kite.enemies[0].r = 0;
-  let closedOn = 0;
-  for (let round = 0; round < 4; round++) {
+  kite.enemies[0].q = kite.playerPos.q - 2;
+  kite.enemies[0].r = kite.playerPos.r - 3; // deliberately off every axis
+  assert.strictEqual(
+    Engine.axisIndex(kite.enemies[0], kite.playerPos),
+    -1,
+    "the fixture starts it off every lane, or this proves nothing"
+  );
+  let linedUp = 0;
+  for (let round = 0; round < 6; round++) {
     const foe = kite.enemies[0];
-    const before = Engine.hexDistance(kite.playerPos, foe);
     const steps = Engine.legalSublightTargets(kite).sort(
       (a, b) => Engine.hexDistance(a, foe) - Engine.hexDistance(b, foe)
     );
     if (!steps.length) break;
-    Engine.applySublight(kite, steps[0]);
-    if (Engine.hexDistance(kite.playerPos, kite.enemies[0]) >= before) closedOn++;
+    Engine.applySublight(kite, steps[0]); // walk straight at it
+    if (Engine.axisIndex(kite.enemies[0], kite.playerPos) >= 0) linedUp++;
   }
-  assert.ok(closedOn > 0, "chasing it does not simply close the gap — it gives ground to keep its range");
+  assert.ok(linedUp >= 2, `it works its way onto a lane during the chase (${linedUp}/6 rounds)`);
+  // And having got one it KEEPS it — a lane in hand beats a hex, so it stops
+  // manoeuvring and locks rather than drifting off the line it just earned.
+  assert.ok(
+    Engine.axisIndex(kite.enemies[0], kite.playerPos) >= 0,
+    "and it is still on that lane at the end of the chase, not drifting off it"
+  );
 }
 
 // A LONG GUN STILL SPENDS ITS ROUND ON ONE OR THE OTHER. The Bombard

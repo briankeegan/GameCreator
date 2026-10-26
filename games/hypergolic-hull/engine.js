@@ -1967,6 +1967,23 @@
     return weaponHexes(enemy, facing, weapon, state).some((h) => posEq(h, at));
   }
 
+  // WHAT WOULD BEAR FROM THERE. enemyWeaponsBearing asks about the hex a hull
+  // is standing on; a hull deciding where to stand needs the same question
+  // asked about a hex it has not moved to yet. Same predicate, same blocking,
+  // same inhibitions — only the position is hypothetical.
+  function weaponsBearingFrom(state, enemy, from) {
+    const ship = enemyShip(enemy);
+    if (!ship) return [];
+    const ghost = { ...enemy, q: from.q, r: from.r };
+    const facing = enemyFacing(state, ghost);
+    return ship.weapons.filter(
+      (w) =>
+        weaponBearsOn(state, ghost, w, facing, state.playerPos) &&
+        !wouldCatchAlly(state, ghost, w, facing) &&
+        !inhibited(state, ghost, w)
+    );
+  }
+
   function enemyWeaponsBearing(state, enemy, target) {
     const ship = enemyShip(enemy);
     if (!ship) return [];
@@ -4367,12 +4384,46 @@
     // the window the whole fight is built around: a hull with a contact gun
     // and nowhere left to back into.
     if (ENEMY_TYPES[enemy.type].standsOff && hexDistance(enemy, state.playerPos) <= STANDOFF_GAP) {
-      const away = neighbors(enemy)
+      // IT GETS ON A LINE. Backing away is how it buys the room to do that,
+      // never the point of it — a hull that only maximises distance is
+      // running away, and a thing running away is not a threat.
+      //
+      // So every step that does not GIVE UP ground is a candidate, and they
+      // are ranked by whether the flagship would be in one of its lanes from
+      // there before they are ranked by distance. A sidestep that holds the
+      // gap and opens a lane beats a retreat that widens the gap and closes
+      // every lane: measured the other way round, chased along the left edge
+      // of the board it took the single retreat available for six straight
+      // rounds, never lined up once and never fired a shot. The edge was
+      // doing the choosing, not the hull.
+      const gapNow = hexDistance(enemy, state.playerPos);
+      const room = neighbors(enemy)
         .filter((to) => canFlyInto(state, to, enemy) && !enemyAt(state, to) && !posEq(to, state.playerPos))
-        .map((to) => ({ to, gap: hexDistance(to, state.playerPos) }))
-        .filter((c) => c.gap > hexDistance(enemy, state.playerPos))
-        .sort((a, b) => b.gap - a.gap);
-      if (away.length) return { enemyId: enemy.id, type: "move", to: away[0].to };
+        .map((to) => ({
+          to,
+          gap: hexDistance(to, state.playerPos),
+          // Would a gun actually reach from there — axis AND footprint, so
+          // rock and other hulls break the line exactly as they do on a shot.
+          lined: weaponsBearingFrom(state, enemy, to).length > 0,
+        }))
+        .filter((c) => c.gap >= gapNow)
+        .sort((a, b) => Number(b.lined) - Number(a.lined) || b.gap - a.gap);
+      // A LANE IN HAND BEATS A HEX. If it can already shoot from where it is
+      // standing, it stops manoeuvring and locks — otherwise it is a hull
+      // that is permanently about to attack, which is what it became when
+      // moving always won: aligned, adjacent, and sidestepping along the
+      // bottom of the board for the rest of the sector without firing once.
+      //
+      // The exception is contact. At one hex the flagship's own gun reaches
+      // it, so it buys a hex of room first IF there is one to buy; with
+      // nowhere to go it fights where it stands, which is the corner the
+      // whole fight is about.
+      const bearsHere = enemyWeaponsBearing(state, enemy).length > 0;
+      const best = room[0];
+      const mustBreakOff = gapNow <= 1 && best && best.gap > gapNow;
+      if (best && (!bearsHere || mustBreakOff)) {
+        return { enemyId: enemy.id, type: "move", to: best.to };
+      }
     }
     // Any contact fires the instant the flagship is standing somewhere one
     // of ITS FITTED GUNS reaches and its reactor can pay for the shot —
@@ -4619,10 +4670,27 @@
       // It still has to keep a line: a hull that only ran would never fire,
       // and a kiter you cannot be shot by is not a threat, it is furniture.
       if (ENEMY_TYPES[enemy.type].standsOff) {
-        const keeping = candidates.filter((c) => solutionKeys.has(hexKey(c.to)));
-        const pool = keeping.length ? keeping : candidates;
-        // Furthest that still bears, and among equals the one that gives up
-        // the most ground.
+        // GETTING ON A LINE IS THE JOB. Backing away is only how it keeps
+        // the room to do it — a hull that only ever maximises distance is
+        // running away, and running away is not a threat. Measured while it
+        // did exactly that: chased from off its axis it walked a column for
+        // six straight rounds, never lined up and never fired a shot.
+        //
+        // So: a hex it can shoot the flagship from beats one it cannot,
+        // whatever the distance. Among hexes that bear it takes the one
+        // furthest out, which is the standing-off part; among hexes that
+        // do not, it falls back on distance alone and tries again next
+        // round from somewhere new.
+        //
+        // `weaponsBearingFrom` rather than the precomputed solution set,
+        // because that set is the hexes it could fire from against the board
+        // as it stands and this question is about hexes it has not moved to.
+        const scored = candidates.map((c) => ({
+          ...c,
+          lined: weaponsBearingFrom(state, enemy, c.to).length > 0,
+        }));
+        const lined = scored.filter((c) => c.lined);
+        const pool = lined.length ? lined : scored;
         pool.sort((a, b) => b.dist - a.dist || a.dir - b.dir);
         return { enemyId: enemy.id, type: "move", to: pool[0].to };
       }
