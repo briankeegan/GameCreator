@@ -302,22 +302,22 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     a->n = s->root; a->kept = 0; a->res = 1; a->last.n = 0;   // kept: the swaps played so far
     act[nact++] = a;
   }
-  while (nact && !SEARCH_OUT()) {
-    int nn = 0;
-    for (int i = 0; i < nact; i++) {
-      Line *a = act[i];
+  // (a line at a time, in the order they were kept, each played to its end before the next is begun: where the clock runs out, every
+  // line played so far is carried on whole -- not every line part-played and none of them)
+  (void)nxt;
+  for (int i = 0; i < nact && !SEARCH_OUT(); i++) {
+    Line *a = act[i];
+    while (a->kept < a->len && !SEARCH_OUT()) {
       int mv = a->path[a->kept];
-      if (!legalAt(x, a->n, CR(mv), CC(mv))) { o->resWhy[0]++; continue; }
-      if (undoesMoved(x, a->n, mv, &a->last)) { o->resWhy[1]++; continue; }
+      if (!legalAt(x, a->n, CR(mv), CC(mv))) { o->resWhy[0]++; break; }
+      if (undoesMoved(x, a->n, mv, &a->last)) { o->resWhy[1]++; break; }
       a->last = movedOn(x, a->n, mv, &a->last);
       int out = stepMarked(s, a->n, MK_SWAP, mv, 0);
-      if (!liveNode(x, out)) { o->resWhy[2]++; continue; }
-      if (!within(s, out)) { o->resWhy[3]++; continue; }
+      if (!liveNode(x, out)) { o->resWhy[2]++; break; }
+      if (!within(s, out)) { o->resWhy[3]++; break; }
       a->n = out; a->kept++;
-      if (a->kept == a->len) { a->key = a->path[0]; seeds[nseeds++] = a; } else nxt[nn++] = a;
     }
-    for (int i = 0; i < nn; i++) act[i] = nxt[i];
-    nact = nn;
+    if (a->kept == a->len) { a->key = a->path[0]; seeds[nseeds++] = a; }
   }
   o->resIn = s->resume ? s->resume->n : 0; o->resPlayed = nseeds;
   if (nseeds) keepPaths(&o->keepOut, seeds, nseeds);

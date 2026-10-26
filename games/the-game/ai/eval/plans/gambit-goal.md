@@ -1794,3 +1794,11 @@ loss itself.
 Measured (`3dda4315`, 1239): 8 -- combo_storm 5, factory 0, large_garbage 3; panels 8, actions 6, hold-creep 2. Swaps that came to
 nothing 1407 (from 1940), 836 of them lines put down (from 1225). Before the margin, the net loss overrode its material: the line
 spending fewer actions taken over the one keeping the panels. The net loss after the margin now, what the margin leaves.
+Measured (`a236872e`, 1240): 11 -- combo_storm 5, factory 3, large_garbage 3; actions 8, panels 4.
+factory-1 (1240), read through: breaks of 18 to frame 474, the board calm at 510 (lost 305 on, 39 panels); at 523 an attack line
+(entry, lost latest, a block thrown) cleared the middle of the stack under a six-row slab, and from 558 to 1029 no option broke
+anything -- the slab on three columns over a hollow (breakNear none) -- and the panels went 39 to 12. On that board, unchanged from
+558 to 669, the break search played 0 of its 60 carried lines again whole: it replayed every line a swap at a time together, and
+where the clock ran out every line was part-played and none of them carried.
+THE CARRIED LINES REPLAYED A LINE AT A TIME: each, in the order kept, played to its end before the next begins (search/break.c
+touchBeam) -- the clock out leaves every line played so far carried whole.
