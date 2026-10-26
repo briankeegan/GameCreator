@@ -238,21 +238,21 @@ static LOCAL int32_t planMargin[5];   // (and the margin it leaves: top, materia
 // THE MARGIN A PLAN LEAVES (plans/gambit-next.md 2): the board its last break leaves, run on until everything shown has landed and
 // settled -- its top, its material and its contact, read as a line's own landed board is (judge.c readyTop): a break is credited with
 // what it converts, not charged for what it spends before it lands
-static LOCAL Ctx *planCtx; static LOCAL Board *planCopy;
+static LOCAL Ctx *planLandCtx; static LOCAL Board *planCopy;
 static int planLanded(const Board *e, int32_t *m) {
-  planCtx = ctxOf(planCtx);
+  planLandCtx = ctxOf(planLandCtx);
   if (!planCopy) planCopy = nb_new();
-  if (!planCtx || !planCopy || !e) return 0;
+  if (!planLandCtx || !planCopy || !e) return 0;
   cloneBoard(planCopy, e);
   int32_t dt = imax(0, planCopy->clock - decQ.b->clock), last = 0;
   Question q2 = decQ; q2.b = planCopy; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr].at -= dt; last = imax(last, q2.arr[q2.narr].at); q2.narr++; }
-  int root = rootOf(planCtx, &q2);
+  int root = rootOf(planLandCtx, &q2);
   if (root < 0) return 0;
-  int n = last > 0 ? step(planCtx, root, MK_LONG, 0, 0, last) : root;
-  if (!liveNode(planCtx, n)) return 0;
-  int calm = settleOf(planCtx, n); if (liveNode(planCtx, calm)) n = calm;
-  const Board *lb = ensureBoard(planCtx, n);
+  int n = last > 0 ? step(planLandCtx, root, MK_LONG, 0, 0, last) : root;
+  if (!liveNode(planLandCtx, n)) return 0;
+  int calm = settleOf(planLandCtx, n); if (liveNode(planLandCtx, calm)) n = calm;
+  const Board *lb = ensureBoard(planLandCtx, n);
   if (!lb) return 0;
   m[0] = topOn(lb); m[1] = materialOn(lb); contactOn(lb, &m[2], &m[3]);
   return 1;
