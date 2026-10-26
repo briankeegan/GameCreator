@@ -1814,3 +1814,9 @@ to nothing (889 of 1337 the first of lines put down); survive lines spend ~80 ac
 walk for the next landing, whatever was on its way.
 THE RESERVE FOR EVERY BLOCK ON ITS WAY: at each landing shown the window holds that block's break walk besides the walks the blocks
 before it took, each pressed as its block lands and aged out as any action is (core/nodes.h windowKeepsBreak, landAts).
+Measured (`f0b3e89f`, 1243): 4 -- combo_storm 2, factory 1, large_garbage 1; actions 13, panels 6. Red: the twins' readiness
+beams read back 3 and 7 (the same move). The reserve's clause was yes or no -- the keeper keeps it, the spender not -- and with every
+block owed a walk almost no line kept it: the clause went quiet and survive lines spent more (91 actions a minute from 83).
+THE RESERVE A COUNT: windowCover, of the blocks on their way, soonest first, how many the window keeps a break walk for; of two lines
+that do not live, the one covering more first unless the spend pays (rank.c coverOf). windowKeepsBreak is the cover's first. The
+readiness beams' count off the decision line: which thread searched a board first is the clock's.

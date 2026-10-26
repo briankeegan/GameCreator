@@ -137,19 +137,24 @@ static double actionFrames(void) {
   int32_t lim = pressAllowance + (nWinAges > 0 ? nWinAges : 0);
   return lim > 0 ? (double)winLen / lim : 0;
 }
-// (EVERY BLOCK ON ITS WAY: at each landing the window holds that block's break walk besides the walks of the breaks the blocks before it
-// took -- each pressed as its block lands, aged out of the window as any action is -- with what the window has given back by then)
-static int windowKeepsBreak(int32_t endAt, int spent) {
-  if (pressAllowance < 0) return 1;
+// (THE WINDOW'S COVER: of the blocks on their way, soonest first, how many the window keeps a break walk for -- at each landing that
+// block's walk besides the walks the blocks before it took, each pressed as its block lands and aged out as any action is, with what the
+// window has given back by then; none on its way, 1 where the window keeps the walk at the line's end. WINDOW_ALL: no allowance said)
+#define WINDOW_ALL (MAXARR + 1)
+static int windowCover(int32_t endAt, int spent) {
+  if (pressAllowance < 0) return WINDOW_ALL;
   if (nLandAts <= 0) { int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1; return allowLeftAt(tl > endAt ? tl : endAt, spent) >= breakWalk; }
-  for (int k = 0; k < nLandAts; k++) {
+  int k = 0;
+  for (; k < nLandAts; k++) {
     int32_t tk = landAts[k] - pressFrom; if (tk < endAt) tk = endAt;
     int before = 0;
     for (int i = 0; i < k; i++) { int32_t ti = landAts[i] - pressFrom; if (ti < endAt) ti = endAt; if (tk - ti < winLen) before += breakWalk; }
-    if (allowLeftAt(tk, spent) - before < breakWalk) return 0;
+    if (allowLeftAt(tk, spent) - before < breakWalk) break;
   }
-  return 1;
+  return k;
 }
+// (whether the window keeps the next break's walk: the next block's, or the line's end where none is on its way)
+static int windowKeepsBreak(int32_t endAt, int spent) { return windowCover(endAt, spent) >= 1; }
 static int32_t regainAfter(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 0;
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt;

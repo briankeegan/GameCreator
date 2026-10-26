@@ -342,7 +342,13 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // garbage 19 where it was 23 -- finish 15 against 17)
 // (THE RESERVE, as the survival search keeps it -- search/outlive.c: a line that breaks nothing and leaves the next landing
 // without a break's walk in the window -- outcome.c spendsReserve, the window plan)
-static int reserveSpent(const Judge *J) { return !J->hold && spendsReserve((Made){ J->apCombo, J->apChain, J->apBroke, 0 }, &J->o.j); }
+// (the blocks on their way a line's window keeps break walks for, core/nodes.h windowCover: a break, and any line with no garbage on the
+// board or on its way, keeps them all -- breaks and attacks are free while no break is owed)
+static int coverOf(const Judge *J) {
+  if (!(decF.under || decF.land != NOT_ASKED)) return WINDOW_ALL;
+  if (!J->hold && J->apBroke > 0) return WINDOW_ALL;
+  return J->hold ? windowCover(0, 0) : windowCover(J->o.j.endAt, J->o.j.spent);
+}
 // (THE MARGIN a line leaves: on the board once everything shown has landed (judge.c readyTop, readyMat), the rows over the stack, the
 // rows of panels under its garbage, the input window's actions then (core/nodes.h windowShareAt), and of the columns under garbage those
 // its panels touch (judge.c readyContact: a block resting on one column of six is a block no match reaches) -- each a share of its whole
@@ -403,11 +409,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // after the window has given the walk back, or the line that keeps it lost before it could press it. The break the board needs is
   // pressed out of what is left -- the survival search's own rule. Breaks first, never dying on the way. The hold is a move like any
   // other here: it keeps the walk)
-  if (!lx) { int rx = reserveSpent(x), ry = reserveSpent(y);
-    if (rx != ry) { const Judge *sp = rx ? x : y, *kp = rx ? y : x;
-      // (a keeper keeps the walk only where its own window holds it: one whose window is short of it already keeps nothing to keep)
-      if (windowKeepsBreak(kp->hold ? 0 : kp->o.j.endAt, kp->hold ? 0 : kp->o.j.spent) && !spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER,
-                     kp->hold ? 0 : kp->o.j.endAt)) K(1, "reserve", rx ? 1 : -1); } }
+  // (the keeper: the line whose window keeps break walks for more of the blocks on their way -- windowCover, a count, not whether the
+  // next alone is kept)
+  if (!lx) { int cx = coverOf(x), cy = coverOf(y);
+    if (cx != cy) { const Judge *sp = cx < cy ? x : y, *kp = cx < cy ? y : x;
+      if (!spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER,
+                     kp->hold ? 0 : kp->o.j.endAt)) K(1, "reserve", cx < cy ? 1 : -1); } }
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
   // (and a hold lost sooner than a line that keeps the board's own chain never comes first by anything after: it leaves the board as it
   // is with less time, so the walk it saves, the break it leaves where it was, are the next decision's to spend again)

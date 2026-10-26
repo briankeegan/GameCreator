@@ -451,7 +451,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   L_s(" casc="); L_i(cascadeLive(decQ.b)); L_s(" pop="); L_i(popLeft(decQ.b)); L_s(" hp="); L_i(decQ.b->health); L_s(" stop="); L_d(R.F.v[FACT_US_STOP]);
   if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
-  if (readyBeamIn || readyBeamOut) { L_s(" rdyBeam="); L_i(readyBeamIn); L_s("/"); L_i(readyBeamOut); }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
   if (routeOffered) { L_s(" route="); L_i(routeOffered); if (routePlayed) L_s("/played"); }
   if (planSeeded) { L_s(" seed="); L_i(planSeeded); }
