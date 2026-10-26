@@ -1707,3 +1707,6 @@ Measured (`155299e1`, 1221): 15 -- combo_storm 7, factory 4, large_garbage 4. Th
 decision kept its frontier and counted it, so the log differed between twins (tsan, "the game the same twice").
 THE UNFINISHED READINESS FRONTIER KEPT BY THE DECISION THAT READS IT: a worker leaves it on its pend; the decision keeps it, and a
 lookup sees only what decisions before it kept.
+Measured (`44baa515`, 1222): 16 -- combo_storm 6, factory 5, large_garbage 5; actions 4, panels 2, no-break 1, hold-creep 1. Red
+only on the log: the frontiers grown on were counted where the decision searched a board itself and not where a worker had, and
+which thread takes a board is timing. Now counted where the answer is read, and kept once per board.
