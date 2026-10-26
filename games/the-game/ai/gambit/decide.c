@@ -202,7 +202,6 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 #define SAVE_MS 10
 #define SAVE_KEEP_MS 4
 static const Judge *saveLine;   // (the line the save confirmed)
-static int32_t contAsked, contMoved;   // (the lines continued where none lives, and whether that put another first: the log's)
 static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
@@ -269,7 +268,7 @@ static int judgeAll(const Read *R, int nc, int n) {
 }
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; unbroken.set = 0; saveLine = 0; saveAsked = saveNot = saveOk = 0; contAsked = contMoved = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; unbroken.set = 0; saveLine = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -438,27 +437,6 @@ static int ranked(const Read *R, const Found *S) {
     else if (saveLine && order[0] != saveLine && !order[0]->o.lives) {
       for (int i = 1; i < n; i++) if (order[i] == saveLine) { Judge *S = order[i]; for (int k = i; k > 0; k--) order[k] = order[k - 1]; order[0] = S; break; }
     } }
-  // THE LINES LOST, PLAYED ON (contLostOf, the save's own question): where none lives, a line's loss is its board's left alone after it,
-  // and nothing is left alone -- the next decision plays on. The first lines of the order and the hold, each played to its end and the
-  // survival search asked of the board it leaves; one that lives on a break's time longer than the first goes first
-  #define CONTN 3
-  if (n > 1 && !order[0]->o.lives && !saveOk && timeLeftMs() > SAVE_KEEP_MS + 2) {
-    const Judge *pick[CONTN + 1]; int np = 0, hold = 0;
-    for (int i = 0; i < n && np < CONTN; i++) if (!order[i]->o.lives) { pick[np++] = order[i]; hold |= order[i]->hold; }
-    if (!hold) for (int i = np; i < n; i++) if (order[i]->hold && !order[i]->o.lives) { pick[np++] = order[i]; break; }
-    double c0 = -1, best = -1; const Judge *bj = 0;
-    for (int k = 0; k < np; k++) {
-      double give = timeLeftMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
-      if (give < 1) break;
-      double c = contLostOf(pick[k], give); contAsked++;
-      if (k == 0) c0 = c;
-      if (c > best) { best = c; bj = pick[k]; }
-    }
-    if (bj && bj != order[0] && c0 >= 0 && best - c0 >= rankSave) {
-      for (int i = 1; i < n; i++) if (order[i] == bj) { Judge *S = order[i]; for (int k = i; k > 0; k--) order[k] = order[k - 1]; order[0] = S; break; }
-      contMoved = 1;
-    }
-  }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
 }

@@ -1780,3 +1780,5 @@ search asked of the board each leaves (decide.c contLostOf, the save's question)
 first goes first (`cont=moved/asked`).
 Measured (`d1f38d25`, 1237): 12 -- combo_storm 7, factory 1, large_garbage 4; actions 11, panels 1. 13457 decisions played their
 first lines on (47368 asked), 1097 putting another first.
+The lines played on taken out: the survival search's continuations are its own spending, so the line it lives longest after was
+the one it spends most to keep -- factory 4 to 1, actions 7 to 11.
