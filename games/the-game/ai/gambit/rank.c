@@ -34,6 +34,7 @@ typedef struct {
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
+  int32_t holdSunk;    // a hold lost sooner than a line lost alike with it that keeps the board's own chain: after every line lost alike (sortJudged)
   double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
@@ -398,8 +399,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
   // (and a hold lost sooner than a line that keeps the board's own chain never comes first by anything after: it leaves the board as it
   // is with less time, so the walk it saves, the break it leaves where it was, are the next decision's to spend again)
-  if (!lx && x->hold != y->hold) { const Judge *h = x->hold ? x : y, *o = x->hold ? y : x;
-    if (lostOf(h) < lostOf(o) && !cutsShort(o)) K(1, "hold", h == x ? 1 : -1); }
+  // (the hold's own, for the lines it is ranked with: below every line lost alike once any of them that keeps the chain is lost later --
+  // one place for every pair, so the margin after it never ranks it over one it is under)
+  if (!lx && x->hold != y->hold) { const Judge *h = x->hold ? x : y;
+    if (h->holdSunk && lostAlike(x, y)) K(1, "hold", h == x ? 1 : -1); }
   // -- and of two lost alike, the one that leaves the board more MARGIN once everything shown has landed (marginOf): where the loss
   // cannot tell two lines apart, the room the board keeps can -- every line read on the board the same garbage has landed on
   if (!lx && lostAlike(x, y)) { double mx = marginOf(x), my = marginOf(y); if (mx != my) K(1, "margin", mx > my ? -1 : 1); }
@@ -526,6 +529,11 @@ static void sortJudged(Judge **a, int n) {
   markIdle(a, n);
   rankLostRef = 0;
   for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }   // (of the lines banded by it)
+  for (int i = 0; i < n; i++) {
+    Judge *h = a[i]; h->holdSunk = 0;
+    if (!h->hold || livesOf(h)) continue;
+    for (int j = 0; j < n && !h->holdSunk; j++) { const Judge *o = a[j]; if (!o->hold && !livesOf(o) && lostAlike(h, o) && lostOf(h) < lostOf(o) && !cutsShort(o)) h->holdSunk = 1; }
+  }
   for (int w = 1; w < n; w *= 2)
     for (int lo = 0; lo < n; lo += 2 * w) {
       int mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n, i = lo, j = mid, k = lo;

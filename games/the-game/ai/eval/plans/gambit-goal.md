@@ -1742,3 +1742,8 @@ THE FRONTIERS RE-ROOTED BY THEIR PANELS: each kept swap carries the panel it mov
 Measured (`c20727b3`, 1229): 12 -- combo_storm 6, factory 2, large_garbage 4; actions 8, panels 4. The break frontier carried in
 510345 of 570997 (89%, from 78%), but played again whole 168009 of 457858 (37%, from 40%): "a swap not there" 74331 (from 55697) --
 the lines carried by their panels are refused on replay.
+Lines in progress put down with nothing new told (1229): 1722 of 4291, by rule 1 1338 -- the same lines, ranked again, coming out
+another way: the order still not one order (hold x312, nearer x976 in 1226).
+THE HOLD'S PLACE ONE PLACE: the hold clause was a pair's own (under a line lost later, the margin deciding the rest), so a hold could
+sit under A, over B, B over A. Now a hold lost sooner than any line lost alike that keeps the chain is under every line lost alike
+(sortJudged holdSunk).
