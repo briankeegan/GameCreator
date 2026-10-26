@@ -1805,3 +1805,12 @@ touchBeam) -- the clock out leaves every line played so far carried whole.
 THE BREAK FRONTIER IS WHAT THE SEARCH HELD WHEN ITS TIME ENDED: no frontier is let go whole for what changed -- the garbage dug toward
 no longer the lowest, the anchor panel gone -- each line comes in by its panels, the replay its one judge; and the lines the clock left
 unplayed in the replay are handed on as they came in (`brRes=played/in/held/left`).
+Measured (`78008582`, 1242): 8 -- combo_storm 5, factory 1, large_garbage 2; actions 10, panels 6.
+THE WHOLE GAME, read across the losses (scratchpad timeline: garbage on the board, panels, material, the window, the plays, every 300
+frames): combo_storm and factory break often and live long, the window at 10-30 of 76 all game; a crunch -- garbage in a burst --
+meets a window of 5-10 and no reserve, the break cannot be pressed, the panels collapse (35 to 12 in 300 frames) and it holds to
+death. large_garbage carries 60-120 garbage cells all game, breaking a row of six at a time against slabs of 72. 15% of swaps came
+to nothing (889 of 1337 the first of lines put down); survive lines spend ~80 actions a minute of ~330. The reserve kept one break's
+walk for the next landing, whatever was on its way.
+THE RESERVE FOR EVERY BLOCK ON ITS WAY: at each landing shown the window holds that block's break walk besides the walks the blocks
+before it took, each pressed as its block lands and aged out as any action is (core/nodes.h windowKeepsBreak, landAts).

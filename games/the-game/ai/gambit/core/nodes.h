@@ -121,6 +121,7 @@ static int allowLeftAt(int32_t t, int spent) {
 // or the keeper's end -- and the spender outlives it by a break's time (rankSave): a walk kept by a board dead before it is pressed
 // keeps nothing, and a spend that buys less than a break's time buys nothing either
 static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
+static int32_t landAts[MAXARR + 1], nLandAts;   // (every block shown on its way, the frames until it lands from the question, soonest first)
 static int32_t rankSave;   // (rank.c: the frames one break takes)
 // (THE WINDOW'S SHARE a line leaves: the actions left at its end, or at the landing when that is later, of the window's whole limit --
 // the third margin beside the stack's room and its material; -1 with no allowance said)
@@ -136,10 +137,18 @@ static double actionFrames(void) {
   int32_t lim = pressAllowance + (nWinAges > 0 ? nWinAges : 0);
   return lim > 0 ? (double)winLen / lim : 0;
 }
+// (EVERY BLOCK ON ITS WAY: at each landing the window holds that block's break walk besides the walks of the breaks the blocks before it
+// took -- each pressed as its block lands, aged out of the window as any action is -- with what the window has given back by then)
 static int windowKeepsBreak(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 1;
-  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1;
-  return allowLeftAt(tl > endAt ? tl : endAt, spent) >= breakWalk;
+  if (nLandAts <= 0) { int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1; return allowLeftAt(tl > endAt ? tl : endAt, spent) >= breakWalk; }
+  for (int k = 0; k < nLandAts; k++) {
+    int32_t tk = landAts[k] - pressFrom; if (tk < endAt) tk = endAt;
+    int before = 0;
+    for (int i = 0; i < k; i++) { int32_t ti = landAts[i] - pressFrom; if (ti < endAt) ti = endAt; if (tk - ti < winLen) before += breakWalk; }
+    if (allowLeftAt(tk, spent) - before < breakWalk) return 0;
+  }
+  return 1;
 }
 static int32_t regainAfter(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 0;

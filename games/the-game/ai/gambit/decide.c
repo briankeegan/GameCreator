@@ -43,6 +43,14 @@ static int readBoard_(Read *R) {
   if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
   decF.next = F->known[FACT_US_NEXTLANDS] ? (int32_t)F->v[FACT_US_NEXTLANDS] : NOT_ASKED;
   landingAt = decF.next != NOT_ASKED ? decF.next : -1;   // (the window plan's landing: core/nodes.h windowKeepsBreak)
+  // (and every block on its way after it, soonest first)
+  nLandAts = 0;
+  if (landingAt >= 0) landAts[nLandAts++] = landingAt;
+  for (int i = 0; i < decQ.narr && nLandAts <= MAXARR; i++) if (decQ.arr[i].at > landingAt) {
+    int32_t a = decQ.arr[i].at; int k = nLandAts++;
+    while (k > 0 && landAts[k - 1] > a) { landAts[k] = landAts[k - 1]; k--; }
+    landAts[k] = a;
+  }
   // (and its walk: the nearest break's on this board by the shape math, two actions a swap -- a swap and a cell -- with the swap that
   // breaks; nothing on the board yet, a break's walk as measured)
   { int32_t nr = garbageOn(decQ.b) ? nearOf(decQ.b) : NEAR_MISS; breakWalk = nr < NEAR_MISS ? imin(LAND_RESERVE * 2, imax(4, NEAR_ACTS * nr + 2)) : LAND_RESERVE; }
