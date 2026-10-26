@@ -34,4 +34,6 @@ line short at once by a block shown (**demand**).
 - 1271, 11/24: factory-2 made the same decisions as 1266 up to frame 493. Then 1271 played a line lost at 374 over a hold lost at
   230. The hold's bound was wrong: 1266 held, its next searches found breaks, and it survived. 1271 spent the window from 24 to 5
   buying bands and died at 839. Comparing lower bounds as facts picks the line the search saw furthest, not the line that lives.
-- 1272: the window cap on the loss. Results to come.
+- 1272, 9/24 (combo_storm 4, factory 3, large_garbage 2): the window cap on the loss. Factory-2 lived to 19383 instead of 839, and
+  other games fell instead. In all 15 losses, no break was found after the last break, and no better line was passed over: the
+  order picked among guesses, and the searches found no proof. A cap on one resource moves which game dies, not whether one does.
