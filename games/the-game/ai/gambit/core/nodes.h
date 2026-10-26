@@ -160,6 +160,13 @@ static int windowCover(int32_t endAt, int spent) {
 }
 // (whether the window keeps the next break's walk: the next block's, or the line's end where none is on its way)
 static int windowKeepsBreak(int32_t endAt, int spent) { return windowCover(endAt, spent) >= 1; }
+// (whether the window keeps the save's walk past a line's end, or the next landing when that is later: what a break leaves the board
+// to live on)
+static int windowKeepsSave(int32_t endAt, int spent) {
+  if (pressAllowance < 0) return 1;
+  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1;
+  return allowLeftAt(tl > endAt ? tl : endAt, spent) >= surviveWalk;
+}
 static int32_t regainAfter(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 0;
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt;

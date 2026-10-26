@@ -344,10 +344,11 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // (THE RESERVE, as the survival search keeps it -- search/outlive.c: a line that breaks nothing and leaves the next landing
 // without a break's walk in the window -- outcome.c spendsReserve, the window plan)
 // (the blocks on their way a line's window keeps break walks for, core/nodes.h windowCover: a break, and any line with no garbage on the
-// board or on its way, keeps them all -- breaks and attacks are free while no break is owed)
+// board or on its way, keeps them all -- breaks and attacks are free while no break is owed -- so long as a break leaves the save's walk
+// (core/nodes.h windowKeepsSave): one that does not keeps none)
 static int coverOf(const Judge *J) {
   if (!(decF.under || decF.land != NOT_ASKED)) return WINDOW_ALL;
-  if (!J->hold && J->apBroke > 0) return WINDOW_ALL;
+  if (!J->hold && J->apBroke > 0) return windowKeepsSave(J->o.j.endAt, J->o.j.spent) ? WINDOW_ALL : 0;
   return J->hold ? windowCover(0, 0) : windowCover(J->o.j.endAt, J->o.j.spent);
 }
 // (THE MARGIN a line leaves: on the board once everything shown has landed (judge.c readyTop, readyMat), the rows over the stack, the

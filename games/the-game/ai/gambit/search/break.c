@@ -136,10 +136,24 @@ static void perchedOf(const Bits *B, Perches *P) {
       unsigned holds = B->pan[under] & span;
       if (!holds || holds == span) continue;
       int n = 0, ok = 1;
+      // (a block as wide as the board has no edge to walk past: each support is walked instead into the nearest hollow under it -- a
+      // cell of its row with nothing under it, over no other support on the way -- and falls there; below: what holds each cell up)
+      unsigned row = holds, below = under > 1 ? (unsigned)(B->pan[under - 1] | B->gar[under - 1]) : ALLCOLS;
       for (int k = L; k <= R && ok; k++) {
         if (!(holds >> k & 1)) continue;
         int toL = L - 1, toR = R + 1, to = toL >= 1 && (k - toL <= toR - k || toR > W) ? toL : toR <= W ? toR : 0;
-        if (!to) { ok = 0; break; }
+        if (!to) {
+          for (int d = 1; d < W && !to; d++)
+            for (int j = k - d; j <= k + d && !to; j += 2 * d) {
+              if (j < L || j > R || ((below | row) >> j & 1)) continue;
+              unsigned between = j > k ? ((1u << j) - 1u) & ~((2u << k) - 1u) : ((1u << k) - 1u) & ~((2u << j) - 1u);
+              if (!(row & between)) to = j;
+            }
+          if (!to) { ok = 0; break; }
+          row &= ~(1u << k);
+          // (it lands on what is two rows under the block, or on the floor: there, that cell holds the next one up)
+          if (under - 2 < 1 || ((B->pan[under - 2] | B->gar[under - 2]) >> to & 1)) below |= 1u << to;
+        }
         int was = n;
         n = walkTo(under, k, to, P->seq[P->n], n);
         if (n - was != (to > k ? to - k : k - to)) ok = 0;
