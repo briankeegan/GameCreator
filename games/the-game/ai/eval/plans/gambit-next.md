@@ -22,8 +22,9 @@ The goal: never die from the garbage the game shows.
    leaves.
 4. **The margin for garbage not shown.** Proven means proven with k rows spare. The owner's to set; suggested 1.
 5. **Convert more per break.** Under attack, material only comes from breaking. A break pressed after more garbage has landed, or a
-   chain, converts more at once. Each plan's break is tried at every landing shown, and the one that converts most is kept. This is
-   what pays a block too big for one row's break.
+   chain, converts more at once. Each plan's first break is tried at every landing shown, and the one that converts most is kept; each
+   break after it is asked from the last landing back, and the latest one in reach is kept. This is what pays a block too big for one
+   row's break.
 6. **A proof is kept.** A proven line is carried and pressed as judged, and proven again each decision. The press guard never
    refuses a swap of a proven plan.
 7. **Search deep enough.** Where no break is found and the clock did not cut the search, the search goes a swap deeper on that
@@ -78,3 +79,7 @@ line short at once by a block shown (**demand**).
 - 1280, 11/24 (combo_storm 6, factory 3, large_garbage 2). The beam fix ran (brDoomed in 542 decisions of large_garbage-4). The piece:
   the margin. In large_garbage-4 the hold (0.4.6.7) was played 14 times over lines lost 42 frames later (0.4.5.6), the window at 53:
   a twelfth more of the third and fourth scarcest decided over the loss. Fixed: the margin compares the two scarcest shares only.
+- 1281, 11/24 (combo_storm 5, factory 3, large_garbage 3): the margin passed breaks less; 7 of 13 losses were demand (one block 4 to 40
+  rows over every line). The piece: step 5. No plan from a later landing was ever kept (0 in every log): waiting for one, the board
+  dies first. And a plan's later breaks were asked only at the last landing, so a plan stopped after one break wherever the board died
+  before it. Fixed: each later break is asked from the last landing back, the latest in reach kept (lands=…/earlier in the log).

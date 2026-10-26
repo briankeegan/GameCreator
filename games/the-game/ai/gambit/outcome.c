@@ -266,6 +266,8 @@ static void planMark(Outcome *o, const Board *e) {
 }
 // (the cache's kind for a plan asked from a landing: 2 the next block's, READY_KIND_LAND + k the k-th later one -- rank.c readyNextFor)
 #define READY_KIND_LAND 10
+#define PLAN_LANDINGS 4   // (the landings a plan's next break is asked from, the last first)
+static int32_t planEarlier;   // (this decision's plan breaks found from a landing before the last: the log's lands=)
 static LOCAL int32_t readyKind = 2;
 static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait) {
   *extLost = NOT_ASKED; *extSpent = NOT_ASKED; *pN = 0; planBreakN = 0; planBroke = 0; planMargin[0] = -1;
@@ -294,10 +296,27 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
     // readiness finds it, and so on while each break puts the loss off -- as far as the board, the line's length and the clock allow: the
     // line is lost where the plan is, the owner's ready with a plan)
     while (!e.late && !e.dead && !e.lives && o.lostAt != NOT_ASKED && nm < MAXLINE && !clockOut()) {
-      JudgeOpts jn = { settled, decQ.tight, decF.land != NOT_ASKED ? decF.land : 0, 1, 1, -1, 0, 1, n, w0To, 0, nm, mAt, mTo };
-      Judged q;
-      judge(&decQ, ext, en, &jn, &q);
-      if (q.late || q.dead || q.ready != 1 || q.readyN <= 0 || en + q.readyN > MAXLINE) break;
+      // (CONVERT MORE PER BREAK, plans/gambit-next.md 5: the next break asked from the last landing shown, and where the board does not
+      // reach it, from each landing before it in turn -- the latest landing a break is in reach from converts the most while the board
+      // still stands; a plan that only asked the last stopped short wherever the board died before it)
+      int32_t lands[MAXARR + 1], nl = 0, prevTo = nm ? mTo[nm - 1] : w0To;
+      if (decF.land != NOT_ASKED) lands[nl++] = decF.land;
+      for (int a = 0; a < decQ.narr && nl < MAXARR + 1; a++) {
+        int32_t at = decQ.arr[a].at; int dup = at <= prevTo;
+        for (int k = 0; k < nl && !dup; k++) dup = lands[k] == at;
+        if (dup) continue;
+        int k = nl++; while (k > 0 && lands[k - 1] < at) { lands[k] = lands[k - 1]; k--; } lands[k] = at;
+      }
+      if (!nl) lands[nl++] = 0;
+      Judged q; int got = 0, li = 0;
+      for (; li < nl && li < PLAN_LANDINGS && !clockOut(); li++) {
+        JudgeOpts jn = { settled, decQ.tight, lands[li], 1, 1, -1, 0, 1, n, w0To, 0, nm, mAt, mTo };
+        judge(&decQ, ext, en, &jn, &q);
+        got = !q.late && !q.dead && q.ready == 1 && q.readyN > 0 && en + q.readyN <= MAXLINE;
+        if (got) break;
+      }
+      if (!got) break;
+      planEarlier += li > 0;
       mAt[nm] = en; mTo[nm] = q.readyWait; nm++;
       for (int k = 0; k < q.readyN; k++) ext[en + k] = q.readyLine[k];
       en += q.readyN;
