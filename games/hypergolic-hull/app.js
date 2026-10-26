@@ -837,6 +837,20 @@ function scheduleAnims(events) {
     else if (ev.type === "rockHit" || ev.type === "rockCleared") {
       anims.push({ kind: "cut", pos: { q: ev.q, r: ev.r }, start: now, dur: 480, particles: makeExplosionParticles(8) });
     }
+    // THE CHARGE IS THE WARNING, so it has to be the loudest thing on the
+    // board for a round. It runs until the shot — the lane is lit, not
+    // flashed once — because a telegraph you can miss by blinking is not a
+    // telegraph, and this is the one round the player has to act in.
+    else if (ev.type === "aimStart") {
+      anims.push({ kind: "charge", pos: { q: ev.q, r: ev.r }, lane: ev.lane, start: now, dur: 100000 });
+    }
+    // And the beam clears it. Both are keyed on the lane the engine locked,
+    // never recomputed here, so what is drawn is what the engine will
+    // actually resolve.
+    else if (ev.type === "beam") {
+      anims = anims.filter((a) => a.kind !== "charge");
+      anims.push({ kind: "lance", pos: { q: ev.q, r: ev.r }, lane: ev.lane, hit: ev.hit, start: now, dur: 620 });
+    }
     else if (ev.type === "damage") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "shieldAbsorb") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "enemyMove") {
@@ -3619,7 +3633,60 @@ function draw() {
   for (const a of anims) {
     if (now < a.start || now >= a.start + a.dur) continue;
     const p = animProgress(a, now);
-    if (a.kind === "fxring") {
+    if (a.kind === "charge") {
+      // A line drawn ON the lane, building toward the shot: the hexes it
+      // will cross, brightening, with the emitter winding up at the hull.
+      const pulse = 0.55 + 0.45 * Math.sin((now - a.start) / 130);
+      ctx.save();
+      for (const hex of a.lane) {
+        const c = hexToPixel(hex);
+        ctx.globalAlpha = 0.16 + 0.13 * pulse;
+        ctx.fillStyle = "#ff7a4a";
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const ang = Math.PI / 180 * (60 * i - 30);
+          const x = c.x + geom.sx * 0.5 * Math.cos(ang);
+          const y = c.y + geom.sy * 0.5 * Math.sin(ang);
+          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      // The emitter itself, so the eye goes to WHO is aiming.
+      const o = hexToPixel(a.pos);
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = "#ffb070";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, geom.sx * (0.52 - 0.12 * pulse), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    } else if (a.kind === "lance") {
+      // The shot itself: a hard core down the whole locked lane, thrown
+      // from the hull to the far end in one frame-set.
+      const from = hexToPixel(a.pos);
+      const last = a.lane[a.lane.length - 1] || a.pos;
+      const to = hexToPixel(last);
+      const fade = Math.sin(Math.PI * p);
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.strokeStyle = a.hit ? "#ffd9c0" : "#ff8a5a";
+      ctx.lineWidth = 7 * fade;
+      ctx.shadowColor = "#ff6a30";
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+      ctx.globalAlpha = fade * 0.9;
+      ctx.strokeStyle = "#fff4e8";
+      ctx.lineWidth = 2.2 * fade;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+      ctx.restore();
+    } else if (a.kind === "fxring") {
       const c = hexToPixel(a.pos);
       ctx.save();
       ctx.globalAlpha = 0.9 * (1 - p);

@@ -114,7 +114,14 @@ function pickStepToward(page, goalExpr) {
     // deadlocks against an EMPLACEMENT (its zone never moves, so a walk
     // that must cross the zone to reach the dock will refuse forever).
     // Sector 2's anchored Picket made that failure routine.
-    const legal = E.legalSublightTargets(st);
+    // DO NOT LEAVE THE SECTOR WHILE HUNTING. The Interceptor gives ground
+    // rather than closing, so a chase walks the length of the board — and on
+    // a board whose gate is behind the hull being chased, the chase ended by
+    // stepping onto the gate and winning the sector with the hunt
+    // unfinished. The gate is a destination, never a stepping stone.
+    const legal = E.legalSublightTargets(st).filter(
+      (c) => expr === "exit" || !(st.exits || []).some((ex) => ex.q === c.q && ex.r === c.r)
+    );
     const path = E.findPath(st, st.playerPos, goal, { avoidThreats: true }) ||
       E.findPath(st, st.playerPos, goal);
     if (path && path.length > 1) {
@@ -458,8 +465,8 @@ async function freshPage(browser, url, errors) {
     "their hold renders as a full-size ship-shaped grid of labeled equipment tiles"
   );
   assert.ok(
-    (await page.locator("#enemyHoldGrid").textContent()).includes("Autocannon"),
-    "an Interceptor's hold shows the very Autocannon you fly with — enemies carry player items, not enemy-only gear"
+    (await page.locator("#enemyHoldGrid").textContent()).includes("Pin Lance"),
+    "an Interceptor's hold shows the very Pin Lance a station will sell you — enemies carry player items, not enemy-only gear"
   );
   assert.strictEqual(await page.locator("#holdCargo").count(), 0, "a contact has no cargo bay to rummage through");
   await page.locator("#shipCloseBtn").click();
@@ -542,14 +549,19 @@ async function freshPage(browser, url, errors) {
   await page.click("#mapCloseBtn");
   assert.strictEqual(await page.locator("#mapOverlay").isVisible(), false, "the map closes again");
 
-  // One action per turn in play: let the Interceptor come to us (it
-  // spends its rounds closing), then kill it via tap-tap: first tap
-  // TARGETS, second tap FIRES ("if you click on a target it should
-  // target them, and clicking again fires").
+  // One action per turn in play: RUN THE INTERCEPTOR DOWN — it keeps its
+  // distance and lines up lanes rather than closing, so nothing arrives on
+  // its own and the kill has to be chased into a corner — then kill it via
+  // tap-tap: first tap TARGETS, second tap FIRES ("if you click on a target
+  // it should target them, and clicking again fires").
+  //
+  // The budget is 60 rounds rather than 25 because a hull that gives ground
+  // has to be run out of ground first: it backs off a hex a round until the
+  // board edge or something on it stops the retreat.
   s = await getState(page);
   assert.strictEqual(s.maxAp, 1, "one action per round is the shipped budget (AP plumbing kept underneath)");
   let fired = false;
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 60; i++) {
     s = await getState(page);
     if (s.status !== "playing" || s.enemies.every((e) => !e.alive)) break;
     const target = await enemyInReachOf(page);
@@ -593,6 +605,13 @@ async function freshPage(browser, url, errors) {
     }
   }
   s = await getState(page);
+  if (!fired) {
+    console.log("DEBUG chase:", JSON.stringify({
+      status: s.status, hull: s.hull, ap: s.ap, pos: s.playerPos,
+      foes: s.enemies.filter((e) => e.alive).map((e) => ({ t: e.type, q: e.q, r: e.r, aim: !!e.aim })),
+      turn: s.turnCount,
+    }));
+  }
   assert.ok(fired, "the kill went through the tap-to-target, tap-to-fire flow");
 
   // WRECKAGE AND ROCK CAN BE SHOT AT. Marking only ever worked on a living

@@ -58,6 +58,25 @@
     return -1;
   }
 
+  // WHICH AXIS, AT ANY RANGE. `directionIndex` names the direction only
+  // between ADJACENT hexes and returns -1 for anything further, which is the
+  // same trap shoveDirection documents below — a lane weapon asking "is the
+  // flagship on one of my six lines" gets -1 from four hexes away and
+  // concludes it is not. Here `to` is on axis d from `from` when the step
+  // between them is a whole positive multiple of that direction.
+  function axisIndex(from, to) {
+    const dq = to.q - from.q;
+    const dr = to.r - from.r;
+    if (!dq && !dr) return -1;
+    for (let d = 0; d < 6; d++) {
+      const v = DIRECTIONS[d];
+      const k = v.q !== 0 ? dq / v.q : dr / v.r;
+      if (!Number.isInteger(k) || k <= 0) continue;
+      if (v.q * k === dq && v.r * k === dr) return d;
+    }
+    return -1;
+  }
+
   // WHICH WAY A SHOVE MOVES SOMETHING. One answer, used by both sides.
   //
   // `directionIndex` only names the direction between ADJACENT hexes and
@@ -451,6 +470,11 @@
   // data, "in case we decide to put it back."
   const START_AP = 1;
   const ENEMY_AP = 1;
+  // How close a `standsOff` hull lets the flagship get before backing away
+  // takes priority over lining up a shot. Two, so contact and the hex
+  // outside it both push it back — the flagship's starting Autocannon
+  // reaches one, so this is exactly "stay out of what it launched with".
+  const STANDOFF_GAP = 2;
 
   // ---- weapon systems ---------------------------------------------------
   //
@@ -773,6 +797,23 @@
     // switches it off instead is its own side: see INHIBITIONS.beamClear.
     arcProjector: { id: "arcProjector", label: "Arc Projector", shape: "lane", range: 5, minRange: 1, damage: 1, targets: "one", energyCost: 4, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     railgun: { id: "railgun", label: "Railgun", shape: "lane", range: 20, damage: 2, targets: "one", energyCost: 5, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // THE ONE GUN THAT TELLS YOU BEFORE IT FIRES.
+    //
+    // `aims` is a weapon that takes a round to line up, and the round it
+    // spends doing that is the whole fight. It locks a LANE — not a target —
+    // the moment the lane has you standing in it, and the next round it
+    // fires down that lane whether you are still there or not. So the answer
+    // is never to out-trade it. The answer is to not be on the line.
+    //
+    // Every other charging gun in this roster charges on a CADENCE: a bus
+    // that fills at a known rate, which you read off the Scan and count. This
+    // one charges because of where you are standing, which makes the trigger
+    // something you did rather than something the clock did.
+    //
+    // Board-length, because a lane you could simply out-range would be
+    // answered by walking backwards, and walking backwards is the thing this
+    // class exists to take away.
+    pinLance: { id: "pinLance", label: "Pin Lance", shape: "lane", range: 20, damage: 1, targets: "one", energyCost: 1, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, aims: true },
     // Hoplite's Demolitionist, and the one question nothing else in this
     // game asks. Every other gun says "do not be standing HERE when I
     // fire"; this one says "this GROUND is going away." It doesn't damage
@@ -881,6 +922,7 @@
     flakBurst: { id: "flakBurst", label: "Flak Burst", kind: "weapon", weaponKey: "flakBurst", w: 2, h: 2 },
     arcBeam: { id: "arcBeam", label: "Arc Beam", kind: "weapon", weaponKey: "arcBeam", w: 2, h: 2 },
     beamLance: { id: "beamLance", label: "Beam Lance", kind: "weapon", weaponKey: "beamLance", w: 1, h: 3 },
+    pinLance: { id: "pinLance", label: "Pin Lance", kind: "weapon", weaponKey: "pinLance", w: 1, h: 3 },
     railgun: { id: "railgun", label: "Railgun", kind: "weapon", weaponKey: "railgun", w: 1, h: 4 },
     mortar: { id: "mortar", label: "Mortar", kind: "weapon", weaponKey: "mortar", w: 2, h: 2 },
     flankTubes: { id: "flankTubes", label: "Flank Tubes", kind: "weapon", weaponKey: "flankTubes", w: 1, h: 3 },
@@ -1135,54 +1177,51 @@
     // shoots, whether it can chase you at all, how big its bus is and how
     // fast it fills — is READ OFF THE HOLD by deriveShip, exactly as
     // yours is. Nothing here restates it.
-    // `closes` — THE ONE CLASS THAT CATCHES YOU. Its burn resolves before
-    // the shooting and its shot is re-decided from where it landed, so it
-    // hits on arrival instead of a round later (see enemyPhase).
+    // THE INTERCEPTOR IS THE LANE, AND YOU DODGE IT.
     //
-    // A contact gun on a hull no faster than its target could not ever be
-    // fired. Every gun the player buys reaches two or further, so backing
-    // off one hex a round out-ranged and out-paced a chaser forever, and the
+    // It carried a contact Autocannon and closed on you. That version is in
+    // the history: it could not fire at all until it was given the arrival
+    // hit, because every gun the player buys reaches two or further and the
     // flagship's turn always fell between a chaser arriving and a chaser
-    // shooting — every gun in the game kills a one-hull contact outright, so
-    // it was never alive to fire. Measured over 40 runs (`playtest.js`, "the
-    // roster, by what it got to do"): the Interceptor and the Cruiser are
-    // 445 of the 1,085 hulls that ever appear, they lived 5.7 and 6.0 rounds
-    // apiece, and they fired 0.10 shots each — SILENT 91% of the time. Half
-    // the roster was slow-moving salvage and the board was somewhere you
-    // walked across rather than somewhere you were in.
+    // shooting. Measured then, it was silent 91% of the time.
     //
-    // ONE class, and the measurements are why. Every contact gun in the
-    // roster doing this took 7 wins in 40 to 1 and the median run from depth
-    // 9 to depth 4 — a board where three separate hulls each land a free hit
-    // on arrival is not a decision, it is weather. The Interceptor alone
-    // lands at depth 8 with the silence down to 44%. The Cruiser is the one
-    // that most wants it next and is the one that measured worst: its Flak
-    // Burst takes everything touching it, so an arrival hit from it is a
-    // whole round of the player's hull, and adding it alone put the median
-    // back at 4.
+    // Now it is the opposite shape, and the first thing in the game is a
+    // puzzle rather than a trade:
+    //   - a Pin Lance, board-length, which locks the LANE you are standing
+    //     in and fires down it the NEXT round, whether you stayed or not;
+    //   - `standsOff`, so it backs away instead of closing — you cannot
+    //     answer it by walking up to it;
+    //   - one charge against a gun costing one, so the round it fires is a
+    //     round it empties itself, and the round after that it is holding
+    //     station with nothing to shoot. That gap is the whole window: it
+    //     is when the lane is safe and when you get to close the distance
+    //     it has been keeping.
     //
-    // It is NOT fast as well. Fitting it an Ion Drive on top (two hexes a
-    // round, which the hold has room for if the drive bay runs the full
-    // depth) measured 0 wins in 40 and median depth 7: the threat radius
-    // goes to three and there is nowhere left to stand. Speed and the
-    // arrival hit are the same dial, and this is the setting of it.
+    // `closes` came off with the Autocannon. A hull that hits on arrival and
+    // also refuses to arrive is a contradiction.
     interceptor: {
-      hull: 1, salvage: 2, closes: true,
+      hull: 1, salvage: 2, standsOff: true,
       hold: {
         cols: 3, rows: 4, blocked: ["0,3", "2,3"],
         items: [
-          { id: "autocannon", x: 0, y: 0 },
-          { id: "microReactor", x: 2, y: 0 },
-          { id: "sublightDrive", x: 1, y: 1 },
+          { id: "pinLance", x: 1, y: 0 },
+          { id: "microReactor", x: 0, y: 0 },
+          { id: "sublightDrive", x: 2, y: 0 },
         ],
       },
     },
+    // THE CRUISER IS THE CONTACT BRAWLER NOW, and it carries the contact
+    // gun to match: the Autocannon the flagship launches with. It had a Flak
+    // Burst, and when the Interceptor took up the Pin Lance that left the
+    // Autocannon fitted to nothing in the world — which breaks the rule the
+    // whole roster is built on, that there is no player-only and no
+    // enemy-only hardware. The Flak Burst is still out here on the Bulwark.
     cruiser: {
       hull: 1, salvage: 3,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
-          { id: "flakBurst", x: 1, y: 0 },
+          { id: "autocannon", x: 1, y: 0 },
           { id: "microReactor", x: 3, y: 1 },
           { id: "sublightDrive", x: 1, y: 2 },
           { id: "chargeBank", x: 2, y: 2 },
@@ -2191,6 +2230,11 @@
     { id: "flakBurst", label: "Flak Burst (2x2 — everything touching us, at once)", cost: 10, rarity: "uncommon" },
     { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 9, rarity: "uncommon" },
     { id: "beamLance", label: "Beam Lance (1x3 — two to five down any axis, nothing adjacent)", cost: 14, rarity: "rare" },
+    // Board-length for one charge, and the whole price is the round it takes
+    // to line up: you lock a lane, everything on it gets a round to leave,
+    // and then it fires whether anything stayed or not. The same gun the
+    // Interceptor points at you, which is where you learn to read it.
+    { id: "pinLance", label: "Pin Lance (1x3 — locks a lane, looses NEXT round, board-length)", cost: 12, rarity: "uncommon" },
     { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 13, rarity: "rare" },
     { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 15, rarity: "rare" },
     { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 20, rarity: "rare" },
@@ -2388,6 +2432,10 @@
       // moving two hexes is the other honest answer to reach.
       if (o.id === "afterburner") return levelId >= 3;
       if (o.id === "flakBurst") return levelId >= 2;
+      // On the shelf from Sector 2: the Interceptor in Sector 1 is where the
+      // telegraph is taught, so the first dock is where you can buy the gun
+      // that just taught it to you.
+      if (o.id === "pinLance") return levelId >= 2;
       if (o.id === "prowCannon") return true;          // the cheap one, available from the off
       // Same rule as the rest of the list: a gun reaches a shelf a sector
       // or two after the thing it answers turns up.
@@ -3780,6 +3828,14 @@
           // isn't dangerous, what it becomes is. Live charges are added
           // below, off the board rather than off the thrower.
           !w.places &&
+          // AN AIMED GUN IS NOT A DANGER ZONE UNTIL IT HAS LOCKED. It cannot
+          // fire this round at all — it spends the round lining up — so
+          // painting its reach would mark every hex of all six axes, on
+          // every board it is on, as lethal ground that is not. The threat
+          // it really carries is the lane it locked, added further down
+          // once it exists. The star is where a lock can START, which is
+          // what the telegraph is for teaching.
+          !w.aims &&
           // THE DANGER OVERLAY IS ABOUT DAMAGE. A Salvager's lens takes no
           // hull — it moves you — and painting its reach the same red as a
           // gun tells the player a lie about what standing there costs.
@@ -3821,6 +3877,18 @@
           threats.set(hexKey(hex), (threats.get(hexKey(hex)) || 0) + 1);
         }
       }
+    }
+    // A LOCKED LANE IS THE MOST LITERAL THREAT ON THE BOARD. It is already
+    // decided — the hull fires down it next round wherever the flagship
+    // went — so it belongs here or nothing that reads this map can see the
+    // one thing the player is meant to react to. A gun that COULD lock is
+    // not painted: the lock is the telegraph, and marking every axis of
+    // every aiming hull in advance would paint the board and say nothing.
+    for (const enemy of livingEnemies(state)) {
+      if (!enemy.aim) continue;
+      const weapon = WEAPONS[enemy.aim.weaponKey];
+      const dmg = (weapon && weapon.damage) || 1;
+      for (const hex of enemy.aim.lane) threats.set(hexKey(hex), (threats.get(hexKey(hex)) || 0) + dmg);
     }
     // Ordnance already on the board. A burning charge is the most literal
     // danger zone in the game — seven hexes with a number on them — and it
@@ -4281,6 +4349,31 @@
   function decideIntent(state, enemy) {
     const ship = enemyShip(enemy);
     if (!ship) return { enemyId: enemy.id, type: "wait" };
+    // A LANE ALREADY LOCKED IS FIRED DOWN, wherever the flagship went.
+    // Outranks everything below it, including stepping off a mine: the hull
+    // committed to this lane last round and the round it spent doing that is
+    // the player's whole warning. Letting it reconsider would mean the
+    // telegraph could lie, and a telegraph that can lie is worse than none.
+    if (enemy.aim) return { enemyId: enemy.id, type: "loose" };
+    // `standsOff` — GIVING GROUND OUTRANKS TAKING A NEW LOCK. Without this
+    // the class is a turret, not a kiter: an all-axis lane gun almost always
+    // HAS a lane on an open board, so lining one up consumed every round and
+    // it never moved a hex while the flagship walked all the way in. Inside
+    // its working distance it backs off first and lines up after, which is
+    // what "it keeps its distance while it works you" actually costs it.
+    //
+    // It is allowed to be cornered. When no step opens the gap — a board
+    // edge, rock, another hull — it stops retreating and fights, and that is
+    // the window the whole fight is built around: a hull with a contact gun
+    // and nowhere left to back into.
+    if (ENEMY_TYPES[enemy.type].standsOff && hexDistance(enemy, state.playerPos) <= STANDOFF_GAP) {
+      const away = neighbors(enemy)
+        .filter((to) => canFlyInto(state, to, enemy) && !enemyAt(state, to) && !posEq(to, state.playerPos))
+        .map((to) => ({ to, gap: hexDistance(to, state.playerPos) }))
+        .filter((c) => c.gap > hexDistance(enemy, state.playerPos))
+        .sort((a, b) => b.gap - a.gap);
+      if (away.length) return { enemyId: enemy.id, type: "move", to: away[0].to };
+    }
     // Any contact fires the instant the flagship is standing somewhere one
     // of ITS FITTED GUNS reaches and its reactor can pay for the shot —
     // the same two questions the flagship's own fire controls ask. A
@@ -4393,9 +4486,19 @@
     }
     const bearing = enemyWeaponsBearing(state, enemy).filter((w) => !inhibited(state, enemy, w));
     const affordable = bearing.filter((w) => enemy.energy >= w.energyCost);
-    if (affordable.length) {
-      const pick = affordable.slice().sort((a, b) => a.energyCost - b.energyCost || b.damage - a.damage)[0];
+    // AN AIMED GUN CANNOT JUST BE FIRED. It spends this round locking the
+    // lane the flagship is standing in and fires down it the next one, so it
+    // is taken out of the ordinary attack branch entirely — otherwise the
+    // round of warning never happens and it is a board-length gun with no
+    // answer to it.
+    const aiming = affordable.filter((w) => w.aims);
+    const direct = affordable.filter((w) => !w.aims);
+    if (direct.length) {
+      const pick = direct.slice().sort((a, b) => a.energyCost - b.energyCost || b.damage - a.damage)[0];
       return { enemyId: enemy.id, type: "attack", weaponKey: pick.id };
+    }
+    if (aiming.length) {
+      return { enemyId: enemy.id, type: "aim", weaponKey: aiming[0].id };
     }
     // SHOOT THE INCOMING ROUND. Nothing bears on the flagship this turn,
     // so the shot is going spare — and a Seeker the player launched routes
@@ -4503,6 +4606,26 @@
       //   sectors unwinnable before — and any gun costing more than its
       //   reactor makes in a round would do it two turns in three.
       const solutionKeys = new Set(firingPositions(state, enemy).map(hexKey));
+      // `standsOff` — IT BACKS AWAY INSTEAD OF CLOSING, and only this flag
+      // does. Everything below is the no-retreat rule, and that rule is
+      // measured: reach that holds its distance was tried on the ordinary
+      // long guns and took a greedy pilot from 23 wins in 60 to 1, because a
+      // ship that walks one hex a round cannot answer it. What makes it fair
+      // HERE and not there is the Pin Lance — it cannot fire the round it
+      // lines up, the lane it locks is painted before it fires, stepping out
+      // of that lane costs nothing, and firing empties a one-charge bus. The
+      // distance it keeps is answered in time rather than in ground.
+      //
+      // It still has to keep a line: a hull that only ran would never fire,
+      // and a kiter you cannot be shot by is not a threat, it is furniture.
+      if (ENEMY_TYPES[enemy.type].standsOff) {
+        const keeping = candidates.filter((c) => solutionKeys.has(hexKey(c.to)));
+        const pool = keeping.length ? keeping : candidates;
+        // Furthest that still bears, and among equals the one that gives up
+        // the most ground.
+        pool.sort((a, b) => b.dist - a.dist || a.dir - b.dir);
+        return { enemyId: enemy.id, type: "move", to: pool[0].to };
+      }
       const closers = candidates.filter((c) => c.dist <= standoff);
       const bearsFrom = (list) => list.filter((c) => solutionKeys.has(hexKey(c.to)));
       const allowed = bearing.length ? closers : candidates;
@@ -4609,8 +4732,15 @@
   // speed order inside applyFire's volley, so targets are computed at
   // fire time (a faster weapon's kill or push in this same volley genuinely
   // removes them from a slower weapon's list).
-  function firePlayerWeapon(state, weapon, onHit, preferredTargetId, groundHex) {
-    const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon, state).map(hexKey));
+  // `lockedLane` replaces the footprint this shot would compute for itself:
+  // an aimed gun resolves against the lane it locked LAST round, so turning
+  // on the spot between the lock and the shot changes nothing. Everything
+  // else about the volley — ground, wreckage, ordnance, spoils — is the one
+  // path every other gun takes.
+  function firePlayerWeapon(state, weapon, onHit, preferredTargetId, groundHex, lockedLane) {
+    const hexKeys = lockedLane
+      ? new Set(lockedLane.map(hexKey))
+      : new Set(weaponHexes(state.playerPos, state.facing, weapon, state).map(hexKey));
     // A SHOT AIMED AT THE GROUND HITS THE GROUND. Rock and wreckage are
     // targets a player picks deliberately — opening a lane, or cutting a hull
     // for its salvage — and a volley that silently went to a ship standing
@@ -4902,6 +5032,60 @@
         enemy.energy -= weapon.energyCost; // paid for, same as any other shot
         firedThisPhase.add(enemy.id);
         shootDownMissiles(state, covers, enemy.type.toUpperCase());
+      }
+      // A LANE IS LOCKED. The hull spends this round lining up and nothing
+      // else: the lane is captured HERE, as it stands now, so stepping out
+      // of it is what saves you rather than out-trading the shot. It holds
+      // station while aiming — a lane recomputed after a move would make the
+      // telegraph a lie.
+      for (const { enemy, intent } of intents.filter(({ intent: i }) => i.type === "aim")) {
+        if (!enemy.alive || enemy.aim) continue;
+        const weapon = WEAPONS[intent.weaponKey];
+        if (!weapon || enemy.energy < weapon.energyCost) continue;
+        const facing = enemyFacing(state, enemy);
+        // ONE LANE, not the whole star. An all-directions lane weapon covers
+        // every axis at once, and locking all six would leave nowhere to
+        // dodge to — the hull picks the single axis the flagship is standing
+        // on. Filtered out of the real footprint rather than walked by hand,
+        // so rock and other hulls still stop the beam exactly where they
+        // stop every other shot.
+        const axis = axisIndex(enemy, state.playerPos);
+        if (axis < 0) continue; // not on an axis at all: nothing to line up
+        const lane = weaponHexes(enemy, facing, weapon, state)
+          .filter((h) => onBoard(state, h) && axisIndex(enemy, h) === axis)
+          .map((h) => ({ q: h.q, r: h.r }));
+        if (!lane.some((h) => posEq(h, state.playerPos))) continue; // the board moved
+        enemy.aim = { weaponKey: weapon.id, facing, lane };
+        state.events.push({ type: "aimStart", enemyId: enemy.id, q: enemy.q, r: enemy.r, lane, weapon: weapon.id });
+        pushLog(state, `${enemy.type.toUpperCase()} is lining us up — get off the line.`);
+      }
+      // AND LOOSED, down the lane it locked, whether the flagship stayed on
+      // it or not. The shot is paid for here rather than at lock, so a hull
+      // killed while aiming never spends the charge.
+      for (const { enemy, intent } of intents.filter(({ intent: i }) => i.type === "loose")) {
+        if (!enemy.alive || !enemy.aim) continue;
+        const aim = enemy.aim;
+        const weapon = WEAPONS[aim.weaponKey];
+        enemy.aim = null;
+        if (!weapon || enemy.energy < weapon.energyCost) continue;
+        enemy.energy -= weapon.energyCost;
+        firedThisPhase.add(enemy.id);
+        const hit = aim.lane.some((h) => posEq(h, state.playerPos));
+        state.events.push({
+          type: "beam",
+          enemyId: enemy.id,
+          q: enemy.q,
+          r: enemy.r,
+          lane: aim.lane,
+          weapon: weapon.id,
+          hit,
+        });
+        if (hit) {
+          totalDamage += weapon.damage;
+          hitters.push({ type: enemy.type, energy: enemy.energy, maxEnergy: enemy.maxEnergy });
+        } else {
+          pushLog(state, `${enemy.type.toUpperCase()} fires down the lane — we are not on it.`);
+        }
       }
       // A Collector picks a wreck up. It comes off the board the moment it is
       // towed, so you cannot cut it open any more — the race is for reaching
@@ -5259,6 +5443,10 @@
     resolveSplits(state);
     if (state.ap <= 0) {
       enemyPhase(state);
+      // THE FLAGSHIP'S OWN LOCK LOOSES HERE — after the enemy phase, so a
+      // hull that walked out of the lane is gone, exactly as the flagship is
+      // when it walks out of theirs. Same rule, both sides.
+      resolvePlayerAim(state);
       resolveSplits(state);
       // The Harrier reads this: it acts only on a round the flagship moved.
       // Cleared once the enemies have answered, so the flag always describes
@@ -5468,8 +5656,52 @@
       throw new Error(`${firing.weapon.label}: charge at ${state.energy} of ${firing.weapon.energyCost}`);
     }
     state.events = [];
+    // THE FLAGSHIP AIMS ON THE SAME RULE ITS ENEMIES DO. A Pin Lance in your
+    // hold is the one the Interceptor carries — there is no second set of
+    // rules — so firing it locks the lane this round and looses it at the
+    // start of the next, and anything that steps off the lane in between is
+    // gone. That is the trade the price is set against: board-length reach
+    // for one charge, and a round of warning given to whatever you aimed at.
+    if (firing.weapon.aims) {
+      const axis = axisIndex(state.playerPos, targetHexFor(state, targetEnemyId, opts && opts.groundHex));
+      if (axis < 0) throw new Error(`${firing.weapon.label}: nothing lined up on an axis`);
+      const lane = weaponHexes(state.playerPos, state.facing, firing.weapon, state)
+        .filter((h) => onBoard(state, h) && axisIndex(state.playerPos, h) === axis)
+        .map((h) => ({ q: h.q, r: h.r }));
+      state.playerAim = { weaponKey: firing.weapon.id, lane };
+      state.events.push({ type: "aimStart", player: true, q: state.playerPos.q, r: state.playerPos.r, lane, weapon: firing.weapon.id });
+      pushLog(state, `${firing.weapon.label} locked on the lane — it looses next round.`);
+      spendAp(state);
+      return;
+    }
     firePlayerWeapon(state, firing.weapon, firing.onHit, targetEnemyId, opts && opts.groundHex);
     spendAp(state);
+  }
+
+  // Where an aimed shot is pointed: the hull named, the ground named, or
+  // whatever the gun already bears on.
+  function targetHexFor(state, targetEnemyId, groundHex) {
+    if (groundHex) return groundHex;
+    const named = targetEnemyId && livingEnemies(state).find((e) => e.id === targetEnemyId);
+    if (named) return { q: named.q, r: named.r };
+    const nearest = livingEnemies(state)
+      .filter((e) => axisIndex(state.playerPos, e) >= 0)
+      .sort((a, b) => hexDistance(state.playerPos, a) - hexDistance(state.playerPos, b))[0];
+    return nearest ? { q: nearest.q, r: nearest.r } : state.playerPos;
+  }
+
+  // The flagship's locked lane looses at the top of its next turn, after the
+  // enemy phase has had its chance to walk out of it.
+  function resolvePlayerAim(state) {
+    const aim = state.playerAim;
+    if (!aim) return;
+    state.playerAim = null;
+    const weapon = WEAPONS[aim.weaponKey];
+    if (!weapon) return;
+    const caught = livingEnemies(state).some((e) => aim.lane.some((h) => posEq(h, e)));
+    state.events.push({ type: "beam", player: true, q: state.playerPos.q, r: state.playerPos.r, lane: aim.lane, weapon: weapon.id, hit: caught });
+    firePlayerWeapon(state, weapon, null, null, null, aim.lane);
+    if (!caught) pushLog(state, `${weapon.label} looses down the lane — nothing on it.`);
   }
 
   // END TURN: pass whatever AP is left and let the enemy phase run — the
@@ -5807,6 +6039,7 @@
     deriveShip,
     enemyShip,
     enemyWeaponsBearing,
+    axisIndex,
     canFlyInto,
   };
 
