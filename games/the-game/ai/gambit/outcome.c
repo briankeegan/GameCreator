@@ -227,6 +227,8 @@ static void readyPlanOut(const Judged *j, int32_t *pLine, int32_t *pN, int32_t *
   for (int k = 0; k < *pN; k++) pLine[k] = j->readyLine[k];
   for (int c = 0; c <= W; c++) pRow1[c] = j->readyRow1[c];
 }
+static double contBoardLost(const Board *e, double give);   // (decide.c)
+static double readyShareMs;   // (search/break.c)
 static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait) {
   *extLost = NOT_ASKED; *extSpent = NOT_ASKED; *pN = 0;
   if (land == NOT_ASKED) return NOT_ASKED;
@@ -245,8 +247,11 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
     int32_t ext[MAXLINE], en = n + o.j.readyN, w0To = o.j.readyWait, mAt[MAXLINE], mTo[MAXLINE], nm = 0;
     for (int k = 0; k < n; k++) ext[k] = seq[k];
     for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
+    static LOCAL Board *planEnd; if (!planEnd) planEnd = nb_new();
+    int haveEnd = 0;
     Outcome e = promised(ext, en, settled, n, w0To, 0, 0, 0);
-    if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; }
+    if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent;
+      if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; } } }
     // (A PLAN OF SEVERAL STEPS: the board the break leaves, once it has settled, asked again for a break in reach -- played where its
     // readiness finds it, and so on while each break puts the loss off -- as far as the board, the line's length and the clock allow: the
     // line is lost where the plan is, the owner's ready with a plan)
@@ -263,6 +268,13 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
       int32_t lost = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
       if (lost == NOT_ASKED || (lost != FOREVER && o.lostAt != FOREVER && lost <= o.lostAt)) break;
       o.lostAt = lost; *extSpent = e.j.spent;
+      haveEnd = 0; if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; } }
+    }
+    // (AND ON: past its last break the plan goes on as the survival search plays on from the board it leaves -- every plan ends the
+    // same way, so a plan of breaks is never judged left alone where a line that only survives is judged played on)
+    if (haveEnd && o.lostAt != NOT_ASKED && o.lostAt != FOREVER && readyShareMs > 0 && !clockOut()) {
+      double c = contBoardLost(planEnd, readyShareMs);
+      if (c >= 1e9) o.lostAt = FOREVER; else if (c > o.lostAt) o.lostAt = (int32_t)c;
     }
   }
   *extLost = o.lostAt;

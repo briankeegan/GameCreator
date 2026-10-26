@@ -216,6 +216,7 @@ static const Judge *saveLine;   // (the line the save confirmed)
 static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
+static double contBoardLost(const Board *e, double give);
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
   if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
@@ -226,9 +227,16 @@ static double contLostOf(const Judge *J, double give) {
   if (!J->hold) unLine();
   endNoKeep = 0;
   if (!e) return -1;
-  cloneBoard(eb, e);
-  int32_t dt = imax(0, eb->clock - decQ.b->clock);
-  Question q2 = decQ; q2.b = eb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+  return contBoardLost(e, give);
+}
+// (THE BEST ON FROM A BOARD: the survival search asked of board e, with the garbage still on its way, for `give` ms -- the frame from
+// now that board is lost, 1e9 if it lives, -1 if it could not be asked: a line's plan ends here, whatever its last step was)
+static double contBoardLost(const Board *e, double give) {
+  static Board *cb; if (!cb) cb = nb_new();
+  if (!cb || !e) return -1;
+  cloneBoard(cb, e);
+  int32_t dt = imax(0, cb->clock - decQ.b->clock);
+  Question q2 = decQ; q2.b = cb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
   Outlived c = outlive(&q2, HORIZON + REST, REST, give, 6, 30);
   int32_t lost = c.set ? c.lostAt : diesIn(&q2, HORIZON + REST);
