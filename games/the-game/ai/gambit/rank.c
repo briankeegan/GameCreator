@@ -482,7 +482,9 @@ static double valueOf(const Judge *J) {
   // each leaves once everything shown has landed (judge.c readyWalk), each action the frames the window takes to give it back -- a
   // line that only buys time leaves the garbage as far from breaking)
   if (rankHold && J->o.j.readyWalk > 0 && rankHold->o.j.readyWalk > 0) gain += (double)(rankHold->o.j.readyWalk - J->o.j.readyWalk) * af;
-  // (asked with the ledger, once it reads death as the engine does)
+  // (and the supply: a break's time for each break its plan makes over the hold's -- panels kept, contact and room are worth the
+  // breaks they become, counted here in that unit)
+  if (rankHold) gain += (double)(J->planBreaks - rankHold->planBreaks) * save;
   double cost = spent * af + (J->o.j.netPanels < 0 ? (double)-J->o.j.netPanels / W * save : 0);
   return gain - cost;
 }
@@ -518,9 +520,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // -- of two that do not live, the later loss, unless lost alike (lostAlike: the same band of a break's time, counted from one
   // reference -- less than a break's time apart buys no break more)
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
-  // 2. SOLVENCY (ledgerOf): a line whose plan pays every row due as it comes before one that falls short
-  // (asked once the ledger reads death as the engine does -- plans/gambit-categories.md: a row that lands with no room is not a loss
-  // until the board is topped out, its stop spent and the stack risen; the ledger is logged, sol=, and decides nothing until then)
+  // 2. SOLVENCY (ledgerOf): a line whose plan stands until every row shown is met before one that falls short; of two short, fewer rows
+  // unpaid, then lost later -- death as the engine plays it, the plan's own loss frame
+  if (!lx || !ly) { Ledger gx = ledgerOf(x), gy = ledgerOf(y);
+    if ((gx.shortBy > 0) != (gy.shortBy > 0)) K(2, "solvent", gx.shortBy > 0 ? 1 : -1);
+    if (gx.shortBy != gy.shortBy) K(2, "short", gx.shortBy - gy.shortBy);
+    if (gx.at != gy.at) K(2, "shortAt", gy.at > gx.at ? 1 : -1); }
   // 3. THE CATEGORY (catOf), best first: lives, lives by its plan, breaks now, ready, buys time, dies
   { int cx = catOf(x, rankHold), cy = catOf(y, rankHold); if (cx != cy) K(3, "category", cx - cy); }
   // -- and no wasted three (the owner: only when not doing it kills): of two of a category, a line that makes a three for nothing and
