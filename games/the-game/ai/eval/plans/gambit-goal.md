@@ -1714,3 +1714,7 @@ Measured (`47d6cbf2`, 1223): 16 -- the same games as 1222, green throughout. Of 
 THE ORDER ONE ORDER: 3489 of 19525 decisions (1223) played a line beaten head to head by one ranked under it. Lost alike was a
 pair's own test (the same band, or less than a break's time apart), so A alike B alike C did not make A alike C. Now bands alone,
 the survival search's (outBand), and the ledger asks the same band.
+Measured (`93c5192a`, 1224): 7 -- combo_storm 3, factory 3, large_garbage 1; actions 8, panels 7. Beaten-by-a-lower 1285 (from
+3489). Fixed band edges split two lines a few frames apart, and the later loss then overrode margin, ledger and nearer.
+LOST ALIKE COUNTED BACK FROM THE LATEST LOSS: the bands between one and three breaks' time measured from the latest loss among the
+lines ranked together (rankLostRef): less than a break's time apart is alike again, and alike stays one relation.

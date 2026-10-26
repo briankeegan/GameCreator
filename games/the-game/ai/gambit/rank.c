@@ -353,14 +353,22 @@ static double marginOf(const Judge *J) {
   double win = J->hold ? windowShareAt(0, 0) : windowShareAt(J->o.j.endAt, J->o.j.spent);
   return win >= 0 && win < r ? win : r;
 }
-// (LOST ALIKE: in the same band of a break's time -- the first band's lines each alone, the third and on one band -- the survival
-// search's own bands, search/outlive.c outBand. Bands, so alike is one relation for every pair and the order one order)
-static int32_t lostBand(const Judge *J) { double l = lostOf(J); return l >= 1e9 ? 0x7fffffff : (int32_t)(l / imax(1, rankSave)); }
+// (LOST ALIKE: lost in the same break's time, counted back from the latest loss of the lines ranked together (rankLostRef, sortJudged)
+// -- less than a break's time apart buys no break more -- a line lost within a break's time each alone, and one with three breaks'
+// time left alike with every other. Bands from one reference, so alike is one relation for every pair and the order one order)
+static double rankLostRef;
+static int32_t lostBand(const Judge *J) {
+  double l = lostOf(J);
+  if (l >= 1e9) return 0x7fffffff;
+  int32_t save = imax(1, rankSave);
+  if (l < save) return -1 - (int32_t)l;
+  if (l >= 3.0 * save) return 0x7ffffffe;
+  double back = rankLostRef > l ? rankLostRef - l : 0;
+  return (int32_t)(back / save);
+}
 static int lostAlike(const Judge *x, const Judge *y) {
   int32_t bx = lostBand(x), by = lostBand(y);
-  if (bx >= 3 && bx != 0x7fffffff) bx = 3;
-  if (by >= 3 && by != 0x7fffffff) by = 3;
-  return bx >= 1 && bx == by;
+  return bx >= 0 && bx != 0x7fffffff && bx == by;
 }
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
@@ -514,6 +522,8 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   markIdle(a, n);
+  rankLostRef = 0;
+  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }   // (of the lines banded by it)
   for (int w = 1; w < n; w *= 2)
     for (int lo = 0; lo < n; lo += 2 * w) {
       int mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n, i = lo, j = mid, k = lo;
