@@ -88,3 +88,6 @@ line short at once by a block shown (**demand**).
   the line's end, before the garbage on its way had landed (toward 4.5 against the hold's 0.5) -- and spent the window from 25 to 3.
   Fixed: a margin read before everything has landed counts the rows still coming against its room, in the order and the survival
   search alike.
+- 1283, 13/24 (combo_storm 5, factory 3, large_garbage 5). combo_storm-1: the hold (lost at 238) played 8 times over entries lost at 352
+  that threw a block, the margin 0.8 against 0.7 -- one row of material, the panels the entry clears. Every clear spends a little
+  material, so a margin read in rows always holds. Fixed: a share of 3 rows or more is enough, not scarce; only scarcity decides.

@@ -173,9 +173,12 @@ static double winCoverShare(int32_t endAt, int spent, int32_t paid) {
 // is nearly none for every line, and the next decides) -- the two scarcest only: a board dies of what it runs out of first, and a row
 // more of what it has plenty of is no reason to give up a later loss; one integer, the order's and the survival search's alike. A
 // share not said (no window allowance, no column under garbage) is whole
+// (ENOUGH: a share of MARGIN_ENOUGH rows or more is not scarce -- a row more of what a board has enough of is no reason to give up a
+// later loss, and every clear spends a little material: only scarcity decides. A number to measure on the engine, plans/gambit-next.md)
+#define MARGIN_ENOUGH 3
 static int32_t marginKeyOf(double room, double mat, double win, double touch) {
   double s[4] = { room, mat, win, touch }; int32_t b[4];
-  for (int i = 0; i < 4; i++) { double v = s[i] < 0 ? 0 : s[i] > 1 ? 1 : s[i]; b[i] = (int32_t)(v * 12); }
+  for (int i = 0; i < 4; i++) { double v = s[i] < 0 ? 0 : s[i] > 1 ? 1 : s[i]; b[i] = imin((int32_t)(v * 12), MARGIN_ENOUGH); }
   for (int i = 1; i < 4; i++) { int32_t v = b[i]; int k = i; while (k > 0 && b[k - 1] > v) { b[k] = b[k - 1]; k--; } b[k] = v; }
   return b[0] * 13 + b[1];
 }
