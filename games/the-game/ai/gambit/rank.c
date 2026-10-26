@@ -417,9 +417,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (h->holdSunk && lostAlike(x, y)) K(1, "hold", h == x ? 1 : -1); }
   // -- and of two lost alike, the one that leaves the board more MARGIN once everything shown has landed (marginOf): where the loss
   // cannot tell two lines apart, the room the board keeps can -- every line read on the board the same garbage has landed on
-  // -- and of two lost alike, the later loss net of what each spends (lostNetOf): survival in one unit
-  if (!lx && lostAlike(x, y)) { double nx = lostNetOf(x), ny = lostNetOf(y); if (nx != ny) K(1, "net", ny > nx ? 1 : -1); }
   if (!lx && lostAlike(x, y)) { double mx = marginOf(x), my = marginOf(y); if (mx != my) K(1, "margin", mx > my ? -1 : 1); }
+  // -- and of two lost alike that leave the board as much margin, the later loss net of what each spends (lostNetOf)
+  if (!lx && lostAlike(x, y)) { double nx = lostNetOf(x), ny = lostNetOf(y); if (nx != ny) K(1, "net", ny > nx ? 1 : -1); }
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
   // (survival first: two lines that live, or two lost in the same band of a break's time -- never one lost sooner by more)

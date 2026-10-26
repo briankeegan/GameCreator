@@ -1791,3 +1791,6 @@ actionFrames, rank.c lostNetOf) -- in "later", in the bands, in the hold's place
 Measured (`a0ec1607`, 1238): red -- "the answers": 16 decisions played a line lost a break's time sooner than one offered. Survival
 first stands: the net loss decides only between lines lost alike (rule 1 "net", before the margin); the bands and "later" are the
 loss itself.
+Measured (`3dda4315`, 1239): 8 -- combo_storm 5, factory 0, large_garbage 3; panels 8, actions 6, hold-creep 2. Swaps that came to
+nothing 1407 (from 1940), 836 of them lines put down (from 1225). Before the margin, the net loss overrode its material: the line
+spending fewer actions taken over the one keeping the panels. The net loss after the margin now, what the margin leaves.
