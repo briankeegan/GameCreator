@@ -3576,8 +3576,8 @@ for (let t = 1; t <= 6; t++) {
 const CH = Engine.START_HULL;
 assert.deepStrictEqual(
   chaserHullTimeline,
-  [CH, CH - 1, CH - 1, CH - 1, CH - 2, CH - 2],
-  "lock, loose, recharge — one hull every three rounds, and never two shots running"
+  [CH, CH - 1, CH - 1, CH - 2, CH - 2, CH - 3],
+  "lock, loose, lock, loose — lining up IS the charging, so there is no third round spent refilling"
 );
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
@@ -4563,7 +4563,10 @@ assert.deepStrictEqual(
   });
   let blank = 0;
   const seen = [];
-  for (let round = 0; round < 9; round++) {
+  for (let round = 0; round < 9 && st.status === "playing"; round++) {
+    // It hits once every two rounds now, so a flagship that stands there
+    // taking it is dead well before nine — which is the point of the cycle,
+    // and not something this fixture should walk into.
     const was = { q: st.enemies[0].q, r: st.enemies[0].r };
     Engine.applyEndTurn(st);
     const foe = st.enemies[0];

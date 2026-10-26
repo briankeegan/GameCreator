@@ -4500,7 +4500,16 @@
     // is taken out of the ordinary attack branch entirely — otherwise the
     // round of warning never happens and it is a board-length gun with no
     // answer to it.
-    const aiming = affordable.filter((w) => w.aims);
+    // LINING UP IS THE CHARGING, so it does not need a charged bus to start.
+    // This read from `affordable`, which meant the round after a shot — bus
+    // empty — a hull could move into a lane and not take it, and only lock
+    // the round after that. Reported live: "it moved... and we're in the
+    // same row but it's not charging." It was in the row. It was empty.
+    //
+    // Nothing is spent at the lock in any case; the charge is paid when it
+    // looses (see enemyPhase), and the round spent lining up is the round
+    // that fills the bus.
+    const aiming = bearing.filter((w) => w.aims);
     const direct = affordable.filter((w) => !w.aims);
     if (direct.length) {
       const pick = direct.slice().sort((a, b) => a.energyCost - b.energyCost || b.damage - a.damage)[0];
@@ -5089,6 +5098,9 @@
     // Who spent this round's action MANOEUVRING. For a hull that stands off,
     // that round is its reload (see the regen rule at the end of the phase).
     const movedThisPhase = new Set();
+    // Who spent this round's action lining a lane up — which is also the
+    // round their gun charges on.
+    const aimedThisPhase = new Set();
     for (let apStep = 0; apStep < ENEMY_AP; apStep++) {
       const intents = livingEnemies(state).map((enemy) => ({ enemy, intent: decideIntent(state, enemy) }));
       for (const { enemy, intent } of intents) {
@@ -5114,8 +5126,18 @@
         if (!enemy.alive || !enemy.aim) continue;
         const aim = enemy.aim;
         const weapon = WEAPONS[aim.weaponKey];
+        if (!weapon) {
+          enemy.aim = null;
+          continue;
+        }
+        // STILL SHORT: THE LOCK HOLDS. It is a gun charging, so a bus that
+        // has not filled yet means another round of charging, not a lock
+        // that silently evaporates and leaves the lane painted over nothing.
+        if (enemy.energy < weapon.energyCost) {
+          aimedThisPhase.add(enemy.id);
+          continue;
+        }
         enemy.aim = null;
-        if (!weapon || enemy.energy < weapon.energyCost) continue;
         enemy.energy -= weapon.energyCost;
         firedThisPhase.add(enemy.id);
         const hit = aim.lane.some((h) => posEq(h, state.playerPos));
@@ -5241,7 +5263,7 @@
       for (const { enemy, intent } of intents.filter(({ intent: i }) => i.type === "aim")) {
         if (!enemy.alive || enemy.aim) continue;
         const weapon = WEAPONS[intent.weaponKey];
-        if (!weapon || enemy.energy < weapon.energyCost) continue;
+        if (!weapon) continue;
         const facing = enemyFacing(state, enemy);
         // ONE LANE, not the whole star. An all-directions lane weapon covers
         // every axis at once, and locking all six would leave nowhere to
@@ -5256,6 +5278,7 @@
           .map((h) => ({ q: h.q, r: h.r }));
         if (!lane.some((h) => posEq(h, state.playerPos))) continue; // the board moved
         enemy.aim = { weaponKey: weapon.id, facing, lane };
+        aimedThisPhase.add(enemy.id);
         state.events.push({ type: "aimStart", enemyId: enemy.id, q: enemy.q, r: enemy.r, lane, weapon: weapon.id });
         pushLog(state, `${enemy.type.toUpperCase()} is lining us up — get off the line.`);
       }
@@ -5474,6 +5497,10 @@
       const standsOff = (ENEMY_TYPES[enemy.type] || {}).standsOff;
       const earned =
         waitedThisPhase.has(enemy.id) ||
+        // Lining up IS powering the gun: the round a hull spends locking a
+        // lane is the round its capacitor fills, which is the whole fiction
+        // of a weapon that has to be charged before it will fire.
+        aimedThisPhase.has(enemy.id) ||
         (standsOff && movedThisPhase.has(enemy.id) && !firedThisPhase.has(enemy.id));
       if (!earned) continue;
       const ship = enemyShip(enemy);
