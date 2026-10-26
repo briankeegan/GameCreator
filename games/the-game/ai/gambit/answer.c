@@ -519,6 +519,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (each line's ledger, the scenario it leaves: sol=paid/due:short@frame -- @- never short -- in the order's own order)
   L_s(" sol="); for (int i = 0; i < P.ncands && i < 8; i++) { Ledger g = ledgerOf(order[i]); if (i) L_s(",");
     L_i(g.paid); L_s("/"); L_i(g.due); L_s(":"); L_i(g.shortBy); L_s("@"); if (g.at == FOREVER) L_s("-"); else L_i(g.at); }
+  // (each line's margin as the order reads it, in rows (rank.c marginBand), p where read on the board its plan leaves: mg=)
+  L_s(" lands="); L_i(landsTaken); L_s("/"); L_i(landsAsked); landsAsked = landsTaken = 0;   // (later landings: plans taken of those asked)
+  L_s(" mg="); for (int i = 0; i < P.ncands && i < 8; i++) { if (i) L_s(","); L_i(marginBand(order[i])); if (order[i]->planMargin[0] >= 0 && order[i]->extSpent != NOT_ASKED) L_s("p"); }
   L_s(" opts=");
   for (int i = 0; i < P.ncands && i < 8; i++) {
     const Judge *j = order[i];

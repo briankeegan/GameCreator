@@ -214,6 +214,7 @@ static int planProven(int32_t lost) {
 }
 // (of two plans, the proven; then the one that converts more; then the one lost later)
 #define PLAN_LANDS 4
+static int32_t landsAsked, landsTaken;   // (this decision's later landings asked and the plans taken from them: the log's lands=)
 static int planBetter(int32_t lx, int32_t bx, int32_t ly, int32_t by) {
   int px = planProven(lx), py = planProven(ly);
   if (px != py) return px;
@@ -247,8 +248,9 @@ static void readyNextFor(Judge *J) {
       int32_t xl, xs, xn, xw, xline[MAXLINE], xrow[W + 1];
       readyKind = READY_KIND_LAND + i;
       int r = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, ats[i], &xl, &xs, xline, &xn, xrow, &xw);
-      readyKind = 2;
+      readyKind = 2; landsAsked++;
       if (r != 1 || !planBetter(xl, planBroke, J->extLost, J->planBroke)) continue;
+      landsTaken++;
       J->readyNext = r; J->extLost = xl; J->extSpent = xs; J->planN = xn; J->planWait = xw; J->planBroke = planBroke;
       for (int k = 0; k < 5; k++) J->planMargin[k] = planMargin[k];
       for (int k = 0; k < xn; k++) J->planLine[k] = xline[k];
