@@ -160,11 +160,11 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
-  // (under garbage the rule is to break: the break search's wider beam third, before the planner's half and the extension)
-  __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
-  if (R->under && pool.nworkers >= 3) jobKinds[njobKinds++] = JOB_WIDE;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
+  // (the wider beam last: the worker the planner's half and the extension leave)
+  __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
+  if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
   // is this thread's whole)
   while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; }

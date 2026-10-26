@@ -1755,3 +1755,6 @@ Measured (`a573f79c`, 1231): 9 -- combo_storm 4, factory 2, large_garbage 3; act
 where the narrower finds none, are the deep ones: the window drained in every loss.
 THE WIDER BEAM'S BREAK PRICED: taken where the narrower finds none only where the window keeps the next break's walk once its whole
 walk is pressed (answer.c wideKeepsWindow).
+Measured (`fd0795a9`, 1232): 10 -- combo_storm 4, factory 4, large_garbage 2; actions 12. Four losses on the frames 1231 lost on:
+the drain is the job order, not the wider beam's breaks -- the planner's half and the extension off the workers, on the decision's
+own thread. THE WIDER BEAM LAST AGAIN, its break still priced by the window.
