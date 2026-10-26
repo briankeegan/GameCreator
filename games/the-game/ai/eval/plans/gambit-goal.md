@@ -1762,3 +1762,5 @@ Measured (`c9c8e876`, 1233): 12 -- the games of 1230 exactly: with four workers 
 THE TOUCH BEAM'S KEY UNDER A SLAB: about 60% of logged boards have no match that touches garbage (breakNear NEAR_MISS), and there
 the beam's key was the stack's evenness alone. Now one order: the swaps to the nearest break, then the fewer empty cells under
 garbage (bitsShape hollow -- a block let down as its supports clear), then evenness.
+Measured (`a9be1ae4`, 1234): 13 -- combo_storm 7, factory 4, large_garbage 2; actions 7, panels 4. Decisions under garbage with
+no break found 9986 (from 10679, 1229).
