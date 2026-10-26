@@ -121,7 +121,9 @@ static int allowLeftAt(int32_t t, int spent) {
 // or the keeper's end -- and the spender outlives it by a break's time (rankSave): a walk kept by a board dead before it is pressed
 // keeps nothing, and a spend that buys less than a break's time buys nothing either
 static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
-static int32_t landAts[MAXARR + 1], nLandAts;   // (every block shown on its way, the frames until it lands from the question, soonest first)
+#define LANDN 64
+static int32_t landAts[LANDN], nLandAts;   // (every break the blocks shown on their way are due: a row each, its block's landing and a break's
+                                            // time after each row before it -- the frames from the question, soonest first)
 static int32_t rankSave;   // (rank.c: the frames one break takes)
 // (THE WINDOW'S SHARE a line leaves: the actions left at its end, or at the landing when that is later, of the window's whole limit --
 // the third margin beside the stack's room and its material; -1 with no allowance said)
@@ -137,10 +139,10 @@ static double actionFrames(void) {
   int32_t lim = pressAllowance + (nWinAges > 0 ? nWinAges : 0);
   return lim > 0 ? (double)winLen / lim : 0;
 }
-// (THE WINDOW'S COVER: of the blocks on their way, soonest first, how many the window keeps a break walk for -- at each landing that
-// block's walk besides the walks the blocks before it took, each pressed as its block lands and aged out as any action is, with what the
+// (THE WINDOW'S COVER: of the breaks the blocks on their way are due, soonest first, how many the window keeps a walk for -- at each due
+// its walk besides the walks the breaks before it took, each pressed as its block lands and aged out as any action is, with what the
 // window has given back by then; none on its way, 1 where the window keeps the walk at the line's end. WINDOW_ALL: no allowance said)
-#define WINDOW_ALL (MAXARR + 1)
+#define WINDOW_ALL (LANDN + 1)
 static int windowCover(int32_t endAt, int spent) {
   if (pressAllowance < 0) return WINDOW_ALL;
   if (nLandAts <= 0) { int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1; return allowLeftAt(tl > endAt ? tl : endAt, spent) >= breakWalk; }

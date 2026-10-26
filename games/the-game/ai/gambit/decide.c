@@ -43,14 +43,17 @@ static int readBoard_(Read *R) {
   if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
   decF.next = F->known[FACT_US_NEXTLANDS] ? (int32_t)F->v[FACT_US_NEXTLANDS] : NOT_ASKED;
   landingAt = decF.next != NOT_ASKED ? decF.next : -1;   // (the window plan's landing: core/nodes.h windowKeepsBreak)
-  // (and every block on its way after it, soonest first)
+  // (and the breaks every block on its way is due, soonest first: a row each -- a break converts one -- the first as it lands, the next a
+  // break's time after; the next landing with no block shown, one)
   nLandAts = 0;
-  if (landingAt >= 0) landAts[nLandAts++] = landingAt;
-  for (int i = 0; i < decQ.narr && nLandAts <= MAXARR; i++) if (decQ.arr[i].at > landingAt) {
-    int32_t a = decQ.arr[i].at; int k = nLandAts++;
-    while (k > 0 && landAts[k - 1] > a) { landAts[k] = landAts[k - 1]; k--; }
-    landAts[k] = a;
-  }
+  { int32_t gap = C2.reaction + 1 + popFrames(decQ.b, W), shown = 0;
+    for (int i = 0; i < decQ.narr; i++) shown |= decQ.arr[i].at == landingAt;
+    if (landingAt >= 0 && !shown) landAts[nLandAts++] = landingAt;
+    for (int i = 0; i < decQ.narr; i++) for (int r = 0; r < imax(1, decQ.arr[i].height) && nLandAts < LANDN; r++) {
+      int32_t a = decQ.arr[i].at + r * gap; int k = nLandAts++;
+      while (k > 0 && landAts[k - 1] > a) { landAts[k] = landAts[k - 1]; k--; }
+      landAts[k] = a;
+    } }
   // (and its walk: the nearest break's on this board by the shape math, two actions a swap -- a swap and a cell -- with the swap that
   // breaks; nothing on the board yet, a break's walk as measured)
   { int32_t nr = garbageOn(decQ.b) ? nearOf(decQ.b) : NEAR_MISS; breakWalk = nr < NEAR_MISS ? imin(LAND_RESERVE * 2, imax(4, NEAR_ACTS * nr + 2)) : LAND_RESERVE; }
