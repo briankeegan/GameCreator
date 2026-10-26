@@ -117,9 +117,11 @@ static int allowLeftAt(int32_t t, int spent) {
 // from the question, -1 none), with `spent` pressed by its end and every action before aged as the window ages; regainAfter, the frames
 // from then until the window gives that walk back to a line short of it; and spendPays, whether a line that spends the walk is worth it
 // over one that keeps it: it is, lost after the window has given the walk back -- it never dies on the way, the walk in hand again --
-// or where the line that keeps it is lost before it could press that walk: the walk's frames, a cell every TAP_GAP, past the landing
-// or the keeper's end (a walk kept by a board dead before it is pressed keeps nothing)
+// or where the line that keeps it is lost before it could press that walk -- the walk's frames, a cell every TAP_GAP, past the landing
+// or the keeper's end -- and the spender outlives it by a break's time (rankSave): a walk kept by a board dead before it is pressed
+// keeps nothing, and a spend that buys less than a break's time buys nothing either
 static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
+static int32_t rankSave;   // (rank.c: the frames one break takes)
 // (THE WINDOW'S SHARE a line leaves: the actions left at its end, or at the landing when that is later, of the window's whole limit --
 // the third margin beside the stack's room and its material; -1 with no allowance said)
 static double windowShareAt(int32_t endAt, int spent) {
@@ -153,7 +155,7 @@ static int32_t regainAfter(int32_t endAt, int spent) {
 }
 static int spendPays(int32_t lostSpender, int32_t endAt, int spent, int32_t lostKeeper, int32_t keeperEnd) {
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt, k0 = tl > keeperEnd ? tl : keeperEnd;
-  if (lostKeeper < k0 + breakWalk * TAP_GAP) return 1;
+  if (lostKeeper < k0 + breakWalk * TAP_GAP && lostSpender - lostKeeper >= rankSave) return 1;
   return lostSpender >= t0 + regainAfter(endAt, spent);
 }
 static LOCAL int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];

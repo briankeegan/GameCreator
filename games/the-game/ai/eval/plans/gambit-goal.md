@@ -1729,3 +1729,8 @@ unknown margins were not the cycles. large_garbage-5 lost at 607 holding with 25
 could press it.
 THE KEEPER'S OWN TEST BACK, IN FRAMES: a spend pays where the keeper is lost before it could press the walk -- a cell every TAP_GAP
 frames past the landing or its end (it was counted once as the walk's actions, as frames).
+Measured (`3ef7ede0`, 1227): 11 -- combo_storm 7, factory 0, large_garbage 4; panels 6, actions 6; hold-creep 0. Under garbage
+nearly every keeper is lost within a walk's frames of the landing, so the reserve all but stopped (played sooner by it 194 -> ~0)
+and the window drained (large_garbage-5 now lost at 794 on actions).
+THE KEEPER'S TEST WITH A BREAK'S TIME: a spend pays over a keeper dead before it could press the walk only where the spender
+outlives it by a break's time (rankSave).
