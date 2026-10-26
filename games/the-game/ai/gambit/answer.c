@@ -174,14 +174,7 @@ static int32_t brCut, brResumed;
 static Paths brResume; static int brHave;
 // (the search itself, on whichever thread runs it: what it reads is the question, the read and the kept paths, its nodes its thread's)
 static void breakRunTo(const Read *R, double by, Broke *into);
-// (and, with a block on its way, the board it lands on searched in the rest of the share: search/ready.c landedRun)
-static void breakRun(const Read *R, double by) {
-  landedOk = 0; landedOutN = 0;
-  if (decF.next == NOT_ASKED || decF.next <= 0 || decF.next > LANDED_AHEAD) { breakRunTo(R, by, &theBr); return; }
-  double t = nowMs();
-  breakRunTo(R, t + (by - t) * 0.6, &theBr);
-  landedRun(by);
-}
+static void breakRun(const Read *R, double by) { breakRunTo(R, by, &theBr); }
 static void breakRunTo(const Read *R, double by, Broke *into) {
   int32_t pop = popLeft(decQ.b);
   double old = clockShareBegin(by);
@@ -206,7 +199,7 @@ static void breakRunTo(const Read *R, double by, Broke *into) {
 }
 static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
   double share = R->under ? underShare : breakShare;
-  *ms = 0; brCut = 0; brResumed = 0; landedOk = 0;
+  *ms = 0; brCut = 0; brResumed = 0;
   // (no break search on a question due sooner than it could take: the answer would come late -- the searches' time is what it takes
   // first, and short of that, the judging's quarter: a board this near its end has a break one swap away or none (run 447, combo_storm-2
   // at 13038: a one-swap break, found in 3 ms, not searched for))
@@ -257,7 +250,7 @@ static void breakJob(int32_t i) {
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
-  brCut = 0; brResumed = 0; landedOk = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
+  brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || timeLeftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
@@ -697,7 +690,6 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 static void modeLeft(void) {
   lifeLived = 0;
   memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
-  landedKeep.n = 0; landedFor = -1;
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
 }
 // A new game: nothing of the last one is carried on.

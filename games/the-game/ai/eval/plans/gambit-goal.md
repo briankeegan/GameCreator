@@ -1664,3 +1664,7 @@ Measured (`be062a85`, the board to come in the break search's time, 1211): 13 --
 Found 2932 of 15916 (1302 before), its beam 4 deep (90% under 7). C checks red: tsan -- the proposers read its answer while the break
 job still wrote it -- and "decisions replayed" (5 of 207 answered differently a second time). Its answer is now read once the job is
 taken back (propose.c searchMerge, after answer.c breakEnd), and its carried beam let go with every kept plan (answer.c modeLeft).
+Measured (`e9465dd4`, the race fixed, 1212): 10 -- combo_storm 3, factory 2, large_garbage 5; actions 9, panels 4. The board-to-come
+search found 2777, yet its lines are all but never played (ready: 1-3 actions a minute of ~350), while the 40% it took from the break
+search on the board as it is cost the games: survival lines up from 66 to 87 actions a minute. Gambit back to `ef41da2b` (1209/1210's,
+15): the board-to-come search in the proposers' time, as it was.
