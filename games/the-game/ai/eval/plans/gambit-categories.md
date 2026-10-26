@@ -11,7 +11,9 @@ logged. Every predicted board matches the game, and the order is one order. The 
 ## The order (rank.c compareJudged)
 
 1. **Survival:** the line that lives; else the later loss, unless lost alike (the same band of a break's time). A loss not known,
-   the hold's, is alike with nothing. Never choose death.
+   the hold's, is alike with nothing. Never choose death. **The loss is the one the window allows:** a line that leaves the window
+   covering fewer of the rows due than holding does, less the rows its own breaks pay, is lost no later than the first row it no
+   longer covers and a break's time. Every reader asks this one loss: the order, the save, the checks.
 2. **Category:** lives, plan, breaks, ready, buys, dies.
 3. **The board's own chain**, then 4. **the mode's list.** A three that breaks nothing is in the order only where the save found the
    board needs it (decide.c): played to its end and searched on, it lives, or outlasts the best line without it by a break's time.

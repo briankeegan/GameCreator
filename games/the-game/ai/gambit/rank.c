@@ -234,12 +234,23 @@ static int32_t rankReact;   // (frames to the next decision: a reaction and a fr
 static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
 static int32_t rankLow;     // (the board low on panels: decide.c lowOnPanels)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
-static double lostOf(const Judge *x) {
+static double lostEngineOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
   if (x->extLost == NOT_ASKED) return own;
   double ext = lostAtOf(x->extLost, 0);
   return ext > own ? ext : own;
+}
+// (THE LOSS THE WINDOW ALLOWS: a line that leaves the window covering fewer of the rows due than holding does (core/nodes.h
+// windowCover), less the rows its own breaks pay, has no actions for the break the first row it no longer covers asks -- it is lost no
+// later than that row's due and a break's time. The one loss every reader asks: the order, the save, the checks)
+static double lostOf(const Judge *x) {
+  double l = lostEngineOf(x);
+  if (x->hold || x->idle || x->o.lives || l >= 1e9 || pressAllowance < 0 || nLandAts <= 0) return l;
+  int c = windowCover(x->o.j.endAt, x->o.j.spent) + imax(0, x->apBroke) / W, h = windowCover(0, 0);
+  if (c >= h || c >= nLandAts) return l;
+  double cap = (double)landAts[c] + imax(1, rankSave);
+  return cap < l ? cap : l;
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
 // is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding

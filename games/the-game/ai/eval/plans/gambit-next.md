@@ -8,6 +8,9 @@ Built: **each due keeps its own walk.** A row's break is pressed on the board it
 walk for it: the board left alone run to each block's landing and settled, its nearest break measured (decide.c read, core/nodes.h
 walkDue). A due with no block shown, or a board lost or bare by then, keeps the question's board's walk.
 
+Built: **the loss the window allows** (rank.c lostOf). A line that buys frames with the actions the next break needs is lost where
+the window can no longer pay a row due, so the survival key no longer spends the window to buy a band.
+
 ## Then
 
 - **Each plan's break timed at every landing** (outcome.c readyNextOf): under attack, material comes only from breaking, and a break
