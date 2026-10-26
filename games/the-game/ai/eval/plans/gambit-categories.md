@@ -30,33 +30,44 @@ The facts carried with it:
 - **wastes a three**: it makes a three that breaks nothing and is no chain link;
 - **spends the floor**: it goes under the mode's keep floor on material.
 
-## 2. The order reads the category (rank.c)
+## 2. The order: five keys, all the judge's facts (rank.c compareJudged)
 
-**Hard rules are constraints, not ranks.** "Never spoil the board's own chain" and "play within the mode's list" are the owner's
-rules. A line that breaks them does not compete: the line check refuses it in the search.
+The order is a short list of keys. Every value it compares is a fact the judge already has; the order works nothing out itself.
 
-1. **Loss band.** Survival comes first: a line lost a break's time later always wins. Bands are counted from one reference, so
-   the order is one order. `test/main.c` "the answers" stays: no line is played that is lost a break's time sooner than one
-   offered.
+1. **Survival:**
+   - a line that lives beats one that does not;
+   - of two that do not, the later loss, unless they are lost alike. Alike means the same band of a break's time, with the bands
+     counted from one reference, so the order is one order.
+
+   `test/main.c` "the answers" stays: no line is played that is lost a break's time sooner than one offered.
 2. **Category**, best first.
-3. **Value for moves**, within a category. What the line gives, less what it costs, all in frames:
+3. **The board's own chain:** a line that keeps it before one that cuts it short (the goal's item 2).
+4. **The mode's list:** the earlier entry met; under garbage, a line that breaks before one that does not. A line that wastes a
+   three ranks below every line that wastes none, and a line that spends the floor comes last (the goal's item 3, "the one rule").
+5. **Value for moves:** what the line gives, less what it costs, all in frames:
    - **Gains:**
      - the time it buys: its plan's loss minus the hold's;
-     - the garbage it converts: each row broken is a break the board no longer owes, worth a break's time;
-     - what it throws, worth what the mode's aim makes it worth.
+     - a break's time for each row of garbage it converts;
+     - a break's time for each block it throws.
    - **Costs:**
-     - its actions, each worth the frames the window takes to give one back (`actionFrames`, from the window);
-     - the panels it spends from under the garbage;
-     - for a line that wastes a three, the panels that three spends.
+     - the frames the window takes to give back each action it presses (`actionFrames`);
+     - a break's time for each row of panels its clears take beyond what its breaks convert.
 
-   A line that spends more moves for less comes out worse, with no rule of its own. The line in progress needs no rule either:
-   part of it is pressed already, so it costs less and wins on value while it still pays. The measure is gain minus cost, not gain
-   per action, because the hold spends no action.
-4. **Spends the floor:** last of all.
+   More moves for less comes out worse with no rule of its own. That covers the goal's item 4 ("the fewest cursor moves first; a far
+   one has to earn its walk") and item 5 ("the one that throws more"). The line in progress costs less, because part of it is
+   already pressed.
 
-This replaces rule 1's clauses (reserve, hold, landing, ledger, margin, net), rules 4 to 9 (in progress, thrown, fewer actions,
-later loss, tier, nearer first swap), and the step after judging that handled the save and the floor. `contLostOf` is asked only
-through the plan, so the save can no longer disagree with the order.
+Then, with no garbage on the board, the more ideas left ready (the goal's item 5). Last, the nearer first swap, and a tie.
+
+The chain and the mode's list stay as keys of their own, not refusals. They are the owner's rules, and a refusal would put them
+above survival.
+
+This replaces rule 1's clauses (reserve, hold, landing, ledger, margin, net, material, nearer), rule 4 (the line in progress, the
+kept plan), rule 5 (thrown), rule 6 (later loss), rule 7 (fewer actions) and rule 8 (tier).
+
+**The save step after judging stays for now.** A three that breaks nothing is dropped unless the survival search confirms the
+board needs it. The press guard asks the same question at the press, and both have to give the same answer. Folding the step into
+the order (the list key above) waits until the press guard reads the judge's answer too.
 
 ## 3. The searches aim at what the order wants
 
@@ -113,9 +124,26 @@ A number that stays is recorded beside the measurement it came from.
 ## Order of work
 
 1. Categories in the judge, and the log printing them.
-2. The order on band, then category, then value for moves; rule 1's clauses, rules 4 to 9 and the compare step removed.
+2. The order on its five keys; rule 1's clauses and rules 4 to 8 removed; the save step kept until the press guard reads the judge.
 3. The loss reader on categories.
 4. The break search ranking by category, keeping its frontier when a break is found; the three-free variant as a proposer.
 5. The plan carry for every break of the plan.
 6. The window's pace.
 7. The constants, one at a time, each with its measurement.
+
+## Review
+
+- **Survival first holds.** The category, the chain, the list and value are asked only of lines that both live or are lost alike,
+  so no key can put a line lost a break's time sooner first.
+- **One order.** Every key is a fact of one line, or of one line against the decision's one hold, so the comparison is
+  transitive. The "beaten head to head" count should fall to 0, and the check holds it there.
+- **The hold's plan.** The hold has a plan, and `lostOf` reads it, but `livesOf` leaves the hold out: a hold whose plan lives is
+  not "lives by its plan". This is fixed with the categories.
+- **Value's exchange rates are assumptions, not measurements.** A row converted and a block thrown are each worth a break's time.
+  That fits under garbage: a block thrown is a break the other board owes. It is the owner's to set, and it is marked as such in
+  `rank.c`.
+- **The break search ranking by category costs search time,** and "reach" (the search cut by the clock) is already the most common
+  loss. It is built last, judged only for the nodes at the top of the beam, and checked for a rise in "reach".
+- **The window's pace needs a definition before it is built:** the actions a minute the breaks due ask for, measured from the walks
+  and the dues. Until then it is not built.
+
