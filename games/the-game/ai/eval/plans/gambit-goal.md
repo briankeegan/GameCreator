@@ -1710,3 +1710,7 @@ lookup sees only what decisions before it kept.
 Measured (`44baa515`, 1222): 16 -- combo_storm 6, factory 5, large_garbage 5; actions 4, panels 2, no-break 1, hold-creep 1. Red
 only on the log: the frontiers grown on were counted where the decision searched a board itself and not where a worker had, and
 which thread takes a board is timing. Now counted where the answer is read, and kept once per board.
+Measured (`47d6cbf2`, 1223): 16 -- the same games as 1222, green throughout. Of the 8 lost, 7 found no break in nearly all of their last 300 frames.
+THE ORDER ONE ORDER: 3489 of 19525 decisions (1223) played a line beaten head to head by one ranked under it. Lost alike was a
+pair's own test (the same band, or less than a break's time apart), so A alike B alike C did not make A alike C. Now bands alone,
+the survival search's (outBand), and the ledger asks the same band.

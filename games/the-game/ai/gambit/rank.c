@@ -353,10 +353,14 @@ static double marginOf(const Judge *J) {
   double win = J->hold ? windowShareAt(0, 0) : windowShareAt(J->o.j.endAt, J->o.j.spent);
   return win >= 0 && win < r ? win : r;
 }
+// (LOST ALIKE: in the same band of a break's time -- the first band's lines each alone, the third and on one band -- the survival
+// search's own bands, search/outlive.c outBand. Bands, so alike is one relation for every pair and the order one order)
+static int32_t lostBand(const Judge *J) { double l = lostOf(J); return l >= 1e9 ? 0x7fffffff : (int32_t)(l / imax(1, rankSave)); }
 static int lostAlike(const Judge *x, const Judge *y) {
-  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
-  int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
-  return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
+  int32_t bx = lostBand(x), by = lostBand(y);
+  if (bx >= 3 && bx != 0x7fffffff) bx = 3;
+  if (by >= 3 && by != 0x7fffffff) by = 3;
+  return bx >= 1 && bx == by;
 }
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
@@ -391,8 +395,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && lostAlike(x, y)) { double mx = marginOf(x), my = marginOf(y); if (mx >= 0 && my >= 0 && mx != my) K(1, "margin", mx > my ? -1 : 1); }
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
-  // (survival first: two lines that live, or two lost less than a break's time apart -- never one lost sooner by more)
-  if (rankLow && (lx || (lostOf(x) > lostOf(y) ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) < rankSave)) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, "ledger", gx ? -1 : 1); }
+  // (survival first: two lines that live, or two lost in the same band of a break's time -- never one lost sooner by more)
+  if (rankLow && (lx || lostBand(x) == lostBand(y))) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, "ledger", gx ? -1 : 1); }
   // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
