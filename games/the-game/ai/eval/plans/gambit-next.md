@@ -71,3 +71,7 @@ line short at once by a block shown (**demand**).
 - 1278, 12/24 (combo_storm 5, factory 4, large_garbage 3): the loss ahead of the margin. Reverting the idea was wrong; the piece was. The
   margin read the window as actions left, so a break -- which spends actions and pays rows -- read as less than holding. Fixed: the
   window is read as the dues ask it, the share of the rows due it still covers plus the rows the line pays; the margin first again.
+- 1279, 11/24 (combo_storm 5, factory 1, large_garbage 5). The piece: the break search. In factory-4 the order held ten decisions with
+  nothing proven, as the plan says; the search for the proof ran each time, its carried beam grew from 4 swaps deep to 20, and found
+  nothing -- then every one of its 60 lines died on being played again (the board lost before their end). The beam grew lines that
+  leave no time for a break to pop before the board dies. Fixed: such lines leave the beam (brDoomed= in the log).

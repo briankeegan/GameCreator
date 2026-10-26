@@ -492,6 +492,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   else L_s("none");
   // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
   if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); L_s(" brRes="); L_i(theBr.resPlayed); L_s("/"); L_i(theBr.resIn); L_s("/"); L_i(frontLinesHeld[FR_BREAK]); L_s("/"); L_i(theBr.resLeft); if (frontLetGo[FR_BREAK]) { L_s(frontLetGo[FR_BREAK] == 1 ? "/gid" : "/anchor"); }
+    if (theBr.doomed) { L_s(" brDoomed="); L_i(theBr.doomed); }   // (lines the touch beam let go: less than a break's time before the board dies)
     if (theBr.resIn > theBr.resPlayed) { L_s(" brResWhy="); for (int k = 0; k < 4; k++) { if (k) L_s("/"); L_i(theBr.resWhy[k]); } } }   // (the carried lines not played again whole: a swap not there / a pair put back / the board lost / outside the rules)
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   // (THE SEARCH FOR THE PROOF, plans/gambit-next.md 3 and 7: seek=1 the wider beam took a worker first this decision; depth= the touch
