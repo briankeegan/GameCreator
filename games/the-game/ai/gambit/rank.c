@@ -573,13 +573,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. PROVEN FIRST: a line that lives left alone, then one that lives by its plan, then one whose plan meets every row shown with the
   // margin to spare, then the rest
   { int px = proofOf(x), py = proofOf(y); if (px != py) K(1, "proven", py - px);
-    // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
-    // resource, then of the next (marginKey: room, material, window, contact, in rows); then the later loss, unless lost alike (lostAlike: the
-    // same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
+    // 2. UNPROVEN: a line dead before it could press anything last; then the later loss, unless lost alike (lostAlike: the same band of
+    // a break's time) -- a bound, but the best one there is; then of two lost alike THE MOST LEFT TO FIND A PROOF WITH, the more of its
+    // scarcest resource, then of the next (marginKey: room, material, window, contact, in rows). The categories fold into this: lives and plan are proven, breaks to dies unproven
     if (!px) {
       int nx = diesNow(x), ny = diesNow(y); if (nx != ny) K(2, "now", nx ? 1 : -1);
-      int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
+      int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
     } }
   // 3. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(3, "chain", cutsShort(x) ? 1 : -1);
