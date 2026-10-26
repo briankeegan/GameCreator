@@ -1775,3 +1775,6 @@ THE BOARD TO COME'S BREAK HANDED ON (`3503764c`): its last swap, on the board on
 search of the decision.
 Measured (`3503764c`, 1236): 12 -- combo_storm 7, factory 3, large_garbage 2; red: the twins' readiness asked 12 and 13 checks (the
 same move). large_garbage-5 lost at 716 still. The hand-on taken out: no game it was for changed, and it made the asks the clock's.
+THE LINES LOST, PLAYED ON: where none lives, the order's first three and the hold are each played to their end and the survival
+search asked of the board each leaves (decide.c contLostOf, the save's question); one that lives on a break's time longer than the
+first goes first (`cont=moved/asked`).
