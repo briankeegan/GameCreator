@@ -121,9 +121,6 @@ static int allowLeftAt(int32_t t, int spent) {
 // or the keeper's end -- and the spender outlives it by a break's time (rankSave): a walk kept by a board dead before it is pressed
 // keeps nothing, and a spend that buys less than a break's time buys nothing either
 static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
-// (and the board's survival's walk: the actions the survival search's line took at the last decision that asked it (decide.c) -- a break's
-// walk where it found none -- 0 where a line lived -- kept beside each break's walk, so the window keeps the room to live until the break as well as to press it)
-static int32_t surviveWalk, surviveWalkNext;
 #define LANDN 64
 static int32_t landAts[LANDN], nLandAts;   // (every break the blocks shown on their way are due: a row each, its block's landing and a break's
                                             // time after each row before it -- the frames from the question, soonest first)
@@ -148,25 +145,18 @@ static double actionFrames(void) {
 #define WINDOW_ALL (LANDN + 1)
 static int windowCover(int32_t endAt, int spent) {
   if (pressAllowance < 0) return WINDOW_ALL;
-  if (nLandAts <= 0) { int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1; return allowLeftAt(tl > endAt ? tl : endAt, spent) >= breakWalk + surviveWalk; }
+  if (nLandAts <= 0) { int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1; return allowLeftAt(tl > endAt ? tl : endAt, spent) >= breakWalk; }
   int k = 0;
   for (; k < nLandAts; k++) {
     int32_t tk = landAts[k] - pressFrom; if (tk < endAt) tk = endAt;
     int before = 0;
     for (int i = 0; i < k; i++) { int32_t ti = landAts[i] - pressFrom; if (ti < endAt) ti = endAt; if (tk - ti < winLen) before += breakWalk; }
-    if (allowLeftAt(tk, spent) - before < breakWalk + surviveWalk) break;
+    if (allowLeftAt(tk, spent) - before < breakWalk) break;
   }
   return k;
 }
 // (whether the window keeps the next break's walk: the next block's, or the line's end where none is on its way)
 static int windowKeepsBreak(int32_t endAt, int spent) { return windowCover(endAt, spent) >= 1; }
-// (whether the window keeps the save's walk past a line's end, or the next landing when that is later: what a break leaves the board
-// to live on)
-static int windowKeepsSave(int32_t endAt, int spent) {
-  if (pressAllowance < 0) return 1;
-  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1;
-  return allowLeftAt(tl > endAt ? tl : endAt, spent) >= surviveWalk;
-}
 static int32_t regainAfter(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 0;
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt;

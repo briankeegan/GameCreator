@@ -56,8 +56,7 @@ static int readBoard_(Read *R) {
     } }
   // (and its walk: the nearest break's on this board by the shape math, two actions a swap -- a swap and a cell -- with the swap that
   // breaks; nothing on the board yet, a break's walk as measured)
-  surviveWalk = surviveWalkNext;
-  { int32_t nr = garbageOn(decQ.b) ? nearOf(decQ.b) : NEAR_MISS; breakWalk = nr < NEAR_MISS ? imin(LAND_RESERVE * 2, imax(4, NEAR_ACTS * nr + 2)) : LAND_RESERVE; }
+  { int32_t nr = garbageOn(decQ.b) ? nearOf(decQ.b) : NEAR_MISS; breakWalk = nr < NEAR_MISS ? walkOfNear(nr) : LAND_RESERVE; }
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
   // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
   factSet(F, FACT_ENEMY_NONE, !theOpp.has);
@@ -367,8 +366,7 @@ static int ranked(const Read *R, const Found *S) {
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
-    surviveWalkNext = sv.set && sv.nseq ? imin(LAND_RESERVE * 2, sv.acts) : breakWalk;   // (no line found: a walk as long as the break's)
-  } else if (n && order[0]->o.lives) surviveWalkNext = 0;
+  }
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first. A ready line
   // first of all: being ready is all it is for, and asked last, in the order's tail, it was asked out of time -- 42 of 53 unanswered)
   if (!(n && order[0]->o.lives)) {
