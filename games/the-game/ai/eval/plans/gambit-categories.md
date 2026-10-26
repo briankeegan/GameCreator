@@ -32,20 +32,31 @@ The facts carried with it:
 
 ## 2. The order reads the category (rank.c)
 
+**Hard rules are constraints, not ranks.** "Never spoil the board's own chain" and "play within the mode's list" are the owner's
+rules. A line that breaks them does not compete: the line check refuses it in the search.
+
 1. **Loss band.** Survival comes first: a line lost a break's time later always wins. Bands are counted from one reference, so
    the order is one order. `test/main.c` "the answers" stays: no line is played that is lost a break's time sooner than one
    offered.
 2. **Category**, best first.
-3. Within a category:
-   - a line that wastes a three ranks below one that does not, so a three the board needs wins only by survival;
-   - then the mode's list;
-   - then the board's own chain;
-   - then the line in progress;
-   - then thrown, fewer actions, the later loss, tier, and the nearer first swap.
+3. **Value for moves**, within a category. What the line gives, less what it costs, all in frames:
+   - **Gains:**
+     - the time it buys: its plan's loss minus the hold's;
+     - the garbage it converts: each row broken is a break the board no longer owes, worth a break's time;
+     - what it throws, worth what the mode's aim makes it worth.
+   - **Costs:**
+     - its actions, each worth the frames the window takes to give one back (`actionFrames`, from the window);
+     - the panels it spends from under the garbage;
+     - for a line that wastes a three, the panels that three spends.
+
+   A line that spends more moves for less comes out worse, with no rule of its own. The line in progress needs no rule either:
+   part of it is pressed already, so it costs less and wins on value while it still pays. The measure is gain minus cost, not gain
+   per action, because the hold spends no action.
 4. **Spends the floor:** last of all.
 
-This replaces rule 1's clauses (reserve, hold, landing, ledger, margin, net) and the step after judging that handled the save
-and the floor. `contLostOf` is asked only through the plan, so the save can no longer disagree with the order.
+This replaces rule 1's clauses (reserve, hold, landing, ledger, margin, net), rules 4 to 9 (in progress, thrown, fewer actions,
+later loss, tier, nearer first swap), and the step after judging that handled the save and the floor. `contLostOf` is asked only
+through the plan, so the save can no longer disagree with the order.
 
 ## 3. The searches aim at what the order wants
 
@@ -85,7 +96,7 @@ A number that stays is recorded beside the measurement it came from.
 
 ## 7. The log says why
 
-- **Every candidate:** `category:loss:planLoss:breaks:actions`.
+- **Every candidate:** `category:loss:planLoss:breaks:actions:value`.
 - **The decision:** the line played, the best of each category passed over, and the key that decided.
 - **The loss reader** (`gambit_summary.js`): reads the categories from the last break to the end. It names the stage that failed:
   - **search:** no line better than Dies was offered;
@@ -102,7 +113,7 @@ A number that stays is recorded beside the measurement it came from.
 ## Order of work
 
 1. Categories in the judge, and the log printing them.
-2. The order on band, then category; rule 1's clauses and the compare step removed.
+2. The order on band, then category, then value for moves; rule 1's clauses, rules 4 to 9 and the compare step removed.
 3. The loss reader on categories.
 4. The break search ranking by category, keeping its frontier when a break is found; the three-free variant as a proposer.
 5. The plan carry for every break of the plan.
