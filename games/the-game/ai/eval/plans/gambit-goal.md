@@ -1827,3 +1827,10 @@ factory-4 (1244) at 13518, the board lost in 25 frames left alone, 13 actions: a
 13542. The setup's loss was its plan's, its spend only its own swaps: the break the plan presses was not counted.
 A PLAN'S SPEND WITH ITS LOSS: a line lost where its plan is spends what the plan presses, the line and its breaks (outcome.c
 readyNextOf extSpent, rank.c lostNetOf).
+Measured (`fc26f10a`, 1245): 11 -- combo_storm 7, factory 3, large_garbage 1; actions 8, panels 5; green.
+large_garbage (1245), read whole: the games live 17000-19000 frames, the material 11-31 all game under 48-114 garbage cells, and die
+when it falls under ten. Survive lines ~95 a game, 11-15 of them breaking, 31-32 clearing panels that break nothing. The margin is
+the least of its shares, and under a big slab the room is the least: the line lowering the stack -- clearing panels -- wins until the
+material is the least, so the board settles with both low. The keep floor's material is 30, so the board is low on panels all game
+-- and the ledger (low: spend only what the breaks give back) was asked after the margin.
+THE LEDGER BEFORE THE MARGIN: low on panels, of two lost alike the one whose ledger is not in debt first, then the margin.

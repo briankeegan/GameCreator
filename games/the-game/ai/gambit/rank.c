@@ -425,15 +425,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // one place for every pair, so the margin after it never ranks it over one it is under)
   if (!lx && x->hold != y->hold) { const Judge *h = x->hold ? x : y;
     if (h->holdSunk && lostAlike(x, y)) K(1, "hold", h == x ? 1 : -1); }
+  // -- low on panels (decide.c lowOnPanels), before the margin: of two that survive alike, the one whose ledger is not in debt: it converts as many
+  // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
+  // (survival first: two lines that live, or two lost in the same band of a break's time -- never one lost sooner by more)
+  if (rankLow && (lx || lostBand(x) == lostBand(y))) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, "ledger", gx ? -1 : 1); }
   // -- and of two lost alike, the one that leaves the board more MARGIN once everything shown has landed (marginOf): where the loss
   // cannot tell two lines apart, the room the board keeps can -- every line read on the board the same garbage has landed on
   if (!lx && lostAlike(x, y)) { double mx = marginOf(x), my = marginOf(y); if (mx != my) K(1, "margin", mx > my ? -1 : 1); }
   // -- and of two lost alike that leave the board as much margin, the later loss net of what each spends (lostNetOf)
   if (!lx && lostAlike(x, y)) { double nx = lostNetOf(x), ny = lostNetOf(y); if (nx != ny) K(1, "net", ny > nx ? 1 : -1); }
-  // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
-  // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
-  // (survival first: two lines that live, or two lost in the same band of a break's time -- never one lost sooner by more)
-  if (rankLow && (lx || lostBand(x) == lostBand(y))) { int gx = x->o.j.netPanels >= 0, gy = y->o.j.netPanels >= 0; if (gx != gy) K(1, "ledger", gx ? -1 : 1); }
   // -- and under garbage, of two breaks lost alike, the board's next break: the one that leaves a break to build and keeps the floor (outcome.c
   // nextBuild, floorKept), then the more panels under the lowest garbage once everything shown has landed (judge.c readyMat; else the
   // board the line ends on, outcome.c matLeft) -- what a break converts is what the next is made of; a hold, keeping every panel, is no
