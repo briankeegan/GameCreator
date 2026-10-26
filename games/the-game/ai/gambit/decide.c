@@ -367,7 +367,7 @@ static int ranked(const Read *R, const Found *S) {
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
-    surviveWalkNext = sv.set && sv.nseq ? imin(LAND_RESERVE * 2, sv.acts) : 0;
+    surviveWalkNext = sv.set && sv.nseq ? imin(LAND_RESERVE * 2, sv.acts) : breakWalk;   // (no line found: a walk as long as the break's)
   } else if (n && order[0]->o.lives) surviveWalkNext = 0;
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first. A ready line
   // first of all: being ready is all it is for, and asked last, in the order's tail, it was asked out of time -- 42 of 53 unanswered)

@@ -121,8 +121,8 @@ static int allowLeftAt(int32_t t, int spent) {
 // or the keeper's end -- and the spender outlives it by a break's time (rankSave): a walk kept by a board dead before it is pressed
 // keeps nothing, and a spend that buys less than a break's time buys nothing either
 static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
-// (and the board's survival's walk: the actions the survival search's line took at the last decision that asked it (decide.c), 0 where
-// a line lived -- kept beside each break's walk, so the window keeps the room to live until the break as well as to press it)
+// (and the board's survival's walk: the actions the survival search's line took at the last decision that asked it (decide.c) -- a break's
+// walk where it found none -- 0 where a line lived -- kept beside each break's walk, so the window keeps the room to live until the break as well as to press it)
 static int32_t surviveWalk, surviveWalkNext;
 #define LANDN 64
 static int32_t landAts[LANDN], nLandAts;   // (every break the blocks shown on their way are due: a row each, its block's landing and a break's

@@ -357,9 +357,6 @@ static int coverOf(const Judge *J) {
 #define MARGIN_ROWS 12
 // (read on the board once everything shown has landed; a line whose landed board was not read, on the board it ends on; -1 neither --
 // the least margin, so the margin is one key for every pair)
-// (THE TOUCH a line leaves: of the columns under garbage on the board once everything shown has landed, the share whose top panel
-// touches it (judge.c readyContact); -1 not asked or no garbage then)
-static double touchOf(const Judge *J) { return J->o.j.readyUnder > 0 && J->o.j.readyContact >= 0 ? (double)J->o.j.readyContact / J->o.j.readyUnder : -1; }
 static double marginOf(const Judge *J) {
   int32_t t = J->o.j.readyTop >= 0 ? J->o.j.readyTop : J->o.topLeft, m = J->o.j.readyMat >= 0 ? J->o.j.readyMat : J->o.matLeft;
   if (t < 0 || m < 0) return -1;
@@ -400,7 +397,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, ready, touch, net, margin, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, ready, net, margin, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
 // (A LINE LIVES where its board does left alone, or where its plan does: the line, the break its readiness found and the breaks after
 // it, played on the engine -- outcome.c readyNextOf, extLost FOREVER)
 static int livesOf(const Judge *J) { return J->o.lives || (!J->hold && J->extLost == FOREVER); }
@@ -432,9 +429,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // not dug out after; both asked
   if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1))
     K(1, "ready", x->readyNext == 1 ? -1 : 1);
-  // -- of two lost alike, the one whose garbage its panels touch more once everything shown has landed (touchOf): a block resting on
-  // one column of six over a hollow is a block no match reaches, and no break later makes up for the panels that cannot reach it
-  if (!lx && lostAlike(x, y)) { double tx = touchOf(x), ty = touchOf(y); if (tx >= 0 && ty >= 0 && tx != ty) K(1, "touch", tx > ty ? -1 : 1); }
   // -- low on panels (decide.c lowOnPanels), before the margin: of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
   // (survival first: two lines that live, or two lost in the same band of a break's time -- never one lost sooner by more)
