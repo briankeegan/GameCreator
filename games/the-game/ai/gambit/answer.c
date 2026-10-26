@@ -150,7 +150,7 @@ static void breakJob(int32_t i) {
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
-  brCut = 0; brResumed = 0; __atomic_store_n(&landedDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
+  brCut = 0; brResumed = 0; landedJobOn = 0; __atomic_store_n(&landedDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || timeLeftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
@@ -163,11 +163,13 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
+  // (the board to come, ahead of the wider beam: search/ready.c -- and where no worker is left for it, the proposers' leftover)
+  if (decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) jobKinds[njobKinds++] = JOB_LANDED;
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
-  if (decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) jobKinds[njobKinds++] = JOB_LANDED;   // (the board to come: search/ready.c)
   // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
   // is this thread's whole)
   while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; }
+  landedJobOn = 0; for (int i = 0; i < njobKinds; i++) if (jobKinds[i] == JOB_LANDED) landedJobOn = 1;
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of

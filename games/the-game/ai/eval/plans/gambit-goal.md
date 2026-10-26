@@ -1692,3 +1692,7 @@ proposers' leftover time, and its carried lines take that to play again.
 THE BOARD TO COME AS A JOB OF ITS OWN (answer.c JOB_LANDED, search/ready.c landedJobRun): with workers it runs beside the other
 searches in the searches' time, on its own context, and takes from none of them; read once the jobs are taken back (propose.c
 searchMerge). Without workers, the proposers' leftover as before.
+Measured (`fc8f72ad`, 1219): 14 -- but the job never ran: the jobs are cut to the workers from the end, and it was last; the
+proposers' leftover was off under workers. No `landed=` in any decision.
+THE BOARD TO COME AHEAD OF THE WIDER BEAM: the job is listed before JOB_WIDE, and where the cut still drops it the proposers' leftover
+runs it (`landedJobOn`).
