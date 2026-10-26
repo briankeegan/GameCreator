@@ -4435,4 +4435,49 @@ assert.deepStrictEqual(
   assert.ok(placesLater.size > 1, `level 2 is still somewhere different run to run (${[...placesLater].join(",")})`);
 }
 
+// THE PIN LANCE NEVER REFUSES A SHOT IT SAID IT HAD. The flagship's own
+// aimed gun picks a lane from the hull it was pointed at — and a lane
+// weapon's footprint can cover a hex that no axis passes through, so
+// "nothing lined up on an axis" threw on about one full run in thirty,
+// taking the player's turn and handing back an error instead of a shot.
+// If fire controls say it bears, it locks something.
+{
+  const lanceLevel = {
+    id: 901,
+    name: "pin lance fixture",
+    board: { type: "rect", cols: 7, rows: 9 },
+    playerStart: { q: 3, r: 6 },
+    exit: { q: 6, r: -3 },
+    outpost: null,
+    enemies: [{ type: "cruiser", q: 3, r: 2 }],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  };
+  for (const [dq, dr] of [[0, -4], [2, -2], [-2, 0], [1, -3], [2, -3], [-1, -2]]) {
+    const st = Engine.createGameState(lanceLevel);
+    st.hold.items = st.hold.items.filter((it) => (Engine.EQUIPMENT[it.id] || {}).kind !== "weapon");
+    st.hold.items.push({ id: "pinLance", x: 0, y: 0 });
+    Engine.syncHoldDerived(st);
+    st.energy = st.maxEnergy;
+    st.enemies[0].q = st.playerPos.q + dq;
+    st.enemies[0].r = st.playerPos.r + dr;
+    if (!Engine.weaponsWithTargets(st).some((w) => w.systemKey === "pinLance")) continue;
+    Engine.applyFire(st, st.enemies[0].id, "pinLance"); // must not throw
+    assert.ok(st.playerAim, `offset ${dq},${dr}: a gun that bears locks a lane`);
+    assert.ok(st.playerAim.lane.length, `offset ${dq},${dr}: and the lane has hexes in it`);
+  }
+  // It looses AFTER the enemy phase, so a hull that walked out of the lane
+  // is gone — the same rule its own Interceptors play by.
+  const st = Engine.createGameState(lanceLevel);
+  st.hold.items = st.hold.items.filter((it) => (Engine.EQUIPMENT[it.id] || {}).kind !== "weapon");
+  st.hold.items.push({ id: "pinLance", x: 0, y: 0 });
+  Engine.syncHoldDerived(st);
+  st.energy = st.maxEnergy;
+  Engine.applyFire(st, st.enemies[0].id, "pinLance");
+  assert.ok(st.playerAim, "the flagship's lock is held over the round");
+  assert.strictEqual(st.enemies[0].alive, true, "and nothing dies the round it is locked");
+  Engine.applyEndTurn(st);
+  assert.strictEqual(st.playerAim, null, "the lock is spent on the round after, whatever it caught");
+}
+
 console.log("All golden-path assertions passed.");

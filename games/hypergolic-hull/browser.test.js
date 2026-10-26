@@ -1755,7 +1755,11 @@ async function freshPage(browser, url, errors) {
       const def = E.ENEMY_TYPES.interceptor;
       st.enemies = [
         {
-          id: "chase", type: "interceptor", alive: true,
+          // A Cruiser: this needs a hull that SHOOTS the moment the flagship
+          // ends a burn beside it. The Interceptor lines up a lane first and
+          // gives ground rather than letting anything stand next to it, so
+          // the fixture took no fire at all and proved nothing.
+          id: "chase", type: "cruiser", alive: true,
           q: st.playerPos.q, r: st.playerPos.r - 1,
           hp: def.maxHull, maxHp: def.maxHull,
           energy: def.ship.maxEnergy, maxEnergy: def.ship.maxEnergy,

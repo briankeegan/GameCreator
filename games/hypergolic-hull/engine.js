@@ -5663,12 +5663,33 @@
     // gone. That is the trade the price is set against: board-length reach
     // for one charge, and a round of warning given to whatever you aimed at.
     if (firing.weapon.aims) {
-      const axis = axisIndex(state.playerPos, targetHexFor(state, targetEnemyId, opts && opts.groundHex));
-      if (axis < 0) throw new Error(`${firing.weapon.label}: nothing lined up on an axis`);
-      const lane = weaponHexes(state.playerPos, state.facing, firing.weapon, state)
-        .filter((h) => onBoard(state, h) && axisIndex(state.playerPos, h) === axis)
+      // WHICH LANE. The hull or hex you named, if it is on an axis; failing
+      // that, whichever axis has something on it; failing that, the way the
+      // nose is already pointing. It never refuses the shot: weaponsWithTargets
+      // has already said this gun bears, and a gun that bears and then throws
+      // takes the player's turn and gives back an error — which is exactly
+      // what it did, on about one run in thirty, because the footprint can
+      // cover a hex that no axis passes through.
+      const covered = weaponHexes(state.playerPos, state.facing, firing.weapon, state).filter((h) =>
+        onBoard(state, h)
+      );
+      const named = targetHexFor(state, targetEnemyId, opts && opts.groundHex);
+      let axis = axisIndex(state.playerPos, named);
+      if (axis < 0) {
+        const occupied = covered.find(
+          (h) => axisIndex(state.playerPos, h) >= 0 && livingEnemies(state).some((e) => posEq(e, h))
+        );
+        axis = occupied ? axisIndex(state.playerPos, occupied) : state.facing;
+      }
+      const lane = covered
+        .filter((h) => axisIndex(state.playerPos, h) === axis)
         .map((h) => ({ q: h.q, r: h.r }));
-      state.playerAim = { weaponKey: firing.weapon.id, lane };
+      if (!lane.length) throw new Error(`${firing.weapon.label}: no lane out of here`);
+      // `fresh` so the round it was made is not the round it fires. spendAp
+      // runs the enemy phase and then looses the lock, which would have
+      // resolved this one inside the very call that created it — lock and
+      // shot in a single action, which is the whole thing the gun pays for.
+      state.playerAim = { weaponKey: firing.weapon.id, lane, fresh: true };
       state.events.push({ type: "aimStart", player: true, q: state.playerPos.q, r: state.playerPos.r, lane, weapon: firing.weapon.id });
       pushLog(state, `${firing.weapon.label} locked on the lane — it looses next round.`);
       spendAp(state);
@@ -5695,6 +5716,10 @@
   function resolvePlayerAim(state) {
     const aim = state.playerAim;
     if (!aim) return;
+    if (aim.fresh) {
+      aim.fresh = false; // locked this round; it looses on the next one
+      return;
+    }
     state.playerAim = null;
     const weapon = WEAPONS[aim.weaponKey];
     if (!weapon) return;
