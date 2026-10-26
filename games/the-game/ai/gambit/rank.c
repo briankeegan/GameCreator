@@ -346,8 +346,10 @@ static int reserveSpent(const Judge *J) { return !J->hold && spendsReserve((Made
 // rows of panels under its garbage, and the input window's actions then (core/nodes.h windowShareAt) -- each a share of its whole (the
 // stack's 12 rows, the window's limit), the least of the three: a board dies of the one it runs out of first; -1 not asked)
 #define MARGIN_ROWS 12
+// (read on the board once everything shown has landed; a line whose landed board was not read, on the board it ends on; -1 neither --
+// the least margin, so the margin is one key for every pair)
 static double marginOf(const Judge *J) {
-  int32_t t = J->o.j.readyTop, m = J->o.j.readyMat;
+  int32_t t = J->o.j.readyTop >= 0 ? J->o.j.readyTop : J->o.topLeft, m = J->o.j.readyMat >= 0 ? J->o.j.readyMat : J->o.matLeft;
   if (t < 0 || m < 0) return -1;
   double room = (MARGIN_ROWS - t) / (double)MARGIN_ROWS, mat = (double)m / W / MARGIN_ROWS, r = room < mat ? room : mat;
   double win = J->hold ? windowShareAt(0, 0) : windowShareAt(J->o.j.endAt, J->o.j.spent);
@@ -400,7 +402,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (lostOf(h) < lostOf(o) && !cutsShort(o)) K(1, "hold", h == x ? 1 : -1); }
   // -- and of two lost alike, the one that leaves the board more MARGIN once everything shown has landed (marginOf): where the loss
   // cannot tell two lines apart, the room the board keeps can -- every line read on the board the same garbage has landed on
-  if (!lx && lostAlike(x, y)) { double mx = marginOf(x), my = marginOf(y); if (mx >= 0 && my >= 0 && mx != my) K(1, "margin", mx > my ? -1 : 1); }
+  if (!lx && lostAlike(x, y)) { double mx = marginOf(x), my = marginOf(y); if (mx != my) K(1, "margin", mx > my ? -1 : 1); }
   // -- and low on panels (decide.c lowOnPanels), of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
   // (survival first: two lines that live, or two lost in the same band of a break's time -- never one lost sooner by more)

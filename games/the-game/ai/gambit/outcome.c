@@ -22,6 +22,7 @@ typedef struct {
   int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
   int32_t floorKept;   // the board the line leaves keeps the rule's floor, as the floor is tested (floorOf), the line's breaks aside; -1 not asked
   int32_t matLeft;     // the material the board the line leaves has: its panels under the lowest garbage, the next break's (materialOn); -1 not asked
+  int32_t topLeft;     // that board's top row (topOn); -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   Judged j;
 } Outcome;
@@ -159,7 +160,7 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : timeLeftMs() > 0;
   JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, whole, waitAt, waitTo, 1, nmore, moreAt, moreTo };
   Outcome o;
-  memset(&o, 0, sizeof o);
+  memset(&o, 0, sizeof o); o.topLeft = -1;
   judge(&decQ, seq, n, &jo, &o.j);
   o.late = o.j.late;
   o.dead = 1; o.lostAt = o.j.lostAt; o.lives = 0; o.ready = NOT_ASKED;
@@ -171,10 +172,10 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
     o.fits = lineInList(&o.j, 1);
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
+    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.topLeft = -1;
     if (whole) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
-      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); }
+      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.topLeft = topOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
@@ -226,7 +227,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
   if (clockOut()) return NOT_ASKED;
   JudgeOpts jo = { settled, decQ.tight, decF.next, 1, 1, -1, 0, 1 };
   Outcome o;
-  memset(&o, 0, sizeof o);
+  memset(&o, 0, sizeof o); o.topLeft = -1;
   judge(&decQ, seq, n, &jo, &o.j);
   if (o.j.late) return NOT_ASKED;
   o.ready = !o.j.dead && o.j.ready == 1;
@@ -280,7 +281,7 @@ static int lineCheckOn(const Question *q, const int32_t *seq, int n, int settled
   if (clockOut()) return 0;
   JudgeOpts jo = { settled, q->tight, NOT_ASKED, 0, 0, -1, 0, 0 };
   Outcome o;
-  memset(&o, 0, sizeof o);
+  memset(&o, 0, sizeof o); o.topLeft = -1;
   judge(q, seq, n, &jo, &o.j);
   if (o.j.late) return 0;
   const Board *eb = o.j.dead || !floorOf ? 0 : ensureBoard(judgeCtx, o.j.endNode);

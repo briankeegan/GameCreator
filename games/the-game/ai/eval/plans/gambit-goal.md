@@ -1720,3 +1720,6 @@ LOST ALIKE COUNTED BACK FROM THE LATEST LOSS: the bands between one and three br
 lines ranked together (rankLostRef): less than a break's time apart is alike again, and alike stays one relation.
 Measured (`ffd0542d`, 1225): 14 -- combo_storm 7, factory 3, large_garbage 4; actions 6, panels 4. Beaten-by-a-lower 2002 (from
 3489 at 1223): what is left is mostly nearer x1030 against the hold and reserve clauses, both a pair's own test.
+THE MARGIN ONE KEY: a line whose landed board was not read had no margin, and the clause skipped that pair only -- A over B by
+margin, B and C past it, C over A by nearer. Now the board the line ends on where the landed one was not read (outcome.c topLeft,
+matLeft), and a margin still unknown the least.
