@@ -43,33 +43,43 @@ var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together
 var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, pastFrame: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, behind: 0, behindGames: 0, behindWorst: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
 var kept = { n: 0, held: 0 };
-// LOSSES BY CAUSE: the decisions of a lost game's last 600 frames read for why it was lost -- the input window run dry, the panels run
-// out, the hold played over a line lost later, no break found -- the first that holds its tag; the numbers it was read from beside it
+// LOSSES BY THE PIECE THAT FAILED: a lost game read from its last line that broke garbage to its end (the dead phase), the first that
+// holds its tag -- order: a break the search found was not played, in 3 decisions or a quarter of them (the order's key that put another first); window: no break found,
+// the input window at 5 or fewer through most of it; board: no break found with the window open, the board the lines left with none in
+// reach -- and the run-up, the 600 frames before that last break: what was played, the panels and the window then
 var causes = { by: {}, list: [] };
 function causeOf(game, pattern, at, lines) {
-  var ds = [];
+  var ds = [], lastT = -1;
   lines.forEach(function (l) {
     if (l.indexOf('GAMBITD ') !== 0) return;
     var t = +l.split(' ')[1];
-    if (t <= at && t >= at - 600) ds.push({ t: t, l: l });
+    if (t < lastT || t > at) return;   // (a decision asked again for a frame already past: the first is the one played)
+    lastT = t; ds.push({ t: t, l: l });
   });
   if (!ds.length) return;
   var num = function (l, k) { var m = new RegExp(' ' + k + '=(-?\\d+)').exec(l); return m ? +m[1] : null; };
-  var last = ds.filter(function (d) { return d.t >= at - 300; });
-  var minAllow = 99, holdSooner = 0, noBreak = 0, raises = 0, cut = 0;
-  last.forEach(function (d) {
-    var a = num(d.l, 'allow'); if (a !== null && a >= 0 && a < minAllow) minAllow = a;
-    if (/ play=(hold|carry_wait) /.test(d.l) && / sooner=/.test(d.l)) holdSooner++;
-    if (/ br=(0\/|none)/.test(d.l)) noBreak++;
-    if (/ out=1/.test(d.l)) cut++;
+  var str = function (l, k) { var m = new RegExp(' ' + k + '=(\\S+)').exec(l); return m ? m[1] : ''; };
+  var lb = -1;
+  ds.forEach(function (d, i) { if ((num(d.l, 'broke') || 0) > 0) lb = i; });
+  var dead = ds.slice(lb + 1), t0 = lb >= 0 ? ds[lb].t : 0;
+  var found = 0, unplayed = 0, keys = {}, low = 0, drops = 0, ready = 0, minAllow = 99;
+  dead.forEach(function (d) {
+    var a = num(d.l, 'allow'); if (a !== null && a >= 0) { if (a < minAllow) minAllow = a; if (a <= 5) low++; }
+    if (/ br=1\//.test(d.l)) { found++; unplayed++; var k = str(d.l, 'sooner').split(':k')[1] || str(d.l, 'carryBy').split(':k')[1] || str(d.l, 'play'); keys[k] = (keys[k] || 0) + 1; }
+    if (/ drop=1/.test(d.l)) drops++;
+    var r = /rdy=(\d+)\//.exec(d.l); if (r && +r[1] > 0) ready++;
   });
-  ds.forEach(function (d) { if (/ play=raise /.test(d.l)) raises++; });
-  var matEnd = num(ds[ds.length - 1].l, 'mat'), mat600 = num(ds[0].l, 'mat');
-  var tag = minAllow <= 5 ? 'actions' : (matEnd !== null && matEnd < 20) || (mat600 !== null && mat600 < 22) ? 'panels' :
-            holdSooner >= 3 ? 'hold-creep' : last.length && noBreak / last.length > 0.6 ? 'no-break' : 'other';
+  var tag = unplayed >= 3 || (dead.length && unplayed / dead.length >= 0.25) ? 'order' : dead.length && low / dead.length > 0.5 ? 'window' : 'board';
+  var pre = ds.filter(function (d) { return d.t >= t0 - 600 && d.t <= t0; }), plays = {};
+  pre.forEach(function (d) { var p = str(d.l, 'play'); plays[p] = (plays[p] || 0) + 1; });
+  var top = Object.keys(plays).sort(function (x, y) { return plays[y] - plays[x]; }).slice(0, 4).map(function (p) { return p + ' ' + plays[p]; }).join(', ');
+  var end = function (arr, k) { return arr.length ? num(arr[arr.length - 1].l, k) : null; }, beg = function (arr, k) { return arr.length ? num(arr[0].l, k) : null; };
   causes.by[tag] = (causes.by[tag] || 0) + 1;
-  causes.list.push({ game: game, at: at, tag: tag, why: 'allow min ' + minAllow + ', panels ' + mat600 + ' to ' + matEnd + ', holds lost sooner ' + holdSooner +
-                     ', no break ' + noBreak + ' of ' + last.length + ', raises ' + raises + ', decisions the clock cut ' + cut });
+  causes.list.push({ game: game, at: at, tag: tag, why: 'last break ' + t0 + ', then ' + dead.length + ' decisions' +
+    (unplayed ? ', a break found and not played ' + unplayed + ' (' + Object.keys(keys).map(function (k) { return k + ' x' + keys[k]; }).join(', ') + ')' : ', no break found') +
+    ', window min ' + minAllow + ' (at 5 or fewer ' + low + '), ready at the landing ' + ready + ', drops played ' + drops +
+    ', panels ' + beg(dead, 'pan') + ' to ' + end(dead, 'pan') +
+    '; the run-up: ' + (top || '-') + ', panels ' + beg(pre, 'pan') + ' to ' + end(pre, 'pan') + ', window ' + beg(pre, 'allow') + ' to ' + end(pre, 'allow') });
 }
 var carried = { resumed: 0, lost: 0, ideas: 0 };   // (decisions started from the answer played, and ones whose state was lost: answer.c carriedResume)
 var beaten = { n: 0, by: {} };   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
@@ -266,9 +276,9 @@ Object.keys(modes).sort().forEach(function (k) {
 console.log('SURVIVED ' + all + '/' + games);
 // (WHY EACH GAME WAS LOST: causeOf, a tag a loss, the first that holds; the losses counted by tag, then each loss with its numbers)
 { var tags = Object.keys(causes.by).sort(function (a, b) { return causes.by[b] - causes.by[a]; });
-  console.log('losses by cause: ' + (tags.map(function (k) { return k + ' x' + causes.by[k]; }).join(', ') || '-') +
-              ' (actions: the input window at 5 or fewer in the last 300 frames; panels: under 20 at the end or 22 600 frames before; hold-creep: ' +
-              '3 or more holds lost sooner than a line offered; no-break: the break search found none in most of the last 300 frames)');
+  console.log('losses by the piece that failed: ' + (tags.map(function (k) { return k + ' x' + causes.by[k]; }).join(', ') || '-') +
+              ' (from the last line that broke garbage to the end -- order: a break found was not played, 3 times or a quarter of the decisions; window: no break found, the input ' +
+              'window at 5 or fewer through most of it; board: no break found with the window open, none in reach on the boards the lines left)');
   causes.list.forEach(function (c) { console.log('  lost ' + c.game + ' at ' + c.at + ': ' + c.tag + ' -- ' + c.why); }); }
 Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') +
   '; its first aim ' + t.head + ': ' + t.first + (t.all ? ' (' + (100 * t.first / t.all).toFixed(1) + '%)' : '')); });

@@ -136,24 +136,44 @@ static void perchedOf(const Bits *B, Perches *P) {
       unsigned holds = B->pan[under] & span;
       if (!holds || holds == span) continue;
       int n = 0, ok = 1;
-      // (a block as wide as the board has no edge to walk past: each support is walked instead into the nearest hollow under it -- a
-      // cell of its row with nothing under it, over no other support on the way -- and falls there; below: what holds each cell up)
-      unsigned row = holds, below = under > 1 ? (unsigned)(B->pan[under - 1] | B->gar[under - 1]) : ALLCOLS;
+      if (L == 1 && R == W) {
+        // (A BLOCK AS WIDE AS THE BOARD has no edge to walk past: each support is walked into the nearest hollow beside it -- a column two
+        // or more lower, over no taller column on the way -- where it falls; the block comes down onto the next row once every support
+        // in its row is gone, and the walk goes on there, till no hollow is left under it. h: each column's top under the block, as the
+        // walks leave it; got: the panels walked onto it; a column whose top is garbage cannot be walked. A row whose supports cannot all
+        // be walked is left out: the line ends where the block last came down)
+        int h[W + 2], got[W + 2], cur = under;
+        for (int c2 = 1; c2 <= W; c2++) { h[c2] = 0; got[c2] = 0; for (int r2 = under; r2 >= 1; r2--) if ((B->pan[r2] | B->gar[r2]) >> c2 & 1) { h[c2] = r2; break; } }
+        while (cur >= 1 && n < MAXPATH) {
+          int walked = 0, left = 0, nRow = n, full = 1;
+          for (int k = 1; k <= W && full; k++) {
+            if (h[k] != cur) continue;
+            if (!got[k] && !(B->pan[cur] >> k & 1)) { left++; continue; }   // (garbage holds it here)
+            int to = 0;
+            for (int d = 1; d < W && !to; d++)
+              for (int j = k - d; j <= k + d && !to; j += 2 * d) {
+                if (j < 1 || j > W || h[j] > cur - 2) continue;
+                int clear = 1; for (int c2 = j < k ? j + 1 : k + 1; c2 < (j < k ? k : j); c2++) if (h[c2] >= cur) clear = 0;
+                if (clear) to = j;
+              }
+            if (!to) { left++; continue; }
+            int was = n;
+            n = walkTo(cur, k, to, P->seq[P->n], n);
+            if (n - was != (to > k ? to - k : k - to)) { full = 0; break; }
+            walked++;
+            if (got[k]) got[k]--;
+            h[k]--; while (h[k] >= 1 && !got[k] && !((B->pan[h[k]] | B->gar[h[k]]) >> k & 1)) h[k]--;
+            h[to]++; got[to]++;
+          }
+          if (!walked || left || !full) { n = nRow; break; }   // (a support left, or no room for the walk: the block stays where the last row left it)
+          int top = 0; for (int c2 = 1; c2 <= W; c2++) top = imax(top, h[c2]);
+          cur = top;
+        }
+      } else
       for (int k = L; k <= R && ok; k++) {
         if (!(holds >> k & 1)) continue;
         int toL = L - 1, toR = R + 1, to = toL >= 1 && (k - toL <= toR - k || toR > W) ? toL : toR <= W ? toR : 0;
-        if (!to) {
-          for (int d = 1; d < W && !to; d++)
-            for (int j = k - d; j <= k + d && !to; j += 2 * d) {
-              if (j < L || j > R || ((below | row) >> j & 1)) continue;
-              unsigned between = j > k ? ((1u << j) - 1u) & ~((2u << k) - 1u) : ((1u << k) - 1u) & ~((2u << j) - 1u);
-              if (!(row & between)) to = j;
-            }
-          if (!to) { ok = 0; break; }
-          row &= ~(1u << k);
-          // (it lands on what is two rows under the block, or on the floor: there, that cell holds the next one up)
-          if (under - 2 < 1 || ((B->pan[under - 2] | B->gar[under - 2]) >> to & 1)) below |= 1u << to;
-        }
+        if (!to) { ok = 0; break; }
         int was = n;
         n = walkTo(under, k, to, P->seq[P->n], n);
         if (n - was != (to > k ? to - k : k - to)) ok = 0;
