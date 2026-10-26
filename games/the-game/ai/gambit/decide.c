@@ -46,19 +46,40 @@ static int readBoard_(Read *R) {
   // (and the breaks every block on its way is due, soonest first: a row each -- a break converts one -- the first as it lands, the next a
   // break's time after; the next landing with no block shown, one)
   nLandAts = 0;
+  int32_t landBlk[LANDN];   // (the block each due is of: -1 the next landing with none shown)
   { int32_t gap = C2.reaction + 1 + popFrames(decQ.b, W), shown = 0;
     for (int i = 0; i < decQ.narr; i++) shown |= decQ.arr[i].at == landingAt;
-    if (landingAt >= 0 && !shown) landAts[nLandAts++] = landingAt;
+    if (landingAt >= 0 && !shown) { landBlk[nLandAts] = -1; landAts[nLandAts++] = landingAt; }
     for (int i = 0; i < decQ.narr; i++) for (int r = 0; r < imax(1, decQ.arr[i].height) && nLandAts < LANDN; r++) {
       int32_t a = decQ.arr[i].at + r * gap; int k = nLandAts++;
-      while (k > 0 && landAts[k - 1] > a) { landAts[k] = landAts[k - 1]; k--; }
-      landAts[k] = a;
+      while (k > 0 && landAts[k - 1] > a) { landAts[k] = landAts[k - 1]; landBlk[k] = landBlk[k - 1]; k--; }
+      landAts[k] = a; landBlk[k] = i;
     } }
   // (and its walk: the nearest break's on this board by the shape math, two actions a swap -- a swap and a cell -- with the swap that
   // breaks; nothing on the board yet, a break's walk as measured)
   // (a break's walk measured on the board as it is; with none on it to measure, the last one measured this game -- LAND_RESERVE only
   // before the first)
   { int32_t w = garbageOn(decQ.b) ? walkOfBoard(decQ.b) : -1; if (w > 0) breakWalk = w; }
+  // (and each due's walk: the nearest break's on the board its block lands on -- the board left alone run to that landing and settled.
+  // A row's break is pressed on the board its block lands on, and that walk, not this board's, is what the window keeps for it; a due
+  // with no block shown, or a board lost or bare by then, asks this board's)
+  for (int k = 0; k < nLandAts; k++) landWalk[k] = 0;
+  if (nLandAts && decQ.narr) {
+    static Ctx *dueCtx; dueCtx = ctxOf(dueCtx);
+    int root = dueCtx ? rootOf(dueCtx, &decQ) : -1;
+    int32_t blkWalk[64]; int nb = imin(decQ.narr, 64);
+    for (int i = 0; i < nb; i++) {
+      blkWalk[i] = 0;
+      if (root < 0 || decQ.arr[i].at <= 0) continue;
+      int land = step(dueCtx, root, MK_LONG, 0, 0, decQ.arr[i].at);
+      if (!liveNode(dueCtx, land)) continue;
+      int calm = settleOf(dueCtx, land); if (liveNode(dueCtx, calm)) land = calm;
+      const Board *lb = ensureBoard(dueCtx, land);
+      int32_t w = lb && garbageOn(lb) ? walkOfBoard(lb) : -1;
+      if (w > 0) blkWalk[i] = w;
+    }
+    for (int k = 0; k < nLandAts; k++) if (landBlk[k] >= 0 && landBlk[k] < nb) landWalk[k] = blkWalk[landBlk[k]];
+  }
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
   // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
   factSet(F, FACT_ENEMY_NONE, !theOpp.has);

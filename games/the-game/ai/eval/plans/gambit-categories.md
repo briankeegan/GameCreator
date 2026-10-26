@@ -29,6 +29,11 @@ logged. Every predicted board matches the game, and the order is one order. The 
 - **Logged** for every candidate as `sol=paid/due:short@frame`, and read by the loss reader. It goes back into the order one key at a
   time, a run of 24 each, once the order without it plays 1266's games again.
 
+## The window plan (core/nodes.h windowCover)
+
+Each row due keeps its own break's walk in the window: the walk measured on the board its block lands on (walkDue). A due with no
+block shown keeps the question's board's walk, the last measured this game when it has no garbage.
+
 ## The survival search (search/outlive.c)
 
 Of the lines it grows: the band of its loss, then margin, then the loss net of what it spends, then actions.

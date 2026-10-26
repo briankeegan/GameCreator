@@ -124,6 +124,9 @@ static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
 #define LANDN 64
 static int32_t landAts[LANDN], nLandAts;   // (every break the blocks shown on their way are due: a row each, its block's landing and a break's
                                             // time after each row before it -- the frames from the question, soonest first)
+static int32_t landWalk[LANDN];   // (and each due's walk: the nearest break's on the board its block lands on -- decide.c read; 0 not known)
+// (THE WALK A DUE ASKS: its own, measured on the board it lands on; the question's board's where none is known or nothing is shown)
+static int32_t walkDue(int k) { return k >= 0 && k < nLandAts && landWalk[k] > 0 ? landWalk[k] : breakWalk; }
 static int32_t rankSave;   // (rank.c: the frames one break takes)
 // (THE WINDOW'S SHARE a line leaves: the actions left at its end, or at the landing when that is later, of the window's whole limit --
 // the third margin beside the stack's room and its material; -1 with no allowance said)
@@ -140,7 +143,7 @@ static double actionFrames(void) {
   return lim > 0 ? (double)winLen / lim : 0;
 }
 // (THE WINDOW'S COVER: of the breaks the blocks on their way are due, soonest first, how many the window keeps a walk for -- at each due
-// its walk besides the walks the breaks before it took, each pressed as its block lands and aged out as any action is, with what the
+// its walk (walkDue) besides the walks the breaks before it took, each pressed as its block lands and aged out as any action is, with what the
 // window has given back by then; none on its way, 1 where the window keeps the walk at the line's end. WINDOW_ALL: no allowance said)
 #define WINDOW_ALL (LANDN + 1)
 static int windowCover(int32_t endAt, int spent) {
@@ -150,8 +153,8 @@ static int windowCover(int32_t endAt, int spent) {
   for (; k < nLandAts; k++) {
     int32_t tk = landAts[k] - pressFrom; if (tk < endAt) tk = endAt;
     int before = 0;
-    for (int i = 0; i < k; i++) { int32_t ti = landAts[i] - pressFrom; if (ti < endAt) ti = endAt; if (tk - ti < winLen) before += breakWalk; }
-    if (allowLeftAt(tk, spent) - before < breakWalk) break;
+    for (int i = 0; i < k; i++) { int32_t ti = landAts[i] - pressFrom; if (ti < endAt) ti = endAt; if (tk - ti < winLen) before += walkDue(i); }
+    if (allowLeftAt(tk, spent) - before < walkDue(k)) break;
   }
   return k;
 }
@@ -160,7 +163,7 @@ static int windowKeepsBreak(int32_t endAt, int spent) { return windowCover(endAt
 static int32_t regainAfter(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 0;
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt;
-  int shortBy = breakWalk - allowLeftAt(t0, spent);
+  int shortBy = walkDue(0) - allowLeftAt(t0, spent);
   if (shortBy <= 0) return 0;
   if (nWinAges < 0) return winLen;
   int32_t oldest[WINMAX]; int k = 0;   // (the actions still in the window then, oldest first, as many as it is short by)
@@ -177,7 +180,7 @@ static int32_t regainAfter(int32_t endAt, int spent) {
 }
 static int spendPays(int32_t lostSpender, int32_t endAt, int spent, int32_t lostKeeper, int32_t keeperEnd) {
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt, k0 = tl > keeperEnd ? tl : keeperEnd;
-  if (lostKeeper < k0 + breakWalk * TAP_GAP && lostSpender - lostKeeper >= rankSave) return 1;
+  if (lostKeeper < k0 + walkDue(0) * TAP_GAP && lostSpender - lostKeeper >= rankSave) return 1;
   return lostSpender >= t0 + regainAfter(endAt, spent);
 }
 static LOCAL int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
