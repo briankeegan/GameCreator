@@ -56,7 +56,9 @@ static int readBoard_(Read *R) {
     } }
   // (and its walk: the nearest break's on this board by the shape math, two actions a swap -- a swap and a cell -- with the swap that
   // breaks; nothing on the board yet, a break's walk as measured)
-  { int32_t w = garbageOn(decQ.b) ? walkOfBoard(decQ.b) : -1; breakWalk = w > 0 ? w : LAND_RESERVE; }
+  // (a break's walk measured on the board as it is; with none on it to measure, the last one measured this game -- LAND_RESERVE only
+  // before the first)
+  { int32_t w = garbageOn(decQ.b) ? walkOfBoard(decQ.b) : -1; if (w > 0) breakWalk = w; }
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
   // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
   factSet(F, FACT_ENEMY_NONE, !theOpp.has);
@@ -403,62 +405,11 @@ static int ranked(const Read *R, const Found *S) {
     }
     if (ns) sortJudged(order, n);
   }
-  // NO WASTED THREE (the owner: only when not doing it would kill it): a line whose clears break nothing and throw nothing is taken out
-  // of the order -- unless every other line is lost and a three lives, or is lost later: only there is a three a save, and the save asks
-  // whether it outlasts them by a break's time
+  // NO WASTED THREE (the owner: only when not doing it would kill it): the order ranks a line that wastes a three below every line that
+  // wastes none once survival and solvency are told (rank.c, the waste key) -- so a line that wastes one is first only where not playing
+  // it dies sooner or falls short: that is the board's save, and its three is marked needed, the frame loop's verdict (answer.c wastes)
   clockShareEnd(orderShare);
-  { int keeps = 0, wasteLives = 0; double wasteLost = -1, keptLost = -1;
-    for (int i = 0; i < n; i++) {
-      if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
-      else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
-    }
-    if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
-    // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
-    // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way
-    // landing as it would. A three whose board, with the best line on, outlasts the other's by nothing was not needed not to die: it
-    // is wasted)
-    if (!keeps && timeLeftMs() > SAVE_KEEP_MS + 2) {
-      const Judge *bw = 0, *bk = 0;
-      for (int i = 0; i < n; i++) {
-        const Judge *J = order[i];
-        if (wastesThree(J)) { if (!bw || J->o.lives > bw->o.lives || (J->o.lives == bw->o.lives && lostOf(J) > lostOf(bw))) bw = J; }
-        else if (!bk || lostOf(J) > lostOf(bk)) bk = J;
-      }
-      if (bw && bk) {
-        // (the side without a three: the survival search's own line from now when it wastes none -- searched already, on a worker -- else
-        // the best line without one played to its end and searched on; the decision's time all the three's side's when it need not)
-        // (the three's side first, with the time; then the side without, bounded below by what is known already -- the best line's own
-        // loss, the survival line's when it wastes none: a three that does not beat that is not needed, and only
-        // otherwise is the side without searched, in what time is left)
-        int have = svLost >= 0 && svClean;
-        double kLow = lostOf(bk); if (have && svLost > kLow) kLow = svLost;
-        double give = timeLeftMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
-        double cw = contLostOf(bw, give), ck = -1;
-        if (cw >= 0 && kLow >= cw) ck = kLow;
-        else if (cw >= 0) {
-          double give2 = timeLeftMs() - SAVE_KEEP_MS; if (give2 > SAVE_MS) give2 = SAVE_MS;
-          double c2 = give2 >= 1 ? contLostOf(bk, give2) : -1;
-          ck = c2 > kLow ? c2 : (c2 >= 0 ? kLow : -1);
-        }
-        saveAsked++;
-        saveCw = cw; saveCk = ck;
-        // (needed not to die -- the rule above asks it only where every line without one is lost within a break's time: with the three
-        // the board lives on, or outlasts the board without it by a break's time at least; a three that puts the loss off by less is wasted)
-        if (cw >= 0 && ck >= 0 && ck < 1e9 && (cw >= 1e9 || cw - ck >= rankSave)) { saveOk = 1; saveLine = bw; }
-        else if (cw >= 0 && ck >= 0) { keeps = 1; saveNot++; }
-      }
-    }
-    // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
-    // what the order lets through, a walk spent for nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; }
-    // (a save confirmed is played: the survival search found the board lives on with it, or outlasts every line without it by a break's
-    // time -- the order under it, its reserve and its clauses, ranked lines the save has already outlived)
-    // (a save confirmed: the survival search found the board lives on with it, or outlasts every line without it by a break's time -- its
-    // three is no wasted three, a fact of the line the order reads like any other (rank.c threeNeeded), and the order ranks it)
-    else if (saveLine) {
-      for (int i = 0; i < n; i++) if (order[i] == saveLine) { order[i]->threeNeeded = 1; break; }
-      sortJudged(order, n);
-    } }
+  if (n && !order[0]->hold && wastesThree(order[0])) { order[0]->threeNeeded = 1; saveOk = 1; saveLine = order[0]; }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
 }

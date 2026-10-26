@@ -110,6 +110,18 @@ Value counts a row converted, a block thrown and a break of supply each as one b
 The summary also counts, per lost game, the frames from the first insolvent decision to the loss. When that number falls, the
 bot is seeing its losses sooner.
 
+## State
+
+| Step | State |
+|---|---|
+| 1. The ledger in the judge, `sol=` in the log | built |
+| 2. Solvency in the order, supply in value | built |
+| 3. The loss reader on the last solvent decision | built: losses are named `solvency-order`, `-demand`, `-window` or `-search` |
+| 4. The searches toward supply | built: the survival search keeps, of lines lost alike, the one leaving the next break nearest; the break search's beam ranks by nearness within a survival band |
+| 5. One answer for the save | built: no save step; a wasted three ranks after survival and solvency, so it is first only where not playing it dies or falls short, and the frame loop reads that line's own verdict |
+| 6. The constants | `LAND_RESERVE` is the last walk measured this game; `NEAR_ACTS` gives way to the measured walk. `LOW_ROWS` 6 is the owner's rule, and stays. The rest are measured one at a time from runs. |
+| Checks | "Every line categorised" also requires a ledger |
+
 ## Order of work
 
 1. The ledger in the judge, and `sol=` in the log.

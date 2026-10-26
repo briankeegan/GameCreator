@@ -369,7 +369,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
   A->holdLives = d.kind == 0 && top && top->o.lives;
-  A->wastes = P.line && !R.up && wastesThree(P.line) && saveOk;   // (a three the survival search found the board needed not to die)
+  A->wastes = P.line && !R.up && wastesThree(P.line) && P.line->threeNeeded;   // (the line's own verdict: its three the board's save)   // (a three the survival search found the board needed not to die)
   // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
   // settled line's after the board settles -- so the frame loop presses the line that was judged)
   A->nhand = 0; A->handSettled = P.line && P.line->settled;
@@ -501,6 +501,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (each line's category, the judge's: plans/gambit-categories.md -- cat=, in the order's own order, beside opts=)
   { const Judge *H = 0; for (int i = 0; i < P.ncands; i++) if (order[i]->hold) { H = order[i]; break; }
     L_s(" cat="); for (int i = 0; i < P.ncands && i < 8; i++) { if (i) L_s(","); L_s(catName[catOf(order[i], H)]); } }
+  // (each line's ledger, the scenario it leaves: sol=paid/due:short@frame -- @- never short -- in the order's own order)
+  L_s(" sol="); for (int i = 0; i < P.ncands && i < 8; i++) { Ledger g = ledgerOf(order[i]); if (i) L_s(",");
+    L_i(g.paid); L_s("/"); L_i(g.due); L_s(":"); L_i(g.shortBy); L_s("@"); if (g.at == FOREVER) L_s("-"); else L_i(g.at); }
   L_s(" opts=");
   for (int i = 0; i < P.ncands && i < 8; i++) {
     const Judge *j = order[i];
@@ -620,6 +623,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
+  breakWalk = LAND_RESERVE;   // (a new game measures its own)
   modeLeft(); lifeDumps = 0; forceDone = 0; openerOver = 0;
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)

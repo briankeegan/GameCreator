@@ -87,6 +87,22 @@ function causeOf(game, pattern, at, lines) {
   });
   // (with the judge's categories logged: order, a better category passed over; window; search, no line better than buys time offered
   // in most of it -- the search cut by the clock in most of it is reach, else board)
+  // (SOLVENCY, the ledger every line leaves (answer.c sol=paid/due:short@frame, the line played first): the last decision whose line
+  // played was solvent, and what the next one did -- order: a solvent line offered, an insolvent one played; demand: a block shown
+  // made every line short at once (the rows due rose); window: the window at 5 or fewer then; search: no solvent line offered)
+  var solv = null;
+  (function () {
+    var L = ds.map(function (d) { var v = str(d.l, 'sol'); if (!v) return null;
+      return v.split(',').map(function (e) { var m = /^(\d+)\/(\d+):(-?\d+)@/.exec(e); return m ? { paid: +m[1], due: +m[2], short: +m[3] } : null; }); });
+    var last = -1; for (var i = 0; i < L.length; i++) if (L[i] && L[i][0] && L[i][0].short <= 0) last = i;
+    if (!L.some(Boolean)) return;
+    var n = last + 1 < L.length ? last + 1 : last;
+    if (n < 0 || !L[n]) return;
+    var anySolvent = L[n].some(function (e) { return e && e.short <= 0; }), dueRose = last >= 0 && L[last] && L[n][0] && L[n][0].due > L[last][0].due;
+    var a = num(ds[n].l, 'allow');
+    var why = anySolvent ? 'order' : dueRose ? 'demand' : (a !== null && a >= 0 && a <= 5) ? 'window' : 'search';
+    solv = { at: last >= 0 ? ds[last].t : 0, before: at - (last >= 0 ? ds[last].t : 0), why: why, short: L[n][0] ? L[n][0].short : 0 };
+  })();
   var tag = catN ? (passedCat >= 3 || passedCat / catN >= 0.25 ? 'order' : low / catN > 0.5 ? 'window' :
                     noneBetter / catN > 0.5 ? (cutN / dead.length > 0.5 ? 'reach' : 'board') : 'press')
                  : unplayed >= 3 || (dead.length && unplayed / dead.length >= 0.25) ? 'order' : dead.length && low / dead.length > 0.5 ? 'window' :
@@ -95,9 +111,11 @@ function causeOf(game, pattern, at, lines) {
   pre.forEach(function (d) { var p = str(d.l, 'play'); plays[p] = (plays[p] || 0) + 1; });
   var top = Object.keys(plays).sort(function (x, y) { return plays[y] - plays[x]; }).slice(0, 4).map(function (p) { return p + ' ' + plays[p]; }).join(', ');
   var end = function (arr, k) { return arr.length ? num(arr[arr.length - 1].l, k) : null; }, beg = function (arr, k) { return arr.length ? num(arr[0].l, k) : null; };
+  if (solv) { tag = 'solvency-' + solv.why; }
   causes.by[tag] = (causes.by[tag] || 0) + 1;
   causes.list.push({ game: game, at: at, tag: tag, why: 'last break ' + t0 + ', then ' + dead.length + ' decisions' +
     (unplayed ? ', a break lost no sooner passed over ' + unplayed + ' (' + Object.keys(keys).map(function (k) { return k + ' x' + keys[k]; }).join(', ') + ')' : ', no break found') +
+    (solv ? ', solvent last at ' + solv.at + ' (' + solv.before + ' frames before the loss), then ' + solv.short + ' rows short' : '') +
     (catN ? ', a better category passed over ' + passedCat + (passedCat ? ' (' + Object.keys(catKeys).map(function (k) { return k + ' x' + catKeys[k]; }).join(', ') + ')' : '') + ', none better than buys time ' + noneBetter : '') +
     ', the search cut by the clock ' + cutN + ' (its lines ' + deep + ' deep)' +
     ', window min ' + minAllow + ' (at 5 or fewer ' + low + '), ready at the landing ' + ready + ', drops played ' + drops +
@@ -199,7 +217,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var bt = / beaten=\w+:k(\d+(?:\.\w+)?)/.exec(l);
       if (bt) { beaten.n++; beaten.by[bt[1]] = (beaten.by[bt[1]] || 0) + 1; }
       // (EVERY LINE CATEGORISED: a decision that offered lines logs a category for each (answer.c cat=, rank.c catOf))
-      if (/ opts=/.test(l)) { catd.n++; if (!/ cat=\w/.test(l)) catd.missing++; }
+      if (/ opts=/.test(l)) { catd.n++; if (!/ cat=\w/.test(l) || !/ sol=\d/.test(l)) catd.missing++; }
       // (THE STATE CARRIED: answer.c resumed=ID/IDEAS, a decision started from the answer the frame loop played, not the last decision's,
       // and the lines the answers not played chose kept as ideas; stateLost=, the ring no longer held it)
       var rs = / resumed=\d+\/(\d+)/.exec(l);
@@ -303,7 +321,7 @@ console.log('SURVIVED ' + all + '/' + games);
 // (WHY EACH GAME WAS LOST: causeOf, a tag a loss, the first that holds; the losses counted by tag, then each loss with its numbers)
 { var tags = Object.keys(causes.by).sort(function (a, b) { return causes.by[b] - causes.by[a]; });
   console.log('losses by the piece that failed: ' + (tags.map(function (k) { return k + ' x' + causes.by[k]; }).join(', ') || '-') +
-              ' (from the last line that broke garbage to the end, by the judge categories -- order: a better category passed over, 3 times or a quarter of the decisions; press: a line better than buys time offered, not the cause above; window: no break found, the input ' +
+              ' (with ledgers logged, solvency-WHY: the last decision whose line played was solvent, and what came next -- order: a solvent line passed over; demand: a block shown made every line short; window; search: none solvent offered. Without: from the last line that broke garbage to the end, by the judge categories -- order: a better category passed over, 3 times or a quarter of the decisions; press: a line better than buys time offered, not the cause above; window: no break found, the input ' +
               'window at 5 or fewer through most of it; reach: no break found, the search cut by the clock in most of it; board: no break found, ' +
               'the search done, none within its depth on the boards the lines left)');
   causes.list.forEach(function (c) { console.log('  lost ' + c.game + ' at ' + c.at + ': ' + c.tag + ' -- ' + c.why); }); }
@@ -364,7 +382,7 @@ if (budget.decisions) console.log('decisions the clock cut: ' + budget.out + ' o
 // THE STATE CARRIED: every decision starts from the state the answer the frame loop last played left; a lost one started from another's
 console.log('state: ' + carried.lost + ' decisions started from a state no answer played left (lost), ' + carried.resumed + ' resumed from the answer played, ' + carried.ideas + ' lines not pressed kept as ideas');
 console.log('one order: ' + beaten.n + ' of ' + sooner.dec + ' decisions played a line beaten head to head by one ranked under it');
-console.log('categorised: ' + catd.missing + ' of ' + catd.n + ' decisions offered lines with no category');
+console.log('categorised: ' + catd.missing + ' of ' + catd.n + ' decisions offered lines with no category or no ledger');
 console.log('truth: ' + budget.diverged + ' boards predicted otherwise than the game made them, in ' + budget.divergedGames + ' of ' + budget.games + ' games');
 // THE LINE AS JUDGED: every swap of a line handed on is keyed from the frame the judge pressed it from; one keyed later is pressed on a board
 // the judge never judged
