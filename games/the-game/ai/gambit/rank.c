@@ -28,6 +28,7 @@ typedef struct {
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
+  int32_t extSpent;    // and the actions that plan presses, the line and its breaks (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for spending the rules' floor or the reserve (outcome.c spendsFloor, spendsReserve)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
@@ -87,7 +88,7 @@ static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int nearActsOf(const Judge *J, int32_t near);
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -180,7 +181,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -196,7 +197,7 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
   if (!J->hold) asLine(&J->k);
-  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
+  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost, &J->extSpent);
   if (!J->hold) unLine();
 }
 static double lostOf(const Judge *x);
@@ -375,7 +376,9 @@ static double rankLostRef;
 static double lostNetOf(const Judge *J) {
   double l = lostOf(J);
   if (l >= 1e9 || J->hold) return l;
-  double net = l - J->o.j.spent * actionFrames();
+  // (a line lost where its plan is spends what the plan presses: the line and the breaks after it)
+  int planned = J->extLost != NOT_ASKED && J->extSpent != NOT_ASKED && lostAtOf(J->extLost, 0) > lostAtOf(J->o.lostAt, 0);
+  double net = l - (planned ? J->extSpent : J->o.j.spent) * actionFrames();
   return net > 0 ? net : 0;   // (a line that spends more than it buys is lost now)
 }
 static int32_t lostBand(const Judge *J) {

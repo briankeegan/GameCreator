@@ -219,11 +219,12 @@ static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o =
 // presses something and is ready is worth what its readiness break leads to: the line and the break played on the engine, where the
 // readiness found it (extLost: the frame that board is lost, FOREVER, or NOT_ASKED)
 #define READY_STEPS 3   // the breaks a plan carries on past the readiness break
-static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extLost) {
-  *extLost = NOT_ASKED;
+// (extSpent: the actions the plan presses -- the line and its breaks -- where its loss is the plan's; NOT_ASKED otherwise)
+static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extLost, int32_t *extSpent) {
+  *extLost = NOT_ASKED; *extSpent = NOT_ASKED;
   if (decF.next == NOT_ASKED) return NOT_ASKED;
   Outcome *hit = cached(seq, n, settled, 2);
-  if (hit) { *extLost = hit->lostAt; return hit->ready; }
+  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; return hit->ready; }
   if (clockOut()) return NOT_ASKED;
   JudgeOpts jo = { settled, decQ.tight, decF.next, 1, 1, -1, 0, 1 };
   Outcome o;
@@ -237,7 +238,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
     for (int k = 0; k < n; k++) ext[k] = seq[k];
     for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
     Outcome e = promised(ext, en, settled, n, w0To, 0, 0, 0);
-    if (!e.late) o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
+    if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; }
     // (A PLAN OF SEVERAL STEPS: the board the break leaves, once it has settled, asked again for a break in reach -- played where its
     // readiness finds it, and so on, READY_STEPS breaks at most: the line is lost where the plan is, the owner's ready with a plan)
     while (!e.late && !e.dead && !e.lives && o.lostAt != NOT_ASKED && nm < READY_STEPS && !clockOut()) {
@@ -252,10 +253,12 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
       if (e.late) break;
       int32_t lost = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
       if (lost == NOT_ASKED || (lost != FOREVER && o.lostAt != FOREVER && lost <= o.lostAt)) break;
-      o.lostAt = lost;
+      o.lostAt = lost; *extSpent = e.j.spent;
     }
   }
   *extLost = o.lostAt;
+  if (o.lostAt == NOT_ASKED) *extSpent = NOT_ASKED;
+  o.j.spent = *extSpent;   // (kept with the plan's loss: the cache's own reading)
   keep(seq, n, settled, 2, &o);
   return o.ready;
 }

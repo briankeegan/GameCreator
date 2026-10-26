@@ -1820,3 +1820,10 @@ block owed a walk almost no line kept it: the clause went quiet and survive line
 THE RESERVE A COUNT: windowCover, of the blocks on their way, soonest first, how many the window keeps a break walk for; of two lines
 that do not live, the one covering more first unless the spend pays (rank.c coverOf). windowKeepsBreak is the cover's first. The
 readiness beams' count off the decision line: which thread searched a board first is the clock's.
+Measured (`168bb64a`, 1244): 8 -- combo_storm 6, factory 0, large_garbage 2; actions 11, panels 5; green. Eleven losses on 1242's
+frames: the cover is equal between nearly every pair, so the reserve as a count decides almost nothing.
+factory-4 (1244) at 13518, the board lost in 25 frames left alone, 13 actions: a setup (its own loss 98, its plan's break leading to
+470) taken over an entry breaking 24 cells now (lost 456) -- lost alike, and the net loss chose the setup, spending fewer. Lost at
+13542. The setup's loss was its plan's, its spend only its own swaps: the break the plan presses was not counted.
+A PLAN'S SPEND WITH ITS LOSS: a line lost where its plan is spends what the plan presses, the line and its breaks (outcome.c
+readyNextOf extSpent, rank.c lostNetOf).
