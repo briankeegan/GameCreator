@@ -1702,3 +1702,8 @@ THE BOARD TO COME QUEUED BEHIND THE SEARCHES: listed after the cut, it is taken 
 searches do, in the time they have left.
 THE READINESS SEARCH LEFT UNFINISHED KEPT (search/break.c readyBeams): a check whose time ran out keeps its frontier under the board's
 own key, and the next check of that board grows it on (`rdyBeam=resumed/kept`).
+Measured (`155299e1`, 1221): 15 -- combo_storm 7, factory 4, large_garbage 4. The board to come now runs: 5065 breaks found (from
+1122), its beam 6 deep (from 2). Readiness checks out of time kept 93849 frontiers, 20710 grown on. Red: a worker searching past the
+decision kept its frontier and counted it, so the log differed between twins (tsan, "the game the same twice").
+THE UNFINISHED READINESS FRONTIER KEPT BY THE DECISION THAT READS IT: a worker leaves it on its pend; the decision keeps it, and a
+lookup sees only what decisions before it kept.

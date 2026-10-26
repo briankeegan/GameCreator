@@ -302,7 +302,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   backBoard = decQ.b;
   theBack.at = at;
   aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
-  readyAsked = readyHit = 0; readyStop(); readyBeamIn = readyBeamOut = 0; readyPendClear();
+  readyAsked = readyHit = 0; readyStop(); readyBeamIn = readyBeamOut = 0; readyBeamGen++; readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   // (a board near its end, by the frames the decision reads it is lost in left alone -- the dies fact, the garbage on its way landing)
   pressTap = decTap = hostTaps && allowanceKnown && R.F.v[FACT_US_DIES] <= TAP_DIES;
