@@ -1,27 +1,37 @@
 # Gambit: next, for review
 
-Under attack, material comes only from breaking. A break converts the garbage it touches, together with the garbage that has landed
-against that garbage, so when a break is pressed decides how much it converts. Nothing is built yet.
+Run 1266 scored 17/24. The 1267 build took factory and large_garbage to 2/8 and 0/8, and put them there before solvency was in the
+order (1268, 10/24). Solvency in the order (1269, 8/24) did not bring them back. Every loss reads the same: after the last break,
+nothing better than "buys" offered, solvent a few hundred frames before the loss, then one row short. Nothing below is built yet.
 
-## 1. A plan's break timed at every landing (outcome.c readyNextOf)
+## 1. The save is the one gate for a wasted three (decide.c ranked)
 
-Ask each line's plan for its break from each landing shown: the next block, each block after it, and after the last. Play every one
-on the engine, and keep the best by the order.
+A line that wastes a three leaves the order unless the survival search, played on from the board each side leaves, finds the board
+needs that three: it lives with it, or outlasts the best line without it by a break's time. That verdict is the line's
+`threeNeeded`, read by the order and the frame loop alike. A three-wasting line ranked a key lower, as now, still gets played, and the
+press guard then refuses it: the walk spent for nothing (refusals 98 to 178, saves 133 to 200).
 
-## 2. The order already weighs it
+## 2. The survival search keeps its clock (search/outlive.c)
 
-Breaking later must not cost survival or solvency. Within that, value for moves counts the rows converted, so the break that
-converts the most wins.
+No break's walk measured on every line it grows. That cost comes out of a search the clock already cuts short. Its order goes back to
+band, then margin, then net loss, then actions.
 
-## 3. The ledger counts it
+## 3. Solvency is read, not ranked (rank.c)
 
-A row paid is a row the engine converted, so one break that converts three rows pays three. Material in hand is the panels under
-the garbage plus those conversions give back, less what clears spend.
+The ledger stays in every decision's log and in the loss reader. It leaves the order and value until 1 and 2 give 1266's results
+again. Then it goes back one key at a time, a run of 24 each.
 
-## 4. The margin (the owner's to set)
+## 4. The answers (rank.c compareJudged)
 
-Stay solvent with k rows spare, for garbage not yet shown. Suggested: one.
+One decision in 1269 played a line lost a break's time sooner than one offered, and not alike. Find the key that put it first, and
+make the order's survival key and the check read the same loss.
+
+## Then
+
+- Each plan's break timed at every landing: under attack, material comes only from breaking, and a break after more has landed
+  converts more.
+- The margin for garbage not yet shown: the owner's to set, in rows.
 
 ## Order
 
-1, then 3, then 4.
+1, 2, 3, then a run of 24. Then 4.
