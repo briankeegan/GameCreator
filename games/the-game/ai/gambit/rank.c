@@ -445,6 +445,7 @@ static int coverOf(const Judge *J) {
 // the plan has pressed what it presses -- a break is credited with what it converts, plans/gambit-next.md 2; a line whose board was not
 // read -- its judging the clock cut -- the board's as it is now: never unknown, so never ranked for not being read)
 static int32_t topOn(const Board *b);
+static LOCAL double marginShares[4];   // (the last marginKey's four shares as read, room, material, window, contact: the log's mgs=)
 static int32_t marginKey(const Judge *J) {
   int plan = J->planMargin[0] >= 0 && J->extSpent != NOT_ASKED;
   // (read once everything shown has landed: a line's landed board (readyTop), or its plan's; else the board it ends on, with the rows
@@ -459,7 +460,9 @@ static int32_t marginKey(const Judge *J) {
   int32_t paid = J->hold ? 0 : imax(0, J->apBroke) / W + (plan ? J->planBreaks : 0);
   double win = winCoverShare(endAt, spent, paid);
   if (t < 0 || m < 0) { t = topOn(decQ.b) + rowsComing(&decQ, 0); m = materialOn(decQ.b); contactOn(decQ.b, &contact, &under); win = winCoverShare(0, 0, 0); }
-  return marginKeyOf((MARGIN_ROWS - t) / (double)MARGIN_ROWS, (double)m / W / MARGIN_ROWS, win < 0 ? 1 : win, under > 0 ? (double)contact / under : 1);
+  marginShares[0] = (MARGIN_ROWS - t) / (double)MARGIN_ROWS; marginShares[1] = (double)m / W / MARGIN_ROWS; marginShares[2] = win < 0 ? 1 : win;
+  marginShares[3] = under > 0 ? (double)contact / under : 1;
+  return marginKeyOf(marginShares[0], marginShares[1], marginShares[2], marginShares[3]);
 }
 // (LOST ALIKE: lost in the same break's time, counted back from the latest loss of the lines ranked together (rankLostRef, sortJudged)
 // -- less than a break's time apart buys no break more -- a line lost within a break's time each alone, and one with three breaks'

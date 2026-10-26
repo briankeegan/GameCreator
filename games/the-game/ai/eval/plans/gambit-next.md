@@ -91,3 +91,8 @@ line short at once by a block shown (**demand**).
 - 1283, 13/24 (combo_storm 5, factory 3, large_garbage 5). combo_storm-1: the hold (lost at 238) played 8 times over entries lost at 352
   that threw a block, the margin 0.8 against 0.7 -- one row of material, the panels the entry clears. Every clear spends a little
   material, so a margin read in rows always holds. Fixed: a share of 3 rows or more is enough, not scarce; only scarcity decides.
+- 1284, 18/24, the best yet: combo_storm 8/8, factory 5, large_garbage 5; every check green. Next: factory.
+- Factory-6 (lost at 7145): no break found in 54 decisions with 32 to 40 panels of material; the beam's carried lines died again on being
+  played (60, 42, 54 of them): kept with a break's time to spare, by the next decision a reaction later they had none. Fixed: a line
+  stays in the beam with a break's time and a reaction to spare. And a carried toward line of 12 swaps spent the window 38 to 4 with
+  every margin at 0.3: the log now names the four shares (mgs=: room, material, window, contact) to find which hid it.
