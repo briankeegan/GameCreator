@@ -202,7 +202,7 @@ static void searchAll(const Read *R, Found *S) {
   }
   // (the break the next block will need, searched on the board it lands on: while it is still to come, every decision asks it)
   // (a job of its own where a worker has it: answer.c JOB_LANDED, read in searchMerge; else here in what the proposers have)
-  if (!landedJobOn && decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) {
+  if (!landedJobOn && decF.next != NOT_ASKED && decF.next > 0) {
     double m4 = timeLeftMs() / 3 < LANDED_MS ? timeLeftMs() / 3 : LANDED_MS;
     if (m4 > 1) S->haveLb = landedBreak(&decQ, decF.next + 2, m4, S->lb, &S->lbN);
   }

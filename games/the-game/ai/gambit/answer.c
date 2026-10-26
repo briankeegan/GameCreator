@@ -171,7 +171,7 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   // (THE BOARD TO COME, search/ready.c, queued behind them: the first worker whose search ends before the searches do takes it, in the
   // time they have left -- it ends with them, so the decision waits no longer for it)
   landedJobOn = 0;
-  if (decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) { jobKinds[njobKinds++] = JOB_LANDED; landedJobOn = 1; }
+  if (decF.next != NOT_ASKED && decF.next > 0) { jobKinds[njobKinds++] = JOB_LANDED; landedJobOn = 1; }
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of

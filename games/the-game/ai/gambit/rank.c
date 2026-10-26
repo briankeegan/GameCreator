@@ -400,7 +400,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, touch, net, margin, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, ready, touch, net, margin, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
 // (A LINE LIVES where its board does left alone, or where its plan does: the line, the break its readiness found and the breaks after
 // it, played on the engine -- outcome.c readyNextOf, extLost FOREVER)
 static int livesOf(const Judge *J) { return J->o.lives || (!J->hold && J->extLost == FOREVER); }
@@ -428,6 +428,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // one place for every pair, so the margin after it never ranks it over one it is under)
   if (!lx && x->hold != y->hold) { const Judge *h = x->hold ? x : y;
     if (h->holdSunk && lostAlike(x, y)) K(1, "hold", h == x ? 1 : -1); }
+  // -- of two lost alike, the one that leaves a break in reach once the next block lands (readyNext): the block is broken as it lands,
+  // not dug out after; both asked
+  if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1))
+    K(1, "ready", x->readyNext == 1 ? -1 : 1);
   // -- of two lost alike, the one whose garbage its panels touch more once everything shown has landed (touchOf): a block resting on
   // one column of six over a hollow is a block no match reaches, and no break later makes up for the panels that cannot reach it
   if (!lx && lostAlike(x, y)) { double tx = touchOf(x), ty = touchOf(y); if (tx >= 0 && ty >= 0 && tx != ty) K(1, "touch", tx > ty ? -1 : 1); }

@@ -91,12 +91,11 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
 
 // (THE BOARD TO COME AS A JOB OF ITS OWN: on a worker beside the decision's other searches, in the searches' time, so it takes from no
 // other search; its answer the proposers' once the jobs are taken back -- propose.c searchMerge)
-#define LANDED_AHEAD 240   // the frames ahead a block's landing is searched for the break it will need
 static int32_t landedOk, landedOutN, landedOut[MAXLINE], landedDone, landedJobOn;   // (landedJobOn: a worker has it this decision)
 static void landedJobRun(double by) {
   landedOk = 0; landedOutN = 0;
   double ms = by - nowMs();
-  if (decF.next == NOT_ASKED || decF.next <= 0 || decF.next > LANDED_AHEAD || ms < 1) return;
+  if (decF.next == NOT_ASKED || decF.next <= 0 || ms < 1) return;
   int n = 0;
   if (landedBreak(&decQ, decF.next + 2, ms, landedOut, &n)) { landedOutN = n; landedOk = 1; }
 }
