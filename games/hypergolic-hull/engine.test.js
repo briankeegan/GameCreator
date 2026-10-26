@@ -4278,6 +4278,16 @@ assert.deepStrictEqual(
       ["interceptor"],
       `level 1, seed ${seed}: exactly one Interceptor and nothing else`
     );
+    // AND NOTHING IS PAINTED ON IT EITHER. The hazard list was empty the
+    // whole time the Ironway's backdrop was drawing boulders across the
+    // board behind the grid — not hazards, flown straight through, and
+    // indistinguishable from cover at a glance. A set locale is a set
+    // backdrop, so the board looks the same every run as well as playing
+    // the same.
+    assert.ok(
+      lvl.locale.feature && lvl.locale.id !== "belt",
+      `level 1, seed ${seed}: somewhere that still paints its own look, and is not made of rock`
+    );
     // The board is still dealt by the generator, not written down here.
     const st = Engine.createGameState(lvl, { runSeed: seed });
     assert.strictEqual((st.hazards || []).length, 0, `level 1, seed ${seed}: and nothing adds ground on the way in`);
@@ -4291,6 +4301,15 @@ assert.deepStrictEqual(
     if ((HypergolicLevels.generateLevel(2, null, seed).hazards || []).length) groundLater++;
   }
   assert.ok(groundLater > 30, `level 2 still has ground of its own (${groundLater}/60 seeds)`);
+  // AND LEVEL 1 IS STILL ROLLED. Dropping the painted feature is the rule;
+  // the sector it is rolled in is not, and pinning that to buy a bare board
+  // spent variety that was never the complaint.
+  const placesHere = new Set();
+  for (let seed = 1; seed <= 60; seed++) placesHere.add(HypergolicLevels.generateLevel(1, null, seed).locale.id);
+  assert.ok(placesHere.size > 1, `level 1 is still somewhere different run to run (${[...placesHere].join(",")})`);
+  const placesLater = new Set();
+  for (let seed = 1; seed <= 60; seed++) placesLater.add(HypergolicLevels.generateLevel(2, null, seed).locale.id);
+  assert.ok(placesLater.size > 1, `level 2 is still somewhere different run to run (${[...placesLater].join(",")})`);
 }
 
 console.log("All golden-path assertions passed.");

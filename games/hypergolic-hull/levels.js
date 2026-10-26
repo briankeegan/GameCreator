@@ -525,12 +525,17 @@
   // hazards in every single one, so the opening fight was never the same
   // question twice and never a clean look at the one thing on the board.
   const LEVEL_RULES = {
-    1: { enemies: 1, type: "interceptor", rock: 0, cloud: 0, mines: 0 },
+    // `places` is the pool this level may roll, not a pin — the Ironway is
+    // left out because that place IS boulders, drawn across the whole board
+    // behind the grid, and 91 of 300 seeds opened a run in there.
+    1: { enemies: 1, type: "interceptor", places: ["shallows", "void"], rock: 0, cloud: 0, mines: 0 },
   };
 
-  function localeFor(depth, variantId, runSeed) {
+  function localeFor(depth, variantId, runSeed, only) {
     const rng = seededRandom(depth * 6151 + (variantId ? variantId.length * 977 : 0) + (variantId || "x").charCodeAt(0) * 31 + runMix(runSeed));
-    const open = LOCALES.filter((l) => (LOCALE_FROM[l.id] || 1) <= depth);
+    const open = LOCALES.filter(
+      (l) => (LOCALE_FROM[l.id] || 1) <= depth && (!only || only.includes(l.id))
+    );
     const pool = open.length ? open : LOCALES;
     return pool[Math.floor(rng() * pool.length)];
   }
@@ -743,9 +748,22 @@
     const variant = BRANCH_VARIANTS.find((v) => v.id === variantId) || null;
     // WHERE this sector is — drives its look, its furniture, and how much
     // of everything it has (see LOCALES).
-    const locale = localeFor(depth, variantId, runSeed);
     // What this level has been TOLD to be, if anything (see LEVEL_RULES).
     const ruled = LEVEL_RULES[depth] || {};
+    // WHERE a sector is decides what is PAINTED on it, not just what is laid
+    // on it. "No ground" was read as the hazard list and the hazard list only,
+    // and the hazard list was empty — while the Ironway's backdrop went on
+    // drawing boulders across the whole board behind the grid. They are not
+    // hazards and you fly straight through them, which is worse than if they
+    // were: the board looked like cover and none of it was. 91 of 300 seeds
+    // opened a run in there.
+    //
+    // So the rule goes on WHICH PLACES a level may roll, not on the backdrop
+    // and not on a pinned locale. A place's look belongs to that place and
+    // stays its own; a level that has been told it is bare simply isn't
+    // dealt the places that are made of rock. Still rolled, still different
+    // run to run, still painted as wherever it landed.
+    const locale = localeFor(depth, variantId, runSeed, ruled.places);
     const variantSeedOffset = variant ? (BRANCH_VARIANTS.indexOf(variant) + 1) * 104729 : 0;
     const rng = seededRandom(depth * 2654435761 + variantSeedOffset + runMix(runSeed));
 
