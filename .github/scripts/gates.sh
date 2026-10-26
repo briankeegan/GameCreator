@@ -75,6 +75,11 @@ gate_room_props_floor_plates() {
   return $status
 }
 
+gate_sw_version() {
+  bash .github/scripts/check_sw_version.test.sh
+  node .github/scripts/check_sw_version.mjs
+}
+
 gate_art_index() {
   node .github/scripts/check_art_registry.mjs
 }
@@ -386,6 +391,7 @@ gate_slow() {
 
 GATES=(
   "engine tests:gate_engine_tests:games/"
+  "a shipped change reaches the player:gate_sw_version:games/"
   "room exits:gate_room_exits:games/"
   "shared-module wiring:gate_shared_module_wiring:games/"
   "doors can be entered:gate_doors_enterable:games/"
