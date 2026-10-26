@@ -27,6 +27,7 @@ typedef struct {
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   int32_t nBreakAt, breakAt[PLANBREAKS];   // a plan's breaks: the frame each is pressed from (readyNextOf), for the ledger (plans/gambit-next.md)
   int32_t planBroke;   // the garbage the plan converts beyond the board left alone (readyNextOf)
+  int32_t planTop, planMat, planContact, planUnder, planEndAt;   // the margin the plan leaves (planLanded); planTop -1 not read
   Judged j;
 } Outcome;
 
@@ -233,18 +234,41 @@ static void readyPlanOut(const Judged *j, int32_t *pLine, int32_t *pN, int32_t *
 static double contBoardLost(const Board *e, double give);   // (decide.c)
 static double readyShareMs;   // (search/break.c)
 static LOCAL int32_t planBreakN, planBreakAt[PLANBREAKS], planBroke;   // (the last readyNextOf's plan: the frame each break is pressed from, and what it converts)
+static LOCAL int32_t planMargin[5];   // (and the margin it leaves: top, material, contact, under, the frame its last swap is pressed by; top -1 not read)
+// THE MARGIN A PLAN LEAVES (plans/gambit-next.md 2): the board its last break leaves, run on until everything shown has landed and
+// settled -- its top, its material and its contact, read as a line's own landed board is (judge.c readyTop): a break is credited with
+// what it converts, not charged for what it spends before it lands
+static LOCAL Ctx *planCtx; static LOCAL Board *planCopy;
+static int planLanded(const Board *e, int32_t *m) {
+  planCtx = ctxOf(planCtx);
+  if (!planCopy) planCopy = nb_new();
+  if (!planCtx || !planCopy || !e) return 0;
+  cloneBoard(planCopy, e);
+  int32_t dt = imax(0, planCopy->clock - decQ.b->clock), last = 0;
+  Question q2 = decQ; q2.b = planCopy; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr].at -= dt; last = imax(last, q2.arr[q2.narr].at); q2.narr++; }
+  int root = rootOf(planCtx, &q2);
+  if (root < 0) return 0;
+  int n = last > 0 ? step(planCtx, root, MK_LONG, 0, 0, last) : root;
+  if (!liveNode(planCtx, n)) return 0;
+  int calm = settleOf(planCtx, n); if (liveNode(planCtx, calm)) n = calm;
+  const Board *lb = ensureBoard(planCtx, n);
+  if (!lb) return 0;
+  m[0] = topOn(lb); m[1] = materialOn(lb); contactOn(lb, &m[2], &m[3]);
+  return 1;
+}
 // (the cache's kind for a plan asked from a landing: 2 the next block's, READY_KIND_LAND + k the k-th later one -- rank.c readyNextFor)
 #define READY_KIND_LAND 10
 static LOCAL int32_t readyKind = 2;
 static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait) {
-  *extLost = NOT_ASKED; *extSpent = NOT_ASKED; *pN = 0; planBreakN = 0; planBroke = 0;
+  *extLost = NOT_ASKED; *extSpent = NOT_ASKED; *pN = 0; planBreakN = 0; planBroke = 0; planMargin[0] = -1;
   if (land == NOT_ASKED) return NOT_ASKED;
   Outcome *hit = cached(seq, n, settled, readyKind);
-  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; if (hit->ready == 1) readyPlanOut(&hit->j, pLine, pN, pRow1, pWait); planBreakN = hit->nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = hit->breakAt[k]; planBroke = hit->planBroke; return hit->ready; }
+  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; if (hit->ready == 1) readyPlanOut(&hit->j, pLine, pN, pRow1, pWait); planBreakN = hit->nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = hit->breakAt[k]; planBroke = hit->planBroke; planMargin[0] = hit->planTop; planMargin[1] = hit->planMat; planMargin[2] = hit->planContact; planMargin[3] = hit->planUnder; planMargin[4] = hit->planEndAt; return hit->ready; }
   if (clockOut()) return NOT_ASKED;
   JudgeOpts jo = { settled, decQ.tight, land, 1, 1, -1, 0, 1 };
   Outcome o;
-  memset(&o, 0, sizeof o); o.topLeft = -1;
+  memset(&o, 0, sizeof o); o.topLeft = -1; o.planTop = -1;
   judge(&decQ, seq, n, &jo, &o.j);
   if (o.j.late) return NOT_ASKED;
   o.ready = !o.j.dead && o.j.ready == 1;
@@ -257,7 +281,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
     static LOCAL Board *planEnd; if (!planEnd) planEnd = nb_new();
     int haveEnd = 0;
     Outcome e = promised(ext, en, settled, n, w0To, 0, 0, 0);
-    if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; o.nBreakAt = 0; o.breakAt[o.nBreakAt++] = w0To; o.planBroke = e.j.made.broke;
+    if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; o.nBreakAt = 0; o.breakAt[o.nBreakAt++] = w0To; o.planBroke = e.j.made.broke; o.planEndAt = e.j.endAt;
       if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; } } }
     // (A PLAN OF SEVERAL STEPS: the board the break leaves, once it has settled, asked again for a break in reach -- played where its
     // readiness finds it, and so on while each break puts the loss off -- as far as the board, the line's length and the clock allow: the
@@ -274,12 +298,13 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
       if (e.late) break;
       int32_t lost = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
       if (lost == NOT_ASKED || (lost != FOREVER && o.lostAt != FOREVER && lost <= o.lostAt)) break;
-      o.lostAt = lost; *extSpent = e.j.spent; o.planBroke = e.j.made.broke;
+      o.lostAt = lost; *extSpent = e.j.spent; o.planBroke = e.j.made.broke; o.planEndAt = e.j.endAt;
       if (o.nBreakAt < PLANBREAKS) o.breakAt[o.nBreakAt++] = mTo[nm - 1];
       haveEnd = 0; if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; } }
     }
     // (AND ON: past its last break the plan goes on as the survival search plays on from the board it leaves -- every plan ends the
     // same way, so a plan of breaks is never judged left alone where a line that only survives is judged played on)
+    { int32_t m[4]; if (haveEnd && !clockOut() && planLanded(planEnd, m)) { o.planTop = m[0]; o.planMat = m[1]; o.planContact = m[2]; o.planUnder = m[3]; } }
     if (haveEnd && o.lostAt != NOT_ASKED && o.lostAt != FOREVER && readyShareMs > 0 && !clockOut()) {
       double c = contBoardLost(planEnd, readyShareMs);
       if (c >= 1e9) o.lostAt = FOREVER; else if (c > o.lostAt) o.lostAt = (int32_t)c;
@@ -289,6 +314,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
   if (o.lostAt == NOT_ASKED) *extSpent = NOT_ASKED;
   o.j.spent = *extSpent;   // (kept with the plan's loss: the cache's own reading)
   planBreakN = o.nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = o.breakAt[k]; planBroke = o.planBroke;
+  planMargin[0] = o.planTop; planMargin[1] = o.planMat; planMargin[2] = o.planContact; planMargin[3] = o.planUnder; planMargin[4] = o.planEndAt;
   keep(seq, n, settled, readyKind, &o);
   return o.ready;
 }

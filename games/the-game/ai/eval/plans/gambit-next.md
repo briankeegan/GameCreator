@@ -14,7 +14,8 @@ The goal: never die from the garbage the game shows.
 1. **Proven first.** A line whose plan, played on the engine, meets every row shown before the board dies is proven. A proven line
    beats every unproven one.
 2. **Unproven: the most left to find a proof with.** Of lines not proven, the one that leaves the most of its scarcest resource at
-   once everything shown has landed (`marginOf`: room, material, window) wins, in rows; then the later loss. The survival search ranks the same way.
+   once everything shown has landed (`marginOf`: room, material, window) wins, in rows; then the later loss. A line with a plan is
+   read on the board its plan's last break leaves, so a break is credited with what it converts. The survival search ranks the same way.
    A line that dies before it could press anything ranks last. This replaces the window cap on the loss.
 3. **Search for the proof.** When nothing offered is proven, the decision's search time goes to the break on the board the best line
    leaves.
