@@ -528,7 +528,7 @@
     // `places` is the pool this level may roll, not a pin — the Ironway is
     // left out because that place IS boulders, drawn across the whole board
     // behind the grid, and 91 of 300 seeds opened a run in there.
-    1: { enemies: 1, type: "interceptor", places: ["shallows", "void"], rock: 0, cloud: 0, mines: 0 },
+    1: { enemies: 1, type: "cruiser", places: ["shallows", "void"], rock: 0, cloud: 0, mines: 0 },
   };
 
   function localeFor(depth, variantId, runSeed, only) {

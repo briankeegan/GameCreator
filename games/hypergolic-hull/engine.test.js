@@ -4411,8 +4411,8 @@ assert.deepStrictEqual(
     );
     assert.deepStrictEqual(
       (lvl.enemies || []).map((e) => e.type),
-      ["interceptor"],
-      `level 1, seed ${seed}: exactly one Interceptor and nothing else`
+      ["cruiser"],
+      `level 1, seed ${seed}: exactly one Cruiser and nothing else`
     );
     // AND NOTHING IS PAINTED ON IT EITHER. The hazard list was empty the
     // whole time the Ironway's backdrop was drawing boulders across the
