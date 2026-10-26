@@ -1656,3 +1656,7 @@ same frame, so it grows deeper until the block is down (search/ready.c landedBre
 Measured (`0edd5ea7`, the board-to-come search carried, 1209): **15** -- combo_storm 6, factory 5, large_garbage 4; actions 6, no-break
 2, panels 1; two lost within 500 frames of the end. Found 1302 of 18106 (1278 before): the carry barely moved it. Logged now with
 landed=: the depth its beam reaches and its carried lines played again (/dDEPTH/rPLAYED/IN), counted in the summary.
+Measured (`ef41da2b`, logging, 1210): 15, 1209's games. The board-to-come search's beam: 2 deep (90% under 3), its carried lines 65795
+of 97396 played again -- the carry works, the search had no time: a third of what the proposers had left after the searches.
+THE BOARD TO COME IN THE BREAK SEARCH'S TIME: with a block due within 240 frames the break search's job gives the board as it is 60% of
+its share and the board to come the rest (answer.c breakRun, search/ready.c landedRun); the proposers offer its line.

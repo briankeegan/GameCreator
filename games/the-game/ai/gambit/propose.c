@@ -35,8 +35,6 @@ static int32_t popLeft(const Board *b) {
   return t;
 }
 
-#define LANDED_AHEAD 240   // the frames ahead a block's landing is searched for the break it will need (search/ready.c landedBreak)
-#define LANDED_MS 40       // and the time it is given
 #define MAXSTARTS 8
 // THE SEARCHES, run once a decision: the planner, the extension of a chain falling or a slab popping, readiness, levelling
 typedef struct {
@@ -199,11 +197,8 @@ static void searchAll(const Read *R, Found *S) {
     double m3 = timeLeftMs() / 2 < READY_LINE_MS ? timeLeftMs() / 2 : READY_LINE_MS;
     S->haveRl = readyLines(&decQ, lastLand, m3 > 1 ? m3 : 1, S->rl, &S->rlN, &S->rlAt);
   }
-  // (the break the next block will need, searched on the board it lands on: while it is still to come, every decision asks it)
-  if (decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) {
-    double m4 = timeLeftMs() / 3 < LANDED_MS ? timeLeftMs() / 3 : LANDED_MS;
-    if (m4 > 1) S->haveLb = landedBreak(&decQ, decF.next + 2, m4, S->lb, &S->lbN);
-  }
+  // (the break the next block will need, searched on the board it lands on in the break search's time: search/ready.c landedRun)
+  if (landedOk && landedOutN > 0) { S->haveLb = 1; S->lbN = landedOutN; for (int k = 0; k < landedOutN; k++) S->lb[k] = landedOut[k]; }
   S->lvG = !R->under && R->readyAt != NOT_ASKED && !(S->haveRd && !S->rd.ready && S->rd.setup) ? level(&decQ, R->readyAt ? R->readyAt : NOT_ASKED) : 0;
 }
 
