@@ -5,45 +5,35 @@ is lost. Each decision plays out, on the engine, what follows each line, and pic
 
 ## Where it stands
 
-The decision runs: read, search, judge every line and its plan, categorise, ledger, rank, press, carry. Every predicted board
-matches the game, and the order is one order. The best run is 1266, at 17/24.
-
-## Fixes from run 1267 (9/24)
-
-Solvency went into the order wrongly in two ways, and both are fixed:
-
-1. **The ledger's model of death.** It counted a row that lands with no room as lost at once. The real board dies only once it is
-   topped out, its stop is spent and the stack rises. So factory and large_garbage read insolvent all game, and the key compared
-   noise. **Fix:** death is the plan's own loss frame, played on the engine. A line is solvent when its plan still stands a break's
-   time after the last row shown has landed. Otherwise it is short by the rows due by then, less those its plan paid by then.
-2. **The waste key ahead of the category.** A line that broke garbage, with a three somewhere beside it, lost to lines that break
-   nothing. **Fix:** the waste key comes after the category. Within a category, a wasted three still loses.
+The decision runs: read, search, judge every line and its plan, categorise, the save, rank, press, carry; every line's ledger is
+logged. Every predicted board matches the game, and the order is one order. The best run is 1266, at 17/24.
 
 ## The order (rank.c compareJudged)
 
-1. **Survival:** the line that lives; else the later loss, unless lost alike (the same band of a break's time). Never choose
-   death.
-2. **Solvency:** solvent before short; of two short, fewer rows unpaid, then lost later.
-3. **Category:** lives, plan, breaks, ready, buys, dies. Then **no wasted three**: within a category, a line that wastes one ranks
-   after one that does not. A line that wastes one and is still first is the board's save, and the frame loop reads that verdict.
-4. **The board's own chain**, then **the mode's list.**
+1. **Survival:** the line that lives; else the later loss, unless lost alike (the same band of a break's time). A loss not known,
+   the hold's, is alike with nothing. Never choose death.
+2. **Category:** lives, plan, breaks, ready, buys, dies.
+3. **The board's own chain**, then 4. **the mode's list.** A three that breaks nothing is in the order only where the save found the
+   board needs it (decide.c): played to its end and searched on, it lives, or outlasts the best line without it by a break's time.
+   Every other line that wastes one is taken out before the order.
 5. **Value for moves**, gains less costs in frames:
-   - **Gains:**
-     - time bought over the hold;
-     - a break's time for each row converted, each block thrown, and each plan break over the hold's;
-     - the actions taken off the next break's walk.
-   - **Costs:**
-     - the window's frames for each action;
-     - a break's time for each row of panels spent beyond what the line converts.
+   - **Gains:** time bought over the hold; a break's time for each row converted and each block thrown; the actions taken off the
+     next break's walk.
+   - **Costs:** the window's frames for each action; a break's time for each row of panels spent beyond what the line converts.
 
-## The ledger (rank.c ledgerOf)
+## The ledger (rank.c ledgerOf), read, not ranked
 
 - **Rows due:** every row of every block shown, at its landing.
 - **Rows paid:** the line's own breaks, then each break of its plan, a break's time after it is pressed.
 - **Death:** the plan's loss frame.
-- **Logged** for every candidate as `sol=paid/due:short@frame`.
+- **Logged** for every candidate as `sol=paid/due:short@frame`, and read by the loss reader. It goes back into the order one key at a
+  time, a run of 24 each, once the order without it plays 1266's games again.
 
-## Next (plans/gambit-next.md, for review)
+## The survival search (search/outlive.c)
+
+Of the lines it grows: the band of its loss, then margin, then the loss net of what it spends, then actions.
+
+## Next (plans/gambit-next.md)
 
 - **Each plan's break timed at every landing:** under attack, material comes only from breaking, and a break after more has
   landed can convert more.

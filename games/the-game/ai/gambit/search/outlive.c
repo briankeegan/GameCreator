@@ -7,8 +7,8 @@
 // FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn: lostAlone's answer, NOT_ASKED when there is none).
 
 #define OUT_SEQ 16
-typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts, t, walk; double margin; Moved last; } OItem;   // t: the line's end, frames from the root; acts: the cursor's actions for its swaps, from the root's cursor; last: the pairs its swaps moved (judge.c Moved)
-typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts, endAt, walk; double margin; } Outlived;
+typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts, t; double margin; Moved last; } OItem;   // t: the line's end, frames from the root; acts: the cursor's actions for its swaps, from the root's cursor; last: the pairs its swaps moved (judge.c Moved)
+typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts, endAt; double margin; } Outlived;
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
 // (THE RESERVE: with an input allowance said, the line kept is the latest lost of those that leave the next landing a break's walk -- the
@@ -34,9 +34,6 @@ static double outMargin(const Board *b, int32_t endAt, int acts) {
 static int outBefore(const OItem *it, const Outlived *o) {
   int32_t bi = outBand(it->lost), bo = outBand(o->lostAt);
   if (bi != bo) return bi > bo;
-  // (the supply it leaves: the next break's walk on the board it ends on (break.c walkOfBoard), nearer first -- the breaks the board can
-  // still make are what keeps it solvent; none in reach last)
-  { int32_t wi = it->walk >= 0 ? it->walk : 1 << 20, wo = o->walk >= 0 ? o->walk : 1 << 20; if (wi != wo) return wi < wo; }
   if (it->margin != o->margin) return it->margin > o->margin;
   // (then the later loss net of what it spends, as the order's net reads it (rank.c lostNetOf): the window is time)
   double ni = it->lost == FOREVER ? 1e18 : it->lost - it->acts * actionFrames(), no = o->lostAt == FOREVER ? 1e18 : o->lostAt - o->acts * actionFrames();
@@ -49,7 +46,7 @@ static void poolAdd(OPool *p, const OItem *it) {
   if (at >= OUT_POOL) return;
   int last = p->n < OUT_POOL ? p->n : OUT_POOL - 1;
   for (int i = last; i > at; i--) p->o[i] = p->o[i - 1];
-  Outlived *o = &p->o[at]; o->set = 1; o->acts = it->acts; o->endAt = it->t; o->margin = it->margin; o->walk = it->walk; o->nseq = it->nseq; o->lostAt = it->lost;
+  Outlived *o = &p->o[at]; o->set = 1; o->acts = it->acts; o->endAt = it->t; o->margin = it->margin; o->nseq = it->nseq; o->lostAt = it->lost;
   for (int s2 = 0; s2 < it->nseq; s2++) o->seq[s2] = it->seq[s2];
   if (p->n < OUT_POOL) p->n++;
 }
@@ -101,7 +98,6 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     sd.n = n; sd.t = NODE(x, n)->t - NODE(x, root)->t;
     sd.lost = lostAlone(x, n, imax(to, NODE(x, n)->t + rest));
     sd.margin = outMargin(ensureBoard(x, n), sd.t, sd.acts);
-    { const Board *eb = ensureBoard(x, n); sd.walk = eb && garbageOn(eb) ? walkOfBoard(eb) : -1; }
     if (sd.lost == FOREVER && windowKeepsBreak(sd.t, sd.acts) && lineCheckOn(q, sd.seq, sd.nseq, 0, CHECK_WASTE)) { poolAdd(&bestP, &sd); return bestP.o[0]; }
     poolAdd(windowKeepsBreak(sd.t, sd.acts) ? &bestP : &overP, &sd);
   }
@@ -157,7 +153,6 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
       top[i].t = NODE(x, top[i].n)->t - NODE(x, root)->t;
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
       top[i].margin = outMargin(ensureBoard(x, top[i].n), top[i].t, top[i].acts);
-      { const Board *eb = ensureBoard(x, top[i].n); top[i].walk = eb && garbageOn(eb) ? walkOfBoard(eb) : -1; }
       // (a line that lives within the reserve is the answer at once, through the one check)
       if (top[i].lost == FOREVER && windowKeepsBreak(top[i].t, top[i].acts)) {
         if (lineCheckOn(q, top[i].seq, top[i].nseq, 0, CHECK_WASTE)) { poolAdd(&bestP, &top[i]); return bestP.o[0].lostAt == FOREVER ? bestP.o[0] : poolFirst(&bestP, q); }
