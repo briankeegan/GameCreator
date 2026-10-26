@@ -62,12 +62,14 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   // (CARRIED TO THE LANDING: the lines the last decision's search was growing on the same board to come -- the same block, landing on
   // the same frame -- are its beam's seeds, so the search grows deeper decision after decision until the block is down)
   static LOCAL Broke lbr; static Paths landedSeeds;
-  int32_t landsOn = q->b->clock + wait;
-  int carried = frontierResumeKeyed(FR_LANDED, landsOn, &landedSeeds) && landedSeeds.n > 0;
+  int32_t landsOn = q->b->clock + wait, shape = 0, first = -1;
+  for (int a = 0; a < q->narr; a++) if (first < 0 || q->arr[a].at < q->arr[first].at) first = a;
+  if (first >= 0) shape = q->arr[first].width * 64 + q->arr[first].height;
+  int carried = frontierResumeKeyed(FR_LANDED, landsOn, shape, &landedSeeds) && landedSeeds.n > 0;
   double old = clockShareBegin(nowMs() + ms);
   breakMoves(&q2, 0, carried ? &landedSeeds : 0, &lbr);
   clockShareEnd(old);
-  frontierKeepKeyed(FR_LANDED, &lbr.keepOut, landsOn);
+  frontierKeepKeyed(FR_LANDED, &lbr.keepOut, landsOn, shape);
   landedDeep = 0; for (int i = 0; i < lbr.keepOut.n; i++) landedDeep = imax(landedDeep, lbr.keepOut.len[i]);
   landedRes = lbr.resPlayed; landedIn = lbr.resIn;
   landedWhy = 4;

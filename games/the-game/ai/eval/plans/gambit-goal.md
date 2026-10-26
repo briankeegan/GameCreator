@@ -1682,3 +1682,7 @@ frontiers"); the survival search, which began afresh every decision, now plays i
 Measured (`0c28768c`, the one frontier store, 1216): 12 -- combo_storm 6, factory 3, large_garbage 3; actions 8, panels 4. C checks red:
 a name the store took (frontHeld) was the C checks' own. Carried in: break 448299 of 581835, plan 151096 of 180258, survive 302127 of
 369598, landed 86915 of 360216 (6464 decisions its block's frame had moved).
+Measured (`a7d356b4`, the store's checks building, 1217): see below.
+THE LANDED FRONTIER KEYED TO ITS BLOCK: the frame a block lands is an estimate a clear's stop or a raise moves (6464 decisions let the
+carry go for it in 1216); the same block is now the same shape landing within KEY_SLACK (120) frames of where it was to
+(search/frontier.c frontierResumeKeyed).

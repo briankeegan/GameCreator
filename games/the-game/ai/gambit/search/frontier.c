@@ -8,7 +8,7 @@ enum { FR_BREAK, FR_PLAN, FR_LANDED, FR_SURVIVE, NFRONT };
 static const char *const frontName[NFRONT] = { "break", "plan", "landed", "survive" };
 typedef struct {
   int32_t set, gid, anchorRow, anchorCol, anchorId, id, playedHold, played, nhanded, handed[MAXLINE], ntoward, toward[MAXPATH];
-  int32_t keyed, key;   // keyed: carried while `key` holds, not re-rooted (FR_LANDED: the frame its block lands)
+  int32_t keyed, key, key2;   // keyed: carried while its key holds, not re-rooted (FR_LANDED: the frame its block lands, near enough, and the block's shape)
   Paths paths;
 } Kept;
 static Kept theFront[NFRONT];
@@ -64,11 +64,14 @@ static void frontierKeep(int kind, const Paths *paths, int moveKind, int32_t mov
   }
 }
 // (and one keyed to something other than the board: carried while `key` holds, its lines as they were)
-static void frontierKeepKeyed(int kind, const Paths *paths, int32_t key) {
+// (KEYED TO A BLOCK ON ITS WAY: the frame it lands is an estimate -- a clear's stop or a raise moves it -- so the same block is the same
+// shape landing within KEY_SLACK frames of where it was to)
+#define KEY_SLACK 120
+static void frontierKeepKeyed(int kind, const Paths *paths, int32_t key, int32_t key2) {
   Kept *K = &theFront[kind];
   memset(K, 0, sizeof *K);
   if (!paths || !paths->n) return;
-  K->set = 1; K->keyed = 1; K->key = key; K->paths = *paths;
+  K->set = 1; K->keyed = 1; K->key = key; K->key2 = key2; K->paths = *paths;
 }
 // THE WAY OUT: frontier `kind` re-rooted on board `b` into `out`; `digs`: let go when the garbage it dug toward is no longer the lowest;
 // `rest`, when not 0, the rest of the line toward a break played (the break frontier's). 0 when nothing came on.
@@ -103,12 +106,12 @@ static int frontierResume(int kind, const Board *b, int32_t lineFrom, int32_t li
   return 1;
 }
 // (a keyed frontier out: its lines as they were, while its key holds)
-static int frontierResumeKeyed(int kind, int32_t key, Paths *out) {
+static int frontierResumeKeyed(int kind, int32_t key, int32_t key2, Paths *out) {
   out->n = 0;
   Kept *K = &theFront[kind];
   frontLinesHeld[kind] = K->set ? K->paths.n : 0; frontLinesIn[kind] = 0; frontLetGo[kind] = 0;
   if (!K->set || !K->paths.n || !K->keyed) return 0;
-  if (K->key != key) { frontLetGo[kind] = 3; return 0; }
+  if (K->key2 != key2 || K->key - key > KEY_SLACK || key - K->key > KEY_SLACK) { frontLetGo[kind] = 3; return 0; }
   *out = K->paths; frontLinesIn[kind] = out->n;
   return 1;
 }
