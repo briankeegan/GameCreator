@@ -327,11 +327,8 @@ static int lineWalk(const Judge *J) {
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), walkLeft()); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
   return n;
 }
-// (A BREAK'S WALK: the actions the nearest break takes, nr swaps away by the shape math -- NEAR_ACTS a swap and the swap that breaks; the
-// one measure of a walk every reader asks: the window plan's break walk (decide.c), the save a line leaves (saveKept))
-static int walkOfNear(int32_t nr) { return imin(LAND_RESERVE * 2, imax(4, NEAR_ACTS * nr + 2)); }
-// (THE SAVE A LINE LEAVES: the nearest break on the board it leaves once everything shown has landed (judge.c readyNear; the board as it
-// is where that was not read), its walk pressed so it is done before that board is lost, a cell every TAP_GAP: whether the window has
+// (THE SAVE A LINE LEAVES: the nearest break on the board it leaves once everything shown has landed (judge.c readyNear), its walk
+// measured there from where the line leaves the cursor (readyWalk; the decision's break walk where that board was not read), pressed so it is done before that board is lost, a cell every TAP_GAP: whether the window has
 // those actions then, every action before aged as the window ages. A board with no break in reach has no save; one that lives needs none)
 static double lostOf(const Judge *x);
 static int saveKept(const Judge *J) {
@@ -341,7 +338,7 @@ static int saveKept(const Judge *J) {
   int32_t nr = J->o.j.readyNear >= 0 ? J->o.j.readyNear : J->o.nearAfter;
   if (nr < 0) return 1;
   if (nr >= NEAR_MISS) return 0;
-  int walk = walkOfNear(nr);
+  int walk = J->o.j.readyWalk > 0 ? J->o.j.readyWalk : breakWalk;
   int32_t end = J->hold ? 0 : J->o.j.endAt, spent = J->hold ? 0 : J->o.j.spent, due = (int32_t)lost - walk * TAP_GAP;
   return allowLeftAt(due > end ? due : end, spent) >= walk;
 }

@@ -114,6 +114,17 @@ static int nearLineOf(const Bits *B, int32_t *seq, int *nseq) {
 }
 static int breakNearLine(const Board *b, int32_t *seq, int *nseq) { bitsOf(b, &scratchBits); return nearLineOf(&scratchBits, seq, nseq); }
 static int breakNear(const Board *b) { return breakNearLine(b, 0, 0); }
+// A BREAK'S WALK, MEASURED: the cursor's actions over the nearest break's line on board b (breakNearLine), swap after swap from where
+// the cursor is, as the frame loop walks it -- the one measure of a walk every reader asks (the window plan's break walk, decide.c; the
+// save a line leaves, rank.c saveKept); -1 with none in reach
+static int32_t walkOfBoard(const Board *b) {
+  int32_t seq[MAXPATH]; int nseq = 0;
+  bitsOf(b, &scratchBits);
+  if (nearLineOf(&scratchBits, seq, &nseq) >= NEAR_MISS || nseq <= 0) return -1;
+  int r = b->curRow, c = b->curCol, acts = 0;
+  for (int i = 0; i < nseq; i++) { acts += actionsFor(r, c, CR(seq[i]), CC(seq[i]), walkLeft() - acts); r = CR(seq[i]); c = CC(seq[i]); }
+  return acts;
+}
 // A PERCHED BLOCK (perchedDrops): a garbage block whose bottom row is held up by panels in some of the columns under it and by nothing in
 // the others -- a hollow under it. Its supports walked along their row past the block's nearer edge let it down, and the stack's height
 // with it. A block that sits on garbage in any column under it is not perched: there is nothing to walk out. The lines, lowest block

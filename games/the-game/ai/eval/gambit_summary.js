@@ -45,15 +45,15 @@ var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over
 var kept = { n: 0, held: 0 };
 // LOSSES BY THE PIECE THAT FAILED: a lost game read from its last line that broke garbage to its end (the dead phase), the first that
 // holds its tag -- order: a break the search found was not played, in 3 decisions or a quarter of them (the order's key that put another first); window: no break found,
-// the input window at 5 or fewer through most of it; board: no break found with the window open, the board the lines left with none in
-// reach -- and the run-up, the 600 frames before that last break: what was played, the panels and the window then
+// the input window at 5 or fewer through most of it; reach: no break found, the break search cut by the clock in most of it -- a
+// break may be there, past where it got; board: no break found, the search done -- none on the boards the lines left -- and the run-up, the 600 frames before that last break: what was played, the panels and the window then
 var causes = { by: {}, list: [] };
 function causeOf(game, pattern, at, lines) {
   var ds = [], lastT = -1;
   lines.forEach(function (l) {
     if (l.indexOf('GAMBITD ') !== 0) return;
     var t = +l.split(' ')[1];
-    if (t < lastT || t > at) return;   // (a decision asked again for a frame already past: the first is the one played)
+    if (t <= lastT || t > at) return;   // (a decision asked again for a frame already asked, or one past: the first is the one played)
     lastT = t; ds.push({ t: t, l: l });
   });
   if (!ds.length) return;
@@ -62,14 +62,17 @@ function causeOf(game, pattern, at, lines) {
   var lb = -1;
   ds.forEach(function (d, i) { if ((num(d.l, 'broke') || 0) > 0) lb = i; });
   var dead = ds.slice(lb + 1), t0 = lb >= 0 ? ds[lb].t : 0;
-  var found = 0, unplayed = 0, keys = {}, low = 0, drops = 0, ready = 0, minAllow = 99;
+  var found = 0, unplayed = 0, keys = {}, low = 0, drops = 0, ready = 0, minAllow = 99, cutN = 0, deep = 0;
   dead.forEach(function (d) {
     var a = num(d.l, 'allow'); if (a !== null && a >= 0) { if (a < minAllow) minAllow = a; if (a <= 5) low++; }
     if (/ br=1\//.test(d.l)) { found++; unplayed++; var k = str(d.l, 'sooner').split(':k')[1] || str(d.l, 'carryBy').split(':k')[1] || str(d.l, 'play'); keys[k] = (keys[k] || 0) + 1; }
     if (/ drop=1/.test(d.l)) drops++;
+    if (/ br=\S*\/cut/.test(d.l)) cutN++;
+    var dp = num(d.l, 'brDeep'); if (dp !== null && dp > deep) deep = dp;
     var r = /rdy=(\d+)\//.exec(d.l); if (r && +r[1] > 0) ready++;
   });
-  var tag = unplayed >= 3 || (dead.length && unplayed / dead.length >= 0.25) ? 'order' : dead.length && low / dead.length > 0.5 ? 'window' : 'board';
+  var tag = unplayed >= 3 || (dead.length && unplayed / dead.length >= 0.25) ? 'order' : dead.length && low / dead.length > 0.5 ? 'window' :
+            dead.length && cutN / dead.length > 0.5 ? 'reach' : 'board';
   var pre = ds.filter(function (d) { return d.t >= t0 - 600 && d.t <= t0; }), plays = {};
   pre.forEach(function (d) { var p = str(d.l, 'play'); plays[p] = (plays[p] || 0) + 1; });
   var top = Object.keys(plays).sort(function (x, y) { return plays[y] - plays[x]; }).slice(0, 4).map(function (p) { return p + ' ' + plays[p]; }).join(', ');
@@ -77,6 +80,7 @@ function causeOf(game, pattern, at, lines) {
   causes.by[tag] = (causes.by[tag] || 0) + 1;
   causes.list.push({ game: game, at: at, tag: tag, why: 'last break ' + t0 + ', then ' + dead.length + ' decisions' +
     (unplayed ? ', a break found and not played ' + unplayed + ' (' + Object.keys(keys).map(function (k) { return k + ' x' + keys[k]; }).join(', ') + ')' : ', no break found') +
+    ', the search cut by the clock ' + cutN + ' (its lines ' + deep + ' deep)' +
     ', window min ' + minAllow + ' (at 5 or fewer ' + low + '), ready at the landing ' + ready + ', drops played ' + drops +
     ', panels ' + beg(dead, 'pan') + ' to ' + end(dead, 'pan') +
     '; the run-up: ' + (top || '-') + ', panels ' + beg(pre, 'pan') + ' to ' + end(pre, 'pan') + ', window ' + beg(pre, 'allow') + ' to ' + end(pre, 'allow') });
@@ -278,7 +282,8 @@ console.log('SURVIVED ' + all + '/' + games);
 { var tags = Object.keys(causes.by).sort(function (a, b) { return causes.by[b] - causes.by[a]; });
   console.log('losses by the piece that failed: ' + (tags.map(function (k) { return k + ' x' + causes.by[k]; }).join(', ') || '-') +
               ' (from the last line that broke garbage to the end -- order: a break found was not played, 3 times or a quarter of the decisions; window: no break found, the input ' +
-              'window at 5 or fewer through most of it; board: no break found with the window open, none in reach on the boards the lines left)');
+              'window at 5 or fewer through most of it; reach: no break found, the search cut by the clock in most of it; board: no break found, ' +
+              'the search done, none on the boards the lines left)');
   causes.list.forEach(function (c) { console.log('  lost ' + c.game + ' at ' + c.at + ': ' + c.tag + ' -- ' + c.why); }); }
 Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') +
   '; its first aim ' + t.head + ': ' + t.first + (t.all ? ' (' + (100 * t.first / t.all).toFixed(1) + '%)' : '')); });

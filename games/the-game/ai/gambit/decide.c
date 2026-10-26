@@ -56,7 +56,7 @@ static int readBoard_(Read *R) {
     } }
   // (and its walk: the nearest break's on this board by the shape math, two actions a swap -- a swap and a cell -- with the swap that
   // breaks; nothing on the board yet, a break's walk as measured)
-  { int32_t nr = garbageOn(decQ.b) ? nearOf(decQ.b) : NEAR_MISS; breakWalk = nr < NEAR_MISS ? walkOfNear(nr) : LAND_RESERVE; }
+  { int32_t w = garbageOn(decQ.b) ? walkOfBoard(decQ.b) : -1; breakWalk = w > 0 ? w : LAND_RESERVE; }
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
   // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
   factSet(F, FACT_ENEMY_NONE, !theOpp.has);
