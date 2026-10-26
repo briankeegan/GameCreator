@@ -340,6 +340,9 @@ static Ctx *ctxOf(Ctx *x) {
 }
 // THE QUESTION: the board a decision is made on, the raise in hand and the garbage on its way -- what every search roots its lines at.
 typedef struct { Board *b; int32_t holdLeft, holdStarted, narr; Arr arr[MAXARR]; int32_t tight; } Question;
+// (THE ROWS STILL COMING after frame `after` from the question: what a board read before everything shown has landed has not yet lost of
+// its room -- plans/gambit-next.md 2, every margin read as if everything shown has landed)
+static int32_t rowsComing(const Question *q, int32_t after) { int32_t r = 0; for (int i = 0; i < q->narr; i++) if (q->arr[i].at > after) r += imax(1, q->arr[i].height); return r; }
 // A search's root, made from the question: every node before it is let go.
 static int rootOf(Ctx *x, const Question *q) {
   ns_reset(x);

@@ -25,11 +25,13 @@ typedef struct { int32_t n; Outlived o[OUT_POOL]; } OPool;
 // clearing the panels the next break is made of spends the board's life, not saves it)
 static int32_t rankSave;   // (rank.c: the frames one break takes)
 static int32_t outBand(int32_t lost) { return lost == FOREVER ? 0x7fffffff : lost / imax(1, rankSave > 0 ? rankSave : 60); }
-static double outMargin(const Board *b, int32_t endAt, int acts) {
+static double outMargin(const Question *q, const Board *b, int32_t endAt, int acts) {
   if (!b) return -1;
+  // (as if everything shown has landed: the rows still coming after the line's end counted against its room -- the order's own reading)
+  int32_t top = topOn(b) + rowsComing(q, endAt);
   int32_t contact, under; contactOn(b, &contact, &under);
   double win = winCoverShare(endAt, acts, 0);
-  return marginKeyOf((12 - topOn(b)) / 12.0, (double)materialOn(b) / W / 12.0, win < 0 ? 1 : win, under > 0 ? (double)contact / under : 1);
+  return marginKeyOf((12 - top) / 12.0, (double)materialOn(b) / W / 12.0, win < 0 ? 1 : win, under > 0 ? (double)contact / under : 1);
 }
 // (the order's own way, plans/gambit-next.md 2: a line that lives first; one lost within a break's time last; then the more of what runs
 // out first, then of the next (core/nodes.h marginKeyOf, the order's own key); then the later loss in bands of a break's time)
@@ -104,7 +106,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     outSeedPlayed++;
     sd.n = n; sd.t = NODE(x, n)->t - NODE(x, root)->t;
     sd.lost = lostAlone(x, n, imax(to, NODE(x, n)->t + rest));
-    sd.margin = outMargin(ensureBoard(x, n), sd.t, sd.acts);
+    sd.margin = outMargin(q, ensureBoard(x, n), sd.t, sd.acts);
     if (sd.lost == FOREVER && windowKeepsBreak(sd.t, sd.acts) && lineCheckOn(q, sd.seq, sd.nseq, 0, CHECK_WASTE)) { poolAdd(&bestP, &sd); return bestP.o[0]; }
     poolAdd(windowKeepsBreak(sd.t, sd.acts) ? &bestP : &overP, &sd);
   }
@@ -159,7 +161,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     for (int i = 0; i < nkeep; i++) {
       top[i].t = NODE(x, top[i].n)->t - NODE(x, root)->t;
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
-      top[i].margin = outMargin(ensureBoard(x, top[i].n), top[i].t, top[i].acts);
+      top[i].margin = outMargin(q, ensureBoard(x, top[i].n), top[i].t, top[i].acts);
       // (a line that lives within the reserve is the answer at once, through the one check)
       if (top[i].lost == FOREVER && windowKeepsBreak(top[i].t, top[i].acts)) {
         if (lineCheckOn(q, top[i].seq, top[i].nseq, 0, CHECK_WASTE)) { poolAdd(&bestP, &top[i]); return bestP.o[0].lostAt == FOREVER ? bestP.o[0] : poolFirst(&bestP, q); }

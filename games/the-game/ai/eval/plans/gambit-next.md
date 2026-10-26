@@ -83,3 +83,8 @@ line short at once by a block shown (**demand**).
   rows over every line). The piece: step 5. No plan from a later landing was ever kept (0 in every log): waiting for one, the board
   dies first. And a plan's later breaks were asked only at the last landing, so a plan stopped after one break wherever the board died
   before it. Fixed: each later break is asked from the last landing back, the latest in reach kept (lands=…/earlier in the log).
+- 1282, 11/24, 1281's frames: the later landings never needed (0 earlier in every log). One mode at a time now: combo_storm. In
+  combo_storm-8 long lines (toward, 8 swaps; clear, 14) were played over the hold on room they did not have -- read on the board at
+  the line's end, before the garbage on its way had landed (toward 4.5 against the hold's 0.5) -- and spent the window from 25 to 3.
+  Fixed: a margin read before everything has landed counts the rows still coming against its room, in the order and the survival
+  search alike.

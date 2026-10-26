@@ -447,7 +447,9 @@ static int coverOf(const Judge *J) {
 static int32_t topOn(const Board *b);
 static int32_t marginKey(const Judge *J) {
   int plan = J->planMargin[0] >= 0 && J->extSpent != NOT_ASKED;
-  int32_t t = plan ? J->planMargin[0] : J->o.j.readyTop >= 0 ? J->o.j.readyTop : J->o.topLeft;
+  // (read once everything shown has landed: a line's landed board (readyTop), or its plan's; else the board it ends on, with the rows
+  // still coming after its end counted against its room -- never a board that has not yet taken what is on its way)
+  int32_t t = plan ? J->planMargin[0] : J->o.j.readyTop >= 0 ? J->o.j.readyTop : J->o.topLeft >= 0 ? J->o.topLeft + rowsComing(&decQ, J->hold ? 0 : J->o.j.endAt) : -1;
   int32_t m = plan ? J->planMargin[1] : J->o.j.readyMat >= 0 ? J->o.j.readyMat : J->o.matLeft;
   int32_t contact = plan ? J->planMargin[2] : J->o.j.readyContact, under = plan ? J->planMargin[3] : J->o.j.readyUnder;
   // (THE WINDOW AS THE DUES ASK IT: of the rows due, the share the window still covers a break's walk for (core/nodes.h windowCover),
@@ -456,7 +458,7 @@ static int32_t marginKey(const Judge *J) {
   int32_t endAt = plan ? J->planMargin[4] : J->hold ? 0 : J->o.j.endAt, spent = plan ? J->extSpent : J->hold ? 0 : J->o.j.spent;
   int32_t paid = J->hold ? 0 : imax(0, J->apBroke) / W + (plan ? J->planBreaks : 0);
   double win = winCoverShare(endAt, spent, paid);
-  if (t < 0 || m < 0) { t = topOn(decQ.b); m = materialOn(decQ.b); contactOn(decQ.b, &contact, &under); win = winCoverShare(0, 0, 0); }
+  if (t < 0 || m < 0) { t = topOn(decQ.b) + rowsComing(&decQ, 0); m = materialOn(decQ.b); contactOn(decQ.b, &contact, &under); win = winCoverShare(0, 0, 0); }
   return marginKeyOf((MARGIN_ROWS - t) / (double)MARGIN_ROWS, (double)m / W / MARGIN_ROWS, win < 0 ? 1 : win, under > 0 ? (double)contact / under : 1);
 }
 // (LOST ALIKE: lost in the same break's time, counted back from the latest loss of the lines ranked together (rankLostRef, sortJudged)
