@@ -541,7 +541,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the floor's raise: the rows asked, how many leave a break once everything lands, how many the board lives through -- or, asked
   // while the board is busy, -1 a cascade, -2 the game's raise not allowed)
   L_s(" sv="); L_i(__atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? 1 : 0); if (surviveAsked) L_s("/asked");   // (the survival job finished this decision; the backup asked of it)
-  if (landedWhy >= 0) { L_s(" landed="); L_i(landedWhy); landedWhy = -1; }   // (the break on the board to come: 0 found, 1 no root, 2 lost before it lands, 3 no garbage then, 4 none found)
+  if (landedWhy >= 0) { L_s(" landed="); L_i(landedWhy); if (landedWhy == 0 || landedWhy == 4) { L_s("/d"); L_i(landedDeep); L_s("/r"); L_i(landedRes); L_s("/"); L_i(landedIn); } landedWhy = -1; }   // (the break on the board to come: 0 found, 1 no root, 2 lost before it lands, 3 no garbage then, 4 none found)
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1");

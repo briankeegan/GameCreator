@@ -39,7 +39,8 @@ static Readied readyFor(const Question *q, double ms) {
 // is down. Its line, as the board stands now, is the proposer's to offer and the judge's to try: pressed early, its swaps meet the block
 // as the judge plays them. 1 and the line; 0 none (nothing coming, the board lost first, no garbage on it then, none found)
 static Board *landedB;
-static int32_t landedWhy = -1;   // (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found; -1 not asked)
+static int32_t landedWhy = -1, landedDeep, landedRes, landedIn;   // (the depth its beam reached, its carried lines played again of those carried in)
+// (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found; -1 not asked)
 static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path, int *n) {
   *n = 0; landedWhy = 1;
   Ctx *x = readyCtx = ctxOf(readyCtx);
@@ -67,6 +68,8 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   breakMoves(&q2, 0, carried ? &landedKeep : 0, &lbr);
   clockShareEnd(old);
   landedKeep = lbr.keepOut; landedFor = landsOn;
+  landedDeep = 0; for (int i = 0; i < lbr.keepOut.n; i++) landedDeep = imax(landedDeep, lbr.keepOut.len[i]);
+  landedRes = lbr.resPlayed; landedIn = lbr.resIn;
   landedWhy = 4;
   if (lbr.pathLen <= 0) return 0;
   landedWhy = 0;

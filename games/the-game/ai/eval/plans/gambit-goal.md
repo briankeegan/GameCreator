@@ -1653,3 +1653,6 @@ Measured (`fe8e28f4`, the break on the board to come, 1208): **14** -- combo_sto
 no-break 1. Asked 17829 times: 1278 found, 10570 none in its 40 ms, 5716 the board lost before the block lands.
 CARRIED TO THE LANDING: the board-to-come search's beam is carried from decision to decision while it is the same block landing on the
 same frame, so it grows deeper until the block is down (search/ready.c landedBreak, landedKeep).
+Measured (`0edd5ea7`, the board-to-come search carried, 1209): **15** -- combo_storm 6, factory 5, large_garbage 4; actions 6, no-break
+2, panels 1; two lost within 500 frames of the end. Found 1302 of 18106 (1278 before): the carry barely moved it. Logged now with
+landed=: the depth its beam reaches and its carried lines played again (/dDEPTH/rPLAYED/IN), counted in the summary.
