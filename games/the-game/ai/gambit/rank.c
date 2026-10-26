@@ -454,16 +454,24 @@ static double valueOf(const Judge *J) {
   return gain - cost;
 }
 // THE LINE'S CATEGORY, the judge's answer every reader asks (plans/gambit-categories.md), best first: lives left alone; lives by its plan;
-// breaks garbage now and its plan keeps a save; ready -- its plan's next break in reach, the window paying for it; buys time -- no break
+// breaks garbage now and its plan keeps a save; ready -- its plan's next break in reach, the window paying for it, at the pace the breaks
+// due ask (paceKept); buys time -- no break
 // in reach, outliving the hold (H, the decision's hold; 0 none); dies
 enum { CAT_LIVES, CAT_PLAN, CAT_BREAKS, CAT_READY, CAT_BUYS, CAT_DIES, NCATS };
 static const char *catName[NCATS] = { "lives", "plan", "breaks", "ready", "buys", "dies" };
+// (THE PACE: a line keeps it when the window still covers as many of the breaks due as holding would (coverOf, the window plan's dues),
+// less the rows its own breaks pay -- a line that spends faster than the breaks due ask buys its time out of the window, never ready)
+static int coverOf(const Judge *J);
+static int paceKept(const Judge *J, const Judge *H) {
+  if (!H || J == H || pressAllowance < 0) return 1;
+  return coverOf(J) + imax(0, J->apBroke) / W >= coverOf(H);
+}
 static int catOf(const Judge *J, const Judge *H) {
   if (J->o.lives) return CAT_LIVES;
   if (livesOf(J)) return CAT_PLAN;
   int save = saveKept(J);
   if (!J->hold && J->apBroke > 0 && save) return CAT_BREAKS;
-  if ((J->readyNext == 1 || J->o.ready == 1) && save) return CAT_READY;
+  if ((J->readyNext == 1 || J->o.ready == 1) && save && paceKept(J, H)) return CAT_READY;
   if (H && J != H && lostOf(J) > lostOf(H)) return CAT_BUYS;
   return CAT_DIES;
 }

@@ -80,14 +80,14 @@ the order (the list key above) waits until the press guard reads the judge's ans
 ## 4. Plans are held to (decide.c carry)
 
 A line played for its plan carries the plan's next break as the line in progress, timed where the plan pressed it. The next
-decision ranks it like any line: it is kept while it still ranks first, and dropped once something new outranks it. Done for the
-first break; to do for the breaks after it.
+decision ranks it like any line: it is kept while it still ranks first, and dropped once something new outranks it. Once that
+break is pressed, the next decision's plan carries the break after it, so the whole plan is held one break at a time.
 
 ## 5. The window is paced
 
-The window plan holds a break's walk for every row due and the save each line leaves. To add: the pace, meaning the actions a
-minute the breaks due ask for. A line that spends faster than that pace, with no break of its own, is a line that buys time out
-of the window. It is categorised so (Buys time), never Ready.
+The window plan holds a break's walk for every row due. **The pace:** a line keeps it when the window still covers as many of the
+breaks due as holding would, less the rows its own breaks pay (rank.c `paceKept`). A line that spends faster than that buys its
+time out of the window: it is never Ready, and at best Buys time.
 
 ## 6. Numbers from the engine
 
@@ -121,6 +121,19 @@ A number that stays is recorded beside the measurement it came from.
 - **One order:** the run's "beaten head to head" count is 0. `gambit_summary.js` reports it, and `gambit-24.yml` fails on any.
 - **The answers** (survival first) and **the truth held** (0 divergences) stay as they are.
 
+## State
+
+| Step | State |
+|---|---|
+| 1. Categories | built |
+| 2. The order | built |
+| 3. The loss reader | built |
+| 4. Break search | built: the frontier is kept when a break is found, the top of the beam is ranked survival-first, and the three-free variant is "the three taken out" (decide.c) |
+| 5. The plan held | built: carried one break at a time |
+| 6. The pace | built |
+| 7. Constants | one at a time, each with its measurement from a run |
+| Checks | built: "One order" and "Every line categorised" in gambit-24.yml |
+
 ## Order of work
 
 1. Categories in the judge, and the log printing them.
@@ -144,6 +157,6 @@ A number that stays is recorded beside the measurement it came from.
   `rank.c`.
 - **The break search ranking by category costs search time,** and "reach" (the search cut by the clock) is already the most common
   loss. It is built last, judged only for the nodes at the top of the beam, and checked for a rise in "reach".
-- **The window's pace needs a definition before it is built:** the actions a minute the breaks due ask for, measured from the walks
-  and the dues. Until then it is not built.
+- **The window's pace** is defined by the window plan's own dues: covering as many as holding would, less the rows a line's breaks
+  pay.
 

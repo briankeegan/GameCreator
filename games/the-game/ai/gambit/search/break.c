@@ -405,6 +405,18 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       sortByKeyDesc(idx, ntl, keyS, tmp);
       for (int i = 0; i < ntl; i++) tn[i] = tl[idx[i]];
       for (int i = 0; i < ntl; i++) tl[i] = tn[i];
+      // (THE ORDER'S FIRST KEY at the top of the beam: of the lines the beam would keep, the board each leaves judged on the engine left
+      // alone (judge.c lostAlone) -- survival first, in bands of a break's time as the order reads them -- and its nearness to a break
+      // within the band; only those, so the judging is bounded by the beam)
+      { int top = ntl < beam ? ntl : beam, nb2 = 0; static LOCAL int32_t band[LINEPOOL], idx2[LINEPOOL], key2[LINEPOOL], tmp2[LINEPOOL];
+        int32_t save = imax(1, rankSave > 0 ? rankSave : 60), to = NODE(x, s->root)->t + HORIZON + REST;
+        for (int i = 0; i < top && !SEARCH_OUT(); i++, nb2++) { int32_t l = lostAlone(x, tl[i]->n, to); band[i] = l == FOREVER ? (1 << 20) : l == NOT_ASKED ? -1 : l / save; }
+        if (nb2 == top && top > 1) {
+          for (int i = 0; i < top; i++) { idx2[i] = i; key2[i] = band[i]; }
+          sortByKeyDesc(idx2, top, key2, tmp2);   // (stable: within a band, the nearness order the beam had)
+          for (int i = 0; i < top; i++) tn[i] = tl[idx2[i]];
+          for (int i = 0; i < top; i++) tl[i] = tn[i];
+        } }
       // (the line nearest a break the beam has seen: TOWARD, returned when no break is found)
       if (ntl && (!s->haveToward || tl[0]->s > s->towardS)) { s->haveToward = 1; s->towardS = tl[0]->s; s->towardLen = tl[0]->len; for (int k = 0; k < tl[0]->len; k++) s->toward[k] = tl[0]->path[k]; }
       keepPaths(&o->keepOut, tl, ntl < KEEPN ? ntl : KEEPN);
@@ -615,14 +627,15 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   }
   for (int i = 0; i < nfirsts; i++)
     if (breaksAt(&s, firsts[i]->n, firsts[i]->path, 1)) { found(out, firsts[i]->key); int32_t t = NODE(x, firsts[i]->n)->t; if (at1 < 0 || t < at1) at1 = t; }
-  if (out->nmoves) { out->depth = 1; out->at = at1; return; }
+  // (a break found before the beam ran: the lines carried in are carried on as they were -- the search's depth is not given up for it)
+  if (out->nmoves) { out->depth = 1; out->at = at1; if (resume) out->keepOut = *resume; return; }
   // (THE BREAK BUILT: the nearest break's panels walked to it along their rows -- breakNear's own line -- played on the engine)
   if (!(wait > 0)) {
     static LOCAL int32_t nl[MAXPATH]; int nn = 0;
     if (breakNearLine(q->b, nl, &nn) < NEAR_MISS && nn > 0) {
       int node = s.root;
       for (int i = 0; i < nn && liveNode(x, node); i++) node = stepMarked(&s, node, MK_SWAP, nl[i], 0);
-      if (liveNode(x, node) && breaksAt(&s, node, nl, nn)) { found(out, nl[0]); setPath(out, nl, nn); out->depth = 1; out->at = NODE(x, node)->t; out->built = 1; return; }
+      if (liveNode(x, node) && breaksAt(&s, node, nl, nn)) { found(out, nl[0]); setPath(out, nl, nn); out->depth = 1; out->at = NODE(x, node)->t; out->built = 1; if (resume) out->keepOut = *resume; return; }
     }
   }
   if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; return; }

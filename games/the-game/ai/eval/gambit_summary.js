@@ -105,7 +105,8 @@ function causeOf(game, pattern, at, lines) {
     '; the run-up: ' + (top || '-') + ', panels ' + beg(pre, 'pan') + ' to ' + end(pre, 'pan') + ', window ' + beg(pre, 'allow') + ' to ' + end(pre, 'allow') });
 }
 var carried = { resumed: 0, lost: 0, ideas: 0 };   // (decisions started from the answer played, and ones whose state was lost: answer.c carriedResume)
-var beaten = { n: 0, by: {} };   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
+var beaten = { n: 0, by: {} };
+var catd = { n: 0, missing: 0 };   // (decisions that offered lines, and those whose lines carry no category)   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
@@ -197,6 +198,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       // (THE ORDER NOT ONE ORDER: answer.c beaten=, the line played beaten head to head by one ranked under it)
       var bt = / beaten=\w+:k(\d+(?:\.\w+)?)/.exec(l);
       if (bt) { beaten.n++; beaten.by[bt[1]] = (beaten.by[bt[1]] || 0) + 1; }
+      // (EVERY LINE CATEGORISED: a decision that offered lines logs a category for each (answer.c cat=, rank.c catOf))
+      if (/ opts=/.test(l)) { catd.n++; if (!/ cat=\w/.test(l)) catd.missing++; }
       // (THE STATE CARRIED: answer.c resumed=ID/IDEAS, a decision started from the answer the frame loop played, not the last decision's,
       // and the lines the answers not played chose kept as ideas; stateLost=, the ring no longer held it)
       var rs = / resumed=\d+\/(\d+)/.exec(l);
@@ -360,6 +363,8 @@ if (budget.decisions) console.log('decisions the clock cut: ' + budget.out + ' o
 // THE TRUTH: every board the frame loop predicted is the one the game made; one that is not is a plan made on a board that never was
 // THE STATE CARRIED: every decision starts from the state the answer the frame loop last played left; a lost one started from another's
 console.log('state: ' + carried.lost + ' decisions started from a state no answer played left (lost), ' + carried.resumed + ' resumed from the answer played, ' + carried.ideas + ' lines not pressed kept as ideas');
+console.log('one order: ' + beaten.n + ' of ' + sooner.dec + ' decisions played a line beaten head to head by one ranked under it');
+console.log('categorised: ' + catd.missing + ' of ' + catd.n + ' decisions offered lines with no category');
 console.log('truth: ' + budget.diverged + ' boards predicted otherwise than the game made them, in ' + budget.divergedGames + ' of ' + budget.games + ' games');
 // THE LINE AS JUDGED: every swap of a line handed on is keyed from the frame the judge pressed it from; one keyed later is pressed on a board
 // the judge never judged

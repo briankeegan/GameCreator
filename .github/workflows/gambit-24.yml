@@ -278,6 +278,14 @@ jobs:
           d() { grep '^GAMBITD ' "$1" | awk -v F="${{ inputs.frames }}" '$2 <= F' | sed 's/ wallMs=.*//; s/ brMs=[^ ]*//; s/ brAt=\([0-9]*\)\/[0-9]*/ brAt=\1/; s/ ms=[^ ]*//; s/ ms_c=[^ ]*//; s/ ms_r=[^ ]*//'; }
           if cmp -s <(d "$a") <(d "$b"); then echo "::notice title=twice::$(d "$a" | wc -l) decisions alike"
           else diff <(d "$a") <(d "$b") | head -4 | cut -c1-300 | sed 's/^/::error title=twice::/'; exit 1; fi
+      # ONE ORDER: the line played is never beaten head to head by a line the order ranked under it (plans/gambit-categories.md)
+      - name: One order
+        run: |
+          grep -q '^one order: 0 ' report/summary.txt || { grep '^one order:' report/summary.txt | sed 's/^/::error title=one order::/'; exit 1; }
+      # EVERY LINE CATEGORISED: each decision that offers lines logs the judge's category for every one
+      - name: Every line categorised
+        run: |
+          grep -q '^categorised: 0 ' report/summary.txt || { grep '^categorised:' report/summary.txt | sed 's/^/::error title=categorised::/'; exit 1; }
       # THE LINE AS JUDGED: every swap of a line handed on keyed from the frame the judge pressed it from, never later
       - name: The line pressed as judged
         run: |
