@@ -560,28 +560,37 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.tap = k->k.tapOf ? k->k.tapOf - 1 : decTap; theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }
-// THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
+// THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach -- once everything lands, or its
+// plan's next -- is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
 // as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the
 // same promise.
+// (THE BREAK A LINE IS READY FOR: the judge's readiness once everything lands, else its plan's next break (rank.c readyNextFor) -- the
+// break it was ranked by either way; 0 none)
+static int readyBreakOfLine(const Judge *L, const int32_t **row1, const int32_t **line, int32_t *n, int32_t *wait) {
+  if (!L) return 0;
+  if (L->o.ready == 1 && L->o.j.readyN > 0) { *row1 = L->o.j.readyRow1; *line = L->o.j.readyLine; *n = L->o.j.readyN; *wait = L->o.j.readyWait; return 1; }
+  if (L->readyNext == 1 && L->planN > 0) { *row1 = L->planRow1; *line = L->planLine; *n = L->planN; *wait = L->planWait; return 1; }
+  return 0;
+}
 static void carryNextOf(const Judge *L) {
   memset(&theCarryNext, 0, sizeof theCarryNext);
-  const Judged *j = L ? &L->o.j : 0;
-  if (!j || L->hold || L->o.ready != 1 || j->readyN < 1 || !theCarry.set) return;
-  if (!anchorInto(&theCarryNext, j->readyRow1, j->readyLine, j->readyN)) return;
-  theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.play = PLAY_CARRY; theCarryNext.nrest = j->readyN;
-  for (int i = 0; i < j->readyN; i++) theCarryNext.rest[i] = j->readyLine[i];
+  const int32_t *row1, *line; int32_t nl, wait;
+  if (!L || L->hold || !theCarry.set || !readyBreakOfLine(L, &row1, &line, &nl, &wait)) return;
+  if (!anchorInto(&theCarryNext, row1, line, nl)) return;
+  theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.play = PLAY_CARRY; theCarryNext.nrest = nl;
+  for (int i = 0; i < nl; i++) theCarryNext.rest[i] = line[i];
   theCarryNext.settled = 0; theCarryNext.broke = 1; theCarryNext.ready = 1;
 }
 static void carryReady(const Judge *H, int32_t qid) {
-  const Judged *j = &H->o.j;
-  if ((!H->hold && H->k.nseq != 1) || H->o.ready != 1 || j->readyN < 1) return;
+  const int32_t *row1, *line; int32_t nl, wait;
+  if ((!H->hold && H->k.nseq != 1) || !readyBreakOfLine(H, &row1, &line, &nl, &wait)) return;
   memset(&theCarry, 0, sizeof theCarry);
-  if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
-  theCarry.set = 1; theCarry.id = qid; theCarry.play = PLAY_CARRY; theCarry.nrest = j->readyN;
-  for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
+  if (!anchorOf(row1, line, nl)) return;
+  theCarry.set = 1; theCarry.id = qid; theCarry.play = PLAY_CARRY; theCarry.nrest = nl;
+  for (int i = 0; i < nl; i++) theCarry.rest[i] = line[i];
   theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0; theCarry.ready = !H->hold;
-  theCarry.tap = decTap; theCarry.restAt[0] = decAt + j->readyWait;   // (pressed where the readiness found it: the board run to readyWait)
+  theCarry.tap = decTap; theCarry.restAt[0] = decAt + wait;   // (pressed where the readiness found it: the board run to that frame)
 }
 // THE READINESS BESIDE THE DECISION (search/break.c readyJob): the boards the order will ask readiness of handed to the workers,
 // worst-ranked first -- the decision asks them best-ranked first -- each searched by whichever thread begins it first. They search on

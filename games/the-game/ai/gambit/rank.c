@@ -27,6 +27,7 @@ typedef struct {
   int32_t apDone, apFire, apNats, apAts[MAXLINE], apChain, apChainAll, apCombo, apBroke, apPlayed;
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
+  int32_t planN, planWait, planLine[MAXLINE], planRow1[W + 1];   // and that break: its swaps, the frame it is pressed from, the bottom row it was found on (what anchors it) -- carried when the line is played (decide.c carryNextOf)
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t extSpent;    // and the actions that plan presses, the line and its breaks (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
@@ -88,7 +89,7 @@ static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int nearActsOf(const Judge *J, int32_t near);
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -181,7 +182,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -201,7 +202,7 @@ static void readyNextFor(Judge *J) {
   if (!J->hold) asLine(&J->k);
   int32_t land = decF.next;
   if (land == NOT_ASKED && garbageOn(decQ.b)) { int32_t end = J->hold ? 0 : J->o.j.endAt; land = end + regainAfter(end, J->hold ? 0 : J->o.j.spent); }
-  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, land, &J->extLost, &J->extSpent);
+  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, land, &J->extLost, &J->extSpent, J->planLine, &J->planN, J->planRow1, &J->planWait);
   if (!J->hold) unLine();
   // (and where no break is found to lead on to, the plan goes on as the survival search plays on from the board the line leaves
   // (decide.c contLostOf), in the readiness check's share: a line is lost where the best that can be played after it is -- a break that
@@ -451,10 +452,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // -- of two lost alike, the one whose window keeps the break walks for more of the blocks on their way and the save its board needs
   // (coverOf): the break the board needs is pressed out of what is left -- the survival search's own rule; the hold keeps them all
   if (!lx && lostAlike(x, y)) { int cx = coverOf(x), cy = coverOf(y); if (cx != cy) K(1, "reserve", cx < cy ? 1 : -1); }
-  // -- of two lost alike, the one that leaves a break in reach once the next block lands (readyNext): the block is broken as it lands,
-  // not dug out after; both asked
-  if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1))
-    K(1, "landing", x->readyNext == 1 ? -1 : 1);
+  // -- of two lost alike, the one with a break: in hand (it breaks garbage now) or in reach once the next block lands (readyNext) -- the
+  // block is broken as it lands, not dug out after; a break promised is never worth more than one pressed; both asked
+  { int rx = !x->hold && x->apBroke > 0 ? 1 : x->readyNext, ry = !y->hold && y->apBroke > 0 ? 1 : y->readyNext;
+    if (!lx && lostAlike(x, y) && rx != NOT_ASKED && ry != NOT_ASKED && (rx == 1) != (ry == 1)) K(1, "landing", rx == 1 ? -1 : 1); }
   // -- low on panels (decide.c lowOnPanels), before the margin: of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
   // (survival first: two lines that live, or two lost in the same band of a break's time -- never one lost sooner by more)

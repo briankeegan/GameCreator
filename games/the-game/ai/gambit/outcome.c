@@ -221,11 +221,17 @@ static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o =
 // (extSpent: the actions the plan presses -- the line and its breaks -- where its loss is the plan's; NOT_ASKED otherwise)
 // (land: the frame it is asked from -- the next block's landing, or with none on its way and garbage on the board, the frame the window
 // has given the line back a break's walk: a hold that lets the window fill is ready for the break it then presses)
-static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent) {
-  *extLost = NOT_ASKED; *extSpent = NOT_ASKED;
+// (and the break it found: pLine, *pN its swaps, pRow1 the bottom row of the board it was found on, *pWait the frame it is pressed from)
+static void readyPlanOut(const Judged *j, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait) {
+  *pN = j->ready == 1 ? imin(j->readyN, MAXLINE) : 0; *pWait = j->readyWait;
+  for (int k = 0; k < *pN; k++) pLine[k] = j->readyLine[k];
+  for (int c = 0; c <= W; c++) pRow1[c] = j->readyRow1[c];
+}
+static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait) {
+  *extLost = NOT_ASKED; *extSpent = NOT_ASKED; *pN = 0;
   if (land == NOT_ASKED) return NOT_ASKED;
   Outcome *hit = cached(seq, n, settled, 2);
-  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; return hit->ready; }
+  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; if (hit->ready == 1) readyPlanOut(&hit->j, pLine, pN, pRow1, pWait); return hit->ready; }
   if (clockOut()) return NOT_ASKED;
   JudgeOpts jo = { settled, decQ.tight, land, 1, 1, -1, 0, 1 };
   Outcome o;
@@ -233,6 +239,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
   judge(&decQ, seq, n, &jo, &o.j);
   if (o.j.late) return NOT_ASKED;
   o.ready = !o.j.dead && o.j.ready == 1;
+  if (o.ready) readyPlanOut(&o.j, pLine, pN, pRow1, pWait);
   o.lostAt = NOT_ASKED;
   if (o.ready && n > 0 && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
     int32_t ext[MAXLINE], en = n + o.j.readyN, w0To = o.j.readyWait, mAt[MAXLINE], mTo[MAXLINE], nm = 0;
