@@ -438,23 +438,21 @@ static int coverOf(const Judge *J) {
 // (THE MARGIN a line leaves: on the board once everything shown has landed (judge.c readyTop, readyMat), the rows over the stack, the
 // rows of panels under its garbage, the input window's actions then (core/nodes.h windowShareAt), and of the columns under garbage those
 // its panels touch (judge.c readyContact: a block resting on one column of six is a block no match reaches) -- each a share of its whole
-// (the stack's 12 rows, the window's limit, the columns under garbage), the least: a board dies of the one it runs out of first; -1 not asked)
+// (the stack's 12 rows, the window's limit, the columns under garbage), scarcest first (core/nodes.h marginKeyOf): a board dies of the one
+// it runs out of first. Read on the board once everything shown has landed; a line whose landed board was not read, on the board it ends on)
 #define MARGIN_ROWS 12
-// (read on the board once everything shown has landed; a line whose landed board was not read, on the board it ends on; -1 neither --
-// the least margin, so the margin is one key for every pair)
 // (a line with a plan, the margin its plan leaves: the board its last break leaves once everything shown has landed, and the window once
-// the plan has pressed what it presses -- a break is credited with what it converts, plans/gambit-next.md 2)
-static double marginOf(const Judge *J) {
+// the plan has pressed what it presses -- a break is credited with what it converts, plans/gambit-next.md 2; a line whose board was not
+// read -- its judging the clock cut -- the board's as it is now: never unknown, so never ranked for not being read)
+static int32_t topOn(const Board *b);
+static int32_t marginKey(const Judge *J) {
   int plan = J->planMargin[0] >= 0 && J->extSpent != NOT_ASKED;
   int32_t t = plan ? J->planMargin[0] : J->o.j.readyTop >= 0 ? J->o.j.readyTop : J->o.topLeft;
   int32_t m = plan ? J->planMargin[1] : J->o.j.readyMat >= 0 ? J->o.j.readyMat : J->o.matLeft;
   int32_t contact = plan ? J->planMargin[2] : J->o.j.readyContact, under = plan ? J->planMargin[3] : J->o.j.readyUnder;
-  if (t < 0 || m < 0) return -1;
-  double room = (MARGIN_ROWS - t) / (double)MARGIN_ROWS, mat = (double)m / W / MARGIN_ROWS, r = room < mat ? room : mat;
   double win = plan ? windowShareAt(J->planMargin[4], J->extSpent) : J->hold ? windowShareAt(0, 0) : windowShareAt(J->o.j.endAt, J->o.j.spent);
-  if (win >= 0 && win < r) r = win;
-  if (under > 0) { double touch = (double)contact / under; if (touch < r) r = touch; }
-  return r;
+  if (t < 0 || m < 0) { t = topOn(decQ.b); m = materialOn(decQ.b); contactOn(decQ.b, &contact, &under); win = windowShareAt(0, 0); }
+  return marginKeyOf((MARGIN_ROWS - t) / (double)MARGIN_ROWS, (double)m / W / MARGIN_ROWS, win < 0 ? 1 : win, under > 0 ? (double)contact / under : 1);
 }
 // (LOST ALIKE: lost in the same break's time, counted back from the latest loss of the lines ranked together (rankLostRef, sortJudged)
 // -- less than a break's time apart buys no break more -- a line lost within a break's time each alone, and one with three breaks'
@@ -570,19 +568,17 @@ static int proofOf(const Judge *J) {
 }
 // (DEAD BEFORE IT COULD PRESS ANYTHING: unproven and lost within a break's time -- the hold's loss not known among them)
 static int diesNow(const Judge *J) { return !livesOf(J) && lostOf(J) < imax(1, rankSave); }
-// (THE MARGIN IN BANDS: the least of room, material and window a line leaves (marginOf), in rows of the stack's twelve; -1 not read)
-static int32_t marginBand(const Judge *J) { double m = marginOf(J); return m < 0 ? -1 : (int32_t)(m * MARGIN_ROWS); }
 static int compareJudged(const Judge *x, const Judge *y) {
 #define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
   // 1. PROVEN FIRST: a line that lives left alone, then one that lives by its plan, then one whose plan meets every row shown with the
   // margin to spare, then the rest
   { int px = proofOf(x), py = proofOf(y); if (px != py) K(1, "proven", py - px);
     // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
-    // resource at the next row due (marginOf: room, material, window), in bands; then the later loss, unless lost alike (lostAlike: the
+    // resource, then of the next (marginKey: room, material, window, contact, in rows); then the later loss, unless lost alike (lostAlike: the
     // same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
     if (!px) {
       int nx = diesNow(x), ny = diesNow(y); if (nx != ny) K(2, "now", nx ? 1 : -1);
-      int32_t mx = marginBand(x), my = marginBand(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
+      int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
     } }
   // 3. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)

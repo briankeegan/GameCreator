@@ -160,6 +160,16 @@ static int windowCover(int32_t endAt, int spent) {
 }
 // (whether the window keeps the next break's walk: the next block's, or the line's end where none is on its way)
 static int windowKeepsBreak(int32_t endAt, int spent) { return windowCover(endAt, spent) >= 1; }
+// THE MARGIN AS ONE KEY (plans/gambit-next.md 2): the shares of what a board runs out of -- room, material, the window, contact -- each
+// in rows of the stack's twelve, scarcest first, so that of two the more of the scarcest wins, then of the next (under garbage the room
+// is nearly none for every line, and the rest decide); one integer, the order's and the survival search's alike. A share not said
+// (no window allowance, no column under garbage) is whole
+static int32_t marginKeyOf(double room, double mat, double win, double touch) {
+  double s[4] = { room, mat, win, touch }; int32_t b[4];
+  for (int i = 0; i < 4; i++) { double v = s[i] < 0 ? 0 : s[i] > 1 ? 1 : s[i]; b[i] = (int32_t)(v * 12); }
+  for (int i = 1; i < 4; i++) { int32_t v = b[i]; int k = i; while (k > 0 && b[k - 1] > v) { b[k] = b[k - 1]; k--; } b[k] = v; }
+  return ((b[0] * 13 + b[1]) * 13 + b[2]) * 13 + b[3];
+}
 static int32_t regainAfter(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 0;
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt;

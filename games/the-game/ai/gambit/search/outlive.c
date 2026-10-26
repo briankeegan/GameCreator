@@ -27,23 +27,21 @@ static int32_t rankSave;   // (rank.c: the frames one break takes)
 static int32_t outBand(int32_t lost) { return lost == FOREVER ? 0x7fffffff : lost / imax(1, rankSave > 0 ? rankSave : 60); }
 static double outMargin(const Board *b, int32_t endAt, int acts) {
   if (!b) return -1;
-  double room = (12 - topOn(b)) / 12.0, mat = (double)materialOn(b) / W / 12.0, m = room < mat ? room : mat, win = windowShareAt(endAt, acts);
-  return win >= 0 && win < m ? win : m;
+  int32_t contact, under; contactOn(b, &contact, &under);
+  double win = windowShareAt(endAt, acts);
+  return marginKeyOf((12 - topOn(b)) / 12.0, (double)materialOn(b) / W / 12.0, win < 0 ? 1 : win, under > 0 ? (double)contact / under : 1);
 }
 // (the order's own way, plans/gambit-next.md 2: a line that lives first; one lost within a break's time last; then the more of what runs
-// out first, in rows of the stack's twelve (rank.c marginBand); then the later loss in bands of a break's time; then the margin itself)
-static int32_t outMarginBand(double m) { return m < 0 ? -1 : (int32_t)(m * 12); }
+// out first, then of the next (core/nodes.h marginKeyOf, the order's own key); then the later loss in bands of a break's time)
 static int outBefore(const OItem *it, const Outlived *o) {
   int fi = it->lost == FOREVER, fo = o->lostAt == FOREVER;
   if (fi != fo) return fi;
   int32_t save = imax(1, rankSave > 0 ? rankSave : 60);
   int di = !fi && it->lost < save, d0 = !fo && o->lostAt < save;
   if (di != d0) return !di;
-  int32_t mi = outMarginBand(it->margin), mo = outMarginBand(o->margin);
-  if (mi != mo) return mi > mo;
+  if (it->margin != o->margin) return it->margin > o->margin;
   int32_t bi = outBand(it->lost), bo = outBand(o->lostAt);
   if (bi != bo) return bi > bo;
-  if (it->margin != o->margin) return it->margin > o->margin;
   // (then the later loss net of what it spends, as the order's net reads it (rank.c lostNetOf): the window is time)
   double ni = it->lost == FOREVER ? 1e18 : it->lost - it->acts * actionFrames(), no = o->lostAt == FOREVER ? 1e18 : o->lostAt - o->acts * actionFrames();
   if (ni != no) return ni > no;

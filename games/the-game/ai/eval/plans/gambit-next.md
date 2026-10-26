@@ -14,7 +14,8 @@ The goal: never die from the garbage the game shows.
 1. **Proven first.** A line whose plan, played on the engine, meets every row shown before the board dies is proven. A proven line
    beats every unproven one.
 2. **Unproven: the most left to find a proof with.** Of lines not proven, the one that leaves the most of its scarcest resource at
-   once everything shown has landed (`marginOf`: room, material, window) wins, in rows; then the later loss. A line with a plan is
+   once everything shown has landed wins, then the most of the next scarcest (`marginKey`: room, material, window, contact, in rows);
+   then the later loss. A line whose board was not read is read on the board as it is now. A line with a plan is
    read on the board its plan's last break leaves, so a break is credited with what it converts. The survival search ranks the same way.
    A line that dies before it could press anything ranks last. This replaces the window cap on the loss.
 3. **Search for the proof.** When nothing offered is proven, the decision's search time goes to the break on the board the best line
@@ -58,3 +59,9 @@ line short at once by a block shown (**demand**).
   passed over a break for step 2's margin key (2.margin), and the run-up before most is mostly holds: the margin is read on the board
   the line leaves, so a break that spends window and panels now reads less margin than holding, though it converts garbage. 7 found
   no break after the last one; the clock cut the search in 132 of 230 decisions after the last break.
+- 1274 and 1276, 15/24, every game lost on 1273's frames: the plan-board margin never ran (asked after the clock was spent, then never
+  read: 0 lines in factory-4's log). The logs showed step 2 broken twice over: a line whose judging the clock cut had no margin and
+  ranked last (an entry lost at 439 under a setup lost at 253), and every other margin was 0, room under garbage being nearly none for
+  every line. Fixed: a margin is never unknown, and it compares the scarcest share, then the next. The search: of 127 searches of the
+  board to come in factory-4, 53 could not begin -- the board left alone dies before the block lands -- 60 found no break, 12 one; 9
+  of 1,045 lines offered were breaks.
