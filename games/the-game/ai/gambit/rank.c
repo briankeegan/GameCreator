@@ -344,8 +344,9 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // without a break's walk in the window -- outcome.c spendsReserve, the window plan)
 static int reserveSpent(const Judge *J) { return !J->hold && spendsReserve((Made){ J->apCombo, J->apChain, J->apBroke, 0 }, &J->o.j); }
 // (THE MARGIN a line leaves: on the board once everything shown has landed (judge.c readyTop, readyMat), the rows over the stack, the
-// rows of panels under its garbage, and the input window's actions then (core/nodes.h windowShareAt) -- each a share of its whole (the
-// stack's 12 rows, the window's limit), the least of the three: a board dies of the one it runs out of first; -1 not asked)
+// rows of panels under its garbage, the input window's actions then (core/nodes.h windowShareAt), and of the columns under garbage those
+// its panels touch (judge.c readyContact: a block resting on one column of six is a block no match reaches) -- each a share of its whole
+// (the stack's 12 rows, the window's limit, the columns under garbage), the least: a board dies of the one it runs out of first; -1 not asked)
 #define MARGIN_ROWS 12
 // (read on the board once everything shown has landed; a line whose landed board was not read, on the board it ends on; -1 neither --
 // the least margin, so the margin is one key for every pair)
@@ -354,7 +355,9 @@ static double marginOf(const Judge *J) {
   if (t < 0 || m < 0) return -1;
   double room = (MARGIN_ROWS - t) / (double)MARGIN_ROWS, mat = (double)m / W / MARGIN_ROWS, r = room < mat ? room : mat;
   double win = J->hold ? windowShareAt(0, 0) : windowShareAt(J->o.j.endAt, J->o.j.spent);
-  return win >= 0 && win < r ? win : r;
+  if (win >= 0 && win < r) r = win;
+  if (J->o.j.readyUnder > 0) { double touch = (double)J->o.j.readyContact / J->o.j.readyUnder; if (touch < r) r = touch; }
+  return r;
 }
 // (LOST ALIKE: lost in the same break's time, counted back from the latest loss of the lines ranked together (rankLostRef, sortJudged)
 // -- less than a break's time apart buys no break more -- a line lost within a break's time each alone, and one with three breaks'

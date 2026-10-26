@@ -1764,3 +1764,8 @@ the beam's key was the stack's evenness alone. Now one order: the swaps to the n
 garbage (bitsShape hollow -- a block let down as its supports clear), then evenness.
 Measured (`a9be1ae4`, 1234): 13 -- combo_storm 7, factory 4, large_garbage 2; actions 7, panels 4. Decisions under garbage with
 no break found 9986 (from 10679, 1229).
+large_garbage-5 (1234) lost at 716 the way it lost at 794 and 607: the 6x12 slab, shown from frame 216, lands at 350 on a stack two
+columns of which stand four rows over the rest -- it rests on one or two columns, and no match touches it after. The 130 frames
+before it went on lines that throw a block.
+THE MARGIN READS CONTACT: of the columns under garbage on the board once everything shown has landed, the share whose top panel
+touches it (judge.c readyContact) -- the fourth share beside room, material and the window.

@@ -49,6 +49,7 @@ typedef struct {
   int32_t readyPend;            // the landed board kept for the decision's readiness, its index + 1 (search/break.c readyPendOf); 0 none
   int32_t readyMat;             // the material that board has -- its panels under the lowest garbage once everything shown has landed
   int32_t readyTop;             // and that board's top row (the stack's height, a panel or garbage): its room is the rows over it
+  int32_t readyContact, readyUnder;   // and its columns under garbage, and of them those whose top panel touches it (contactOn); -1 not asked
                                 // (facts.c materialOn), -1 not asked: what the next breaks are made of
   int32_t readyNear;            // the swaps to the nearest break on that board by the shape math (breakNear, NEAR_MISS none; 0 no
                                 // garbage), -1 not asked
@@ -206,7 +207,18 @@ static int32_t readyPendOf(Ctx *x, int n);
 static int readyDefer;
 // readyCollect: and while it is deferred, the landed board kept -- searched once a decision, by whichever thread begins it
 // (readyPendLast: which) -- and how near a break it is by the shape math (readyNearLast), what the decision asks it in the order of
-static int32_t readyCollect; static LOCAL int32_t readyPendLast, readyNearLast, readyMatLast, readyTopLast;
+static int32_t readyCollect; static LOCAL int32_t readyPendLast, readyNearLast, readyMatLast, readyTopLast, readyContactLast, readyUnderLast;
+// (the columns of board b under garbage, and of them those whose top panel under their first garbage touches it -- search/bits.c
+// bitsShape's contact, read on the board)
+static void contactOn(const Board *b, int32_t *contact, int32_t *under) {
+  *contact = *under = 0;
+  if (!b) { *contact = *under = -1; return; }
+  for (int c = 1; c <= W; c++) {
+    int g = 0, pk = 0;
+    for (int r = 1; r < b->nrows; r++) { const int32_t *f = b->p[r][c].f; if (f[ISGARBAGE]) { g = r; break; } if (f[COLOR]) pk = r; }
+    if (g) { (*under)++; if (pk == g - 1) (*contact)++; }
+  }
+}
 static int32_t materialOn(const Board *b); static int32_t topOn(const Board *b);   // (facts.c)
 static int nearOf(const Board *b); static int garbageOn(const Board *b);   // (search/break.c)
 static LOCAL int32_t readyRow1Buf[W + 1];
@@ -218,7 +230,7 @@ static int32_t anchorIdAt(const Board *b, int c) {
   return f[COLOR] && !f[ISGARBAGE] && f[STATE] == NORMAL ? f[ID] : NUL;
 }
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
-  readyPendLast = 0; readyNearLast = -1; readyMatLast = -1; readyTopLast = -1;
+  readyPendLast = 0; readyNearLast = -1; readyMatLast = -1; readyTopLast = -1; readyContactLast = readyUnderLast = -1;
   // (a line that ends past the landing is ready from where it ends -- never a frame on: the same trajectory, asked from any root,
   // lands on the same board, so a break found on it once is found again by its key)
   int dt = wait - NODE(x, n)->t;
@@ -230,12 +242,12 @@ static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int
   if (readyDefer) {
     Board *lb = ensureBoard(x, land);
     readyNearLast = lb ? (garbageOn(lb) ? nearOf(lb) : 0) : -1;
-    readyMatLast = lb ? materialOn(lb) : -1; readyTopLast = lb ? topOn(lb) : -1;
+    readyMatLast = lb ? materialOn(lb) : -1; readyTopLast = lb ? topOn(lb) : -1; contactOn(lb, &readyContactLast, &readyUnderLast);
     readyPendLast = readyPendOf(x, land);
     return NOT_ASKED;
   }
   { Board *lb = ensureBoard(x, land); for (int c = 1; c <= W; c++) readyRow1Buf[c] = anchorIdAt(lb, c);
-    readyMatLast = lb ? materialOn(lb) : -1; readyTopLast = lb ? topOn(lb) : -1; }
+    readyMatLast = lb ? materialOn(lb) : -1; readyTopLast = lb ? topOn(lb) : -1; contactOn(lb, &readyContactLast, &readyUnderLast); }
   if (clockOut()) return NOT_ASKED;
   return readyBreak(x, land, why, whyN);
 }
@@ -319,7 +331,7 @@ static int movedUndoes(const Board *b, int32_t mv, const Moved *m) {
 static LOCAL int32_t lineAt0, lineWaitTo;   // (and lineWaitTo: its board run to that frame and let settle before its first swap)
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->readyTop = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -480,7 +492,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       for (int k = 0; k < *wn && eb; k++) { acts += actionsFor(r, c, CR(wl[k]), CC(wl[k]), left - acts); r = CR(wl[k]); c = CC(wl[k]); }
       if (eb && acts > left) j->ready = 0;
     }
-    j->readyPend = readyPendLast; j->readyNear = readyNearLast; j->readyMat = readyMatLast; j->readyTop = readyTopLast;
+    j->readyPend = readyPendLast; j->readyNear = readyNearLast; j->readyMat = readyMatLast; j->readyTop = readyTopLast; j->readyContact = readyContactLast; j->readyUnder = readyUnderLast;
     memcpy(j->readyRow1, readyRow1Buf, sizeof j->readyRow1);
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
   }
