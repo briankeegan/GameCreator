@@ -53,3 +53,7 @@ line short at once by a block shown (**demand**).
 - 1272, 9/24 (combo_storm 4, factory 3, large_garbage 2): the window cap on the loss. Factory-2 lived to 19383 instead of 839, and
   other games fell instead. In all 15 losses, no break was found after the last break, and no better line was passed over: the
   order picked among guesses, and the searches found no proof. A cap on one resource moves which game dies, not whether one does.
+- 1273, 15/24 (combo_storm 5, factory 3, large_garbage 7): the plan built. Large_garbage's best yet; every check green. Of 9 losses, 4
+  passed over a break for step 2's margin key (2.margin), and the run-up before most is mostly holds: the margin is read on the board
+  the line leaves, so a break that spends window and panels now reads less margin than holding, though it converts garbage. 7 found
+  no break after the last one; the clock cut the search in 132 of 230 decisions after the last break.
