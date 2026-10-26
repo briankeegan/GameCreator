@@ -110,20 +110,21 @@ static void frontierKeepKeyed(int kind, const Paths *paths, int32_t key, int32_t
   if (!paths || !paths->n) return;
   K->set = 1; K->keyed = 1; K->key = key; K->key2 = key2; K->paths = *paths;
 }
-// THE WAY OUT: frontier `kind` re-rooted on board `b` into `out`; `digs`: let go when the garbage it dug toward is no longer the lowest;
-// `rest`, when not 0, the rest of the line toward a break played (the break frontier's). 0 when nothing came on.
+// THE WAY OUT: frontier `kind` re-rooted on board `b` into `out` -- never let go whole for what changed: the garbage dug toward no longer
+// the lowest, the anchor panel gone, each line comes in by its panels and the search's replay judges it (`digs` kept for the log: the
+// garbage changed, 1); `rest`, when not 0, the rest of the line toward a break played (the break frontier's). 0 when nothing came on.
 static int frontierResume(int kind, const Board *b, int32_t lineFrom, int32_t linePressed, int digs, Paths *out, int32_t *rest, int *nrest) {
   out->n = 0; if (nrest) *nrest = 0;
   Kept *K = &theFront[kind];
   frontLinesHeld[kind] = K->set ? K->paths.n : 0; frontLinesIn[kind] = 0; frontLetGo[kind] = 0; frontById[kind] = 0;
   if (!K->set || !K->paths.n || K->keyed) return 0;
-  if (digs && digTargetOf(b) != K->gid) { frontLetGo[kind] = 1; return 0; }
-  int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId);
-  if (dr == NOT_ASKED) { frontLetGo[kind] = 2; return 0; }
+  if (digs && digTargetOf(b) != K->gid) frontLetGo[kind] = 1;
+  int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId), cells = dr != NOT_ASKED;   // (cells: the anchor found, the rows risen known)
+  if (!cells) { frontLetGo[kind] = 2; dr = 0; }
   int32_t pre[MAXLINE + 1];
   int npre = playedSince(K, lineFrom, linePressed, pre);
   // (THE LINE TOWARD A BREAK BEGUN: the rest of the one played last, the same moves taken off)
-  if (rest && nrest && K->ntoward && startsWith(K->toward, K->ntoward, pre, npre)) {
+  if (cells && rest && nrest && K->ntoward && startsWith(K->toward, K->ntoward, pre, npre)) {
     *nrest = K->ntoward - npre;
     for (int i = 0; i < *nrest; i++) rest[i] = (CR(K->toward[npre + i]) + dr) * 8 + CC(K->toward[npre + i]);
   }
@@ -137,7 +138,7 @@ static int frontierResume(int kind, const Board *b, int32_t lineFrom, int32_t li
     G = G0;
     if (byIds(&G, K->pid[i], K->side[i], from, K->paths.len[i], out->path[t])) {
       if (!from && touchedBy(K->paths.path[i], K->paths.len[i], pre, npre)) frontById[kind]++;
-    } else if (from || !touchedBy(K->paths.path[i], K->paths.len[i], pre, npre)) {
+    } else if (cells && (from || !touchedBy(K->paths.path[i], K->paths.len[i], pre, npre))) {
       for (int k = 0; k < K->paths.len[i] - from; k++) out->path[t][k] = (CR(K->paths.path[i][from + k]) + dr) * 8 + CC(K->paths.path[i][from + k]);
     } else continue;
     out->len[t] = K->paths.len[i] - from;

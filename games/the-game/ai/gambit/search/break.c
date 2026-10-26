@@ -42,7 +42,7 @@ typedef struct {
   int32_t towardLen, toward[MAXPATH];
   Paths towards;                                    // keepOut's lines, then toward
   Paths keepOut;                                    // what the next decision carries on
-  int32_t resIn, resPlayed;                         // the lines the last decision carried on, and of them the ones played again whole
+  int32_t resIn, resPlayed, resLeft;                // the lines the last decision carried on, of them the ones played again whole, and those the clock left unplayed (handed on)
   int32_t resWhy[4];                                // and why the rest were not: a swap not there, a pair put back, the board lost, outside the rules
 } Broke;
 
@@ -304,23 +304,27 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   }
   // (a line at a time, in the order they were kept, each played to its end before the next is begun: where the clock runs out, every
   // line played so far is carried on whole -- not every line part-played and none of them)
-  (void)nxt;
-  for (int i = 0; i < nact && !SEARCH_OUT(); i++) {
+  // (and the lines the clock left unplayed -- not reached, or stopped part-way, none refused -- handed on as they came in, after the
+  // ones played: the next decision goes on from there)
+  int nleft = 0;
+  for (int i = 0; i < nact; i++) {
     Line *a = act[i];
+    int refused = 0;
     while (a->kept < a->len && !SEARCH_OUT()) {
       int mv = a->path[a->kept];
-      if (!legalAt(x, a->n, CR(mv), CC(mv))) { o->resWhy[0]++; break; }
-      if (undoesMoved(x, a->n, mv, &a->last)) { o->resWhy[1]++; break; }
+      if (!legalAt(x, a->n, CR(mv), CC(mv))) { o->resWhy[0]++; refused = 1; break; }
+      if (undoesMoved(x, a->n, mv, &a->last)) { o->resWhy[1]++; refused = 1; break; }
       a->last = movedOn(x, a->n, mv, &a->last);
       int out = stepMarked(s, a->n, MK_SWAP, mv, 0);
-      if (!liveNode(x, out)) { o->resWhy[2]++; break; }
-      if (!within(s, out)) { o->resWhy[3]++; break; }
+      if (!liveNode(x, out)) { o->resWhy[2]++; refused = 1; break; }
+      if (!within(s, out)) { o->resWhy[3]++; refused = 1; break; }
       a->n = out; a->kept++;
     }
     if (a->kept == a->len) { a->key = a->path[0]; seeds[nseeds++] = a; }
+    else if (!refused) nxt[nleft++] = a;
   }
-  o->resIn = s->resume ? s->resume->n : 0; o->resPlayed = nseeds;
-  if (nseeds) keepPaths(&o->keepOut, seeds, nseeds);
+  o->resIn = s->resume ? s->resume->n : 0; o->resPlayed = nseeds; o->resLeft = nleft;
+  if (nseeds || nleft) { for (int i = 0; i < nleft; i++) act[i] = nxt[i]; for (int i = 0; i < nseeds; i++) nxt[i] = seeds[i]; for (int i = 0; i < nleft; i++) nxt[nseeds + i] = act[i]; keepPaths(&o->keepOut, nxt, nseeds + nleft); }
   for (int i = 0; i < nseeds; i++)
     if (breaksAt(s, seeds[i]->n, seeds[i]->path, seeds[i]->len)) {
       found(o, seeds[i]->key); o->touch = 1; o->carried = 1; setPath(o, seeds[i]->path, seeds[i]->len); o->at = NODE(x, seeds[i]->n)->t;

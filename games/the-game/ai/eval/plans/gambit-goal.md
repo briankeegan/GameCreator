@@ -1802,3 +1802,6 @@ anything -- the slab on three columns over a hollow (breakNear none) -- and the 
 where the clock ran out every line was part-played and none of them carried.
 THE CARRIED LINES REPLAYED A LINE AT A TIME: each, in the order kept, played to its end before the next begins (search/break.c
 touchBeam) -- the clock out leaves every line played so far carried whole.
+THE BREAK FRONTIER IS WHAT THE SEARCH HELD WHEN ITS TIME ENDED: no frontier is let go whole for what changed -- the garbage dug toward
+no longer the lowest, the anchor panel gone -- each line comes in by its panels, the replay its one judge; and the lines the clock left
+unplayed in the replay are handed on as they came in (`brRes=played/in/held/left`).
