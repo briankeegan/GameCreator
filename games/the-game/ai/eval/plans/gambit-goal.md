@@ -1771,7 +1771,5 @@ THE MARGIN READS CONTACT: of the columns under garbage on the board once everyth
 touches it (judge.c readyContact) -- the fourth share beside room, material and the window.
 Measured (`08b1fa0a`, 1235): 13 -- the games of 1234 exactly: contact changed no decision. The margin decides only between lines
 lost alike; before the slab lands the lines are lost apart, and "later" decides first.
-large_garbage-5 (1234) at 307: the board to come found a break 12 deep, offered its 11-swap setup as a ready line, and that line's
-readiness -- its landed board searched from nothing -- ran out of time (n?); the line was put down a decision after it was played.
-THE BOARD TO COME'S BREAK HANDED ON: its last swap, on the board once the block lands (search/ready.c landedHint), is a carried line
-of every readiness search of the decision -- one swap played, the break confirmed or let go.
+Measured (`3503764c`, 1236): 12 -- combo_storm 7, factory 3, large_garbage 2; red: the twins' readiness asked 12 and 13 checks (the
+same move). large_garbage-5 lost at 716 still. The hand-on taken out: no game it was for changed, and it made the asks the clock's.

@@ -86,7 +86,6 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
     if (r < 1) { *n = 0; landedWhy = 5; return 0; }
     path[(*n)++] = r * 8 + CC(lbr.path[k]);
   }
-  if (*n > 0) { landedHint = lbr.path[lbr.pathLen - 1]; landedHintOn = 1; }
   return *n > 0;
 }
 
