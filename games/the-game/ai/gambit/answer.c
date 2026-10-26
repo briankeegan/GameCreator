@@ -150,7 +150,7 @@ static void breakJob(int32_t i) {
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
-  brCut = 0; brResumed = 0; landedJobOn = 0; __atomic_store_n(&landedDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
+  brCut = 0; brResumed = 0; landedJobOn = 0; landedHintOn = 0; __atomic_store_n(&landedDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || timeLeftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();

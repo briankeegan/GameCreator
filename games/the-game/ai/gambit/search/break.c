@@ -731,6 +731,9 @@ static void readyKeptClear(void) {
 // key, 0 none -- the frontier a search of it left unfinished is grown on; keep: one left unfinished here kept (the decision's own
 // check), else left in readyLeft for the decision that reads it)
 static LOCAL const Paths *readyLeft;
+// (THE BREAK THE BOARD TO COME FOUND, search/ready.c landedBreak: its last swap, on the board once the block lands -- the swap a line
+// that plays its setup has left to press there; every readiness search of the decision tries it first, carried as a line is)
+static int32_t landedHint, landedHintOn;
 static LOCAL int readyResumed;   // (the search grew a kept frontier on: counted by the decision that reads it)
 static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_t *k, int own, const unsigned char *key, int32_t nb, uint32_t h, int keep) {
   int32_t pop = popLeft(q->b), saved = listDefault;
@@ -742,6 +745,8 @@ static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_
   if (keyed && !keyOwn) keyed = 0;
   if (keyed) memcpy(keyOwn, key, (unsigned long)nb);   // (the search may key boards of its own in the buffer it came in)
   int resumed = keyed && readyBeamFind(h, keyOwn, nb, &seeds);
+  int hinted = landedHintOn && (resumed ? seeds.n < KEEPN : 1);
+  if (hinted) { if (!resumed) seeds.n = 0; seeds.len[seeds.n] = 1; seeds.path[seeds.n][0] = landedHint; seeds.n++; }
   if (resumed && keep) __atomic_add_fetch(&readyBeamIn, 1, __ATOMIC_RELAXED);
   readyLeft = 0; readyResumed = resumed;
   if (!own && clockShare && clockShare < by) by = clockShare;   // (never past the share of the search that asks)
@@ -749,7 +754,7 @@ static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_
   int ownWas = ownBudget;
   if (own) { clockShare = by; ownBudget = 1; }   // (its budget alone, as on a job's thread: core/clock.h ownBudget)
   listDefault = 1;
-  breakMoves(q, pop ? pop + LINEUP_AFTER : 0, resumed ? &seeds : 0, &rb);
+  breakMoves(q, pop ? pop + LINEUP_AFTER : 0, resumed || hinted ? &seeds : 0, &rb);
   listDefault = saved;
   int out = clockOut();   // (the share asked, or the decision's, run out)
   if (keyed && out && !rb.depth && rb.keepOut.n) { if (keep) readyBeamKeep(h, keyOwn, nb, &rb.keepOut); else readyLeft = &rb.keepOut; }
