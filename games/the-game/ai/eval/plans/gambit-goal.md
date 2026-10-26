@@ -1751,3 +1751,5 @@ Measured (`0cc5e597`, 1230): 12 -- combo_storm 6, factory 2, large_garbage 4; ac
 1990): the hold clause was the cycles' hub. Put down with nothing new told 1947 of 4534 -- not the cycles.
 THE WIDER BEAM UNDER GARBAGE THIRD: listed after the planner's half and the extension, it was cut every decision the four workers
 were full (no break from it in a whole game, 1228). Under garbage it is third now, after the break and survival searches.
+Measured (`a573f79c`, 1231): 9 -- combo_storm 4, factory 2, large_garbage 3; actions 12, panels 3. The wider beam's breaks, taken
+where the narrower finds none, are the deep ones: the window drained in every loss.
