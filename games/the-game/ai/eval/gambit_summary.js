@@ -44,7 +44,7 @@ var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, pastFrame: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, behind: 0, behindGames: 0, behindWorst: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
 var kept = { n: 0, held: 0 };
 // LOSSES BY THE PIECE THAT FAILED: a lost game read from its last line that broke garbage to its end (the dead phase) by the judge's
-// categories (cat=, plans/gambit-categories.md): order -- a category better than the line played's passed over; window; search -- no
+// categories (cat=, plans/gambit-next.md): order -- a category better than the line played's passed over; window; search -- no
 // line better than buys time offered (reach where the break search was cut by the clock, else board); press -- something better was
 // offered and played, and still the board died. Without categories logged, the first that holds its tag -- order: a line that breaks garbage, lost no sooner than the line played, passed over in 3 decisions or a quarter of them (the order's key that put another first); window: no break found,
 // the input window at 5 or fewer through most of it; reach: no break found, the break search cut by the clock in most of it -- a

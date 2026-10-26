@@ -450,7 +450,7 @@ static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided
 // (A LINE LIVES where its board does left alone, or where its plan does: the line, the break its readiness found and the breaks after
 // it, played on the engine -- outcome.c readyNextOf, extLost FOREVER)
 static int livesOf(const Judge *J) { return J->o.lives || J->extLost == FOREVER; }
-// THE LEDGER a line leaves (plans/gambit-categories.md): the rows due -- every row of every block shown, at the frame it is due (the
+// THE LEDGER a line leaves (plans/gambit-next.md): the rows due -- every row of every block shown, at the frame it is due (the
 // window plan's landAts) -- against the rows paid -- the line's own breaks, a row each W cells it converts, and its plan's, each a break
 // pressed from its frame and popped a break's time on (rankSave); a line that lives is short nothing
 static int32_t topOn(const Board *b);
@@ -479,7 +479,7 @@ static const Judge *rankHold;   // (the decision's hold among the lines ranked: 
 // off the next break's walk, less the frames the
 // window takes to give back the actions it presses (actionFrames; a tap's frames, TAP_GAP, with no window said) and a break's time for
 // each row of panels its clears take beyond what its breaks convert (judge.c netPanels). The exchange rates -- a row converted and a
-// block thrown each a break's time -- are the owner's to set (plans/gambit-categories.md, the review)
+// block thrown each a break's time -- are the owner's to set (plans/gambit-next.md)
 static double lostNetOf(const Judge *J);
 static double valueOf(const Judge *J) {
   double save = imax(1, rankSave), af = actionFrames() > 0 ? actionFrames() : TAP_GAP;
@@ -496,7 +496,7 @@ static double valueOf(const Judge *J) {
   double cost = spent * af + (J->o.j.netPanels < 0 ? (double)-J->o.j.netPanels / W * save : 0);
   return gain - cost;
 }
-// THE LINE'S CATEGORY, the judge's answer every reader asks (plans/gambit-categories.md), best first: lives left alone; lives by its plan;
+// THE LINE'S CATEGORY, the judge's answer every reader asks (plans/gambit-next.md), best first: lives left alone; lives by its plan;
 // breaks garbage now and its plan keeps a save; ready -- its plan's next break in reach, the window paying for it, at the pace the breaks
 // due ask (paceKept); buys time -- no break
 // in reach, outliving the hold (H, the decision's hold; 0 none); dies

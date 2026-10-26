@@ -278,7 +278,7 @@ jobs:
           d() { grep '^GAMBITD ' "$1" | awk -v F="${{ inputs.frames }}" '$2 <= F' | sed 's/ wallMs=.*//; s/ brMs=[^ ]*//; s/ brAt=\([0-9]*\)\/[0-9]*/ brAt=\1/; s/ ms=[^ ]*//; s/ ms_c=[^ ]*//; s/ ms_r=[^ ]*//'; }
           if cmp -s <(d "$a") <(d "$b"); then echo "::notice title=twice::$(d "$a" | wc -l) decisions alike"
           else diff <(d "$a") <(d "$b") | head -4 | cut -c1-300 | sed 's/^/::error title=twice::/'; exit 1; fi
-      # ONE ORDER: the line played is never beaten head to head by a line the order ranked under it (plans/gambit-categories.md)
+      # ONE ORDER: the line played is never beaten head to head by a line the order ranked under it (plans/gambit-next.md)
       - name: One order
         run: |
           grep -q '^one order: 0 ' report/summary.txt || { grep '^one order:' report/summary.txt | sed 's/^/::error title=one order::/'; exit 1; }
