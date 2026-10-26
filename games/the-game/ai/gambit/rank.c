@@ -438,7 +438,8 @@ static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided
 static int livesOf(const Judge *J) { return J->o.lives || J->extLost == FOREVER; }
 static const Judge *rankHold;   // (the decision's hold among the lines ranked: sortJudged)
 // VALUE FOR MOVES: what a line gives less what it costs, in frames -- the time it buys over the hold (its plan's loss less the hold's),
-// a break's time for each row of garbage it converts (rankSave, a row of W cells) and for each block it throws, less the frames the
+// a break's time for each row of garbage it converts (rankSave, a row of W cells) and for each block it throws, the actions it takes
+// off the next break's walk, less the frames the
 // window takes to give back the actions it presses (actionFrames; a tap's frames, TAP_GAP, with no window said) and a break's time for
 // each row of panels its clears take beyond what its breaks convert (judge.c netPanels). The exchange rates -- a row converted and a
 // block thrown each a break's time -- are the owner's to set (plans/gambit-categories.md, the review)
@@ -451,6 +452,10 @@ static double valueOf(const Judge *J) {
   int planned = J->extLost != NOT_ASKED && J->extSpent != NOT_ASKED && lostAtOf(J->extLost, 0) > lostAtOf(J->o.lostAt, 0);
   double spent = planned ? J->extSpent : J->o.j.spent;
   double gain = t + (double)imax(0, J->apBroke) / W * save + (double)thrownOf(J) * save;
+  // (and under garbage, the next break brought nearer: the actions its walk is shorter than the hold leaves it, measured on the boards
+  // each leaves once everything shown has landed (judge.c readyWalk), each action the frames the window takes to give it back -- a
+  // line that only buys time leaves the garbage as far from breaking)
+  if (rankHold && J->o.j.readyWalk > 0 && rankHold->o.j.readyWalk > 0) gain += (double)(rankHold->o.j.readyWalk - J->o.j.readyWalk) * af;
   double cost = spent * af + (J->o.j.netPanels < 0 ? (double)-J->o.j.netPanels / W * save : 0);
   return gain - cost;
 }

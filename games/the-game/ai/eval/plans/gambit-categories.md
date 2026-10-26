@@ -49,6 +49,8 @@ The order is a short list of keys. Every value it compares is a fact the judge a
      - the time it buys: its plan's loss minus the hold's;
      - a break's time for each row of garbage it converts;
      - a break's time for each block it throws.
+     - the actions it takes off the next break's walk, compared with holding (measured on the boards each leaves), at the window's
+       frames per action.
    - **Costs:**
      - the frames the window takes to give back each action it presses (`actionFrames`);
      - a break's time for each row of panels its clears take beyond what its breaks convert.

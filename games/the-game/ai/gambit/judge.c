@@ -249,7 +249,8 @@ static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int
     return NOT_ASKED;
   }
   { Board *lb = ensureBoard(x, land); for (int c = 1; c <= W; c++) readyRow1Buf[c] = anchorIdAt(lb, c);
-    readyMatLast = lb ? materialOn(lb) : -1; readyTopLast = lb ? topOn(lb) : -1; contactOn(lb, &readyContactLast, &readyUnderLast); }
+    readyMatLast = lb ? materialOn(lb) : -1; readyTopLast = lb ? topOn(lb) : -1; contactOn(lb, &readyContactLast, &readyUnderLast);
+    readyWalkLast = lb && garbageOn(lb) ? walkOfBoard(lb) : -1; }
   if (clockOut()) return NOT_ASKED;
   return readyBreak(x, land, why, whyN);
 }
