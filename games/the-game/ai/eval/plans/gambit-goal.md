@@ -1834,3 +1834,10 @@ the least of its shares, and under a big slab the room is the least: the line lo
 material is the least, so the board settles with both low. The keep floor's material is 30, so the board is low on panels all game
 -- and the ledger (low: spend only what the breaks give back) was asked after the margin.
 THE LEDGER BEFORE THE MARGIN: low on panels, of two lost alike the one whose ledger is not in debt first, then the margin.
+Measured (`af3a29da`, 1246): 12 -- combo_storm 7, factory 2, large_garbage 3; actions 6, panels 5, no-break 1; green.
+large_garbage (1245): 624 of 917 decisions made while a slab pops; a lineup proposed in 229, offered in 206, played in 27 -- "u":
+the search said it broke, the judge that it did not. The extension counted the garbage converted once the cascade settles, the slab's
+own conversion with it (base cells were taken off, base garbage not): every line in a pop met the break aim, and the beam ranked by
+cells sent, not garbage broken.
+A LINEUP'S BREAK ITS OWN: the extension's broke net of the board alone, as its cells are; and its beam ranked by the garbage converted
+beyond the board alone, then what it sends (search/extend.c).

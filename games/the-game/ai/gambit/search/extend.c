@@ -34,7 +34,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   if (root < 0) { clockShareEnd(shareOld); return; }
   Sent base = sendsOf(x, root, o->keep);
   E->best.cells = base.ok ? base.cells : 0; E->best.chain = base.ok ? base.chain : 0; E->best.base = E->best.cells; E->best.aimIndex = -1;
-  int32_t baseCells = E->best.cells;
+  int32_t baseCells = E->best.cells, baseBroke = base.ok ? base.broke : 0;   // (what the board makes alone: a line's own is what it adds)
   int na = o->aims ? o->aims->n : 0;
   XLine per[MAXAIMS]; memset(per, 0, sizeof per);
   static LOCAL PItem poolA[PLAN_POOL], poolB[PLAN_POOL];
@@ -65,9 +65,10 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
       // (a link added to a falling chain is in time when its swap is: pressed before the link it joins lands, and by the deadline)
       int32_t fire = NODE(x, k->n)->t;
       if (o->by != NOT_ASKED && fire > o->by) g.kept = 0;
-      Made made = { g.combo, g.chain, g.broke, g.cells - baseCells };
+      int32_t broke = imax(0, g.broke - baseBroke);   // (the garbage the line converts beyond the board alone -- a slab popping converts its own)
+      Made made = { g.combo, g.chain, broke, g.cells - baseCells };
       #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) (L).seq[s_] = k->seq[s_]; \
-        (L).cells = g.cells; (L).chain = g.chain; (L).combo = g.combo; (L).broke = g.broke; (L).done = g.done; (L).fire = fire; (L).floor = g.floor; \
+        (L).cells = g.cells; (L).chain = g.chain; (L).combo = g.combo; (L).broke = broke; (L).done = g.done; (L).fire = fire; (L).floor = g.floor; \
         (L).base = baseCells; (L).aimIndex = (ai); } while (0)
       if (g.kept) {
         double xn = nearList(o->aims, made);
@@ -76,7 +77,9 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
           if (meets(&o->aims->aim[ai], made) && (!per[ai].set || g.cells > per[ai].cells) && lineFits(k->seq, k->nseq, 0)) XFILL(per[ai], ai);
       }
       #undef XFILL
-      k->h = connectedOf(ensureBoard(x, k->n)); k->set = g.cells;   // (set: its score, what it sends)
+      // (set: its score -- under garbage the garbage it converts beyond the board alone first, then what it sends: a popping slab lined up
+      // breaks again; with none, what it sends)
+      k->h = connectedOf(ensureBoard(x, k->n)); k->set = broke * 1024 + g.cells;
       next[nk++] = *k;
     }
     // each board once, its best line: ranked by what it sends, then how connected
