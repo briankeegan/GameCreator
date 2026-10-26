@@ -19,6 +19,17 @@ The goal: never die from the garbage the game shows.
 3. **Search for the proof.** When nothing offered is proven, the decision's search time goes to the break on the board the best line
    leaves.
 4. **The margin for garbage not shown.** Proven means proven with k rows spare. The owner's to set; suggested 1.
+5. **Convert more per break.** Under attack, material only comes from breaking. A break pressed after more garbage has landed, or a
+   chain, converts more at once. Each plan's break is tried at every landing shown, and the one that converts most is kept. This is
+   what pays a block too big for one row's break.
+6. **A proof is kept.** A proven line is carried and pressed as judged, and proven again each decision. The press guard never
+   refuses a swap of a proven plan.
+7. **Search deep enough.** Where no break is found and the clock did not cut the search, the search goes a swap deeper on that
+   board next decision.
+8. **The mode still decides.** Among proven lines, the mode's list ranks them: aggressive within the mode, never at the cost of the
+   proof.
+
+The categories fold into this: lives and plan are proven; breaks, ready, buys and dies are unproven, ranked by step 2.
 
 The checks read the same order: no line played is beaten by one the order ranked under it, and none is played that dies before it
 could press anything while one offered does not.
