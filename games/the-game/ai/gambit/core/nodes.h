@@ -130,6 +130,12 @@ static double windowShareAt(int32_t endAt, int spent) {
   int32_t lim = pressAllowance + (nWinAges > 0 ? nWinAges : 0);
   return (double)allowLeftAt(tl > endAt ? tl : endAt, spent) / (lim > 0 ? lim : 1);
 }
+// (AN ACTION IN FRAMES: the frames the window takes to give one back -- its length over its limit; 0 with no allowance said)
+static double actionFrames(void) {
+  if (pressAllowance < 0) return 0;
+  int32_t lim = pressAllowance + (nWinAges > 0 ? nWinAges : 0);
+  return lim > 0 ? (double)winLen / lim : 0;
+}
 static int windowKeepsBreak(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 1;
   int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1;

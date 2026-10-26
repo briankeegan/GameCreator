@@ -363,8 +363,17 @@ static double marginOf(const Judge *J) {
 // -- less than a break's time apart buys no break more -- a line lost within a break's time each alone, and one with three breaks'
 // time left alike with every other. Bands from one reference, so alike is one relation for every pair and the order one order)
 static double rankLostRef;
-static int32_t lostBand(const Judge *J) {
+// (A LINE'S LOSS NET OF WHAT IT SPENDS: the frame it is lost, less the frames the window takes to give back the actions its swaps spend
+// (core/nodes.h actionFrames) -- every line of the order is searched as far from now, so a fresh line spends more to be lost later than
+// the line in progress, which has pressed part of its own; the window is time, and survival is compared in one unit. The hold spends none)
+static double lostNetOf(const Judge *J) {
   double l = lostOf(J);
+  if (l >= 1e9 || J->hold) return l;
+  double net = l - J->o.j.spent * actionFrames();
+  return net > 0 ? net : 0;   // (a line that spends more than it buys is lost now)
+}
+static int32_t lostBand(const Judge *J) {
+  double l = lostNetOf(J);
   if (l >= 1e9) return 0x7fffffff;
   int32_t save = imax(1, rankSave);
   if (l < save) return -1 - (int32_t)l;
@@ -399,7 +408,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (a keeper keeps the walk only where its own window holds it: one whose window is short of it already keeps nothing to keep)
       if (windowKeepsBreak(kp->hold ? 0 : kp->o.j.endAt, kp->hold ? 0 : kp->o.j.spent) && !spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER,
                      kp->hold ? 0 : kp->o.j.endAt)) K(1, "reserve", rx ? 1 : -1); } }
-  if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
+  if (!lx && !lostAlike(x, y) && lostNetOf(x) != lostNetOf(y)) K(1, "later", lostNetOf(y) > lostNetOf(x) ? 1 : -1);
   // (and a hold lost sooner than a line that keeps the board's own chain never comes first by anything after: it leaves the board as it
   // is with less time, so the walk it saves, the break it leaves where it was, are the next decision's to spend again)
   // (the hold's own, for the lines it is ranked with: below every line lost alike once any of them that keeps the chain is lost later --
@@ -531,11 +540,11 @@ static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   markIdle(a, n);
   rankLostRef = 0;
-  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }   // (of the lines banded by it)
+  for (int i = 0; i < n; i++) { double l = lostNetOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }   // (of the lines banded by it)
   for (int i = 0; i < n; i++) {
     Judge *h = a[i]; h->holdSunk = 0;
     if (!h->hold || livesOf(h)) continue;
-    for (int j = 0; j < n && !h->holdSunk; j++) { const Judge *o = a[j]; if (!o->hold && !livesOf(o) && lostAlike(h, o) && lostOf(h) < lostOf(o) && !cutsShort(o)) h->holdSunk = 1; }
+    for (int j = 0; j < n && !h->holdSunk; j++) { const Judge *o = a[j]; if (!o->hold && !livesOf(o) && lostAlike(h, o) && lostNetOf(h) < lostNetOf(o) && !cutsShort(o)) h->holdSunk = 1; }
   }
   for (int w = 1; w < n; w *= 2)
     for (int lo = 0; lo < n; lo += 2 * w) {

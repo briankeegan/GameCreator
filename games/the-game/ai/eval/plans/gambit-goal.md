@@ -1782,3 +1782,9 @@ Measured (`d1f38d25`, 1237): 12 -- combo_storm 7, factory 1, large_garbage 4; ac
 first lines on (47368 asked), 1097 putting another first.
 The lines played on taken out: the survival search's continuations are its own spending, so the line it lives longest after was
 the one it spends most to keep -- factory 4 to 1, actions 7 to 11.
+WHAT IS NOT WORKING (1237): 1225 of 1940 swaps that came to nothing were the first of lines put down before their later swaps; a
+line in progress is put down for a fresh one nearly every decision (factory-2: carryBy k1.later, k1.nearer, k1.margin, decision
+after decision). Every decision searches as far from now, so a fresh line spends more and is lost later than the line in progress,
+which has pressed part of its own -- and "later" counted the loss alone.
+SURVIVAL IN ONE UNIT: a line's loss net of what it spends, each action the frames the window takes to give it back (core/nodes.h
+actionFrames, rank.c lostNetOf) -- in "later", in the bands, in the hold's place.
