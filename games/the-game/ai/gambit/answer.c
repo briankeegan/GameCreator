@@ -123,6 +123,8 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // (and under garbage, the break search's wider touch beam on a worker of its own from the start, beside the narrower: the break it finds
 // is played when the narrower finds none -- theBrWide)
 enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE, JOB_LANDED };
+static int32_t proofSought;   // (the last decision played no proven line: rank.c proofOf -- the next one's searches go to the break)
+static int32_t touchDepthNext = TOUCH_DEPTH;   // (the touch beam's depth the next decision takes up: search/break.c touchDepth)
 static int32_t jobKinds[6], njobKinds;
 static Broke theBrWide; static int32_t wideDone;
 // (where the break search ran, for the log: 0 not run, 1 a worker beside the searches, 2 the decision after a worker had not finished it,
@@ -159,12 +161,16 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
+  // (THE SEARCH FOR THE PROOF, plans/gambit-next.md 3: where the last decision had no proven line, the break search's wider beam takes a
+  // worker before the planner's half and the extension, which go back to this thread -- the decision's time to the break, not the set-up)
+  __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
+  int wideFirst = proofSought && R->under && pool.nworkers >= 4;
+  if (wideFirst) jobKinds[njobKinds++] = JOB_WIDE;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   // (the wider beam last: the worker the planner's half and the extension leave)
-  __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
-  if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
+  if (!wideFirst && R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
   // is this thread's whole)
   while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; }
@@ -219,8 +225,9 @@ typedef struct {
   Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled, tap;
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
-  int32_t sooner;   // the line played is lost sooner than one offered, and not alike (rank.c lostAlike): survival was not first
+  int32_t sooner;   // the line played is less proven than one offered, or dead before it could press anything while one is not
   int32_t wastes;   // the line played makes a three for nothing as the judge saw it, and the survival search found the board needed it (decide.c saveOk)
+  int32_t proven;   // the line played is proven (rank.c proofOf): the frame loop presses it as judged (plans/gambit-next.md 6)
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
   int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
   int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
@@ -299,6 +306,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   towardRestLen = 0;
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
+  touchDepth = touchDepthNext;
   carryFrom = lineFrom; carryPressed = linePressed;
   memset(frontLinesHeld, 0, sizeof frontLinesHeld); memset(frontLinesIn, 0, sizeof frontLinesIn); memset(frontLetGo, 0, sizeof frontLetGo);
   planSeedsHave = plannedPaths(decQ.b, lineFrom, linePressed, &planSeeds); planOut.n = 0; planSeeded = 0;
@@ -368,6 +376,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     }
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
+  // (the next decision's searches, plans/gambit-next.md 3 and 7: under garbage with no proven line played, the wider beam first; and
+  // where this one's break search found no break and the clock did not cut it, a swap deeper -- back to its depth once one is found)
+  // (the depth taken up by the next decision once the readiness left searching is taken back: the searches read it on every thread)
+  proofSought = R.under && top && !proofOf(top);
+  if (!R.under || (ran && theBr.depth)) touchDepthNext = TOUCH_DEPTH;
+  else if (ran && !brCut && !theBr.depth) touchDepthNext = imin(touchDepth + 1, TOUCH_DEPTH_MAX);
+  A->proven = top ? proofOf(top) > 0 : 0;
   A->holdLives = d.kind == 0 && top && top->o.lives;
   A->wastes = P.line && !R.up && wastesThree(P.line) && P.line->threeNeeded;   // (the line's own verdict: its three the board's save)   // (a three the survival search found the board needed not to die)
   // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
@@ -517,11 +532,14 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
   // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey and cmpWhy: sooner=play:lost:kRULE.CLAUSE)
+  // (THE ANSWERS, the checks' (test/main.c): the line played is no less proven than a line offered, and is not dead before it could press
+  // anything while a line offered is not -- plans/gambit-next.md 1 and 2)
   A->sooner = 0;
+  if (top) for (int i = 0; i < P.ncands && !A->sooner; i++) { const Judge *j = order[i];
+    A->sooner = j != top && (proofOf(j) > proofOf(top) || (diesNow(top) && !diesNow(j))); }
   if (top && !top->o.lives) {
     const Judge *late = 0;
     for (int i = 0; i < P.ncands; i++) { const Judge *j = order[i]; if (j != top && (j->o.lives || lostOf(j) > lostOf(top)) && (!late || (j->o.lives && !late->o.lives) || (j->o.lives == late->o.lives && lostOf(j) > lostOf(late)))) late = j; }
-    A->sooner = late && !late->o.lives && !lostAlike(top, late);
     if (late && compareJudged(top, late) < 0) {
       L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey); L_s("."); L_s(cmpWhy);
     }
@@ -624,6 +642,7 @@ static void modeLeft(void) {
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
   breakWalk = LAND_RESERVE;   // (a new game measures its own)
+  proofSought = 0; touchDepthNext = TOUCH_DEPTH;
   modeLeft(); lifeDumps = 0; forceDone = 0; openerOver = 0;
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)

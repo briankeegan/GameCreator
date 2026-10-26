@@ -13,6 +13,11 @@
 // ends with what it has.
 
 #define TOUCH_DEPTH 12
+// (SEARCH DEEP ENOUGH, plans/gambit-next.md 7: the touch beam's depth this decision -- a swap deeper after each decision whose break search
+// found no break and was not cut by the clock, back to TOUCH_DEPTH once one is found; set by the decision before its searches begin,
+// answer.c, and read by every thread)
+#define TOUCH_DEPTH_MAX 16
+static int32_t touchDepth = TOUCH_DEPTH;
 #define CHEAP_BREAK 6    // the actions a break may walk for before the level after it is searched for a cheaper one
 #define TOUCH_BEAM 60
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
@@ -386,7 +391,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     // own key, actions before the material)
     int64_t heldB = -1; int foundTd = -1;
     for (int i = 0; i < n0; i++) tl[i] = tl0[i];
-    for (int td = 2; td <= TOUCH_DEPTH && ntl && !tpath && !SEARCH_OUT(); td++) {
+    for (int td = 2; td <= touchDepth && ntl && !tpath && !SEARCH_OUT(); td++) {
       // (how near a break each line's board is, read on the board once what the line cleared has fallen -- settled a batch at a
       // time while the clock allows: past it the rest are scored as they stand)
       // (the settles stepped on every thread first, then taken in this order: core/nodes.h stepBatch)
@@ -482,7 +487,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       batchDone();
       if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; }
       if (bestB >= 0 && foundTd < 0) foundTd = td;
-      if (foundTd >= 0 && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == TOUCH_DEPTH)) tpath = 1;
+      if (foundTd >= 0 && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == touchDepth)) tpath = 1;
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)
       if (ntn) keepPaths(&o->keepOut, tn, ntn < KEEPN ? ntn : KEEPN);
       for (int i = 0; i < ntn; i++) tl[i] = tn[i];

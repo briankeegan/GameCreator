@@ -19,11 +19,10 @@ static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(
 // anything is paid for)
 #define OUT_POOL 16
 typedef struct { int32_t n; Outlived o[OUT_POOL]; } OPool;
-// (THE MARGIN a survival line keeps: of lines lost within the same break's time (outBand), the one that keeps more of what runs out
-// first -- the rows over its stack, the rows of panels under its garbage, the input window's actions, each a share of its whole --
-// then the later loss net of its actions, then the fewer actions: the order's own keys for lines lost alike (rank.c compareJudged),
-// so the search keeps what the order will want. A
-// line that buys a few frames by clearing the panels the next break is made of spends the board's life, not saves it)
+// (THE MARGIN a survival line keeps: the one that keeps more of what runs out first -- the rows over its stack, the rows of panels
+// under its garbage, the input window's actions, each a share of its whole -- then the later loss net of its actions, then the fewer
+// actions: the order's own keys (rank.c compareJudged), so the search keeps what the order will want. A line that buys a few frames by
+// clearing the panels the next break is made of spends the board's life, not saves it)
 static int32_t rankSave;   // (rank.c: the frames one break takes)
 static int32_t outBand(int32_t lost) { return lost == FOREVER ? 0x7fffffff : lost / imax(1, rankSave > 0 ? rankSave : 60); }
 static double outMargin(const Board *b, int32_t endAt, int acts) {
@@ -31,7 +30,17 @@ static double outMargin(const Board *b, int32_t endAt, int acts) {
   double room = (12 - topOn(b)) / 12.0, mat = (double)materialOn(b) / W / 12.0, m = room < mat ? room : mat, win = windowShareAt(endAt, acts);
   return win >= 0 && win < m ? win : m;
 }
+// (the order's own way, plans/gambit-next.md 2: a line that lives first; one lost within a break's time last; then the more of what runs
+// out first, in rows of the stack's twelve (rank.c marginBand); then the later loss in bands of a break's time; then the margin itself)
+static int32_t outMarginBand(double m) { return m < 0 ? -1 : (int32_t)(m * 12); }
 static int outBefore(const OItem *it, const Outlived *o) {
+  int fi = it->lost == FOREVER, fo = o->lostAt == FOREVER;
+  if (fi != fo) return fi;
+  int32_t save = imax(1, rankSave > 0 ? rankSave : 60);
+  int di = !fi && it->lost < save, d0 = !fo && o->lostAt < save;
+  if (di != d0) return !di;
+  int32_t mi = outMarginBand(it->margin), mo = outMarginBand(o->margin);
+  if (mi != mo) return mi > mo;
   int32_t bi = outBand(it->lost), bo = outBand(o->lostAt);
   if (bi != bo) return bi > bo;
   if (it->margin != o->margin) return it->margin > o->margin;

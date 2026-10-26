@@ -15,7 +15,7 @@
 #define FTHINK 8           // the answers' times kept, for how soon the next comes
 
 typedef struct { int32_t at, capped; Incoming g; } Arrival;   // at: the stopWatch it is received on; capped: held back (search.h CAPPED_AT)
-typedef struct { int32_t bits, holdLeft, holdStarted, swap, save, asked, play, line, idx, left; } Planned;   // save: a key of a line the survival search found the board needed; asked: the frame the question it came of was posted on; play: the kind of line it is a key of (facts.c PLAY_NAME; NPLAYS a raise); line, idx, left: the answer its line came of, the swap's place in it and the swaps after it
+typedef struct { int32_t bits, holdLeft, holdStarted, swap, save, asked, play, line, idx, left, proven; } Planned;   // save: a key of a line the survival search found the board needed; asked: the frame the question it came of was posted on; play: the kind of line it is a key of (facts.c PLAY_NAME; NPLAYS a raise); line, idx, left: the answer its line came of, the swap's place in it and the swaps after it
 typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys;
 
 // what the worker is asked, and what it answers (native.c carries them across)
@@ -38,6 +38,7 @@ typedef struct {
   int32_t handAt[MAXLINE];     // the frame each swap handed on was judged pressed from (0: as soon as the one before is done)
   int32_t empty;               // a hold the clock left no time to judge anything for
   int32_t wastes;              // the line makes a three for nothing, kept by the order as the board's save (answer.c)
+  int32_t proven;              // the line is proven (rank.c proofOf): pressed as judged, never refused (plans/gambit-next.md 6)
   int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
   double ms, idleMs, closeMs;
   int32_t readyFrame;          // the frame the frame loop takes it on: the question's frame and its work's frames (native.c answerOne)
@@ -103,6 +104,7 @@ static struct {
   int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
+  int32_t lineProven;   // and was proven (FAnswer.proven): its swaps pressed as judged
   double thinking[FTHINK]; int32_t nthinking;
   double msPerFrame, wall, wallPerFrame;   // a frame on the work clock (the game's 1/60 s, every decision's) and on the wall's (native.c's guard)
   // the input budget: its limit and window, the frames the keys still inside it were pressed, the keys held last frame
@@ -599,12 +601,12 @@ static void take(void) {
     F.st.heldWalks += k.held;
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
-    for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play, a.id, 0, a.nhand });
+    for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play, a.id, 0, a.nhand, a.proven });
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
-    F.lineWastes = a.wastes;
+    F.lineWastes = a.wastes; F.lineProven = a.proven;
     unseenOf(F.pBoard);
     F.lineN = a.nhand; F.lineGap = F.pGap; F.linePlay = a.play; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0; F.playedId = a.id;
@@ -641,7 +643,7 @@ static int follow(void) {
   int left = allowanceAt(due);
   if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance");
   F.st.heldWalks += k.held;
-  for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay, F.lineOfId, F.lineOfPressed + 1, F.lineN - 1 });
+  for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay, F.lineOfId, F.lineOfPressed + 1, F.lineN - 1, F.lineProven });
   F.nextAt = due + k.n;
   F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1;
   memmove(F.line, F.line + 1, sizeof(int32_t) * (unsigned long)(F.lineN - 1)); memmove(F.lineAt, F.lineAt + 1, sizeof(int32_t) * (unsigned long)(F.lineN - 1)); F.lineN--;
@@ -896,7 +898,9 @@ static int frontFrame(void) {
   // (only where colours were shown since the question the swap came of was asked: otherwise the board is the one the judge played the
   // line on -- the truth held -- and its test, the guard's own, said the same)
   int32_t guard = 0;
-  if ((bits & IN_SWAP & ~F.prevBits) && F.lastReveal >= asked && F.lastReveal > 0 && wastedSwap(t, bits)) {
+  // (A PROOF KEPT, plans/gambit-next.md 6: a swap of a proven line is pressed as judged -- the plan that meets every row shown is not
+  // given up for a three it makes on the way)
+  if ((bits & IN_SWAP & ~F.prevBits) && !pk.proven && F.lastReveal >= asked && F.lastReveal > 0 && wastedSwap(t, bits)) {
     if (!threeSaves(t, bits, save)) {
       // (the first few refused boards, the plan's keys after the swap and the garbage on its way, for replaying the guard and the judge
       // on them: GAMBITR board, GAMBITRK f:bits..., GAMBITRA at,w,h,chain,metal,capped...)

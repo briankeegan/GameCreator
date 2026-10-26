@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
     // a raise is held down through its row)
     { int32_t v[9]; gb_replay_last(v);
       if (v[2] > 0 && v[0] != 2 && v[1] != 1) { liveDied++; if (liveDied <= 3) printf("  lives but died %d (mode %d): %s\n", nq, mode, rec); }
-      if (v[8] && v[0] != 2) { sooner++; if (sooner <= 3) printf("  lost sooner %d (mode %d): %s\n", nq, mode, rec); }
+      if (v[8] && v[0] != 2) { sooner++; if (sooner <= 3) printf("  less proven %d (mode %d): %s\n", nq, mode, rec); }
         if (mode >= 0 && mode < 64) modes[mode]++; }
     n = loadLine(b, &narr);
     gb_replay(n, narr, mode, REPLAY_WORK, rec2, sizeof rec2);
@@ -248,7 +248,7 @@ int main(int argc, char **argv) {
   printf("%s: decisions replayed -- %d questions, %d answered differently on a second asking%s\n", unsteady && !workers ? "FAIL" : "ok", nq, unsteady,
          workers ? " (workers: not held)" : "");
   { int nm = 0; for (int i = 0; i < 64; i++) nm += modes[i] > 0;
-    printf("%s: the answers -- %d questions over %d modes, %d played a line that dies while one lived, %d one lost a break's time sooner than one offered\n",
+    printf("%s: the answers -- %d questions over %d modes, %d played a line that dies while one lived, %d one less proven than one offered or dead at once while one was not\n",
            liveDied || sooner || nm < 4 ? "FAIL" : "ok", nq, nm, liveDied, sooner);
     printf("%s: the raise -- %d of %d low stacks with no garbage raised, %d of %d raises held down\n", lowRaised < lows || raiseHeld < raises || !raises ? "FAIL" : "ok", lowRaised, lows, raiseHeld, raises);
     fail |= liveDied || sooner || nm < 4 || !lows || lowRaised < lows || raiseHeld < raises; }

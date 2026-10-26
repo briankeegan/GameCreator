@@ -14,7 +14,7 @@ The goal: never die from the garbage the game shows.
 1. **Proven first.** A line whose plan, played on the engine, meets every row shown before the board dies is proven. A proven line
    beats every unproven one.
 2. **Unproven: the most left to find a proof with.** Of lines not proven, the one that leaves the most of its scarcest resource at
-   the next row due (`marginOf`: room, material, window) wins, in bands; then the later loss. The survival search ranks the same way.
+   once everything shown has landed (`marginOf`: room, material, window) wins, in rows; then the later loss. The survival search ranks the same way.
    A line that dies before it could press anything ranks last. This replaces the window cap on the loss.
 3. **Search for the proof.** When nothing offered is proven, the decision's search time goes to the break on the board the best line
    leaves.
@@ -30,6 +30,11 @@ The goal: never die from the garbage the game shows.
    proof.
 
 The categories fold into this: lives and plan are proven; breaks, ready, buys and dies are unproven, ranked by step 2.
+
+**Built**, all eight at once (rank.c proofOf, compareJudged, readyNextFor; search/outlive.c outBefore; answer.c breakBegin;
+search/break.c touchDepth; front.c the press guard; test/main.c the answers). Proven, in order: lives left alone, lives by its plan,
+stands past the last row due and one row's break more. The margin is in rows of the stack's twelve; a swap deeper goes to 16 at most;
+a plan's break is tried at up to four later landings.
 
 The checks read the same order: no line played is beaten by one the order ranked under it, and none is played that dies before it
 could press anything while one offered does not.

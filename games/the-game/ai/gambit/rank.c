@@ -29,6 +29,7 @@ typedef struct {
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t planN, planWait, planLine[MAXLINE], planRow1[W + 1];
   int32_t planBreaks, planBreakAt[16];   // the frame each of its plan's breaks is pressed from (outcome.c readyNextOf)
+  int32_t planBroke;   // the garbage its plan converts beyond the board left alone (outcome.c readyNextOf)
   int32_t solDue, solPaid, solShort, solAt;   // its ledger (ledgerOf): rows due, rows paid, the shortfall at worst, the first frame short (FOREVER never)   // and that break: its swaps, the frame it is pressed from, the bottom row it was found on (what anchors it) -- carried when the line is played (decide.c carryNextOf)
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t extSpent;    // and the actions that plan presses, the line and its breaks (readyNextOf); NOT_ASKED: not asked
@@ -92,7 +93,7 @@ static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int nearActsOf(const Judge *J, int32_t near);
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->threeNeeded = 0;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->threeNeeded = 0;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -185,7 +186,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->threeNeeded = 0;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->threeNeeded = 0;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -200,6 +201,24 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 // more decision (react frames)
 static double contLostOf(const Judge *J, double give);   // (decide.c)
 static double lostAtOf(int32_t t, int hold);
+// PROVEN (plans/gambit-next.md 1, 4): a plan that, played on the engine, stands past the last row shown is due and PROOF_ROWS rows' breaks
+// more -- the margin for garbage not shown, the owner's to set. FOREVER lives
+#define PROOF_ROWS 1
+// (the frame a plan must stand past: the last row shown due, and a break's time for it and for each row of the margin -- frames from now)
+static double proofFrame(void) { return (double)(nLandAts ? landAts[nLandAts - 1] : 0) + (1 + PROOF_ROWS) * (double)imax(1, rankSave); }
+static int planProven(int32_t lost) {
+  if (lost == FOREVER) return 1;
+  if (lost == NOT_ASKED || lost < 0) return 0;
+  return (double)lost > proofFrame();
+}
+// (of two plans, the proven; then the one that converts more; then the one lost later)
+#define PLAN_LANDS 4
+static int planBetter(int32_t lx, int32_t bx, int32_t ly, int32_t by) {
+  int px = planProven(lx), py = planProven(ly);
+  if (px != py) return px;
+  if (bx != by) return bx > by;
+  return (lx == NOT_ASKED ? -1 : lostAtOf(lx, 0)) > (ly == NOT_ASKED ? -1 : lostAtOf(ly, 0));
+}
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
   if (!J->hold) asLine(&J->k);
@@ -207,6 +226,34 @@ static void readyNextFor(Judge *J) {
   if (land == NOT_ASKED && garbageOn(decQ.b)) { int32_t end = J->hold ? 0 : J->o.j.endAt; land = end + regainAfter(end, J->hold ? 0 : J->o.j.spent); }
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, land, &J->extLost, &J->extSpent, J->planLine, &J->planN, J->planRow1, &J->planWait);
   J->planBreaks = imin(planBreakN, 16); for (int k = 0; k < J->planBreaks; k++) J->planBreakAt[k] = planBreakAt[k];
+  J->planBroke = planBroke;
+  // (CONVERT MORE PER BREAK, plans/gambit-next.md 5: under attack, material comes only from breaking, and a break pressed after more has
+  // landed converts more -- where the plan from the next landing is not proven, its break is asked from each later landing shown too, and
+  // the plan kept is the one proven, else the one that converts most, else the one lost latest)
+  if (land == decF.next && land != NOT_ASKED && !planProven(J->extLost)) {
+    // (the landings after the next, soonest first, PLAN_LANDS of them at most)
+    int32_t ats[MAXARR], na = 0;
+    for (int i = 0; i < decQ.narr && na < MAXARR; i++) {
+      int32_t a = decQ.arr[i].at; int dup = a <= land;
+      for (int k = 0; k < na && !dup; k++) dup = ats[k] == a;
+      if (dup) continue;
+      int k = na++;
+      while (k > 0 && ats[k - 1] > a) { ats[k] = ats[k - 1]; k--; }
+      ats[k] = a;
+    }
+    if (na > PLAN_LANDS) na = PLAN_LANDS;
+    for (int i = 0; i < na && !clockOut(); i++) {
+      int32_t xl, xs, xn, xw, xline[MAXLINE], xrow[W + 1];
+      readyKind = READY_KIND_LAND + i;
+      int r = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, ats[i], &xl, &xs, xline, &xn, xrow, &xw);
+      readyKind = 2;
+      if (r != 1 || !planBetter(xl, planBroke, J->extLost, J->planBroke)) continue;
+      J->readyNext = r; J->extLost = xl; J->extSpent = xs; J->planN = xn; J->planWait = xw; J->planBroke = planBroke;
+      for (int k = 0; k < xn; k++) J->planLine[k] = xline[k];
+      for (int k = 0; k <= W; k++) J->planRow1[k] = xrow[k];
+      J->planBreaks = imin(planBreakN, 16); for (int k = 0; k < J->planBreaks; k++) J->planBreakAt[k] = planBreakAt[k];
+    }
+  }
   if (!J->hold) unLine();
   // (and where no break is found to lead on to, the plan goes on as the survival search plays on from the board the line leaves
   // (decide.c contLostOf), in the readiness check's share: a line is lost where the best that can be played after it is -- a break that
@@ -222,35 +269,20 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
          lostOf(k) <= lostOf(H) && lostOf(H) - k->o.j.done > react;
 }
-// THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own (a
-// list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one whose board is lost later,
-// then the one with a break in reach once the next block lands (a death sooner is never taken for readiness); then the tier, then each
-// sub-key in turn
-// (a line whose judging the clock cut is not known to die: it ranks after every board that stands and before every known loss -- a
-// death known is never chosen over a line that may live)
+// THE LOSS A LINE IS JUDGED BY (the one order is compareJudged, plans/gambit-next.md): its board's, or its plan's when that is later
+// (a line whose judging the clock cut has no known loss: it proves nothing, and ranks unproven)
 // (a line ready for the next block is lost where its readiness break leads, when that is later -- the hold too: holding while the window
 // fills, then pressing the break, is a plan like any other)
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
 static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
 static int32_t rankLow;     // (the board low on panels: decide.c lowOnPanels)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
-static double lostEngineOf(const Judge *x) {
+static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
   if (x->extLost == NOT_ASKED) return own;
   double ext = lostAtOf(x->extLost, 0);
   return ext > own ? ext : own;
-}
-// (THE LOSS THE WINDOW ALLOWS: a line that leaves the window covering fewer of the rows due than holding does (core/nodes.h
-// windowCover), less the rows its own breaks pay, has no actions for the break the first row it no longer covers asks -- it is lost no
-// later than that row's due and a break's time. The one loss every reader asks: the order, the save, the checks)
-static double lostOf(const Judge *x) {
-  double l = lostEngineOf(x);
-  if (x->hold || x->idle || x->o.lives || l >= 1e9 || pressAllowance < 0 || nLandAts <= 0) return l;
-  int c = windowCover(x->o.j.endAt, x->o.j.spent) + imax(0, x->apBroke) / W, h = windowCover(0, 0);
-  if (c >= h || c >= nLandAts) return l;
-  double cap = (double)landAts[c] + imax(1, rankSave);
-  return cap < l ? cap : l;
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
 // is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding
@@ -446,7 +478,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, later; category; chain; list; value; ideas; first, tie)
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: proven; now, margin, later; chain; list; value; ideas; first, tie)
 // (A LINE LIVES where its board does left alone, or where its plan does: the line, the break its readiness found and the breaks after
 // it, played on the engine -- outcome.c readyNextOf, extLost FOREVER)
 static int livesOf(const Judge *J) { return J->o.lives || J->extLost == FOREVER; }
@@ -462,11 +494,11 @@ static Ledger ledgerOf(const Judge *J) {
   if (!J->hold && J->apBroke > 0) { int rows = (J->apBroke + W - 1) / W, at = J->o.j.done > 0 ? J->o.j.done : 0; for (int r = 0; r < rows && np < MAXLINE; r++) paid[np++] = at; }
   for (int k = 0; k < J->planBreaks && np < 16 + MAXLINE; k++) paid[np++] = J->planBreakAt[k] + save;
   L.paid = np;
-  // (death as the engine plays it: the plan's own loss frame (lostOf) -- solvent when the board still stands a break's time after the
-  // last row shown has landed; else short by the rows due by then less those its plan paid by then, one at least, from that frame)
+  // (death as the engine plays it: the plan's own loss frame (lostOf) -- solvent when proven (proofFrame: it stands past the last row
+  // shown and the margin); else short by the rows due by then less those its plan paid by then, one at least, from that frame)
   double lost = lostOf(J);
-  int32_t lastDue = nLandAts ? landAts[nLandAts - 1] : 0;
-  if (lost >= 1e9 || lost > (double)lastDue + save) return L;
+  if (lost >= 1e9) { L.shortBy = imax(1, nLandAts); return L; }   // (a loss not known proves nothing: proofOf)
+  if (lost > proofFrame()) return L;   // (solvent: proven, proofOf)
   int32_t at = (int32_t)lost, due = 0, got = 0;
   for (int d = 0; d < nLandAts; d++) due += landAts[d] <= at;
   for (int k = 0; k < np; k++) got += paid[k] <= at;
@@ -518,18 +550,32 @@ static int catOf(const Judge *J, const Judge *H) {
   if (H && J != H && lostOf(J) > lostOf(H)) return CAT_BUYS;
   return CAT_DIES;
 }
+// (A LINE'S PROOF, plans/gambit-next.md 1 and 4: 3 its board lives left alone; 2 it lives by its plan; 1 its plan, played on the engine,
+// stands past the last row shown is due and PROOF_ROWS rows' breaks more; 0 unproven -- its loss is a bound, the breaks the searches
+// found, not a fact)
+static int proofOf(const Judge *J) {
+  if (J->o.lives) return 3;
+  if (J->extLost == FOREVER) return 2;
+  double l = lostOf(J);
+  return l < 1e9 && l > proofFrame();
+}
+// (DEAD BEFORE IT COULD PRESS ANYTHING: unproven and lost within a break's time -- the hold's loss not known among them)
+static int diesNow(const Judge *J) { return !livesOf(J) && lostOf(J) < imax(1, rankSave); }
+// (THE MARGIN IN BANDS: the least of room, material and window a line leaves (marginOf), in rows of the stack's twelve; -1 not read)
+static int32_t marginBand(const Judge *J) { double m = marginOf(J); return m < 0 ? -1 : (int32_t)(m * MARGIN_ROWS); }
 static int compareJudged(const Judge *x, const Judge *y) {
-  int lx = livesOf(x), ly = livesOf(y);
 #define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
-  // 1. SURVIVAL: a line that lives before one that does not; of two that do not, the later loss -- unless they are lost alike (lostAlike:
-  // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
-  // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
-  if (lx != ly) K(1, "lives", lx ? -1 : 1);
-  // -- of two that do not live, the later loss, unless lost alike (lostAlike: the same band of a break's time, counted from one
-  // reference -- less than a break's time apart buys no break more)
-  if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
-  // 2. THE CATEGORY (catOf), best first: lives, lives by its plan, breaks now, ready, buys time, dies
-  { int cx = catOf(x, rankHold), cy = catOf(y, rankHold); if (cx != cy) K(2, "category", cx - cy); }
+  // 1. PROVEN FIRST: a line that lives left alone, then one that lives by its plan, then one whose plan meets every row shown with the
+  // margin to spare, then the rest
+  { int px = proofOf(x), py = proofOf(y); if (px != py) K(1, "proven", py - px);
+    // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
+    // resource at the next row due (marginOf: room, material, window), in bands; then the later loss, unless lost alike (lostAlike: the
+    // same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
+    if (!px) {
+      int nx = diesNow(x), ny = diesNow(y); if (nx != ny) K(2, "now", nx ? 1 : -1);
+      int32_t mx = marginBand(x), my = marginBand(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
+      if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
+    } }
   // 3. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(3, "chain", cutsShort(x) ? 1 : -1);
   // 4. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own

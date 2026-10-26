@@ -26,6 +26,7 @@ typedef struct {
   int32_t topLeft;     // that board's top row (topOn); -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   int32_t nBreakAt, breakAt[PLANBREAKS];   // a plan's breaks: the frame each is pressed from (readyNextOf), for the ledger (plans/gambit-next.md)
+  int32_t planBroke;   // the garbage the plan converts beyond the board left alone (readyNextOf)
   Judged j;
 } Outcome;
 
@@ -231,12 +232,15 @@ static void readyPlanOut(const Judged *j, int32_t *pLine, int32_t *pN, int32_t *
 }
 static double contBoardLost(const Board *e, double give);   // (decide.c)
 static double readyShareMs;   // (search/break.c)
-static LOCAL int32_t planBreakN, planBreakAt[PLANBREAKS];   // (the last readyNextOf's plan: the frame each break is pressed from)
+static LOCAL int32_t planBreakN, planBreakAt[PLANBREAKS], planBroke;   // (the last readyNextOf's plan: the frame each break is pressed from, and what it converts)
+// (the cache's kind for a plan asked from a landing: 2 the next block's, READY_KIND_LAND + k the k-th later one -- rank.c readyNextFor)
+#define READY_KIND_LAND 10
+static LOCAL int32_t readyKind = 2;
 static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait) {
-  *extLost = NOT_ASKED; *extSpent = NOT_ASKED; *pN = 0; planBreakN = 0;
+  *extLost = NOT_ASKED; *extSpent = NOT_ASKED; *pN = 0; planBreakN = 0; planBroke = 0;
   if (land == NOT_ASKED) return NOT_ASKED;
-  Outcome *hit = cached(seq, n, settled, 2);
-  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; if (hit->ready == 1) readyPlanOut(&hit->j, pLine, pN, pRow1, pWait); planBreakN = hit->nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = hit->breakAt[k]; return hit->ready; }
+  Outcome *hit = cached(seq, n, settled, readyKind);
+  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; if (hit->ready == 1) readyPlanOut(&hit->j, pLine, pN, pRow1, pWait); planBreakN = hit->nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = hit->breakAt[k]; planBroke = hit->planBroke; return hit->ready; }
   if (clockOut()) return NOT_ASKED;
   JudgeOpts jo = { settled, decQ.tight, land, 1, 1, -1, 0, 1 };
   Outcome o;
@@ -253,7 +257,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
     static LOCAL Board *planEnd; if (!planEnd) planEnd = nb_new();
     int haveEnd = 0;
     Outcome e = promised(ext, en, settled, n, w0To, 0, 0, 0);
-    if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; o.nBreakAt = 0; o.breakAt[o.nBreakAt++] = w0To;
+    if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; o.nBreakAt = 0; o.breakAt[o.nBreakAt++] = w0To; o.planBroke = e.j.made.broke;
       if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; } } }
     // (A PLAN OF SEVERAL STEPS: the board the break leaves, once it has settled, asked again for a break in reach -- played where its
     // readiness finds it, and so on while each break puts the loss off -- as far as the board, the line's length and the clock allow: the
@@ -270,7 +274,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
       if (e.late) break;
       int32_t lost = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
       if (lost == NOT_ASKED || (lost != FOREVER && o.lostAt != FOREVER && lost <= o.lostAt)) break;
-      o.lostAt = lost; *extSpent = e.j.spent;
+      o.lostAt = lost; *extSpent = e.j.spent; o.planBroke = e.j.made.broke;
       if (o.nBreakAt < PLANBREAKS) o.breakAt[o.nBreakAt++] = mTo[nm - 1];
       haveEnd = 0; if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; } }
     }
@@ -284,8 +288,8 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
   *extLost = o.lostAt;
   if (o.lostAt == NOT_ASKED) *extSpent = NOT_ASKED;
   o.j.spent = *extSpent;   // (kept with the plan's loss: the cache's own reading)
-  planBreakN = o.nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = o.breakAt[k];
-  keep(seq, n, settled, 2, &o);
+  planBreakN = o.nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = o.breakAt[k]; planBroke = o.planBroke;
+  keep(seq, n, settled, readyKind, &o);
   return o.ready;
 }
 // THE ONE LINE CHECK, every search's and the order's: of a line judged (judge.c), what the caller holds it to. Always: not dead, its
