@@ -1687,7 +1687,32 @@ function drawChargePips(center, enemy) {
   const ship = Engine.ENEMY_TYPES[enemy.type] && Engine.ENEMY_TYPES[enemy.type].ship;
   if (!ship || !ship.weapons.length) return;
   const cheapest = Math.min(...ship.weapons.map((w) => w.energyCost));
-  if (cheapest <= 1 || enemy.energy >= cheapest) return; // nothing to count down
+  // A COST-1 GUN HAS A RELOAD NOW, so it gets a pip like everything else.
+  // This skipped them entirely, because a cost-1 gun on a cost-1 reactor
+  // used to be loaded every single round and a pip that is always full says
+  // nothing. The Pin Lance empties the bus when it fires, so the round after
+  // a shot is a round it genuinely cannot shoot — and with no pip, nothing
+  // on the board said so. Reported live: "it didn't charge up the second
+  // time", which was the silent reload being read as a broken telegraph.
+  //
+  // Shown only while it CANNOT afford its cheapest gun, which is the whole
+  // information: an empty pip means this round is yours.
+  if (enemy.energy >= cheapest) return; // loaded — nothing to count down
+  // COLD. A pip is a small rectangle under the hull and the beam that just
+  // fired goes straight over it, so on the one round it most needs to be
+  // read — the round after a shot — it was invisible. A ring around the hull
+  // in dead blue-grey cannot be missed and cannot be confused with the
+  // orange of a gun coming up to power: lit means it is working, cold means
+  // this round is yours.
+  ctx.save();
+  ctx.strokeStyle = "rgba(150,176,200,0.75)";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, geom.sx * 0.52, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
   const w = geom.sx * 0.13;
   const gap = w * 0.5;
   const total = cheapest * w + (cheapest - 1) * gap;
@@ -5721,6 +5746,7 @@ function render() {
   window.__hhAutoRoute = autoRoute;
   window.__hhTargetedEnemy = targetedEnemyId;
   window.__hhTargetedGround = targetedGround; // test hook: the wreck or rock under the gun
+  window.__hhAnims = anims; // test hook: what is on screen right now
   window.__hhReachPreview = reachPreview;
   window.__hhShipAngle = shipAngle; // test hook: where the sprite is actually pointing
   window.__hhDirAngles = DIR_ANGLES; // test hook: the angle each facing should draw at

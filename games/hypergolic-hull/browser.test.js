@@ -614,6 +614,39 @@ async function freshPage(browser, url, errors) {
   }
   assert.ok(fired, "the kill went through the tap-to-target, tap-to-fire flow");
 
+  // THE RELOAD IS ON THE BOARD. A Pin Lance costs one charge against a
+  // one-charge bus, so the round after it fires is a round it cannot fire —
+  // and nothing said so: drawChargePips skipped any gun costing 1 (on the
+  // old roster such a gun was loaded every round, so a pip that never
+  // emptied said nothing). Reported live as "it didn't charge up the second
+  // time", which was the silent reload being read as a broken telegraph.
+  {
+    const cold = await page.evaluate(() => {
+      const E = window.HypergolicEngine;
+      const foe = E.livingEnemies(window.__hhState)[0];
+      if (!foe) return null;
+      const ship = E.ENEMY_TYPES[foe.type].ship;
+      const cheapest = Math.min(...ship.weapons.map((w) => w.energyCost));
+      foe.energy = 0; // just fired
+      window.render();
+      return { cheapest, shownWhenEmpty: true };
+    });
+    if (cold) {
+      assert.strictEqual(cold.cheapest, 1, "the Interceptor's gun costs exactly one charge");
+      // The tell is drawn, not merely intended: with the bus empty the hull
+      // carries a cold ring, and with it full it does not.
+      const framesDiffer = await page.evaluate(() => {
+        const E = window.HypergolicEngine;
+        const foe = E.livingEnemies(window.__hhState)[0];
+        const shot = () => document.querySelector("canvas").toDataURL();
+        foe.energy = 0; window.render(); const empty = shot();
+        foe.energy = foe.maxEnergy; window.render(); const full = shot();
+        return empty !== full;
+      });
+      assert.ok(framesDiffer, "an empty bus looks different from a full one — the reload round is visible");
+    }
+  }
+
   // WRECKAGE AND ROCK CAN BE SHOT AT. Marking only ever worked on a living
   // hull, so the gun could not be pointed at the two things it is most wanted
   // for — cutting a wreck open, which is the only way salvage is ever banked,
