@@ -417,7 +417,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (THE RULE THAT DECIDED: the number of the order's rule the last comparison returned on -- answer.c logs it for the line played over
 // one lost later, sooner=play:lost:kRULE)
 static LOCAL int32_t cmpKey;
-static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, ready, net, margin, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
+static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided: lives, reserve, later, hold, landing, net, margin, ledger, material, ready, nearer, near; chain; list; carried, kept; thrown; walk; later; tier; first, tie)
 // (A LINE LIVES where its board does left alone, or where its plan does: the line, the break its readiness found and the breaks after
 // it, played on the engine -- outcome.c readyNextOf, extLost FOREVER)
 static int livesOf(const Judge *J) { return J->o.lives || (!J->hold && J->extLost == FOREVER); }
@@ -448,7 +448,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // -- of two lost alike, the one that leaves a break in reach once the next block lands (readyNext): the block is broken as it lands,
   // not dug out after; both asked
   if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1))
-    K(1, "ready", x->readyNext == 1 ? -1 : 1);
+    K(1, "landing", x->readyNext == 1 ? -1 : 1);
   // -- low on panels (decide.c lowOnPanels), before the margin: of two that survive alike, the one whose ledger is not in debt: it converts as many
   // cells as its clears take (judge.c netPanels) -- low, a board spends only what its breaks give back
   // (survival first: two lines that live, or two lost in the same band of a break's time -- never one lost sooner by more)

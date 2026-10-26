@@ -62,8 +62,8 @@ block's landing and a break's time after each row before it (decide.c, `landAts`
 once everything shown has landed, pressed before that board is lost -- a line whose window cannot press it, a break too, keeps no
 reserve.
 
-THE ORDER, rule 1 among lines lost alike: the hold, then READY (a break in reach once the next block lands, `readyNext`), then net,
-margin, ledger.
+THE ORDER, rule 1 among lines lost alike: the hold, then READY (a break in reach once the next block lands, `readyNext`), then ledger,
+margin, net.
 
 A PERCHED BLOCK (search/break.c `perchedOf`) is let down by walking its supports past its nearer edge; a block as wide as the board,
 into the nearest hollow under it. A support on a pillar lets it down one row.
