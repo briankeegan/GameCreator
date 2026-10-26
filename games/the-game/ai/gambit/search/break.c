@@ -582,19 +582,16 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   }
   if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; return; }
   if (wait > 0) {
-    // (a slab popping: the touch beam on the garbage elsewhere first, in half what is left -- a line-up's tries can take the whole of
-    // it, and the touch beam had none (run 487, factory-1: a break of 7 swaps under a pop of 99 frames, found in 95 ms of 257 searched
-    // again, missed)
-    if (clockShare > 0) {
-      double half = nowMs() + (clockShare - nowMs()) / 2, old = clockShareBegin(half);
-      int hit = touchBeam(&s, firsts, nfirsts);
-      clockShareEnd(old);
-      if (hit) { out->depth = 1; return; }
-    }
+    // (a slab popping: the line-up first, in half what is left -- it is a chance that ends with the pop, where the touch beam's lines are
+    // carried on to the next decision -- then the touch beam on the garbage elsewhere in the rest, the cursor being free)
     int w0 = step(x, s.root, MK_LONG, 0, 0, wait);
     if (w0 >= 0 && w0 < (1 << 20)) outsideBuf[w0] = 0;   // (made from the root: within the rules so far)
-    if (!breaksAt(&s, w0, 0, 0) && lineups(&s, firsts, nfirsts)) { out->depth = 1; return; }
-    // (no line-up of the popping slab breaks again: a break of the garbage elsewhere while it pops, the cursor being free)
+    if (!breaksAt(&s, w0, 0, 0)) {
+      int lined;
+      if (clockShare > 0) { double half = nowMs() + (clockShare - nowMs()) / 2, old = clockShareBegin(half); lined = lineups(&s, firsts, nfirsts); clockShareEnd(old); }
+      else lined = lineups(&s, firsts, nfirsts);
+      if (lined) { out->depth = 1; return; }
+    }
     if (touchBeam(&s, firsts, nfirsts)) { out->depth = 1; return; }
   }
   // none found: the line nearest a break, and the lines to choose among -- the frontier the beam has grown furthest, then that line
