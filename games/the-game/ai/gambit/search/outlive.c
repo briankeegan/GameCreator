@@ -20,7 +20,8 @@ static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(
 #define OUT_POOL 16
 typedef struct { int32_t n; Outlived o[OUT_POOL]; } OPool;
 // (THE MARGIN a survival line keeps: of lines lost within the same break's time (outBand), the one that keeps more of what runs out
-// first -- the rows over its stack, the rows of panels under its garbage, the input window's actions, each a share of its whole --
+// first -- the rows over its stack, the rows of panels under its garbage, the input window's actions, the columns under garbage whose
+// panels hold it up (judge.c contactOn: a clear under resting garbage that does not break it leaves it over a hollow), each a share of its whole --
 // then the later lost, then the fewer actions. A
 // line that buys a few frames by clearing the panels the next break is made of spends the board's life, not saves it)
 static int32_t rankSave;   // (rank.c: the frames one break takes)
@@ -28,6 +29,8 @@ static int32_t outBand(int32_t lost) { return lost == FOREVER ? 0x7fffffff : los
 static double outMargin(const Board *b, int32_t endAt, int acts) {
   if (!b) return -1;
   double room = (12 - topOn(b)) / 12.0, mat = (double)materialOn(b) / W / 12.0, m = room < mat ? room : mat, win = windowShareAt(endAt, acts);
+  int32_t contact, under; contactOn(b, &contact, &under);
+  if (under > 0 && (double)contact / under < m) m = (double)contact / under;
   return win >= 0 && win < m ? win : m;
 }
 static int outBefore(const OItem *it, const Outlived *o) {
