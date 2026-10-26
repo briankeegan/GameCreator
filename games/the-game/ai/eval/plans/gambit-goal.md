@@ -1668,3 +1668,6 @@ Measured (`e9465dd4`, the race fixed, 1212): 10 -- combo_storm 3, factory 2, lar
 search found 2777, yet its lines are all but never played (ready: 1-3 actions a minute of ~350), while the 40% it took from the break
 search on the board as it is cost the games: survival lines up from 66 to 87 actions a minute. Gambit back to `ef41da2b` (1209/1210's,
 15): the board-to-come search in the proposers' time, as it was.
+THE BOARD TO COME, OFFERED AS ITS SETUP: the break found on the board to come is offered without its last swap, its rows taken back by
+the rise before the landing -- the setup pressed now, and the judge's readiness (a break in reach once the block lands) the last swap
+(search/ready.c landedBreak). A break one swap deep has nothing to set up.

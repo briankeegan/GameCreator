@@ -40,7 +40,7 @@ static Readied readyFor(const Question *q, double ms) {
 // as the judge plays them. 1 and the line; 0 none (nothing coming, the board lost first, no garbage on it then, none found)
 static Board *landedB;
 static int32_t landedWhy = -1, landedDeep, landedRes, landedIn;   // (the depth its beam reached, its carried lines played again of those carried in)
-// (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found; -1 not asked)
+// (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found, 5 below the stack as it is now; -1 not asked)
 static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path, int *n) {
   *n = 0; landedWhy = 1;
   Ctx *x = readyCtx = ctxOf(readyCtx);
@@ -73,7 +73,17 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   landedWhy = 4;
   if (lbr.pathLen <= 0) return 0;
   landedWhy = 0;
-  for (int k = 0; k < lbr.pathLen && k < MAXLINE; k++) path[(*n)++] = lbr.path[k];
+  // (as the board stands NOW: the rows the stack rises before the block lands taken off -- a bottom-row panel found again on the board to
+  // come, by its id -- and the break's own last swap left to the landing: the line offered is the setup, and the readiness the judge asks
+  // of it, a break in reach once the block lands, is that last swap. A break one swap deep has nothing to set up)
+  int32_t dr = 0, id = NUL;
+  for (int c = 1; c <= W && id == NUL; c++) if (q->b->p[1][c].f[COLOR] && !q->b->p[1][c].f[ISGARBAGE]) id = q->b->p[1][c].f[ID];
+  if (id != NUL) { int found = 0; for (int r = 1; r < landedB->nrows && !found; r++) for (int c = 1; c <= W; c++) if (landedB->p[r][c].f[ID] == id) { dr = r - 1; found = 1; break; } }
+  for (int k = 0; k + 1 < lbr.pathLen && k < MAXLINE; k++) {
+    int r = CR(lbr.path[k]) - dr;
+    if (r < 1) { *n = 0; landedWhy = 5; return 0; }
+    path[(*n)++] = r * 8 + CC(lbr.path[k]);
+  }
   return *n > 0;
 }
 
