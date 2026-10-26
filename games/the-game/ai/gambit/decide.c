@@ -445,8 +445,11 @@ static int ranked(const Read *R, const Found *S) {
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; }
     // (a save confirmed is played: the survival search found the board lives on with it, or outlasts every line without it by a break's
     // time -- the order under it, its reserve and its clauses, ranked lines the save has already outlived)
-    else if (saveLine && order[0] != saveLine && !order[0]->o.lives) {
-      for (int i = 1; i < n; i++) if (order[i] == saveLine) { Judge *S = order[i]; for (int k = i; k > 0; k--) order[k] = order[k - 1]; order[0] = S; break; }
+    // (a save confirmed: the survival search found the board lives on with it, or outlasts every line without it by a break's time -- its
+    // three is no wasted three, a fact of the line the order reads like any other (rank.c threeNeeded), and the order ranks it)
+    else if (saveLine) {
+      for (int i = 0; i < n; i++) if (order[i] == saveLine) { order[i]->threeNeeded = 1; break; }
+      sortJudged(order, n);
     } }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;

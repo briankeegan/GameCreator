@@ -36,6 +36,7 @@ typedef struct {
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
+  int32_t threeNeeded;   // its three the save confirmed the board needs not to die (decide.c): no wasted three to the list
   int32_t holdSunk;    // a hold lost sooner than a line lost alike with it that keeps the board's own chain: after every line lost alike (sortJudged)
   double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
@@ -89,7 +90,7 @@ static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int nearActsOf(const Judge *J, int32_t near);
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->threeNeeded = 0;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -182,7 +183,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->threeNeeded = 0;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -499,7 +500,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (decF.under) { ax = x->apBroke > 0 ? ax : 2 * MAXAIMS + 1; ay = y->apBroke > 0 ? ay : 2 * MAXAIMS + 1; }
     // (and a three that breaks nothing and is no link of a chain clears nothing the list or the one rule asks for: below every line that
     // wastes none -- a three the board needs not to die wins by survival, never by the list)
-    ax += wastesThree(x) ? 1 : 0; ay += wastesThree(y) ? 1 : 0;
+    ax += wastesThree(x) && !x->threeNeeded ? 1 : 0; ay += wastesThree(y) && !y->threeNeeded ? 1 : 0;
     ax += x->spends ? 2 * MAXAIMS + 2 : 0; ay += y->spends ? 2 * MAXAIMS + 2 : 0;
     if (ax != ay) K(3, "list", ax - ay); }
   // 4. VALUE FOR MOVES (valueOf): what the line gives -- the time it buys over the hold, the garbage it converts, the blocks it

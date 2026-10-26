@@ -12,6 +12,9 @@ with its measurement written beside the code.
 
 The two can disagree, so a line the order chose can be refused at the press.
 
+**Done:** the save's verdict is a fact on the line (rank.c `threeNeeded`), and the order ranks with it. The save step no longer
+moves its line to the top by hand, which broke "One order" in 531 decisions of run 1263.
+
 **To do:**
 1. The answer carries the decision's verdict: this line's three is the board's save, or it is not. The press guard reads that
    verdict, and asks its own question only for a swap the answer did not judge (a line handed on, pressed later than judged).
