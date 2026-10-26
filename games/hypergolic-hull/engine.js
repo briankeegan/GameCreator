@@ -6180,6 +6180,7 @@
     livingEnemies,
     enemyAt,
     hazardAt,
+    hazardRule,
     inScrambler,
     launchMissile,
     liveMissiles,

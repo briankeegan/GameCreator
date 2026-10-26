@@ -773,6 +773,13 @@ function scheduleAnims(events) {
   // resolving in one invisible instant. Player-side effects stay immediate.
   let slot = 0; // ms offset for the next enemy action
   let lastAttackSlot = 0;
+  // WHEN EACH HULL HAS ACTUALLY ARRIVED. The enemy phase plays back
+  // sequentially, so a hull that moved is still visibly sliding for a
+  // quarter of a second after its event is read — and anything keyed on
+  // where it ENDS UP has to wait for it to get there, or it is drawn at the
+  // destination while the ship is still in transit. Reported live: the
+  // charge "showing a bubble ahead of time".
+  const arrivesAt = new Map(); // enemyId -> ms offset when its slide lands
   const step = events.filter((e) => e.type === "attack" || e.type === "enemyMove").length > 5 ? 240 : 340;
   for (const ev of events) {
     if (ev.type === "kill") {
@@ -842,20 +849,25 @@ function scheduleAnims(events) {
     // flashed once — because a telegraph you can miss by blinking is not a
     // telegraph, and this is the one round the player has to act in.
     else if (ev.type === "aimStart") {
-      anims.push({ kind: "charge", pos: { q: ev.q, r: ev.r }, lane: ev.lane, start: now, dur: 100000 });
+      // After it has arrived, never before: the lane it locked is the lane
+      // from the hex it is standing on at the END of its move.
+      const landed = arrivesAt.get(ev.enemyId) || 0;
+      anims.push({ kind: "charge", pos: { q: ev.q, r: ev.r }, lane: ev.lane, start: now + landed, dur: 100000 });
     }
     // And the beam clears it. Both are keyed on the lane the engine locked,
     // never recomputed here, so what is drawn is what the engine will
     // actually resolve.
     else if (ev.type === "beam") {
       anims = anims.filter((a) => a.kind !== "charge");
-      anims.push({ kind: "lance", pos: { q: ev.q, r: ev.r }, lane: ev.lane, hit: ev.hit, start: now, dur: 700 });
+      const landed = arrivesAt.get(ev.enemyId) || 0;
+      anims.push({ kind: "lance", pos: { q: ev.q, r: ev.r }, lane: ev.lane, hit: ev.hit, start: now + landed, dur: 700 });
     }
     else if (ev.type === "damage") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "shieldAbsorb") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "enemyMove") {
       slot += step;
       anims.push({ kind: "slide", enemyId: ev.enemyId, from: ev.from, to: ev.to, start: now + slot, dur: 240 });
+      arrivesAt.set(ev.enemyId, slot + 240);
     }
     else if (ev.type === "playerMove") {
       anims.push({ kind: "pslide", from: ev.from, to: ev.to, start: now, dur: 230 });
@@ -1683,6 +1695,54 @@ const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, picket: 0.95,
 // Filled pips are charge in hand; hollow ones are what it still needs
 // before its cheapest gun fires. Nothing is drawn once it's ready and
 // showing — at that point the red wash under it is the message.
+// WHERE ITS LANES ACTUALLY ARE, drawn faintly, while it has not locked one.
+//
+// The six axes of a flat-top hex grid run VERTICALLY and on four diagonals.
+// There is no horizontal one — two hulls side by side on screen are not on
+// a line, which is the single least obvious thing about this board and the
+// only thing you need to know to play against a lane gun. Reported live, in
+// exactly those terms: "we're in the same row but it's not charging". They
+// were in the same row. A row is not a lane.
+//
+// Deliberately NOT the threat overlay. These are not dangerous hexes — the
+// gun cannot fire this round and nothing standing here is at risk — they
+// are where a lock COULD come from, which is a thing you steer by rather
+// than a thing you flee. Hence dim grey-blue and a thin dotted line, not
+// the orange of a lane actually taken.
+function drawSightLines(center, enemy) {
+  const def = Engine.ENEMY_TYPES[enemy.type];
+  if (!def || !def.ship.weapons.some((w) => w.aims)) return;
+  if (enemy.aim) return; // it has one: the charge animation says so, loudly
+  ctx.save();
+  ctx.strokeStyle = "rgba(168,196,224,0.5)";
+  ctx.lineWidth = 1.8;
+  ctx.setLineDash([4, 5]);
+  for (const dir of [{ q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 }, { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }]) {
+    // Only as far as the lane is actually clear: it stops where the beam
+    // would, so a line drawn through a boulder would be a lie about reach.
+    let last = null;
+    for (let step = 1; step <= 12; step++) {
+      const at = { q: enemy.q + dir.q * step, r: enemy.r + dir.r * step };
+      if (!state.boardHexes.some((h) => h.q === at.q && h.r === at.r)) break;
+      const blocked =
+        // What stops a shot is the engine's rule, asked rather than
+        // restated — a renderer with its own copy of "what is solid" drifts.
+        Engine.hazardRule(Engine.hazardAt(state, at)).blocksShot ||
+        (state.enemies || []).some((o) => o.alive && o !== enemy && o.q === at.q && o.r === at.r);
+      last = at;
+      if (blocked) break;
+    }
+    if (!last) continue;
+    const to = hexToPixel(last);
+    ctx.beginPath();
+    ctx.moveTo(center.x, center.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
 function drawChargePips(center, enemy) {
   const ship = Engine.ENEMY_TYPES[enemy.type] && Engine.ENEMY_TYPES[enemy.type].ship;
   if (!ship || !ship.weapons.length) return;
@@ -3567,6 +3627,7 @@ function draw() {
     );
     ctx.restore();
     drawChargePips(center, enemy);
+    drawSightLines(center, enemy);
   }
 
   // Charges under the ordnance and under the ships: it's ground, and
