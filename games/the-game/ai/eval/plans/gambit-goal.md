@@ -1747,3 +1747,5 @@ another way: the order still not one order (hold x312, nearer x976 in 1226).
 THE HOLD'S PLACE ONE PLACE: the hold clause was a pair's own (under a line lost later, the margin deciding the rest), so a hold could
 sit under A, over B, B over A. Now a hold lost sooner than any line lost alike that keeps the chain is under every line lost alike
 (sortJudged holdSunk).
+Measured (`0cc5e597`, 1230): 12 -- combo_storm 6, factory 2, large_garbage 4; actions 7, panels 4. Beaten-by-a-lower 669 (from
+1990): the hold clause was the cycles' hub. Put down with nothing new told 1947 of 4534 -- not the cycles.
