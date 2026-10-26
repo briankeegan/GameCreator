@@ -1778,3 +1778,5 @@ same move). large_garbage-5 lost at 716 still. The hand-on taken out: no game it
 THE LINES LOST, PLAYED ON: where none lives, the order's first three and the hold are each played to their end and the survival
 search asked of the board each leaves (decide.c contLostOf, the save's question); one that lives on a break's time longer than the
 first goes first (`cont=moved/asked`).
+Measured (`d1f38d25`, 1237): 12 -- combo_storm 7, factory 1, large_garbage 4; actions 11, panels 1. 13457 decisions played their
+first lines on (47368 asked), 1097 putting another first.
