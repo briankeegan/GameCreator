@@ -92,20 +92,9 @@ Each change is one constant, run on its own 24 games.
 
 Storage sizes and the engine's own facts (`W`, `ROWS`, `TAP_GAP`) stay, each with its observed maximum recorded.
 
-## 8. Next: material and the raise in the ledger
+## 8. Next
 
-Every board has a break once it has enough material. A "no break" then means one of two things: the search did not reach it, or the
-board had too little material. The ledger counts breaks, but not the panels they are made from, so it adds:
-
-- **Material due:** the panels the rows due will need to break, a break's three at least against each row.
-- **Material in hand:** the panels under the garbage now, plus the W each row converted gives back, less what the plan's clears
-  spend.
-- **The raise as supply:** raising brings a row of panels up from below for one row of room. With material short and room to spare,
-  the raise is the line that restores supply. It is judged like any line, its ledger read, wherever it is offered, not only at the
-  floor and in the opening.
-
-Then every loss reads plainly: with material enough and no break found, the search did not reach it (reach), and that is what is
-fixed next. With material short, the room should have been traded for it.
+`plans/gambit-next.md`, for the owner's review: material and the raise in the ledger, and the margin.
 
 ## The owner's to set
 
