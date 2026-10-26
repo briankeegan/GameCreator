@@ -197,7 +197,9 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
   if (!J->hold) asLine(&J->k);
-  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost, &J->extSpent);
+  int32_t land = decF.next;
+  if (land == NOT_ASKED && garbageOn(decQ.b)) { int32_t end = J->hold ? 0 : J->o.j.endAt; land = end + regainAfter(end, J->hold ? 0 : J->o.j.spent); }
+  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, land, &J->extLost, &J->extSpent);
   if (!J->hold) unLine();
 }
 static double lostOf(const Judge *x);

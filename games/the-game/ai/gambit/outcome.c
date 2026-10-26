@@ -220,13 +220,15 @@ static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o =
 // readiness found it (extLost: the frame that board is lost, FOREVER, or NOT_ASKED)
 #define READY_STEPS 3   // the breaks a plan carries on past the readiness break
 // (extSpent: the actions the plan presses -- the line and its breaks -- where its loss is the plan's; NOT_ASKED otherwise)
-static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extLost, int32_t *extSpent) {
+// (land: the frame it is asked from -- the next block's landing, or with none on its way and garbage on the board, the frame the window
+// has given the line back a break's walk: a hold that lets the window fill is ready for the break it then presses)
+static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent) {
   *extLost = NOT_ASKED; *extSpent = NOT_ASKED;
-  if (decF.next == NOT_ASKED) return NOT_ASKED;
+  if (land == NOT_ASKED) return NOT_ASKED;
   Outcome *hit = cached(seq, n, settled, 2);
   if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; return hit->ready; }
   if (clockOut()) return NOT_ASKED;
-  JudgeOpts jo = { settled, decQ.tight, decF.next, 1, 1, -1, 0, 1 };
+  JudgeOpts jo = { settled, decQ.tight, land, 1, 1, -1, 0, 1 };
   Outcome o;
   memset(&o, 0, sizeof o); o.topLeft = -1;
   judge(&decQ, seq, n, &jo, &o.j);
