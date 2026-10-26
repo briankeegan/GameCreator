@@ -14,7 +14,7 @@ The goal: never die from the garbage the game shows.
 1. **Proven first.** A line whose plan, played on the engine, meets every row shown before the board dies is proven. A proven line
    beats every unproven one.
 2. **Unproven: the most left to find a proof with.** Of lines not proven, one that dies before it could press anything ranks last;
-   then the one that leaves the most of its scarcest resource, then of the next (`marginKey`: room, material, contact, and the window
+   then the one that leaves the most of its scarcest resource, then of the next -- the two scarcest only (`marginKey`: room, material, contact, and the window
    as the dues ask it -- the share of the rows due the window still covers, with the rows the line's own breaks pay); then the later
    loss. A line with a plan is read on the board its plan's last break leaves; a line whose board was not read, on the board as it is
    now. The survival search ranks the same way.
@@ -75,3 +75,6 @@ line short at once by a block shown (**demand**).
   nothing proven, as the plan says; the search for the proof ran each time, its carried beam grew from 4 swaps deep to 20, and found
   nothing -- then every one of its 60 lines died on being played again (the board lost before their end). The beam grew lines that
   leave no time for a break to pop before the board dies. Fixed: such lines leave the beam (brDoomed= in the log).
+- 1280, 11/24 (combo_storm 6, factory 3, large_garbage 2). The beam fix ran (brDoomed in 542 decisions of large_garbage-4). The piece:
+  the margin. In large_garbage-4 the hold (0.4.6.7) was played 14 times over lines lost 42 frames later (0.4.5.6), the window at 53:
+  a twelfth more of the third and fourth scarcest decided over the loss. Fixed: the margin compares the two scarcest shares only.

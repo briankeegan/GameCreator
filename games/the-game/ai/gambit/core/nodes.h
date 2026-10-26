@@ -170,13 +170,14 @@ static double winCoverShare(int32_t endAt, int spent, int32_t paid) {
 }
 // THE MARGIN AS ONE KEY (plans/gambit-next.md 2): the shares of what a board runs out of -- room, material, the window, contact -- each
 // in rows of the stack's twelve, scarcest first, so that of two the more of the scarcest wins, then of the next (under garbage the room
-// is nearly none for every line, and the rest decide); one integer, the order's and the survival search's alike. A share not said
-// (no window allowance, no column under garbage) is whole
+// is nearly none for every line, and the next decides) -- the two scarcest only: a board dies of what it runs out of first, and a row
+// more of what it has plenty of is no reason to give up a later loss; one integer, the order's and the survival search's alike. A
+// share not said (no window allowance, no column under garbage) is whole
 static int32_t marginKeyOf(double room, double mat, double win, double touch) {
   double s[4] = { room, mat, win, touch }; int32_t b[4];
   for (int i = 0; i < 4; i++) { double v = s[i] < 0 ? 0 : s[i] > 1 ? 1 : s[i]; b[i] = (int32_t)(v * 12); }
   for (int i = 1; i < 4; i++) { int32_t v = b[i]; int k = i; while (k > 0 && b[k - 1] > v) { b[k] = b[k - 1]; k--; } b[k] = v; }
-  return ((b[0] * 13 + b[1]) * 13 + b[2]) * 13 + b[3];
+  return b[0] * 13 + b[1];
 }
 static int32_t regainAfter(int32_t endAt, int spent) {
   if (pressAllowance < 0) return 0;

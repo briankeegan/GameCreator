@@ -527,10 +527,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" sol="); for (int i = 0; i < P.ncands && i < 8; i++) { Ledger g = ledgerOf(order[i]); if (i) L_s(",");
     L_i(g.paid); L_s("/"); L_i(g.due); L_s(":"); L_i(g.shortBy); L_s("@"); if (g.at == FOREVER) L_s("-"); else L_i(g.at); }
   L_s(" lands="); L_i(landsTaken); L_s("/"); L_i(landsAsked); landsAsked = landsTaken = 0;   // (later landings: plans taken of those asked)
-  // (each line's margin as the order reads it, its four shares in rows scarcest first (rank.c marginKey), p where read on the board its
-  // plan leaves: mg=)
+  // (each line's margin as the order reads it, its two scarcest shares in rows (rank.c marginKey), p where read on the board its plan
+  // leaves: mg=)
   L_s(" mg="); for (int i = 0; i < P.ncands && i < 8; i++) { int32_t k = marginKey(order[i]); if (i) L_s(",");
-    L_i(k / 2197); L_s("."); L_i(k / 169 % 13); L_s("."); L_i(k / 13 % 13); L_s("."); L_i(k % 13); if (order[i]->planMargin[0] >= 0 && order[i]->extSpent != NOT_ASKED) L_s("p"); }
+    L_i(k / 13); L_s("."); L_i(k % 13); if (order[i]->planMargin[0] >= 0 && order[i]->extSpent != NOT_ASKED) L_s("p"); }
   L_s(" opts=");
   for (int i = 0; i < P.ncands && i < 8; i++) {
     const Judge *j = order[i];
