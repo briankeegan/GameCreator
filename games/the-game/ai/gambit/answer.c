@@ -124,6 +124,7 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // is played when the narrower finds none -- theBrWide)
 enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE, JOB_LANDED };
 static int32_t proofSought;   // (the last decision played no proven line: rank.c proofOf -- the next one's searches go to the break)
+static int32_t wideFirstNow;   // (this decision's: the wider beam took a worker first -- the log's seek=)
 static int32_t touchDepthNext = TOUCH_DEPTH;   // (the touch beam's depth the next decision takes up: search/break.c touchDepth)
 static int32_t jobKinds[6], njobKinds;
 static Broke theBrWide; static int32_t wideDone;
@@ -163,8 +164,10 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
   // (THE SEARCH FOR THE PROOF, plans/gambit-next.md 3: where the last decision had no proven line, the break search's wider beam takes a
   // worker before the planner's half and the extension, which go back to this thread -- the decision's time to the break, not the set-up)
+  wideFirstNow = 0;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
   int wideFirst = proofSought && R->under && pool.nworkers >= 4;
+  wideFirstNow = wideFirst;
   if (wideFirst) jobKinds[njobKinds++] = JOB_WIDE;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
@@ -306,7 +309,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   towardRestLen = 0;
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
-  touchDepth = touchDepthNext;
+  touchDepth = touchDepthNext; wideFirstNow = 0;
   carryFrom = lineFrom; carryPressed = linePressed;
   memset(frontLinesHeld, 0, sizeof frontLinesHeld); memset(frontLinesIn, 0, sizeof frontLinesIn); memset(frontLetGo, 0, sizeof frontLetGo);
   planSeedsHave = plannedPaths(decQ.b, lineFrom, linePressed, &planSeeds); planOut.n = 0; planSeeded = 0;
@@ -491,6 +494,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); L_s(" brRes="); L_i(theBr.resPlayed); L_s("/"); L_i(theBr.resIn); L_s("/"); L_i(frontLinesHeld[FR_BREAK]); L_s("/"); L_i(theBr.resLeft); if (frontLetGo[FR_BREAK]) { L_s(frontLetGo[FR_BREAK] == 1 ? "/gid" : "/anchor"); }
     if (theBr.resIn > theBr.resPlayed) { L_s(" brResWhy="); for (int k = 0; k < 4; k++) { if (k) L_s("/"); L_i(theBr.resWhy[k]); } } }   // (the carried lines not played again whole: a swap not there / a pair put back / the board lost / outside the rules)
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
+  // (THE SEARCH FOR THE PROOF, plans/gambit-next.md 3 and 7: seek=1 the wider beam took a worker first this decision; depth= the touch
+  // beam's depth it searched to)
+  L_s(" seek="); L_i(wideFirstNow); L_s(" depth="); L_i(touchDepth);
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
   int any = 0;

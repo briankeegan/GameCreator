@@ -212,14 +212,17 @@ static int planProven(int32_t lost) {
   if (lost == NOT_ASKED || lost < 0) return 0;
   return (double)lost > proofFrame();
 }
-// (of two plans, the proven; then the one that converts more; then the one lost later)
+// (of two plans, as the order ranks lines (compareJudged): the proven; then the one lost later by a break's time and more; then the one
+// that converts more; then the one lost later)
 #define PLAN_LANDS 4
 static int32_t landsAsked, landsTaken;   // (this decision's later landings asked and the plans taken from them: the log's lands=)
 static int planBetter(int32_t lx, int32_t bx, int32_t ly, int32_t by) {
   int px = planProven(lx), py = planProven(ly);
   if (px != py) return px;
+  double fx = lx == NOT_ASKED ? -1 : lostAtOf(lx, 0), fy = ly == NOT_ASKED ? -1 : lostAtOf(ly, 0), save = imax(1, rankSave);
+  if (fx >= fy + save || fy >= fx + save) return fx > fy;
   if (bx != by) return bx > by;
-  return (lx == NOT_ASKED ? -1 : lostAtOf(lx, 0)) > (ly == NOT_ASKED ? -1 : lostAtOf(ly, 0));
+  return fx > fy;
 }
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
