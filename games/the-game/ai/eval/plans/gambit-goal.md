@@ -1788,3 +1788,6 @@ after decision). Every decision searches as far from now, so a fresh line spends
 which has pressed part of its own -- and "later" counted the loss alone.
 SURVIVAL IN ONE UNIT: a line's loss net of what it spends, each action the frames the window takes to give it back (core/nodes.h
 actionFrames, rank.c lostNetOf) -- in "later", in the bands, in the hold's place.
+Measured (`a0ec1607`, 1238): red -- "the answers": 16 decisions played a line lost a break's time sooner than one offered. Survival
+first stands: the net loss decides only between lines lost alike (rule 1 "net", before the margin); the bands and "later" are the
+loss itself.
