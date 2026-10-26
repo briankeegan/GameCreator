@@ -38,12 +38,12 @@ static Readied readyFor(const Question *q, double ms) {
 // break search asked of that board -- the break the board will need, found while there is still time to press it, not once the block
 // is down. Its line, as the board stands now, is the proposer's to offer and the judge's to try: pressed early, its swaps meet the block
 // as the judge plays them. 1 and the line; 0 none (nothing coming, the board lost first, no garbage on it then, none found)
-static Board *landedB;
+static Board *landedB; static Ctx *landedCtx;   // (its own: it runs as a job of its own beside the proposers' readiness -- answer.c JOB_LANDED)
 static int32_t landedWhy = -1, landedDeep, landedRes, landedIn;   // (the depth its beam reached, its carried lines played again of those carried in)
 // (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found, 5 below the stack as it is now; -1 not asked)
 static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path, int *n) {
   *n = 0; landedWhy = 1;
-  Ctx *x = readyCtx = ctxOf(readyCtx);
+  Ctx *x = landedCtx = ctxOf(landedCtx);
   int root = rootOf(x, q);
   if (root < 0) return 0;
   int land = step(x, root, MK_LONG, 0, 0, wait);
@@ -87,6 +87,18 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
     path[(*n)++] = r * 8 + CC(lbr.path[k]);
   }
   return *n > 0;
+}
+
+// (THE BOARD TO COME AS A JOB OF ITS OWN: on a worker beside the decision's other searches, in the searches' time, so it takes from no
+// other search; its answer the proposers' once the jobs are taken back -- propose.c searchMerge)
+#define LANDED_AHEAD 240   // the frames ahead a block's landing is searched for the break it will need
+static int32_t landedOk, landedOutN, landedOut[MAXLINE], landedDone;
+static void landedJobRun(double by) {
+  landedOk = 0; landedOutN = 0;
+  double ms = by - nowMs();
+  if (decF.next == NOT_ASKED || decF.next <= 0 || decF.next > LANDED_AHEAD || ms < 1) return;
+  int n = 0;
+  if (landedBreak(&decQ, decF.next + 2, ms, landedOut, &n)) { landedOutN = n; landedOk = 1; }
 }
 
 // THE ORDER OF THE FIRST SWAPS: nearest the top of the stack first. The comparator says "b first" only when b is strictly nearer; the

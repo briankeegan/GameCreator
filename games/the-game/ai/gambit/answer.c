@@ -122,8 +122,8 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // worker that finishes one takes the next)
 // (and under garbage, the break search's wider touch beam on a worker of its own from the start, beside the narrower: the break it finds
 // is played when the narrower finds none -- theBrWide)
-enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE };
-static int32_t jobKinds[5], njobKinds;
+enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE, JOB_LANDED };
+static int32_t jobKinds[6], njobKinds;
 static Broke theBrWide; static int32_t wideDone;
 // (where the break search ran, for the log: 0 not run, 1 a worker beside the searches, 2 the decision after a worker had not finished it,
 // 3 the decision with no worker free; and the ms it was given)
@@ -138,6 +138,7 @@ static void breakJob(int32_t i) {
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
   else if (kind == JOB_PLAN) planJob();
   else if (kind == JOB_EXT) extJob(brJobR, brJobS);
+  else if (kind == JOB_LANDED) { landedJobRun(brJobBy); __atomic_store_n(&landedDone, 1, __ATOMIC_RELEASE); }
   else if (kind == JOB_WIDE) { touchFrom = 1; breakRunTo(brJobR, brJobBy, &theBrWide); touchFrom = 0; __atomic_store_n(&wideDone, 1, __ATOMIC_RELEASE); }
   else {
     double old = clockShareBegin(brJobBy);
@@ -149,7 +150,7 @@ static void breakJob(int32_t i) {
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
-  brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
+  brCut = 0; brResumed = 0; __atomic_store_n(&landedDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || timeLeftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
@@ -163,6 +164,7 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
+  if (decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) jobKinds[njobKinds++] = JOB_LANDED;   // (the board to come: search/ready.c)
   // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
   // is this thread's whole)
   while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; }

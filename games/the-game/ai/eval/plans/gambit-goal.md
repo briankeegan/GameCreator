@@ -1686,3 +1686,9 @@ Measured (`a7d356b4`, the store's checks building, 1217): see below.
 THE LANDED FRONTIER KEYED TO ITS BLOCK: the frame a block lands is an estimate a clear's stop or a raise moves (6464 decisions let the
 carry go for it in 1216); the same block is now the same shape landing within KEY_SLACK (120) frames of where it was to
 (search/frontier.c frontierResumeKeyed).
+Measured (`cd67a774`, the landed frontier keyed to its block, 1218): 12 -- combo_storm 6, factory 2, large_garbage 4; actions 7, panels 5.
+The landed carry now holds: 251396 of 301458 lines carried in (from 86915 of 360216). Its beam still 2 deep: the search has the
+proposers' leftover time, and its carried lines take that to play again.
+THE BOARD TO COME AS A JOB OF ITS OWN (answer.c JOB_LANDED, search/ready.c landedJobRun): with workers it runs beside the other
+searches in the searches' time, on its own context, and takes from none of them; read once the jobs are taken back (propose.c
+searchMerge). Without workers, the proposers' leftover as before.

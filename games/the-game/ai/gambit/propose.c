@@ -35,7 +35,6 @@ static int32_t popLeft(const Board *b) {
   return t;
 }
 
-#define LANDED_AHEAD 240   // the frames ahead a block's landing is searched for the break it will need (search/ready.c landedBreak)
 #define LANDED_MS 40       // and the time it is given
 #define MAXSTARTS 8
 // THE SEARCHES, run once a decision: the planner, the extension of a chain falling or a slab popping, readiness, levelling
@@ -160,6 +159,8 @@ static int pLineBetter(const PLine *a, const PLine *b, int how) {   // (a over b
   return a->earned > b->earned || (a->earned == b->earned && a->nseq < b->nseq);
 }
 static void searchMerge(const Read *R, Found *S) {
+  // (the board to come, its own job's answer once the jobs are taken back: answer.c breakEnd)
+  if (searchBeside && __atomic_load_n(&landedDone, __ATOMIC_ACQUIRE) && landedOk && landedOutN > 0) { S->haveLb = 1; S->lbN = landedOutN; for (int k = 0; k < landedOutN; k++) S->lb[k] = landedOut[k]; }
   if (planSplit && __atomic_load_n(&planBDone, __ATOMIC_ACQUIRE)) {
     for (int i = 0; i < planHalfB.n && planSplitAt + i < MAXAIMS; i++)
       if (planB.perAim[i].set) { S->ap.perAim[planSplitAt + i] = planB.perAim[i]; S->ap.perAim[planSplitAt + i].aimIndex = planSplitAt + i; }
@@ -200,7 +201,8 @@ static void searchAll(const Read *R, Found *S) {
     S->haveRl = readyLines(&decQ, lastLand, m3 > 1 ? m3 : 1, S->rl, &S->rlN, &S->rlAt);
   }
   // (the break the next block will need, searched on the board it lands on: while it is still to come, every decision asks it)
-  if (decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) {
+  // (with workers, a job of its own: answer.c JOB_LANDED, read in searchMerge; without, here in what the proposers have)
+  if (!searchBeside && decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) {
     double m4 = timeLeftMs() / 3 < LANDED_MS ? timeLeftMs() / 3 : LANDED_MS;
     if (m4 > 1) S->haveLb = landedBreak(&decQ, decF.next + 2, m4, S->lb, &S->lbN);
   }
