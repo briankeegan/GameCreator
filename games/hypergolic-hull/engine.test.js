@@ -4257,4 +4257,40 @@ assert.deepStrictEqual(
   }
 }
 
+// LEVEL ONE IS A BARE BOARD WITH ONE INTERCEPTOR ON IT, however the seed
+// rolls. It is still generated — the hand-authored LEVELS entries are dealt
+// to nobody, so a rule for a level has to live in the generator or it is not
+// a rule. Stated over many seeds because this is exactly the kind of claim a
+// single sample agrees with and the game then breaks: before LEVEL_RULES,
+// depth 1 dealt two contacts in 109 of 300 seeds, between one and seven
+// hazards in all 300, and the one hull was an Interceptor, a Cruiser or a
+// gunless Salvager depending on the roll.
+{
+  for (let seed = 1; seed <= 120; seed++) {
+    const lvl = HypergolicLevels.generateLevel(1, null, seed);
+    assert.strictEqual(
+      (lvl.hazards || []).length,
+      0,
+      `level 1, seed ${seed}: no ground of any kind — got ${(lvl.hazards || []).map((h) => h.type).join(",")}`
+    );
+    assert.deepStrictEqual(
+      (lvl.enemies || []).map((e) => e.type),
+      ["interceptor"],
+      `level 1, seed ${seed}: exactly one Interceptor and nothing else`
+    );
+    // The board is still dealt by the generator, not written down here.
+    const st = Engine.createGameState(lvl, { runSeed: seed });
+    assert.strictEqual((st.hazards || []).length, 0, `level 1, seed ${seed}: and nothing adds ground on the way in`);
+    assert.strictEqual(st.enemies.length, 1, `level 1, seed ${seed}: one hull at spawn`);
+  }
+  // And the rule is scoped to the level it was set for — depth 2 still rolls
+  // its own ground, or "no hazards on level 1" would quietly mean "no
+  // hazards", which is a different game.
+  let groundLater = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    if ((HypergolicLevels.generateLevel(2, null, seed).hazards || []).length) groundLater++;
+  }
+  assert.ok(groundLater > 30, `level 2 still has ground of its own (${groundLater}/60 seeds)`);
+}
+
 console.log("All golden-path assertions passed.");
