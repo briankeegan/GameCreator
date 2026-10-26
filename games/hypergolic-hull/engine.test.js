@@ -4541,4 +4541,45 @@ assert.deepStrictEqual(
   assert.ok(lockedOnTheMove, "it lines up the same round it moves into sight, not a round later");
 }
 
+// THE CYCLE HAS NO DEAD ROUND IN IT: work onto a line, lock it the moment
+// there is one, loose it, then go and find another. The round after a shot
+// used to be spent motionless refilling the bus, which is a third of every
+// round this class gets with nothing on it to read — reported live as "it's
+// not charging up... most of the time". It was charging. It was doing it
+// standing still. Repositioning refills it just as waiting would, so the
+// round goes back on the board as movement.
+{
+  const st = Engine.createGameState({
+    id: 903,
+    name: "no dead rounds",
+    board: { type: "rect", cols: 7, rows: 9 },
+    playerStart: { q: 3, r: 6 },
+    exit: { q: 6, r: -3 },
+    outpost: null,
+    enemies: [{ type: "interceptor", q: 3, r: 2 }],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+    actions: ["sublight", "autocannon"],
+  });
+  let blank = 0;
+  const seen = [];
+  for (let round = 0; round < 9; round++) {
+    const was = { q: st.enemies[0].q, r: st.enemies[0].r };
+    Engine.applyEndTurn(st);
+    const foe = st.enemies[0];
+    if (!foe || !foe.alive) break;
+    const kinds = (st.events || []).map((e) => e.type);
+    const did =
+      kinds.includes("aimStart") ? "lock"
+      : kinds.includes("beam") ? "fire"
+      : !Engine.posEq(foe, was) ? "move"
+      : "nothing";
+    seen.push(did);
+    if (did === "nothing") blank++;
+  }
+  assert.ok(seen.includes("lock"), `it locks (${seen.join(",")})`);
+  assert.ok(seen.includes("fire"), `it fires (${seen.join(",")})`);
+  assert.ok(blank <= 1, `and it is never just standing there for long (${seen.join(",")})`);
+}
+
 console.log("All golden-path assertions passed.");

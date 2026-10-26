@@ -4383,48 +4383,6 @@
     // edge, rock, another hull — it stops retreating and fights, and that is
     // the window the whole fight is built around: a hull with a contact gun
     // and nowhere left to back into.
-    if (ENEMY_TYPES[enemy.type].standsOff && hexDistance(enemy, state.playerPos) <= STANDOFF_GAP) {
-      // IT GETS ON A LINE. Backing away is how it buys the room to do that,
-      // never the point of it — a hull that only maximises distance is
-      // running away, and a thing running away is not a threat.
-      //
-      // So every step that does not GIVE UP ground is a candidate, and they
-      // are ranked by whether the flagship would be in one of its lanes from
-      // there before they are ranked by distance. A sidestep that holds the
-      // gap and opens a lane beats a retreat that widens the gap and closes
-      // every lane: measured the other way round, chased along the left edge
-      // of the board it took the single retreat available for six straight
-      // rounds, never lined up once and never fired a shot. The edge was
-      // doing the choosing, not the hull.
-      const gapNow = hexDistance(enemy, state.playerPos);
-      const room = neighbors(enemy)
-        .filter((to) => canFlyInto(state, to, enemy) && !enemyAt(state, to) && !posEq(to, state.playerPos))
-        .map((to) => ({
-          to,
-          gap: hexDistance(to, state.playerPos),
-          // Would a gun actually reach from there — axis AND footprint, so
-          // rock and other hulls break the line exactly as they do on a shot.
-          lined: weaponsBearingFrom(state, enemy, to).length > 0,
-        }))
-        .filter((c) => c.gap >= gapNow)
-        .sort((a, b) => Number(b.lined) - Number(a.lined) || b.gap - a.gap);
-      // A LANE IN HAND BEATS A HEX. If it can already shoot from where it is
-      // standing, it stops manoeuvring and locks — otherwise it is a hull
-      // that is permanently about to attack, which is what it became when
-      // moving always won: aligned, adjacent, and sidestepping along the
-      // bottom of the board for the rest of the sector without firing once.
-      //
-      // The exception is contact. At one hex the flagship's own gun reaches
-      // it, so it buys a hex of room first IF there is one to buy; with
-      // nowhere to go it fights where it stands, which is the corner the
-      // whole fight is about.
-      const bearsHere = enemyWeaponsBearing(state, enemy).length > 0;
-      const best = room[0];
-      const mustBreakOff = gapNow <= 1 && best && best.gap > gapNow;
-      if (best && (!bearsHere || mustBreakOff)) {
-        return { enemyId: enemy.id, type: "move", to: best.to };
-      }
-    }
     // Any contact fires the instant the flagship is standing somewhere one
     // of ITS FITTED GUNS reaches and its reactor can pay for the shot —
     // the same two questions the flagship's own fire controls ask. A
@@ -4593,7 +4551,21 @@
     // the general "no shot yet, stand around" case that caused the
     // measured stalling; a hostile still without a solution at all falls
     // straight through to the chase below exactly as before.
-    if (bearing.length) return { enemyId: enemy.id, type: "wait" };
+    // A STAND-OFF HULL GOES BACK TO MANOEUVRING INSTEAD OF STANDING STILL.
+    // Holding a solved shot until the bus refills is right for a gun
+    // platform, whose whole job is that one lane; it is wrong for a class
+    // whose cycle is work onto a line, take it, loose it, go and find
+    // another. Under the plain rule the round after a shot was spent
+    // motionless — a round with nothing on it to read — and that is a third
+    // of every round it gets. Reported live: "it's not charging up... most
+    // of the time." It was charging. It was doing it standing still.
+    //
+    // Repositioning refills it just as waiting would (see the regen rule at
+    // the end of enemyPhase), so this costs it nothing and puts the round
+    // back on the board as movement.
+    if (bearing.length && !ENEMY_TYPES[enemy.type].standsOff) {
+      return { enemyId: enemy.id, type: "wait" };
+    }
     // No drive fitted, no flying — the same rule that grounds the
     // flagship with its engines pulled (see applySublight). That, and
     // nothing else, is what makes a Sentry an emplacement.
@@ -4685,13 +4657,23 @@
         // `weaponsBearingFrom` rather than the precomputed solution set,
         // because that set is the hexes it could fire from against the board
         // as it stands and this question is about hexes it has not moved to.
+        // IT IS TRYING TO ATTACK YOU, NOT TO GET AWAY FROM YOU. Sighting
+        // the flagship is the goal and distance is only ever the tiebreak:
+        // given two steps that are otherwise equal it takes the one further
+        // out, and given a choice between further out and getting you in a
+        // lane, it takes the lane — forwards if that is where the lane is.
+        //
+        // This used to refuse any step that closed the gap, which made it a
+        // hull that ran away and occasionally happened to be aligned. Of two
+        // steps, forward into a lane and back out of every lane, it took the
+        // retreat every time.
         const scored = candidates.map((c) => ({
           ...c,
           lined: weaponsBearingFrom(state, enemy, c.to).length > 0,
         }));
         const lined = scored.filter((c) => c.lined);
         if (lined.length) {
-          // On a line already: take the one furthest out.
+          // It can sight you from more than one hex: take the furthest.
           lined.sort((a, b) => b.dist - a.dist || a.dir - b.dir);
           return { enemyId: enemy.id, type: "move", to: lined[0].to };
         }
@@ -5104,6 +5086,9 @@
     // in place; that's a follow-up tuning pass, not a blocker to shipping
     // the rule itself.
     const waitedThisPhase = new Set();
+    // Who spent this round's action MANOEUVRING. For a hull that stands off,
+    // that round is its reload (see the regen rule at the end of the phase).
+    const movedThisPhase = new Set();
     for (let apStep = 0; apStep < ENEMY_AP; apStep++) {
       const intents = livingEnemies(state).map((enemy) => ({ enemy, intent: decideIntent(state, enemy) }));
       for (const { enemy, intent } of intents) {
@@ -5185,7 +5170,9 @@
       const claimed = new Set(livingEnemies(state).map((e) => hexKey(e)));
       for (const { enemy, intent } of intents) {
         if (intent.type !== "move" || !enemy.alive) continue;
+        const wasAt = { q: enemy.q, r: enemy.r };
         applyEnemyBurn(state, enemy, intent.to, claimed);
+        if (!posEq(enemy, wasAt)) movedThisPhase.add(enemy.id);
         if (state.status !== "playing") return;
       }
       // THE BURN RESOLVES BEFORE THE SHOOTING, so a hull that closes can
@@ -5470,7 +5457,25 @@
     // otherwise have spent moving or firing, for both sides now, not just
     // one of them.
     for (const enemy of livingEnemies(state)) {
-      if (!waitedThisPhase.has(enemy.id)) continue;
+      // MANOEUVRING IS THE RELOAD, for a hull that stands off and nobody
+      // else. Its whole cycle is: work its way onto a line, lock that line
+      // the moment it has one, loose it, then go and find another — and
+      // under the plain rule the round after a shot was spent STANDING
+      // STILL to refill, which is a round with nothing on it. Reported live
+      // as "it's not charging up... most of the time": one round in three
+      // was the gun visibly powering up and the other two were a hull doing
+      // nothing you could read.
+      //
+      // So this class refills on a round it spent repositioning instead. It
+      // is still one action for one tick — the same bargain every other
+      // hull makes — just spent on the half of its job that is movement.
+      // Nothing else in the roster is touched: `node cadence.js` prints
+      // every class's rhythm, and only this one's changes.
+      const standsOff = (ENEMY_TYPES[enemy.type] || {}).standsOff;
+      const earned =
+        waitedThisPhase.has(enemy.id) ||
+        (standsOff && movedThisPhase.has(enemy.id) && !firedThisPhase.has(enemy.id));
+      if (!earned) continue;
       const ship = enemyShip(enemy);
       if (!ship) continue;
       enemy.energy = Math.min(enemy.maxEnergy, enemy.energy + ship.rechargeGain);
