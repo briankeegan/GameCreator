@@ -42,6 +42,19 @@
         document.addEventListener("visibilitychange", function () {
           if (document.visibilityState === "visible") reg.update().catch(function () {});
         });
+        // AND ON A CLOCK, because neither of the two above fires while
+        // somebody is simply sitting on the page. A deploy that lands during
+        // a session stays unseen until the tab is reloaded or switched away
+        // from and back — so the version badge reads one build while the
+        // site serves another, and the only way to find out is to notice.
+        // That cost three round trips in one session ("it's still showing
+        // 86"). Checking once a minute is a conditional request for one
+        // small file; when it comes back unchanged nothing happens at all,
+        // and when it comes back new the controllerchange handler above
+        // reloads the page once, by itself.
+        setInterval(function () {
+          if (document.visibilityState === "visible") reg.update().catch(function () {});
+        }, 60000);
       }).catch(function () {});
     });
   }
