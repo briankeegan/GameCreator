@@ -34,3 +34,15 @@ decision's. What was found: kept, from every decision, played or not -- the line
 
 The board itself is never carried: every decision reads it from its question. The dig (`digSeen`), the readiness kept
 (`readyKept`), the saving band and the opener are read off boards the game stood on, true whatever was played, and are not in the ring.
+
+## The frontiers: one store (search/frontier.c)
+
+Every search's lines are carried on the one way. At the end of a decision each search's frontier is kept in `theFront[kind]` --
+the break search (`FR_BREAK`), the planner (`FR_PLAN`), the survival search (`FR_SURVIVE`), the board a block lands on (`FR_LANDED`) --
+by `frontierKeep`: anchored to a bottom-row panel the move and the swaps handed on did not touch, with what was played. The next
+decision takes it out by `frontierResume`: the swaps played since taken off a line they began, a line they never touched carried
+whole, the rows risen since added; the break search's let go when the garbage it dug toward is no longer the lowest. A frontier keyed
+to something other than the board (`FR_LANDED`: the frame its block lands) is carried while the key holds (`frontierKeepKeyed`,
+`frontierResumeKeyed`). The frontiers are in the carried ring: what was pressed is the answer played's.
+
+Each decision logs `front=kind:held/in[g|a|k],...` and `svSeed=played/in`; the summary counts them ("the frontiers carried on").

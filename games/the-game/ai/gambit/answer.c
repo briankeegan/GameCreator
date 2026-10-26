@@ -11,17 +11,6 @@ static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
 #define ROW_STEPS 16
 
 
-// ---- the garbage the search digs toward: the id of the lowest block on the board
-static int lowestGarbageRowOf(const Board *b) {
-  for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) if (b->p[r][c].f[ISGARBAGE]) return r;
-  return 0;
-}
-static int32_t digTargetOf(const Board *b) {
-  int r = lowestGarbageRowOf(b);
-  if (r) for (int k = 1; k <= W; k++) if (b->p[r][k].f[ISGARBAGE]) return b->p[r][k].f[GARBAGEID];
-  return NUL;
-}
-
 // ---- THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest:
 // each row's colours, garbage as G
 #define KEYLEN 160
@@ -56,116 +45,26 @@ static int seenDigHas(const Board *b, int32_t mv) {
   return digHas(key);
 }
 
-// ---- THE BREAK SEARCH CARRIED ON: this beam's lines, on this board, the garbage they dig toward, the move played and the line handed
-// on after it, a bottom-row panel none of them touches, and the line toward a break played
-typedef struct { int32_t set, gid, anchorRow, anchorCol, anchorId, id, playedHold, played, nhanded, handed[MAXLINE], ntoward, toward[MAXPATH]; Paths paths; } Kept;
-static Kept theKept;
+// ---- THE BREAK SEARCH CARRIED ON: its frontier, and the planner's, in the one store (search/frontier.c)
+#define theKept theFront[FR_BREAK]
+#define thePlanKept theFront[FR_PLAN]
 // (a life not kept: the last decision's verdict under garbage, its next landing frame and queue -- answerTurn's log)
 #define LIFEDUMPS 20
 static int32_t lifeLived, lifeLand, lifeQk, lifeDumps;
 static int32_t towardPlayedN, towardPlayed[MAXPATH];
-static int32_t riseSince(const Board *b, int row, int col, int32_t id) {
-  for (int r = 1; r < b->nrows; r++) if (b->p[r][col].f[ID] == id) return r - row;
-  return NOT_ASKED;
-}
-static int playedSince(const Kept *K, int32_t lineFrom, int32_t linePressed, int32_t *pre) {
-  int n = lineFrom == K->id && K->nhanded ? imin(linePressed, K->nhanded) : 0, k = 0;
-  if (!K->playedHold) pre[k++] = K->played;
-  for (int i = 0; i < n; i++) pre[k++] = K->handed[i];
-  return k;
-}
-static int touchedBy(const int32_t *p, int np, const int32_t *pre, int npre) {
-  for (int i = 0; i < npre; i++) for (int k = 0; k < np; k++) if (CR(pre[i]) == CR(p[k]) && CC(pre[i]) - CC(p[k]) <= 1 && CC(p[k]) - CC(pre[i]) <= 1) return 1;
-  return 0;
-}
-static int startsWith(const int32_t *p, int np, const int32_t *pre, int npre) { if (np <= npre) return 0; for (int i = 0; i < npre; i++) if (p[i] != pre[i]) return 0; return 1; }
-static int32_t carryHeld, carryWhy;   // (the log's: the lines the last decision kept, and why none came on: 1 the garbage dug at changed, 2 the anchor panel gone)
+// (the break search's frontier and the planner's, out of and into the one store: search/frontier.c)
 static int carriedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, Paths *out) {
-  out->n = 0;
-  Kept *K = &theKept;
-  carryHeld = K->set ? K->paths.n : 0; carryWhy = 0;
-  if (!K->set || !K->paths.n) return 0;
-  if (digTargetOf(b) != K->gid) { carryWhy = 1; return 0; }
-  int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId);
-  if (dr == NOT_ASKED) { carryWhy = 2; return 0; }
-  int32_t pre[MAXLINE + 1];
-  int npre = playedSince(K, lineFrom, linePressed, pre);
-  // (THE LINE TOWARD A BREAK BEGUN: the rest of the one played last, the same moves taken off)
-  if (K->ntoward && startsWith(K->toward, K->ntoward, pre, npre)) {
-    towardRestLen = K->ntoward - npre;
-    for (int i = 0; i < towardRestLen; i++) towardRest[i] = (CR(K->toward[npre + i]) + dr) * 8 + CC(K->toward[npre + i]);
-  }
-  // (a line the swaps played since began is carried on from where they left it; one they never touched -- no swap played on a cell its
-  // swaps move, or beside one -- is carried on whole: what was played elsewhere changed nothing it presses, and the beam plays it again
-  // swap by swap within the rules before it grows it)
-  for (int i = 0; i < K->paths.n && out->n < KEEPN; i++) {
-    int from;
-    if (startsWith(K->paths.path[i], K->paths.len[i], pre, npre)) from = npre;
-    else if (!touchedBy(K->paths.path[i], K->paths.len[i], pre, npre)) from = 0;
-    else continue;
-    int t = out->n++;
-    out->len[t] = K->paths.len[i] - from;
-    for (int k = 0; k < out->len[t]; k++) out->path[t][k] = (CR(K->paths.path[i][from + k]) + dr) * 8 + CC(K->paths.path[i][from + k]);
-  }
-  return 1;
-}
-// (a frontier kept: K anchored to a bottom-row panel the move played and the swaps handed on do not touch, with what was played)
-static int anchorKept(Kept *K, const Paths *paths, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
-  const Board *b = decQ.b;
-  for (int col = 1; col <= W; col++) {
-    int32_t id = b->p[1][col].f[ID];
-    if (id == NUL) continue;
-    int touched = 0;
-    if (kind == 1 && CR(move) == 1 && (CC(move) == col || CC(move) + 1 == col)) touched = 1;
-    for (int i = 0; i < nhanded; i++) if (CR(handed[i]) == 1 && (CC(handed[i]) == col || CC(handed[i]) + 1 == col)) touched = 1;
-    if (touched) continue;
-    K->set = 1; K->paths = *paths; K->gid = digTargetOf(b); K->anchorRow = 1; K->anchorCol = col; K->anchorId = id; K->id = qid;
-    K->playedHold = kind == 0; K->played = move; K->nhanded = nhanded; for (int i = 0; i < nhanded; i++) K->handed[i] = handed[i];
-    return 1;
-  }
-  return 0;
-}
-// THE PLAN KEPT (search/plan.c planOut): the planner's lines, anchored as the break search's are, and re-rooted at the next decision --
-// the swaps played since taken off, the rows risen since added (plannedPaths: the next plan's seeds)
-static Kept thePlanKept;
-static void keepPlan(int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
-  memset(&thePlanKept, 0, sizeof thePlanKept);
-  if (!planOut.n || !(kind == 0 || kind == 1)) return;
-  anchorKept(&thePlanKept, &planOut, kind, move, handed, nhanded, qid);
+  return frontierResume(FR_BREAK, b, lineFrom, linePressed, 1, out, towardRest, &towardRestLen);
 }
 static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, Paths *out) {
-  out->n = 0;
-  Kept *K = &thePlanKept;
-  if (!K->set || !K->paths.n) return 0;
-  int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId);
-  if (dr == NOT_ASKED) return 0;
-  int32_t pre[MAXLINE + 1];
-  int npre = playedSince(K, lineFrom, linePressed, pre);
-  for (int i = 0; i < K->paths.n; i++) {
-    if (!startsWith(K->paths.path[i], K->paths.len[i], pre, npre)) continue;
-    int t = out->n++;
-    out->len[t] = K->paths.len[i] - npre;
-    for (int k = 0; k < out->len[t]; k++) out->path[t][k] = (CR(K->paths.path[i][npre + k]) + dr) * 8 + CC(K->paths.path[i][npre + k]);
-  }
-  return out->n > 0;
+  return frontierResume(FR_PLAN, b, lineFrom, linePressed, 0, out, 0, 0) && out->n > 0;
+}
+static void keepPlan(int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
+  frontierKeep(FR_PLAN, &planOut, kind, move, handed, nhanded, qid, 0, 0);
 }
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
-  memset(&theKept, 0, sizeof theKept);
-  if (!br || !br->keepOut.n || br->depth || !(kind == 0 || kind == 1)) return;
-  const Board *b = decQ.b;
-  for (int col = 1; col <= W; col++) {
-    int32_t id = b->p[1][col].f[ID];
-    if (id == NUL) continue;
-    int touched = 0;
-    if (kind == 1 && CR(move) == 1 && (CC(move) == col || CC(move) + 1 == col)) touched = 1;
-    for (int i = 0; i < nhanded; i++) if (CR(handed[i]) == 1 && (CC(handed[i]) == col || CC(handed[i]) + 1 == col)) touched = 1;
-    if (touched) continue;
-    Kept *K = &theKept;
-    K->set = 1; K->paths = br->keepOut; K->gid = digTargetOf(b); K->anchorRow = 1; K->anchorCol = col; K->anchorId = id; K->id = qid;
-    K->playedHold = kind == 0; K->played = move; K->nhanded = nhanded; for (int i = 0; i < nhanded; i++) K->handed[i] = handed[i];
-    K->ntoward = towardPlayedN; for (int i = 0; i < towardPlayedN; i++) K->toward[i] = towardPlayed[i];
-    return;
-  }
+  if (!br || br->depth) { memset(&theFront[FR_BREAK], 0, sizeof theFront[FR_BREAK]); return; }
+  frontierKeep(FR_BREAK, &br->keepOut, kind, move, handed, nhanded, qid, towardPlayed, towardPlayedN);
 }
 
 // THE BREAK SEARCH, in its share of the decision's time -- or, with workers, on one of them beside the other searches, in all of theirs
@@ -331,7 +230,7 @@ static double readMs;   // (the board's reading, for the log)
 #define CARRIEDN 64
 typedef struct {
   int32_t id, mode, carryLost, lastA, lastB, pairRuns, blockA, blockB, blockUntil, idle;
-  Kept kept, planKept; Carry carry, carryNext;
+  Kept front[NFRONT]; Carry carry, carryNext;
 } Carried;
 static Carried carriedRing[CARRIEDN];
 static int32_t carriedN, carriedHead;
@@ -345,7 +244,7 @@ static void carriedKeep(int32_t id) {
   carriedHead = (carriedHead + 1) % CARRIEDN; if (carriedN < CARRIEDN) carriedN++;
   c->id = id; c->mode = modeRule; c->carryLost = carryLost;
   c->lastA = lastA; c->lastB = lastB; c->pairRuns = pairRuns; c->blockA = blockA; c->blockB = blockB; c->blockUntil = blockUntil; c->idle = C2.idle;
-  c->kept = theKept; c->planKept = thePlanKept; c->carry = theCarry; c->carryNext = theCarryNext;
+  memcpy(c->front, theFront, sizeof theFront); c->carry = theCarry; c->carryNext = theCarryNext;
   carriedOf = id;
 }
 static void carriedResume(void) {
@@ -361,7 +260,7 @@ static void carriedResume(void) {
       // (the lines the answers not played chose: ideas still, the next decision's to judge)
       if (theCarryNext.set && !sameCarry(&theCarryNext, &c->carryNext)) carriedIdeas += intentOfCarry(&theCarryNext);
       if (theCarry.set && !sameCarry(&theCarry, &c->carry)) carriedIdeas += intentOfCarry(&theCarry);
-      theKept = c->kept; thePlanKept = c->planKept; theCarry = c->carry; theCarryNext = c->carryNext;
+      memcpy(theFront, c->front, sizeof theFront); theCarry = c->carry; theCarryNext = c->carryNext;
       gb_back(lastA, lastB, pairRuns, blockA, blockB, blockUntil, 0);
       if (c->mode != modeRule) modeLeft();   // (kept under another mode: let go, as a switch lets it go)
       carriedResumed = played;
@@ -386,7 +285,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
   carryFrom = lineFrom; carryPressed = linePressed;
+  memset(frontHeld, 0, sizeof frontHeld); memset(frontIn, 0, sizeof frontIn); memset(frontWhy, 0, sizeof frontWhy);
   planSeedsHave = plannedPaths(decQ.b, lineFrom, linePressed, &planSeeds); planOut.n = 0; planSeeded = 0;
+  outSeedsHave = frontierResume(FR_SURVIVE, decQ.b, lineFrom, linePressed, 0, &outSeeds, 0, 0) && outSeeds.n > 0; outKeep.n = 0; outSeedIn = outSeedPlayed = 0;
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)
   int32_t gid = digTargetOf(decQ.b);
   if (gid == NUL) { digOn = 0; digN = 0; digGid = NUL; }
@@ -468,6 +369,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
+  frontierKeep(FR_SURVIVE, &outKeep, d.kind, d.move, A->hand, A->nhand, qid, 0, 0);   // (and the survival search's: search/outlive.c)
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
   carryNextOf(P.line);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
@@ -542,6 +444,11 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // while the board is busy, -1 a cascade, -2 the game's raise not allowed)
   L_s(" sv="); L_i(__atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? 1 : 0); if (surviveAsked) L_s("/asked");   // (the survival job finished this decision; the backup asked of it)
   if (landedWhy >= 0) { L_s(" landed="); L_i(landedWhy); if (landedWhy == 0 || landedWhy == 4) { L_s("/d"); L_i(landedDeep); L_s("/r"); L_i(landedRes); L_s("/"); L_i(landedIn); } landedWhy = -1; }   // (the break on the board to come: 0 found, 1 no root, 2 lost before it lands, 3 no garbage then, 4 none found)
+  // (THE FRONTIERS CARRIED ON, search/frontier.c: each one's lines kept last decision / carried in this one, and why one was let go whole
+  // -- g the garbage dug at changed, a the anchor gone, k its key no longer held; and the survival search's played again of carried in)
+  { L_s(" front="); for (int f = 0; f < NFRONT; f++) { if (f) L_s(","); L_s(frontName[f]); L_s(":"); L_i(frontHeld[f]); L_s("/"); L_i(frontIn[f]);
+      if (frontWhy[f]) L_s(frontWhy[f] == 1 ? "g" : frontWhy[f] == 2 ? "a" : "k"); }
+    L_s(" svSeed="); L_i(outSeedPlayed); L_s("/"); L_i(outSeedIn); }
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1");
@@ -550,7 +457,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }
   else L_s("none");
   // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
-  if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); L_s(" brRes="); L_i(theBr.resPlayed); L_s("/"); L_i(theBr.resIn); L_s("/"); L_i(carryHeld); if (carryWhy) { L_s(carryWhy == 1 ? "/gid" : "/anchor"); }
+  if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); L_s(" brRes="); L_i(theBr.resPlayed); L_s("/"); L_i(theBr.resIn); L_s("/"); L_i(frontHeld[FR_BREAK]); if (frontWhy[FR_BREAK]) { L_s(frontWhy[FR_BREAK] == 1 ? "/gid" : "/anchor"); }
     if (theBr.resIn > theBr.resPlayed) { L_s(" brResWhy="); for (int k = 0; k < 4; k++) { if (k) L_s("/"); L_i(theBr.resWhy[k]); } } }   // (the carried lines not played again whole: a swap not there / a pair put back / the board lost / outside the rules)
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
@@ -689,7 +596,7 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 // for the old mode's list), the dig, the line toward a break.
 static void modeLeft(void) {
   lifeLived = 0;
-  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
+  memset(theFront, 0, sizeof theFront); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
 }
 // A new game: nothing of the last one is carried on.
@@ -698,7 +605,6 @@ EXPORT(gb_new_game) void gb_new_game(void) {
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
   memset(theIntents, 0, sizeof theIntents);
-  memset(&thePlanKept, 0, sizeof thePlanKept);
   gb_back(0, 0, 0, 0, 0, 0, 0);
   carriedClear();
 }

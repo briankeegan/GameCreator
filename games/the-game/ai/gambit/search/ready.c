@@ -61,13 +61,13 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   for (int a = 0; a < q->narr; a++) if (q->arr[a].at > dt) { q2.arr[q2.narr] = q->arr[a]; q2.arr[q2.narr++].at -= dt; }
   // (CARRIED TO THE LANDING: the lines the last decision's search was growing on the same board to come -- the same block, landing on
   // the same frame -- are its beam's seeds, so the search grows deeper decision after decision until the block is down)
-  static Paths landedKeep; static int32_t landedFor = -1; static LOCAL Broke lbr;
+  static LOCAL Broke lbr; static Paths landedSeeds;
   int32_t landsOn = q->b->clock + wait;
-  int carried = landedFor == landsOn && landedKeep.n > 0;
+  int carried = frontierResumeKeyed(FR_LANDED, landsOn, &landedSeeds) && landedSeeds.n > 0;
   double old = clockShareBegin(nowMs() + ms);
-  breakMoves(&q2, 0, carried ? &landedKeep : 0, &lbr);
+  breakMoves(&q2, 0, carried ? &landedSeeds : 0, &lbr);
   clockShareEnd(old);
-  landedKeep = lbr.keepOut; landedFor = landsOn;
+  frontierKeepKeyed(FR_LANDED, &lbr.keepOut, landsOn);
   landedDeep = 0; for (int i = 0; i < lbr.keepOut.n; i++) landedDeep = imax(landedDeep, lbr.keepOut.len[i]);
   landedRes = lbr.resPlayed; landedIn = lbr.resIn;
   landedWhy = 4;

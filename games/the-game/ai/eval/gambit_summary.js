@@ -12,6 +12,8 @@ if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2);
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
+var frontS = {};   // (the frontiers carried on, search/frontier.c: per frontier, the lines kept and carried in, the decisions it was let go whole)
+var svSeed = [0, 0];
 var landedN = [0, 0, 0, 0, 0, 0], landedD = [], landedR = 0, landedI = 0;   // (the break on the board to come: found, no root, lost before it lands, no garbage then, none found)
 var beamDepth = { best: [], deep: [], resIn: 0, resPlayed: 0, held: 0, gid: 0, anchor: 0, why: [0, 0, 0, 0] };   // (under garbage, no break found: the touch beam's best line and its deepest carried on)
 var putDown = { same: 0, told: 0, sameBy: {}, alike: 0, moved: 0, by: [] };   // (lines in progress put down: with nothing new told, or after something was)
@@ -124,6 +126,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var al = / allow=(-?\d+)/.exec(l);
       if (al && +al[1] >= 0) { var av = +al[1]; allow.n++; allow.at[av <= 5 ? 0 : av <= 20 ? 1 : av <= 40 ? 2 : 3]++; }
       // (the touch beam's depth under garbage with no break found: its best line's length, t, and the deepest it carries on, brDeep)
+      var fr = / front=(\S+)/.exec(l); if (fr) fr[1].split(',').forEach(function (e) { var m = /^(\w+):(\d+)\/(\d+)([gak]?)$/.exec(e); if (!m) return; var o = frontS[m[1]] || (frontS[m[1]] = { held: 0, in: 0, g: 0, a: 0, k: 0 }); o.held += +m[2]; o.in += +m[3]; if (m[4]) o[m[4]]++; });
+      var ss = / svSeed=(\d+)\/(\d+)/.exec(l); if (ss) { svSeed[0] += +ss[1]; svSeed[1] += +ss[2]; }
       var ld = / landed=(\d)(\/d(\d+)\/r(\d+)\/(\d+))?/.exec(l); if (ld) { landedN[+ld[1]]++; if (ld[2]) { landedD.push(+ld[3]); landedR += +ld[4]; landedI += +ld[5]; } }
       var bt = / br=0\/t(\d+)/.exec(l), bd = / brDeep=(\d+)/.exec(l), brr = / brRes=(\d+)\/(\d+)/.exec(l); if (bt && bd && / under=1 /.test(l)) { beamDepth.best.push(+bt[1]); beamDepth.deep.push(+bd[1]); if (brr) { beamDepth.resIn += +brr[2]; beamDepth.resPlayed += +brr[1]; }
         var bh = / brRes=\d+\/\d+\/(\d+)(\/(gid|anchor))?/.exec(l); if (bh) { beamDepth.held += +bh[1]; if (bh[3]) beamDepth[bh[3]]++; }
@@ -283,6 +287,7 @@ if (forgone.decisions) console.log('blocks left on the table: ' + forgone.missed
 var most = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (k) { return k + ' ' + o[k]; }).join(', '); };
 ['survived', 'lost'].forEach(function (k) { var b = balance[k]; if (b.frames) console.log('the board\'s material, games ' + k + ' (' + b.games + '): ' + (b.landed * 3600 / b.frames).toFixed(0) + ' garbage cells landed a minute, ' + (b.converted * 3600 / b.frames).toFixed(0) + ' turned to panels, ' + (b.spent * 3600 / b.frames).toFixed(0) + ' panels cleared, ' + ((b.converted - b.spent) * 3600 / b.frames).toFixed(0) + ' net'); });
 var mid = function (a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] + ' (90% under ' + a[Math.min(a.length - 1, Math.floor(0.9 * a.length))] + ')' : '-'; };
+if (Object.keys(frontS).length) console.log('the frontiers carried on (search/frontier.c): ' + Object.keys(frontS).map(function (k) { var o = frontS[k]; return k + ' ' + o.in + ' of ' + o.held + ' lines carried in (let go whole: ' + o.g + ' the garbage changed, ' + o.a + ' the anchor gone, ' + o.k + ' its key)'; }).join('; ') + '; the survival search played ' + svSeed[0] + ' of ' + svSeed[1] + ' carried lines again');
 if (landedN.some(function (v) { return v; })) console.log('the break on the board to come (search/ready.c landedBreak): asked ' + landedN.reduce(function (a, b) { return a + b; }, 0) + ' times -- ' + landedN[0] + ' found, ' + landedN[2] + ' the board lost before it lands, ' + landedN[3] + ' no garbage on it then, ' + landedN[4] + ' none found in its time, ' + landedN[5] + ' below the stack as it is now' + (landedD.length ? '; its beam ' + mid(landedD) + ' deep, ' + landedR + ' of ' + landedI + ' carried lines played again' : ''));
 if (beamDepth.best.length) console.log('the touch beam under garbage with no break found (' + beamDepth.best.length + ' decisions): its best line ' + mid(beamDepth.best) + ' swaps, the deepest it carries on ' + mid(beamDepth.deep) + '; of ' + beamDepth.resIn + ' lines carried on to them, ' + beamDepth.resPlayed + ' played again whole' +
   ' -- of ' + beamDepth.held + ' the decisions before kept: ' + beamDepth.gid + ' decisions dropped them all for the garbage dug at changed, ' + beamDepth.anchor + ' for the anchor panel gone; not played again whole: ' +

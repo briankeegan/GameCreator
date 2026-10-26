@@ -54,13 +54,50 @@ static Outlived poolFirst(const OPool *p, const Question *q) {
     for (int i = 0; i < p->n; i++) if (lineCheckOn(q, p->o[i].seq, p->o[i].nseq, 0, pass ? 0 : CHECK_WASTE)) return p->o[i];
   Outlived none; memset(&none, 0, sizeof none); return none;
 }
+// (THE SURVIVAL SEARCH CARRIED ON, search/frontier.c FR_SURVIVE: the lines the decision's own search kept last time, re-rooted, played
+// again first -- each swap within the rules, from the root -- and put in the pools as any line the beam finds; and the pools' lines,
+// the next decision's to carry on. Only the decision's own search, on its question, carries: a board carried on (decide.c contLostOf)
+// is another board)
+static LOCAL OPool bestP, overP;
+static Paths outSeeds, outKeep; static int32_t outSeedsHave, outSeedIn, outSeedPlayed;
+static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width);
 static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
+  Outlived r = outliveIn(q, to, rest, ms, depth, width);
+  if (q == &decQ) {
+    outKeep.n = 0;
+    for (int pass = 0; pass < 2; pass++) { const OPool *p = pass ? &overP : &bestP;
+      for (int i = 0; i < p->n && outKeep.n < KEEPN; i++) { int t = outKeep.n++; outKeep.len[t] = p->o[i].nseq; for (int k = 0; k < p->o[i].nseq; k++) outKeep.path[t][k] = p->o[i].seq[k]; } }
+  }
+  return r;
+}
+static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best, over; memset(&best, 0, sizeof best); memset(&over, 0, sizeof over);
-  static LOCAL OPool bestP, overP; bestP.n = overP.n = 0;
+  bestP.n = overP.n = 0;
   double t0 = nowMs(), perStep = 0;
   Ctx *x = outCtx = ctxOf(outCtx);
   int root = rootOf(x, q);
   if (root < 0) return best;
+  if (q == &decQ) { outSeedIn = outSeedsHave ? outSeeds.n : 0; outSeedPlayed = 0; }
+  for (int i = 0; q == &decQ && outSeedsHave && i < outSeeds.n && nowMs() - t0 < ms / 4; i++) {
+    static OItem sd; memset(&sd, 0, sizeof sd);
+    int n = root, ok = outSeeds.len[i] > 0 && outSeeds.len[i] <= OUT_SEQ;
+    const Board *rb = ensureBoard(x, root); int r0 = rb ? rb->curRow : 0, c0 = rb ? rb->curCol : 0;
+    for (int k = 0; k < outSeeds.len[i] && ok; k++) {
+      int32_t mv = outSeeds.path[i][k];
+      if (!legalAt(x, n, CR(mv), CC(mv))) { ok = 0; break; }
+      sd.acts += actionsFor(r0, c0, CR(mv), CC(mv), pressAllowance >= 0 ? pressAllowance - sd.acts : HOLDTIGHT + 1); r0 = CR(mv); c0 = CC(mv);
+      int out = step(x, n, MK_SWAP, CR(mv), CC(mv), 0);
+      if (!liveNode(x, out) || !stepFitsAt(x, out)) { ok = 0; break; }
+      n = out; sd.seq[sd.nseq++] = mv;
+    }
+    if (!ok) continue;
+    outSeedPlayed++;
+    sd.n = n; sd.t = NODE(x, n)->t - NODE(x, root)->t;
+    sd.lost = lostAlone(x, n, imax(to, NODE(x, n)->t + rest));
+    sd.margin = outMargin(ensureBoard(x, n), sd.t, sd.acts);
+    if (sd.lost == FOREVER && windowKeepsBreak(sd.t, sd.acts) && lineCheckOn(q, sd.seq, sd.nseq, 0, CHECK_WASTE)) { poolAdd(&bestP, &sd); return bestP.o[0]; }
+    poolAdd(windowKeepsBreak(sd.t, sd.acts) ? &bestP : &overP, &sd);
+  }
   BS still; memset(&still, 0, sizeof still); still.x = x; still.root = root;
   static OItem level[PLAN_POOL], kids[PLAN_KIDS];
   static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ka[PLAN_KIDS], ms1[MAXROWS * W];

@@ -8,6 +8,7 @@
 #include "core/sort.h"
 #include "search/bits.c"
 #include "search/break.c"
+#include "search/frontier.c"
 #include "facts.c"
 #include "search/plan.c"
 #include "search/extend.c"
