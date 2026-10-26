@@ -1695,54 +1695,6 @@ const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, picket: 0.95,
 // Filled pips are charge in hand; hollow ones are what it still needs
 // before its cheapest gun fires. Nothing is drawn once it's ready and
 // showing — at that point the red wash under it is the message.
-// WHERE ITS LANES ACTUALLY ARE, drawn faintly, while it has not locked one.
-//
-// The six axes of a flat-top hex grid run VERTICALLY and on four diagonals.
-// There is no horizontal one — two hulls side by side on screen are not on
-// a line, which is the single least obvious thing about this board and the
-// only thing you need to know to play against a lane gun. Reported live, in
-// exactly those terms: "we're in the same row but it's not charging". They
-// were in the same row. A row is not a lane.
-//
-// Deliberately NOT the threat overlay. These are not dangerous hexes — the
-// gun cannot fire this round and nothing standing here is at risk — they
-// are where a lock COULD come from, which is a thing you steer by rather
-// than a thing you flee. Hence dim grey-blue and a thin dotted line, not
-// the orange of a lane actually taken.
-function drawSightLines(center, enemy) {
-  const def = Engine.ENEMY_TYPES[enemy.type];
-  if (!def || !def.ship.weapons.some((w) => w.aims)) return;
-  if (enemy.aim) return; // it has one: the charge animation says so, loudly
-  ctx.save();
-  ctx.strokeStyle = "rgba(168,196,224,0.5)";
-  ctx.lineWidth = 1.8;
-  ctx.setLineDash([4, 5]);
-  for (const dir of [{ q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 }, { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }]) {
-    // Only as far as the lane is actually clear: it stops where the beam
-    // would, so a line drawn through a boulder would be a lie about reach.
-    let last = null;
-    for (let step = 1; step <= 12; step++) {
-      const at = { q: enemy.q + dir.q * step, r: enemy.r + dir.r * step };
-      if (!state.boardHexes.some((h) => h.q === at.q && h.r === at.r)) break;
-      const blocked =
-        // What stops a shot is the engine's rule, asked rather than
-        // restated — a renderer with its own copy of "what is solid" drifts.
-        Engine.hazardRule(Engine.hazardAt(state, at)).blocksShot ||
-        (state.enemies || []).some((o) => o.alive && o !== enemy && o.q === at.q && o.r === at.r);
-      last = at;
-      if (blocked) break;
-    }
-    if (!last) continue;
-    const to = hexToPixel(last);
-    ctx.beginPath();
-    ctx.moveTo(center.x, center.y);
-    ctx.lineTo(to.x, to.y);
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-  ctx.restore();
-}
-
 function drawChargePips(center, enemy) {
   const ship = Engine.ENEMY_TYPES[enemy.type] && Engine.ENEMY_TYPES[enemy.type].ship;
   if (!ship || !ship.weapons.length) return;
@@ -3627,7 +3579,6 @@ function draw() {
     );
     ctx.restore();
     drawChargePips(center, enemy);
-    drawSightLines(center, enemy);
   }
 
   // Charges under the ordnance and under the ships: it's ground, and
