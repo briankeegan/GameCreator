@@ -46,3 +46,9 @@ to something other than the board (`FR_LANDED`: the frame its block lands) is ca
 `frontierResumeKeyed`). The frontiers are in the carried ring: what was pressed is the answer played's.
 
 Each decision logs `front=kind:held/in[g|a|k],...` and `svSeed=played/in`; the summary counts them ("the frontiers carried on").
+
+A readiness check (search/break.c `readySearchOf`) whose time runs out keeps its frontier too, in `readyBeams`, keyed by the whole
+board as the breaks it finds are; the next check of that board grows it on. Logged `rdyBeam=resumed/kept`.
+
+The board to come (`JOB_LANDED`) is queued behind the other jobs, after the cut to the workers: the first worker free before the
+searches end takes it.

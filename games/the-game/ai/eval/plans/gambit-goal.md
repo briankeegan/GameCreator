@@ -1696,3 +1696,9 @@ Measured (`fc8f72ad`, 1219): 14 -- but the job never ran: the jobs are cut to th
 proposers' leftover was off under workers. No `landed=` in any decision.
 THE BOARD TO COME AHEAD OF THE WIDER BEAM: the job is listed before JOB_WIDE, and where the cut still drops it the proposers' leftover
 runs it (`landedJobOn`).
+Measured (`829887c7`, 1220): 12 -- the same games as 1218: four workers, and the break search, the survival search, the planner's
+half and the extension take all four before the board to come is reached.
+THE BOARD TO COME QUEUED BEHIND THE SEARCHES: listed after the cut, it is taken by the first worker whose search ends before the
+searches do, in the time they have left.
+THE READINESS SEARCH LEFT UNFINISHED KEPT (search/break.c readyBeams): a check whose time ran out keeps its frontier under the board's
+own key, and the next check of that board grows it on (`rdyBeam=resumed/kept`).

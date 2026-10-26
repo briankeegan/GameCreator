@@ -163,13 +163,14 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
-  // (the board to come, ahead of the wider beam: search/ready.c -- and where no worker is left for it, the proposers' leftover)
-  if (decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) jobKinds[njobKinds++] = JOB_LANDED;
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
   // is this thread's whole)
   while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; }
-  landedJobOn = 0; for (int i = 0; i < njobKinds; i++) if (jobKinds[i] == JOB_LANDED) landedJobOn = 1;
+  // (THE BOARD TO COME, search/ready.c, queued behind them: the first worker whose search ends before the searches do takes it, in the
+  // time they have left -- it ends with them, so the decision waits no longer for it)
+  landedJobOn = 0;
+  if (decF.next != NOT_ASKED && decF.next > 0 && decF.next <= LANDED_AHEAD) { jobKinds[njobKinds++] = JOB_LANDED; landedJobOn = 1; }
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
@@ -301,7 +302,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   backBoard = decQ.b;
   theBack.at = at;
   aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
-  readyAsked = readyHit = 0; readyStop(); readyPendClear();
+  readyAsked = readyHit = 0; readyStop(); readyBeamIn = readyBeamOut = 0; readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   // (a board near its end, by the frames the decision reads it is lost in left alone -- the dies fact, the garbage on its way landing)
   pressTap = decTap = hostTaps && allowanceKnown && R.F.v[FACT_US_DIES] <= TAP_DIES;
@@ -440,6 +441,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   L_s(" casc="); L_i(cascadeLive(decQ.b)); L_s(" pop="); L_i(popLeft(decQ.b)); L_s(" hp="); L_i(decQ.b->health); L_s(" stop="); L_d(R.F.v[FACT_US_STOP]);
   if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
+  if (readyBeamIn || readyBeamOut) { L_s(" rdyBeam="); L_i(readyBeamIn); L_s("/"); L_i(readyBeamOut); }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
   if (routeOffered) { L_s(" route="); L_i(routeOffered); if (routePlayed) L_s("/played"); }
   if (planSeeded) { L_s(" seed="); L_i(planSeeded); }

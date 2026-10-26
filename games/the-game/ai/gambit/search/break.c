@@ -680,22 +680,63 @@ static void readyKeep(uint32_t h, const unsigned char *key, int32_t nb, const in
   }
   readyLockOff();
 }
-static void readyKeptClear(void) { readyLockOn(); for (int i = 0; i < READYN; i++) readyKept[i].h = 0, readyKept[i].nbytes = 0; readyLockOff(); }
+// THE READINESS SEARCH LEFT UNFINISHED, kept across decisions as a break found is: a search whose time ran out first keeps the
+// frontier it had grown (Broke keepOut), keyed by the same whole board, and the next check of that board grows it on from there. The
+// key is the board exactly, so its lines are carried as they are.
+#define READYBEAMN 128
+typedef struct { uint32_t h; int32_t nbytes; unsigned char *bytes; Paths *paths; } ReadyBeam;
+static ReadyBeam readyBeams[READYBEAMN];
+static int32_t readyBeamIn, readyBeamOut;   // (the log's: the checks that resumed a frontier, and those that kept one, this decision)
+static int readyBeamFind(uint32_t h, const unsigned char *key, int32_t nb, Paths *out) {
+  out->n = 0;
+  readyLockOn();
+  ReadyBeam *e = &readyBeams[h % READYBEAMN];
+  int hit = e->bytes && e->paths && e->h == h && e->nbytes == nb && !memcmp(e->bytes, key, (unsigned long)nb);
+  if (hit) *out = *e->paths;
+  readyLockOff();
+  if (hit) __atomic_add_fetch(&readyBeamIn, 1, __ATOMIC_RELAXED);
+  return hit && out->n > 0;
+}
+static void readyBeamKeep(uint32_t h, const unsigned char *key, int32_t nb, const Paths *paths) {
+  unsigned char *fresh = 0; Paths *freshP = 0;
+  if (!readyBeams[h % READYBEAMN].bytes) { fresh = (unsigned char *)grab(READYKEYMAX); freshP = (Paths *)grab(sizeof(Paths)); }
+  readyLockOn();
+  ReadyBeam *e = &readyBeams[h % READYBEAMN];
+  if (!e->bytes && fresh && freshP) { e->bytes = fresh; e->paths = freshP; }
+  if (e->bytes && e->paths) { memcpy(e->bytes, key, (unsigned long)nb); e->h = h; e->nbytes = nb; *e->paths = *paths; }
+  readyLockOff();
+  __atomic_add_fetch(&readyBeamOut, 1, __ATOMIC_RELAXED);
+}
+static void readyKeptClear(void) {
+  readyLockOn();
+  for (int i = 0; i < READYN; i++) readyKept[i].h = 0, readyKept[i].nbytes = 0;
+  for (int i = 0; i < READYBEAMN; i++) readyBeams[i].h = 0, readyBeams[i].nbytes = 0;
+  readyLockOff();
+}
 // THE BREAK SEARCH ASKED FOR READINESS, on question q until `by`: 1 a break (its line in line, *k), 0 none -- the search ended before its
 // time did -- NOT_ASKED its time out first (its own share or the decision's): none found in the time is no answer. Every thread's: what
 // it reads is the question and its own nodes.
-// (own: a pend's budget, the same whichever thread searches it -- the decision's share no cap on it)
-static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_t *k, int own) {
+// (own: a pend's budget, the same whichever thread searches it -- the decision's share no cap on it; key, nb, h: the board's readiness
+// key, 0 none -- the frontier a search of it left unfinished is grown on, and one left unfinished here kept)
+static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_t *k, int own, const unsigned char *key, int32_t nb, uint32_t h) {
   int32_t pop = popLeft(q->b), saved = listDefault;
   static LOCAL Broke rb;
+  static LOCAL Paths seeds;
+  static LOCAL unsigned char *keyOwn;
+  int keyed = key && nb > 0 && nb <= (int32_t)READYKEYMAX;
+  if (keyed && !keyOwn) keyOwn = (unsigned char *)grab(READYKEYMAX);
+  if (keyed && !keyOwn) keyed = 0;
+  if (keyed) memcpy(keyOwn, key, (unsigned long)nb);   // (the search may key boards of its own in the buffer it came in)
+  int resumed = keyed && readyBeamFind(h, keyOwn, nb, &seeds);
   if (!own && clockShare && clockShare < by) by = clockShare;   // (never past the share of the search that asks)
   double old = own ? clockShare : clockShareBegin(by);
   int ownWas = ownBudget;
   if (own) { clockShare = by; ownBudget = 1; }   // (its budget alone, as on a job's thread: core/clock.h ownBudget)
   listDefault = 1;
-  breakMoves(q, pop ? pop + LINEUP_AFTER : 0, 0, &rb);
+  breakMoves(q, pop ? pop + LINEUP_AFTER : 0, resumed ? &seeds : 0, &rb);
   listDefault = saved;
   int out = clockOut();   // (the share asked, or the decision's, run out)
+  if (keyed && out && !rb.depth && rb.keepOut.n) readyBeamKeep(h, keyOwn, nb, &rb.keepOut);
   ownBudget = ownWas;
   clockShareEnd(old);
   *k = 0;
@@ -793,7 +834,7 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   q.narr = NODE(x, n)->narr; for (int i = 0; i < q.narr; i++) q.arr[i] = NODE(x, n)->arr[i];
   int32_t line[MAXLINE], k = 0;
   int64_t w0 = clockWork;
-  int32_t r = readySearchOf(&q, nowMs() + (p && p->budget > 0 ? p->budget : readyShareMs >= 0 ? readyShareMs : timeLeftMs() / 2), line, &k, p && p->budget > 0);
+  int32_t r = readySearchOf(&q, nowMs() + (p && p->budget > 0 ? p->budget : readyShareMs >= 0 ? readyShareMs : timeLeftMs() / 2), line, &k, p && p->budget > 0, kn ? readyKeyBuf : 0, kn, kh);
   if (p) p->work = clockWork - w0;   // (what a later check of it is charged, as for a worker's)
   if (p) { if (r == 1) { for (int i = 0; i < k; i++) p->why[i] = line[i]; p->whyN = k; } __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE); }
   if (r != 1) return r;
@@ -815,7 +856,7 @@ static void readyJob(int32_t i) {
   inJob = 1; pressTight = p->tight; pressTap = p->tap; pressFrom = p->from; pressSpent = p->spent;
   int32_t line[MAXLINE], k = 0;
   int64_t w0 = clockWork;
-  int32_t r = readySearchOf(&p->q, nowMs() + p->budget, line, &k, 1);
+  int32_t r = readySearchOf(&p->q, nowMs() + p->budget, line, &k, 1, p->key, p->nb, (uint32_t)p->h);
   p->work = clockWork - w0;
   inJob = 0; pressFrom = pressSpent = 0;
   // (kept across decisions only by the decision that reads it: readyBreakOf)
