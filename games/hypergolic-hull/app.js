@@ -852,7 +852,11 @@ function scheduleAnims(events) {
       // After it has arrived, never before: the lane it locked is the lane
       // from the hex it is standing on at the END of its move.
       const landed = arrivesAt.get(ev.enemyId) || 0;
-      anims.push({ kind: "charge", pos: { q: ev.q, r: ev.r }, lane: ev.lane, start: now + landed, dur: 100000 });
+      // TIED TO THE HULL THAT IS DOING IT. Without an owner the glow was
+      // only ever cleared by the beam that followed it — so a hull killed
+      // while lining up left its lane lit for the rest of the sector, a
+      // telegraph for a gun that no longer exists.
+      anims.push({ kind: "charge", enemyId: ev.enemyId, pos: { q: ev.q, r: ev.r }, lane: ev.lane, start: now + landed, dur: 100000 });
     }
     // And the beam clears it. Both are keyed on the lane the engine locked,
     // never recomputed here, so what is drawn is what the engine will
@@ -3671,6 +3675,15 @@ function draw() {
     if (now < a.start || now >= a.start + a.dur) continue;
     const p = animProgress(a, now);
     if (a.kind === "charge") {
+      // A lock belongs to a hull: it ends when the hull does. Checked here
+      // rather than on the kill event because this covers every way a lock
+      // can end — shot, towed, stood back up, sector over — instead of the
+      // one that was thought of.
+      const owner = (state.enemies || []).find((e) => e.id === a.enemyId);
+      if (!owner || !owner.alive || !owner.aim) {
+        anims = anims.filter((x) => x !== a);
+        continue;
+      }
       // THE WARNING, drawn as light for the same reason the shot is: a
       // translucent brown polygon laid over each hex went muddy against a
       // dark board and read as dirt on the map rather than as a gun coming
@@ -4041,9 +4054,19 @@ function persist() {
   // in the restored save) would find the in-memory guard reset to false
 }
 
+// A HELD STATE IS NOT AN ANIMATION IN FLIGHT. This gates the end-of-run and
+// end-of-sector overlays — they are held back until the board has finished
+// moving — and the charge glow is not something that finishes: it is a lane
+// held lit for as long as a hull keeps it, with a duration long enough to
+// outlast any round.
+//
+// So a hull still lining up when the flagship died kept this true forever,
+// the overlay was never revealed, and the run could not be restarted: a dead
+// board and no way off it. Reported live, and entirely this.
+const HELD_ANIMS = new Set(["charge"]);
 function animsRunning() {
   const now = performance.now();
-  return anims.some((a) => now < a.start + a.dur);
+  return anims.some((a) => !HELD_ANIMS.has(a.kind) && now < a.start + a.dur);
 }
 
 // One renderer for every HUD gauge — a labeled row of colored pips

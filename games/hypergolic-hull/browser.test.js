@@ -614,6 +614,41 @@ async function freshPage(browser, url, errors) {
   }
   assert.ok(fired, "the kill went through the tap-to-target, tap-to-fire flow");
 
+  // A LOCK MUST NEVER OUTLIVE THE HULL HOLDING IT, and must never hold the
+  // run hostage. The charge glow is a lane held lit rather than an animation
+  // that finishes, so it carries a duration long enough to outlast any round
+  // — and animsRunning(), which holds the end-of-run overlay back until the
+  // board has stopped moving, counted it. A hull still lining up when the
+  // flagship died kept that true forever: no overlay, no restart, a dead
+  // board with no way off it.
+  {
+    const result = await page.evaluate(async () => {
+      const E = window.HypergolicEngine;
+      const st = window.__hhState;
+      const foe = E.livingEnemies(st)[0];
+      if (!foe) return null;
+      // Put a live lock on the board by hand, then end the run under it.
+      foe.aim = { weaponKey: "pinLance", facing: 0, lane: [{ q: st.playerPos.q, r: st.playerPos.r }] };
+      window.scheduleAnims([
+        { type: "aimStart", enemyId: foe.id, q: foe.q, r: foe.r, lane: foe.aim.lane, weapon: "pinLance" },
+      ]);
+      window.render();
+      const charging = (window.__hhAnims || []).some((a) => a.kind === "charge");
+      const blocks = window.animsRunning ? window.animsRunning() : null;
+      // And the glow belongs to that hull: kill it and the lane goes dark.
+      foe.alive = false;
+      foe.hp = 0;
+      window.render();
+      const chargingAfterDeath = (window.__hhAnims || []).some((a) => a.kind === "charge");
+      return { charging, blocks, chargingAfterDeath };
+    });
+    if (result) {
+      assert.ok(result.charging, "a lock lights its lane");
+      assert.notStrictEqual(result.blocks, true, "and a held lane never counts as the board still moving — the run can always end");
+      assert.strictEqual(result.chargingAfterDeath, false, "the lane goes dark with the hull that was holding it");
+    }
+  }
+
   // THE RELOAD IS ON THE BOARD. A Pin Lance costs one charge against a
   // one-charge bus, so the round after it fires is a round it cannot fire —
   // and nothing said so: drawChargePips skipped any gun costing 1 (on the
