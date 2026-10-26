@@ -155,7 +155,17 @@ static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
 static int garbageOn(const Board *b) { static LOCAL BoardShape GS; bitsOf(b, &scratchBits); bitsShape(&scratchBits, &GS); return GS.garbage; }
 // the panels on the board, garbage not counted -- the material every break is made from
 static int32_t panelsOn(const Board *b) { bitsOf(b, &scratchBits); return bitsPanels(&scratchBits); }
-static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) - uneven(b); }
+// THE TOUCH BEAM'S KEY, one order: the swaps to the nearest break, then the fewer empty cells under garbage (bitsShape hollow: a block
+// held up over a hollow lets down onto panels as its supports clear -- the way to a break where no match touches it yet), then the
+// evener stack under it
+static int32_t nearScore(const Board *b) {
+  static LOCAL BoardShape NS;
+  bitsOf(b, &scratchBits);
+  int n = nearLineOf(&scratchBits, 0, 0);
+  bitsShape(&scratchBits, &NS);
+  int32_t u = unevenOf(&scratchBits);
+  return -((int32_t)(n < NEAR_MISS ? n : NEAR_MISS) << 23) - ((int32_t)imin(NS.hollow, 511) << 14) - imin(u, 16383);
+}
 // How far a board is toward lining up with the converting row `want`: per column, its top panel below the lowest garbage of that colour,
 // and the one under it too
 static int32_t pairsOf(const Board *b, const int32_t *want) {
