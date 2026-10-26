@@ -176,11 +176,20 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
 // 120 boards searched again, run 415, where 1 to 3 had been)
+// (THE WIDER BEAM'S BREAK, taken where the narrower found none, only where the window keeps the next break's walk once it is pressed --
+// core/nodes.h windowKeepsBreak, its whole walk counted: the wider beam's are the deep breaks, and a break that spends the next one's walk
+// leaves the board none to press)
+static int wideKeepsWindow(const Broke *w) {
+  if (pressAllowance < 0 || w->pathLen <= 0) return 1;
+  const Board *b = decQ.b; int r = b->curRow, c = b->curCol, acts = 0;
+  for (int k = 0; k < w->pathLen; k++) { acts += actionsFor(r, c, CR(w->path[k]), CC(w->path[k]), pressAllowance - acts); r = CR(w->path[k]); c = CC(w->path[k]); }
+  return windowKeepsBreak(0, acts);
+}
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
   jobsAll(brCtx);
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = timeLeftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;
-  if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
+  if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth && wideKeepsWindow(&theBrWide)) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
   *ms = brJobMs; brCut = brJobT0 + brJobMs >= brJobBy; brResumed = brHave ? brResume.n : 0;
   return 1;
 }

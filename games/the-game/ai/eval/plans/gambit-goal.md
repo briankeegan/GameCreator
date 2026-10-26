@@ -1753,3 +1753,5 @@ THE WIDER BEAM UNDER GARBAGE THIRD: listed after the planner's half and the exte
 were full (no break from it in a whole game, 1228). Under garbage it is third now, after the break and survival searches.
 Measured (`a573f79c`, 1231): 9 -- combo_storm 4, factory 2, large_garbage 3; actions 12, panels 3. The wider beam's breaks, taken
 where the narrower finds none, are the deep ones: the window drained in every loss.
+THE WIDER BEAM'S BREAK PRICED: taken where the narrower finds none only where the window keeps the next break's walk once its whole
+walk is pressed (answer.c wideKeepsWindow).
