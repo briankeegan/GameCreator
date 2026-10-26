@@ -423,13 +423,12 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
           sortByKeyDesc(idx2, top, key2, tmp2);   // (stable: within a band, the nearness order the beam had)
           for (int i = 0; i < top; i++) tn[i] = tl[idx2[i]];
           for (int i = 0; i < top; i++) tl[i] = tn[i];
-          // (A LINE THAT CANNOT SAVE THE BOARD, plans/gambit-next.md 3: its board, left alone, lost within a break's time and a reaction of
-          // the line's end -- no break grown from it can be pressed and pop before the board dies, and the next decision, a reaction on,
-          // would find it dead on playing it again. Such lines leave the beam while any other is in it: the beam's width goes to lines
-          // that still have the time a break takes)
+          // (A LINE THAT CANNOT SAVE THE BOARD, plans/gambit-next.md 3: its board, left alone, lost within a break's time of the line's
+          // end -- no break grown from it can be pressed and pop before the board dies. Such lines leave the beam while any other is in
+          // it: the beam's width goes to lines that still have the time a break takes)
           { int nv = 0, nd = 0;
             for (int i = 0; i < top; i++) { int32_t l = lraw[idx2[i]];
-              int viable = l == FOREVER || l == NOT_ASKED || l - NODE(x, tl[i]->n)->t >= save + cfgReaction + 1;
+              int viable = l == FOREVER || l == NOT_ASKED || l - NODE(x, tl[i]->n)->t >= save;
               if (viable) tn[nv++] = tl[i]; else nd++; }
             if (nv > 0 && nd > 0) {
               for (int i = 0; i < nv; i++) tl[i] = tn[i];

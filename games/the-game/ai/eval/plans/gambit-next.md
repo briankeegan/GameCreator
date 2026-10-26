@@ -96,3 +96,5 @@ line short at once by a block shown (**demand**).
   played (60, 42, 54 of them): kept with a break's time to spare, by the next decision a reaction later they had none. Fixed: a line
   stays in the beam with a break's time and a reaction to spare. And a carried toward line of 12 swaps spent the window 38 to 4 with
   every margin at 0.3: the log now names the four shares (mgs=: room, material, window, contact) to find which hid it.
+- 1285, 11/24: combo_storm 8/8 a second run in a row -- done. Factory 2, large_garbage 1: the reaction of slack on the beam's doomed
+  lines cost what 1284 had. Taken back out; the beam keeps a line with a break's time to spare. Factory next, read by mgs=.
