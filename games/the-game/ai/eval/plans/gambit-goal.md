@@ -1671,3 +1671,7 @@ search on the board as it is cost the games: survival lines up from 66 to 87 act
 THE BOARD TO COME, OFFERED AS ITS SETUP: the break found on the board to come is offered without its last swap, its rows taken back by
 the rise before the landing -- the setup pressed now, and the judge's readiness (a break in reach once the block lands) the last swap
 (search/ready.c landedBreak). A break one swap deep has nothing to set up.
+Measured (`7cd69e44`, the board to come offered as its setup, 1213): 11. Logged (`8d96ce22`, 1214): of the board-to-come setups not ready
+for the next block, large_garbage-1 42 not answered in their time (:n?) against 4 none found (:n0), factory-1 6 against 1. The readiness
+is asked of the order's lines in order, each a share of what is left, and a ready line ranks in the tail. Ready lines are now asked
+first (decide.c ranked).

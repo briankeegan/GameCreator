@@ -356,10 +356,12 @@ static int ranked(const Read *R, const Found *S) {
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
   }
-  // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first)
+  // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first. A ready line
+  // first of all: being ready is all it is for, and asked last, in the order's tail, it was asked out of time -- 42 of 53 unanswered)
   if (!(n && order[0]->o.lives)) {
     int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
-    for (int i = 0; i < n; i++) if (!EXTRA(order[i])) { readyShare(own--); readyNextFor(order[i]); }
+    for (int pass = 0; pass < 2; pass++)
+      for (int i = 0; i < n; i++) if (!EXTRA(order[i]) && (order[i]->k.play == PLAY_READY) == !pass) { readyShare(own--); readyNextFor(order[i]); }
     readyShare(0); sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
