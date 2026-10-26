@@ -52,6 +52,22 @@ for (const sw of swFiles) {
   if (!touched.length) continue;
 
   const versionOf = (text) => (text.match(/GCRegisterServiceWorker\(\s*"([^"]+)"/) || [])[1] || null;
+  // THE BADGE IS THE VERSION, so it has to be the same one. They were two
+  // numbers kept by hand in two files: the header said v1 from the day the
+  // game shipped and the worker said v78, and a player reading the badge
+  // learned nothing about what they were running.
+  const indexPath = join(dir, "index.html");
+  if (existsSync(indexPath)) {
+    const shown = (readFileSync(indexPath, "utf8").match(/data-version="([^"]*)"/) || [])[1];
+    const tail = (versionOf(src) || "").split("-").pop();
+    if (shown && tail && shown !== tail) {
+      bad++;
+      console.error(
+        `FAIL ${dir}: the header shows "${shown}" and the worker caches "${versionOf(src)}".\n` +
+          `      One number, both jobs — the badge is how a player says which build they are on.`
+      );
+    }
+  }
   let before = null;
   try {
     before = versionOf(sh(`git show ${range.split("..")[0]}:${sw}`));

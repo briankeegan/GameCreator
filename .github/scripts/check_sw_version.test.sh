@@ -39,5 +39,19 @@ echo "x" > games/toy/notes.md; git add -A; git commit -qm "unrelated file"
 if [ "$(run)" = "0" ]; then echo "ok  silent for a file the worker never caches"
 else echo "FALSE ALARM: unprecached file demanded a bump"; cat "$WORK/out.txt"; fail=1; fi
 
+# 4. THE BADGE AND THE CACHE ARE ONE NUMBER. The header is how a player says
+#    which build they are on, so a badge that disagrees with the worker is a
+#    badge that teaches them nothing.
+sed -i 's/toy-v2/toy-v3/' games/toy/sw.js
+printf '<html><script data-version="v2"></script></html>' > games/toy/index.html
+git add -A; git commit -qm "badge left behind"
+if [ "$(run)" = "0" ]; then echo "NOT CAUGHT: badge disagreed with the worker"; cat "$WORK/out.txt"; fail=1
+else echo "ok  rejects a header badge that disagrees with the cache version"; fi
+
+printf '<html><script data-version="v3"></script></html>' > games/toy/index.html
+git commit -qam "badge caught up"
+if [ "$(run)" = "0" ]; then echo "ok  accepts them once they agree"
+else echo "FALSE ALARM: matching badge and version rejected"; cat "$WORK/out.txt"; fail=1; fi
+
 [ "$fail" = "0" ] && echo "check_sw_version.test.sh: passed"
 exit "$fail"
