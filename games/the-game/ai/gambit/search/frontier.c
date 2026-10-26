@@ -14,7 +14,7 @@ typedef struct {
 static Kept theFront[NFRONT];
 // (the log's, per frontier and decision: the lines kept, those carried in, and why a whole frontier was let go -- 1 the garbage dug
 // at changed, 2 the anchor panel gone, 3 its key no longer held)
-static int32_t frontHeld[NFRONT], frontIn[NFRONT], frontWhy[NFRONT];
+static int32_t frontLinesHeld[NFRONT], frontLinesIn[NFRONT], frontLetGo[NFRONT];
 
 // ---- the garbage a frontier digs toward: the id of the lowest block on the board
 static int lowestGarbageRowOf(const Board *b) {
@@ -75,11 +75,11 @@ static void frontierKeepKeyed(int kind, const Paths *paths, int32_t key) {
 static int frontierResume(int kind, const Board *b, int32_t lineFrom, int32_t linePressed, int digs, Paths *out, int32_t *rest, int *nrest) {
   out->n = 0; if (nrest) *nrest = 0;
   Kept *K = &theFront[kind];
-  frontHeld[kind] = K->set ? K->paths.n : 0; frontIn[kind] = 0; frontWhy[kind] = 0;
+  frontLinesHeld[kind] = K->set ? K->paths.n : 0; frontLinesIn[kind] = 0; frontLetGo[kind] = 0;
   if (!K->set || !K->paths.n || K->keyed) return 0;
-  if (digs && digTargetOf(b) != K->gid) { frontWhy[kind] = 1; return 0; }
+  if (digs && digTargetOf(b) != K->gid) { frontLetGo[kind] = 1; return 0; }
   int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId);
-  if (dr == NOT_ASKED) { frontWhy[kind] = 2; return 0; }
+  if (dr == NOT_ASKED) { frontLetGo[kind] = 2; return 0; }
   int32_t pre[MAXLINE + 1];
   int npre = playedSince(K, lineFrom, linePressed, pre);
   // (THE LINE TOWARD A BREAK BEGUN: the rest of the one played last, the same moves taken off)
@@ -99,16 +99,16 @@ static int frontierResume(int kind, const Board *b, int32_t lineFrom, int32_t li
     out->len[t] = K->paths.len[i] - from;
     for (int k = 0; k < out->len[t]; k++) out->path[t][k] = (CR(K->paths.path[i][from + k]) + dr) * 8 + CC(K->paths.path[i][from + k]);
   }
-  frontIn[kind] = out->n;
+  frontLinesIn[kind] = out->n;
   return 1;
 }
 // (a keyed frontier out: its lines as they were, while its key holds)
 static int frontierResumeKeyed(int kind, int32_t key, Paths *out) {
   out->n = 0;
   Kept *K = &theFront[kind];
-  frontHeld[kind] = K->set ? K->paths.n : 0; frontIn[kind] = 0; frontWhy[kind] = 0;
+  frontLinesHeld[kind] = K->set ? K->paths.n : 0; frontLinesIn[kind] = 0; frontLetGo[kind] = 0;
   if (!K->set || !K->paths.n || !K->keyed) return 0;
-  if (K->key != key) { frontWhy[kind] = 3; return 0; }
-  *out = K->paths; frontIn[kind] = out->n;
+  if (K->key != key) { frontLetGo[kind] = 3; return 0; }
+  *out = K->paths; frontLinesIn[kind] = out->n;
   return 1;
 }

@@ -1679,3 +1679,6 @@ Measured (`58991f3d`, ready lines asked first, 1215): 9 -- actions 8, panels 6.
 ONE STORE FOR EVERY SEARCH'S FRONTIER (the owner: an infra solution, plans passed along): search/frontier.c -- the break search, the
 planner, the survival search and the board to come keep their lines one way and resume them one way (plans/gambit-state.md, "The
 frontiers"); the survival search, which began afresh every decision, now plays its carried lines again first. Logged front= and svSeed=.
+Measured (`0c28768c`, the one frontier store, 1216): 12 -- combo_storm 6, factory 3, large_garbage 3; actions 8, panels 4. C checks red:
+a name the store took (frontHeld) was the C checks' own. Carried in: break 448299 of 581835, plan 151096 of 180258, survive 302127 of
+369598, landed 86915 of 360216 (6464 decisions its block's frame had moved).
