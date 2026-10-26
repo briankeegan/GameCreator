@@ -454,6 +454,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // -- g the garbage dug at changed, a the anchor gone, k its key no longer held; and the survival search's played again of carried in)
   { L_s(" front="); for (int f = 0; f < NFRONT; f++) { if (f) L_s(","); L_s(frontName[f]); L_s(":"); L_i(frontLinesHeld[f]); L_s("/"); L_i(frontLinesIn[f]);
       if (frontLetGo[f]) L_s(frontLetGo[f] == 1 ? "g" : frontLetGo[f] == 2 ? "a" : "k"); }
+    L_s(" frontId="); for (int f = 0; f < NFRONT; f++) { if (f) L_s(","); L_i(frontById[f]); }
     L_s(" svSeed="); L_i(outSeedPlayed); L_s("/"); L_i(outSeedIn); }
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }

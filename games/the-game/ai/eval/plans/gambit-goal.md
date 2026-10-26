@@ -1734,3 +1734,8 @@ nearly every keeper is lost within a walk's frames of the landing, so the reserv
 and the window drained (large_garbage-5 now lost at 794 on actions).
 THE KEEPER'S TEST WITH A BREAK'S TIME: a spend pays over a keeper dead before it could press the walk only where the spender
 outlives it by a break's time (rankSave).
+Measured (`c080250e`, 1228): 12 -- combo_storm 5, factory 2, large_garbage 5; panels 7, actions 3, no-break 2.
+large_garbage-5 (1228) carried its break frontier in 0 lines at 601, 629, 692 and had all 60 refused on replay at 555, 570: a line
+was let go where a swap played since touched its cells, and its swaps went to cells whose panels had fallen.
+THE FRONTIERS RE-ROOTED BY THEIR PANELS: each kept swap carries the panel it moves; resumed, it is pressed where that panel is now
+(search/frontier.c byIds), a line the played swaps touched carried too, the replay judging it (`frontId=` counts those).
