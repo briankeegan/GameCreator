@@ -1723,3 +1723,9 @@ Measured (`ffd0542d`, 1225): 14 -- combo_storm 7, factory 3, large_garbage 4; ac
 THE MARGIN ONE KEY: a line whose landed board was not read had no margin, and the clause skipped that pair only -- A over B by
 margin, B and C past it, C over A by nearer. Now the board the line ends on where the landed one was not read (outcome.c topLeft,
 matLeft), and a margin still unknown the least.
+Measured (`3d3cdd60`, 1226): 12 -- combo_storm 4, factory 3, large_garbage 5; actions 7, panels 3. Beaten-by-a-lower 1990: the
+unknown margins were not the cycles. large_garbage-5 lost at 607 holding with 25 actions in hand: the reserve put a hold lost at
+70 over a toward lost at 158, and holds lost at 6-14 over levels lost at 12-17, 43 times -- a walk kept by a board dead before it
+could press it.
+THE KEEPER'S OWN TEST BACK, IN FRAMES: a spend pays where the keeper is lost before it could press the walk -- a cell every TAP_GAP
+frames past the landing or its end (it was counted once as the walk's actions, as frames).
