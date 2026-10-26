@@ -1660,3 +1660,7 @@ Measured (`ef41da2b`, logging, 1210): 15, 1209's games. The board-to-come search
 of 97396 played again -- the carry works, the search had no time: a third of what the proposers had left after the searches.
 THE BOARD TO COME IN THE BREAK SEARCH'S TIME: with a block due within 240 frames the break search's job gives the board as it is 60% of
 its share and the board to come the rest (answer.c breakRun, search/ready.c landedRun); the proposers offer its line.
+Measured (`be062a85`, the board to come in the break search's time, 1211): 13 -- combo_storm 6, factory 1, large_garbage 6; actions 11.
+Found 2932 of 15916 (1302 before), its beam 4 deep (90% under 7). C checks red: tsan -- the proposers read its answer while the break
+job still wrote it -- and "decisions replayed" (5 of 207 answered differently a second time). Its answer is now read once the job is
+taken back (propose.c searchMerge, after answer.c breakEnd), and its carried beam let go with every kept plan (answer.c modeLeft).

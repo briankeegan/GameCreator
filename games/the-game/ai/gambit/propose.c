@@ -158,6 +158,9 @@ static int pLineBetter(const PLine *a, const PLine *b, int how) {   // (a over b
   return a->earned > b->earned || (a->earned == b->earned && a->nseq < b->nseq);
 }
 static void searchMerge(const Read *R, Found *S) {
+  // (the break the next block will need, searched on the board it lands on in the break search's job -- read once the job is taken back,
+  // answer.c breakEnd: search/ready.c landedRun)
+  if (landedOk && landedOutN > 0) { S->haveLb = 1; S->lbN = landedOutN; for (int k = 0; k < landedOutN; k++) S->lb[k] = landedOut[k]; }
   if (planSplit && __atomic_load_n(&planBDone, __ATOMIC_ACQUIRE)) {
     for (int i = 0; i < planHalfB.n && planSplitAt + i < MAXAIMS; i++)
       if (planB.perAim[i].set) { S->ap.perAim[planSplitAt + i] = planB.perAim[i]; S->ap.perAim[planSplitAt + i].aimIndex = planSplitAt + i; }
@@ -197,8 +200,6 @@ static void searchAll(const Read *R, Found *S) {
     double m3 = timeLeftMs() / 2 < READY_LINE_MS ? timeLeftMs() / 2 : READY_LINE_MS;
     S->haveRl = readyLines(&decQ, lastLand, m3 > 1 ? m3 : 1, S->rl, &S->rlN, &S->rlAt);
   }
-  // (the break the next block will need, searched on the board it lands on in the break search's time: search/ready.c landedRun)
-  if (landedOk && landedOutN > 0) { S->haveLb = 1; S->lbN = landedOutN; for (int k = 0; k < landedOutN; k++) S->lb[k] = landedOut[k]; }
   S->lvG = !R->under && R->readyAt != NOT_ASKED && !(S->haveRd && !S->rd.ready && S->rd.setup) ? level(&decQ, R->readyAt ? R->readyAt : NOT_ASKED) : 0;
 }
 

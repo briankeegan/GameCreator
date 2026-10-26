@@ -38,7 +38,8 @@ static Readied readyFor(const Question *q, double ms) {
 // break search asked of that board -- the break the board will need, found while there is still time to press it, not once the block
 // is down. Its line, as the board stands now, is the proposer's to offer and the judge's to try: pressed early, its swaps meet the block
 // as the judge plays them. 1 and the line; 0 none (nothing coming, the board lost first, no garbage on it then, none found)
-static Board *landedB; static Ctx *landedCtx;   // (its own: it runs in the break search's job, beside the proposers' readiness)
+static Board *landedB; static Ctx *landedCtx;
+static Paths landedKeep; static int32_t landedFor = -1;   // (the board-to-come beam carried to the landing; let go with every kept plan: answer.c)   // (its own: it runs in the break search's job, beside the proposers' readiness)
 static int32_t landedOk, landedOut[MAXLINE], landedOutN;   // (this decision's answer, for the proposers: search/ready.c landedRun)
 static int32_t landedWhy = -1, landedDeep, landedRes, landedIn;   // (the depth its beam reached, its carried lines played again of those carried in)
 // (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found; -1 not asked)
@@ -62,7 +63,7 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   for (int a = 0; a < q->narr; a++) if (q->arr[a].at > dt) { q2.arr[q2.narr] = q->arr[a]; q2.arr[q2.narr++].at -= dt; }
   // (CARRIED TO THE LANDING: the lines the last decision's search was growing on the same board to come -- the same block, landing on
   // the same frame -- are its beam's seeds, so the search grows deeper decision after decision until the block is down)
-  static Paths landedKeep; static int32_t landedFor = -1; static LOCAL Broke lbr;
+  static LOCAL Broke lbr;
   int32_t landsOn = q->b->clock + wait;
   int carried = landedFor == landsOn && landedKeep.n > 0;
   double old = clockShareBegin(nowMs() + ms);

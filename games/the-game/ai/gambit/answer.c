@@ -697,6 +697,7 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 static void modeLeft(void) {
   lifeLived = 0;
   memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
+  landedKeep.n = 0; landedFor = -1;
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
 }
 // A new game: nothing of the last one is carried on.
