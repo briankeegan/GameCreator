@@ -405,9 +405,9 @@ static int ranked(const Read *R, const Found *S) {
     }
     if (ns) sortJudged(order, n);
   }
-  // NO WASTED THREE (the owner: only when not doing it would kill it): the order ranks a line that wastes a three below every line that
-  // wastes none once survival and solvency are told (rank.c, the waste key) -- so a line that wastes one is first only where not playing
-  // it dies sooner or falls short: that is the board's save, and its three is marked needed, the frame loop's verdict (answer.c wastes)
+  // NO WASTED THREE (the owner: only when not doing it would kill it): the order ranks a line that wastes a three below every line of
+  // its category that wastes none (rank.c, the waste key) -- so a line that wastes one is first only where every line without one dies
+  // sooner, falls short, or is a lesser kind: its three is marked needed, the frame loop's verdict (answer.c wastes)
   clockShareEnd(orderShare);
   if (n && !order[0]->hold && wastesThree(order[0])) { order[0]->threeNeeded = 1; saveOk = 1; saveLine = order[0]; }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);

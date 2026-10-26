@@ -441,26 +441,25 @@ static LOCAL const char *cmpWhy = "";   // (the clause of that rule that decided
 static int livesOf(const Judge *J) { return J->o.lives || J->extLost == FOREVER; }
 // THE LEDGER a line leaves (plans/gambit-categories.md): the rows due -- every row of every block shown, at the frame it is due (the
 // window plan's landAts) -- against the rows paid -- the line's own breaks, a row each W cells it converts, and its plan's, each a break
-// pressed from its frame and popped a break's time on (rankSave) -- from the room over the stack now (MARGIN_ROWS less the top). The
-// shortfall at worst, the first frame the board is short; a line that lives is short nothing
+// pressed from its frame and popped a break's time on (rankSave); a line that lives is short nothing
 static int32_t topOn(const Board *b);
 typedef struct { int32_t due, paid, shortBy, at; } Ledger;
 static Ledger ledgerOf(const Judge *J) {
   Ledger L = { nLandAts, 0, 0, FOREVER };
-  if (J->o.lives) return L;
+  if (J->o.lives || J->extLost == FOREVER) return L;
   int32_t paid[16 + MAXLINE], np = 0, save = imax(1, rankSave);
   if (!J->hold && J->apBroke > 0) { int rows = (J->apBroke + W - 1) / W, at = J->o.j.done > 0 ? J->o.j.done : 0; for (int r = 0; r < rows && np < MAXLINE; r++) paid[np++] = at; }
   for (int k = 0; k < J->planBreaks && np < 16 + MAXLINE; k++) paid[np++] = J->planBreakAt[k] + save;
-  for (int i = 1; i < np; i++) { int32_t v = paid[i]; int k = i; while (k > 0 && paid[k - 1] > v) { paid[k] = paid[k - 1]; k--; } paid[k] = v; }
   L.paid = np;
-  int32_t room = imax(0, MARGIN_ROWS - topOn(decQ.b));
-  for (int d = 0, p = 0; d < nLandAts; d++) {
-    int32_t t = landAts[d];
-    while (p < np && paid[p] <= t) p++;
-    int32_t gap = (d + 1) - p - room;
-    if (gap > L.shortBy) L.shortBy = gap;
-    if (gap > 0 && L.at == FOREVER) L.at = t;
-  }
+  // (death as the engine plays it: the plan's own loss frame (lostOf) -- solvent when the board still stands a break's time after the
+  // last row shown has landed; else short by the rows due by then less those its plan paid by then, one at least, from that frame)
+  double lost = lostOf(J);
+  int32_t lastDue = nLandAts ? landAts[nLandAts - 1] : 0;
+  if (lost >= 1e9 || lost > (double)lastDue + save) return L;
+  int32_t at = (int32_t)lost, due = 0, got = 0;
+  for (int d = 0; d < nLandAts; d++) due += landAts[d] <= at;
+  for (int k = 0; k < np; k++) got += paid[k] <= at;
+  L.shortBy = imax(1, due - got); L.at = at;
   return L;
 }
 static const Judge *rankHold;   // (the decision's hold among the lines ranked: sortJudged)
@@ -483,9 +482,7 @@ static double valueOf(const Judge *J) {
   // each leaves once everything shown has landed (judge.c readyWalk), each action the frames the window takes to give it back -- a
   // line that only buys time leaves the garbage as far from breaking)
   if (rankHold && J->o.j.readyWalk > 0 && rankHold->o.j.readyWalk > 0) gain += (double)(rankHold->o.j.readyWalk - J->o.j.readyWalk) * af;
-  // (and the supply: a break's time for each break its plan makes over the hold's -- panels kept, contact and room are worth the
-  // breaks they become, counted here in that unit)
-  if (rankHold) gain += (double)(J->planBreaks - rankHold->planBreaks) * save;
+  // (asked with the ledger, once it reads death as the engine does)
   double cost = spent * af + (J->o.j.netPanels < 0 ? (double)-J->o.j.netPanels / W * save : 0);
   return gain - cost;
 }
@@ -521,17 +518,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // -- of two that do not live, the later loss, unless lost alike (lostAlike: the same band of a break's time, counted from one
   // reference -- less than a break's time apart buys no break more)
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
-  // 2. SOLVENCY (ledgerOf): a line whose plan pays every row due as it comes before one that falls short; of two short, fewer rows
-  // short, then short later -- the board's future, row by row, before what kind of line it is
-  if (!lx || !ly) { Ledger gx = ledgerOf(x), gy = ledgerOf(y);
-    if ((gx.shortBy > 0) != (gy.shortBy > 0)) K(2, "solvent", gx.shortBy > 0 ? 1 : -1);
-    if (gx.shortBy != gy.shortBy) K(2, "short", gx.shortBy - gy.shortBy);
-    if (gx.at != gy.at) K(2, "shortAt", gy.at > gx.at ? 1 : -1); }
-  // -- and no wasted three (the owner: only when not doing it kills): once survival and solvency are told, a line that makes a three for
-  // nothing and is no link of a chain after every line that wastes none
-  if (wastesThree(x) != wastesThree(y)) K(2, "waste", wastesThree(x) ? 1 : -1);
+  // 2. SOLVENCY (ledgerOf): a line whose plan pays every row due as it comes before one that falls short
+  // (asked once the ledger reads death as the engine does -- plans/gambit-categories.md: a row that lands with no room is not a loss
+  // until the board is topped out, its stop spent and the stack risen; the ledger is logged, sol=, and decides nothing until then)
   // 3. THE CATEGORY (catOf), best first: lives, lives by its plan, breaks now, ready, buys time, dies
   { int cx = catOf(x, rankHold), cy = catOf(y, rankHold); if (cx != cy) K(3, "category", cx - cy); }
+  // -- and no wasted three (the owner: only when not doing it kills): of two of a category, a line that makes a three for nothing and
+  // is no link of a chain after one that wastes none -- a line that breaks with a three beside it is still a break
+  if (wastesThree(x) != wastesThree(y)) K(3, "waste", wastesThree(x) ? 1 : -1);
   // 4. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(4, "chain", cutsShort(x) ? 1 : -1);
   // 5. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
