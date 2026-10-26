@@ -581,7 +581,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (i) L_s(",");
     L_play(j->hold ? PLAY_HOLD : j->k.play); if (j == carriedJ) L_s("*"); if (j->outside) L_s("~");
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
-    L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
+    L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n"); else if (j->k.play == PLAY_READY) L_s(j->readyNext == 0 ? ":n0" : ":n?");   // (ready for the next block; a ready line not: none found :n0, not answered in its time :n?)
     if (!j->o.lives && lostOf(j) > lostAtOf(j->o.lostAt, j->hold)) { L_s(":e"); if (lostOf(j) >= 1e299) L_s("inf"); else L_i((int64_t)lostOf(j)); }   // (lost where its readiness break leads)
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
