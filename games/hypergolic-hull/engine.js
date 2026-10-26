@@ -4690,9 +4690,30 @@
           lined: weaponsBearingFrom(state, enemy, c.to).length > 0,
         }));
         const lined = scored.filter((c) => c.lined);
-        const pool = lined.length ? lined : scored;
-        pool.sort((a, b) => b.dist - a.dist || a.dir - b.dir);
-        return { enemyId: enemy.id, type: "move", to: pool[0].to };
+        if (lined.length) {
+          // On a line already: take the one furthest out.
+          lined.sort((a, b) => b.dist - a.dist || a.dir - b.dir);
+          return { enemyId: enemy.id, type: "move", to: lined[0].to };
+        }
+        // NOT ON A LINE, AND ONE STEP WILL NOT GET IT THERE. Greedy choice
+        // among six neighbours has no lookahead, so a hull that could not
+        // reach a lane THIS step had nothing to steer by and fell back on
+        // raw distance — measured, it drifted between two hexes at the top
+        // of the board for the whole sector, never aligned and never firing.
+        //
+        // Same answer the rest of the roster already uses: head for the
+        // nearest hex it could actually shoot from, and let the walk be
+        // several rounds long if it has to be. Distance from the flagship
+        // only breaks ties, because keeping its range is what it does while
+        // getting into position, not instead of it.
+        const solutions = firingPositions(state, enemy);
+        if (solutions.length) {
+          const toLane = (h) => solutions.reduce((best, sol) => Math.min(best, hexDistance(h, sol)), Infinity);
+          scored.sort((a, b) => toLane(a.to) - toLane(b.to) || b.dist - a.dist || a.dir - b.dir);
+        } else {
+          scored.sort((a, b) => b.dist - a.dist || a.dir - b.dir);
+        }
+        return { enemyId: enemy.id, type: "move", to: scored[0].to };
       }
       const closers = candidates.filter((c) => c.dist <= standoff);
       const bearsFrom = (list) => list.filter((c) => solutionKeys.has(hexKey(c.to)));
@@ -5101,32 +5122,6 @@
         firedThisPhase.add(enemy.id);
         shootDownMissiles(state, covers, enemy.type.toUpperCase());
       }
-      // A LANE IS LOCKED. The hull spends this round lining up and nothing
-      // else: the lane is captured HERE, as it stands now, so stepping out
-      // of it is what saves you rather than out-trading the shot. It holds
-      // station while aiming — a lane recomputed after a move would make the
-      // telegraph a lie.
-      for (const { enemy, intent } of intents.filter(({ intent: i }) => i.type === "aim")) {
-        if (!enemy.alive || enemy.aim) continue;
-        const weapon = WEAPONS[intent.weaponKey];
-        if (!weapon || enemy.energy < weapon.energyCost) continue;
-        const facing = enemyFacing(state, enemy);
-        // ONE LANE, not the whole star. An all-directions lane weapon covers
-        // every axis at once, and locking all six would leave nowhere to
-        // dodge to — the hull picks the single axis the flagship is standing
-        // on. Filtered out of the real footprint rather than walked by hand,
-        // so rock and other hulls still stop the beam exactly where they
-        // stop every other shot.
-        const axis = axisIndex(enemy, state.playerPos);
-        if (axis < 0) continue; // not on an axis at all: nothing to line up
-        const lane = weaponHexes(enemy, facing, weapon, state)
-          .filter((h) => onBoard(state, h) && axisIndex(enemy, h) === axis)
-          .map((h) => ({ q: h.q, r: h.r }));
-        if (!lane.some((h) => posEq(h, state.playerPos))) continue; // the board moved
-        enemy.aim = { weaponKey: weapon.id, facing, lane };
-        state.events.push({ type: "aimStart", enemyId: enemy.id, q: enemy.q, r: enemy.r, lane, weapon: weapon.id });
-        pushLog(state, `${enemy.type.toUpperCase()} is lining us up — get off the line.`);
-      }
       // AND LOOSED, down the lane it locked, whether the flagship stayed on
       // it or not. The shot is paid for here rather than at lock, so a hull
       // killed while aiming never spends the charge.
@@ -5219,12 +5214,63 @@
       // stands, decided from the hex it is still sitting on.
       for (const row of intents) {
         if (row.intent.type !== "move" || !row.enemy.alive) continue;
-        if (!(ENEMY_TYPES[row.enemy.type] || {}).closes) continue;
         const next = decideIntent(state, row.enemy);
+        // LINING UP AFTER A BURN IS ALLOWED FOR ANYONE, because a lock takes
+        // nothing from you: the lane is painted the moment it is taken and
+        // you get the whole of your next round to leave it. A hull that had
+        // to move and then wait a further round before it could even begin
+        // aiming spent two rounds doing nothing you could see, which is how
+        // the class read as sitting there.
+        if (next.type === "aim") {
+          row.intent = next;
+          continue;
+        }
+        // FIRING after a burn is not, except for a gun that has to touch you
+        // — see `closes`. Reach or motion, never both: most of the gun
+        // platforms carry a drive, and letting any hull that burned also
+        // shoot hands every one of them reposition-and-snipe.
+        if (!(ENEMY_TYPES[row.enemy.type] || {}).closes) continue;
         if (next.type !== "attack") continue;
         const gun = WEAPONS[next.weaponKey];
         if (!gun || (gun.range || 0) > 1) continue; // a long gun spent its round moving
         row.intent = next;
+      }
+      // A LANE IS LOCKED — AFTER THE BURN, from wherever the hull ended up.
+      //
+      // It used to resolve before anything moved, so a hull that spent its
+      // round manoeuvring onto a line then had to spend ANOTHER round
+      // locking it, and the two rounds in between were dead: it got into
+      // position and then just sat there while you watched. Lining up the
+      // moment it has you in sight is the whole character of the class.
+      //
+      // Locking after a move is fair where FIRING after one would not be,
+      // and the difference is what it costs you: a lock costs nothing yet.
+      // You still get the full round the telegraph promises — the lane is
+      // painted the instant it is taken, and stepping off it is free.
+      //
+      // The lane is captured from where it is standing NOW, which is why
+      // this has to be here and not earlier: a lane locked before the burn
+      // and fired from after it would be a telegraph that lied.
+      for (const { enemy, intent } of intents.filter(({ intent: i }) => i.type === "aim")) {
+        if (!enemy.alive || enemy.aim) continue;
+        const weapon = WEAPONS[intent.weaponKey];
+        if (!weapon || enemy.energy < weapon.energyCost) continue;
+        const facing = enemyFacing(state, enemy);
+        // ONE LANE, not the whole star. An all-directions lane weapon covers
+        // every axis at once, and locking all six would leave nowhere to
+        // dodge to — the hull picks the single axis the flagship is standing
+        // on. Filtered out of the real footprint rather than walked by hand,
+        // so rock and other hulls still stop the beam exactly where they
+        // stop every other shot.
+        const axis = axisIndex(enemy, state.playerPos);
+        if (axis < 0) continue; // not on an axis at all: nothing to line up
+        const lane = weaponHexes(enemy, facing, weapon, state)
+          .filter((h) => onBoard(state, h) && axisIndex(enemy, h) === axis)
+          .map((h) => ({ q: h.q, r: h.r }));
+        if (!lane.some((h) => posEq(h, state.playerPos))) continue; // the board moved
+        enemy.aim = { weaponKey: weapon.id, facing, lane };
+        state.events.push({ type: "aimStart", enemyId: enemy.id, q: enemy.q, r: enemy.r, lane, weapon: weapon.id });
+        pushLog(state, `${enemy.type.toUpperCase()} is lining us up — get off the line.`);
       }
       const attackers = intents
         .filter(({ intent }) => intent.type === "attack")

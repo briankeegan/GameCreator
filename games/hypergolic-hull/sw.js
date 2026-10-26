@@ -17,7 +17,7 @@ importScripts("../../shared/sw-core.js");
 //
 // Bump it on every deploy of this game, and move index.html's data-version
 // with it. gate_sw_version fails a push that does either without the other.
-GCRegisterServiceWorker("hypergolic-hull-v84", [
+GCRegisterServiceWorker("hypergolic-hull-v85", [
   "./",
   "./index.html",
   "./style.css",

@@ -4493,4 +4493,52 @@ assert.deepStrictEqual(
   assert.strictEqual(st.playerAim, null, "the lock is spent on the round after, whatever it caught");
 }
 
+// IT LOCKS THE ROUND IT GETS YOU IN SIGHT, not the round after. The lane is
+// captured after the burn, from wherever the hull ended up — so a round
+// spent manoeuvring onto a line is also the round that line is taken.
+// Before this the lock resolved before anything moved, so getting into
+// position cost a round and then lining up cost another, and the two rounds
+// in between were dead: it arrived and sat there while you watched.
+//
+// Locking after a move is fair where FIRING after one is not, and the
+// difference is what it costs you. A lock costs nothing yet: the lane is
+// painted the instant it is taken and the whole of your next round is
+// yours to leave it in.
+{
+  const st = Engine.createGameState({
+    id: 902,
+    name: "lines up on the move",
+    board: { type: "rect", cols: 7, rows: 9 },
+    playerStart: { q: 3, r: 6 },
+    exit: { q: 6, r: -3 },
+    outpost: null,
+    enemies: [{ type: "interceptor", q: 1, r: 3 }],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+    actions: ["sublight", "autocannon"],
+  });
+  assert.strictEqual(
+    Engine.axisIndex(st.enemies[0], st.playerPos),
+    -1,
+    "the fixture starts it off every lane, or there is nothing to manoeuvre onto"
+  );
+  let lockedOnTheMove = false;
+  for (let round = 0; round < 6 && !lockedOnTheMove; round++) {
+    const was = { q: st.enemies[0].q, r: st.enemies[0].r };
+    const hullBefore = st.hull;
+    Engine.applyEndTurn(st); // the flagship stands still; only the hull moves
+    const foe = st.enemies[0];
+    const moved = !Engine.posEq(foe, was);
+    if (moved && foe.aim) {
+      lockedOnTheMove = true;
+      assert.strictEqual(hullBefore, st.hull, "and the round it locks still costs no hull — a lock is not a shot");
+      assert.ok(
+        foe.aim.lane.some((h) => Engine.posEq(h, st.playerPos)),
+        "the lane it took runs through the flagship, from the hex it just moved to"
+      );
+    }
+  }
+  assert.ok(lockedOnTheMove, "it lines up the same round it moves into sight, not a round later");
+}
+
 console.log("All golden-path assertions passed.");
