@@ -160,6 +160,14 @@ static int windowCover(int32_t endAt, int spent) {
 }
 // (whether the window keeps the next break's walk: the next block's, or the line's end where none is on its way)
 static int windowKeepsBreak(int32_t endAt, int spent) { return windowCover(endAt, spent) >= 1; }
+// THE WINDOW'S SHARE AS THE DUES ASK IT (plans/gambit-next.md 2): of the rows due, the share the window covers a break's walk for, with
+// `paid` rows the line's own breaks pay; with nothing due or no allowance said, the window's own share (-1 none said)
+static double winCoverShare(int32_t endAt, int spent, int32_t paid) {
+  if (pressAllowance < 0) return -1;
+  if (nLandAts <= 0) return windowShareAt(endAt, spent);
+  double s = (double)(windowCover(endAt, spent) + paid) / nLandAts;
+  return s > 1 ? 1 : s;
+}
 // THE MARGIN AS ONE KEY (plans/gambit-next.md 2): the shares of what a board runs out of -- room, material, the window, contact -- each
 // in rows of the stack's twelve, scarcest first, so that of two the more of the scarcest wins, then of the next (under garbage the room
 // is nearly none for every line, and the rest decide); one integer, the order's and the survival search's alike. A share not said

@@ -13,11 +13,11 @@ The goal: never die from the garbage the game shows.
 
 1. **Proven first.** A line whose plan, played on the engine, meets every row shown before the board dies is proven. A proven line
    beats every unproven one.
-2. **Unproven: the later loss, then the most left to find a proof with.** Of lines not proven, one that dies before it could press
-   anything ranks last; then the later loss, in bands of a break's time -- a bound, but the best one there is; then, of two lost
-   alike, the one that leaves the most of its scarcest resource once everything shown has landed, then of the next (`marginKey`:
-   room, material, window, contact, in rows). A line with a plan is read on the board its plan's last break leaves; a line whose
-   board was not read, on the board as it is now. The survival search ranks the same way.
+2. **Unproven: the most left to find a proof with.** Of lines not proven, one that dies before it could press anything ranks last;
+   then the one that leaves the most of its scarcest resource, then of the next (`marginKey`: room, material, contact, and the window
+   as the dues ask it -- the share of the rows due the window still covers, with the rows the line's own breaks pay); then the later
+   loss. A line with a plan is read on the board its plan's last break leaves; a line whose board was not read, on the board as it is
+   now. The survival search ranks the same way.
 3. **Search for the proof.** When nothing offered is proven, the decision's search time goes to the break on the board the best line
    leaves.
 4. **The margin for garbage not shown.** Proven means proven with k rows spare. The owner's to set; suggested 1.
@@ -68,3 +68,6 @@ line short at once by a block shown (**demand**).
 - 1277, 9/24 (combo_storm 4, factory 2, large_garbage 3): the margin live, ahead of the loss. It passed over a break in 11 of 15
   losses. Reserves ahead of the loss bound is wrong: the bound is the better fact. Fixed: the later loss first, the margin between
   lines lost alike.
+- 1278, 12/24 (combo_storm 5, factory 4, large_garbage 3): the loss ahead of the margin. Reverting the idea was wrong; the piece was. The
+  margin read the window as actions left, so a break -- which spends actions and pays rows -- read as less than holding. Fixed: the
+  window is read as the dues ask it, the share of the rows due it still covers plus the rows the line pays; the margin first again.

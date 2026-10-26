@@ -212,17 +212,14 @@ static int planProven(int32_t lost) {
   if (lost == NOT_ASKED || lost < 0) return 0;
   return (double)lost > proofFrame();
 }
-// (of two plans, as the order ranks lines (compareJudged): the proven; then the one lost later by a break's time and more; then the one
-// that converts more; then the one lost later)
+// (of two plans, the proven; then the one that converts more; then the one lost later)
 #define PLAN_LANDS 4
 static int32_t landsAsked, landsTaken;   // (this decision's later landings asked and the plans taken from them: the log's lands=)
 static int planBetter(int32_t lx, int32_t bx, int32_t ly, int32_t by) {
   int px = planProven(lx), py = planProven(ly);
   if (px != py) return px;
-  double fx = lx == NOT_ASKED ? -1 : lostAtOf(lx, 0), fy = ly == NOT_ASKED ? -1 : lostAtOf(ly, 0), save = imax(1, rankSave);
-  if (fx >= fy + save || fy >= fx + save) return fx > fy;
   if (bx != by) return bx > by;
-  return fx > fy;
+  return (lx == NOT_ASKED ? -1 : lostAtOf(lx, 0)) > (ly == NOT_ASKED ? -1 : lostAtOf(ly, 0));
 }
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
@@ -453,8 +450,13 @@ static int32_t marginKey(const Judge *J) {
   int32_t t = plan ? J->planMargin[0] : J->o.j.readyTop >= 0 ? J->o.j.readyTop : J->o.topLeft;
   int32_t m = plan ? J->planMargin[1] : J->o.j.readyMat >= 0 ? J->o.j.readyMat : J->o.matLeft;
   int32_t contact = plan ? J->planMargin[2] : J->o.j.readyContact, under = plan ? J->planMargin[3] : J->o.j.readyUnder;
-  double win = plan ? windowShareAt(J->planMargin[4], J->extSpent) : J->hold ? windowShareAt(0, 0) : windowShareAt(J->o.j.endAt, J->o.j.spent);
-  if (t < 0 || m < 0) { t = topOn(decQ.b); m = materialOn(decQ.b); contactOn(decQ.b, &contact, &under); win = windowShareAt(0, 0); }
+  // (THE WINDOW AS THE DUES ASK IT: of the rows due, the share the window still covers a break's walk for (core/nodes.h windowCover),
+  // with the rows the line's own breaks pay -- a break spends actions and pays rows, a hold spends none and pays none: the pace, not the
+  // actions left. With nothing due, the window's own share)
+  int32_t endAt = plan ? J->planMargin[4] : J->hold ? 0 : J->o.j.endAt, spent = plan ? J->extSpent : J->hold ? 0 : J->o.j.spent;
+  int32_t paid = J->hold ? 0 : imax(0, J->apBroke) / W + (plan ? J->planBreaks : 0);
+  double win = winCoverShare(endAt, spent, paid);
+  if (t < 0 || m < 0) { t = topOn(decQ.b); m = materialOn(decQ.b); contactOn(decQ.b, &contact, &under); win = winCoverShare(0, 0, 0); }
   return marginKeyOf((MARGIN_ROWS - t) / (double)MARGIN_ROWS, (double)m / W / MARGIN_ROWS, win < 0 ? 1 : win, under > 0 ? (double)contact / under : 1);
 }
 // (LOST ALIKE: lost in the same break's time, counted back from the latest loss of the lines ranked together (rankLostRef, sortJudged)
@@ -576,13 +578,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. PROVEN FIRST: a line that lives left alone, then one that lives by its plan, then one whose plan meets every row shown with the
   // margin to spare, then the rest
   { int px = proofOf(x), py = proofOf(y); if (px != py) K(1, "proven", py - px);
-    // 2. UNPROVEN: a line dead before it could press anything last; then the later loss, unless lost alike (lostAlike: the same band of
-    // a break's time) -- a bound, but the best one there is; then of two lost alike THE MOST LEFT TO FIND A PROOF WITH, the more of its
-    // scarcest resource, then of the next (marginKey: room, material, window, contact, in rows). The categories fold into this: lives and plan are proven, breaks to dies unproven
+    // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
+    // resource, then of the next (marginKey: room, material, the window's cover of the rows due, contact, in rows); then the later loss,
+    // unless lost alike (lostAlike: the same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
     if (!px) {
       int nx = diesNow(x), ny = diesNow(y); if (nx != ny) K(2, "now", nx ? 1 : -1);
-      if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
+      if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
     } }
   // 3. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(3, "chain", cutsShort(x) ? 1 : -1);
