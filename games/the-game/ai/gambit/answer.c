@@ -620,6 +620,7 @@ EXPORT(gb_new_game) void gb_new_game(void) {
   modeLeft(); lifeDumps = 0; forceDone = 0; openerOver = 0;
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
+  surviveWalkNext = 0;
   memset(theIntents, 0, sizeof theIntents);
   gb_back(0, 0, 0, 0, 0, 0, 0);
   carriedClear();
