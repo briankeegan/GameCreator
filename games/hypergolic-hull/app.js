@@ -849,7 +849,7 @@ function scheduleAnims(events) {
     // actually resolve.
     else if (ev.type === "beam") {
       anims = anims.filter((a) => a.kind !== "charge");
-      anims.push({ kind: "lance", pos: { q: ev.q, r: ev.r }, lane: ev.lane, hit: ev.hit, start: now, dur: 620 });
+      anims.push({ kind: "lance", pos: { q: ev.q, r: ev.r }, lane: ev.lane, hit: ev.hit, start: now, dur: 700 });
     }
     else if (ev.type === "damage") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "shieldAbsorb") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
@@ -3634,57 +3634,137 @@ function draw() {
     if (now < a.start || now >= a.start + a.dur) continue;
     const p = animProgress(a, now);
     if (a.kind === "charge") {
-      // A line drawn ON the lane, building toward the shot: the hexes it
-      // will cross, brightening, with the emitter winding up at the hull.
-      const pulse = 0.55 + 0.45 * Math.sin((now - a.start) / 130);
+      // THE WARNING, drawn as light for the same reason the shot is: a
+      // translucent brown polygon laid over each hex went muddy against a
+      // dark board and read as dirt on the map rather than as a gun coming
+      // up to power. Additive, so the lane GLOWS along the ground it is
+      // about to cover, and pulsing, because a static mark looks like
+      // terrain and this is a clock.
+      const pulse = 0.5 + 0.5 * Math.sin((now - a.start) / 150);
       ctx.save();
+      ctx.globalCompositeOperation = "lighter";
       for (const hex of a.lane) {
         const c = hexToPixel(hex);
-        ctx.globalAlpha = 0.16 + 0.13 * pulse;
-        ctx.fillStyle = "#ff7a4a";
+        const glow = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, geom.sx * 0.62);
+        glow.addColorStop(0, `rgba(255,140,70,${0.20 + 0.14 * pulse})`);
+        glow.addColorStop(1, "rgba(255,110,40,0)");
+        ctx.fillStyle = glow;
         ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const ang = Math.PI / 180 * (60 * i - 30);
-          const x = c.x + geom.sx * 0.5 * Math.cos(ang);
-          const y = c.y + geom.sy * 0.5 * Math.sin(ang);
-          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-        }
-        ctx.closePath();
+        ctx.arc(c.x, c.y, geom.sx * 0.62, 0, Math.PI * 2);
         ctx.fill();
       }
-      // The emitter itself, so the eye goes to WHO is aiming.
+      // A thin line down the middle of the lane: this is a LINE you are
+      // standing on, and a row of soft blobs does not say line.
+      if (a.lane.length) {
+        const a0 = hexToPixel(a.lane[0]);
+        const a1 = hexToPixel(a.lane[a.lane.length - 1]);
+        ctx.globalAlpha = 0.30 + 0.25 * pulse;
+        ctx.strokeStyle = "#ffb070";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([6, 7]);
+        ctx.beginPath();
+        ctx.moveTo(a0.x, a0.y);
+        ctx.lineTo(a1.x, a1.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // The emitter winding up, so the eye goes to WHO is aiming.
       const o = hexToPixel(a.pos);
-      ctx.globalAlpha = 0.85;
-      ctx.strokeStyle = "#ffb070";
+      const spin = ctx.createRadialGradient(o.x, o.y, geom.sx * 0.1, o.x, o.y, geom.sx * 0.6);
+      spin.addColorStop(0, `rgba(255,200,150,${0.30 + 0.35 * pulse})`);
+      spin.addColorStop(1, "rgba(255,120,50,0)");
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = spin;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, geom.sx * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.5 + 0.4 * pulse;
+      ctx.strokeStyle = "#ffcfa0";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(o.x, o.y, geom.sx * (0.52 - 0.12 * pulse), 0, Math.PI * 2);
+      ctx.arc(o.x, o.y, geom.sx * (0.5 - 0.1 * pulse), 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     } else if (a.kind === "lance") {
-      // The shot itself: a hard core down the whole locked lane, thrown
-      // from the hull to the far end in one frame-set.
+      // THE BEAM RUNS THE WHOLE ROW, and it is drawn as LIGHT.
+      //
+      // The first version painted a translucent polygon over every hex in
+      // the lane and ran a thin stroke down the middle. Both were mistakes
+      // of the same kind: paint over a dark board goes muddy, so a shot that
+      // is supposed to be the hottest thing in the sector came out a brown
+      // smear lying on top of it. Everything hot here is composited with
+      // `lighter` — it ADDS to what is underneath instead of covering it,
+      // which is the difference between a beam and a brush stroke.
+      //
+      // Three passes, widest and dimmest first: a broad halo, a saturated
+      // core, and a white-hot centre line that is almost too thin to see on
+      // its own. That stack is what makes an energy weapon read as energy.
       const from = hexToPixel(a.pos);
-      const last = a.lane[a.lane.length - 1] || a.pos;
-      const to = hexToPixel(last);
-      const fade = Math.sin(Math.PI * p);
+      const lane = a.lane.length ? a.lane : [a.pos];
+      const lastPt = hexToPixel(lane[lane.length - 1]);
+      // It leaves fast and lands hard: the run is the first third, and the
+      // rest is the shaft burning out. Short on purpose — a beam that hangs
+      // around stops looking like a discharge and starts looking like a
+      // drawing of one.
+      const travel = Math.min(1, p / 0.32);
+      const eased = 1 - Math.pow(1 - travel, 3);
+      const head = {
+        x: from.x + (lastPt.x - from.x) * eased,
+        y: from.y + (lastPt.y - from.y) * eased,
+      };
+      const burn = p < 0.32 ? 1 : Math.pow(1 - (p - 0.32) / 0.68, 1.6);
+      const hot = a.hit ? "#ffd2a8" : "#ff9a5a";
       ctx.save();
-      ctx.globalAlpha = fade;
-      ctx.strokeStyle = a.hit ? "#ffd9c0" : "#ff8a5a";
-      ctx.lineWidth = 7 * fade;
-      ctx.shadowColor = "#ff6a30";
-      ctx.shadowBlur = 18;
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineCap = "round";
+      const shaft = (width, color, alpha) => {
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(head.x, head.y);
+        ctx.stroke();
+      };
+      shaft(geom.sx * 0.52 * burn, "#b33a10", 0.30 * burn); // the halo around it
+      shaft(geom.sx * 0.20 * burn, hot, 0.70 * burn);       // the body of the beam
+      shaft(Math.max(1.4, geom.sx * 0.055), "#fff6ec", 0.95 * burn); // white-hot centre
+
+      // Muzzle bloom: the brightest point is where it is coming FROM, which
+      // is also the thing the player most needs to look at.
+      const bloom = ctx.createRadialGradient(from.x, from.y, 0, from.x, from.y, geom.sx * 0.75 * burn);
+      bloom.addColorStop(0, `rgba(255,246,236,${0.85 * burn})`);
+      bloom.addColorStop(0.45, `rgba(255,140,70,${0.40 * burn})`);
+      bloom.addColorStop(1, "rgba(255,110,40,0)");
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = bloom;
       ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
-      ctx.globalAlpha = fade * 0.9;
-      ctx.strokeStyle = "#fff4e8";
-      ctx.lineWidth = 2.2 * fade;
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
+      ctx.arc(from.x, from.y, geom.sx * 0.75 * burn, 0, Math.PI * 2);
+      ctx.fill();
+
+      // The leading edge while it is still travelling, so the eye follows it
+      // down the row rather than seeing a line appear all at once.
+      if (travel < 1) {
+        const tip = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, geom.sx * 0.42);
+        tip.addColorStop(0, "rgba(255,255,255,0.95)");
+        tip.addColorStop(0.5, "rgba(255,170,100,0.45)");
+        tip.addColorStop(1, "rgba(255,140,60,0)");
+        ctx.fillStyle = tip;
+        ctx.beginPath();
+        ctx.arc(head.x, head.y, geom.sx * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (a.hit) {
+        // And a flash where it landed, once it has arrived.
+        const land = Math.pow(1 - (p - 0.32) / 0.68, 2);
+        const hitGlow = ctx.createRadialGradient(lastPt.x, lastPt.y, 0, lastPt.x, lastPt.y, geom.sx * 0.9 * land);
+        hitGlow.addColorStop(0, `rgba(255,255,255,${0.8 * land})`);
+        hitGlow.addColorStop(0.5, `rgba(255,150,90,${0.35 * land})`);
+        hitGlow.addColorStop(1, "rgba(255,120,50,0)");
+        ctx.fillStyle = hitGlow;
+        ctx.beginPath();
+        ctx.arc(lastPt.x, lastPt.y, geom.sx * 0.9 * land, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     } else if (a.kind === "fxring") {
       const c = hexToPixel(a.pos);
