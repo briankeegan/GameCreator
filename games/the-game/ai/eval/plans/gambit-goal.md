@@ -1718,3 +1718,5 @@ Measured (`93c5192a`, 1224): 7 -- combo_storm 3, factory 3, large_garbage 1; act
 3489). Fixed band edges split two lines a few frames apart, and the later loss then overrode margin, ledger and nearer.
 LOST ALIKE COUNTED BACK FROM THE LATEST LOSS: the bands between one and three breaks' time measured from the latest loss among the
 lines ranked together (rankLostRef): less than a break's time apart is alike again, and alike stays one relation.
+Measured (`ffd0542d`, 1225): 14 -- combo_storm 7, factory 3, large_garbage 4; actions 6, panels 4. Beaten-by-a-lower 2002 (from
+3489 at 1223): what is left is mostly nearer x1030 against the hold and reserve clauses, both a pair's own test.
