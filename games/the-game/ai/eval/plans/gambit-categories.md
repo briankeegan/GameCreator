@@ -1,164 +1,120 @@
-# Gambit: one judgement, one order
+# Gambit: the infra plan
 
-The decision becomes four steps: **search, judge, rank, press**. The judge puts every line in one category and carries the facts
-behind it. Every reader uses those same facts: the order, the searches, the carry, the log and the loss reader. None of them works
-the facts out again for itself.
+The goal is never to die. A board never dies when it stays **solvent**: for every row of garbage due, it can make a break before
+that row costs it the game. Each decision asks of every line, "if Gambit plays this, what follows?", and plays the answer out on
+the engine. The order picks the line whose future stays solvent longest.
 
-## 1. The judge categorises (judge.c, outcome.c)
+## Where it stands
 
-Every line is played on the engine and then given its plan: the line, then each break in reach after it for as long as each one
-puts the loss off. Where no break is found, the plan goes on with the survival search's best line from the board the line leaves.
-The judge then gives the line one category, best first:
+The decision runs: read, search, judge every line and its plan, categorise, rank, press, carry. Every predicted board matches the
+game (0 divergences), and the order is one order (0 "beaten head to head"). Lines are judged by their plans, and every plan ends
+the same way. Runs score 13 to 15 of 24.
 
-| Category | What decides it |
+**What fails now.** The losses no longer come from the order or the window. In the 900 frames before the last break, most
+decisions offer nothing better than "buys time", and the bot dies 500 to 1,000 frames later. Nothing counts the rows due against the
+breaks the board can still make, so it drifts insolvent while every decision looks right.
+
+## 1. The scenario: every line's ledger (judge.c, outcome.c)
+
+The judge already plays each line's plan on the engine: the line, then each break in reach for as long as each puts the loss off,
+then the survival search from where the breaks stop. The plan now also keeps its **ledger**, a timeline of:
+
+- **Rows due:** every row of every block shown on its way, at the frame it lands, plus the rows already on the board;
+- **Rows paid:** every break the plan makes, at the frame it pops. One break pays one row.
+
+From it, three facts:
+
+| Fact | What it is |
 |---|---|
-| **Lives** | the board lives left alone after the line |
-| **Lives by its plan** | the line and its plan's breaks keep the board alive |
-| **Breaks now** | the line breaks garbage, and its plan keeps a save |
-| **Ready** | the plan's next break is in reach, and the window pays for it before the board is lost |
-| **Buys time** | no break in reach, but the line outlives the hold |
-| **Dies** | no save, and lost no later than holding |
+| **Shortfall** | the most rows owed and not yet paid at any frame, less the rows of room over the stack |
+| **Insolvent at** | the first frame the shortfall is above zero (never, when it stays at or below zero) |
+| **Supply** | the breaks the plan makes before the last row shown lands |
 
-The facts carried with it:
+Only garbage the game shows is counted, and only the breaks the plan can find on boards it can see. A colour a break converts
+garbage into is unseen until the client draws it.
 
-- the loss frame, its own and its plan's;
-- the breaks its plan makes;
-- the actions it spends;
-- the window left;
-- the panels under the garbage, and the rows over the stack;
-- whether it keeps the board's own chain and meets the mode's list;
-- **wastes a three**: it makes a three that breaks nothing and is no chain link;
-- **spends the floor**: it goes under the mode's keep floor on material.
+## 2. The order (rank.c compareJudged)
 
-## 2. The order: five keys, all the judge's facts (rank.c compareJudged)
-
-The order is a short list of keys. Every value it compares is a fact the judge already has; the order works nothing out itself.
-
-1. **Survival:**
-   - a line that lives beats one that does not;
-   - of two that do not, the later loss, unless they are lost alike. Alike means the same band of a break's time, with the bands
-     counted from one reference, so the order is one order.
-
-   `test/main.c` "the answers" stays: no line is played that is lost a break's time sooner than one offered.
-2. **Category**, best first.
-3. **The board's own chain:** a line that keeps it before one that cuts it short (the goal's item 2).
-4. **The mode's list:** the earlier entry met; under garbage, a line that breaks before one that does not. A line that wastes a
-   three ranks below every line that wastes none, and a line that spends the floor comes last (the goal's item 3, "the one rule").
-5. **Value for moves:** what the line gives, less what it costs, all in frames:
+1. **Survival:** a line that lives beats one that does not; then the later loss, unless lost alike (the same band of a break's
+   time). Never choose death. `test/main.c` "the answers" holds it.
+2. **Solvency:** a solvent line before one that is short; of two short, fewer rows short, then insolvent later.
+3. **Category:** lives, plan, breaks, ready, buys, dies.
+4. **The board's own chain,** then **the mode's list** (the owner's rules; a wasted three below every line that wastes none, unless
+   the save confirmed it is needed).
+5. **Value for moves:** gains less costs, all in frames.
    - **Gains:**
-     - the time it buys: its plan's loss minus the hold's;
-     - a break's time for each row of garbage it converts;
-     - a break's time for each block it throws.
-     - the actions it takes off the next break's walk, compared with holding (measured on the boards each leaves), at the window's
-       frames per action.
+     - time bought over the hold;
+     - a break's time for each row converted and each block thrown;
+     - a break's time for each break of supply over the hold's;
+     - the actions taken off the next break's walk.
    - **Costs:**
-     - the frames the window takes to give back each action it presses (`actionFrames`);
-     - a break's time for each row of panels its clears take beyond what its breaks convert.
+     - the window's frames for each action pressed;
+     - a break's time for each row of panels spent beyond what its breaks convert.
 
-   More moves for less comes out worse with no rule of its own. That covers the goal's item 4 ("the fewest cursor moves first; a far
-   one has to earn its walk") and item 5 ("the one that throws more"). The line in progress costs less, because part of it is
-   already pressed.
+Then, with no garbage on the board, more ideas left ready; then the nearer first swap.
 
-Then, with no garbage on the board, the more ideas left ready (the goal's item 5). Last, the nearer first swap, and a tie.
+## 3. The log tells the scenario
 
-The chain and the mode's list stay as keys of their own, not refusals. They are the owner's rules, and a refusal would put them
-above survival.
+Every candidate prints `cat=` and `sol=paid/due:short@frame` (`sol=4/6:2@1140`: pays 4 of 6 rows, 2 short from frame 1140), so
+a decision reads as a choice between futures.
 
-This replaces rule 1's clauses (reserve, hold, landing, ledger, margin, net, material, nearer), rule 4 (the line in progress, the
-kept plan), rule 5 (thrown), rule 6 (later loss), rule 7 (fewer actions) and rule 8 (tier).
+## 4. Reading a lost game (gambit_summary.js)
 
-**The save step after judging stays for now.** A three that breaks nothing is dropped unless the survival search confirms the
-board needs it. The press guard asks the same question at the press, and both have to give the same answer. Folding the step into
-the order (the list key above) waits until the press guard reads the judge's answer too.
+A loss is read back from the end to the **last decision whose line played was solvent**. That is where the game was lost. It is
+named by what happened there:
 
-## 3. The searches aim at what the order wants
+- **order:** a solvent line was offered and an insolvent one played;
+- **search:** no solvent line was offered, though the board before was solvent;
+- **window:** the solvent lines were cut by the window;
+- **demand:** a block shown made every line insolvent at once, by so many rows.
 
-- **The survival search** ranks by the order's keys: band, margin, then the loss net of its actions. Done.
-- **The break search** ranks the top of its beam by the judge's category and loss. It keeps its nearness score only as the cheap
-  key below them. The judge is asked only of the nodes that reach the top, in the search's own share.
-- **A line that wastes a three** has a variant without the wasted swap. A proposer offers it, and it is judged like any other.
-- **The break search keeps its frontier** when it finds a break. Its depth carries to the next decision instead of starting over.
+## 5. The searches aim at supply
 
-## 4. Plans are held to (decide.c carry)
+- **The board to come** searches the board each shown block lands on for its break. Those breaks are the supply the ledger reads.
+- **The survival search,** of lines lost alike, keeps the one whose board leaves the most supply.
+- **The break search's beam,** within a survival band, ranks first the lines whose boards leave the most supply by the shape math,
+  then by nearness.
 
-A line played for its plan carries the plan's next break as the line in progress, timed where the plan pressed it. The next
-decision ranks it like any line: it is kept while it still ranks first, and dropped once something new outranks it. Once that
-break is pressed, the next decision's plan carries the break after it, so the whole plan is held one break at a time.
+## 6. One answer for the save
 
-## 5. The window is paced
+The press guard (front.c, `GUARD_DIE`) reads the decision's verdict on a wasted three, and asks its own question only for a swap the
+answer never judged. Then the save step leaves the order: the list key and survival already hold it.
 
-The window plan holds a break's walk for every row due. **The pace:** a line keeps it when the window still covers as many of the
-breaks due as holding would, less the rows its own breaks pay (rank.c `paceKept`). A line that spends faster than that buys its
-time out of the window: it is never Ready, and at best Buys time.
+## 7. Numbers from the engine, one at a time
 
-## 6. Numbers from the engine
+Each change is one constant, run on its own 24 games.
 
-Each of these is replaced by a measured value, or removed:
+| Kind | Constants | Becomes |
+|---|---|---|
+| What Gambit does | `LAND_RESERVE`, `NEAR_ACTS`, `NEAR_MISS`, `HORIZON`/`REST`, `CHEAP_BREAK`, `WALK_EARN`, `CARRY_WAITS`, `LOW_ROWS`, `RAISE_WAIT`, `GUARD_DIE`, `TAP_DIES` | what each stands for, measured on the board every decision |
+| How far it looks | the touch beam, line-up, survival search, three-strip, ideas, perched and route sizes | memory bounds only, sized from the most the logs show in use; each search runs until its share of the clock ends |
+| Time | `SAVE_MS`, `LANDED_MS`, `READY_LINE_MS`, `BREAK_*`, `UNDER_SHARE`, `RAISE_MS` | shares of the time left, in proportion to the asks to come |
 
-| Constant | Replacement |
-|---|---|
-| `LAND_RESERVE` (20) | the measured break walk |
-| `NEAR_ACTS` (2) | the cursor's actions along the line |
-| `LINEUP_DEPTH` (8), `LINEUP_BEAM` (12), `LINEUP_BUDGET` (400) | bounded by the pop's frames and the clock |
-| `SAVE_MS` (10) | the readiness share |
-| `PERCHMAX` (4) | every perched block |
-| `OUT_POOL` (16) | the pool the clock fills |
-| the survival search's depth and width (6, 30) | the clock |
+Storage sizes and the engine's own facts (`W`, `ROWS`, `TAP_GAP`) stay, each with its observed maximum recorded.
 
-A number that stays is recorded beside the measurement it came from.
+## The owner's to set
 
-## 7. The log says why
-
-- **Every candidate:** `category:loss:planLoss:breaks:actions:value`.
-- **The decision:** the line played, the best of each category passed over, and the key that decided.
-- **The loss reader** (`gambit_summary.js`): reads the categories from the last break to the end. It names the stage that failed:
-  - **search:** no line better than Dies was offered;
-  - **order:** a better category was passed over;
-  - **window:** a Ready line went unpressed for want of actions;
-  - **press:** a line was refused or cut at the press.
+Value counts a row converted, a block thrown and a break of supply each as one break's time. That is a choice, not a measurement.
 
 ## Checks
 
-- **Every candidate has a category:** C check in `test/main.c`.
-- **One order:** the run's "beaten head to head" count is 0. `gambit_summary.js` reports it, and `gambit-24.yml` fails on any.
-- **The answers** (survival first) and **the truth held** (0 divergences) stay as they are.
-
-## State
-
-| Step | State |
+| Check | What it holds |
 |---|---|
-| 1. Categories | built |
-| 2. The order | built |
-| 3. The loss reader | built |
-| 4. Break search | built: the frontier is kept when a break is found, the top of the beam is ranked survival-first, and the three-free variant is "the three taken out" (decide.c) |
-| 5. The plan held | built: carried one break at a time |
-| 6. The pace | built |
-| 7. Constants | one at a time, each with its measurement from a run |
-| Checks | built: "One order" and "Every line categorised" in gambit-24.yml |
+| The truth held | 0 divergences |
+| The game the same twice | a seed's game and its twin decide alike |
+| The answers | no line played that is lost a break's time sooner than one offered |
+| One order | 0 "beaten head to head" |
+| Every line categorised | every decision that offers lines logs a category for each |
+| New: every line has a ledger | every candidate carries `sol=` |
+
+The summary also counts, per lost game, the frames from the first insolvent decision to the loss. When that number falls, the
+bot is seeing its losses sooner.
 
 ## Order of work
 
-1. Categories in the judge, and the log printing them.
-2. The order on its five keys; rule 1's clauses and rules 4 to 8 removed; the save step kept until the press guard reads the judge.
-3. The loss reader on categories.
-4. The break search ranking by category, keeping its frontier when a break is found; the three-free variant as a proposer.
-5. The plan carry for every break of the plan.
-6. The window's pace.
-7. The constants, one at a time, each with its measurement.
-
-## Review
-
-- **Survival first holds.** The category, the chain, the list and value are asked only of lines that both live or are lost alike,
-  so no key can put a line lost a break's time sooner first.
-- **One order.** Every key is a fact of one line, or of one line against the decision's one hold, so the comparison is
-  transitive. The "beaten head to head" count should fall to 0, and the check holds it there.
-- **The hold's plan.** The hold has a plan, and `lostOf` reads it, but `livesOf` leaves the hold out: a hold whose plan lives is
-  not "lives by its plan". This is fixed with the categories.
-- **Value's exchange rates are assumptions, not measurements.** A row converted and a block thrown are each worth a break's time.
-  That fits under garbage: a block thrown is a break the other board owes. It is the owner's to set, and it is marked as such in
-  `rank.c`.
-- **The break search ranking by category costs search time,** and "reach" (the search cut by the clock) is already the most common
-  loss. It is built last, judged only for the nodes at the top of the beam, and checked for a rise in "reach".
-- **The window's pace** is defined by the window plan's own dues: covering as many as holding would, less the rows a line's breaks
-  pay.
-
+1. The ledger in the judge, and `sol=` in the log.
+2. Solvency in the order, and supply in value.
+3. The loss reader on the last solvent decision.
+4. The searches toward supply.
+5. One answer for the save.
+6. The constants, one at a time.
