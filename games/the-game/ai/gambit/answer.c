@@ -498,6 +498,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (carryDrop >= 2) { L_s(" carryAt="); L_i(carryDropPlan); L_s("/"); L_i(carryDropAt); L_s(":t"); L_i(carryDropTap); }   // (its next swap: judged pressed at when chosen / now)
     if (carryDrop >= 2) { L_s(" carryRest="); for (int i = 0; i < carryDropN; i++) { if (i) L_s(";"); L_mv(carryDropRest[i]); } }
   }
+  // (each line's category, the judge's: plans/gambit-categories.md -- cat=, in the order's own order, beside opts=)
+  { const Judge *H = 0; for (int i = 0; i < P.ncands; i++) if (order[i]->hold) { H = order[i]; break; }
+    L_s(" cat="); for (int i = 0; i < P.ncands && i < 8; i++) { if (i) L_s(","); L_s(catName[catOf(order[i], H)]); } }
   L_s(" opts=");
   for (int i = 0; i < P.ncands && i < 8; i++) {
     const Judge *j = order[i];

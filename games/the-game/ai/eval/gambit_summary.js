@@ -43,8 +43,10 @@ var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together
 var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, pastFrame: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, behind: 0, behindGames: 0, behindWorst: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
 var kept = { n: 0, held: 0 };
-// LOSSES BY THE PIECE THAT FAILED: a lost game read from its last line that broke garbage to its end (the dead phase), the first that
-// holds its tag -- order: a line that breaks garbage, lost no sooner than the line played, passed over in 3 decisions or a quarter of them (the order's key that put another first); window: no break found,
+// LOSSES BY THE PIECE THAT FAILED: a lost game read from its last line that broke garbage to its end (the dead phase) by the judge's
+// categories (cat=, plans/gambit-categories.md): order -- a category better than the line played's passed over; window; search -- no
+// line better than buys time offered (reach where the break search was cut by the clock, else board); press -- something better was
+// offered and played, and still the board died. Without categories logged, the first that holds its tag -- order: a line that breaks garbage, lost no sooner than the line played, passed over in 3 decisions or a quarter of them (the order's key that put another first); window: no break found,
 // the input window at 5 or fewer through most of it; reach: no break found, the break search cut by the clock in most of it -- a
 // break may be there, past where it got; board: no break found, the search done -- none within its depth on the boards the lines left -- and the run-up, the 600 frames before that last break: what was played, the panels and the window then
 var causes = { by: {}, list: [] };
@@ -63,6 +65,7 @@ function causeOf(game, pattern, at, lines) {
   ds.forEach(function (d, i) { if ((num(d.l, 'broke') || 0) > 0) lb = i; });
   var dead = ds.slice(lb + 1), t0 = lb >= 0 ? ds[lb].t : 0;
   var found = 0, unplayed = 0, keys = {}, low = 0, drops = 0, ready = 0, minAllow = 99, cutN = 0, deep = 0;
+  var CATS = ['lives', 'plan', 'breaks', 'ready', 'buys', 'dies'], passedCat = 0, noneBetter = 0, catN = 0, catKeys = {};
   dead.forEach(function (d) {
     var a = num(d.l, 'allow'); if (a !== null && a >= 0) { if (a < minAllow) minAllow = a; if (a <= 5) low++; }
     // (a break passed over: a line offered that breaks garbage and is lost no sooner than the line played -- opts= play:lost:broke)
@@ -71,13 +74,23 @@ function causeOf(game, pattern, at, lines) {
     var passed = str(d.l, 'opts').split(',').some(function (o) { var f = o.split(':'); if (f.length < 3 || !(+f[2] > 0)) return false;
       var lo = f[1] === 'L' || f[1] === 'inf' ? 1e9 : +f[1]; return lo >= lp; });
     if (passed && !((num(d.l, 'broke') || 0) > 0)) { unplayed++; var k = str(d.l, 'sooner').split(':k')[1] || str(d.l, 'carryBy').split(':k')[1] || str(d.l, 'play'); keys[k] = (keys[k] || 0) + 1; }
+    // (the categories the judge gave (cat=, the order's own order -- the first the line played): one better than the played line's
+    // passed over, or none better than buys time offered at all)
+    var cs = str(d.l, 'cat').split(',').filter(Boolean).map(function (c) { return CATS.indexOf(c); });
+    if (cs.length) { catN++; var best = Math.min.apply(null, cs);
+      if (best < cs[0]) { passedCat++; var kc = str(d.l, 'sooner').split(':k')[1] || CATS[cs[0]] + '<' + CATS[best]; catKeys[kc] = (catKeys[kc] || 0) + 1; }
+      if (best >= 4) noneBetter++; }
     if (/ drop=1/.test(d.l)) drops++;
     if (/ br=\S*\/cut/.test(d.l)) cutN++;
     var dp = num(d.l, 'brDeep'); if (dp !== null && dp > deep) deep = dp;
     var r = /rdy=(\d+)\//.exec(d.l); if (r && +r[1] > 0) ready++;
   });
-  var tag = unplayed >= 3 || (dead.length && unplayed / dead.length >= 0.25) ? 'order' : dead.length && low / dead.length > 0.5 ? 'window' :
-            dead.length && cutN / dead.length > 0.5 ? 'reach' : 'board';
+  // (with the judge's categories logged: order, a better category passed over; window; search, no line better than buys time offered
+  // in most of it -- the search cut by the clock in most of it is reach, else board)
+  var tag = catN ? (passedCat >= 3 || passedCat / catN >= 0.25 ? 'order' : low / catN > 0.5 ? 'window' :
+                    noneBetter / catN > 0.5 ? (cutN / dead.length > 0.5 ? 'reach' : 'board') : 'press')
+                 : unplayed >= 3 || (dead.length && unplayed / dead.length >= 0.25) ? 'order' : dead.length && low / dead.length > 0.5 ? 'window' :
+                   dead.length && cutN / dead.length > 0.5 ? 'reach' : 'board';
   var pre = ds.filter(function (d) { return d.t >= t0 - 600 && d.t <= t0; }), plays = {};
   pre.forEach(function (d) { var p = str(d.l, 'play'); plays[p] = (plays[p] || 0) + 1; });
   var top = Object.keys(plays).sort(function (x, y) { return plays[y] - plays[x]; }).slice(0, 4).map(function (p) { return p + ' ' + plays[p]; }).join(', ');
@@ -85,6 +98,7 @@ function causeOf(game, pattern, at, lines) {
   causes.by[tag] = (causes.by[tag] || 0) + 1;
   causes.list.push({ game: game, at: at, tag: tag, why: 'last break ' + t0 + ', then ' + dead.length + ' decisions' +
     (unplayed ? ', a break lost no sooner passed over ' + unplayed + ' (' + Object.keys(keys).map(function (k) { return k + ' x' + keys[k]; }).join(', ') + ')' : ', no break found') +
+    (catN ? ', a better category passed over ' + passedCat + (passedCat ? ' (' + Object.keys(catKeys).map(function (k) { return k + ' x' + catKeys[k]; }).join(', ') + ')' : '') + ', none better than buys time ' + noneBetter : '') +
     ', the search cut by the clock ' + cutN + ' (its lines ' + deep + ' deep)' +
     ', window min ' + minAllow + ' (at 5 or fewer ' + low + '), ready at the landing ' + ready + ', drops played ' + drops +
     ', panels ' + beg(dead, 'pan') + ' to ' + end(dead, 'pan') +
@@ -286,7 +300,7 @@ console.log('SURVIVED ' + all + '/' + games);
 // (WHY EACH GAME WAS LOST: causeOf, a tag a loss, the first that holds; the losses counted by tag, then each loss with its numbers)
 { var tags = Object.keys(causes.by).sort(function (a, b) { return causes.by[b] - causes.by[a]; });
   console.log('losses by the piece that failed: ' + (tags.map(function (k) { return k + ' x' + causes.by[k]; }).join(', ') || '-') +
-              ' (from the last line that broke garbage to the end -- order: a break lost no sooner than the line played passed over, 3 times or a quarter of the decisions; window: no break found, the input ' +
+              ' (from the last line that broke garbage to the end, by the judge categories -- order: a better category passed over, 3 times or a quarter of the decisions; press: a line better than buys time offered, not the cause above; window: no break found, the input ' +
               'window at 5 or fewer through most of it; reach: no break found, the search cut by the clock in most of it; board: no break found, ' +
               'the search done, none within its depth on the boards the lines left)');
   causes.list.forEach(function (c) { console.log('  lost ' + c.game + ' at ' + c.at + ': ' + c.tag + ' -- ' + c.why); }); }
