@@ -1769,3 +1769,5 @@ columns of which stand four rows over the rest -- it rests on one or two columns
 before it went on lines that throw a block.
 THE MARGIN READS CONTACT: of the columns under garbage on the board once everything shown has landed, the share whose top panel
 touches it (judge.c readyContact) -- the fourth share beside room, material and the window.
+Measured (`08b1fa0a`, 1235): 13 -- the games of 1234 exactly: contact changed no decision. The margin decides only between lines
+lost alike; before the slab lands the lines are lost apart, and "later" decides first.
