@@ -218,7 +218,6 @@ static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o =
 // for everything (the queue outlasts it) can still be ready for. 1, 0, or NOT_ASKED (nothing coming, or out of time). A line that
 // presses something and is ready is worth what its readiness break leads to: the line and the break played on the engine, where the
 // readiness found it (extLost: the frame that board is lost, FOREVER, or NOT_ASKED)
-#define READY_STEPS 3   // the breaks a plan carries on past the readiness break
 // (extSpent: the actions the plan presses -- the line and its breaks -- where its loss is the plan's; NOT_ASKED otherwise)
 // (land: the frame it is asked from -- the next block's landing, or with none on its way and garbage on the board, the frame the window
 // has given the line back a break's walk: a hold that lets the window fill is ready for the break it then presses)
@@ -236,14 +235,15 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
   o.ready = !o.j.dead && o.j.ready == 1;
   o.lostAt = NOT_ASKED;
   if (o.ready && n > 0 && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
-    int32_t ext[MAXLINE], en = n + o.j.readyN, w0To = o.j.readyWait, mAt[READY_STEPS], mTo[READY_STEPS], nm = 0;
+    int32_t ext[MAXLINE], en = n + o.j.readyN, w0To = o.j.readyWait, mAt[MAXLINE], mTo[MAXLINE], nm = 0;
     for (int k = 0; k < n; k++) ext[k] = seq[k];
     for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
     Outcome e = promised(ext, en, settled, n, w0To, 0, 0, 0);
     if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; }
     // (A PLAN OF SEVERAL STEPS: the board the break leaves, once it has settled, asked again for a break in reach -- played where its
-    // readiness finds it, and so on, READY_STEPS breaks at most: the line is lost where the plan is, the owner's ready with a plan)
-    while (!e.late && !e.dead && !e.lives && o.lostAt != NOT_ASKED && nm < READY_STEPS && !clockOut()) {
+    // readiness finds it, and so on while each break puts the loss off -- as far as the board, the line's length and the clock allow: the
+    // line is lost where the plan is, the owner's ready with a plan)
+    while (!e.late && !e.dead && !e.lives && o.lostAt != NOT_ASKED && nm < MAXLINE && !clockOut()) {
       JudgeOpts jn = { settled, decQ.tight, decF.land != NOT_ASKED ? decF.land : 0, 1, 1, -1, 0, 1, n, w0To, 0, nm, mAt, mTo };
       Judged q;
       judge(&decQ, ext, en, &jn, &q);
