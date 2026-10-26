@@ -223,8 +223,8 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 // sub-key in turn
 // (a line whose judging the clock cut is not known to die: it ranks after every board that stands and before every known loss -- a
 // death known is never chosen over a line that may live)
-// (a line ready for the next block is lost where its readiness break leads, when that is later; a hold is not credited for the break
-// it waits for -- that break is a candidate of its own)
+// (a line ready for the next block is lost where its readiness break leads, when that is later -- the hold too: holding while the window
+// fills, then pressing the break, is a plan like any other)
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
 static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
 static int32_t rankLow;     // (the board low on panels: decide.c lowOnPanels)
@@ -232,7 +232,7 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
-  if (x->hold || x->extLost == NOT_ASKED) return own;
+  if (x->extLost == NOT_ASKED) return own;
   double ext = lostAtOf(x->extLost, 0);
   return ext > own ? ext : own;
 }
@@ -337,12 +337,16 @@ static int lineWalk(const Judge *J) {
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), walkLeft()); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
   return n;
 }
-// (THE SAVE A LINE LEAVES: the nearest break on the board it leaves once everything shown has landed (judge.c readyNear), its walk
+// (THE SAVE A LINE LEAVES: its plan's next break where the plan was asked (readyNext); else the nearest break on the board it leaves
+// once everything shown has landed (judge.c readyNear), its walk
 // measured there from where the line leaves the cursor (readyWalk; the decision's break walk where that board was not read), pressed so it is done before that board is lost, a cell every TAP_GAP: whether the window has
 // those actions then, every action before aged as the window ages. A board with no break in reach has no save; one that lives needs none)
 static double lostOf(const Judge *x);
 static int saveKept(const Judge *J) {
   if (pressAllowance < 0 || J->o.lives) return 1;
+  // (the plan's answer first: a break in reach the window pays for, played on the engine (readyNext) -- or asked and none)
+  if (J->readyNext == 1) return 1;
+  if (J->readyNext == 0) return 0;
   double lost = lostOf(J);
   if (lost >= 1e9) return 1;
   int32_t nr = J->o.j.readyNear >= 0 ? J->o.j.readyNear : J->o.nearAfter;
@@ -437,16 +441,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // as many breaks' time left, or less than a break's time apart). What a line can press is the judge's: the input window it is pressed
   // in (judge.c), every swap's own walk; what it must not do is the order's filter before it (decide.c: a wasted three, a chain spoiled)
   if (lx != ly) K(1, "lives", lx ? -1 : 1);
-  // (of two that do not live, one that spends the next break's walk comes first only where the spend pays (core/nodes.h spendPays): lost
-  // after the window has given the walk back, or the line that keeps it lost before it could press it. The break the board needs is
-  // pressed out of what is left -- the survival search's own rule. Breaks first, never dying on the way. The hold is a move like any
-  // other here: it keeps the walk)
-  // (the keeper: the line whose window keeps break walks for more of the blocks on their way -- windowCover, a count, not whether the
-  // next alone is kept)
-  if (!lx) { int cx = coverOf(x), cy = coverOf(y);
-    if (cx != cy) { const Judge *sp = cx < cy ? x : y, *kp = cx < cy ? y : x;
-      if (!spendPays(lostOf(sp) < 1e9 ? (int32_t)lostOf(sp) : FOREVER, sp->o.j.endAt, sp->o.j.spent, lostOf(kp) < 1e9 ? (int32_t)lostOf(kp) : FOREVER,
-                     kp->hold ? 0 : kp->o.j.endAt)) K(1, "reserve", cx < cy ? 1 : -1); } }
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) K(1, "later", lostOf(y) > lostOf(x) ? 1 : -1);
   // (and a hold lost sooner than a line that keeps the board's own chain never comes first by anything after: it leaves the board as it
   // is with less time, so the walk it saves, the break it leaves where it was, are the next decision's to spend again)
@@ -454,6 +448,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // one place for every pair, so the margin after it never ranks it over one it is under)
   if (!lx && x->hold != y->hold) { const Judge *h = x->hold ? x : y;
     if (h->holdSunk && lostAlike(x, y)) K(1, "hold", h == x ? 1 : -1); }
+  // -- of two lost alike, the one whose window keeps the break walks for more of the blocks on their way and the save its board needs
+  // (coverOf): the break the board needs is pressed out of what is left -- the survival search's own rule; the hold keeps them all
+  if (!lx && lostAlike(x, y)) { int cx = coverOf(x), cy = coverOf(y); if (cx != cy) K(1, "reserve", cx < cy ? 1 : -1); }
   // -- of two lost alike, the one that leaves a break in reach once the next block lands (readyNext): the block is broken as it lands,
   // not dug out after; both asked
   if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1))

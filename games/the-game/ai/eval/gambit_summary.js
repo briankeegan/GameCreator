@@ -44,9 +44,9 @@ var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, pastFrame: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, behind: 0, behindGames: 0, behindWorst: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
 var kept = { n: 0, held: 0 };
 // LOSSES BY THE PIECE THAT FAILED: a lost game read from its last line that broke garbage to its end (the dead phase), the first that
-// holds its tag -- order: a break the search found was not played, in 3 decisions or a quarter of them (the order's key that put another first); window: no break found,
+// holds its tag -- order: a line that breaks garbage, lost no sooner than the line played, passed over in 3 decisions or a quarter of them (the order's key that put another first); window: no break found,
 // the input window at 5 or fewer through most of it; reach: no break found, the break search cut by the clock in most of it -- a
-// break may be there, past where it got; board: no break found, the search done -- none on the boards the lines left -- and the run-up, the 600 frames before that last break: what was played, the panels and the window then
+// break may be there, past where it got; board: no break found, the search done -- none within its depth on the boards the lines left -- and the run-up, the 600 frames before that last break: what was played, the panels and the window then
 var causes = { by: {}, list: [] };
 function causeOf(game, pattern, at, lines) {
   var ds = [], lastT = -1;
@@ -65,7 +65,12 @@ function causeOf(game, pattern, at, lines) {
   var found = 0, unplayed = 0, keys = {}, low = 0, drops = 0, ready = 0, minAllow = 99, cutN = 0, deep = 0;
   dead.forEach(function (d) {
     var a = num(d.l, 'allow'); if (a !== null && a >= 0) { if (a < minAllow) minAllow = a; if (a <= 5) low++; }
-    if (/ br=1\//.test(d.l)) { found++; unplayed++; var k = str(d.l, 'sooner').split(':k')[1] || str(d.l, 'carryBy').split(':k')[1] || str(d.l, 'play'); keys[k] = (keys[k] || 0) + 1; }
+    // (a break passed over: a line offered that breaks garbage and is lost no sooner than the line played -- opts= play:lost:broke)
+    var lostP = str(d.l, 'lost'), lp = lostP === 'inf' ? 1e9 : +lostP;
+    if (/ br=1\//.test(d.l)) found++;
+    var passed = str(d.l, 'opts').split(',').some(function (o) { var f = o.split(':'); if (f.length < 3 || !(+f[2] > 0)) return false;
+      var lo = f[1] === 'L' || f[1] === 'inf' ? 1e9 : +f[1]; return lo >= lp; });
+    if (passed && !((num(d.l, 'broke') || 0) > 0)) { unplayed++; var k = str(d.l, 'sooner').split(':k')[1] || str(d.l, 'carryBy').split(':k')[1] || str(d.l, 'play'); keys[k] = (keys[k] || 0) + 1; }
     if (/ drop=1/.test(d.l)) drops++;
     if (/ br=\S*\/cut/.test(d.l)) cutN++;
     var dp = num(d.l, 'brDeep'); if (dp !== null && dp > deep) deep = dp;
@@ -79,7 +84,7 @@ function causeOf(game, pattern, at, lines) {
   var end = function (arr, k) { return arr.length ? num(arr[arr.length - 1].l, k) : null; }, beg = function (arr, k) { return arr.length ? num(arr[0].l, k) : null; };
   causes.by[tag] = (causes.by[tag] || 0) + 1;
   causes.list.push({ game: game, at: at, tag: tag, why: 'last break ' + t0 + ', then ' + dead.length + ' decisions' +
-    (unplayed ? ', a break found and not played ' + unplayed + ' (' + Object.keys(keys).map(function (k) { return k + ' x' + keys[k]; }).join(', ') + ')' : ', no break found') +
+    (unplayed ? ', a break lost no sooner passed over ' + unplayed + ' (' + Object.keys(keys).map(function (k) { return k + ' x' + keys[k]; }).join(', ') + ')' : ', no break found') +
     ', the search cut by the clock ' + cutN + ' (its lines ' + deep + ' deep)' +
     ', window min ' + minAllow + ' (at 5 or fewer ' + low + '), ready at the landing ' + ready + ', drops played ' + drops +
     ', panels ' + beg(dead, 'pan') + ' to ' + end(dead, 'pan') +
@@ -281,9 +286,9 @@ console.log('SURVIVED ' + all + '/' + games);
 // (WHY EACH GAME WAS LOST: causeOf, a tag a loss, the first that holds; the losses counted by tag, then each loss with its numbers)
 { var tags = Object.keys(causes.by).sort(function (a, b) { return causes.by[b] - causes.by[a]; });
   console.log('losses by the piece that failed: ' + (tags.map(function (k) { return k + ' x' + causes.by[k]; }).join(', ') || '-') +
-              ' (from the last line that broke garbage to the end -- order: a break found was not played, 3 times or a quarter of the decisions; window: no break found, the input ' +
+              ' (from the last line that broke garbage to the end -- order: a break lost no sooner than the line played passed over, 3 times or a quarter of the decisions; window: no break found, the input ' +
               'window at 5 or fewer through most of it; reach: no break found, the search cut by the clock in most of it; board: no break found, ' +
-              'the search done, none on the boards the lines left)');
+              'the search done, none within its depth on the boards the lines left)');
   causes.list.forEach(function (c) { console.log('  lost ' + c.game + ' at ' + c.at + ': ' + c.tag + ' -- ' + c.why); }); }
 Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') +
   '; its first aim ' + t.head + ': ' + t.first + (t.all ? ' (' + (100 * t.first / t.all).toFixed(1) + '%)' : '')); });
