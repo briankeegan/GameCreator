@@ -194,6 +194,8 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 }
 // A DIG THAT CAN WAIT: a line toward a break that lives no longer than the hold, and is still done before the hold is lost after one
 // more decision (react frames)
+static double contLostOf(const Judge *J, double give);   // (decide.c)
+static double lostAtOf(int32_t t, int hold);
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
   if (!J->hold) asLine(&J->k);
@@ -201,6 +203,14 @@ static void readyNextFor(Judge *J) {
   if (land == NOT_ASKED && garbageOn(decQ.b)) { int32_t end = J->hold ? 0 : J->o.j.endAt; land = end + regainAfter(end, J->hold ? 0 : J->o.j.spent); }
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, land, &J->extLost, &J->extSpent);
   if (!J->hold) unLine();
+  // (and where no break is found to lead on to, the plan goes on as the survival search plays on from the board the line leaves
+  // (decide.c contLostOf), in the readiness check's share: a line is lost where the best that can be played after it is -- a break that
+  // converts its garbage and survives on outlasts a line that only survives, and is judged so)
+  if (!J->hold && J->extLost == NOT_ASKED && readyShareMs > 0 && !clockOut()) {
+    double c = contLostOf(J, readyShareMs);
+    if (c >= 1e9) J->extLost = FOREVER;
+    else if (c >= 0 && c > lostAtOf(J->o.lostAt, 0)) J->extLost = (int32_t)c;
+  }
 }
 static double lostOf(const Judge *x);
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
