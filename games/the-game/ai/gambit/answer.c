@@ -408,6 +408,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   carryNextOf(P.line);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
   keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
+  carryKept = 0;
   if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
   else if (d.kind == 1 && P.line && P.line->k.nseq == 1 && !theCarry.set) carryReady(P.line, qid);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
@@ -535,6 +536,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(" er="); L_i(nextBlk.width); L_s("x"); L_i(nextBlk.height); L_s(":"); if (top && top->endReady != NOT_ASKED) L_i(top->endReady); else L_s("-");
     L_s("/"); L_i(top ? top->endReadyWhy : -1); L_s(":"); L_i(er1); L_s("/"); L_i(er0); L_s("/"); L_i(erN); }
   if (P.heldFor) L_s(" heldFor=1");
+  if (carryKept) { L_s(" carryKept="); L_i(carryKept); }   // (a hold's or a one-swap line's readiness break carried: 1 kept, 2 none to keep, 3 no panel to anchor it)
   // (each line's margin as the order reads it, its two scarcest shares in rows (rank.c marginKey), p where read on the board its plan
   // leaves: mg=)
   L_s(" mg="); for (int i = 0; i < P.ncands && i < 8; i++) { int32_t k = marginKey(order[i]); if (i) L_s(",");

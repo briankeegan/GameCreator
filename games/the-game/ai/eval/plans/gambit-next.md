@@ -159,3 +159,11 @@ line short at once by a block shown (**demand**).
   lost less than that later fits no break more; but the search for the proof is carried from decision to decision, so a line lost a
   decision later leaves the search one more decision. Fixed: the bands are a decision wide; the margin decides only among lines lost
   within a decision of each other.
+- 1294, combo_storm 14/24: the bands a decision wide measured the same. The reach report (gambit_reach.js) answers where the search
+  stands: of 223 boards it came up empty on, searched again with no time limit, 220 had no break to find and 3 were missed -- the
+  search is not the piece; the board is made unbreakable before it. The turns, read: combo_storm-8 round 3 at 682, a level line of
+  one swap played as proven (its plan's break lives) over the carried 32-cell break; at 713 the plan's break was not offered
+  (carryDrop=9: a one-swap line hands nothing on, and the promise it lived by was not kept), the board died at 808. A readiness break
+  is found on the board to come and anchored to that board's bottom row, which is not yet on the board as it is, so the promise is
+  dropped at the next decision. Fixed: a promise is anchored to a bottom-row panel of the board as it is, pressed where the readiness
+  found it, and never moved by the rows risen; the log says whether it was kept (carryKept=).

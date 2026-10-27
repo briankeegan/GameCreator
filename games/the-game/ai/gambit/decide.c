@@ -604,20 +604,34 @@ static int readyBreakOfLine(const Judge *L, const int32_t **row1, const int32_t 
   if (L->readyNext == 1 && L->planN > 0) { *row1 = L->planRow1; *line = L->planLine; *n = L->planN; *wait = L->planWait; return 1; }
   return 0;
 }
+// (A PROMISE'S ANCHOR, plans/gambit-next.md 6: a readiness break is found on the board once everything lands -- a board to come, whose
+// bottom row is not yet on the board as it is -- and pressed, when carried, on that same board run to the same frame (carriedCand wTo).
+// So it is anchored to a bottom-row panel of the board as it is now, a panel that is there to find again, and never moved by the rows
+// the stack rises: the frame is the promise's, not the rows. carryKept, the log's: 1 kept, 2 no break to keep, 3 no panel to anchor it)
+static int32_t carryKept;
+static int anchorNow(Carry *C, const int32_t *seq, int n) {
+  int32_t cur[W + 1];
+  for (int c = 1; c <= W; c++) cur[c] = anchorIdAt(decQ.b, c);
+  return anchorInto(C, cur, seq, n);
+}
 static void carryNextOf(const Judge *L) {
   memset(&theCarryNext, 0, sizeof theCarryNext);
   const int32_t *row1, *line; int32_t nl, wait;
   if (!L || L->hold || !theCarry.set || !readyBreakOfLine(L, &row1, &line, &nl, &wait)) return;
-  if (!anchorInto(&theCarryNext, row1, line, nl)) return;
+  if (!anchorNow(&theCarryNext, line, nl)) return;
   theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.play = PLAY_CARRY; theCarryNext.nrest = nl;
   for (int i = 0; i < nl; i++) theCarryNext.rest[i] = line[i];
   theCarryNext.settled = 0; theCarryNext.broke = 1; theCarryNext.ready = 1;
+  theCarryNext.restAt[0] = decAt + wait;   // (pressed where the readiness found it)
 }
 static void carryReady(const Judge *H, int32_t qid) {
   const int32_t *row1, *line; int32_t nl, wait;
+  carryKept = 2;
   if ((!H->hold && H->k.nseq != 1) || !readyBreakOfLine(H, &row1, &line, &nl, &wait)) return;
   memset(&theCarry, 0, sizeof theCarry);
-  if (!anchorOf(row1, line, nl)) return;
+  carryKept = 3;
+  if (!anchorNow(&theCarry, line, nl)) return;
+  carryKept = 1;
   theCarry.set = 1; theCarry.id = qid; theCarry.play = PLAY_CARRY; theCarry.nrest = nl;
   for (int i = 0; i < nl; i++) theCarry.rest[i] = line[i];
   theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0; theCarry.ready = !H->hold;
@@ -777,7 +791,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // is moved by the rows that board has risen past this one -- the board a waited-for break was found on)
   int dr = anchorShift(C->anchorRow, C->anchorCol, C->anchorId);
   if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
-  if (!C->ready) dr = 0;
+  dr = 0;   // (the anchor says the board is still the one the line was found on; a line's rows are the board's at the frame it is pressed -- a readiness break's the board to come's, run to -- so none are moved)
   int32_t rest[MAXLINE], nrest = nl - skip;
   for (int i = 0; i < nrest; i++) rest[i] = (CR(lineSw[skip + i]) + dr) * 8 + CC(lineSw[skip + i]);
   // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
