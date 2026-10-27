@@ -299,6 +299,11 @@ line short at once by a block shown (**demand**).
   its frame, up to 90 frames later: now computed on the question's board. (4) The prediction pressed a raise the frame loop cuts on a
   topped board: one `raiseCut` for the press and the prediction. Second pass, from the audit: the move-in-hand path reports the old
   answer as played; overdue capped arrivals vanish from the question (72 or more queued); a held key counted twice at the ask frame.
+- 1328, combo_storm 17/24, every gate green: the audit's fixes and the veto on finished answers. The veto swapped 143 lines of 13636
+  askings; 11660 of 16238 board searches were cut at 40 ms and counted unknown; it acted in one loss's run-up (game 2, 50 frames
+  before). The finding that matters: the live break search found none on 18050 decisions and the clock cut 10165 of those -- more
+  than half of every "no break found" is "no time", under the mode's own think budget. And on the measure: at three games in four,
+  one run of 24 moves by about two games on any change at all; 17 against 19 is inside that. The gates and the counts are the signal.
 
 ## Where this stands
 
