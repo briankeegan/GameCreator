@@ -130,3 +130,8 @@ line short at once by a block shown (**demand**).
   break with, in this and all nine losses. And the window share reads 12 in every line of every game, the room share 0 in nearly all
   near a loss: the margin was ranking on constants. The plan above is rewritten from this: proven requires readiness for the next
   block; the margin orders the search and plays nothing; unproven, nothing is spent; four gates name every loss.
+- 1289, combo_storm 14/24, the proof with readiness built. The gates ran: proven first 0, shares 0, readiness 1 (red). The readiness was
+  never 1: over combo_storm-1's 1,079 decisions, 1 line of 8,899 was read ready, 2,145 not, 6,753 not asked. Two pieces: the block
+  was landed on the end board after its whole lead again, so the board was read lost before it landed; and a line with nothing shown had
+  no plan to ask, so it was never asked. Fixed: the block lands on the end board at once, and a line the plan did not ask is asked on
+  the board it ends on itself. The log names why a line is not ready (er=WxH:ready/why:ready/not/unasked).

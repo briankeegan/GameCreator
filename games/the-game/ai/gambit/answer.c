@@ -533,7 +533,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // was unproven and the hold played in its place, plans/gambit-next.md 3)
   { int32_t er1 = 0, er0 = 0, erN = 0; for (int i = 0; i < P.ncands; i++) { int32_t e = order[i]->endReady; if (e == 1) er1++; else if (e == 0) er0++; else erN++; }
     L_s(" er="); L_i(nextBlk.width); L_s("x"); L_i(nextBlk.height); L_s(":"); if (top && top->endReady != NOT_ASKED) L_i(top->endReady); else L_s("-");
-    L_s(":"); L_i(er1); L_s("/"); L_i(er0); L_s("/"); L_i(erN); }
+    L_s("/"); L_i(top ? top->endReadyWhy : -1); L_s(":"); L_i(er1); L_s("/"); L_i(er0); L_s("/"); L_i(erN); }
   if (P.heldFor) L_s(" heldFor=1");
   // (each line's margin as the order reads it, its two scarcest shares in rows (rank.c marginKey), p where read on the board its plan
   // leaves: mg=)

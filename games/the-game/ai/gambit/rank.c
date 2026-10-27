@@ -28,6 +28,7 @@ typedef struct {
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t endReady;    // the board it (or its plan) ends on is ready for the next block the mode sends (outcome.c endReadyOf): 1, 0, NOT_ASKED
+  int32_t endReadyWhy; // and why not (outcome.c endReadyWhy)
   int32_t planN, planWait, planLine[MAXLINE], planRow1[W + 1];
   int32_t planBreaks, planBreakAt[16];   // the frame each of its plan's breaks is pressed from (outcome.c readyNextOf)
   int32_t planBroke;   // the garbage its plan converts beyond the board left alone (outcome.c readyNextOf)
@@ -230,6 +231,7 @@ static void readyNextFor(Judge *J) {
       if (!J->hold) asLine(&J->k);
       Board *eb = lineEnd(J->hold ? 0 : J->k.seq, J->hold ? 0 : J->k.nseq, J->hold ? 0 : J->settled);
       J->endReady = endReadyOf(eb);
+      J->endReadyWhy = endReadyWhy;
       if (!J->hold) unLine();
     }
     return;
@@ -271,6 +273,15 @@ static void readyNextFor(Judge *J) {
     }
   }
   if (!J->hold) unLine();
+  // (READY FOR THE NEXT BLOCK not asked by the plan -- nothing shown, or its judging kept no end board: asked of the board the line itself
+  // ends on, plans/gambit-next.md 1)
+  if (J->endReady == NOT_ASKED && nextBlk.height > 0 && !clockOut()) {
+    if (!J->hold) asLine(&J->k);
+    Board *eb = lineEnd(J->hold ? 0 : J->k.seq, J->hold ? 0 : J->k.nseq, J->hold ? 0 : J->settled);
+    J->endReady = endReadyOf(eb);
+    if (!J->hold) unLine();
+  }
+  J->endReadyWhy = endReadyWhy;
   // (and where no break is found to lead on to, the plan goes on as the survival search plays on from the board the line leaves
   // (decide.c contLostOf), in the readiness check's share: a line is lost where the best that can be played after it is -- a break that
   // converts its garbage and survives on outlasts a line that only survives, and is judged so)

@@ -239,19 +239,26 @@ static LOCAL int32_t planEndReady;   // (and whether the board it ends on is rea
 // READY FOR THE NEXT BLOCK (plans/gambit-next.md 1): the board a line or its plan ends on, with the biggest block shown this game landed
 // on it, has a break -- the break search's own answer on that board (judge.c breaksAfterLanding). 1 ready, 0 not (none found, or the board
 // is lost when it lands), NOT_ASKED the clock cut it. With no block shown yet this game, 1: nothing to be ready for
+// (the block is landed on the end board at once: the question is whether that board has a break for it, not whether it stands the lead
+// again -- the lead was stood by the line. endReadyWhy, the log's: 1 no end board, 2 the clock before asking, 3 no root, 4 the clock cut
+// the search, 5 the board is lost when it lands, 6 no break found, 0 ready)
 #define END_READY_LEAD 60
 static LOCAL Ctx *endReadyCtx;
+static LOCAL int32_t endReadyWhy;
 static int32_t endReadyOf(const Board *eb) {
   if (nextBlk.height <= 0) return 1;
+  endReadyWhy = !eb ? 1 : 2;
   if (!eb || clockOut()) return NOT_ASKED;
   Ctx *x = endReadyCtx = ctxOf(endReadyCtx);
   Question q2 = decQ; q2.b = (Board *)eb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 1;
-  q2.arr[0] = nextBlk; q2.arr[0].at = nextBlkAt > 0 ? nextBlkAt : END_READY_LEAD;
+  q2.arr[0] = nextBlk; q2.arr[0].at = 1;
   int root = rootOf(x, &q2);
+  endReadyWhy = 3;
   if (root < 0) return NOT_ASKED;
   int d = readyDefer; readyDefer = 0;
   int32_t r = breaksAfterLanding(x, root, q2.arr[0].at + 2, 0, 0);
   readyDefer = d;
+  endReadyWhy = r == 1 ? 0 : r == NOT_ASKED ? 4 : r == LOST_FIRST ? 5 : 6;
   return r == 1 ? 1 : r == NOT_ASKED ? NOT_ASKED : 0;
 }
 static LOCAL int32_t planMargin[5];   // (and the margin it leaves: top, material, contact, under, the frame its last swap is pressed by; top -1 not read)
