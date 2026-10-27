@@ -140,3 +140,9 @@ line short at once by a block shown (**demand**).
   280 found no break; 230 decisions held for a proof that was not there. A proof the clock cannot reach is no proof. Fixed: readiness is
   read by the shape math (the swaps to the nearest break on the landed board, within 2), which every line can be asked in the clock; the
   decision that plays the line searches that board for the break. The readiness gate warns (a fuzzy check) and counts its misses.
+- 1291, combo_storm 11/24: readiness by the shape math; proven first 0, shares 0, readiness 257 misses (warned). Three games died at
+  the first block (490, 644, 2429). combo_storm-3: from the opener the board left alone is lost within 220 frames -- at this level the
+  rise alone kills, so the hold is never safe -- and the order played the hold five decisions running over clears lost 19 frames
+  later, the room share reading 0 for every line (a stack over the top read as none, however far over). Two pieces fixed: the room
+  share reads below none, the rows the stack is over, so a line that lowers it reads more room than one that does not; and the hold is
+  held for only while it lives -- where it is lost, the first line of the order that outlasts it is the save and is played.

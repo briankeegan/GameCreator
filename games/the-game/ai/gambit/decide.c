@@ -510,10 +510,16 @@ static Played playOf(const Read *R, int n) {
   // THE PROOF OR THE HOLD (plans/gambit-next.md 3): nothing proven offered, the hold is played and the searches go on from this board,
   // spending nothing -- the one exception the save: where the hold is lost, a line that lives, or outlasts it by a break's time, or
   // stands a break's time where the hold does not
+  // (the hold holds only while it lives: at this level the board left alone is lost within a few decisions, so where the hold is lost the
+  // first line of the order that outlasts it is the save, and is played -- the next decision searches again from the board it leaves)
   if (P.top && !P.top->hold && forcedNow < 0 && !proofOf(P.top)) {
     const Judge *h = 0; for (int i = 0; i < n; i++) if (order[i]->hold) h = order[i];
-    int save = !h || (!livesOf(h) && (livesOf(P.top) || (!diesNow(P.top) && diesNow(h)) || lostOf(P.top) >= lostOf(h) + imax(1, rankSave)));
-    if (!save) { P.top = h; P.heldFor = 1; }
+    if (h && livesOf(h)) { P.top = h; P.heldFor = 1; }
+    else if (h) {
+      const Judge *s = 0;
+      for (int i = 0; i < n && !s; i++) if (!order[i]->hold && (livesOf(order[i]) || lostOf(order[i]) > lostOf(h))) s = order[i];
+      if (s != P.top) { P.top = s ? s : h; P.heldFor = 1; }
+    }
   }
   // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
   P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
