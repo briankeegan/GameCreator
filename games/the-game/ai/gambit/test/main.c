@@ -27,6 +27,7 @@ int gb_held_off(int *held, int *offCell);
 const char *gb_line_shown(void);
 int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out);
 int gb_frames(int mr, int mc, int frames, int32_t *out);
+int gb_stall_check(int gap, int frames, int32_t *out);
 int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
 void paThreadId(int id);
@@ -118,6 +119,14 @@ int main(int argc, char **argv) {
     int narr, n = loadLine(line, &narr);
     if (n < 0 || gb_question_bytes(n, 0) != 0) { fprintf(stderr, "test: a board that does not load\n"); return 1; }
     wrong = gb_bits_agree(); boards++;
+    // (THE STALL, test/stall_check.c: fifty 4x1 queued, a harmless pair swapped every gap frames for 3000 -- what lands, rises, clears)
+    if (boards <= 4) {
+      int gaps[] = { 0, 4, 5, 6, 8, 12 };
+      printf("stall, board %d:", boards);
+      for (unsigned gi = 0; gi < sizeof gaps / sizeof *gaps; gi++) { int32_t o[5]; int r = gb_stall_check(gaps[gi], 3000, o);
+        if (r) printf(" gap %d: no pair (%d)", gaps[gi], r); else printf(" gap %d: landed %d rose %d clears %d lost %d top %d;", gaps[gi], o[0], o[1], o[2], o[3], o[4]); }
+      printf("\n");
+    }
   }
   fclose(f);
   printf("the nearest break, 50 times a board: %.1f ms on the bits, %.1f ms on the cells\n", gb_bits_ms(0), gb_bits_ms(1));

@@ -376,4 +376,5 @@ void gn_log(const char *s) { flog(s); }
 #include "test/cells_ref.c"
 #include "test/bits_check.c"
 #include "test/decide_check.c"
+#include "test/stall_check.c"
 #endif
