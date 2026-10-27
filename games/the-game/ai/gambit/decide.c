@@ -503,7 +503,11 @@ EXPORT(gb_force) void gb_force(int at, int k) { forceAt = at; forceK = k; forceD
 #define VETO_MS 40
 #define VETO_LOOK 2
 static Board *reserveB;
-static int32_t vetoed, vetoAsked, vetoCut;   // (the log's veto=: the place of the line played for its reserve, 0 none; the boards asked; those the clock cut)
+static int32_t vetoed, vetoAsked, vetoCut;
+// (THE VETO MEASURED FOR TRUTH: the board the line on top leaves, which the veto read as having no break, is logged (GAMBITV) for the
+// report to search again with the full budget -- gambit_reach.js, "veto truth": a break found there is a veto that was wrong. The
+// native host sets the hook; the wasm host logs none)
+static void (*vetoDump)(int32_t at, const Board *b);   // (the log's veto=: the place of the line played for its reserve, 0 none; the boards asked; those the clock cut)
 static int reserveOf(const Judge *J) {
   if (clockOut()) return -1;
   const Board *eb = J->hold ? decQ.b : lineEnd(J->k.seq, J->k.nseq, J->settled);
@@ -548,7 +552,11 @@ static Played playOf(const Read *R, int n) {
     for (int k = 1; k < n && k <= VETO_LOOK; k++) {
       Judge *c = order[k];
       if (!vetoAlike(order[0], c)) continue;
-      if (reserveOf(c) == 1) { Judge *t = order[0]; order[0] = c; order[k] = t; vetoed = k; break; }
+      if (reserveOf(c) == 1) {
+        Judge *t = order[0]; order[0] = c; order[k] = t; vetoed = k;
+        if (vetoDump) { const Board *tb = t->hold ? decQ.b : lineEnd(t->k.seq, t->k.nseq, t->settled); if (tb) vetoDump(decAt, tb); }
+        break;
+      }
     }
   }
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives

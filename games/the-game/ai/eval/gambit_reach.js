@@ -114,14 +114,30 @@ function reachGame(gdir, g) {
   }
   return R;
 }
-if (ONE) { fs.writeFileSync(path.join(DIR, path.basename(path.resolve(av[2])), 'reach.json'), JSON.stringify(reachGame(path.resolve(av[2]), ONLY))); process.exit(0); }
+// THE VETO MEASURED FOR TRUTH (decide.c reserveOf, GAMBITV): every board the reserve veto read as having no break in reach, in every game
+// won or lost, searched again with MS to spend. A break found is a veto that was wrong: it took a line off a board that had one.
+var VETO_MAX = 60;   // (boards a game, at most: the veto acts a few times a game)
+function vetoGame(gdir) {
+  var V = { n: 0, wrong: 0 }, lf = path.join(gdir, 'survivor.log');
+  if (!fs.existsSync(lf)) return V;
+  var ls = played(fs.readFileSync(lf, 'utf8').split('\n')).filter(function (l) { return l.indexOf('GAMBITV ') === 0; }).slice(0, VETO_MAX);
+  ls.forEach(function (l) {
+    var p = l.split(' '), a = /^a(-?\d+)$/.exec(p[4] || ''), gp = /^g(\d+)$/.exec(p[5] || '');
+    if (!/^C\d+:/.test(p[2] || '')) return;
+    var line = G.breakOnBytes(p[2].slice(p[2].indexOf(':') + 1), JSON.parse(p[3] || '[]'), list, MS, 0, a && gp ? { allow: +a[1], gap: +gp[1] } : null);
+    V.n++; if (line) V.wrong++;
+  });
+  return V;
+}
+if (ONE) { var R1 = reachGame(path.resolve(av[2]), ONLY); R1.veto = vetoGame(path.resolve(av[2])); fs.writeFileSync(path.join(DIR, path.basename(path.resolve(av[2])), 'reach.json'), JSON.stringify(R1)); process.exit(0); }
 // (every game of the run: its own write-up where its job wrote one, else searched here -- and every lost game written up, or it fails)
-var lostN = 0, gotN = 0;
+var lostN = 0, gotN = 0, vetoAll = { n: 0, wrong: 0 };
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var gdir = path.join(DIR, g), jf = path.join(gdir, 'reach.json');
   var rf = path.join(gdir, 'results.txt');
   if (fs.existsSync(rf) && /training lost frames=/.test(fs.readFileSync(rf, 'utf8'))) lostN++;
   var R = fs.existsSync(jf) ? JSON.parse(fs.readFileSync(jf, 'utf8')) : reachGame(gdir, g);
+  add(vetoAll, R.veto || (fs.existsSync(jf) ? { n: 0, wrong: 0 } : vetoGame(gdir)));
   if (!R.lost) return;
   gotN++;
   R.missedB.forEach(function (l) { if (totals.shown++ < 12) console.log(l); });
@@ -129,6 +145,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   add(totals, R.totals); add(turns, R.turns); add(how, R.how); add(took, R.took); needs = needs.concat(R.needs || []);
 });
 if (gotN !== lostN) { console.error('gambit_reach.js: ' + lostN + ' games lost, ' + gotN + ' written up'); process.exit(1); }
+console.log('\nveto truth: ' + vetoAll.wrong + ' of ' + vetoAll.n + ' vetoes took a line off a board that had a break (searched again with ' + MS + ' ms)');
 console.log('\nthe moves at the turn, every loss: ' + JSON.stringify(turns));
 console.log('\n' + totals.boards + ' boards searched again: ' + totals.missed + ' had a break the live search missed, ' + totals.impossible + ' had none to find');
 if (totals.impossible) console.log('of the ' + totals.impossible + ' with none to find, ' + totals.window + ' had one under a full window (the input window took it)');
