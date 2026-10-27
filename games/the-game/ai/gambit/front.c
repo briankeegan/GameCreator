@@ -825,7 +825,9 @@ static int putsBack(const Board *t) {
   if (a == NUL || b == NUL || !samePair(a, b, t->lastSwapA, t->lastSwapB)) return 0;
   F.keyGap = fPace(F.now);
   int root = keyRoot(t, 0, 0, F.arr, F.narr), made = 0, out = -1;
-  if (root >= 0) { int from; out = pressWalk(keyCtx, root, MK_SWAP, t->curRow, t->curCol, stepTapped, &from); made = liveNode(keyCtx, out) ? madeBy(keyCtx, out, root) : 0; }
+  // (the swap pressed and the board let settle (MK_SETTLE), so a clear it makes shows before it is read: a step that ends when the swap
+  // shows reads nothing made of any swap)
+  if (root >= 0) { int from; out = pressWalk(keyCtx, root, MK_SETTLE, t->curRow, t->curCol, stepTapped, &from); made = liveNode(keyCtx, out) ? madeBy(keyCtx, out, root) : 0; }
   putBackMade = made; putBackRoot = root; putBackOut = out;
   ns_reset(keyCtx);
   return putBackFor(t, a, b, made);

@@ -295,14 +295,23 @@ static void ownChainOf(const Question *q) {
 // THE GARBAGE THE BOARD BREAKS ALONE BY FRAME t: the root left alone to t, its rows broken. A node breaks when it has broken more by its
 // own frame -- the test every search grows a line by (break.c stillAt keeps it per frame) and the swap back reads (madeBy); the judge's
 // count over a whole line is its settle against the board alone settled.
-static int32_t aloneBrokeAt(Ctx *x, int root, int32_t t) {
+// (the board left alone, run to frame t: its node)
+static int aloneNodeAt(Ctx *x, int root, int32_t t) {
   int w = t > NODE(x, root)->t ? step(x, root, MK_LONG, 0, 0, t - NODE(x, root)->t) : root;
-  return NODE(x, liveNode(x, w) ? w : root)->brk;
+  return liveNode(x, w) ? w : root;
 }
-// WHAT A SWAP MADE, as the swap back reads it (rules.c swapBack): 2 garbage broken beyond the board alone by then (aloneBrokeAt), 1 panels
-// cleared, 0 nothing. Asked of a line's first swap's node: by the searches as they grow it, by the judge as it presses it
-// (Judged.firstMade), which the rank and the readiness read.
-static int madeBy(Ctx *x, int n, int root) { Stats st; if (!liveNode(x, n) || !statsOf(x, n, &st)) return 0; return NODE(x, n)->brk > aloneBrokeAt(x, root, NODE(x, n)->t) ? 2 : st.cleared > 0; }
+static int32_t aloneBrokeAt(Ctx *x, int root, int32_t t) { return NODE(x, aloneNodeAt(x, root, t))->brk; }
+// WHAT A SWAP MADE, as the swap back reads it (rules.c swapBack, putBackFor): 2 garbage broken beyond the board alone by then, 1 panels
+// cleared beyond it (the board's own chain clears whether or not the swap is pressed: a clear counted to the swap is one the board alone
+// did not make by then -- pa.c panelsCleared), 0 nothing. Asked of a swap's node: by the searches as they grow a line, by the judge as it
+// presses one (Judged.firstMade, and every swap after for the pair put back), by the press guard on the board as it is
+static int madeBy(Ctx *x, int n, int root) {
+  if (!liveNode(x, n)) return 0;
+  int a = aloneNodeAt(x, root, NODE(x, n)->t);
+  if (NODE(x, n)->brk > NODE(x, a)->brk) return 2;
+  const Board *nb = ensureBoard(x, n), *ab = ensureBoard(x, a);
+  return nb && ab && nb->panelsCleared > ab->panelsCleared;
+}
 // A LINE THAT WASTES A THREE, as the judge saw it: a clear of three it makes for nothing, or the board's own chain left short of the
 // link it reaches alone (keepsChain) -- the one test the shared line check (outcome.c lineFits) and the order (rank.c wastesThree) ask
 static int judgedWastes(const Judged *j) { return j->threes > 0 || (ownChainBy > 0 && j->keepsChain == 0); }
@@ -526,6 +535,7 @@ EXPORT(gb_question_bytes) int gb_question_bytes(int nbytes, int narr) {
   if (!hostBoard) hostBoard = nb_new();
   const unsigned char *p = (const unsigned char *)gbIo;
   memcpy(hostBoard, p, BOARD_HEAD);
+  hostBoard->lastSwapA = hostBoard->lastSwapB = 0;   // (a dumped board carries no record of its last swap)
   if (hostBoard->ninc < 0 || hostBoard->ninc > MAXINC || hostBoard->nrows < 13 || hostBoard->nrows > MAXROWS || narr > MAXARR) return -1;
   unsigned long qn = (unsigned long)hostBoard->ninc * sizeof(Incoming), rn = (unsigned long)hostBoard->nrows * sizeof(Panel) * (W + 1);
   if (BOARD_HEAD + qn + rn != (unsigned long)nbytes) return -1;
