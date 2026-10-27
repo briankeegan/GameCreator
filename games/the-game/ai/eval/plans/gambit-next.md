@@ -331,6 +331,17 @@ line short at once by a block shown (**demand**).
   150 per candidate line, cost the judge most of its readiness askings (4494 a game where 1330 asked 12217): the breaks and lives
   categories collapsed (59 to 4, 18 to 1) and the order fell back to buys. The definition stays; the computation is three steps:
   settle, two frames (the drop comes on the first idle frame), settle. One put-back refused (red), 1 in 24 games, noted.
+- 1334, combo_storm 12/24, and the C check (checks (test)) red since 1332 -- read at last: a 24 is not the gates alone, every
+  job's conclusion is. Two introduced bugs, both found by the C check in 30 s on this machine, not by a 15-minute run. One: the
+  board to come answered a dead board where a live one came first (a block that lands and tops the board), so readiness was never
+  found on a board that must act before the block, no line proven, and a board lost in 18 frames left alone -- outlived by the 18
+  build -- was lost (test/main.c, a board on its way out). Now the last live settled board is the board to come; a dead settle of the
+  line's own end stays lost first. Two: the order's bands counted back from a reference the sort sets (rankLostRef), and the walking
+  order's comparison (judgeWalked) ran before any sort, on the reference the decision before left -- the same board answered
+  differently twice (test/main.c, unsteady: a pair banded alike on one asking, apart on the next). Every entry to compareJudged now
+  sets its own reference (rankTogether). The window reserve filter changes 1 move of 207 replayed and stays. For reading a verdict:
+  GC_GAMBIT_LOG writes the checks' decisions, GC_GAMBIT_TRACE the order after each stage and the walked-order comparison,
+  `test DIR one N` asks one question twice.
 
 ## Where this stands
 

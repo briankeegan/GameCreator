@@ -286,3 +286,27 @@ EXPORT(gb_frames_kept_info) int gb_frames_kept_info(int32_t *out) {
   out[0] = b->clock; out[1] = b->stopTime + b->preStopTime; out[2] = b->shakeTime; out[3] = b->ninc; out[4] = b->garbageCreatedCount; out[5] = fullTop(b);
   return 6;
 }
+
+// THE ORDER AFTER EACH STAGE of decide.c ranked, into the bot's log (GC_GAMBIT_LOG) once gb_trace(1): each line's play, whether it
+// lives and the frame it is lost on -- where a line vanishes between two askings of one board (test/main.c, unsteady)
+static int traceOn;
+EXPORT(gb_trace) void gb_trace(int on) { traceOn = on; }
+static void gb_trace_ranked(const char *stage, Judge **o, int n) {
+  if (!traceOn) return;
+  static char line[4096]; int k = snprintf(line, sizeof line, "TRACE ranked %s: %d lines:", stage, n);
+  for (int i = 0; i < n && k < (int)sizeof line - 40; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, " %d/%d@%d", o[i]->hold ? PLAY_HOLD : o[i]->k.play, o[i]->o.lives, o[i]->o.lostAt);
+  hostLog(line);
+}
+static void gb_trace_cand(int play, const int32_t *seq, int n, int fc) {
+  if (!traceOn) return;
+  static char line[512]; int k = snprintf(line, sizeof line, "TRACE cand play %d n %d fc %d:", play, n, fc);
+  for (int i = 0; i < n && k < (int)sizeof line - 20; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, " %d,%d", CR(seq[i]), CC(seq[i]));
+  hostLog(line);
+}
+static void gb_trace_walked(int ok, int wok, int cmp, int key, const char *why, const Judge *J, const Judge *JW) {
+  if (!traceOn) return;
+  static char line[512];
+  snprintf(line, sizeof line, "TRACE walked ok %d wok %d cmp %d key %d %s | line play %d lost %d outside %d spends %d ready %d readyNext %d | walked play %d lost %d outside %d spends %d ready %d readyNext %d", ok, wok, cmp, key, why ? why : "-",
+           J->k.play, J->o.lostAt, J->outside, J->spends, J->o.ready, J->readyNext, JW->k.play, JW->o.lostAt, JW->outside, JW->spends, JW->o.ready, JW->readyNext);
+  hostLog(line);
+}

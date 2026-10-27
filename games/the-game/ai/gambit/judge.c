@@ -241,21 +241,27 @@ static LOCAL int32_t landOnceAt;   // (the frame the board to come is settled on
 static int landOnce(Ctx *x, int n) {
   Node *N = NODE(x, n);
   landOnceAt = N->t;
+  if (!liveNode(x, n)) return n;
   const Board *b0 = ensureBoard(x, n);
   if (b0 && b0->ninc == 0 && N->narr == 0) return n;
   int32_t garb0 = N->garb;
+  // (NEVER A DEAD BOARD WHERE A LIVE ONE COMES FIRST: the next decision acts on the board as the line leaves it, and a swap pressed
+  // there holds the block off (the stall, test/stall_check.c). A board left idle that dies -- under the block that lands -- says only that the break must be in hand before that; the board to act on is the last live one. Answered with the
+  // dead board, a readiness never found and no line proven: a board lost in 18 frames left alone, outlived by the 18 build's answer,
+  // lost by this one's -- test/main.c, a board on its way out; 13 and 12 of 24, runs 1332 to 1334)
   int calm = settleOf(x, n);
-  if (!liveNode(x, calm)) return calm;
+  if (!liveNode(x, calm)) return calm;   // (the line's own settle dies: lost first)
+  landOnceAt = NODE(x, calm)->t;
   int w = calm;
   for (int tries = 0; tries < 3; tries++) {
     int v = step(x, w, MK_LONG, 0, 0, 2);
-    if (!liveNode(x, v)) return v;
+    if (!liveNode(x, v)) return calm;
     w = v;
     if (NODE(x, w)->garb > garb0) break;
   }
   if (NODE(x, w)->garb <= garb0) { landOnceAt = NODE(x, w)->t; return w; }   // (nothing dropped: the board as it settles)
   int land = settleOf(x, w);
-  if (!liveNode(x, land)) return land;
+  if (!liveNode(x, land)) return calm;
   landOnceAt = NODE(x, land)->t;
   return land;
 }

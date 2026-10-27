@@ -13,6 +13,8 @@
 #include <stdint.h>
 #include <zlib.h>
 int32_t *gb_io(void);
+const char *gb_log(void);
+void gb_trace(int on);
 int gb_question_bytes(int nbytes, int narr);
 int gb_bits_agree(void);
 int gb_bits_boards(void);
@@ -103,10 +105,14 @@ static int speed(const char *dir) {
   printf("speed: %d decisions in the wall clock's time, %lld frames stepped a decision\n", nq, nq ? work / nq : 0);
   return 0;
 }
+int hostOpenLog(const char *path);
 int main(int argc, char **argv) {
+  if (getenv("GC_GAMBIT_LOG")) hostOpenLog(getenv("GC_GAMBIT_LOG"));
+  if (getenv("GC_GAMBIT_TRACE")) gb_trace(1);   // (and the order after each stage of every decision, into that log)   // (the bot's own log of every decision the checks make it take: GAMBITD lines, where a check's verdict needs reading)
   const char *dir = argc > 1 ? argv[1] : "test";
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   int golden = argc > 2 && !strcmp(argv[2], "golden"), fail = 0;
+  int only = argc > 3 && !strcmp(argv[2], "one") ? atoi(argv[3]) : 0;   // (test DIR one N: the decisions replay on question N alone, twice, as the check asks it)
   char path[4096];
   static char line[1 << 17];
   // ---- the bits
@@ -158,6 +164,7 @@ int main(int argc, char **argv) {
     const char *b = strstr(line, "GAMBITQ ");
     if (!b) b = strstr(line, "GAMBITB ");
     if (!b) continue;
+    if (only && nq + 1 != only) { nq++; continue; }
     int narr, n = loadLine(b, &narr);
     if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) { fprintf(stderr, "test: question %d does not load\n", nq); return 1; }
     // (the answer: when anything lives, what is played lives -- or is the raise; a low stack with nothing on it or on its way is raised;
@@ -166,9 +173,11 @@ int main(int argc, char **argv) {
       if (v[2] > 0 && v[0] != 2 && v[1] != 1) { liveDied++; if (liveDied <= 3) printf("  lives but died %d (mode %d): %s\n", nq, mode, rec); }
       if (v[8] && v[0] != 2) { sooner++; if (sooner <= 3) printf("  less proven %d (mode %d): %s\n", nq, mode, rec); }
         if (mode >= 0 && mode < 64) modes[mode]++; }
+    static char log1[8192]; snprintf(log1, sizeof log1, "%s", gb_log());
     n = loadLine(b, &narr);
     gb_replay(n, narr, mode, REPLAY_WORK, rec2, sizeof rec2);
-    if (strcmp(rec, rec2)) { unsteady++; if (unsteady <= 3) printf("  unsteady %d: %s\n               %s\n", nq, rec, rec2); }
+    // (an answer that differs on a second asking of the same board: state carried from the first -- the two log lines say which piece)
+    if (strcmp(rec, rec2)) { unsteady++; if (unsteady <= 3) printf("  unsteady %d: %s\n               %s\n    first:  %s\n    second: %s\n", nq, rec, rec2, log1, gb_log()); }
     if (golden) fprintf(g, "%s\n", rec);
     else if (fgets(want, sizeof want, g)) {
       want[strcspn(want, "\n")] = 0;
@@ -181,6 +190,7 @@ int main(int argc, char **argv) {
     nq++;
   }
   gzclose(z);
+  if (only) return unsteady ? 1 : 0;   // (one question asked: its answer is the whole check)
   fclose(g);
   // (the raise: each mode's question boards cut to a low stack with nothing on it or on its way -- each raised, and held down)
   snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);

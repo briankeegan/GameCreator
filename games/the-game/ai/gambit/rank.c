@@ -96,6 +96,10 @@ static LOCAL int32_t unTap;
 static void asLine(const Cand *k) { lineAt0 = k->at0; lineWaitTo = k->waitTo; unTap = pressTap; if (k->tapOf) pressTap = k->tapOf - 1; }
 static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int nearActsOf(const Judge *J, int32_t near);
+#ifdef GB_TEST
+static void gb_trace_cand(int play, const int32_t *seq, int n, int fc);   // (test/decide_check.c, under GC_GAMBIT_TRACE)
+static void gb_trace_walked(int ok, int wok, int cmp, int key, const char *why, const Judge *J, const Judge *JW);
+#endif
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->endReady = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0;
@@ -152,6 +156,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   Xs x = k->x;
   if (setupPlay(play)) {
     int fc = firstClear(&decQ, k->seq, k->nseq);
+#ifdef GB_TEST
+    gb_trace_cand(play, k->seq, k->nseq, fc);
+#endif
     if (fc == 0) { play = PLAY_CLEAR; memset(&x, 0, sizeof x); x.combo = 3; x.chain = 1; x.floor = -1; m.combo = 3; m.chain = 1; m.broke = 0; m.cells = 0; }
     else if (fc > 0) k->nseq = fc;
   }
@@ -704,6 +711,7 @@ static int walkOrder(const Cand *k, Cand *out) {
   return 1;
 }
 static int compareJudged(const Judge *x, const Judge *y);
+static void rankTogether(Judge **a, int n);
 // A CANDIDATE JUDGED, and in walking order too when that walks less: the walking order is played when the one order puts it no lower --
 // what it makes is the engine's, as for every line; only the drops and the log's count are the line's own order's
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
@@ -714,17 +722,28 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int keepUnbroken = unbroken.set;
   int wok = judgeCand(R, &w, &JW);
   memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
+  if (wok && ok) { Judge *pair[2] = { J, &JW }; rankTogether(pair, 2); }   // (the pair ranked together: the bands from its own reference)
+#ifdef GB_TEST
+  { int c = wok && ok ? compareJudged(&JW, J) : 99; gb_trace_walked(ok, wok, c, cmpKey, cmpWhy, J, &JW); }
+#endif
   if (!wok || (ok && compareJudged(&JW, J) > 0)) return ok;
   *J = JW;
   return 1;
 }
 // sorted stably by the one order
-static void sortJudged(Judge **a, int n) {
-  static Judge *tmp[512];
+// THE LINES RANKED TOGETHER, before any comparison of them: the hold among them, the loss the bands count back from (of the lines
+// banded by it), each line's idle marks. Set by every entry to compareJudged -- the sort's, and the walking order's pair (judgeWalked)
+// -- never left from the decision before: a reference left over banded a pair alike on one asking and apart on the next, and the
+// answer differed (test/main.c, unsteady, run 1334's build)
+static void rankTogether(Judge **a, int n) {
   markIdle(a, n);
   rankHold = 0; for (int i = 0; i < n; i++) if (a[i]->hold) { rankHold = a[i]; break; }
   rankLostRef = 0;
-  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }   // (of the lines banded by it)
+  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }
+}
+static void sortJudged(Judge **a, int n) {
+  static Judge *tmp[512];
+  rankTogether(a, n);
   for (int i = 0; i < n; i++) {
     Judge *h = a[i]; h->holdSunk = 0;
     if (!h->hold || livesOf(h)) continue;
