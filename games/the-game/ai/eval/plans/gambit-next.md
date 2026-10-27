@@ -382,6 +382,19 @@ line short at once by a block shown (**demand**).
   the next: the test tools, the put-back reading shared by judge and guard, the bands set by every comparison and kept per thread, the
   window filter after the save, the let-down three only where the line breaks, the flatten search with the one break test.
 
+- 1339, the 18 build restored: 17/24 on combo_storm's 24. That was the wrong 24: the goal's is 8 of each mode, seeds 1-24, one round.
+  1340 to 1343 run the goal's 24 on the 18 build and its behaviour-identical tools: 12, 12, 13, 13 (combo_storm 4, factory 5,
+  large_garbage 4), the same games lost every time.
+- 1344, 9/24 (combo_storm 6, factory 1, large_garbage 2): every search rooted later now presses in the window as it is then
+  (core/nodes.h laterBegin). The survival continuation read the question's window from the line's end board with the line's actions
+  unspent, and proved the setups combo_storm 3 and 6 died on; both live now. Factory and large_garbage lost 9 games to a block shown
+  with every line short. Their run-up boards (the last 700 frames, 299 of them) are lost under any search time: the decision replayed on
+  them at 1x, 5x and 15x the live work finds no board that lives, and as many lines lost sooner as later. The wasted-three rule took
+  about one candidate a decision out of the order, lines that broke 6 cells among them (large_garbage-1, 1547: a lineup break lost at
+  461 dropped for a three on its way, the line played lost at 333).
+- 1345: a line that breaks garbage wastes no three (judge.c judgedWastes). On the 299 run-up boards, 20 decisions change, 15 lost later
+  and none sooner.
+
 ## Where this stands
 
 Fourteen runs of combo_storm's 24 since the plan: 16, 15, 14, 9, 11, 5, 14, 14, 14, 11, 14, 10, 6, and 14 again now. Every piece of
