@@ -594,9 +594,6 @@ static int catOf(const Judge *J, const Judge *H) {
 // stands past the last row shown is due and PROOF_ROWS rows' breaks more; 0 unproven -- its loss is a bound, the breaks the searches
 // found, not a fact)
 static int proofOf(const Judge *J) {
-  // (READY FOR THE NEXT BLOCK, plans/gambit-next.md 1: a block shown this game, the board the line or its plan ends on must have a break
-  // with that block landed on it -- not asked, or the clock cut it, is not proven)
-  if (nextBlk.height > 0 && J->endReady != 1) return 0;
   if (J->o.lives) return 3;
   if (J->extLost == FOREVER) return 2;
   double l = lostOf(J);

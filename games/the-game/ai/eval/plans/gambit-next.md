@@ -29,15 +29,17 @@ nothing the proof needs is spent while no proof is held.
 
 ## The steps
 
-1. **Proven first.** A line is proven when its plan, played on the engine, pays every row shown before the board dies AND the board
-   its last break leaves, with the mode's next block landed on it, has a break (the readiness search). A proven line beats every
-   unproven one.
-2. **Unproven: the order of the search, not of play.** Of lines not proven, one that dies before it could press anything ranks last;
-   then the most of the scarcest resource, then of the next (`marginKey`: room, material, the window as the dues ask it, contact).
-   This order says which board the proof is searched from first. It does not pick a line to play.
-3. **Search for the proof; spend nothing.** When no held line is proven, the decision holds, and every thread searches for a proof from
-   the board as it is, carried from decision to decision. The only swap played unproven is the save (a three the survival search
-   finds the board needs not to die). A clear for value, a set-up, a carry of a guess: none, until a proof is held.
+1. **Proven first.** A line whose plan, played on the engine, pays every row shown before the board dies is proven. A proven line
+   beats every unproven one. Whether its end board is ready for the next block the mode sends is read (the shape math, the swaps to the
+   nearest break with the biggest block of the game landed on it) and logged (`er=`); it is not yet part of the proof -- see Learned,
+   1289 to 1292.
+2. **Unproven: the most left to find a proof with.** Of lines not proven, one that dies before it could press anything ranks last;
+   then the one that leaves the most of its scarcest resource, then of the next -- the two scarcest only (`marginKey`: room, material,
+   contact, and the window as the dues ask it), each enough at three rows; then the later loss. The build that measured best (1284,
+   1286) ranks this way, and the play follows the order.
+3. **Search for the proof.** When nothing offered is proven, the decision's search time goes to the break on the board the best line
+   leaves, carried from decision to decision, and a readiness proposer offers the swap after which the board is ready for the next
+   block. The hold is not a safe default at this level: the board left alone is lost within a few decisions (Learned, 1291).
 4. **The margin for garbage not shown.** Proven means proven with k rows spare. The owner's to set; suggested 1.
 5. **Convert more per break.** Each plan's first break is tried at every landing shown and the one that converts most is kept; each
    break after it is asked from the last landing back.
@@ -146,3 +148,8 @@ line short at once by a block shown (**demand**).
   later, the room share reading 0 for every line (a stack over the top read as none, however far over). Two pieces fixed: the room
   share reads below none, the rows the stack is over, so a line that lowers it reads more room than one that does not; and the hold is
   held for only while it lives -- where it is lost, the first line of the order that outlasts it is the save and is played.
+- 1292, combo_storm 5/24: the room share below none and the hold held for only while it lives. The bot cleared for room every
+  decision and the material went with it: 14 of 19 losses found no break. The four runs since the plan went in measure 14, 9, 11, 5
+  against 15 and 16 before it: the pieces as built -- readiness in the proof, the hold for the proof, room below none -- cost games,
+  each. Taken back out, all three; kept: the gates, the logs (er=, heldFor=, proofLost=) and the readiness proposer. The play is the
+  1286 build's again, measured once to confirm, and from there one piece a run, from the loss logs, kept only if the number rises.

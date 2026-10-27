@@ -541,7 +541,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_i(k / 13); L_s("."); L_i(k % 13); if (order[i]->planMargin[0] >= 0 && order[i]->extSpent != NOT_ASKED) L_s("p"); }
   // (and each line's four shares by name, in rows, unsorted and uncapped: room, material, window, contact -- mgs=, which one decides)
   L_s(" mgs="); for (int i = 0; i < P.ncands && i < 8; i++) { if (i) L_s(","); marginKey(order[i]);
-    for (int k = 0; k < 4; k++) { if (k) L_s("."); double lo = k == 0 ? -1 : 0; double v = marginShares[k] < lo ? lo : marginShares[k] > 1 ? 1 : marginShares[k]; L_i((int64_t)(v * 12)); } }
+    for (int k = 0; k < 4; k++) { if (k) L_s("."); double v = marginShares[k] < 0 ? 0 : marginShares[k] > 1 ? 1 : marginShares[k]; L_i((int64_t)(v * 12)); } }
   L_s(" opts=");
   for (int i = 0; i < P.ncands && i < 8; i++) {
     const Judge *j = order[i];

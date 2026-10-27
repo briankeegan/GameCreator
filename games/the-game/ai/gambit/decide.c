@@ -401,13 +401,10 @@ static int ranked(const Read *R, const Found *S) {
   }
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first. A ready line
   // first of all: being ready is all it is for, and asked last, in the order's tail, it was asked out of time -- 42 of 53 unanswered)
-  // (and with a block shown this game, the lines that live are asked whether their end board is ready for the next one -- the proof,
-  // plans/gambit-next.md 1 -- while the top line lives; the rest only when none does)
-  if (!(n && order[0]->o.lives) || nextBlk.height > 0) {
-    int topLives = n && order[0]->o.lives;
-    int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]) && (!topLives || order[i]->o.lives);
+  if (!(n && order[0]->o.lives)) {
+    int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
     for (int pass = 0; pass < 2; pass++)
-      for (int i = 0; i < n; i++) if (!EXTRA(order[i]) && (!topLives || order[i]->o.lives) && (order[i]->k.play == PLAY_READY) == !pass) { readyShare(own--); readyNextFor(order[i]); }
+      for (int i = 0; i < n; i++) if (!EXTRA(order[i]) && (order[i]->k.play == PLAY_READY) == !pass) { readyShare(own--); readyNextFor(order[i]); }
     readyShare(0); sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
@@ -507,20 +504,6 @@ static Played playOf(const Read *R, int n) {
   for (int i = 0; i < n; i++) if (order[i]->hold && order[i]->o.lives) holdLivesNow = 1;
   P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
-  // THE PROOF OR THE HOLD (plans/gambit-next.md 3): nothing proven offered, the hold is played and the searches go on from this board,
-  // spending nothing -- the one exception the save: where the hold is lost, a line that lives, or outlasts it by a break's time, or
-  // stands a break's time where the hold does not
-  // (the hold holds only while it lives: at this level the board left alone is lost within a few decisions, so where the hold is lost the
-  // first line of the order that outlasts it is the save, and is played -- the next decision searches again from the board it leaves)
-  if (P.top && !P.top->hold && forcedNow < 0 && !proofOf(P.top)) {
-    const Judge *h = 0; for (int i = 0; i < n; i++) if (order[i]->hold) h = order[i];
-    if (h && livesOf(h)) { P.top = h; P.heldFor = 1; }
-    else if (h) {
-      const Judge *s = 0;
-      for (int i = 0; i < n && !s; i++) if (!order[i]->hold && (livesOf(order[i]) || lostOf(order[i]) > lostOf(h))) s = order[i];
-      if (s != P.top) { P.top = s ? s : h; P.heldFor = 1; }
-    }
-  }
   // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
   P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
