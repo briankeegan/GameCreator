@@ -133,19 +133,18 @@ static int samePair(int32_t a, int32_t b, int32_t x, int32_t y) { return (a == x
 // (and a pair the press guard refused as a wasted three, kept out until a frame whatever the line makes: front.c wastedSwap)
 static int32_t refusedA, refusedB;
 EXPORT(gb_refused) void gb_refused(int a, int b) { refusedA = a; refusedB = b; }
-// (and the pair the last swap PRESSED on the game swapped (the host's: front.c, the frame loop's own record), put back for nothing --
-// no clear, no break -- is never a swap, whatever the line after it: a pair swapped back and forth holds garbage off the board (nothing
-// lands while a swap is in progress, test/stall_check.c) and is no play. The owner: never. The press guard refuses it last, front.c putsBack)
-static int32_t pressedA, pressedB;
-EXPORT(gb_pressed) void gb_pressed(int a, int b) { pressedA = a; pressedB = b; }
-// (the one test: the pair (a, b) swapped for `clears` (judge.c madeBy: 0 nothing, 1 a clear, 2 a break) puts the last pair pressed back
-// for nothing. The judge asks it of every line's first swap through swapBack; the press guard asks it of the swap about to be pressed)
-static int putBackFor(int32_t a, int32_t b, int32_t pA, int32_t pB, int clears) { return pA && clears == 0 && a != NUL && b != NUL && samePair(a, b, pA, pB); }
+// (and the pair the last swap swapped, put back for nothing -- no clear, no break -- is never a swap, whatever the line after it: a pair
+// swapped back and forth holds garbage off the board (nothing lands while a swap is in progress, test/stall_check.c) and is no play. The
+// owner: never. The pair is the engine's own record on the board (pa.c doSwap, Board.lastSwapA/B): the board a decision is made on,
+// every node the judge steps and the board as it is all carry it, so nothing is handed around)
+// (the one test: on board `on`, the pair (a, b) swapped for `clears` (judge.c madeBy: 0 nothing, 1 a clear, 2 a break) puts the last
+// pair swapped back for nothing. The judge asks it of every swap of a line; the press guard of the swap about to be pressed)
+static int putBackFor(const Board *on, int32_t a, int32_t b, int clears) { return on && on->lastSwapA && clears == 0 && a != NUL && b != NUL && samePair(a, b, on->lastSwapA, on->lastSwapB); }
 static int swapBack(int r, int c, int clears) {
   if (!backBoard || r < 0 || r >= backBoard->nrows || c < 1 || c + 1 > W) return 0;
   int32_t a = backBoard->p[r][c].f[ID], b = backBoard->p[r][c + 1].f[ID];
   if (a == NUL || b == NUL) return 0;
-  if (putBackFor(a, b, pressedA, pressedB, clears)) return 1;
+  if (putBackFor(backBoard, a, b, clears)) return 1;
   if (refusedA && samePair(a, b, refusedA, refusedB)) return 1;
   if (clears == 2) return 0;
   if (theBack.blockA && samePair(a, b, theBack.blockA, theBack.blockB) && theBack.at < theBack.blockUntil) return 1;

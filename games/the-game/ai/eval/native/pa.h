@@ -94,6 +94,8 @@ typedef struct Board {
   int32_t rowFeed[FEED][W], nRowFeed, rowFeedAt, brkFeed[FEED][W], nBrkFeed, brkFeedAt;
   int32_t ninc, nstall, nlanded;
   int32_t dropColumnIndex[7];     // [width], 1-based as the Lua keeps them
+  int32_t lastSwapA, lastSwapB;   // the two panels the last swap swapped, by id, as the swap found them (left, right); 0 none. Not the
+                                  // game's: the engine's own record (doSwap), kept across loads of a board
   Stall stall[MAXSTALL];
   int32_t landed[MAXLANDED];
   // the queue and the panels last, so a copy takes the ninc queued and the

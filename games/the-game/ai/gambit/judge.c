@@ -403,7 +403,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         // (THE PAIR THE LAST SWAP PRESSED SWAPPED, put back for nothing by this swap -- the one test, rules.c putBackFor, with what the
         // swap makes read as the first swap's is (madeBy): the line is cut here, before the swap is recorded as pressed (ats), so it is
         // never handed on. A swap back that clears or breaks is play. The owner: never a pair swapped back and forth to hold garbage off)
-        if (fb && pressedA && liveNode(x, out) && putBackFor(fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], pressedA, pressedB, madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
+        if (fb && liveNode(x, out) && putBackFor(fb, fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from; KB(n);
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
