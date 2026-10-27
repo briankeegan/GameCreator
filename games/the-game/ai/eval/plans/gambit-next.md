@@ -234,6 +234,9 @@ line short at once by a block shown (**demand**).
 - 1316, combo_storm 14/24, every gate green, put back 0: readiness as a tie-break decided 306 plays of a line lost sooner (rule
   4.ready) -- out of the order. Idle frames with garbage queued: 38 a minute in games lost, 37 in games survived -- idleness is not
   what parts them; conversion is (141 cells turned to panels a minute in losses against 147 landed).
+- 1317, combo_storm 16/24, gates green, put back 0: readiness out of the order gave two back. The gap to 19 is the put-back rule as
+  the judge applied it -- seeded into the in-line undo rule, it cut any line swapping the pressed pair back, a clear or a break too.
+  Now the judge asks the one test (putBackFor, with what the swap makes) of every swap of a line, as the guard asks it of the press.
 
 ## Where this stands
 

@@ -347,8 +347,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 }, pieces = 0, links = 0;
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
   int kb = root;   // (the line's last node by ownChainBy)
-  Moved moved = { 0 };   // (the pairs the line's swaps moved: movedUndoes -- and the pair the last swap pressed on the game swapped, rules.c gb_pressed)
-  if (pressedA && pressedB) { MovedPair p = { pressedA, pressedB }; moved.p[0] = p; moved.n = 1; }
+  Moved moved = { 0 };   // (the pairs the line's swaps moved: movedUndoes)
 #define KB(m) do { if (ownChainBy > 0 && liveNode(x, (m)) && NODE(x, (m))->t <= ownChainBy) kb = (m); } while (0)
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
@@ -423,6 +422,11 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       break;
     }
     if (k == 0 && !last) j->firstMade = madeBy(x, out, root);
+    // (THE PAIR THE LAST SWAP PRESSED SWAPPED, put back for nothing by any swap of the line -- the one test, rules.c putBackFor, with what
+    // the swap makes read as the first swap's is: the line is cut there. A swap back that clears or breaks is play. The owner: never a
+    // pair swapped back and forth to hold the garbage off)
+    if (!last && pressedA) { Board *fb = ensureBoard(x, from);
+      if (fb && putBackFor(fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], pressedA, pressedB, madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
     Stats st;
     statsOf(x, out, &st);
     for (int i = 0; i < st.n; i++) { if (st.size[i] > combo) combo = st.size[i]; if (!(st.chainAt[i] > 1) && st.size[i] >= 4 && st.size[i] < MAXCOMBOS + 64) single[st.size[i]] = 1; }
