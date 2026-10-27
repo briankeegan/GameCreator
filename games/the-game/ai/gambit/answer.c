@@ -584,6 +584,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     } }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
+  // (the played line's readiness and the window's check of it: ready, its frame, its swaps, the actions left then and those it needs (-1:
+  // not checked), and the loss its plan leads to -- where a line was ranked on a break the window could not press)
+  if (top) { L_s(" rdyTop="); L_i(top->o.ready); L_s("/"); L_i(top->o.j.readyWait); L_s("/"); L_i(top->o.j.readyN); L_s("/"); L_i(top->o.j.readyLeft); L_s("/"); L_i(top->o.j.readyActs); L_s("/"); L_i(top->extLost == NOT_ASKED ? -1 : top->extLost); }
   if (P.deferred) L_s(" deferred=1");
   if (forcedNow != -1) { L_s(" forced="); L_i(forcedNow); }   // (a replay's forced option: K played, 0 none to swap, -2 fewer options than K)
   if (savingPanels) L_s(" saving=1");

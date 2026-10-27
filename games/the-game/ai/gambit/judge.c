@@ -45,6 +45,7 @@ typedef struct {
   int32_t lostAt;               // FOREVER, a frame, or NOT_ASKED
   int32_t ready;                // 1, 0, or NOT_ASKED
   int32_t readyLine[MAXLINE], readyN; // the swaps the readiness found (why), as r * 8 + c
+  int32_t readyLeft, readyActs;  // the window's check of that break: the actions left at its frame and the actions it needs (-1: not checked)
   int32_t readyWait;            // the frame from the root the readiness looked from (its waitTo)
   int32_t readyPend;            // the landed board kept for the decision's readiness, its index + 1 (search/break.c readyPendOf); 0 none
   int32_t readyMat;             // the material that board has -- its panels under the lowest garbage once everything shown has landed
@@ -343,7 +344,7 @@ static int movedUndoes(const Board *b, int32_t mv, const Moved *m) {
 static LOCAL int32_t lineAt0, lineWaitTo;   // (and lineWaitTo: its board run to that frame and let settle before its first swap)
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->readyLeft = -1; j->readyActs = -1; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -507,6 +508,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       int left = allowLeftAt(j->readyWait, spent), r = eb ? eb->curRow : 0, c = eb ? eb->curCol : 0, acts = 0;
       for (int k = 0; k < *wn && eb; k++) { acts += actionsFor(r, c, CR(wl[k]), CC(wl[k]), left - acts); r = CR(wl[k]); c = CC(wl[k]); }
       if (eb && acts > left) j->ready = 0;
+      j->readyLeft = left; j->readyActs = acts;
     }
     j->readyPend = readyPendLast; j->readyWalk = readyWalkLast; j->readyNear = readyNearLast; j->readyMat = readyMatLast; j->readyTop = readyTopLast; j->readyContact = readyContactLast; j->readyUnder = readyUnderLast;
     memcpy(j->readyRow1, readyRow1Buf, sizeof j->readyRow1);
