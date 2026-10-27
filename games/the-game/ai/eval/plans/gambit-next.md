@@ -213,3 +213,7 @@ games do between breaks that the survived ones do not.
   lost to the rise after. The list ranks among proven lines, never at the cost of the proof; a horizon a break's time shorter is that
   cost. Fixed: among level-1 proven lines, the loss in absolute bands of a break's time decides before the list; within a band, and
   among lines that live, the list decides as before.
+- 1301, combo_storm 11/24: the horizon before the list, among level-1 proven lines, measured below the 15; taken back out. The build
+  is 1300's (d46faa5f) again. Its turns show the other recurring pattern twice more: a one-swap setup whose plan lives (einf) played
+  over a break of 32 cells (11705), and the plan gone at the next decision -- the summary counts it: of lines that lived with nothing
+  new told, 22% did not live on at the next decision ("a life kept"), and 696 decisions a run lose the proof with nothing new shown.
