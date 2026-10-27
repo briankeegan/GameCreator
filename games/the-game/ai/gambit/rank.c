@@ -604,11 +604,21 @@ static int catOf(const Judge *J, const Judge *H) {
 // (A LINE'S PROOF, plans/gambit-next.md 1 and 4: 3 its board lives left alone; 2 it lives by its plan; 1 its plan, played on the engine,
 // stands past the last row shown is due and PROOF_ROWS rows' breaks more; 0 unproven -- its loss is a bound, the breaks the searches
 // found, not a fact)
+// (THE MARGIN FOR GARBAGE NOT SHOWN, plans/gambit-next.md 4, is material as well as time: a plan that pays every row shown and a break's
+// time more, and ends with its material scarce -- under MARGIN_ENOUGH rows, the margin's own line -- has nothing to pay the next row
+// with. 1309 combo_storm-6, 4020: a carry proven to 388 spent the material from 33 to 14 on combos, and the block after the horizon
+// found nothing to break with; lost at 4598)
+static int32_t matLeftOf(const Judge *J) {
+  int plan = J->planMargin[0] >= 0 && J->extSpent != NOT_ASKED;
+  return plan ? J->planMargin[1] : J->o.j.readyMat >= 0 ? J->o.j.readyMat : J->o.matLeft;
+}
 static int proofOf(const Judge *J) {
   if (J->o.lives) return 3;
   if (J->extLost == FOREVER) return 2;
   double l = lostOf(J);
-  return l < 1e9 && l > proofFrame();
+  if (!(l < 1e9 && l > proofFrame())) return 0;
+  int32_t m = matLeftOf(J);
+  return m < 0 || m >= MARGIN_ENOUGH * W;
 }
 // (DEAD BEFORE IT COULD PRESS ANYTHING: unproven and lost within a break's time -- the hold's loss not known among them)
 static int diesNow(const Judge *J) { return !livesOf(J) && lostOf(J) < imax(1, rankSave); }

@@ -166,18 +166,11 @@ static int windowCover(int32_t endAt, int spent) {
 static int windowKeepsBreak(int32_t endAt, int spent) { return windowCover(endAt, spent) >= 1; }
 // THE WINDOW'S SHARE AS THE DUES ASK IT (plans/gambit-next.md 2): of the rows due, the share the window covers a break's walk for, with
 // `paid` rows the line's own breaks pay; with nothing due or no allowance said, the window's own share (-1 none said)
-// (AND THE WALK KEPT AT THE LINE'S END: the dues' cover reads the window as it will have refilled by each due, so a line that spends the
-// window now reads full cover against dues far enough off -- and the next line spends more, and the next: 1308 combo_storm-6, 3851 to
-// 4012, the window from 16 to 0 on proven combos reading 12, then nothing could be pressed. The share is the lesser of the dues'
-// cover and the next break's walk kept at the line's end)
 static double winCoverShare(int32_t endAt, int spent, int32_t paid) {
   if (pressAllowance < 0) return -1;
   if (nLandAts <= 0) return windowShareAt(endAt, spent);
   double s = (double)(windowCover(endAt, spent) + paid) / nLandAts;
-  if (s > 1) s = 1;
-  double kept = (double)allowLeftAt(endAt, spent) / imax(1, walkDue(0));
-  if (kept > 1) kept = 1;
-  return kept < s ? kept : s;
+  return s > 1 ? 1 : s;
 }
 // THE MARGIN AS ONE KEY (plans/gambit-next.md 2): the shares of what a board runs out of -- room, material, the window, contact -- each
 // in rows of the stack's twelve, scarcest first, so that of two the more of the scarcest wins, then of the next (under garbage the room

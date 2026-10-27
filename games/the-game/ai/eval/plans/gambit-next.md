@@ -274,3 +274,8 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   combo_storm-6, 3851 to 4012: the window went from 16 to 0 over eight decisions of proven combos while the window share read full,
   because the dues' cover reads the window as it will have refilled by each far-off due -- and the next line spends more, and the
   next; at the due nothing could be pressed. The share now reads the next break's walk kept at the line's end too, and is the lesser.
+- 1310, combo_storm 17/24: the window share as the lesser cost two games; out. The build is 1309's again (19).
+- Step 4's material: in 1309's combo_storm-6 at 4020 a carry proven to 388 (every row shown paid, a break's time spare) was played
+  over the hold and spent the material from 33 to 14 on combos; the block after the horizon found nothing to break with. The margin
+  for garbage not shown is material as well as time: a plan that ends with its material scarce (under MARGIN_ENOUGH, three rows) is
+  not proven against the next row. Level-1 proof now requires it.
