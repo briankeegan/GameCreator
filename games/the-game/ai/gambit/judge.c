@@ -425,7 +425,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     // (THE PAIR THE LAST SWAP PRESSED SWAPPED, put back for nothing by any swap of the line -- the one test, rules.c putBackFor, with what
     // the swap makes read as the first swap's is: the line is cut there. A swap back that clears or breaks is play. The owner: never a
     // pair swapped back and forth to hold the garbage off)
-    if (!last && pressedA) { Board *fb = ensureBoard(x, from);
+    if (!last && pressedA) { Board *fb = ensureBoard(x, n);   // (n: the node the swap is pressed from -- the board before it)
       if (fb && putBackFor(fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], pressedA, pressedB, madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
     Stats st;
     statsOf(x, out, &st);
