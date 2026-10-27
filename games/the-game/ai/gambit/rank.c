@@ -95,6 +95,10 @@ static LOCAL int32_t unTap;
 static void asLine(const Cand *k) { lineAt0 = k->at0; lineWaitTo = k->waitTo; unTap = pressTap; if (k->tapOf) pressTap = k->tapOf - 1; }
 static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int nearActsOf(const Judge *J, int32_t near);
+#ifdef GB_TEST
+static void gb_trace_cand(int play, const int32_t *seq, int n, int fc);   // (test/decide_check.c, under GC_GAMBIT_TRACE)
+static void gb_trace_walked(int ok, int wok, int cmp, int key, const char *why, const Judge *J, const Judge *JW);
+#endif
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->endReady = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0;
@@ -150,6 +154,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   Xs x = k->x;
   if (setupPlay(play)) {
     int fc = firstClear(&decQ, k->seq, k->nseq);
+#ifdef GB_TEST
+    gb_trace_cand(play, k->seq, k->nseq, fc);
+#endif
     if (fc == 0) { play = PLAY_CLEAR; memset(&x, 0, sizeof x); x.combo = 3; x.chain = 1; x.floor = -1; m.combo = 3; m.chain = 1; m.broke = 0; m.cells = 0; }
     else if (fc > 0) k->nseq = fc;
   }
@@ -712,6 +719,9 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int keepUnbroken = unbroken.set;
   int wok = judgeCand(R, &w, &JW);
   memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
+#ifdef GB_TEST
+  { int c = wok && ok ? compareJudged(&JW, J) : 99; gb_trace_walked(ok, wok, c, cmpKey, cmpWhy, J, &JW); }
+#endif
   if (!wok || (ok && compareJudged(&JW, J) > 0)) return ok;
   *J = JW;
   return 1;

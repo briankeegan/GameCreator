@@ -316,6 +316,12 @@ static int judgeAll(const Read *R, int nc, int n) {
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   return n;
 }
+#ifdef GB_TEST
+static void gb_trace_ranked(const char *stage, Judge **o, int n);   // (test/decide_check.c: the order after each stage, under GC_GAMBIT_TRACE)
+#define TRACE(stage) gb_trace_ranked(stage, order, n)
+#else
+#define TRACE(stage)
+#endif
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; unbroken.set = 0; saveLine = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
@@ -329,8 +335,8 @@ static int ranked(const Read *R, const Found *S) {
   rankReact = C2.reaction + 1;
   rankSave = rankReact + popFrames(decQ.b, W);   // (a row of W cells)
   rankLow = lowOnPanels(decQ.b);
-  n = judgeAll(R, nc, n);
-  n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
+  n = judgeAll(R, nc, n); TRACE("judged");
+  n = keptJudged(R, n); TRACE("kept");   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0;
@@ -487,6 +493,7 @@ static int ranked(const Read *R, const Found *S) {
       sortJudged(order, n);
     } }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
+  TRACE("ranked");
   return n;
 }
 
