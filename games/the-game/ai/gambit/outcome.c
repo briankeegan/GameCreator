@@ -244,11 +244,11 @@ static void readyPlanOut(const Judged *j, int32_t *pLine, int32_t *pN, int32_t *
   for (int k = 0; k < *pN; k++) pLine[k] = j->readyLine[k];
   for (int c = 0; c <= W; c++) pRow1[c] = j->readyRow1[c];
 }
-static double contBoardLost(const Board *e, double give);   // (decide.c)
+static double contBoardLost(const Board *e, double give, int32_t spent);   // (decide.c)
 static double readyShareMs;   // (search/break.c)
 static LOCAL int32_t planBreakN, planBreakAt[PLANBREAKS], planBroke;   // (the last readyNextOf's plan: the frame each break is pressed from, and what it converts)
 static LOCAL int32_t planEndReady;   // (and whether the board it ends on is ready for the next block: endReadyOf)
-static double contBoardLostLine(const Board *e, double give, int32_t *seq, int32_t *nseq);   // (decide.c: and the line that lives on from it)
+static double contBoardLostLine(const Board *e, double give, int32_t spent, int32_t *seq, int32_t *nseq);   // (decide.c: and the line that lives on from it)
 // READY FOR THE NEXT BLOCK (plans/gambit-next.md 1): the board a line or its plan ends on, with the biggest block shown this game landed
 // on it, has a break -- the break search's own answer on that board (judge.c breaksAfterLanding). 1 ready, 0 not (none found, or the board
 // is lost when it lands), NOT_ASKED the clock cut it. With no block shown yet this game, 1: nothing to be ready for
@@ -340,7 +340,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
   static LOCAL Board *lineEndB, *planEnd; if (!lineEndB) lineEndB = nb_new(); if (!planEnd) planEnd = nb_new();
   int haveLineEnd = 0;
   if (lineEndB && !o.j.dead) { const Board *eb = ensureBoard(judgeCtx, o.j.endNode); if (eb) { cloneBoard(lineEndB, eb); haveLineEnd = 1; } }
-  int haveEnd = 0;
+  int haveEnd = 0; int32_t endSpent = 0;   // (and the actions the plan spent to its end: its continuation presses in what is left)
   if (o.ready && n > 0 && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
     int32_t ext[MAXLINE], en = n + o.j.readyN, w0To = o.j.readyWait, mAt[MAXLINE], mTo[MAXLINE], nm = 0;
     for (int k = 0; k < n; k++) ext[k] = seq[k];
@@ -348,7 +348,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
     Outcome e = promised(ext, en, settled, n, w0To, 0, 0, 0);
     int enOk = en, nmOk = 0;   // (the plan as accepted: a later break the loop tries and rejects stays in ext past enOk)
     if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; o.nBreakAt = 0; o.breakAt[o.nBreakAt++] = w0To; o.planBroke = e.j.made.broke; o.planEndAt = e.j.endAt;
-      if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; planMark(&o, planEnd); } } }
+      if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; endSpent = e.j.spent; planMark(&o, planEnd); } } }
     // (A PLAN OF SEVERAL STEPS: the board the break leaves, once it has settled, asked again for a break in reach -- played where its
     // readiness finds it, and so on while each break puts the loss off -- as far as the board, the line's length and the clock allow: the
     // line is lost where the plan is, the owner's ready with a plan)
@@ -384,13 +384,13 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
       o.lostAt = lost; *extSpent = e.j.spent; o.planBroke = e.j.made.broke; o.planEndAt = e.j.endAt;
       enOk = en; nmOk = nm;
       if (o.nBreakAt < PLANBREAKS) o.breakAt[o.nBreakAt++] = mTo[nm - 1];
-      haveEnd = 0; if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; planMark(&o, planEnd); } }
+      haveEnd = 0; if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; endSpent = e.j.spent; planMark(&o, planEnd); } }
     }
     // (AND ON: past its last break the plan goes on as the survival search plays on from the board it leaves -- every plan ends the
     // same way, so a plan of breaks is never judged left alone where a line that only survives is judged played on)
     int32_t cseq[MAXLINE], cn = 0; double c = -1;
     if (haveEnd && o.lostAt != NOT_ASKED && o.lostAt != FOREVER && readyShareMs > 0 && !clockOut()) {
-      c = contBoardLostLine(planEnd, readyShareMs, cseq, &cn);
+      c = contBoardLostLine(planEnd, readyShareMs, endSpent, cseq, &cn);
       if (c >= 1e9) o.lostAt = FOREVER; else if (c > o.lostAt) o.lostAt = (int32_t)c; else cn = 0;
     }
     // (the whole plan after the line: its breaks, each from the frame its readiness found it, and the survival line on from the end

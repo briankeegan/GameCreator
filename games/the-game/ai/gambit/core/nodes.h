@@ -104,6 +104,13 @@ static int32_t winAges[WINMAX], nWinAges = -1, winLen = 600, hostWin;
 // (A SEARCH ROOTED LATER: a readiness search's board is a line's once everything lands, pressFrom frames after the question with the line
 // having spent pressSpent -- its breaks are pressed in the window as it is then, every search asking it here; 0 for the question's own)
 static LOCAL int32_t pressFrom, pressSpent;
+// (THE ONE WAY IN for a search rooted later: `from` frames after the board it is asked from, a line having spent `spent` of the window
+// to reach it -- set here and put back by laterEnd, nested as the searches nest. Every search asked of a line's end board or of the board
+// to come goes through it: judge.c's readiness, decide.c's survival continuation, search/ready.c's landed break. Nothing else sets
+// pressFrom or pressSpent but a job's reset)
+typedef struct { int32_t from, spent; } Later;
+static Later laterBegin(int32_t from, int32_t spent) { Later l = { pressFrom, pressSpent }; pressFrom += from; pressSpent += spent; return l; }
+static void laterEnd(Later l) { pressFrom = l.from; pressSpent = l.spent; }
 static int allowLeftAt(int32_t t, int spent) {
   if (pressAllowance < 0) return -1;
   t += pressFrom; spent += pressSpent;

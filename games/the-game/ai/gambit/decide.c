@@ -240,8 +240,8 @@ static const Judge *saveLine;   // (the line the save confirmed)
 static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
-static double contBoardLost(const Board *e, double give);
-static double contBoardLostLine(const Board *e, double give, int32_t *seq, int32_t *nseq);
+static double contBoardLost(const Board *e, double give, int32_t spent);
+static double contBoardLostLine(const Board *e, double give, int32_t spent, int32_t *seq, int32_t *nseq);
 // (and the survival line it plays on with, handed back where asked: the plan a line lives by, plans/gambit-next.md 6)
 static double contLostOfLine(const Judge *J, double give, int32_t *seq, int32_t *nseq) {
   static Board *eb; if (!eb) eb = nb_new();
@@ -254,12 +254,12 @@ static double contLostOfLine(const Judge *J, double give, int32_t *seq, int32_t 
   if (!J->hold) unLine();
   endNoKeep = 0;
   if (!e) return -1;
-  return contBoardLostLine(e, give, seq, nseq);
+  return contBoardLostLine(e, give, J->hold ? 0 : J->o.j.spent, seq, nseq);
 }
 static double contLostOf(const Judge *J, double give) { return contLostOfLine(J, give, 0, 0); }
 // (THE BEST ON FROM A BOARD: the survival search asked of board e, with the garbage still on its way, for `give` ms -- the frame from
 // now that board is lost, 1e9 if it lives, -1 if it could not be asked: a line's plan ends here, whatever its last step was)
-static double contBoardLostLine(const Board *e, double give, int32_t *seq, int32_t *nseq) {
+static double contBoardLostLine(const Board *e, double give, int32_t spent, int32_t *seq, int32_t *nseq) {
   static Board *cb; if (!cb) cb = nb_new();
   if (nseq) *nseq = 0;
   if (!cb || !e) return -1;
@@ -267,13 +267,16 @@ static double contBoardLostLine(const Board *e, double give, int32_t *seq, int32
   int32_t dt = imax(0, cb->clock - decQ.b->clock);
   Question q2 = decQ; q2.b = cb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
+  // (rooted dt frames on, the line to it having spent `spent` of the window: core/nodes.h laterBegin)
+  Later lt = laterBegin(dt, spent);
   Outlived c = outlive(&q2, HORIZON + REST, REST, give, 6, 30);
   int32_t lost = c.set ? c.lostAt : diesIn(&q2, HORIZON + REST);
+  laterEnd(lt);
   if (lost < 0) return -1;
   if (seq && nseq && c.set) { int k = 0; for (; k < c.nseq && k < MAXLINE; k++) seq[k] = c.seq[k]; *nseq = k; }
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
-static double contBoardLost(const Board *e, double give) { return contBoardLostLine(e, give, 0, 0); }
+static double contBoardLost(const Board *e, double give, int32_t spent) { return contBoardLostLine(e, give, spent, 0, 0); }
 // THE JUDGING ON EVERY THREAD: the candidates judged on the workers, each from the work the decision had done when the judging began
 // and in the share it had, into a slot of its own with what it adds to the decision's tallies (rank.c dropped, cutWhy, unbroken) --
 // added in candidate order after, so the order is the same whichever thread judged what. The decision's clock is charged the judging's

@@ -69,7 +69,9 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   if (first >= 0) shape = q->arr[first].width * 64 + q->arr[first].height;
   int carried = frontierResumeKeyed(FR_LANDED, landsOn, shape, &landedSeeds) && landedSeeds.n > 0;
   double old = clockShareBegin(nowMs() + ms);
+  Later lt = laterBegin(dt, 0);   // (the board to come, dt frames on: its break pressed in the window as it is then -- core/nodes.h laterBegin)
   breakMoves(&q2, 0, carried ? &landedSeeds : 0, &lbr);
+  laterEnd(lt);
   clockShareEnd(old);
   frontierKeepKeyed(FR_LANDED, &lbr.keepOut, landsOn, shape);
   landedDeep = 0; for (int i = 0; i < lbr.keepOut.n; i++) landedDeep = imax(landedDeep, lbr.keepOut.len[i]);
