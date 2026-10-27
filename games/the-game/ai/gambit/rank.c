@@ -615,6 +615,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // unless lost alike (lostAlike: the same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
     if (!px) {
       int nx = diesNow(x), ny = diesNow(y); if (nx != ny) K(2, "now", nx ? 1 : -1);
+      // (UNDER ATTACK, MATERIAL ONLY COMES FROM BREAKING, plans/gambit-next.md 5: of two unproven lines under garbage, one that converts
+      // garbage before one that converts none -- the margin reads material as enough down to three rows, and a board spent from 51 to 22
+      // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
+      if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
     } }

@@ -249,3 +249,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   (154 of 153 found in combo_storm-1); the judge ranks them low (their own loss is the landing, their plan shorter than other lines'),
   so a dozen reach the order's first eight and none is played. No break was thrown away. The instrumentation stays (it costs nothing
   and would fire on a one-swap break); the piece it was built for does not exist.
+- Trying, one a run: combo_storm-6 (1304) spent its material from 51 to 22 between 2703 and 3307 on combos under garbage -- entries
+  that broke nothing, then entries that broke 8 and cost more -- and from 3355 nothing broke for 440 frames with 15 to 21 panels. The
+  margin cannot see the drain: material reads enough down to three rows. Step 2 piece: under garbage, of two unproven lines not dying
+  now, one that converts garbage before one that converts none, then the margin.
