@@ -260,3 +260,5 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   progress lost at 260, by the margin -- the dead line read 5.5.12.12, the best in the order. A dead line has no board to read; the
   fallback (the board as it is now) was built for a judging the clock cut, and handed to a dead line it reads the room, material,
   window and contact of a board that line never reaches. Fixed: a line judged dead with no plan board reads room below none.
+- 1307, combo_storm 17/24, gates green, the best of the mode: a dead line reads room below none. combo_storm-3 survived (896 in
+  seven runs running). Lost games now convert 132 of 147 a minute landed (-13), survived 147 of 148.
