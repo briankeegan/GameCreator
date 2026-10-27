@@ -504,13 +504,13 @@ static double lostNetOf(const Judge *J) {
 }
 // (the bands are a decision wide (rankReact): the search for the proof is carried from decision to decision (plans/gambit-next.md 3 and
 // 7), so a line lost a decision later leaves the search one more decision to find it with -- only lines lost within one decision of each
-// other are alike, and among them the margin decides)
+// other are alike, and among them the margin decides. At any distance: a loss three breaks' time off is a fact as a loss one break off
+// is, and a line lost four breaks' time later than another is not alike with it, however far off both are)
 static int32_t lostBand(const Judge *J) {
   double l = lostOf(J);
   if (l >= 1e9) return 0x7fffffff;
   int32_t save = imax(1, rankSave), band = imax(1, rankReact);
   if (l < save) return -1 - (int32_t)(l > 0 ? l : 0);   // (within a break's time, or not known -- the hold's -1: alike with nothing)
-  if (l >= 3.0 * save) return 0x7ffffffe;
   double back = rankLostRef > l ? rankLostRef - l : 0;
   return (int32_t)(back / band);
 }
@@ -711,7 +711,7 @@ static void sortJudged(Judge **a, int n) {
   markIdle(a, n);
   rankHold = 0; for (int i = 0; i < n; i++) if (a[i]->hold) { rankHold = a[i]; break; }
   rankLostRef = 0;
-  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }   // (of the lines banded by it)
+  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 1e9 && l > rankLostRef) rankLostRef = l; }   // (of the lines banded by it: every loss)
   for (int i = 0; i < n; i++) {
     Judge *h = a[i]; h->holdSunk = 0;
     if (!h->hold || livesOf(h)) continue;

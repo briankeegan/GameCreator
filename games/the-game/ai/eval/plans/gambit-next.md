@@ -167,3 +167,8 @@ line short at once by a block shown (**demand**).
   is found on the board to come and anchored to that board's bottom row, which is not yet on the board as it is, so the promise is
   dropped at the next decision. Fixed: a promise is anchored to a bottom-row panel of the board as it is, pressed where the readiness
   found it, and never moved by the rows risen; the log says whether it was kept (carryKept=).
+- 1295, combo_storm 14/24: the promise anchored to the board as it is measured the same (246 boards searched again, 0 missed). The
+  turns: combo_storm-1 round 2 at 10981, the line in progress (8 cells, lost at 229) played over a break of 32 cells lost at 639, and
+  combo_storm-4 at 6774 the same (8 cells at 244 over 32 at 513) -- both by the mode's list (k4.list): every loss past three breaks'
+  time was read alike, so the later loss never decided and the list did, among unproven lines. Fixed: losses are banded at any
+  distance; a line lost four breaks' time later than another is not alike with it. The list ranks among proven lines.
