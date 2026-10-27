@@ -535,7 +535,7 @@ EXPORT(gb_question_bytes) int gb_question_bytes(int nbytes, int narr) {
   if (!hostBoard) hostBoard = nb_new();
   const unsigned char *p = (const unsigned char *)gbIo;
   memcpy(hostBoard, p, BOARD_HEAD);
-  hostBoard->lastSwapA = hostBoard->lastSwapB = 0;   // (a dumped board carries no record of its last swap)
+  hostBoard->lastSwapA = hostBoard->lastSwapB = hostBoard->lastSwapRuns = hostBoard->lastSwapAt = 0;   // (a dumped board carries no record of its last swap)
   if (hostBoard->ninc < 0 || hostBoard->ninc > MAXINC || hostBoard->nrows < 13 || hostBoard->nrows > MAXROWS || narr > MAXARR) return -1;
   unsigned long qn = (unsigned long)hostBoard->ninc * sizeof(Incoming), rn = (unsigned long)hostBoard->nrows * sizeof(Panel) * (W + 1);
   if (BOARD_HEAD + qn + rn != (unsigned long)nbytes) return -1;

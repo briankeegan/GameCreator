@@ -67,9 +67,11 @@ What follows, and what does not:
    contact, and the window as the dues ask it), each enough at three rows; then the later loss. The build that measured best (1284,
    1286) ranks this way, and the play follows the order.
    **2b. The reserve veto.** Before the line on top is played, the break search itself is asked of the board it leaves -- as it is,
-   known colours, no projection, bounded to 20 ms. No break in reach there, while a line below it, alike as proven and as lost (a
-   break's time), leaves one: that line is played. Every loss is a board with no break in reach, entered and not escaped; the veto
-   refuses the avoidable entries, exactly, and costs at most three bounded searches a decision (`decide.c reserveOf`, logged `veto=`).
+   known colours, no projection, 40 ms a board, two boards. No break in reach there, by a search that FINISHED, while a line below it,
+   alike as proven and as lost (a break's time), leaves one: that line is played. A search answer is a fact only when the search
+   finished: a none the clock cut is unknown and vetoes nothing. Every loss is a board with no break in reach, entered and not
+   escaped; the veto refuses the avoidable entries (`decide.c reserveOf`, logged `veto=played/asked/cut`; its decisions counted apart
+   by the gates).
 3. **Search for the proof.** When nothing offered is proven, the decision's search time goes to the break on the board the best line
    leaves, carried from decision to decision, and a readiness proposer offers the swap after which the board is ready for the next
    block. The hold is not a safe default at this level: the board left alone is lost within a few decisions (Learned, 1291).
@@ -283,6 +285,20 @@ line short at once by a block shown (**demand**).
 - 1326, combo_storm 17/24, gates green: the pace in the projections only. Lines that lived 763 (230 in the 19 build), of which 73%
   lived on at the next decision (86%): optimistic readiness. The board to come still lost first on 10802 askings (11594): those are
   the line's own landings, not the rest. Out; the engine and the judge are the 19 build's again (1322).
+- 1327, combo_storm 12/24: the reserve veto on 20 ms answers -- asked on 11253 decisions, swapped the line 917 times, and the gates
+  red (915 beaten head to head: the veto overrides the order by design). A search answer is a fact only when the search finished: the
+  live search with its whole share still reports none in its time on a quarter of boards, so a 20 ms "none" is the clock, not the
+  board, and the veto then preferred whichever candidate's short search got lucky. Adjusted, not reverted: the veto acts only on an
+  exhaustive none (a cut none is unknown), 40 ms a board, two boards; the gates count the veto's decisions apart.
+- The audit (three readers of the seams, same day): (1) "played" meant planned, not pressed -- after any drop the next decision
+  restored the state of an answer whose swaps never happened (a last pair never swapped, a carried line whose head never went in,
+  frontiers re-rooted past swaps not pressed). Now the frame loop records the swap pressed last (moveBegin) and a drop rolls the
+  question's played state back to it (`front.c playedRollBack`). (2) The rules kept a second copy of the last pair, carried answer to
+  answer and stale with (1); a hold counted as a repeat. Gone: the engine records the pair, its runs and its frame on the board
+  (`Board.lastSwapRuns`, `lastSwapAt`) and the rules read only that. (3) Topped was read when the question was asked and consumed at
+  its frame, up to 90 frames later: now computed on the question's board. (4) The prediction pressed a raise the frame loop cuts on a
+  topped board: one `raiseCut` for the press and the prediction. Second pass, from the audit: the move-in-hand path reports the old
+  answer as played; overdue capped arrivals vanish from the question (72 or more queued); a held key counted twice at the ask frame.
 
 ## Where this stands
 

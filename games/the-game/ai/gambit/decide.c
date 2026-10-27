@@ -500,10 +500,10 @@ EXPORT(gb_force) void gb_force(int at, int k) { forceAt = at; forceK = k; forceD
 // THE RESERVE (plans/gambit-next.md, The idle frame): whether the board a line leaves has a break in reach -- the break search itself
 // (search/break.c breakMoves), asked of that board as it is, known colours only, no projection, bounded to VETO_MS. 1 a break, 0 none,
 // -1 not asked (no end board, or the clock out). A board with no garbage on it has nothing to break: 1.
-#define VETO_MS 20
-#define VETO_LOOK 3
+#define VETO_MS 40
+#define VETO_LOOK 2
 static Board *reserveB;
-static int32_t vetoed, vetoAsked;   // (the log's veto=: the place of the line played for its reserve, 0 none; the boards asked)
+static int32_t vetoed, vetoAsked, vetoCut;   // (the log's veto=: the place of the line played for its reserve, 0 none; the boards asked; those the clock cut)
 static int reserveOf(const Judge *J) {
   if (clockOut()) return -1;
   const Board *eb = J->hold ? decQ.b : lineEnd(J->k.seq, J->k.nseq, J->settled);
@@ -516,9 +516,14 @@ static int reserveOf(const Judge *J) {
   static LOCAL Broke rbr;
   double old = clockShareBegin(nowMs() + VETO_MS);
   breakMoves(&q2, 0, 0, &rbr);
+  // (A SEARCH ANSWER IS A FACT ONLY WHEN THE SEARCH FINISHED: none found with the clock out is not none -- 917 vetoes on 20 ms answers,
+  // 12/24, run 1327. A break found is a fact either way)
+  int cut = clockOut();
   clockShareEnd(old);
   vetoAsked++;
-  return rbr.pathLen > 0;
+  if (rbr.pathLen > 0) return 1;
+  if (cut) { vetoCut++; return -1; }
+  return 0;
 }
 // (alike for the veto: as proven, and lost within a break's time of each other -- or both standing)
 static int vetoAlike(const Judge *x, const Judge *y) {
@@ -538,7 +543,7 @@ static Played playOf(const Read *R, int n) {
   // THE RESERVE VETO: every loss is a board with no break in reach, entered and not escaped (none at the next decision 86% of the
   // time). The line on top leaves a board with none in reach while a line below it, alike as proven and as lost, leaves one: that line
   // is played. Exact, and bounded: VETO_LOOK boards at VETO_MS each
-  vetoed = 0; vetoAsked = 0;
+  vetoed = 0; vetoAsked = 0; vetoCut = 0;
   if (n > 1 && R->under && reserveOf(order[0]) == 0) {
     for (int k = 1; k < n && k <= VETO_LOOK; k++) {
       Judge *c = order[k];

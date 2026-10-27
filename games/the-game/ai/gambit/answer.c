@@ -239,7 +239,7 @@ typedef struct {
   double idleMs, brMs;
 } Answer;
 static Answer theAnswer;
-static int32_t lastA, lastB, pairRuns, blockA, blockB, blockUntil, emptyAt = NUL;
+static int32_t emptyAt = NUL;
 
 // SWITCHING (plans/gambit-goal.md 5): the profile's `switch` -- the mode changed mid-game as a rule's `when` changes it, after a random
 // stretch of `min` to `max` frames each time. A game's switches walk a circuit through every ordered pair of the attack rules (each
@@ -255,7 +255,7 @@ static double readMs;   // (the board's reading, for the log)
 // an answer never played joins them (decide.c intentOfCarry).
 #define CARRIEDN 64
 typedef struct {
-  int32_t id, mode, carryLost, lastA, lastB, pairRuns, blockA, blockB, blockUntil, idle;
+  int32_t id, mode, carryLost, idle;
   Kept front[NFRONT]; Carry carry, carryNext;
 } Carried;
 static Carried carriedRing[CARRIEDN];
@@ -269,7 +269,7 @@ static void carriedKeep(int32_t id) {
   Carried *c = &carriedRing[carriedHead];
   carriedHead = (carriedHead + 1) % CARRIEDN; if (carriedN < CARRIEDN) carriedN++;
   c->id = id; c->mode = modeRule; c->carryLost = carryLost;
-  c->lastA = lastA; c->lastB = lastB; c->pairRuns = pairRuns; c->blockA = blockA; c->blockB = blockB; c->blockUntil = blockUntil; c->idle = C2.idle;
+  c->idle = C2.idle;
   memcpy(c->front, theFront, sizeof theFront); c->carry = theCarry; c->carryNext = theCarryNext;
   carriedOf = id;
 }
@@ -282,12 +282,11 @@ static void carriedResume(void) {
     if (!c) carriedLost = played;
     else {
       carryLost = c->carryLost;
-      lastA = c->lastA; lastB = c->lastB; pairRuns = c->pairRuns; blockA = c->blockA; blockB = c->blockB; blockUntil = c->blockUntil; C2.idle = c->idle;
+      C2.idle = c->idle;
       // (the lines the answers not played chose: ideas still, the next decision's to judge)
       if (theCarryNext.set && !sameCarry(&theCarryNext, &c->carryNext)) carriedIdeas += intentOfCarry(&theCarryNext);
       if (theCarry.set && !sameCarry(&theCarry, &c->carry)) carriedIdeas += intentOfCarry(&theCarry);
       memcpy(theFront, c->front, sizeof theFront); theCarry = c->carry; theCarryNext = c->carryNext;
-      gb_back(lastA, lastB, pairRuns, blockA, blockB, blockUntil, 0);
       if (c->mode != modeRule) modeLeft();   // (kept under another mode: let go, as a switch lets it go)
       carriedResumed = played;
     }
@@ -322,7 +321,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the rules read first -- the list, the floor -- so the break search finds only breaks the judge will take)
   Read R;
   backBoard = decQ.b;
-  theBack.at = at;
   aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
   readyAsked = readyHit = 0; readyStop(); readyBeamIn = readyBeamOut = 0; readyBeamGen++; readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
@@ -411,16 +409,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   carryKept = 0;
   if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
   else if (d.kind == 1 && P.line && P.line->k.nseq == 1 && !theCarry.set) carryReady(P.line, qid);
-  // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
-  int32_t pa = NUL, pb = NUL;
-  if (d.kind == 1) { pa = decQ.b->p[CR(d.move)][CC(d.move)].f[ID]; pb = decQ.b->p[CR(d.move)][CC(d.move) + 1].f[ID]; }
-  int pairKnown = d.kind == 1 ? (pa != NUL && pb != NUL) : !!lastA;
-  int32_t na = d.kind == 1 ? pa : lastA, nb = d.kind == 1 ? pb : lastB;
-  int same = pairKnown && lastA && samePair(na, nb, lastA, lastB);
-  pairRuns = same ? pairRuns + 1 : 0;
-  if (pairRuns >= 2) { blockA = na; blockB = nb; blockUntil = at + 60; }
-  if (pairKnown) { lastA = na; lastB = nb; } else { lastA = lastB = 0; }
-  gb_back(lastA, lastB, pairRuns, blockA, blockB, blockUntil, at);
   C2.idle = d.kind == 0 || (!R.up && !P.wait && !n);   // (held, or nothing was wanted)
   // what the answer and the audit read
   if (P.line) {
@@ -569,7 +557,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (top) for (int i = 0; i < P.ncands && !A->sooner; i++) { const Judge *j = order[i];
     A->sooner = j != top && (proofOf(j) > proofOf(top) || (diesNow(top) && !diesNow(j))); }
   if (A->sooner) L_s(" lessProven=1");   // (the gate, plans/gambit-next.md: a proven line passed over, or dead at once while one offered is not)
-  if (vetoAsked) { L_s(" veto="); L_i(vetoed); L_s("/"); L_i(vetoAsked); }   // (the reserve veto, decide.c: the place of the line played for its reserve, over the boards asked)
+  if (vetoAsked) { L_s(" veto="); L_i(vetoed); L_s("/"); L_i(vetoAsked); L_s("/"); L_i(vetoCut); }   // (the reserve veto, decide.c: the place of the line played for its reserve, the boards asked, those the clock cut)
   // (THE PROOF LOST, plans/gambit-next.md the gates: the last decision played a proven line and this one has none -- new: a block shown
   // since; cut: the clock cut the first line's readiness; none: nothing new shown and nothing cut, the proof should have held)
   if (lastProven && !(top && proofOf(top) > 0) && !R.up) { L_s(" proofLost="); L_s(decQ.narr > lastNarr ? "new" : top && top->endReady == NOT_ASKED ? "cut" : "none"); }
@@ -682,10 +670,9 @@ EXPORT(gb_new_game) void gb_new_game(void) {
   proofSought = 0; breakOpen = 0; touchDepthNext = TOUCH_DEPTH;
   memset(&nextBlk, 0, sizeof nextBlk); nextBlkAt = 0; lastProven = 0; lastNarr = 0;
   modeLeft(); lifeDumps = 0; forceDone = 0; openerOver = 0;
-  lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
+  emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
   memset(theIntents, 0, sizeof theIntents);
-  gb_back(0, 0, 0, 0, 0, 0, 0);
   carriedClear();
 }
 EXPORT(gb_switch) void gb_switch(int min, int max) { switchMin = min > 0 ? min : 0; switchMax = max > switchMin ? max : switchMin; nswitch = 0; }

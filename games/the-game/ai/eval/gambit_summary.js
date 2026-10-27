@@ -128,7 +128,8 @@ var beaten = { n: 0, by: {} };
 // nothing cut (readiness wrong); proofLost=new/cut counted beside; heldFor= the hold played for an unproven first line; and every margin
 // share (mgs=) must take more than one value over the run)
 var gates = { lessProven: 0, proofNone: 0, proofNew: 0, proofCut: 0, heldFor: 0, shares: [{}, {}, {}, {}] };
-var veto = { asked: 0, boards: 0, played: 0 };   // (the reserve veto, decide.c: decisions that asked it, boards searched, lines played below the top for a break in reach)
+var veto = { asked: 0, boards: 0, played: 0, cut: 0 };
+var brNone = { n: 0, cut: 0 };   // (decisions whose break search found none, and those the clock cut)   // (the reserve veto, decide.c: decisions that asked it, boards searched, lines played below the top for a break in reach)
 var putBack = 0, idleQ = { lost: { frames: 0, idle: 0 }, survived: { frames: 0, idle: 0 } };   // (pairs put back for nothing refused at the press; frames idle with garbage queued, by outcome)
 var catd = { n: 0, missing: 0 };   // (decisions that offered lines, and those whose lines carry no category)   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
@@ -221,12 +222,15 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (so) { sooner.n++; sooner.by[so[3]] = (sooner.by[so[3]] || 0) + 1; }
       // (THE ORDER NOT ONE ORDER: answer.c beaten=, the line played beaten head to head by one ranked under it)
       var bt = / beaten=\w+:k(\d+(?:\.\w+)?)/.exec(l);
-      if (bt) { beaten.n++; beaten.by[bt[1]] = (beaten.by[bt[1]] || 0) + 1; }
-      if (/ lessProven=1/.test(l)) gates.lessProven++;
+      var vetoedHere = / veto=[1-9]/.test(l);
+      if (bt && !vetoedHere) { beaten.n++; beaten.by[bt[1]] = (beaten.by[bt[1]] || 0) + 1; }
+      if (/ lessProven=1/.test(l) && !vetoedHere) gates.lessProven++;
       var pl = / proofLost=(\w+)/.exec(l);
       if (pl) { if (pl[1] === 'none') gates.proofNone++; else if (pl[1] === 'new') gates.proofNew++; else gates.proofCut++; }
       if (/ heldFor=1/.test(l)) gates.heldFor++;
-      { var vm = / veto=(\d+)\/(\d+)/.exec(l); if (vm) { veto.asked++; veto.boards += +vm[2]; if (+vm[1] > 0) veto.played++; } }
+      { var vm = / veto=(\d+)\/(\d+)\/(\d+)/.exec(l); if (vm) { veto.asked++; veto.boards += +vm[2]; veto.cut += +vm[3]; if (+vm[1] > 0) veto.played++; } }
+      // (the live break search's own answer: no break found, and whether the clock cut that search -- a cut none is not none)
+      { var bm = / br=(\d+)\/(0|t\d+)(\/[a-z0-9\/]*)?/.exec(l); if (bm) { brNone.n++; if (bm[3] && bm[3].indexOf('/cut') >= 0) brNone.cut++; } }
       var lo1 = / landedOne=(-?\d+)/.exec(l);
       if (lo1) { gates.landedOne = (gates.landedOne || 0) + 1; if (+lo1[1] <= 0) gates.landedOneNone = (gates.landedOneNone || 0) + 1; }
       var mg = / mgs=(\S+)/.exec(l);
@@ -406,7 +410,8 @@ var constShares = ['room', 'material', 'window', 'contact'].filter(function (nm,
 console.log('shares: ' + constShares.length + ' margin shares constant over the run' + (constShares.length ? ' (' + constShares.join(', ') + ')' : ''));
 // NO PAIR PUT BACK (the owner: never -- a pair swapped back and forth holds garbage off the board and is no play): the press guard's
 // refusals, each a line the judge let through with its first swap putting the last pair pressed back for nothing (rules.c putBackFor)
-console.log('reserve veto: ' + veto.played + ' decisions played a line below the top for a break in reach on the board it leaves, of ' + veto.asked + ' that asked (' + veto.boards + ' boards searched)');
+console.log('reserve veto: ' + veto.played + ' decisions played a line below the top for a break in reach on the board it leaves, of ' + veto.asked + ' that asked (' + veto.boards + ' boards searched, ' + veto.cut + ' answers the clock cut, taken as unknown)');
+console.log('no break found: ' + brNone.n + ' decisions, the clock cut ' + brNone.cut + ' of those searches (a cut none is not none)');
 console.log('put back: ' + putBack + ' swaps refused at the press for putting the last pair pressed back for nothing');
 // THE IDLE FRAME: garbage lands only on a frame the board is idle (test/stall_check.c) -- how many a minute, games lost against survived
 function idleRate(k) { return idleQ[k].frames ? (idleQ[k].idle * 3600 / idleQ[k].frames).toFixed(0) : '-'; }

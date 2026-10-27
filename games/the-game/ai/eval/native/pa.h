@@ -100,6 +100,7 @@ typedef struct Board {
   // nrows rows and nothing past them
   Incoming inc[MAXINC];           // the next to drop last
   Panel p[MAXROWS][W + 1];
+  int32_t lastSwapRuns, lastSwapAt;   // how many swaps running have swapped that same pair (this one counted), and the clock of the last
   int32_t lastSwapA, lastSwapB;   // the two panels the last swap swapped, by id, as the swap found them (left, right); 0 none. The
                                   // engine's own record (doSwap), not the game's: past the head so a board's dumped bytes are as they
                                   // were, copied with the board (paCopy), zeroed by a load (nb_load) for the host to set
@@ -112,7 +113,7 @@ static inline void paCopy(Board *dst, const Board *src) {
   memcpy(dst, src, BOARD_HEAD);
   memcpy(dst->inc, src->inc, (unsigned long)src->ninc * sizeof(Incoming));
   memcpy(dst->p, src->p, (unsigned long)src->nrows * sizeof(Panel) * (W + 1));
-  dst->lastSwapA = src->lastSwapA; dst->lastSwapB = src->lastSwapB;
+  dst->lastSwapA = src->lastSwapA; dst->lastSwapB = src->lastSwapB; dst->lastSwapRuns = src->lastSwapRuns; dst->lastSwapAt = src->lastSwapAt;
 }
 #define COPY_BOARD(dst, src) paCopy(dst, src)
 

@@ -123,6 +123,7 @@ static struct {
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
   int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil, guardSpoil, loggedRefusedBoards;
+  int32_t pressedLine, pressedIdx;   // PRESSED, NOT PLANNED: the answer whose swap was pressed last and the swap's place in its line (moveBegin) -- what a drop rolls the question's "played" back to (playedRollBack)
 
   int32_t pGap, lineGap, altGap, keyGap, linePlay, altPlay;   // (the pace the question out, the line in hand and the move in hand were judged with; the keys made now)
   int32_t pPosted, lineAsked, altAsked, lastReveal;   // (the frames questions were posted on, and colours were last shown on)   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
@@ -315,10 +316,23 @@ static void planDrop(int32_t t) { int i = t & (PLANN - 1); if (F.planAt[i] == t)
 typedef struct { int32_t clock, bits, planned, pend, nextAt, lineN, lineAt, drops; } FTrace;
 static FTrace ftrace[FTRACE]; static int32_t ftraceN, ftraceDrops;
 static void planClearFrom(int32_t t) { ftraceDrops |= 4; for (int i = 0; i < PLANN; i++) if (F.planAt[i] != NUL && F.planAt[i] >= t) F.planAt[i] = NUL; }
+// PRESSED, NOT PLANNED (the audit): what the next question says was played -- playedId, lineOfId, lineOfPressed -- is set when an answer's
+// keys go into the plan, true because every question is asked no later than the next swap's frame, so the keys planned are the keys
+// pressed by then. A drop breaks that: the keys from `t` are gone and never pressed. The question is rolled back to what was pressed --
+// the last swap pressed (moveBegin: pressedLine, pressedIdx), or the last one still planned before `t`, which is pressed before any
+// question asked after the drop. Else the next decision restores the state of an answer never played: a last pair never swapped, a
+// carried line whose head never went in, frontiers re-rooted past swaps that did not happen
+static void playedRollBack(int32_t t) {
+  int32_t L = F.pressedLine, k = F.pressedLine >= 0 ? F.pressedIdx + 1 : 0, prev = F.prevBits;
+  for (int32_t f = F.now + 1; f < t; f++) { Planned *p = planOf(f); int32_t bits = p ? p->bits : 0; if (p && (bits & IN_SWAP & ~prev) && p->line >= 0) { L = p->line; k = p->idx + 1; } prev = bits; }
+  if (L < 0) { F.playedId = 0; F.haveLineOf = 0; F.lineOfId = -1; F.lineOfPressed = 0; }
+  else { F.playedId = L; F.haveLineOf = 1; F.lineOfId = L; F.lineOfPressed = k; }
+}
 // Everything planned and asked is dropped: the board is not the one it was made for.
 static void dropAll(void) {
   ftraceDrops |= 1; F.nunseen = 0;
   if (F.pending) abortTo(F.pId);
+  playedRollBack(F.now + 1);
   F.epoch++; planClearFrom(NUL + 1); F.nextAt = 0; F.lineN = 0; F.pending = 0;
 }
 // Everything planned from frame `t` and asked is dropped: the board is the one it was made for until then. (from the next frame or
@@ -327,6 +341,7 @@ static void dropFrom(int32_t t) {
   if (t <= F.now + 1) { dropAll(); return; }
   ftraceDrops |= 2;
   if (F.pending) abortTo(F.pId);
+  playedRollBack(t);
   F.epoch++; planClearFrom(t); if (F.nextAt > t) F.nextAt = t; F.lineN = 0; F.pending = 0;
   // (the garbage now on its way is what the keys kept are pressed knowing: told once, not again every frame till they end)
   memcpy(F.knew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.nknew = F.narr;
@@ -342,6 +357,9 @@ static void holdRaise(Board *b, int32_t *hl, int32_t *hs, int32_t *bits) {
   raiseStep(&h, b, bits);
   *hl = h.raiseFrames; *hs = h.raiseStarted;
 }
+// A RAISE CUT: never raised while topped out (the engine kills a topped board that raises). The one test, for the key pressed
+// (frontFrame), the board predicted (predict) and the board the save plays on -- a raise the frame loop cuts is one no prediction presses
+static int32_t raiseCut(Board *b, int32_t bits) { return (bits & IN_RAISE) && (isToppedOut(b) || b->wasToppedOut) ? bits & ~IN_RAISE : bits; }
 static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdStarted, const Arrival *from, int32_t nfrom, Board *out,
                    int32_t *hL, int32_t *hS) {
   copyBoard(out, b);
@@ -352,6 +370,7 @@ static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdSta
     int32_t bits = 0;
     if (p) { bits = p->bits; hl = p->holdLeft; hs = p->holdStarted; }
     else if (hl > 0) holdRaise(out, &hl, &hs, &bits);
+    bits = raiseCut(out, bits);
     out->input = bits & ~IN_SWAP;
     if (bits & IN_SWAP) out->pressSwap = 1;
     run(out);
@@ -869,7 +888,7 @@ static int frontFrame(void) {
   if (F.curWalked) F.st.cursorCells += iabs(t->curRow - F.curRowWas) + iabs(t->curCol - F.curColWas);
   F.curRowWas = t->curRow; F.curColWas = t->curCol;
   F.toppedNow = isToppedOut(t);
-  if (F.haveExpect) { t->lastSwapA = F.expect->lastSwapA; t->lastSwapB = F.expect->lastSwapB; }   // (the game's board carries no record of its last swap; the engine's, from the frame it played, is the truth's -- the board is the same, the truth gate)
+  if (F.haveExpect) { t->lastSwapA = F.expect->lastSwapA; t->lastSwapB = F.expect->lastSwapB; t->lastSwapRuns = F.expect->lastSwapRuns; t->lastSwapAt = F.expect->lastSwapAt; }   // (the game's board carries no record of its last swap; the engine's, from the frame it played, is the truth's -- the board is the same, the truth gate)
   F.st.frames++;
   double wall = fNow();
   if (F.wall) F.wallPerFrame += ((wall - F.wall < 100 ? wall - F.wall : 100) - F.wallPerFrame) / 60;
@@ -910,7 +929,7 @@ static int frontFrame(void) {
     F.st.idle++;
   }
   // (never raised while topped out: the raise is let go, and what was planned with it dropped)
-  if ((bits & IN_RAISE) && (F.toppedNow || t->wasToppedOut)) {
+  if (raiseCut(t, bits) != bits) {
     bits &= ~IN_RAISE; F.holdLeft = 0; F.holdStarted = 0;
     if (!(now < F.raiseCutUntil)) { dropAll(); F.st.raiseCut++; }
     F.raiseCutUntil = now + 30;
@@ -950,7 +969,7 @@ static int frontFrame(void) {
     F.refA = t->lastSwapA; F.refB = t->lastSwapB; F.refUntil = now + REFUSE_BLOCK;
     if (F.st.putBack <= 12) { char l[240]; snprintf(l, sizeof l, "PUTBACK clock %d: the pair the last swap swapped (%d,%d at %d,%d), put back for nothing, refused -- made %d root %d out %d, asked %d for %d, play %d line %d idx %d", now, t->lastSwapA, t->lastSwapB, t->curRow, t->curCol, putBackMade, putBackRoot, putBackOut, asked, F.pAt, pk.play, pk.line, pk.idx); flog(l); }
   }
-  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save, guard, &pk);
+  if (bits & IN_SWAP & ~F.prevBits) { moveBegin(t, save, guard, &pk); if (pk.line >= 0) { F.pressedLine = pk.line; F.pressedIdx = pk.idx; } }
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
   countActions(bits, now, p ? pk.play : NPLAYS + 1);
   if (bits & IN_SWAP) F.swapSince = 1;
@@ -1060,6 +1079,7 @@ static void frontNew(int ahead, int gap, int jitter) {
   Board *keep[4] = { F.truth, F.expect, F.pr, F.pBoard };
   int32_t nextId = F.nextId;
   memset(&F, 0, sizeof F);
+  F.pressedLine = -1;   // (no swap pressed yet: playedRollBack)
   F.truth = keep[0] ? keep[0] : nb_new(); F.expect = keep[1] ? keep[1] : nb_new(); F.pr = keep[2] ? keep[2] : nb_new(); F.pBoard = keep[3];
   for (int i = 0; i < PLANN; i++) F.planAt[i] = NUL;
   F.nextId = nextId ? nextId : 1;
