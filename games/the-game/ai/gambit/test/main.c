@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
   snprintf(path, sizeof path, "%s/boards.txt", dir);
   FILE *f = fopen(path, "r");
   if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
-  int boards = 0, wrong = 0;
+  int boards = 0, wrong = 0, stallWrong = 0, stallBoards = 0;
   while (fgets(line, sizeof line, f)) {
     if (strncmp(line, "GAMBITB ", 8)) continue;
     int narr, n = loadLine(line, &narr);
@@ -122,10 +122,17 @@ int main(int argc, char **argv) {
     // (THE STALL, test/stall_check.c: fifty 4x1 queued, a harmless pair swapped every gap frames for 3000 -- what lands, rises, clears)
     if (boards <= 4) {
       int gaps[] = { 0, 4, 5, 6, 8, 12 };
+      int32_t idle[5] = { 0 }, held[5] = { 0 };
       printf("stall, board %d:", boards);
       for (unsigned gi = 0; gi < sizeof gaps / sizeof *gaps; gi++) { int32_t o[5]; int r = gb_stall_check(gaps[gi], 3000, o);
-        if (r) printf(" gap %d: no pair (%d)", gaps[gi], r); else printf(" gap %d: landed %d rose %d clears %d lost %d top %d;", gaps[gi], o[0], o[1], o[2], o[3], o[4]); }
+        if (r) printf(" gap %d: no pair (%d)", gaps[gi], r); else printf(" gap %d: landed %d rose %d clears %d lost %d top %d;", gaps[gi], o[0], o[1], o[2], o[3], o[4]);
+        if (!r && gaps[gi] == 0) memcpy(idle, o, sizeof idle);
+        if (!r && gaps[gi] == 4) memcpy(held, o, sizeof held); }
       printf("\n");
+      // (the fact: a board alive past 300 frames idle takes no block while a pair is swapped every 4 frames -- it can still be lost, to
+      // the rise or to its health, which the swap does not hold)
+      if (idle[3] > 300 && held[0] != 0) { stallWrong++; printf("  FAIL: a swap every 4 frames let %d blocks land\n", held[0]); }
+      stallBoards += idle[3] > 300;
     }
   }
   fclose(f);
@@ -133,7 +140,8 @@ int main(int argc, char **argv) {
   printf("%s: bits against cells -- %d boards of games, %d boards in all, %d disagreements\n", wrong ? "FAIL" : "ok", boards, gb_bits_boards(), wrong);
   int offered = gb_perch_counts(0), dropped = gb_perch_counts(1);
   printf("%s: perched blocks -- %d lines offered, %d let their block down\n", offered && !dropped ? "FAIL" : "ok", offered, dropped);
-  fail |= wrong || !boards || (offered && !dropped);
+  printf("%s: the stall -- %d boards alive past 300 frames idle, %d took a block with a pair swapped every 4 frames\n", stallWrong || !stallBoards ? "FAIL" : "ok", stallBoards, stallWrong);
+  fail |= wrong || !boards || (offered && !dropped) || stallWrong || !stallBoards;
   // ---- the decisions
   snprintf(path, sizeof path, "%s/rules.words", dir);
   if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }

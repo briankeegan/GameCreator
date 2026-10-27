@@ -27,12 +27,36 @@ held; (b) the board diverged from the engine; (c) the end board was marked ready
 was held and the search found none in time. (a) and (b) are bugs and are gated to zero. (c) and (d) are made rare by one rule:
 nothing the proof needs is spent while no proof is held.
 
+### The idle frame
+
+Garbage lands, and the stack rises, only on a frame the board is idle: nothing matching, falling or swapping (pa.c shouldDropGarbage,
+updateRiseLock). A swap in progress holds both. Measured on the engine (`test/stall_check.c`, a C check): fifty 4x1 queued and a pair
+swapped every 4 frames, 3000 frames, nothing lands; every 5 frames or more, blocks land and the board is lost by frame 400. So every
+block that ever landed on Gambit landed on a frame it left idle, and the queue in these modes is never empty after the first volley (50
+blocks a volley, 950 frames apart; ~10 taken a volley). Death is never forced; it is taken, an idle frame at a time.
+
+What follows, and what does not:
+
+- **The board stays active by real play only** -- breaking garbage, making a clear, carrying a panel toward one, a cell a swap. The
+  owner: never a pair swapped back and forth to hold the garbage off; that is no play. One rule, `rules.c putBackFor`: a swap that
+  puts the pair the last swap pressed back and makes nothing is never a swap. The judge asks it of every line's first swap (`swapBack`),
+  the searches as they grow lines (`firstOk`), the press guard of the swap about to be pressed (`front.c putsBack`, on the board as it
+  is), and the guard's refusals are a gate at zero: one means the judge let one through.
+- **A line's idle frames are its landings.** The judge plays the line on the engine with the queue on the board, so each idle frame
+  with garbage queued lands a block in the judging, as in the game. The hold is a rain. Counted on the game: `idleQueued`, frames idle
+  with garbage queued, a minute, games lost against survived.
+- **Ready is real play in reach.** The board a line leaves is ready when it has garbage on it and a break within the shape math's reach
+  (`outcome.c endNear`, `nearOf`), or no garbage on it. A line whose plan stands past the rows shown but leaves no play in reach is
+  not proven (`rank.c playReady`, in step 1 only): the next decision would go idle on it.
+- **The rest stays silence.** After a plan runs out the judge assumes nothing pressed, because that is the truth when the bot has
+  nothing; what keeps the bot from idling is the proof asking for play in reach, not an assumed future line.
+
 ## The steps
 
-1. **Proven first.** A line whose plan, played on the engine, pays every row shown before the board dies is proven. A proven line
-   beats every unproven one. Whether its end board is ready for the next block the mode sends is read (the shape math, the swaps to the
-   nearest break with the biggest block of the game landed on it) and logged (`er=`); it is not yet part of the proof -- see Learned,
-   1289 to 1292.
+1. **Proven first.** A line whose plan, played on the engine, pays every row shown before the board dies, and leaves real play in
+   reach (The idle frame: `playReady`), is proven. A proven line beats every unproven one. Whether its end board is ready for the next
+   block the mode sends by the fuller shape math (the nearest break with the biggest block of the game landed on it) is read and logged
+   (`er=`) but not part of the proof -- see Learned, 1289 to 1292 and 1299.
 2. **Unproven: the most left to find a proof with.** Of lines not proven, one that dies before it could press anything ranks last;
    then the one that leaves the most of its scarcest resource, then of the next -- the two scarcest only (`marginKey`: room, material,
    contact, and the window as the dues ask it), each enough at three rows; then the later loss. The build that measured best (1284,
@@ -60,6 +84,9 @@ Every failure of the induction is named in the log and a check goes red on the o
 - **Search short** (d): the loss names the decision no proof was first held at, what was shown, how deep the search got and the time
   it had. The only loss allowed, and the one to make rarer.
 - **A fact that never varies is not a fact:** every margin share (`mgs=`) must vary over a game -- red when one is constant.
+- **No pair put back:** the press guard refused a swap that put the last pair pressed back for nothing -- red (`put back:`).
+- **The stall is a fact of the engine, not a move:** `test/stall_check.c` fails the C checks if a board alive past 300 frames idle
+  takes a block with a pair swapped every 4 frames.
 
 **The measure:** one run, one mode, its 24 games (`patterns: ["<mode>"]`, rounds 1-3). A piece stays if it raises the number. A mode
 is done at 22 and then the next, and the goal is measured on all three.
@@ -191,6 +218,11 @@ line short at once by a block shown (**demand**).
 - 1313, combo_storm 14/24, and the one-order gate red (23 decisions): the later loss net of what the line spends. A loss net of
   the spend is not one order with the bands -- two lines alike by the gross loss order one way, and the net loss the other. Taken
   back out. The build is 1309's again (19).
+- 1314, combo_storm 19/24: the 1309 build again (the net loss out), the same five losses to the frame. Measured with it, on the
+  engine (test/stall_check.c): garbage lands and the stack rises only on an idle frame -- fifty 4x1 queued, a pair swapped every 4
+  frames, 3000 frames, nothing landed; every 5 frames or more, blocks land and the board is lost by 400. Every block that ever
+  landed on Gambit landed on a frame it left idle. The owner: no swapping a pair back and forth to stall -- the board stays active
+  by real play only: breaking, making, carrying a panel toward one; never a pair put back.
 
 ## Where this stands
 

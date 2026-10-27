@@ -593,11 +593,14 @@ static int catOf(const Judge *J, const Judge *H) {
 // (A LINE'S PROOF, plans/gambit-next.md 1 and 4: 3 its board lives left alone; 2 it lives by its plan; 1 its plan, played on the engine,
 // stands past the last row shown is due and PROOF_ROWS rows' breaks more; 0 unproven -- its loss is a bound, the breaks the searches
 // found, not a fact)
+// (READY, plans/gambit-next.md 1: the board the line leaves has real play in reach -- a break within the shape math's reach, or no
+// garbage on it. Not read (no end board): taken as ready. The owner: the bot stays active by breaking, making or carrying toward one)
+static int playReady(const Judge *J) { return J->o.endNear < 0 || J->o.endNear < NEAR_MISS; }
 static int proofOf(const Judge *J) {
   if (J->o.lives) return 3;
   if (J->extLost == FOREVER) return 2;
   double l = lostOf(J);
-  return l < 1e9 && l > proofFrame();
+  return l < 1e9 && l > proofFrame() && playReady(J);
 }
 // (DEAD BEFORE IT COULD PRESS ANYTHING: unproven and lost within a break's time -- the hold's loss not known among them)
 static int diesNow(const Judge *J) { return !livesOf(J) && lostOf(J) < imax(1, rankSave); }

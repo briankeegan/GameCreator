@@ -128,6 +128,7 @@ var beaten = { n: 0, by: {} };
 // nothing cut (readiness wrong); proofLost=new/cut counted beside; heldFor= the hold played for an unproven first line; and every margin
 // share (mgs=) must take more than one value over the run)
 var gates = { lessProven: 0, proofNone: 0, proofNew: 0, proofCut: 0, heldFor: 0, shares: [{}, {}, {}, {}] };
+var putBack = 0, idleQ = { lost: { frames: 0, idle: 0 }, survived: { frames: 0, idle: 0 } };   // (pairs put back for nothing refused at the press; frames idle with garbage queued, by outcome)
 var catd = { n: 0, missing: 0 };   // (decisions that offered lines, and those whose lines carry no category)   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
@@ -281,6 +282,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       budget.diverged += o.diverged || 0; if (o.diverged) budget.divergedGames++;
       budget.behind += o.behind || 0; if (o.behind) budget.behindGames++; budget.behindWorst = Math.max(budget.behindWorst, o.behindWorst || 0);
       budget.starved += o.starved || 0; budget.inHand += o.inHand || 0; budget.guarded += o.guarded || 0; budget.refused += o.refused || 0;
+      putBack += o.putBack || 0; idleQ[m[2]].frames += o.frames || 0; idleQ[m[2]].idle += o.idleQueued || 0;
       var a = o.attacks || {};
       ['combo', 'chain'].forEach(function (k) { Object.keys(a[k] || {}).forEach(function (z) { t[k][z] = (t[k][z] || 0) + a[k][z]; }); });
       if (one && !switched) aimOf(one, a);
@@ -400,6 +402,12 @@ console.log('landed one-swap: ' + (gates.landedOneNone || 0) + ' of ' + (gates.l
 console.log('held for the proof: ' + gates.heldFor + ' of ' + sooner.dec + ' decisions played the hold for an unproven first line');
 var constShares = ['room', 'material', 'window', 'contact'].filter(function (nm, i) { return Object.keys(gates.shares[i]).length < 2; });
 console.log('shares: ' + constShares.length + ' margin shares constant over the run' + (constShares.length ? ' (' + constShares.join(', ') + ')' : ''));
+// NO PAIR PUT BACK (the owner: never -- a pair swapped back and forth holds garbage off the board and is no play): the press guard's
+// refusals, each a line the judge let through with its first swap putting the last pair pressed back for nothing (rules.c putBackFor)
+console.log('put back: ' + putBack + ' swaps refused at the press for putting the last pair pressed back for nothing');
+// THE IDLE FRAME: garbage lands only on a frame the board is idle (test/stall_check.c) -- how many a minute, games lost against survived
+function idleRate(k) { return idleQ[k].frames ? (idleQ[k].idle * 3600 / idleQ[k].frames).toFixed(0) : '-'; }
+console.log('idle with garbage queued: ' + idleRate('lost') + ' frames a minute in games lost, ' + idleRate('survived') + ' in games survived (each one a block landing)');
 console.log('categorised: ' + catd.missing + ' of ' + catd.n + ' decisions offered lines with no category or no ledger');
 console.log('truth: ' + budget.diverged + ' boards predicted otherwise than the game made them, in ' + budget.divergedGames + ' of ' + budget.games + ' games');
 // THE LINE AS JUDGED: every swap of a line handed on is keyed from the frame the judge pressed it from; one keyed later is pressed on a board

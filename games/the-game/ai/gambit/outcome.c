@@ -25,6 +25,7 @@ typedef struct {
   int32_t matLeft;     // the material the board the line leaves has: its panels under the lowest garbage, the next break's (materialOn); -1 not asked
   int32_t topLeft;     // that board's top row (topOn); -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
+  int32_t endNear;     // on any whole line: the same, 0 with no garbage on that board (ready: plans/gambit-next.md 1, rank.c playReady); -1 not read
   int32_t nBreakAt, breakAt[PLANBREAKS];   // a plan's breaks: the frame each is pressed from (readyNextOf), for the ledger (plans/gambit-next.md)
   int32_t planBroke;   // the garbage the plan converts beyond the board left alone (readyNextOf)
   int32_t planTop, planMat, planContact, planUnder, planEndAt;   // the margin the plan leaves (planLanded); planTop -1 not read
@@ -166,7 +167,7 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : timeLeftMs() > 0;
   JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, whole, waitAt, waitTo, 1, nmore, moreAt, moreTo };
   Outcome o;
-  memset(&o, 0, sizeof o); o.topLeft = -1;
+  memset(&o, 0, sizeof o); o.topLeft = -1; o.endNear = -1;
   judge(&decQ, seq, n, &jo, &o.j);
   o.late = o.j.late;
   o.dead = 1; o.lostAt = o.j.lostAt; o.lives = 0; o.ready = NOT_ASKED;
@@ -178,13 +179,17 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
     o.fits = lineInList(&o.j, 1);
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.topLeft = -1;
+    o.panelsLeft = -1; o.nearAfter = -1; o.endNear = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.topLeft = -1;
     if (whole) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
       if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.topLeft = topOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
+      // (READY, plans/gambit-next.md 1: real play in reach on the board the line leaves -- garbage on it, and a break within the shape
+      // math's reach (nearOf, NEAR_MISS none); none on it, nothing to be ready for. Read on every whole line; the proof reads it, rank.c
+      // playReady -- nearAfter stays the under-garbage tier key it was)
+      if (eb) o.endNear = decF.under ? o.nearAfter : garbageOn(eb) ? nearOf(eb) : 0;
       if (breaks) o.nextBuild = eb ? buildsNext(eb) : -1;
     }
     // (THE NEXT BREAK SPENT: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board left

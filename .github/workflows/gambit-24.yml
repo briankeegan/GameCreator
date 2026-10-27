@@ -294,6 +294,10 @@ jobs:
       - name: Every share a fact
         run: |
           grep -q '^shares: 0 ' report/summary.txt || { grep '^shares:' report/summary.txt | sed 's/^/::error title=shares::/'; exit 1; }
+      # NO PAIR PUT BACK (the owner: never): the press guard refused a swap that put the last pair pressed back for nothing -- the judge let it through
+      - name: No pair put back
+        run: |
+          grep -q '^put back: 0 ' report/summary.txt || { grep '^put back:' report/summary.txt | sed 's/^/::error title=put back::/'; exit 1; }
       # EVERY LINE CATEGORISED: each decision that offers lines logs the judge's category for every one
       - name: Every line categorised
         run: |
