@@ -322,6 +322,11 @@ line short at once by a block shown (**demand**).
 - The window reserve as a filter (1329's two hand deaths): under garbage a line that breaks nothing and leaves the window below a
   break's walk at the next landing is out of the order, as a wasted three is -- unless it is the save, or every line but the hold
   spends it. A reserve that is a key is no reserve.
+- 1331 cancelled (one master run at a time). 1332, combo_storm 13/24, tsan red: the board to come as one block landed did what it
+  was for on its own numbers -- readiness found a break on 4888 boards (3301), the board lost first 4673 times (11594) -- and
+  carried an introduced bug: the promise's wait was the frame the block dropped on, not the frame the board to come was settled on,
+  so every carried readiness break was pressed a few frames early on a board with the block still falling (1085 proofs lost with
+  nothing new shown), and the new record was shared across threads. Both fixed in the one function; 1333 runs it.
 
 ## Where this stands
 
