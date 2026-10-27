@@ -230,3 +230,17 @@ games do between breaks that the survived ones do not.
   a one-swap break is handed out whole, pressed once the block has landed (the line's waitTo), and a line with a wait before its first
   swap is judged with it whatever its length -- the judge's own wait never applied before a swap that was also the last, so a carried
   promise of one swap was judged pressed now and dropped (a step no longer there).
+- 1304, combo_storm 14/24: the one-swap break on the board to come offered, pressed at the landing. It was offered (178 candidates in
+  one game against 12) and judged with its wait, and it broke nothing in 33 of the 37 lines that reached the order -- the swap the
+  search found on the board to come does not break the block when the judge presses it there. Below the 15; taken back out, with the
+  finding: before it is offered again, the judge's board at the landing must be checked against the search's (the same frame, the
+  same settle), swap by swap. The log keeps plan= and carry=.
+
+## Where this stands, end of the night
+
+combo_storm 15/24 (1300, 1302), the build on main. Twenty runs since the plan. The order stays as set: proven first, the margin, the
+later loss; the room share reads below none. What the logs established this night, each with its number: the search is not the piece
+(reach); the hold is never safe at this level (half the readiness checks find the board lost before the block lands); the plan the
+proof rests on exists in 14 decisions of 618, so steps 5 and 6 have nothing to carry; the break on the board to come is found in a
+sixth of the checks and, when it is one swap, is thrown away -- and when offered, does not break when pressed. That last one is a
+defect with a number and a place (search/ready.c landedBreak against judge.c's wait), and the next piece.
