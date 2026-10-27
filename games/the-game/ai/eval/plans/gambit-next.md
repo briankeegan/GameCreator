@@ -256,3 +256,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - 1306, combo_storm 15/24, gates green: converts-before-margin kept (combo_storm-6 lived to 11660 from 3794; others fell). Next:
   combo_storm-3 dies at 896 in every run since 1300 -- the first block, 37 decisions, no break found from frame 0 -- one fixed game
   to read whole.
+- combo_storm-3, read whole (dies at 896 every run): at 372 a carry dead at 32, its plan dead at 97, was played over the carry in
+  progress lost at 260, by the margin -- the dead line read 5.5.12.12, the best in the order. A dead line has no board to read; the
+  fallback (the board as it is now) was built for a judging the clock cut, and handed to a dead line it reads the room, material,
+  window and contact of a board that line never reaches. Fixed: a line judged dead with no plan board reads room below none.

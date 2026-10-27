@@ -483,6 +483,10 @@ static int32_t marginKey(const Judge *J) {
   int32_t endAt = plan ? J->planMargin[4] : J->hold ? 0 : J->o.j.endAt, spent = plan ? J->extSpent : J->hold ? 0 : J->o.j.spent;
   int32_t paid = J->hold ? 0 : imax(0, J->apBroke) / W + (plan ? J->planBreaks : 0);
   double win = winCoverShare(endAt, spent, paid);
+  // (A LINE JUDGED DEAD with no plan board read has no board to read a margin on: the fallback below is for a judging the clock cut, and
+  // handed to a dead line it reads the board as it is now -- the best margin in the order (1306, combo_storm-3 at 372: a carry dead at 32
+  // read 5.5.12.12 and was played over one lost at 260). A dead line's room is below none: a row over, what it died of)
+  if (t < 0 && J->o.dead && !J->hold) { t = MARGIN_ROWS + 1; m = m < 0 ? materialOn(decQ.b) : m; if (contact < 0 || under < 0) contactOn(decQ.b, &contact, &under); if (win < 0) win = winCoverShare(0, 0, 0); }
   if (t < 0 || m < 0) { t = topOn(decQ.b) + rowsComing(&decQ, 0); m = materialOn(decQ.b); contactOn(decQ.b, &contact, &under); win = winCoverShare(0, 0, 0); }
   marginShares[0] = (MARGIN_ROWS - t) / (double)MARGIN_ROWS; marginShares[1] = (double)m / W / MARGIN_ROWS; marginShares[2] = win < 0 ? 1 : win;
   marginShares[3] = under > 0 ? (double)contact / under : 1;
