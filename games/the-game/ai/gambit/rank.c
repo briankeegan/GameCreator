@@ -609,6 +609,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. PROVEN FIRST: a line that lives left alone, then one that lives by its plan, then one whose plan meets every row shown with the
   // margin to spare, then the rest
   { int px = proofOf(x), py = proofOf(y); if (px != py) K(1, "proven", py - px);
+    // (PROVEN AGAINST WHAT IS SHOWN, LOST TO THE RISE AFTER: two such lines are not alike when one is lost a break's time later -- the
+    // mode's list is aggressive within the mode, never at the cost of the proof (plans/gambit-next.md 8), and a horizon a break's time
+    // shorter is that cost. Absolute bands of a break's time, so the order is one order; within a band the list decides. 1300,
+    // combo_storm-1: a combo in progress lost at 332 played three decisions over a break of 20 cells lost at 491, by the list)
+    if (px == 1) {
+      double lx = lostOf(x), ly = lostOf(y), save = imax(1, rankSave);
+      int32_t bx = (int32_t)(lx / save), by = (int32_t)(ly / save);
+      if (bx != by) K(1, "horizon", by > bx ? 1 : -1);
+    }
     // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
     // resource, then of the next (marginKey: room, material, the window's cover of the rows due, contact, in rows); then the later loss,
     // unless lost alike (lostAlike: the same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven

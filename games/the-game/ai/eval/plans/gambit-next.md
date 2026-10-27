@@ -208,3 +208,8 @@ games do between breaks that the survived ones do not.
 - 1300, combo_storm 15/24: the room share below none, alone. The first number over the 14 in twelve runs; kept. The ledger: games
   lost 152 landed, 142 converted, 150 cleared (-8 a minute); survived 148, 146, 148 (-2). The board to come lost before the block
   lands in 11,193 of 20,286 checks.
+- 1300's turns: combo_storm-1 at 15417 to 15451, a combo in progress (lost at 332, breaks nothing) played three decisions running over
+  a break of 20 cells lost at 491, by the mode's list (k4.list) -- both proven at level 1, past the shown block and a break's time, and
+  lost to the rise after. The list ranks among proven lines, never at the cost of the proof; a horizon a break's time shorter is that
+  cost. Fixed: among level-1 proven lines, the loss in absolute bands of a break's time decides before the list; within a band, and
+  among lines that live, the list decides as before.
