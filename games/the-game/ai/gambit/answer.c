@@ -537,6 +537,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s("/"); L_i(top ? top->endReadyWhy : -1); L_s(":"); L_i(er1); L_s("/"); L_i(er0); L_s("/"); L_i(erN); }
   if (P.heldFor) L_s(" heldFor=1");
   if (carryKept) { L_s(" carryKept="); L_i(carryKept); }   // (a hold's or a one-swap line's readiness break carried: 1 kept, 2 none to keep, 3 no panel to anchor it)
+  // (THE PLAN HANDED OUT, plans/gambit-next.md 6: the line played's plan, its swaps beyond the line / its first break's; and the promise
+  // carried on from this decision: the line in progress's swaps left, and the plan's break behind it -- plan=N/first carry=rest/next)
+  if (top && !top->hold) { L_s(" plan="); L_i(top->planN); L_s("/"); L_i(top->o.ready == 1 ? top->o.j.readyN : 0); }
+  L_s(" carry="); L_i(theCarry.set ? theCarry.nrest : 0); L_s("/"); L_i(theCarryNext.set ? theCarryNext.nrest : 0); if (theCarry.set && theCarry.ready) L_s("r");
   // (each line's margin as the order reads it, its two scarcest shares in rows (rank.c marginKey), p where read on the board its plan
   // leaves: mg=)
   L_s(" mg="); for (int i = 0; i < P.ncands && i < 8; i++) { int32_t k = marginKey(order[i]); if (i) L_s(",");

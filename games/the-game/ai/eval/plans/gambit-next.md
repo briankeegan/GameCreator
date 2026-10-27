@@ -222,3 +222,5 @@ games do between breaks that the survived ones do not.
   decision, in a decision's time, and often was not (proofLost=none with carryKept=2 in the logs; a 32-cell break passed over twice
   at a turn for a one-swap setup whose plan lived and was then gone). Now readyNextOf hands out the whole plan with each swap's frame,
   the outcome keeps it, the promise is carried whole, and the judge presses each later swap where the plan said.
+- 1302, combo_storm 15/24, every loss on 1300's frames: the whole plan carried changed no decision. The log now says what the plan
+  handed out holds beyond its first break and what the promise carried holds (plan=, carry=), to find where it is lost.
