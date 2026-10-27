@@ -313,6 +313,13 @@ static int madeBy(Ctx *x, int n, int root) {
   if (NODE(x, n)->brk > NODE(x, a)->brk) return 2;
   return NODE(x, n)->cleared > NODE(x, a)->cleared;
 }
+// WHAT THE SWAP AT (r, c) MAKES, pressed from node `from` and let settle (MK_SETTLE): the one reading the judge takes of a swap that puts
+// the last pair back and the press guard takes of the swap about to be pressed (front.c putsBack) -- a clear it makes shows before it is
+// read, where a step that ends when the swap shows reads nothing made of any swap
+static int madeSettled(Ctx *x, int from, int root, int r, int c) {
+  int w = step(x, from, MK_SETTLE, r, c, 0);
+  return liveNode(x, w) ? madeBy(x, w, root) : 0;
+}
 // A LINE THAT WASTES A THREE, as the judge saw it: a clear of three it makes for nothing in a line that breaks no garbage, or the board's
 // own chain left short of the link it reaches alone (keepsChain) -- the one test the shared line check (outcome.c lineFits) and the order
 // (rank.c wastesThree) ask. A line that breaks garbage beyond the board left alone made its threes on the way to the break: they let a
@@ -415,7 +422,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         // (THE PAIR THE LAST SWAP PRESSED SWAPPED, put back for nothing by this swap -- the one test, rules.c putBackFor, with what the
         // swap makes read as the first swap's is (madeBy): the line is cut here, before the swap is recorded as pressed (ats), so it is
         // never handed on. A swap back that clears or breaks is play. The owner: never a pair swapped back and forth to hold garbage off)
-        if (fb && liveNode(x, out) && putBackFor(fb, fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
+        if (fb && liveNode(x, out) && putBackFor(fb, fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], 0) &&
+            putBackFor(fb, fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], madeSettled(x, from, root, CR(seq[k]), CC(seq[k])))) { j->cut = k; j->cutWhy = 2; break; } }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from; KB(n);
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
