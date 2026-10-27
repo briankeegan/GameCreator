@@ -510,6 +510,15 @@ EXPORT(gb_solve_two) int gb_solve_two(int depth, int beam, int ms, int32_t *out)
     int node = rootOf(px, &hostQ);
     for (int z = 0; z < keptN[q] && liveNode(px, node); z++) node = step(px, node, MK_SWAP, CR(kept[q][z]), CC(kept[q][z]), 0);
     int st = liveNode(px, node) ? settleOf(px, node) : -1;
+    // (a break that leaves no garbage on the board leaves the next one to the next block: the board left idle until a block has landed on
+    // it, then settled -- the follow-up is asked of that board, never of one with nothing to break)
+    for (int w = 0; w < 20 && liveNode(px, st); w++) {
+      const Board *sb = ensureBoard(px, st);
+      if (!sb || garbageOn(sb)) break;
+      int nx = step(px, st, MK_LONG, 0, 0, 20);
+      if (!liveNode(px, nx)) { st = nx; break; }
+      st = settleOf(px, nx); if (!liveNode(px, st)) st = nx;
+    }
     int follow = 0;
     if (liveNode(px, st)) {
       Board *eb = ensureBoard(px, st); int32_t t = NODE(px, st)->t;

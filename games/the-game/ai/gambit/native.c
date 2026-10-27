@@ -100,7 +100,7 @@ static int raisePresses(const FQuestion *q, Board *b) {
 }
 // (THE LAST BOARDS, ringKeep below)
 #define RINGN 32
-static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN], ringAllow[RINGN], ringGap[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
+static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
 // The board as base64 of its bytes (the head, the queue, the rows), for the reach report (GAMBITB)
 static int b64(const unsigned char *p, int n, char *out) {
   static const char A[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -114,8 +114,14 @@ static int b64(const unsigned char *p, int n, char *out) {
 }
 #define SAMPLEQ 32   // (a board is about 20 KB of log: one in 32 decisions keeps a game's log under a megabyte of them)
 // (with the decision's conditions after the arrivals: a<allowance left> g<the pace's gap> -- what a search again is given)
-static int32_t dumpAllow = -1, dumpGap;
-static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr) {
+// THE CONDITIONS A BOARD WAS DECIDED UNDER, one record wherever the board is kept: the allowance left, the pace's gap, and the input
+// window -- its length and the age of every action still inside it (core/nodes.h winAges). A board dumped is written with its own
+typedef struct { int32_t allow, gap, winLen, nAges, ages[WINMAX]; } Conds;
+static Conds condsNow = { -1, 0, 600, -1, { 0 } };
+static Conds ringConds[RINGN];   // (the last boards' own: THE LAST BOARDS below)
+static void dumpBoardIn(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr, const Conds *cd);
+static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr) { dumpBoardIn(tag, at, b, arr, narr, &condsNow); }
+static void dumpBoardIn(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr, const Conds *cd) {
   static unsigned char bytes[sizeof(Board)];
   static char line[sizeof(Board) * 2];
   unsigned long n = BOARD_HEAD;
@@ -126,11 +132,10 @@ static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *ar
   k += b64(bytes, (int)n, line + k);
   k += snprintf(line + k, sizeof line - (unsigned long)k, " [");
   for (int i = 0; i < narr; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, "%s[%d,%d,%d]", i ? "," : "", arr[i].at, arr[i].width, arr[i].height);
-  k += snprintf(line + k, sizeof line - (unsigned long)k, "] a%d g%d", dumpAllow, dumpGap);
-  // (and the input window the decision read -- its length and the age of every action still inside it (core/nodes.h winAges): a board
-  // replayed without them is judged under another window than the decision was)
-  if (hostWin && nWinAges >= 0) { k += snprintf(line + k, sizeof line - (unsigned long)k, " W%d:", winLen);
-    for (int i = 0; i < nWinAges && k < (int)sizeof line - 16; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, "%s%d", i ? "," : "", winAges[i]); }
+  k += snprintf(line + k, sizeof line - (unsigned long)k, "] a%d g%d", cd->allow, cd->gap);
+  // (and the input window the decision read: a board replayed without it is judged under another window than the decision was)
+  if (cd->nAges >= 0) { k += snprintf(line + k, sizeof line - (unsigned long)k, " W%d:", cd->winLen);
+    for (int i = 0; i < cd->nAges && k < (int)sizeof line - 16; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, "%s%d", i ? "," : "", cd->ages[i]); }
   flog(line);
 }
 // A question answered: the board judged at level 10's health. It stops in time for its move, on
@@ -177,7 +182,8 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
   gb_refused(q->refA, q->refB);
   __atomic_store_n(&decGap, q->gap, __ATOMIC_RELAXED);   // (the pace the frame loop presses this decision's line with)
-  dumpAllow = q->allowance; dumpGap = q->gap;
+  condsNow.allow = q->allowance; condsNow.gap = q->gap; condsNow.winLen = q->window; condsNow.nAges = imin(q->nages, WINMAX);
+  for (int i = 0; i < condsNow.nAges; i++) condsNow.ages[i] = q->ages[i];
   hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
   gb_played(q->played);
   // (topped as the question's board is, at its frame -- not as the frame loop saw it when it asked)
@@ -211,7 +217,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d pre=%d/%d work=%lld%s", s, (int)(clock_ms() - t0), clockWentOut ? (int)(nowMs() - clockWentOut) + 1 : 0, (int)readyPre, (int)readyPendN, (long long)clockWork, wallCut ? " wallCut=1" : "");
   flog(line);
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
-  if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) { int32_t a = dumpAllow, g = dumpGap; dumpAllow = ringAllow[last]; dumpGap = ringGap[last]; dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last]); dumpAllow = a; dumpGap = g; } hostUnlock(); }
+  if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) { dumpBoardIn("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last], &ringConds[last]); } hostUnlock(); }
   if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : A->dumpBoard == 3 ? "GAMBITK" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr);
   // (A SAMPLE OF EVERY DECISION: one question in SAMPLEQ, whatever it is, its board -- GAMBITQ, what test/decisions.txt.gz is drawn from,
   // so the replay holds the decisions a game makes and not only the ones some search came up empty on)
@@ -236,7 +242,7 @@ static void ringKeep(int32_t at) {
   int k = ringHead;
   if (!ring[k]) ring[k] = nb_new();
   if (ring[k]) {
-    cloneBoard(ring[k], hostBoard); ringAt[k] = at; ringNarr[k] = hostQ.narr; ringAllow[k] = dumpAllow; ringGap[k] = dumpGap;
+    cloneBoard(ring[k], hostBoard); ringAt[k] = at; ringNarr[k] = hostQ.narr; ringConds[k] = condsNow;
     for (int i = 0; i < hostQ.narr; i++) ringArr[k][i] = hostQ.arr[i];
     ringHead = (ringHead + 1) % RINGN; if (ringCount < RINGN) ringCount++;
   }
@@ -244,7 +250,7 @@ static void ringKeep(int32_t at) {
 }
 static void ringOut(void) {
   hostLock();
-  for (int i = 0; i < ringCount; i++) { int k = (ringHead - ringCount + i + RINGN) % RINGN; dumpAllow = ringAllow[k]; dumpGap = ringGap[k]; dumpBoard("GAMBITL", ringAt[k], ring[k], ringArr[k], ringNarr[k]); }
+  for (int i = 0; i < ringCount; i++) { int k = (ringHead - ringCount + i + RINGN) % RINGN; dumpBoardIn("GAMBITL", ringAt[k], ring[k], ringArr[k], ringNarr[k], &ringConds[k]); }
   ringCount = 0;
   hostUnlock();
 }
