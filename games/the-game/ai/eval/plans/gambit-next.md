@@ -178,3 +178,7 @@ line short at once by a block shown (**demand**).
   reports have named 2.margin as the key most passed over in every run since 1294. One piece of step 2: a loss later by a break's time
   or more decides before the margin -- a break's time more to find the proof in is more than any share -- and within a break's time the
   margin decides as before.
+- 1297, combo_storm 14/24, and the one-order gate red: 33 decisions played a line beaten head to head by one ranked under it. "A loss a
+  break's time later decides" was not one order -- 100 and 150 by the margin, 150 and 200 by the margin, 100 and 200 by the loss.
+  Fixed: the loss in absolute bands of a break's time decides first, the margin within a band, then the exact loss; a band is a band
+  whichever two lines are compared.
