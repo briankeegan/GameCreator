@@ -283,3 +283,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   survival search played on from the line's end board, read as the line's loss and handed out as nothing, so the next decision had
   nothing to carry and the proof vanished (proofLost=none; at 12238 a setup lived by its plan over a 16-cell break, at 12271 it was
   lost at 157). Now the survival line is the line's plan, handed out from the line's end and carried. (Measured after 1311.)
+- 1311, combo_storm 15/24: material in the proof cost four games -- lines proven by time but scarce of material were the ones keeping
+  the board alive, and unproven, the hold took their place. Out. The plan piece (the survival line handed out as the plan) runs
+  alone on 1309's build.
