@@ -230,12 +230,32 @@ static int32_t anchorIdAt(const Board *b, int c) {
   const int32_t *f = b->p[1][c].f;
   return f[COLOR] && !f[ISGARBAGE] && f[STATE] == NORMAL ? f[ID] : NUL;
 }
+// THE BOARD TO COME: node n run on, left idle, until exactly one block has dropped on it (the garbage on the board grows), then let
+// settle -- the board the next block lands on. Nothing queued and nothing on its way: n itself. The landing was taken from the
+// question's frame before (readyAt): for a line longer than that it was n with no block on it, for a shorter one the idle rain before
+// that frame topped the board first (11594 of 20981 askings lost first, run 1322) -- readiness asked of the wrong board either way
+#define LAND_CAP 150
+static int32_t landOnceAt;   // (the frame the block dropped on, from the root: the readiness break's wait -- j->readyWait)
+static int landOnce(Ctx *x, int n) {
+  Node *N = NODE(x, n);
+  landOnceAt = N->t;
+  if (N->garb < 0) return n;
+  const Board *b0 = ensureBoard(x, n);
+  if (b0 && b0->ninc == 0 && N->narr == 0) return n;
+  int32_t garb0 = N->garb, t0 = N->t;
+  int w = n;
+  while (NODE(x, w)->t - t0 < LAND_CAP) {
+    int v = step(x, w, MK_LONG, 0, 0, 4);
+    if (!liveNode(x, v)) return v;
+    w = v;
+    if (NODE(x, w)->garb > garb0) { landOnceAt = NODE(x, w)->t; return w; }
+  }
+  return w;
+}
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   readyPendLast = 0; readyWalkLast = -1; readyNearLast = -1; readyMatLast = -1; readyTopLast = -1; readyContactLast = readyUnderLast = -1;
-  // (a line that ends past the landing is ready from where it ends -- never a frame on: the same trajectory, asked from any root,
-  // lands on the same board, so a break found on it once is found again by its key)
-  int dt = wait - NODE(x, n)->t;
-  int land = dt > 0 ? step(x, n, MK_LONG, 0, 0, dt) : n;
+  (void)wait;
+  int land = landOnce(x, n);
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   if (readyDefer && !readyCollect) return NOT_ASKED;
   int calm = settleOf(x, land);
@@ -510,6 +530,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     { int32_t from0 = pressFrom, spent0 = pressSpent;
       pressFrom = from0 + imax(j->readyWait, NODE(x, n)->t); pressSpent = spent0 + spent;   // (the readiness search's window: core/nodes.h pressFrom)
       j->ready = breaksAfterLanding(x, n, j->readyWait, wl, wn);
+      if (j->ready == 1) j->readyWait = imax(j->readyWait, landOnceAt);   // (the landing as the board to come had it: the break's wait)
       pressFrom = from0; pressSpent = spent0; }
     if (j->ready == 1 && pressAllowance >= 0 && wl && *wn > 0) {
       const Board *eb = ensureBoard(x, n);

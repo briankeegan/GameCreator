@@ -45,6 +45,12 @@ What follows, and what does not:
 - **A line's idle frames are its landings.** The judge plays the line on the engine with the queue on the board, so each idle frame
   with garbage queued lands a block in the judging, as in the game. The hold is a rain. Counted on the game: `idleQueued`, frames idle
   with garbage queued, a minute, games lost against survived.
+- **The board to come is one block landed.** Readiness, and the search for the break on the board to come, took "the next landing"
+  from the question's frame: for a line longer than that they were asked of the line's end board with no block on it, for a shorter
+  one the idle rain before that frame topped the board first (11594 of 20981 askings lost first, 1322). Now one definition, from the
+  board itself (`judge.c landOnce`): the line's end board run idle until exactly one block drops, then settled. The four dead-end
+  deaths of 1329 held 48 to 139 decisions with level and toward lines offered on every one and the hold played over them; their
+  readiness was asked of the wrong board.
 - **Ready is real play in reach.** The board a line leaves is ready when it has garbage on it and a break within the shape math's reach
   (`outcome.c endNear`, `nearOf`), or no garbage on it (`rank.c playReady`). Read, and in no key of the order: in the proof it played
   a line lost sooner for it 145 times in a run (1315, 6/24); as a tie-break among proven lines the list ranks alike, 306 times (1316,
