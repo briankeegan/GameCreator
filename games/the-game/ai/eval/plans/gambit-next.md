@@ -9,38 +9,58 @@ The goal: never die from the garbage the game shows.
 - Every loss Gambit computes is a **lower bound**: when the board dies on the breaks the searches found, not on every break there
   is. A line can raise its own bound by spending what the next search would have found a break with.
 
+## The guarantee
+
+The engine is deterministic and the garbage is shown before it lands, so whether a plan survives what is shown is a computation, not
+a guess. The guarantee is an invariant held by induction:
+
+**At every decision, a plan is held that, played on the engine from this board, pays every row shown and ends on a board ready for
+the next block the mode sends.**
+
+- Held at this decision and only its swaps played, the board at the next decision is the one it predicted, so it is still proven --
+  unless new garbage was shown.
+- New garbage shown: the plan's end board was ready for it (a break found with that block landed on it), so a plan extending it
+  exists, and the search finds it.
+
+The induction can break four ways, and every loss is exactly one of them: (a) a swap not in the held plan was played while one was
+held; (b) the board diverged from the engine; (c) the end board was marked ready and no extension was found; (d) no proven plan
+was held and the search found none in time. (a) and (b) are bugs and are gated to zero. (c) and (d) are made rare by one rule:
+nothing the proof needs is spent while no proof is held.
+
 ## The steps
 
-1. **Proven first.** A line whose plan, played on the engine, meets every row shown before the board dies is proven. A proven line
-   beats every unproven one.
-2. **Unproven: the most left to find a proof with.** Of lines not proven, one that dies before it could press anything ranks last;
-   then the one that leaves the most of its scarcest resource, then of the next -- the two scarcest only (`marginKey`: room, material, contact, and the window
-   as the dues ask it -- the share of the rows due the window still covers, with the rows the line's own breaks pay); then the later
-   loss. A line with a plan is read on the board its plan's last break leaves; a line whose board was not read, on the board as it is
-   now. The survival search ranks the same way.
-3. **Search for the proof.** When nothing offered is proven, the decision's search time goes to the break on the board the best line
-   leaves.
+1. **Proven first.** A line is proven when its plan, played on the engine, pays every row shown before the board dies AND the board
+   its last break leaves, with the mode's next block landed on it, has a break (the readiness search). A proven line beats every
+   unproven one.
+2. **Unproven: the order of the search, not of play.** Of lines not proven, one that dies before it could press anything ranks last;
+   then the most of the scarcest resource, then of the next (`marginKey`: room, material, the window as the dues ask it, contact).
+   This order says which board the proof is searched from first. It does not pick a line to play.
+3. **Search for the proof; spend nothing.** When no held line is proven, the decision holds, and every thread searches for a proof from
+   the board as it is, carried from decision to decision. The only swap played unproven is the save (a three the survival search
+   finds the board needs not to die). A clear for value, a set-up, a carry of a guess: none, until a proof is held.
 4. **The margin for garbage not shown.** Proven means proven with k rows spare. The owner's to set; suggested 1.
-5. **Convert more per break.** Under attack, material only comes from breaking. A break pressed after more garbage has landed, or a
-   chain, converts more at once. Each plan's first break is tried at every landing shown, and the one that converts most is kept; each
-   break after it is asked from the last landing back, and the latest one in reach is kept. This is what pays a block too big for one
-   row's break.
-6. **A proof is kept.** A proven line is carried and pressed as judged, and proven again each decision. The press guard never
-   refuses a swap of a proven plan.
-7. **Search deep enough.** Where no break is found and the clock did not cut the search, the search goes a swap deeper on that
-   board next decision.
+5. **Convert more per break.** Each plan's first break is tried at every landing shown and the one that converts most is kept; each
+   break after it is asked from the last landing back.
+6. **A proof is kept.** A proven line is carried and pressed as judged, and proven again each decision. The press guard never refuses a
+   swap of a proven plan.
+7. **Search deep enough.** Where no break is found and the clock did not cut the search, the search goes a swap deeper on that board
+   next decision.
 8. **The mode still decides.** Among proven lines, the mode's list ranks them: aggressive within the mode, never at the cost of the
    proof.
 
-The categories fold into this: lives and plan are proven; breaks, ready, buys and dies are unproven, ranked by step 2.
+## The gates
 
-**Built**, all eight at once (rank.c proofOf, compareJudged, readyNextFor; search/outlive.c outBefore; answer.c breakBegin;
-search/break.c touchDepth; front.c the press guard; test/main.c the answers). Proven, in order: lives left alone, lives by its plan,
-stands past the last row due and one row's break more. The margin is in rows of the stack's twelve; a swap deeper goes to 16 at most;
-a plan's break is tried at up to four later landings.
+Every failure of the induction is named in the log and a check goes red on the ones that are bugs:
 
-The checks read the same order: no line played is beaten by one the order ranked under it, and none is played that dies before it
-could press anything while one offered does not.
+- **Divergence** (b): any decision whose board is not the engine's -- red (`gambit_summary.js`, "The truth held").
+- **Unproven over proven** (a): a swap played that is not the held proven plan's, while one was held -- red.
+- **Readiness wrong** (c): a plan's end board marked ready, a block shown, no extension found -- red.
+- **Search short** (d): the loss names the decision no proof was first held at, what was shown, how deep the search got and the time
+  it had. The only loss allowed, and the one to make rarer.
+- **A fact that never varies is not a fact:** every margin share (`mgs=`) must vary over a game -- red when one is constant.
+
+**The measure:** one run, one mode, its 24 games (`patterns: ["<mode>"]`, rounds 1-3). A piece stays if it raises the number. A mode
+is done at 22 and then the next, and the goal is measured on all three.
 
 ## How a loss is read
 
@@ -103,3 +123,10 @@ line short at once by a block shown (**demand**).
   mode's list and no wasted three, which step 8 asks only of proven lines -- so a break that needs a three first was never offered.
   Fixed: where the last decision played nothing proven, the break search is held to neither; the order ranks what it finds, and a
   three is played only where the save finds it needed.
+- 1288, 15/24 (combo_storm 7, factory 2, large_garbage 6); combo_storm alone over three rounds 15/24. The break search held to
+  neither list nor wasted three did not help. The log of every combo_storm loss, decision by decision: `logs/1288-combo_storm.md`.
+  What it shows: in combo_storm-2 round 2 the block was shown at 4250 with 38 panels on the board; by 4547, before it landed, clears
+  and carries that broke nothing had spent 23 of them for the mode's combos, and it landed on 15. The search then found nothing to
+  break with, in this and all nine losses. And the window share reads 12 in every line of every game, the room share 0 in nearly all
+  near a loss: the margin was ranking on constants. The plan above is rewritten from this: proven requires readiness for the next
+  block; the margin orders the search and plays nothing; unproven, nothing is spent; four gates name every loss.
