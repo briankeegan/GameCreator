@@ -15,6 +15,12 @@
 int32_t *gb_io(void);
 const char *gb_log(void);
 void gb_trace(int on);
+int gb_solve(int depth, int ms, int32_t *line, int32_t *best);
+int gb_solve2(int depth, int beam, int ms, int32_t *line, int32_t *expanded);
+int gb_break_test(int ms, int noBand, int noDoomed, int beam, int open, int32_t *line);
+void gb_line_verdict(const int32_t *seq, int n, char *out, int cap);
+void gb_break_trace(int32_t mv, char *out, int cap);
+void gb_line_trace(const int32_t *seq, int n, char *out, int cap);
 int gb_question_bytes(int nbytes, int narr);
 int gb_bits_agree(void);
 int gb_bits_boards(void);
@@ -115,6 +121,32 @@ int main(int argc, char **argv) {
   int only = argc > 3 && !strcmp(argv[2], "one") ? atoi(argv[3]) : 0;   // (test DIR one N: the decisions replay on question N alone, twice, as the check asks it)
   char path[4096];
   static char line[1 << 17];
+  // test DIR solve DEPTH MS: every question of decisions.txt.gz handed to the exhaustive solver (decide_check.c gb_solve), one line each
+  if (argc > 4 && !strcmp(argv[2], "solve")) {
+    int depth = atoi(argv[3]), ms = atoi(argv[4]);
+    snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
+    gzFile z = gzopen(path, "r");
+    if (!z) { fprintf(stderr, "test: no %s\n", path); return 2; }
+    while (gzgets(z, line, sizeof line)) {
+      const char *b = strstr(line, "GAMBITB "); if (!b) continue;
+      char tag[64]; snprintf(tag, sizeof tag, "%.20s", b + 8); char *sp = strchr(tag, ' '); if (sp) *sp = 0;
+      int narr, n = loadLine(b, &narr);
+      if (n < 0 || gb_question_bytes(n, narr) != 0) { printf("solve %s: does not load\n", tag); continue; }
+      // (GC_PRESS: the decision's own window, as the dump logs it -- a<actions left> g<pace gap>)
+      { const char *pa = strstr(b, " a"), *pg = pa ? strstr(pa + 2, " g") : 0; extern void gb_press(int allow, int gap);
+        if (getenv("GC_PRESS") && pa && pg) gb_press(atoi(pa + 2), atoi(pg + 2)); else gb_press(-1, 0); }
+      int32_t sol[64], best = 0; int r = getenv("GC_BREAK_TEST") ? gb_break_test(ms, getenv("GC_NOBAND") != 0, getenv("GC_NODOOMED") != 0, getenv("GC_TBEAM") ? atoi(getenv("GC_TBEAM")) : 0, getenv("GC_OPEN") != 0, sol) : getenv("GC_SOLVE_BEAM") ? gb_solve2(depth, atoi(getenv("GC_SOLVE_BEAM")), ms, sol, &best) : gb_solve(depth, ms, sol, &best);
+      printf("solve %s: %s", tag, r > 0 ? "BREAK" : r < 0 ? "cut" : "none");
+      if (getenv("GC_TRACE_MV")) { static char to[512]; int rr, cc; sscanf(getenv("GC_TRACE_MV"), "%d,%d", &rr, &cc); n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_break_trace(rr * 8 + cc, to, sizeof to); printf(" [trace %d,%d: %s]", rr, cc, to); }
+      if (r > 0 && getenv("GC_TRACE_LINE")) { static char to[4096]; n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_line_trace(sol, r, to, sizeof to); printf("\n   [line: %s]\n", to); }
+      if (r > 0 && getenv("GC_JUDGE")) { static char jo[512]; n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_line_verdict(sol, r, jo, sizeof jo); printf(" [judge: %s]", jo); }
+      if (r > 0) { printf(" in %d:", r); for (int i = 0; i < r && i < 64; i++) printf(" %d,%d", sol[i] >> 3, sol[i] & 7); }
+      printf(getenv("GC_SOLVE_BEAM") ? " | %d lines stepped\n" : " | longest lived %d frames after a swap\n", best);
+      fflush(stdout);
+    }
+    gzclose(z);
+    return 0;
+  }
   // ---- the bits
   snprintf(path, sizeof path, "%s/boards.txt", dir);
   FILE *f = fopen(path, "r");

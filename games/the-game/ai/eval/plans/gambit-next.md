@@ -49,13 +49,21 @@ What follows, and what does not:
   landed before it (`judge.c boardAt`, one function; the landed-break search asks it of the next block's landing). A swap pressed there
   holds the block off, so nothing that lands later is on it. Asked of the board one block landed instead (1332 to 1335), readiness was
   found a third as often and the proof's lines went with it: 18 to 12 and 13.
-- **A three that lets a block down is real play, never a wasted three.** The owner's move on the boards the bot died on (the death
-  boards, run 1335): a block perched on one tall column with four columns low beside it; clear a three under the block, it comes down
-  onto panels it did not touch, break it with a three beside it. Read as "breaks nothing" that clear was refused in the search, by the
-  judge and by the press guard alike, so the way down was closed on every board of that shape. One rule, read beside the board left
-  alone: a step whose lowest garbage is below the board alone's by then let a block down (`judge.c`, the step loop; `wastedThree` on the
-  settled boards for the press guard); no wasted three in it, no floor spent (`outcome.c lineSpends`). A block that lands or falls on its
-  own is no let-down.
+- **A three that lets a block down onto a break is real play, never a wasted three.** The owner's move on the boards the bot died on:
+  a block perched on one tall column with four low beside it; clear a three under it, it comes down onto panels, break it with a
+  three beside it. One rule, read off the nodes (`judge.c`, after readiness): the line's lowest garbage ends below where it began
+  (`search.h Node glow`) and the line breaks garbage or its end board has a break in reach -- no wasted three, no floor spent
+  (`outcome.c lineSpends`); the press guard's test asks the same of the settled boards (`wastedThree`, `breakBuildable`). Any three
+  that moves garbage made free instead (1337, 9 of 23): the bot spent its panels digging.
+- **Flatten and break: the flatten search** (`search/solve.c`, a job of its own, `answer.c JOB_FLAT`, second after the break search,
+  under garbage or with a block on its way). Lines of swaps pressed back to back as the frame loop presses them, every legal swap from
+  every board kept, the boards ranked by their shape for a flatten -- fewer empty cells under garbage, more columns touching it, a
+  lower peak, an evener stack -- and each line asked, once the board has settled, whether it broke more than the board left alone.
+  A break made by a fall shows only once the board has settled. On the 397 run-up boards of the games lost in 1335, a solver of
+  that kind broke on 97 of 290 where everything else said none; 50 of the 52 boards where it broke and the bot's played line broke
+  nothing had no break offered at all (32 under garbage, 18 with a block landing); the bot's judge accepts its lines. Replayed with
+  workers, the build with it holds 191 times against 230 and plays a line lost later on 49 boards, sooner on 10. Its line goes through
+  the shared line check and is proposed and judged like any other.
 - **Ready is real play in reach.** The board a line leaves is ready when it has garbage on it and a break within the shape math's reach
   (`outcome.c endNear`, `nearOf`), or no garbage on it (`rank.c playReady`). Read, and in no key of the order: in the proof it played
   a line lost sooner for it 145 times in a run (1315, 6/24); as a tie-break among proven lines the list ranks alike, 306 times (1316,
@@ -360,6 +368,12 @@ line short at once by a block shown (**demand**).
   top blocks (or one below) and break with a 3" -- the let-down three above, the structural blind spot: the reach math walks panels
   sideways to a block as it stands, and the rule against wasted threes refused the clear that brings the block down. Measured first on
   the death boards replayed (`test DIR` on the 397 run-up boards of the 11 lost games), then the 24.
+- 1337, combo_storm 9/23, one game crashed in the touch beam on a worker: any three that moved garbage made free spent the panels;
+  the rule narrowed to a block let down onto a break. The owner, again: every death board had a solve, "multi move, not one swap",
+  "flatten and break". The old oracle let the board settle between swaps, so blocks landed mid-line; pressed back to back and ranked
+  by flatness the solver breaks on 97 of 290 (`test DIR solve`, GC_SOLVE_BEAM). The C check now carries the tools: `solve` (both
+  solvers), GC_BREAK_TEST (the bot's break search on a board, with the touch beam's switches), GC_JUDGE (the judge's verdict on a
+  line), GC_TRACE_LINE (a line through the search's eyes, swap by swap). The flatten search is in; 1338 runs it.
 
 ## Where this stands
 

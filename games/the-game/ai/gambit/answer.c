@@ -122,12 +122,12 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // worker that finishes one takes the next)
 // (and under garbage, the break search's wider touch beam on a worker of its own from the start, beside the narrower: the break it finds
 // is played when the narrower finds none -- theBrWide)
-enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE, JOB_LANDED };
+enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE, JOB_LANDED, JOB_FLAT };
 static int32_t proofSought;   // (the last decision played no proven line: rank.c proofOf -- the next one's searches go to the break)
 static int32_t lastProven, lastNarr;   // (the last decision's: a proven line played, and the blocks shown -- the log's proofLost=)
 static int32_t wideFirstNow;   // (this decision's: the wider beam took a worker first -- the log's seek=)
 static int32_t touchDepthNext = TOUCH_DEPTH;   // (the touch beam's depth the next decision takes up: search/break.c touchDepth)
-static int32_t jobKinds[6], njobKinds;
+static int32_t jobKinds[8], njobKinds;
 static Broke theBrWide; static int32_t wideDone;
 // (where the break search ran, for the log: 0 not run, 1 a worker beside the searches, 2 the decision after a worker had not finished it,
 // 3 the decision with no worker free; and the ms it was given)
@@ -143,6 +143,7 @@ static void breakJob(int32_t i) {
   else if (kind == JOB_PLAN) planJob();
   else if (kind == JOB_EXT) extJob(brJobR, brJobS);
   else if (kind == JOB_LANDED) { landedJobRun(brJobBy); __atomic_store_n(&landedDone, 1, __ATOMIC_RELEASE); }
+  else if (kind == JOB_FLAT) { flatJobRun(brJobBy); __atomic_store_n(&flatDone, 1, __ATOMIC_RELEASE); }
   else if (kind == JOB_WIDE) { touchFrom = 1; breakRunTo(brJobR, brJobBy, &theBrWide); touchFrom = 0; __atomic_store_n(&wideDone, 1, __ATOMIC_RELEASE); }
   else {
     double old = clockShareBegin(brJobBy);
@@ -154,7 +155,7 @@ static void breakJob(int32_t i) {
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
-  brCut = 0; brResumed = 0; landedJobOn = 0; __atomic_store_n(&landedDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
+  brCut = 0; brResumed = 0; landedJobOn = 0; flatJobOn = 0; __atomic_store_n(&flatDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&landedDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || timeLeftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
@@ -163,6 +164,9 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
+  // (THE FLATTEN SEARCH, search/solve.c, second: under garbage or with a block on its way, the line that flattens and breaks -- on the
+  // boards of the games lost in run 1335 it broke on 22 of 29 where the break search found 9)
+  if (R->under || (decF.next != NOT_ASKED && decF.next > 0)) { jobKinds[njobKinds++] = JOB_FLAT; flatJobOn = 1; }
   // (THE SEARCH FOR THE PROOF, plans/gambit-next.md 3: where the last decision had no proven line, the break search's wider beam takes a
   // worker before the planner's half and the extension, which go back to this thread -- the decision's time to the break, not the set-up)
   wideFirstNow = 0;
@@ -177,7 +181,7 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   if (!wideFirst && R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
   // is this thread's whole)
-  while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; }
+  while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; if (k == JOB_FLAT) flatJobOn = 0; }
   // (THE BOARD TO COME, search/ready.c, queued behind them: the first worker whose search ends before the searches do takes it, in the
   // time they have left -- it ends with them, so the decision waits no longer for it)
   landedJobOn = 0;
@@ -299,7 +303,7 @@ EXPORT(gb_played) void gb_played(int id) { carriedPlayed = id; }
 static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t allowance, int32_t lineFrom, int32_t linePressed) {
   Answer *A = &theAnswer;
   memset(A, 0, sizeof *A);
-  logN = 0; logBuf[0] = 0;
+  logN = 0; logBuf[0] = 0; flatAsked = 0;
   decAt = at;
   double tStart = nowMs();
   pressTap = decTap = 0; decQ.tight = pressTight = 0;   // (decided once the board is read, below)
@@ -478,6 +482,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1");
   L_s(" back="); L_i(decQ.b->lastSwapA); L_s(","); L_i(decQ.b->lastSwapB);   // (the pair the last swap swapped, on the decision's board: rules.c putBackFor)
+  if (flatAsked) { L_s(" fs="); L_i(flatFound); L_s("/"); L_i(flatLen); L_s("/"); L_i(flatSteps); L_s("/"); L_i((int64_t)flatMsUsed); }   // (the flatten search: found, its length, the swaps it pressed, its ms -- search/solve.c)
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }

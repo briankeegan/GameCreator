@@ -313,3 +313,172 @@ static void gb_trace_walked(int ok, int wok, int cmp, int key, const char *why, 
            J->k.play, J->o.lostAt, J->outside, J->spends, J->o.ready, J->readyNext, JW->k.play, JW->o.lostAt, JW->outside, JW->spends, JW->o.ready, JW->readyNext);
   hostLog(line);
 }
+
+// AN EXHAUSTIVE SOLVER, no search of the bot's: every legal swap pressed where the cursor stands (no walk), the board let settle (the
+// queue landing on its idle frames as the game lands it), to `depth` swaps deep, until a block is converted (sBroke) -- the oracle the
+// death boards are held to. Returns the depth of the line found into `line` (swaps as row * 8 + col), 0 none within the depth, -1 the
+// time ran out. The frames the longest-lived line survived left alone after it are in *best.
+static Board *solveB[10];
+static int32_t solveBest;
+static int solveDfs(const Board *b, int depth, int32_t *line, int n, double due) {
+  if (depth <= 0) return 0;
+  if (nowMs() > due) return -1;
+  int32_t ms[MAXROWS * W]; int nm = legalSwaps((Board *)b, ms);
+  if (!solveB[n]) solveB[n] = nb_new();
+  Board *t = solveB[n];
+  for (int i = 0; i < nm; i++) {
+    cloneBoard(t, b);
+    t->curRow = CR(ms[i]); t->curCol = CC(ms[i]);
+    if (!tryQueueSwap(t, CR(ms[i]), CC(ms[i]))) continue;
+    t->sBroke = 0;
+    int f = 0;
+    for (; f < 600 && t->gameOverClock <= 0; f++) { t->input = 0; t->pressSwap = 0; run(t); if (t->sBroke > 0) break; if (f >= 24 && !boardMoving(t)) break; }
+    line[n] = ms[i];
+    if (t->sBroke > 0) return n + 1;
+    if (t->gameOverClock > 0) continue;
+    if (f > solveBest) solveBest = f;
+    int r = solveDfs(t, depth - 1, line, n + 1, due);
+    if (r) return r;
+  }
+  return 0;
+}
+EXPORT(gb_solve) int gb_solve(int depth, int ms, int32_t *line, int32_t *best) {
+  solveBest = 0;
+  int r = 0;
+  for (int d = 1; d <= depth && !r; d++) r = solveDfs(hostBoard, d, line, 0, nowMs() + ms);
+  *best = solveBest;
+  return r;
+}
+
+// THE BEAM SOLVER, the death boards' oracle: lines of swaps pressed back to back as the frame loop presses them (core/nodes.h step,
+// MK_SWAP: the cursor walked, the swap pressed, the next pressed as soon as it can be -- a board kept busy lands nothing), every legal swap
+// from every board kept, the boards kept ranked by their shape for a FLATTEN, not by the bot's nearness to a break: fewer empty cells
+// under garbage, more columns touching it, a lower peak, an evener stack. Each line asked after every swap: let settle, has it broken
+// garbage the board alone does not? The line found into `line` (row * 8 + col), its length returned; 0 none within depth, -1 the clock.
+static uint32_t solveKey(const Board *b) {
+  uint32_t h = 2166136261u;
+  for (int r = 1; r < b->nrows && r <= b->height + 1; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = b->p[r][c].f; uint32_t v = f[ISGARBAGE] ? 99u + (uint32_t)(f[GARBAGEID] & 63) : (uint32_t)(f[COLOR] > 0 ? f[COLOR] : 0);
+    h = (h ^ v) * 16777619u; }
+  h = (h ^ (uint32_t)b->curRow) * 16777619u; h = (h ^ (uint32_t)b->curCol) * 16777619u;
+  return h;
+}
+static int32_t solveShape(const Board *b) {
+  static LOCAL BoardShape SS; static LOCAL Bits SB;
+  bitsOf(b, &SB); bitsShape(&SB, &SS);
+  return -(imin(SS.hollow, 255) << 20) + (imin(SS.contact, 15) << 16) - (imin(SS.top, 63) << 8) - imin(SS.even, 255);
+}
+#define SOLVE_BEAM 1500
+EXPORT(gb_solve2) int gb_solve2(int depth, int beam, int ms, int32_t *line, int32_t *expanded) {
+  static Ctx *sx; sx = ctxOf(sx);
+  Question q = hostQ; q.b = hostBoard;
+  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0;   // (the host's abort not in force, the wall clock: as gb_replay asks)
+  gb_clock_start(nowMs() + ms);
+  int root = rootOf(sx, &q);
+  if (root < 0) return -2;
+  int a0 = settleOf(sx, root); int32_t brk0 = liveNode(sx, a0) ? NODE(sx, a0)->brk : NODE(sx, root)->brk;
+  static int32_t cur[SOLVE_BEAM], nxt[SOLVE_BEAM * 40], par[SOLVE_BEAM * 40], mv[SOLVE_BEAM * 40], sc[SOLVE_BEAM * 40];
+  static int32_t hist[16][SOLVE_BEAM][2];   // (per depth, each kept node's parent slot and move: the line read back)
+  static uint32_t seen[1 << 16]; memset(seen, 0, sizeof seen);
+  if (beam > SOLVE_BEAM) beam = SOLVE_BEAM; if (depth > 16) depth = 16;
+  static int32_t curMv[SOLVE_BEAM], curFrom[SOLVE_BEAM];   // (each kept node's own swap and the node it was pressed on: the put-back rule)
+  int ncur = 1; cur[0] = root; curMv[0] = 0; curFrom[0] = -1; *expanded = 0;
+  for (int d = 0; d < depth; d++) {
+    int nn = 0;
+    for (int i = 0; i < ncur; i++) {
+      Board *b = ensureBoard(sx, cur[i]); if (!b) continue;
+      int32_t ms2[MAXROWS * W]; int nm = legalSwaps(b, ms2);
+      for (int k = 0; k < nm && nn < SOLVE_BEAM * 40; k++) {
+        if (clockOut()) return -1;
+        // (the owner's rule, rules.c putBackFor: the pair the last swap swapped is never put back for nothing)
+        if (curFrom[i] >= 0 && ms2[k] == curMv[i] && NODE(sx, cur[i])->cleared == NODE(sx, curFrom[i])->cleared && NODE(sx, cur[i])->brk == NODE(sx, curFrom[i])->brk) continue;
+        int c = step(sx, cur[i], MK_SWAP, CR(ms2[k]), CC(ms2[k]), 0); (*expanded)++;
+        if (!liveNode(sx, c)) continue;
+        int st = settleOf(sx, c);
+        if (liveNode(sx, st) && NODE(sx, st)->brk > brk0) {
+          // (found: the line read back through the kept parents)
+          int L = d + 1; line[d] = ms2[k];
+          for (int dd = d - 1, slot = i; dd >= 0; dd--) { line[dd] = hist[dd + 1][slot][1]; slot = hist[dd + 1][slot][0]; }
+          return L;
+        }
+        Board *cb = ensureBoard(sx, c); if (!cb) continue;
+        uint32_t key = solveKey(cb), slot = key & 0xffff;
+        if (seen[slot] == key) continue; seen[slot] = key;
+        nxt[nn] = c; par[nn] = i; mv[nn] = ms2[k]; sc[nn] = solveShape(cb); nn++;
+      }
+    }
+    if (!nn) return 0;
+    // (the beam kept: the best shapes, by a partial selection)
+    int keep = nn < beam ? nn : beam;
+    for (int a = 0; a < keep; a++) { int best = a; for (int z = a + 1; z < nn; z++) if (sc[z] > sc[best]) best = z;
+      int32_t t; t = nxt[a]; nxt[a] = nxt[best]; nxt[best] = t; t = par[a]; par[a] = par[best]; par[best] = t; t = mv[a]; mv[a] = mv[best]; mv[best] = t; t = sc[a]; sc[a] = sc[best]; sc[best] = t; }
+    { static int32_t prevNode[SOLVE_BEAM]; for (int a = 0; a < ncur; a++) prevNode[a] = cur[a];
+      for (int a = 0; a < keep; a++) { curFrom[a] = prevNode[par[a]]; curMv[a] = mv[a]; cur[a] = nxt[a]; hist[d + 1][a][0] = par[a]; hist[d + 1][a][1] = mv[a]; } }
+    ncur = keep;
+  }
+  return 0;
+}
+
+static int getenv_test(void) { return traceOn; }
+// THE BOT'S OWN BREAK SEARCH on a board (search/break.c breakMoves, as the reach report asks it: no list, the clock `ms`), with the touch
+// beam's switches: the line's length returned, its swaps into line; 0 none
+EXPORT(gb_break_test) int gb_break_test(int ms, int noBand, int noDoomed, int beam, int open, int32_t *line) {
+  tbNoBand = noBand; tbNoDoomed = noDoomed; tbBeam = beam;
+  breakOpen = open;   // (the open search: no list, no wasted-three rule -- search/break.c breakOpen)
+  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0;
+  gb_list_on(0); gb_decision_on(-1, 0, 1);
+  gb_clock_start(nowMs() + ms);
+  static Broke br; breakMoves(&hostQ, 0, 0, &br);
+  if (getenv_test()) { static char l[256]; snprintf(l, sizeof l, "BREAKTEST depth %d nmoves %d pathLen %d towardLen %d touch %d built %d lowestG %d gridLen %d clockOut %d", br.depth, br.nmoves, br.pathLen, br.towardLen, br.touch, br.built, lowestG(hostQ.b), gridLen(hostQ.b), clockOut()); hostLog(l); }
+  tbNoBand = tbNoDoomed = tbBeam = 0; breakOpen = 0;
+  if (!br.depth) return 0;
+  if (br.pathLen > 0) { for (int i = 0; i < br.pathLen; i++) line[i] = br.path[i]; return br.pathLen; }
+  line[0] = br.moves[0]; return 1;
+}
+
+// A LINE HANDED TO THE BOT'S JUDGE on the host's question (outcome.c outcome, as every search's line check asks it): what it says
+EXPORT(gb_line_verdict) void gb_line_verdict(const int32_t *seq, int n, char *out, int cap) {
+  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0;
+  gb_list_on(0); gb_decision_on(-1, 0, 1); gb_clock_start(nowMs() + 2000);
+  decQ = hostQ;
+  Outcome o = outcomeOf(seq, n, 0, 0, 0);
+  const Judged *j = &o.j;
+  snprintf(out, (unsigned long)cap, "dead %d late %d cut %d why %d broke %d threes %d fell %d combo %d chain %d lost %d lives %d ok %d okNoWaste %d", j->dead, j->late, j->cut, j->cutWhy, j->made.broke, j->threes, j->fell, j->made.combo, j->made.chain, o.lostAt, o.lives, lineOk(&o, CHECK_WASTE | CHECK_LIST), lineOk(&o, 0));
+}
+
+// ONE SWAP THROUGH THE SEARCH'S BREAK TEST, stage by stage (search/break.c breaksAt): what it reads at the swap's frame and settled
+EXPORT(gb_break_trace) void gb_break_trace(int32_t mv, char *out, int cap) {
+  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0;
+  gb_list_on(0); gb_decision_on(-1, 0, 1); gb_clock_start(nowMs() + 2000);
+  static Ctx *tx; tx = ctxOf(tx);
+  int root = rootOf(tx, &hostQ);
+  int n = step(tx, root, MK_SWAP, CR(mv), CC(mv), 0);
+  int z = liveNode(tx, n) ? settleOf(tx, n) : -1;
+  int32_t tn = liveNode(tx, n) ? NODE(tx, n)->t : -1, tz = liveNode(tx, z) ? NODE(tx, z)->t : -1;
+  int32_t bn = liveNode(tx, n) ? NODE(tx, n)->brk : -1, bz = liveNode(tx, z) ? NODE(tx, z)->brk : -1;
+  int32_t an = tn >= 0 ? aloneBrokeAt(tx, root, tn) : -1, az = tz >= 0 ? aloneBrokeAt(tx, root, tz) : -1;
+  const Board *nb = liveNode(tx, n) ? ensureBoard(tx, n) : 0;
+  int moving = nb ? boardMoving(nb) : -1;
+  int fits = liveNode(tx, z) ? stepFitsAt(tx, z) : -1, first = liveNode(tx, n) ? firstOk(CR(mv), CC(mv), madeBy(tx, n, root)) : -1;
+  decQ = hostQ;
+  int chk = lineCheckOn(&decQ, &mv, 1, 0, CHECK_WASTE);
+  snprintf(out, (unsigned long)cap, "root brk %d | swap node t %d brk %d alone %d moving %d | settled t %d brk %d alone %d | stepFits %d firstOk %d lineCheck %d", NODE(tx, root)->brk, tn, bn, an, moving, tz, bz, az, fits, first, chk);
+}
+
+// A LINE THROUGH THE SEARCH'S EYES, swap by swap: each swap's node as the touch beam grows it (MK_SWAP, back to back), what it reads there
+// (broken against the board alone, moving), the board settled from it, and the beam's key for it (nearScore)
+EXPORT(gb_line_trace) void gb_line_trace(const int32_t *seq, int n, char *out, int cap) {
+  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0;
+  gb_list_on(0); gb_decision_on(-1, 0, 1); gb_clock_start(nowMs() + 2000);
+  static Ctx *tx; tx = ctxOf(tx);
+  int node = rootOf(tx, &hostQ), root = node, k = 0;
+  k += snprintf(out + k, (unsigned long)(cap - k), "root key %d lowestG %d gridLen %d;", nearScore(ensureBoard(tx, root)), lowestG(hostQ.b), gridLen(hostQ.b));
+  for (int i = 0; i < n && k < cap - 200; i++) {
+    int c = step(tx, node, MK_SWAP, CR(seq[i]), CC(seq[i]), 0);
+    if (!liveNode(tx, c)) { k += snprintf(out + k, (unsigned long)(cap - k), " %d,%d dead", CR(seq[i]), CC(seq[i])); break; }
+    int z = settleOf(tx, c);
+    k += snprintf(out + k, (unsigned long)(cap - k), " %d,%d: t %d brk %d/%d key %d | settled t %d brk %d/%d key %d;", CR(seq[i]), CC(seq[i]), NODE(tx, c)->t, NODE(tx, c)->brk, aloneBrokeAt(tx, root, NODE(tx, c)->t), nearScore(ensureBoard(tx, c)),
+                  liveNode(tx, z) ? NODE(tx, z)->t : -1, liveNode(tx, z) ? NODE(tx, z)->brk : -1, liveNode(tx, z) ? aloneBrokeAt(tx, root, NODE(tx, z)->t) : -1, liveNode(tx, z) ? nearScore(ensureBoard(tx, z)) : 0);
+    node = c;
+  }
+}

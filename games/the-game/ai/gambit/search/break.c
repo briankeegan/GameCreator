@@ -25,6 +25,11 @@ static int32_t breakOpen;
 #define CHEAP_BREAK 6    // the actions a break may walk for before the level after it is searched for a cheaper one
 #define TOUCH_BEAM 60
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
+#ifdef GB_TEST
+// (the C check's switches for measuring the touch beam on boards: test/main.c breaks -- 1 the survival band off, 2 the doomed lines kept,
+// beam the widths. Not in the bot)
+static int32_t tbNoBand, tbNoDoomed, tbBeam;
+#endif
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
 #define KEEPN TOUCH_BEAM            // the lines carried on
 #define LINEUP_BUDGET 400
@@ -391,6 +396,9 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   int tpath = 0;
   for (int tb = touchFrom; tb < 2 && !tpath && !SEARCH_OUT(); tb++) {
     int beam = tb ? TOUCH_WIDE : TOUCH_BEAM, ntl = n0;
+#ifdef GB_TEST
+    if (tbBeam > 0) beam = tb ? 2 * tbBeam : tbBeam;
+#endif
     // (A CHEAPER BREAK ONE SWAP ON: a break found that the cursor walks more than CHEAP_BREAK actions for is kept, and the level after
     // searched too -- one more swap near the cursor can cost fewer actions than one far from it; the better of the two by the level's
     // own key, actions before the material)
@@ -422,6 +430,9 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
         int32_t save = imax(1, rankSave > 0 ? rankSave : 60), to = NODE(x, s->root)->t + HORIZON + REST;
         static LOCAL int32_t lraw[LINEPOOL];
         for (int i = 0; i < top && !SEARCH_OUT(); i++, nb2++) { int32_t l = lostAlone(x, tl[i]->n, to); lraw[i] = l; band[i] = l == FOREVER ? (1 << 20) : l == NOT_ASKED ? -1 : l / save; }
+#ifdef GB_TEST
+        if (tbNoBand) nb2 = -1;
+#endif
         if (nb2 == top && top > 1) {
           for (int i = 0; i < top; i++) { idx2[i] = i; key2[i] = band[i]; }
           sortByKeyDesc(idx2, top, key2, tmp2);   // (stable: within a band, the nearness order the beam had)
@@ -434,6 +445,9 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
             for (int i = 0; i < top; i++) { int32_t l = lraw[idx2[i]];
               int viable = l == FOREVER || l == NOT_ASKED || l - NODE(x, tl[i]->n)->t >= save;
               if (viable) tn[nv++] = tl[i]; else nd++; }
+#ifdef GB_TEST
+            if (tbNoDoomed) nd = 0;
+#endif
             if (nv > 0 && nd > 0) {
               for (int i = 0; i < nv; i++) tl[i] = tn[i];
               for (int i = top; i < ntl; i++) tl[nv + i - top] = tl[i];
