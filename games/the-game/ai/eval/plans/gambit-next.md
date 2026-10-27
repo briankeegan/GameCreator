@@ -255,6 +255,8 @@ line short at once by a block shown (**demand**).
   reading the swap as it showed, read nothing. One function fixed: a clear counted to a swap is one the board left alone did not make
   by then (pa.c panelsCleared against the board alone), as breaks already were; the guard settles the swap before reading it. The
   checks went red because the record sat in the board's head and changed the bytes dumped boards load by; it sits past the head now.
+- 1321, combo_storm 18/23 and put back 0 (green), one game lost to a crash: madeBy fetched boards from nodes on a worker, which keeps
+  none. The cleared count is on the node now, as the break count is.
 
 ## Where this stands
 

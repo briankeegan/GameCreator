@@ -305,12 +305,12 @@ static int32_t aloneBrokeAt(Ctx *x, int root, int32_t t) { return NODE(x, aloneN
 // cleared beyond it (the board's own chain clears whether or not the swap is pressed: a clear counted to the swap is one the board alone
 // did not make by then -- pa.c panelsCleared), 0 nothing. Asked of a swap's node: by the searches as they grow a line, by the judge as it
 // presses one (Judged.firstMade, and every swap after for the pair put back), by the press guard on the board as it is
+// (read off the nodes alone -- a worker's context keeps no boards to fetch)
 static int madeBy(Ctx *x, int n, int root) {
   if (!liveNode(x, n)) return 0;
   int a = aloneNodeAt(x, root, NODE(x, n)->t);
   if (NODE(x, n)->brk > NODE(x, a)->brk) return 2;
-  const Board *nb = ensureBoard(x, n), *ab = ensureBoard(x, a);
-  return nb && ab && nb->panelsCleared > ab->panelsCleared;
+  return NODE(x, n)->cleared > NODE(x, a)->cleared;
 }
 // A LINE THAT WASTES A THREE, as the judge saw it: a clear of three it makes for nothing, or the board's own chain left short of the
 // link it reaches alone (keepsChain) -- the one test the shared line check (outcome.c lineFits) and the order (rank.c wastesThree) ask

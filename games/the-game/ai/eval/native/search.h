@@ -34,6 +34,7 @@ typedef struct Node {
   int32_t narr; Arr arr[MAXARR];
   int32_t tag, prev, mk, mr, mc, frames, seed, pins, err, live, kept;
   int32_t held, garb, top, pos0, pos1, brk;   // brk: garbage rows broken so far (NODE_BREAKS)
+  int32_t cleared;                            // panels cleared so far on the board (pa.c panelsCleared): what a swap made, judge.c madeBy
   int32_t stopTime, preStopTime, shakeTime, displacement, speed;
   double riseTimer;
   uint32_t hash;
@@ -120,7 +121,7 @@ static void readBoard(Node *n, Board *b) {
   n->stopTime = b->stopTime; n->preStopTime = b->preStopTime; n->shakeTime = b->shakeTime;
   n->displacement = b->displacement; n->riseTimer = b->riseTimer; n->speed = b->speed;
   n->held = b->stopTime + b->preStopTime + b->shakeTime;
-  n->brk = NODE_BREAKS(b);
+  n->brk = NODE_BREAKS(b); n->cleared = b->panelsCleared;
 }
 static int legalSwaps(Board *b, int32_t *out) {
   int n = 0;
