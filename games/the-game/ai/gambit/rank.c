@@ -287,21 +287,10 @@ static void readyNextFor(Judge *J) {
   // (and where no break is found to lead on to, the plan goes on as the survival search plays on from the board the line leaves
   // (decide.c contLostOf), in the readiness check's share: a line is lost where the best that can be played after it is -- a break that
   // converts its garbage and survives on outlasts a line that only survives, and is judged so)
-  // (A PROOF KEPT, plans/gambit-next.md 6: the survival line the board lives on by is the line's plan, handed out as one -- pressed from
-  // the line's end -- so the next decision carries it. Until now it was the line's loss and nothing else: every line read as living by
-  // its plan had an empty plan (1310 combo_storm-7: plan=0/0 on all eight), and the proof vanished at the next decision)
   if (!J->hold && J->extLost == NOT_ASKED && readyShareMs > 0 && !clockOut()) {
-    int32_t cseq[MAXLINE], cn = 0;
-    double c = contLostOfLine(J, readyShareMs, cseq, &cn);
-    int better = c >= 1e9 || (c >= 0 && c > lostAtOf(J->o.lostAt, 0));
+    double c = contLostOf(J, readyShareMs);
     if (c >= 1e9) J->extLost = FOREVER;
-    else if (better) J->extLost = (int32_t)c;
-    if (better && cn > 0 && J->planN == 0) {
-      J->planN = cn; J->planWait = imax(1, J->o.j.endAt);
-      for (int k = 0; k < cn; k++) { J->planLine[k] = cseq[k]; J->planAt[k] = k ? 0 : J->planWait; }
-      for (int k = 0; k <= W; k++) J->planRow1[k] = anchorIdAt(decQ.b, k);
-      J->readyNext = 1;
-    }
+    else if (c >= 0 && c > lostAtOf(J->o.lostAt, 0)) J->extLost = (int32_t)c;
   }
 }
 static double lostOf(const Judge *x);

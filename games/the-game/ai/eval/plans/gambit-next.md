@@ -290,3 +290,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   by the later loss -- each lost 48 frames after the hold by its extension -- and spent the window from 12 to 1; at the block nothing
   could be pressed. The later loss is compared gross; the survival search already compares it net of what the line spends (the window
   is time, lostNetOf, defined and never called). Step 2's later loss is net now. (Measured after 1312.)
+- 1312, combo_storm 13/24: the survival line handed out as the plan cost six -- carried and pressed as judged, those lines did not live
+  (a life kept 82%, readiness 986 misses): a survival line found in a few ms is not a plan. Out. The net later loss runs alone on
+  1309's build.
