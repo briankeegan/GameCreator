@@ -244,3 +244,8 @@ later loss; the room share reads below none. What the logs established this nigh
 proof rests on exists in 14 decisions of 618, so steps 5 and 6 have nothing to carry; the break on the board to come is found in a
 sixth of the checks and, when it is one swap, is thrown away -- and when offered, does not break when pressed. That last one is a
 defect with a number and a place (search/ready.c landedBreak against judge.c's wait), and the next piece.
+- 1305, combo_storm 15/24 on 1300's frames (the check changed no play): the one-swap check never fired -- the breaks the landed-board
+  search finds are not one swap. 1303 was misread: those breaks were handed out all along, as set-up lines, and are in the candidates
+  (154 of 153 found in combo_storm-1); the judge ranks them low (their own loss is the landing, their plan shorter than other lines'),
+  so a dozen reach the order's first eight and none is played. No break was thrown away. The instrumentation stays (it costs nothing
+  and would fire on a one-swap break); the piece it was built for does not exist.
