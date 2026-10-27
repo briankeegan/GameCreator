@@ -106,7 +106,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // judge could not play out is judged on the search's word)
   // (the line in progress waiting for the board to settle: judged on the board settled, as carriedCand found it)
   asLine(k);
-  Outcome oc = play == PLAY_CARRYWAIT && !k->waitTo ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
+  // (a line with a wait before its first swap -- a break on the board to come, a promise carried -- is judged with it whatever its length:
+  // the judge's own wait (lineWaitTo) is not applied before a swap that is also the last, so a line of one swap must ask it here)
+  Outcome oc = k->waitTo > 0 ? outcomeOf(k->seq, k->nseq, st, 0, k->waitTo) : play == PLAY_CARRYWAIT ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
   unLine();
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)

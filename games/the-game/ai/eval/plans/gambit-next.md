@@ -224,3 +224,9 @@ games do between breaks that the survived ones do not.
   the outcome keeps it, the promise is carried whole, and the judge presses each later swap where the plan said.
 - 1302, combo_storm 15/24, every loss on 1300's frames: the whole plan carried changed no decision. The log now says what the plan
   handed out holds beyond its first break and what the promise carried holds (plan=, carry=), to find where it is lost.
+- 1303 (1302's play, logged): the line played holds a plan in 14 of 618 decisions, and the promise carried on never holds the plan's
+  break (carry=N/0 throughout) -- there is almost never a plan to carry. The break on the board to come was found 153 times in that
+  game, offered as a line 12 times, played 0: a break of one swap has no set-up to hand out, so it was found and thrown away. Fixed:
+  a one-swap break is handed out whole, pressed once the block has landed (the line's waitTo), and a line with a wait before its first
+  swap is judged with it whatever its length -- the judge's own wait never applied before a swap that was also the last, so a carried
+  promise of one swap was judged pressed now and dropped (a step no longer there).

@@ -44,7 +44,7 @@ typedef struct {
   int32_t haveRd; Readied rd;
   int32_t lvU, lvG;                       // a level swap (0: none)
   int32_t haveRl, rlN, rl[2], rlAt;
-  int32_t haveLb, lbN, lb[MAXLINE];   // (the break on the board to come: search/ready.c landedBreak)
+  int32_t haveLb, lbN, lb[MAXLINE], lbOne;   // (the break on the board to come: search/ready.c landedBreak; lbOne: one swap, pressed once the block has landed)
   int32_t nstart; XLine start[MAXSTARTS];  // chains begun: a swap that starts a clear, and the links its fall is continued by
   int32_t tried; double idleMs, searchMs;
 } Found;
@@ -160,7 +160,7 @@ static int pLineBetter(const PLine *a, const PLine *b, int how) {   // (a over b
 }
 static void searchMerge(const Read *R, Found *S) {
   // (the board to come, its own job's answer once the jobs are taken back: answer.c breakEnd)
-  if (landedJobOn && __atomic_load_n(&landedDone, __ATOMIC_ACQUIRE) && landedOk && landedOutN > 0) { S->haveLb = 1; S->lbN = landedOutN; for (int k = 0; k < landedOutN; k++) S->lb[k] = landedOut[k]; }
+  if (landedJobOn && __atomic_load_n(&landedDone, __ATOMIC_ACQUIRE) && landedOk && landedOutN > 0) { S->haveLb = 1; S->lbN = landedOutN; S->lbOne = landedOutOne; for (int k = 0; k < landedOutN; k++) S->lb[k] = landedOut[k]; }
   if (planSplit && __atomic_load_n(&planBDone, __ATOMIC_ACQUIRE)) {
     for (int i = 0; i < planHalfB.n && planSplitAt + i < MAXAIMS; i++)
       if (planB.perAim[i].set) { S->ap.perAim[planSplitAt + i] = planB.perAim[i]; S->ap.perAim[planSplitAt + i].aimIndex = planSplitAt + i; }
@@ -210,7 +210,7 @@ static void searchAll(const Read *R, Found *S) {
   // (a job of its own where a worker has it: answer.c JOB_LANDED, read in searchMerge; else here in what the proposers have)
   if (!landedJobOn && decF.next != NOT_ASKED && decF.next > 0) {
     double m4 = timeLeftMs() / 3 < LANDED_MS ? timeLeftMs() / 3 : LANDED_MS;
-    if (m4 > 1) S->haveLb = landedBreak(&decQ, decF.next + 2, m4, S->lb, &S->lbN);
+    if (m4 > 1) { S->haveLb = landedBreak(&decQ, decF.next + 2, m4, S->lb, &S->lbN); S->lbOne = S->haveLb && landedOne; }
   }
   S->lvG = !R->under && R->readyAt != NOT_ASKED && !(S->haveRd && !S->rd.ready && S->rd.setup) ? level(&decQ, R->readyAt ? R->readyAt : NOT_ASKED) : 0;
 }
@@ -512,7 +512,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // READY: the swap that leaves the next block breakable when it lands, and the line that leaves a plan once everything has landed
   if (S->haveRd && !S->rd.ready && S->rd.setup) { int32_t one = S->rd.setup; ADD(PLAY_READY, &one, 1, -1, 0); }
   if (S->haveRl) { int m0 = n; ADD(PLAY_READY, S->rl, S->rlN, -1, 0); if (n > m0) out[m0].xDone = S->rlAt; }
-  if (S->haveLb) ADD(PLAY_READY, S->lb, S->lbN, -1, 0);
+  if (S->haveLb) { int m0 = n; ADD(PLAY_READY, S->lb, S->lbN, -1, 0); if (n > m0 && S->lbOne && decF.next != NOT_ASKED) out[m0].waitTo = decF.next + 2; }   // (a break of one swap: pressed once the block has landed)
   // (LOWERING THE STACK: the tallest column's top walked onto a lower one, each step settled -- on any board with a column two above
   // its neighbour, the move when there is nothing better to do (rank.c markIdle); topped or under garbage, a perched block let down too
   // -- its supports walked out from under it (search/break.c perchedDrops). Each judged as any line: a lower stack is a later loss)

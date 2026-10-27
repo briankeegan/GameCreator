@@ -39,6 +39,7 @@ static Readied readyFor(const Question *q, double ms) {
 // is down. Its line, as the board stands now, is the proposer's to offer and the judge's to try: pressed early, its swaps meet the block
 // as the judge plays them. 1 and the line; 0 none (nothing coming, the board lost first, no garbage on it then, none found)
 static Board *landedB; static Ctx *landedCtx;   // (its own: it runs as a job of its own beside the proposers' readiness -- answer.c JOB_LANDED)
+static int32_t landedOne;   // (the break found is one swap: handed out whole, to be pressed once the block has landed -- the line's waitTo)
 static int32_t landedWhy = -1, landedDeep, landedRes, landedIn;   // (the depth its beam reached, its carried lines played again of those carried in)
 // (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found, 5 below the stack as it is now; -1 not asked)
 static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path, int *n) {
@@ -81,6 +82,10 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   int32_t dr = 0, id = NUL;
   for (int c = 1; c <= W && id == NUL; c++) if (q->b->p[1][c].f[COLOR] && !q->b->p[1][c].f[ISGARBAGE]) id = q->b->p[1][c].f[ID];
   if (id != NUL) { int found = 0; for (int r = 1; r < landedB->nrows && !found; r++) for (int c = 1; c <= W; c++) if (landedB->p[r][c].f[ID] == id) { dr = r - 1; found = 1; break; } }
+  // (A BREAK OF ONE SWAP has no set-up: it is handed out whole, in the rows of the board to come, to be pressed once the block has
+  // landed -- the line's waitTo, propose.c. Until now it was found and thrown away: 153 found, 12 offered, in one game of 1303)
+  landedOne = lbr.pathLen == 1;
+  if (landedOne) { path[0] = lbr.path[0]; *n = 1; return 1; }
   for (int k = 0; k + 1 < lbr.pathLen && k < MAXLINE; k++) {
     int r = CR(lbr.path[k]) - dr;
     if (r < 1) { *n = 0; landedWhy = 5; return 0; }
@@ -91,13 +96,13 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
 
 // (THE BOARD TO COME AS A JOB OF ITS OWN: on a worker beside the decision's other searches, in the searches' time, so it takes from no
 // other search; its answer the proposers' once the jobs are taken back -- propose.c searchMerge)
-static int32_t landedOk, landedOutN, landedOut[MAXLINE], landedDone, landedJobOn;   // (landedJobOn: a worker has it this decision)
+static int32_t landedOk, landedOutN, landedOut[MAXLINE], landedOutOne, landedDone, landedJobOn;   // (landedJobOn: a worker has it this decision)
 static void landedJobRun(double by) {
-  landedOk = 0; landedOutN = 0;
+  landedOk = 0; landedOutN = 0; landedOutOne = 0;
   double ms = by - nowMs();
   if (decF.next == NOT_ASKED || decF.next <= 0 || ms < 1) return;
   int n = 0;
-  if (landedBreak(&decQ, decF.next + 2, ms, landedOut, &n)) { landedOutN = n; landedOk = 1; }
+  if (landedBreak(&decQ, decF.next + 2, ms, landedOut, &n)) { landedOutN = n; landedOk = 1; landedOutOne = landedOne; }
 }
 
 // THE ORDER OF THE FIRST SWAPS: nearest the top of the stack first. The comparator says "b first" only when b is strictly nearer; the
