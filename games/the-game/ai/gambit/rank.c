@@ -487,6 +487,9 @@ static int32_t marginKey(const Judge *J) {
   // handed to a dead line it reads the board as it is now -- the best margin in the order (1306, combo_storm-3 at 372: a carry dead at 32
   // read 5.5.12.12 and was played over one lost at 260). A dead line's room is below none: a row over, what it died of)
   if (t < 0 && J->o.dead && !J->hold) { t = MARGIN_ROWS + 1; m = m < 0 ? materialOn(decQ.b) : m; if (contact < 0 || under < 0) contactOn(decQ.b, &contact, &under); if (win < 0) win = winCoverShare(0, 0, 0); }
+  // (and a line that SPENDS the next break -- it leaves no break to build where the board left alone keeps one, outcome.c -- is lost the
+  // frame it is done, however its end board reads: room below none for it too. 1307 combo_storm-7 round 2, 5265: such a line read 4.5.12.12)
+  if (J->o.spent && !plan && !J->hold) t = MARGIN_ROWS + 1;
   if (t < 0 || m < 0) { t = topOn(decQ.b) + rowsComing(&decQ, 0); m = materialOn(decQ.b); contactOn(decQ.b, &contact, &under); win = winCoverShare(0, 0, 0); }
   marginShares[0] = (MARGIN_ROWS - t) / (double)MARGIN_ROWS; marginShares[1] = (double)m / W / MARGIN_ROWS; marginShares[2] = win < 0 ? 1 : win;
   marginShares[3] = under > 0 ? (double)contact / under : 1;

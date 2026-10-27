@@ -267,3 +267,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   block then landed on a board that could press nothing. The window's cover moved each due to the line's end, where the window had
   refilled, while the hold read it at the due. A due is when the row must be paid; a line still pressing past it has not covered it.
   Fixed: a due is never moved to the line's end.
+- 1308, combo_storm 19/24, gates green: a due never moved to the line's end. Kept. Lost games convert 144 of 153 (-6). Next piece, from
+  1307 combo_storm-7 round 2 at 5265: a line that spends the next break (leaves none to build, outcome.c spent) reads its end board's
+  margin, 4.5.12.12 there, and only diesNow keeps it down while it is short. Room below none for it, as for a dead line.
