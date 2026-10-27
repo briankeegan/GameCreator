@@ -200,3 +200,8 @@ board is made unbreakable before the search runs, between the last break and the
 changed that. The next piece has to come from a comparison the logs can make and I have not: the boards the survived games leave
 after each break against the boards the lost games leave -- height, material, where the next block lands -- to see what the lost
 games do between breaks that the survived ones do not.
+- The run summary of 1298, read whole: the break on the board to come was asked 15,992 times and 8,407 times the board was lost before
+  the block landed -- the rise kills before the block arrives in half the checks. The ledger: games lost converted 140 cells a minute
+  of 152 landed and cleared 150; games survived 149 of 149, and cleared 149. combo_storm's blocks are 4x1: the board dies of room. The
+  room share reads none for every line under a block (floored at none), so no line that lowers the stack is preferred for it. Room
+  below none was measured only with the hold for the proof (1292). Measured alone now.
