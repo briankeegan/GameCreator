@@ -257,6 +257,8 @@ line short at once by a block shown (**demand**).
   checks went red because the record sat in the board's head and changed the bytes dumped boards load by; it sits past the head now.
 - 1321, combo_storm 18/23 and put back 0 (green), one game lost to a crash: madeBy fetched boards from nodes on a worker, which keeps
   none. The cleared count is on the node now, as the break count is.
+- 1322, combo_storm 19/24, every gate green, put back 0, truth 0: the 19 again, with the owner's rule in -- no pair put back for
+  nothing, judge and guard reading one record the engine writes. The five losses are 1321's.
 
 ## Where this stands
 
