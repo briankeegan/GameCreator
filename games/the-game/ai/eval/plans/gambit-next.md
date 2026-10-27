@@ -249,6 +249,12 @@ line short at once by a block shown (**demand**).
   decision with none has none at the next 86% of the time; with one or more, 14-18%. The game is a chain between "a break in hand" and
   "none", the "none" state is sticky and lethal over time, and losses are the games that spent longer in it. Non-breaking clears under
   garbage (20-31 a minute) and breaks (61-77 a minute) do not part lost from survived.
+- 1320, combo_storm 16/24, put back 176 (red), the C checks red: the record on the board made the pair one state, and the log then
+  showed the disagreement was in "what the swap made" -- the judge, settling a line's first swap, counted the board's own chain's
+  clears to the swap (madeBy: any panel cleared in the step), so a pair put back for nothing read as a clear and passed; the guard,
+  reading the swap as it showed, read nothing. One function fixed: a clear counted to a swap is one the board left alone did not make
+  by then (pa.c panelsCleared against the board alone), as breaks already were; the guard settles the swap before reading it. The
+  checks went red because the record sat in the board's head and changed the bytes dumped boards load by; it sits past the head now.
 
 ## Where this stands
 
