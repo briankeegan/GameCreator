@@ -270,3 +270,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - 1308, combo_storm 19/24, gates green: a due never moved to the line's end. Kept. Lost games convert 144 of 153 (-6). Next piece, from
   1307 combo_storm-7 round 2 at 5265: a line that spends the next break (leaves none to build, outcome.c spent) reads its end board's
   margin, 4.5.12.12 there, and only diesNow keeps it down while it is short. Room below none for it, as for a dead line.
+- 1309, combo_storm 19/24, gates green: the spent line's margin, kept (combo_storm-6 to 4598 from 4074). Next piece, from 1308's
+  combo_storm-6, 3851 to 4012: the window went from 16 to 0 over eight decisions of proven combos while the window share read full,
+  because the dues' cover reads the window as it will have refilled by each far-off due -- and the next line spends more, and the
+  next; at the due nothing could be pressed. The share now reads the next break's walk kept at the line's end too, and is the lesser.
