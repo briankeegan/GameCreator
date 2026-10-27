@@ -500,17 +500,6 @@ static int32_t marginKey(const Judge *J) {
 // -- less than a break's time apart buys no break more -- a line lost within a break's time each alone, and one with three breaks'
 // time left alike with every other. Bands from one reference, so alike is one relation for every pair and the order one order)
 static double rankLostRef;
-// (A LINE'S LOSS NET OF WHAT IT SPENDS: the frame it is lost, less the frames the window takes to give back the actions its swaps spend
-// (core/nodes.h actionFrames) -- between lines lost alike, every one searched as far from now, so a fresh line spends more to be lost
-// later than the line in progress, which has pressed part of its own: the window is time. The hold spends none)
-static double lostNetOf(const Judge *J) {
-  double l = lostOf(J);
-  if (l >= 1e9 || J->hold) return l;
-  // (a line lost where its plan is spends what the plan presses: the line and the breaks after it)
-  int planned = J->extLost != NOT_ASKED && J->extSpent != NOT_ASKED && lostAtOf(J->extLost, 0) > lostAtOf(J->o.lostAt, 0);
-  double net = l - (planned ? J->extSpent : J->o.j.spent) * actionFrames();
-  return net > 0 ? net : 0;   // (a line that spends more than it buys is lost now)
-}
 // (the bands are a decision wide (rankReact): the search for the proof is carried from decision to decision (plans/gambit-next.md 3 and
 // 7), so a line lost a decision later leaves the search one more decision to find it with -- only lines lost within one decision of each
 // other are alike, and among them the margin decides)
@@ -564,7 +553,6 @@ static const Judge *rankHold;   // (the decision's hold among the lines ranked: 
 // window takes to give back the actions it presses (actionFrames; a tap's frames, TAP_GAP, with no window said) and a break's time for
 // each row of panels its clears take beyond what its breaks convert (judge.c netPanels). The exchange rates -- a row converted and a
 // block thrown each a break's time -- are the owner's to set (plans/gambit-next.md)
-static double lostNetOf(const Judge *J);
 static double valueOf(const Judge *J) {
   double save = imax(1, rankSave), af = actionFrames() > 0 ? actionFrames() : TAP_GAP;
   double lj = lostOf(J), lh = rankHold ? lostOf(rankHold) : lj;
@@ -628,11 +616,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
       if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
-      // (THE LATER LOSS NET OF WHAT IT SPENDS, lostNetOf: the window is time, as the survival search reads it (search/outlive.c
-      // outBefore) -- a level of one swap lost 48 frames after the hold and spending the window to press it bought nothing. 1311
-      // combo_storm-6, 2555 to 2698: four such lines over the hold by the gross loss, the window from 12 to 1, then nothing could be
-      // pressed)
-      if (!lostAlike(x, y) && lostNetOf(x) != lostNetOf(y)) K(2, "later", lostNetOf(y) > lostNetOf(x) ? 1 : -1);
+      if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
     } }
   // 3. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(3, "chain", cutsShort(x) ? 1 : -1);

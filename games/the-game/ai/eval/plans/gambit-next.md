@@ -188,6 +188,9 @@ line short at once by a block shown (**demand**).
   Now: the shape-math readiness in proofOf, the lines that live asked, no hold rule, the 14 build's order otherwise.
 - 1299, combo_storm 6/24: readiness in the proof alone. The worst of the night; taken back out. The build is the 14 build again
   (margin first, no readiness in the proof, the promise anchored to the board as it is, the gates, the logs, the reach).
+- 1313, combo_storm 14/24, and the one-order gate red (23 decisions): the later loss net of what the line spends. A loss net of
+  the spend is not one order with the bands -- two lines alike by the gross loss order one way, and the net loss the other. Taken
+  back out. The build is 1309's again (19).
 
 ## Where this stands
 
