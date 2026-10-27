@@ -594,9 +594,11 @@ static int catOf(const Judge *J, const Judge *H) {
 // stands past the last row shown is due and PROOF_ROWS rows' breaks more; 0 unproven -- its loss is a bound, the breaks the searches
 // found, not a fact)
 // (READY, plans/gambit-next.md The idle frame: the board the line leaves has real play in reach -- a break within the shape math's
-// reach, or no garbage on it. Not read (no end board): taken as ready. It decides between lines lost alike, never over a later loss:
-// in the proof it played a line lost sooner 145 times in a run, 1315, 6/24)
+// reach, or no garbage on it. Not read (no end board): taken as ready. Read, and in no key of the order: in the proof it played a line
+// lost sooner 145 times in a run (1315, 6/24); as a tie-break among proven lines the list ranks alike, 306 times (1316, 14/24).
+// The shape math's reach is not the fact it needs to be -- the readiness proposer and the carried break search stand in for it)
 static int playReady(const Judge *J) { return J->o.endNear < 0 || J->o.endNear < NEAR_MISS; }
+static int playReadyRead(const Judge *J) { return playReady(J); }   // (kept read: answer.c may log it)
 static int proofOf(const Judge *J) {
   if (J->o.lives) return 3;
   if (J->extLost == FOREVER) return 2;
@@ -621,8 +623,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
-      // (lost alike: the one that leaves real play in reach -- the next decision does not go idle on it)
-      { int rx = playReady(x), ry = playReady(y); if (rx != ry) K(2, "ready", rx ? -1 : 1); }
+
     } }
   // 3. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(3, "chain", cutsShort(x) ? 1 : -1);
@@ -638,8 +639,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     ax += wastesThree(x) && !x->threeNeeded ? 1 : 0; ay += wastesThree(y) && !y->threeNeeded ? 1 : 0;
     ax += x->spends ? 2 * MAXAIMS + 2 : 0; ay += y->spends ? 2 * MAXAIMS + 2 : 0;
     if (ax != ay) K(4, "list", ax - ay); }
-  // (proven alike and the list alike: the line that leaves real play in reach, playReady -- the idle frame)
-  if (proofOf(x) && proofOf(y)) { int rx = playReady(x), ry = playReady(y); if (rx != ry) K(4, "ready", rx ? -1 : 1); }
+
   // 5. VALUE FOR MOVES (valueOf): what the line gives -- the time it buys over the hold, the garbage it converts, the blocks it
   // throws -- less what it costs -- its actions, the panels it spends -- all in frames: more moves for less is worse, the line in
   // progress cheaper by what of it is pressed, a far line one that has to earn its walk

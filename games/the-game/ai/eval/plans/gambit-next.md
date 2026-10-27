@@ -46,16 +46,17 @@ What follows, and what does not:
   with garbage queued lands a block in the judging, as in the game. The hold is a rain. Counted on the game: `idleQueued`, frames idle
   with garbage queued, a minute, games lost against survived.
 - **Ready is real play in reach.** The board a line leaves is ready when it has garbage on it and a break within the shape math's reach
-  (`outcome.c endNear`, `nearOf`), or no garbage on it (`rank.c playReady`). It decides between lines lost alike (step 2, after the
-  margin) and between proven lines the list ranks alike (step 4), never over a later loss: in the proof it played a line lost sooner
-  for it 145 times in a run (1315, 6/24).
+  (`outcome.c endNear`, `nearOf`), or no garbage on it (`rank.c playReady`). Read, and in no key of the order: in the proof it played
+  a line lost sooner for it 145 times in a run (1315, 6/24); as a tie-break among proven lines the list ranks alike, 306 times (1316,
+  14/24). The shape math's reach is not the fact it needs to be; what keeps the next decision from idling is the carried break search
+  and the readiness proposer (step 3).
 - **The rest stays silence.** After a plan runs out the judge assumes nothing pressed, because that is the truth when the bot has
   nothing; what keeps the bot from idling is the proof asking for play in reach, not an assumed future line.
 
 ## The steps
 
 1. **Proven first.** A line whose plan, played on the engine, pays every row shown before the board dies is proven. A proven line
-   beats every unproven one. Real play in reach on the board it leaves (The idle frame: `playReady`) breaks ties, in steps 2 and 4. Whether its end board is ready for the next
+   beats every unproven one. Real play in reach on the board it leaves (The idle frame: `playReady`) is read, not ranked on. Whether its end board is ready for the next
    block the mode sends by the fuller shape math (the nearest break with the biggest block of the game landed on it) is read and logged
    (`er=`) but not part of the proof -- see Learned, 1289 to 1292 and 1299.
 2. **Unproven: the most left to find a proof with.** Of lines not proven, one that dies before it could press anything ranks last;
@@ -230,6 +231,9 @@ line short at once by a block shown (**demand**).
   asked for, so lines beginning with a put-back were judged clean. Fixed: readiness a tie-break (lost alike; proven and list alike),
   the pair as of the question's frame (the swaps planned until then pressed on the predicted board), the judge seeded with it, the idle
   frames counted by the engine's own drop (the count read the activity a frame early and found none).
+- 1316, combo_storm 14/24, every gate green, put back 0: readiness as a tie-break decided 306 plays of a line lost sooner (rule
+  4.ready) -- out of the order. Idle frames with garbage queued: 38 a minute in games lost, 37 in games survived -- idleness is not
+  what parts them; conversion is (141 cells turned to panels a minute in losses against 147 landed).
 
 ## Where this stands
 
