@@ -597,6 +597,9 @@ static int catOf(const Judge *J, const Judge *H) {
 // stands past the last row shown is due and PROOF_ROWS rows' breaks more; 0 unproven -- its loss is a bound, the breaks the searches
 // found, not a fact)
 static int proofOf(const Judge *J) {
+  // (READY FOR THE NEXT BLOCK, plans/gambit-next.md 1: a block shown this game, the board the line or its plan ends on must have a break
+  // near with that block landed on it (outcome.c endReadyOf) -- not asked, or the clock cut it, is not proven)
+  if (nextBlk.height > 0 && J->endReady != 1) return 0;
   if (J->o.lives) return 3;
   if (J->extLost == FOREVER) return 2;
   double l = lostOf(J);
@@ -614,15 +617,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // unless lost alike (lostAlike: the same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
     if (!px) {
       int nx = diesNow(x), ny = diesNow(y); if (nx != ny) K(2, "now", nx ? 1 : -1);
-      // (THE LOSS IN BANDS OF A BREAK'S TIME, before the margin: a loss a band later is a break's time more to find the proof in, whatever
-      // the margin reads -- the loss reports named the margin passing over such lines in every run, 1294 to 1296. The bands are absolute
-      // (the frame over a break's time), so the order is one order: a band is a band whichever two lines are compared. Within a band
-      // the margin decides, then the later loss)
-      { double lx = lostOf(x), ly = lostOf(y), save = imax(1, rankSave);
-        int32_t bx = lx >= 1e9 ? 0x7fffffff : (int32_t)(lx / save), by = ly >= 1e9 ? 0x7fffffff : (int32_t)(ly / save);
-        if (bx != by) K(2, "later", by > bx ? 1 : -1); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
-      if (lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
+      if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
     } }
   // 3. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(3, "chain", cutsShort(x) ? 1 : -1);

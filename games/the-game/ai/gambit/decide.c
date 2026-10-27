@@ -401,10 +401,13 @@ static int ranked(const Read *R, const Found *S) {
   }
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first. A ready line
   // first of all: being ready is all it is for, and asked last, in the order's tail, it was asked out of time -- 42 of 53 unanswered)
-  if (!(n && order[0]->o.lives)) {
-    int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
+  // (and with a block shown this game, the lines that live are asked whether their end board is ready for the next one -- the proof,
+  // plans/gambit-next.md 1 -- while the top line lives; the rest only when none does)
+  if (!(n && order[0]->o.lives) || nextBlk.height > 0) {
+    int topLives = n && order[0]->o.lives;
+    int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]) && (!topLives || order[i]->o.lives);
     for (int pass = 0; pass < 2; pass++)
-      for (int i = 0; i < n; i++) if (!EXTRA(order[i]) && (order[i]->k.play == PLAY_READY) == !pass) { readyShare(own--); readyNextFor(order[i]); }
+      for (int i = 0; i < n; i++) if (!EXTRA(order[i]) && (!topLives || order[i]->o.lives) && (order[i]->k.play == PLAY_READY) == !pass) { readyShare(own--); readyNextFor(order[i]); }
     readyShare(0); sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line

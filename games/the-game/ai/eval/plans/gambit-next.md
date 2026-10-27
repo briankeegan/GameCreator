@@ -182,3 +182,7 @@ line short at once by a block shown (**demand**).
   break's time later decides" was not one order -- 100 and 150 by the margin, 150 and 200 by the margin, 100 and 200 by the loss.
   Fixed: the loss in absolute bands of a break's time decides first, the margin within a band, then the exact loss; a band is a band
   whichever two lines are compared.
+- 1298, combo_storm 10/24, the loss in bands before the margin: below the 14, as 1296's 11 was. The margin first measures 14 five
+  times; the loss first 11 and 10. The margin stays first, as the plan says. Taken back out.
+- Readiness in the proof, measured alone: it ran only with the hold for the proof (1289 to 1292), which cost the games by itself.
+  Now: the shape-math readiness in proofOf, the lines that live asked, no hold rule, the 14 build's order otherwise.
