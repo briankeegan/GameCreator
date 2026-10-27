@@ -234,11 +234,8 @@ static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int
   readyPendLast = 0; readyWalkLast = -1; readyNearLast = -1; readyMatLast = -1; readyTopLast = -1; readyContactLast = readyUnderLast = -1;
   // (a line that ends past the landing is ready from where it ends -- never a frame on: the same trajectory, asked from any root,
   // lands on the same board, so a break found on it once is found again by its key)
-  // (THE BOARD TO COME, at the game's pace (search.h MK_REST): run to the landing with a block landing every restRainEvery frames, as the
-  // game is measured to land them -- left idle instead, the whole queue rains in before the landing and the board is lost first on half
-  // of the askings (11594 of 20981, run 1322), so readiness could not be asked at all)
   int dt = wait - NODE(x, n)->t;
-  int land = dt > 0 ? step(x, n, MK_REST, 0, 0, dt) : n;
+  int land = dt > 0 ? step(x, n, MK_LONG, 0, 0, dt) : n;
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   if (readyDefer && !readyCollect) return NOT_ASKED;
   int calm = settleOf(x, land);
@@ -260,13 +257,12 @@ static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int
 
 // A board lost left alone (attacker lostAlone): the first frame from the root the board at node n, left alone, is lost before `to` --
 // FOREVER when it is alive at `to`.
-static int32_t lostAloneAs(Ctx *x, int n, int32_t to, int kind) {
-  int w = step(x, n, kind, 0, 0, imax(1, to - NODE(x, n)->t));
+static int32_t lostAlone(Ctx *x, int n, int32_t to) {
+  int w = step(x, n, MK_LONG, 0, 0, imax(1, to - NODE(x, n)->t));
   if (w == STEP_DEAD) return deadAt;
   if (w < 0) return NOT_ASKED;   // (the clock stopped it, or the step was refused: no answer -- never a loss at 0)
   return NODE(x, w)->dead ? NODE(x, w)->t : FOREVER;
 }
-static int32_t lostAlone(Ctx *x, int n, int32_t to) { return lostAloneAs(x, n, to, MK_LONG); }
 // (a step with the walk tapped, as the frame loop's keys are made before it holds them: where a press is taken -- pressWalk)
 static int stepTapped(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   int32_t t = pressTight; pressTight = 0;
@@ -368,7 +364,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     { int32_t to = o->waitTo > 0 && k == o->waitAt ? o->waitTo : k == 0 && !last ? lineWaitTo : 0;
       for (int m = 0; !to && m < o->nmore; m++) if (o->moreTo[m] > 0 && k == o->moreAt[m]) to = o->moreTo[m];
       if (to > 0) {
-        int w = step(x, n, MK_REST, 0, 0, imax(1, to - NODE(x, n)->t));   // (a wait for a landing, at the game's pace: the board to come)
+        int w = step(x, n, MK_LONG, 0, 0, imax(1, to - NODE(x, n)->t));
         if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
         if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
         int calm = settleOf(x, w);
@@ -491,9 +487,6 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->endNode = n;
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
-  // (the line's loss with the board left idle, exact: at the game's pace instead (MK_REST) nearly every line passed the proof's bar and
-  // the list decided everything, 16/24; with the bar raised to the horizon nothing passed and the margin decided everything, 14/24 --
-  // runs 1324, 1325. The pace is the projection's, below: the board to come, and the plan's waits for a landing)
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));
   // (readiness, the dearer check, only when the board left alone does not stand to lifeTo -- always, or for a line that breaks)
   int standsOut = j->lostAt == FOREVER && (o->readyIfLost || (o->readyIfBreak && j->made.broke > 0));
@@ -542,7 +535,7 @@ EXPORT(gb_question_bytes) int gb_question_bytes(int nbytes, int narr) {
   if (!hostBoard) hostBoard = nb_new();
   const unsigned char *p = (const unsigned char *)gbIo;
   memcpy(hostBoard, p, BOARD_HEAD);
-  hostBoard->lastSwapA = hostBoard->lastSwapB = 0; hostBoard->rainEvery = hostBoard->rainIn = 0;   // (a dumped board carries no record of its last swap, and rains as the game does)
+  hostBoard->lastSwapA = hostBoard->lastSwapB = 0;   // (a dumped board carries no record of its last swap)
   if (hostBoard->ninc < 0 || hostBoard->ninc > MAXINC || hostBoard->nrows < 13 || hostBoard->nrows > MAXROWS || narr > MAXARR) return -1;
   unsigned long qn = (unsigned long)hostBoard->ninc * sizeof(Incoming), rn = (unsigned long)hostBoard->nrows * sizeof(Panel) * (W + 1);
   if (BOARD_HEAD + qn + rn != (unsigned long)nbytes) return -1;

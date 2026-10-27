@@ -50,14 +50,11 @@ What follows, and what does not:
   a line lost sooner for it 145 times in a run (1315, 6/24); as a tie-break among proven lines the list ranks alike, 306 times (1316,
   14/24). The shape math's reach is not the fact it needs to be; what keeps the next decision from idling is the carried break search
   and the readiness proposer (step 3).
-- **The rest at the game's pace.** After a line the judge used to leave the board idle under the whole queue: a block every 15 frames,
-  every end board a rain death within a block or two, so nothing under garbage could live, the proof never engaged and readiness was
-  asked of boards already lost (56% of its askings). The game as measured lands a block every 97 frames, lost and survived games
-  alike. As the judge's own loss of a line the pace measured 16 and 14 (1324, 1325: the proof's bar then fits nothing or everything).
-  It is the projection's: the board to come that readiness is asked of, and the plan's waits for a landing, are run to the landing
-  at the game's pace (`search.h MK_REST`, the engine's `rainEvery`) -- left idle, the whole queue rained in first and the board to
-  come was lost on half of readiness's askings. The judge's loss, the save and every other reader of the board left alone stay
-  exact: a save must be true of the board as it is.
+- **The rest stays the board left idle.** The judge's loss, readiness's board to come and the plan's waits all run the board as the
+  engine runs it: every idle frame a block. A rest at the game's measured pace (a block every 97 frames) was built and measured in
+  all three places (1324 to 1326: 16, 14, 17) -- as the judge's loss it made the proof's bar fit everything or nothing; in the
+  projections it tripled the lines that live and a quarter of them did not live on. The exact rest is pessimistic and right: the
+  bot's own future presses are not a fact, and a projection that assumes them promises what the next decision cannot keep.
 
 ## The steps
 
@@ -279,6 +276,9 @@ line short at once by a block shown (**demand**).
   6240 plays of a line lost sooner (2500 in the 19 build). The judge's loss is exact again with its 120-frame bar; the pace goes to the
   projections only -- the board to come (readiness: 11594 of 20981 askings found it lost first under the idle rain, unchanged by
   the judge's pace, 11108 and 10565 in 1324 and 1325) and the plan's waits for a landing.
+- 1326, combo_storm 17/24, gates green: the pace in the projections only. Lines that lived 763 (230 in the 19 build), of which 73%
+  lived on at the next decision (86%): optimistic readiness. The board to come still lost first on 10802 askings (11594): those are
+  the line's own landings, not the rest. Out; the engine and the judge are the 19 build's again (1322).
 
 ## Where this stands
 

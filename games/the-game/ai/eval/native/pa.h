@@ -100,9 +100,6 @@ typedef struct Board {
   // nrows rows and nothing past them
   Incoming inc[MAXINC];           // the next to drop last
   Panel p[MAXROWS][W + 1];
-  int32_t rainEvery, rainIn;      // THE REST AT A PACE (search.h MK_REST): with rainEvery > 0 a block lands only once rainIn frames have
-                                  // passed since the last landed -- the judge's model of the game going on at the pace measured, not of
-                                  // the board left idle (plans/gambit-next.md, The idle frame). 0: the engine as the game is
   int32_t lastSwapA, lastSwapB;   // the two panels the last swap swapped, by id, as the swap found them (left, right); 0 none. The
                                   // engine's own record (doSwap), not the game's: past the head so a board's dumped bytes are as they
                                   // were, copied with the board (paCopy), zeroed by a load (nb_load) for the host to set
@@ -115,7 +112,7 @@ static inline void paCopy(Board *dst, const Board *src) {
   memcpy(dst, src, BOARD_HEAD);
   memcpy(dst->inc, src->inc, (unsigned long)src->ninc * sizeof(Incoming));
   memcpy(dst->p, src->p, (unsigned long)src->nrows * sizeof(Panel) * (W + 1));
-  dst->lastSwapA = src->lastSwapA; dst->lastSwapB = src->lastSwapB; dst->rainEvery = src->rainEvery; dst->rainIn = src->rainIn;
+  dst->lastSwapA = src->lastSwapA; dst->lastSwapB = src->lastSwapB;
 }
 #define COPY_BOARD(dst, src) paCopy(dst, src)
 
