@@ -229,7 +229,7 @@ static void readyNextFor(Judge *J) {
   if (J->o.lives) {
     if (J->endReady == NOT_ASKED && nextBlk.height > 0 && !clockOut()) {
       if (!J->hold) asLine(&J->k);
-      Board *eb = lineEnd(J->hold ? 0 : J->k.seq, J->hold ? 0 : J->k.nseq, J->hold ? 0 : J->settled);
+      Board *eb = J->hold ? decQ.b : lineEnd(J->k.seq, J->k.nseq, J->settled);   // (the hold's end board is the board as it is)
       J->endReady = endReadyOf(eb);
       J->endReadyWhy = endReadyWhy;
       if (!J->hold) unLine();
@@ -277,7 +277,7 @@ static void readyNextFor(Judge *J) {
   // ends on, plans/gambit-next.md 1)
   if (J->endReady == NOT_ASKED && nextBlk.height > 0 && !clockOut()) {
     if (!J->hold) asLine(&J->k);
-    Board *eb = lineEnd(J->hold ? 0 : J->k.seq, J->hold ? 0 : J->k.nseq, J->hold ? 0 : J->settled);
+    Board *eb = J->hold ? decQ.b : lineEnd(J->k.seq, J->k.nseq, J->settled);
     J->endReady = endReadyOf(eb);
     if (!J->hold) unLine();
   }

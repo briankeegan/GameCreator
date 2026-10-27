@@ -240,9 +240,13 @@ static LOCAL int32_t planEndReady;   // (and whether the board it ends on is rea
 // on it, has a break -- the break search's own answer on that board (judge.c breaksAfterLanding). 1 ready, 0 not (none found, or the board
 // is lost when it lands), NOT_ASKED the clock cut it. With no block shown yet this game, 1: nothing to be ready for
 // (the block is landed on the end board at once: the question is whether that board has a break for it, not whether it stands the lead
-// again -- the lead was stood by the line. endReadyWhy, the log's: 1 no end board, 2 the clock before asking, 3 no root, 4 the clock cut
-// the search, 5 the board is lost when it lands, 6 no break found, 0 ready)
+// again -- the lead was stood by the line. Read by the shape math, the swaps to the nearest break on the landed board (search/break.c
+// nearOf, the touch beam's own key), within END_READY_NEAR: a reading every line can be asked in the clock, where a break search of
+// each could not be. The decision that plays the line searches that board for the break itself; a proof lost with nothing new shown
+// is the reading's miss, counted by the summary. endReadyWhy, the log's: 1 no end board, 2 the clock before asking, 3 no root, 5 the
+// board is lost when it lands, 6 no break near, 0 ready)
 #define END_READY_LEAD 60
+#define END_READY_NEAR 2
 static LOCAL Ctx *endReadyCtx;
 static LOCAL int32_t endReadyWhy;
 static int32_t endReadyOf(const Board *eb) {
@@ -255,11 +259,16 @@ static int32_t endReadyOf(const Board *eb) {
   int root = rootOf(x, &q2);
   endReadyWhy = 3;
   if (root < 0) return NOT_ASKED;
-  int d = readyDefer; readyDefer = 0;
-  int32_t r = breaksAfterLanding(x, root, q2.arr[0].at + 2, 0, 0);
-  readyDefer = d;
-  endReadyWhy = r == 1 ? 0 : r == NOT_ASKED ? 4 : r == LOST_FIRST ? 5 : 6;
-  return r == 1 ? 1 : r == NOT_ASKED ? NOT_ASKED : 0;
+  int land = step(x, root, MK_LONG, 0, 0, q2.arr[0].at + 2);
+  endReadyWhy = 5;
+  if (!liveNode(x, land)) return 0;
+  int calm = settleOf(x, land); if (liveNode(x, calm)) land = calm;
+  const Board *lb = ensureBoard(x, land);
+  endReadyWhy = 3;
+  if (!lb) return NOT_ASKED;
+  int near = garbageOn(lb) ? nearOf(lb) : 0;
+  endReadyWhy = near <= END_READY_NEAR ? 0 : 6;
+  return near <= END_READY_NEAR;
 }
 static LOCAL int32_t planMargin[5];   // (and the margin it leaves: top, material, contact, under, the frame its last swap is pressed by; top -1 not read)
 // THE MARGIN A PLAN LEAVES (plans/gambit-next.md 2): the board its last break leaves, run on until everything shown has landed and

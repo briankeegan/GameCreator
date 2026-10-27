@@ -135,3 +135,8 @@ line short at once by a block shown (**demand**).
   was landed on the end board after its whole lead again, so the board was read lost before it landed; and a line with nothing shown had
   no plan to ask, so it was never asked. Fixed: the block lands on the end board at once, and a line the plan did not ask is asked on
   the board it ends on itself. The log names why a line is not ready (er=WxH:ready/why:ready/not/unasked).
+- 1290, combo_storm 9/24: readiness asked of every line, as a break search of each line's end board. It did not fit the clock: in
+  combo_storm-4, 16 decisions of 1,122 held a proven line; of the first line's readiness 355 were cut before asking, 319 by the search,
+  280 found no break; 230 decisions held for a proof that was not there. A proof the clock cannot reach is no proof. Fixed: readiness is
+  read by the shape math (the swaps to the nearest break on the landed board, within 2), which every line can be asked in the clock; the
+  decision that plays the line searches that board for the break. The readiness gate warns (a fuzzy check) and counts its misses.
