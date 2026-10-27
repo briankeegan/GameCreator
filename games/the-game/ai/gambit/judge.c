@@ -313,9 +313,11 @@ static int madeBy(Ctx *x, int n, int root) {
   if (NODE(x, n)->brk > NODE(x, a)->brk) return 2;
   return NODE(x, n)->cleared > NODE(x, a)->cleared;
 }
-// A LINE THAT WASTES A THREE, as the judge saw it: a clear of three it makes for nothing, or the board's own chain left short of the
-// link it reaches alone (keepsChain) -- the one test the shared line check (outcome.c lineFits) and the order (rank.c wastesThree) ask
-static int judgedWastes(const Judged *j) { return j->threes > 0 || (ownChainBy > 0 && j->keepsChain == 0); }
+// A LINE THAT WASTES A THREE, as the judge saw it: a clear of three it makes for nothing in a line that breaks no garbage, or the board's
+// own chain left short of the link it reaches alone (keepsChain) -- the one test the shared line check (outcome.c lineFits) and the order
+// (rank.c wastesThree) ask. A line that breaks garbage beyond the board left alone made its threes on the way to the break: they let a
+// block down, or clear the panels in the break's way (the owner: drop the top blocks down and break with a three)
+static int judgedWastes(const Judged *j) { return (j->threes > 0 && j->made.broke <= 0) || (ownChainBy > 0 && j->keepsChain == 0); }
 // A LINE THE JUDGE CUT SHORT -- a walk over the allowance, a swap no longer there, a walk not begun within a reaction -- on a board it
 // lives on: the line pressed is not the line judged (asked by lineFits and by the order, rank.c judgeCand)
 static int judgedCut(const Judged *j) { return !j->dead && j->cut >= 0; }

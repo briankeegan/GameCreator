@@ -173,6 +173,28 @@ int main(int argc, char **argv) {
     gzclose(z);
     return 0;
   }
+  // test DIR replay WORK: every question of decisions.txt.gz decided once on WORK engine frames, as the decision replay decides it --
+  // the answer and the decision's own log line, one each
+  if (argc > 3 && !strcmp(argv[2], "replay")) {
+    long long work = atoll(argv[3]);
+    snprintf(path, sizeof path, "%s/rules.words", dir);
+    if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+    snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
+    gzFile z = gzopen(path, "r");
+    if (!z) { fprintf(stderr, "test: no %s\n", path); return 2; }
+    static char rec[4096];
+    while (gzgets(z, line, sizeof line)) {
+      int mode = atoi(line);
+      const char *b = strstr(line, "GAMBITB "); if (!b) continue;
+      char tag[64]; snprintf(tag, sizeof tag, "%.20s", b + 8); char *sp = strchr(tag, ' '); if (sp) *sp = 0;
+      condsOfLine(b);
+      int narr, n = loadLine(b, &narr);
+      if (n < 0 || gb_replay(n, narr, mode, work, rec, sizeof rec) < 0) { printf("replay %s: does not load\n", tag); continue; }
+      printf("replay %s: %s || %s\n", tag, rec, gb_log()); fflush(stdout);
+    }
+    gzclose(z);
+    return 0;
+  }
   // ---- the bits
   snprintf(path, sizeof path, "%s/boards.txt", dir);
   FILE *f = fopen(path, "r");
