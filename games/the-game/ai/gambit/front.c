@@ -243,7 +243,9 @@ static int arrivalsFrom(const Board *b, const Arrival *arr, int n, Arr *out) {
   int k = 0;
   for (int i = 0; i < n && k < MAXARR; i++) {
     const Arrival *a = &arr[i];
-    if (a->at <= b->stopWatch) continue;
+    // (a piece past its frame is one the cap held back (landOn: the queue at CAPPED_AT, or not the first due): due at once, and the
+    // search lands it as the game will, a capped piece a frame -- dropped, the decision never saw what the frame loop lands next)
+    if (a->at <= b->stopWatch && !a->capped) continue;
     out[k++] = (Arr){ imax(1, a->at - b->stopWatch), a->g.width, a->g.height, a->g.isChain ? 1 : 0, (a->g.isMetal ? 1 : 0) | (a->capped ? 2 : 0) };
   }
   return k;
