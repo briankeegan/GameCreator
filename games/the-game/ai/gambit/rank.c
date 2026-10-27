@@ -502,14 +502,17 @@ static double lostNetOf(const Judge *J) {
   double net = l - (planned ? J->extSpent : J->o.j.spent) * actionFrames();
   return net > 0 ? net : 0;   // (a line that spends more than it buys is lost now)
 }
+// (the bands are a decision wide (rankReact): the search for the proof is carried from decision to decision (plans/gambit-next.md 3 and
+// 7), so a line lost a decision later leaves the search one more decision to find it with -- only lines lost within one decision of each
+// other are alike, and among them the margin decides)
 static int32_t lostBand(const Judge *J) {
   double l = lostOf(J);
   if (l >= 1e9) return 0x7fffffff;
-  int32_t save = imax(1, rankSave);
+  int32_t save = imax(1, rankSave), band = imax(1, rankReact);
   if (l < save) return -1 - (int32_t)(l > 0 ? l : 0);   // (within a break's time, or not known -- the hold's -1: alike with nothing)
   if (l >= 3.0 * save) return 0x7ffffffe;
   double back = rankLostRef > l ? rankLostRef - l : 0;
-  return (int32_t)(back / save);
+  return (int32_t)(back / band);
 }
 static int lostAlike(const Judge *x, const Judge *y) {
   int32_t bx = lostBand(x), by = lostBand(y);

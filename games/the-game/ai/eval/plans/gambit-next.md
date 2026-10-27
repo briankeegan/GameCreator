@@ -153,3 +153,9 @@ line short at once by a block shown (**demand**).
   against 15 and 16 before it: the pieces as built -- readiness in the proof, the hold for the proof, room below none -- cost games,
   each. Taken back out, all three; kept: the gates, the logs (er=, heldFor=, proofLost=) and the readiness proposer. The play is the
   1286 build's again, measured once to confirm, and from there one piece a run, from the loss logs, kept only if the number rises.
+- 1293, combo_storm 14/24, the 1286 play again: back to where it was, every gate green. All ten losses: no break found after the last
+  break. combo_storm-7 round 2, 1672 to 1711: the hold (lost at 147) played four decisions running over a carry lost at 202, by the
+  margin -- one row of material, 3 against 2 -- the two lost alike within a break's time. The band was a break's time because a line
+  lost less than that later fits no break more; but the search for the proof is carried from decision to decision, so a line lost a
+  decision later leaves the search one more decision. Fixed: the bands are a decision wide; the margin decides only among lines lost
+  within a decision of each other.
