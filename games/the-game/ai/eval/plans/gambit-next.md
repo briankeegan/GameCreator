@@ -253,3 +253,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   that broke nothing, then entries that broke 8 and cost more -- and from 3355 nothing broke for 440 frames with 15 to 21 panels. The
   margin cannot see the drain: material reads enough down to three rows. Step 2 piece: under garbage, of two unproven lines not dying
   now, one that converts garbage before one that converts none, then the margin.
+- 1306, combo_storm 15/24, gates green: converts-before-margin kept (combo_storm-6 lived to 11660 from 3794; others fell). Next:
+  combo_storm-3 dies at 896 in every run since 1300 -- the first block, 37 decisions, no break found from frame 0 -- one fixed game
+  to read whole.
