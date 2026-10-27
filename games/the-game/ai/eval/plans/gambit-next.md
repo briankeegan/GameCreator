@@ -279,3 +279,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   over the hold and spent the material from 33 to 14 on combos; the block after the horizon found nothing to break with. The margin
   for garbage not shown is material as well as time: a plan that ends with its material scarce (under MARGIN_ENOUGH, three rows) is
   not proven against the next row. Level-1 proof now requires it.
+- 1310's combo_storm-7, read: every line logged as living by its plan (einf) had an empty plan, plan=0/0 -- the "lives" came from the
+  survival search played on from the line's end board, read as the line's loss and handed out as nothing, so the next decision had
+  nothing to carry and the proof vanished (proofLost=none; at 12238 a setup lived by its plan over a 16-cell break, at 12271 it was
+  lost at 157). Now the survival line is the line's plan, handed out from the line's end and carried. (Measured after 1311.)

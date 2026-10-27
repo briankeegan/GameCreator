@@ -203,7 +203,8 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 }
 // A DIG THAT CAN WAIT: a line toward a break that lives no longer than the hold, and is still done before the hold is lost after one
 // more decision (react frames)
-static double contLostOf(const Judge *J, double give);   // (decide.c)
+static double contLostOf(const Judge *J, double give);
+static double contLostOfLine(const Judge *J, double give, int32_t *seq, int32_t *nseq);   // (decide.c)   // (decide.c)
 static double lostAtOf(int32_t t, int hold);
 // PROVEN (plans/gambit-next.md 1, 4): a plan that, played on the engine, stands past the last row shown is due and PROOF_ROWS rows' breaks
 // more -- the margin for garbage not shown, the owner's to set. FOREVER lives
@@ -286,10 +287,21 @@ static void readyNextFor(Judge *J) {
   // (and where no break is found to lead on to, the plan goes on as the survival search plays on from the board the line leaves
   // (decide.c contLostOf), in the readiness check's share: a line is lost where the best that can be played after it is -- a break that
   // converts its garbage and survives on outlasts a line that only survives, and is judged so)
+  // (A PROOF KEPT, plans/gambit-next.md 6: the survival line the board lives on by is the line's plan, handed out as one -- pressed from
+  // the line's end -- so the next decision carries it. Until now it was the line's loss and nothing else: every line read as living by
+  // its plan had an empty plan (1310 combo_storm-7: plan=0/0 on all eight), and the proof vanished at the next decision)
   if (!J->hold && J->extLost == NOT_ASKED && readyShareMs > 0 && !clockOut()) {
-    double c = contLostOf(J, readyShareMs);
+    int32_t cseq[MAXLINE], cn = 0;
+    double c = contLostOfLine(J, readyShareMs, cseq, &cn);
+    int better = c >= 1e9 || (c >= 0 && c > lostAtOf(J->o.lostAt, 0));
     if (c >= 1e9) J->extLost = FOREVER;
-    else if (c >= 0 && c > lostAtOf(J->o.lostAt, 0)) J->extLost = (int32_t)c;
+    else if (better) J->extLost = (int32_t)c;
+    if (better && cn > 0 && J->planN == 0) {
+      J->planN = cn; J->planWait = imax(1, J->o.j.endAt);
+      for (int k = 0; k < cn; k++) { J->planLine[k] = cseq[k]; J->planAt[k] = k ? 0 : J->planWait; }
+      for (int k = 0; k <= W; k++) J->planRow1[k] = anchorIdAt(decQ.b, k);
+      J->readyNext = 1;
+    }
   }
 }
 static double lostOf(const Judge *x);
