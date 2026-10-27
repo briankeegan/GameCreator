@@ -286,3 +286,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - 1311, combo_storm 15/24: material in the proof cost four games -- lines proven by time but scarce of material were the ones keeping
   the board alive, and unproven, the hold took their place. Out. The plan piece (the survival line handed out as the plan) runs
   alone on 1309's build.
+- 1311's combo_storm-6 (2753), read: 2555 to 2698, four lines of one swap (level, setup) that made nothing were played over the hold
+  by the later loss -- each lost 48 frames after the hold by its extension -- and spent the window from 12 to 1; at the block nothing
+  could be pressed. The later loss is compared gross; the survival search already compares it net of what the line spends (the window
+  is time, lostNetOf, defined and never called). Step 2's later loss is net now. (Measured after 1312.)

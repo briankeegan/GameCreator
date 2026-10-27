@@ -639,7 +639,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
       if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
-      if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
+      // (THE LATER LOSS NET OF WHAT IT SPENDS, lostNetOf: the window is time, as the survival search reads it (search/outlive.c
+      // outBefore) -- a level of one swap lost 48 frames after the hold and spending the window to press it bought nothing. 1311
+      // combo_storm-6, 2555 to 2698: four such lines over the hold by the gross loss, the window from 12 to 1, then nothing could be
+      // pressed)
+      if (!lostAlike(x, y) && lostNetOf(x) != lostNetOf(y)) K(2, "later", lostNetOf(y) > lostNetOf(x) ? 1 : -1);
     } }
   // 3. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(3, "chain", cutsShort(x) ? 1 : -1);
