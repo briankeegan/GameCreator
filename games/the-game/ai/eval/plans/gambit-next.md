@@ -239,6 +239,16 @@ line short at once by a block shown (**demand**).
   Now the judge asks the one test (putBackFor, with what the swap makes) of every swap of a line, as the guard asks it of the press.
 - 1318, combo_storm 15/24, put back 199 (red): the judge's put-back cut came after the swap's press frame was recorded (ats), so the
   cut line was handed on whole and the guard refused the swap. The cut now sits with the in-line undo cut, before the swap is recorded.
+- 1319, combo_storm 16/24, put back 192 (red): the judge's cut sat right but the pair it tested was a copy handed with the question,
+  stale by the frame the swap was pressed. Fixed as infra, not as a particular: the engine records the pair every swap swaps on the
+  board itself (pa.c doSwap, Board.lastSwapA/B), every board stepped or copied carries it, the truth takes it from the frame the engine
+  played, and `putBackFor` reads it from the board it is asked on. Nothing is handed with the question.
+- The losses of 1319, read together: every one is "a break was there at T, none from T+30": the last break played, the colours it
+  revealed gave no three touching garbage, and the exhaustive re-search confirms none to find on 188 of 189 such boards. Not a search
+  failure. Under garbage the bot sits with no break candidate 47-51% of decisions in games survived and 59-67% in games lost; a
+  decision with none has none at the next 86% of the time; with one or more, 14-18%. The game is a chain between "a break in hand" and
+  "none", the "none" state is sticky and lethal over time, and losses are the games that spent longer in it. Non-breaking clears under
+  garbage (20-31 a minute) and breaks (61-77 a minute) do not part lost from survived.
 
 ## Where this stands
 
