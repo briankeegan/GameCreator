@@ -304,6 +304,10 @@ line short at once by a block shown (**demand**).
   before). The finding that matters: the live break search found none on 18050 decisions and the clock cut 10165 of those -- more
   than half of every "no break found" is "no time", under the mode's own think budget. And on the measure: at three games in four,
   one run of 24 moves by about two games on any change at all; 17 against 19 is inside that. The gates and the counts are the signal.
+- 1329, combo_storm 18/24: the audit's fixes with the capped arrivals; the six losses of 1328 less game 2. One put-back refused at
+  the press (red): the judge read the swap's making at its line's own step kind, the guard at a settle, and a swap back that made a
+  combo read as play to one and nothing to the other. One reading now (judge.c madeSettled), asked only when the pair matches.
+  Pushed with the veto measured for truth (GAMBITV boards searched again by the report).
 
 ## Where this stands
 
