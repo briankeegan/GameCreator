@@ -43,6 +43,7 @@ static int readBoard_(Read *R) {
   if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
   decF.next = F->known[FACT_US_NEXTLANDS] ? (int32_t)F->v[FACT_US_NEXTLANDS] : NOT_ASKED;
   landingAt = decF.next != NOT_ASKED ? decF.next : -1;   // (the window plan's landing: core/nodes.h windowKeepsBreak)
+  nextBlkSeen(&decQ);   // (the biggest block the mode has sent this game: what a proof must be ready for, core/nodes.h)
   // (and the breaks every block on its way is due, soonest first: a row each -- a break converts one -- the first as it lands, the next a
   // break's time after; the next landing with no block shown, one)
   nLandAts = 0;
@@ -400,10 +401,13 @@ static int ranked(const Read *R, const Found *S) {
   }
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first. A ready line
   // first of all: being ready is all it is for, and asked last, in the order's tail, it was asked out of time -- 42 of 53 unanswered)
-  if (!(n && order[0]->o.lives)) {
-    int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
+  // (and with a block shown this game, the lines that live are asked whether their end board is ready for the next one -- the proof,
+  // plans/gambit-next.md 1 -- while the top line lives; the rest only when none does)
+  if (!(n && order[0]->o.lives) || nextBlk.height > 0) {
+    int topLives = n && order[0]->o.lives;
+    int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]) && (!topLives || order[i]->o.lives);
     for (int pass = 0; pass < 2; pass++)
-      for (int i = 0; i < n; i++) if (!EXTRA(order[i]) && (order[i]->k.play == PLAY_READY) == !pass) { readyShare(own--); readyNextFor(order[i]); }
+      for (int i = 0; i < n; i++) if (!EXTRA(order[i]) && (!topLives || order[i]->o.lives) && (order[i]->k.play == PLAY_READY) == !pass) { readyShare(own--); readyNextFor(order[i]); }
     readyShare(0); sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
@@ -484,7 +488,7 @@ static int ranked(const Read *R, const Found *S) {
 
 // 5. PLAY: the raise when the opening calls for it, a hold while the raise waits for a busy board, else the first candidate in the one
 // order -- a line's first swap, or the hold
-typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred; } Played;
+typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred, heldFor; } Played;   // heldFor: the first line unproven, the hold played in its place (the save aside)
 // (A REPLAY'S FORCED OPTION, gb_force: the first decision at or after frame forceAt plays the order's option forceK in place of its first,
 // once a game -- a lost game played again from a decision with another choice, to find the decision that lost it)
 static int32_t forceAt = -1, forceK = 0, forceDone, forcedNow, decAt;
@@ -503,6 +507,14 @@ static Played playOf(const Read *R, int n) {
   for (int i = 0; i < n; i++) if (order[i]->hold && order[i]->o.lives) holdLivesNow = 1;
   P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
+  // THE PROOF OR THE HOLD (plans/gambit-next.md 3): nothing proven offered, the hold is played and the searches go on from this board,
+  // spending nothing -- the one exception the save: where the hold is lost, a line that lives, or outlasts it by a break's time, or
+  // stands a break's time where the hold does not
+  if (P.top && !P.top->hold && forcedNow < 0 && !proofOf(P.top)) {
+    const Judge *h = 0; for (int i = 0; i < n; i++) if (order[i]->hold) h = order[i];
+    int save = !h || (!livesOf(h) && (livesOf(P.top) || (!diesNow(P.top) && diesNow(h)) || lostOf(P.top) >= lostOf(h) + imax(1, rankSave)));
+    if (!save) { P.top = h; P.heldFor = 1; }
+  }
   // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
   P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it

@@ -124,6 +124,10 @@ function causeOf(game, pattern, at, lines) {
 }
 var carried = { resumed: 0, lost: 0, ideas: 0 };   // (decisions started from the answer played, and ones whose state was lost: answer.c carriedResume)
 var beaten = { n: 0, by: {} };
+// (THE GATES, plans/gambit-next.md: lessProven= a proven line passed over; proofLost=none the proof vanished with nothing new shown and
+// nothing cut (readiness wrong); proofLost=new/cut counted beside; heldFor= the hold played for an unproven first line; and every margin
+// share (mgs=) must take more than one value over the run)
+var gates = { lessProven: 0, proofNone: 0, proofNew: 0, proofCut: 0, heldFor: 0, shares: [{}, {}, {}, {}] };
 var catd = { n: 0, missing: 0 };   // (decisions that offered lines, and those whose lines carry no category)   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
@@ -216,6 +220,12 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       // (THE ORDER NOT ONE ORDER: answer.c beaten=, the line played beaten head to head by one ranked under it)
       var bt = / beaten=\w+:k(\d+(?:\.\w+)?)/.exec(l);
       if (bt) { beaten.n++; beaten.by[bt[1]] = (beaten.by[bt[1]] || 0) + 1; }
+      if (/ lessProven=1/.test(l)) gates.lessProven++;
+      var pl = / proofLost=(\w+)/.exec(l);
+      if (pl) { if (pl[1] === 'none') gates.proofNone++; else if (pl[1] === 'new') gates.proofNew++; else gates.proofCut++; }
+      if (/ heldFor=1/.test(l)) gates.heldFor++;
+      var mg = / mgs=(\S+)/.exec(l);
+      if (mg) mg[1].split(',').forEach(function (s) { s.split('.').forEach(function (v, i) { if (i < 4) gates.shares[i][v] = 1; }); });
       // (EVERY LINE CATEGORISED: a decision that offered lines logs a category for each (answer.c cat=, rank.c catOf))
       if (/ opts=/.test(l)) { catd.n++; if (!/ cat=\w/.test(l) || !/ sol=\d/.test(l)) catd.missing++; }
       // (THE STATE CARRIED: answer.c resumed=ID/IDEAS, a decision started from the answer the frame loop played, not the last decision's,
@@ -382,6 +392,11 @@ if (budget.decisions) console.log('decisions the clock cut: ' + budget.out + ' o
 // THE STATE CARRIED: every decision starts from the state the answer the frame loop last played left; a lost one started from another's
 console.log('state: ' + carried.lost + ' decisions started from a state no answer played left (lost), ' + carried.resumed + ' resumed from the answer played, ' + carried.ideas + ' lines not pressed kept as ideas');
 console.log('one order: ' + beaten.n + ' of ' + sooner.dec + ' decisions played a line beaten head to head by one ranked under it');
+console.log('proven first: ' + gates.lessProven + ' decisions played a line less proven than one offered, or dead at once while one offered was not');
+console.log('readiness: ' + gates.proofNone + ' decisions lost the proof with nothing new shown and nothing cut (the end board was marked ready and no extension found); ' + gates.proofNew + ' lost it on a block shown, ' + gates.proofCut + ' to the clock');
+console.log('held for the proof: ' + gates.heldFor + ' of ' + sooner.dec + ' decisions played the hold for an unproven first line');
+var constShares = ['room', 'material', 'window', 'contact'].filter(function (nm, i) { return Object.keys(gates.shares[i]).length < 2; });
+console.log('shares: ' + constShares.length + ' margin shares constant over the run' + (constShares.length ? ' (' + constShares.join(', ') + ')' : ''));
 console.log('categorised: ' + catd.missing + ' of ' + catd.n + ' decisions offered lines with no category or no ledger');
 console.log('truth: ' + budget.diverged + ' boards predicted otherwise than the game made them, in ' + budget.divergedGames + ' of ' + budget.games + ' games');
 // THE LINE AS JUDGED: every swap of a line handed on is keyed from the frame the judge pressed it from; one keyed later is pressed on a board

@@ -124,6 +124,7 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // is played when the narrower finds none -- theBrWide)
 enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE, JOB_LANDED };
 static int32_t proofSought;   // (the last decision played no proven line: rank.c proofOf -- the next one's searches go to the break)
+static int32_t lastProven, lastNarr;   // (the last decision's: a proven line played, and the blocks shown -- the log's proofLost=)
 static int32_t wideFirstNow;   // (this decision's: the wider beam took a worker first -- the log's seek=)
 static int32_t touchDepthNext = TOUCH_DEPTH;   // (the touch beam's depth the next decision takes up: search/break.c touchDepth)
 static int32_t jobKinds[6], njobKinds;
@@ -527,6 +528,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" sol="); for (int i = 0; i < P.ncands && i < 8; i++) { Ledger g = ledgerOf(order[i]); if (i) L_s(",");
     L_i(g.paid); L_s("/"); L_i(g.due); L_s(":"); L_i(g.shortBy); L_s("@"); if (g.at == FOREVER) L_s("-"); else L_i(g.at); }
   L_s(" lands="); L_i(landsTaken); L_s("/"); L_i(landsAsked); L_s("/"); L_i(planEarlier); landsAsked = landsTaken = 0; planEarlier = 0;   // (later landings: plans taken of those asked)
+  // (READY FOR THE NEXT BLOCK, plans/gambit-next.md 1: the block a proof must be ready for (cells), the line played's readiness for it
+  // (1, 0, - not asked) and the lines offered ready / not / not asked -- er=WxH:top:ready/not/unasked; and heldFor=1 where the first line
+  // was unproven and the hold played in its place, plans/gambit-next.md 3)
+  { int32_t er1 = 0, er0 = 0, erN = 0; for (int i = 0; i < P.ncands; i++) { int32_t e = order[i]->endReady; if (e == 1) er1++; else if (e == 0) er0++; else erN++; }
+    L_s(" er="); L_i(nextBlk.width); L_s("x"); L_i(nextBlk.height); L_s(":"); if (top && top->endReady != NOT_ASKED) L_i(top->endReady); else L_s("-");
+    L_s(":"); L_i(er1); L_s("/"); L_i(er0); L_s("/"); L_i(erN); }
+  if (P.heldFor) L_s(" heldFor=1");
   // (each line's margin as the order reads it, its two scarcest shares in rows (rank.c marginKey), p where read on the board its plan
   // leaves: mg=)
   L_s(" mg="); for (int i = 0; i < P.ncands && i < 8; i++) { int32_t k = marginKey(order[i]); if (i) L_s(",");
@@ -552,6 +560,11 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   A->sooner = 0;
   if (top) for (int i = 0; i < P.ncands && !A->sooner; i++) { const Judge *j = order[i];
     A->sooner = j != top && (proofOf(j) > proofOf(top) || (diesNow(top) && !diesNow(j))); }
+  if (A->sooner) L_s(" lessProven=1");   // (the gate, plans/gambit-next.md: a proven line passed over, or dead at once while one offered is not)
+  // (THE PROOF LOST, plans/gambit-next.md the gates: the last decision played a proven line and this one has none -- new: a block shown
+  // since; cut: the clock cut the first line's readiness; none: nothing new shown and nothing cut, the proof should have held)
+  if (lastProven && !(top && proofOf(top) > 0) && !R.up) { L_s(" proofLost="); L_s(decQ.narr > lastNarr ? "new" : top && top->endReady == NOT_ASKED ? "cut" : "none"); }
+  lastProven = top && proofOf(top) > 0; lastNarr = decQ.narr;
   if (top && !top->o.lives) {
     const Judge *late = 0;
     for (int i = 0; i < P.ncands; i++) { const Judge *j = order[i]; if (j != top && (j->o.lives || lostOf(j) > lostOf(top)) && (!late || (j->o.lives && !late->o.lives) || (j->o.lives == late->o.lives && lostOf(j) > lostOf(late)))) late = j; }
@@ -658,6 +671,7 @@ static void modeLeft(void) {
 EXPORT(gb_new_game) void gb_new_game(void) {
   breakWalk = LAND_RESERVE;   // (a new game measures its own)
   proofSought = 0; breakOpen = 0; touchDepthNext = TOUCH_DEPTH;
+  memset(&nextBlk, 0, sizeof nextBlk); nextBlkAt = 0; lastProven = 0; lastNarr = 0;
   modeLeft(); lifeDumps = 0; forceDone = 0; openerOver = 0;
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)

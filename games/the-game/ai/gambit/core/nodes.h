@@ -345,6 +345,17 @@ static Ctx *ctxOf(Ctx *x) {
 typedef struct { Board *b; int32_t holdLeft, holdStarted, narr; Arr arr[MAXARR]; int32_t tight; } Question;
 // (THE ROWS STILL COMING after frame `after` from the question: what a board read before everything shown has landed has not yet lost of
 // its room -- plans/gambit-next.md 2, every margin read as if everything shown has landed)
+// THE NEXT BLOCK THE MODE SENDS (plans/gambit-next.md 1): the biggest block shown so far this game, by its cells, and the lead it was
+// shown with -- what a proven line's end board must be ready for (outcome.c endReadyOf). height 0: none shown yet, nothing to be ready for
+static Arr nextBlk;
+static int32_t nextBlkAt;
+static void nextBlkSeen(const Question *q) {
+  for (int i = 0; i < q->narr; i++) {
+    const Arr *a = &q->arr[i];
+    if (a->height <= 0 || a->width <= 0) continue;
+    if (a->width * a->height > nextBlk.width * nextBlk.height) { nextBlk = *a; nextBlkAt = a->at > 0 ? a->at : nextBlkAt; }
+  }
+}
 static int32_t rowsComing(const Question *q, int32_t after) { int32_t r = 0; for (int i = 0; i < q->narr; i++) if (q->arr[i].at > after) r += imax(1, q->arr[i].height); return r; }
 // A search's root, made from the question: every node before it is let go.
 static int rootOf(Ctx *x, const Question *q) {

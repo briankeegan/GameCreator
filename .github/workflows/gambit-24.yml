@@ -282,6 +282,17 @@ jobs:
       - name: One order
         run: |
           grep -q '^one order: 0 ' report/summary.txt || { grep '^one order:' report/summary.txt | sed 's/^/::error title=one order::/'; exit 1; }
+      # THE GATES (plans/gambit-next.md): a proven line is never passed over; a proof never vanishes with nothing new shown and nothing
+      # cut; no margin share is a constant
+      - name: Proven first
+        run: |
+          grep -q '^proven first: 0 ' report/summary.txt || { grep '^proven first:' report/summary.txt | sed 's/^/::error title=proven first::/'; exit 1; }
+      - name: Readiness right
+        run: |
+          grep -q '^readiness: 0 ' report/summary.txt || { grep '^readiness:' report/summary.txt | sed 's/^/::error title=readiness::/'; exit 1; }
+      - name: Every share a fact
+        run: |
+          grep -q '^shares: 0 ' report/summary.txt || { grep '^shares:' report/summary.txt | sed 's/^/::error title=shares::/'; exit 1; }
       # EVERY LINE CATEGORISED: each decision that offers lines logs the judge's category for every one
       - name: Every line categorised
         run: |

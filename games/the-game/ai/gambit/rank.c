@@ -27,6 +27,7 @@ typedef struct {
   int32_t apDone, apFire, apNats, apAts[MAXLINE], apChain, apChainAll, apCombo, apBroke, apPlayed;
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
+  int32_t endReady;    // the board it (or its plan) ends on is ready for the next block the mode sends (outcome.c endReadyOf): 1, 0, NOT_ASKED
   int32_t planN, planWait, planLine[MAXLINE], planRow1[W + 1];
   int32_t planBreaks, planBreakAt[16];   // the frame each of its plan's breaks is pressed from (outcome.c readyNextOf)
   int32_t planBroke;   // the garbage its plan converts beyond the board left alone (outcome.c readyNextOf)
@@ -94,7 +95,7 @@ static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int nearActsOf(const Judge *J, int32_t near);
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0;
+  J->readyNext = NOT_ASKED; J->endReady = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -187,7 +188,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0;
+  J->readyNext = NOT_ASKED; J->endReady = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -222,13 +223,24 @@ static int planBetter(int32_t lx, int32_t bx, int32_t ly, int32_t by) {
   return (lx == NOT_ASKED ? -1 : lostAtOf(lx, 0)) > (ly == NOT_ASKED ? -1 : lostAtOf(ly, 0));
 }
 static void readyNextFor(Judge *J) {
-  if (J->o.lives || J->readyNext != NOT_ASKED) return;
+  if (J->readyNext != NOT_ASKED) return;
+  // (a line that lives: only whether the board it ends on is ready for the next block, plans/gambit-next.md 1)
+  if (J->o.lives) {
+    if (J->endReady == NOT_ASKED && nextBlk.height > 0 && !clockOut()) {
+      if (!J->hold) asLine(&J->k);
+      Board *eb = lineEnd(J->hold ? 0 : J->k.seq, J->hold ? 0 : J->k.nseq, J->hold ? 0 : J->settled);
+      J->endReady = endReadyOf(eb);
+      if (!J->hold) unLine();
+    }
+    return;
+  }
   if (!J->hold) asLine(&J->k);
   int32_t land = decF.next;
   if (land == NOT_ASKED && garbageOn(decQ.b)) { int32_t end = J->hold ? 0 : J->o.j.endAt; land = end + regainAfter(end, J->hold ? 0 : J->o.j.spent); }
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, land, &J->extLost, &J->extSpent, J->planLine, &J->planN, J->planRow1, &J->planWait);
   J->planBreaks = imin(planBreakN, 16); for (int k = 0; k < J->planBreaks; k++) J->planBreakAt[k] = planBreakAt[k];
   J->planBroke = planBroke; for (int k = 0; k < 5; k++) J->planMargin[k] = planMargin[k];
+  J->endReady = planEndReady;
   // (CONVERT MORE PER BREAK, plans/gambit-next.md 5: under attack, material comes only from breaking, and a break pressed after more has
   // landed converts more -- where the plan from the next landing is not proven, its break is asked from each later landing shown too, and
   // the plan kept is the one proven, else the one that converts most, else the one lost latest)
@@ -251,7 +263,7 @@ static void readyNextFor(Judge *J) {
       readyKind = 2; landsAsked++;
       if (r != 1 || !planBetter(xl, planBroke, J->extLost, J->planBroke)) continue;
       landsTaken++;
-      J->readyNext = r; J->extLost = xl; J->extSpent = xs; J->planN = xn; J->planWait = xw; J->planBroke = planBroke;
+      J->readyNext = r; J->extLost = xl; J->extSpent = xs; J->planN = xn; J->planWait = xw; J->planBroke = planBroke; J->endReady = planEndReady;
       for (int k = 0; k < 5; k++) J->planMargin[k] = planMargin[k];
       for (int k = 0; k < xn; k++) J->planLine[k] = xline[k];
       for (int k = 0; k <= W; k++) J->planRow1[k] = xrow[k];
@@ -571,6 +583,9 @@ static int catOf(const Judge *J, const Judge *H) {
 // stands past the last row shown is due and PROOF_ROWS rows' breaks more; 0 unproven -- its loss is a bound, the breaks the searches
 // found, not a fact)
 static int proofOf(const Judge *J) {
+  // (READY FOR THE NEXT BLOCK, plans/gambit-next.md 1: a block shown this game, the board the line or its plan ends on must have a break
+  // with that block landed on it -- not asked, or the clock cut it, is not proven)
+  if (nextBlk.height > 0 && J->endReady != 1) return 0;
   if (J->o.lives) return 3;
   if (J->extLost == FOREVER) return 2;
   double l = lostOf(J);
