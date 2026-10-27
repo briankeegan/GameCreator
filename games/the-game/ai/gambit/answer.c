@@ -77,13 +77,13 @@ static void breakRun(const Read *R, double by) { breakRunTo(R, by, &theBr); }
 static void breakRunTo(const Read *R, double by, Broke *into) {
   int32_t pop = popLeft(decQ.b);
   double old = clockShareBegin(by);
-  // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
+  // (a list ended by "default" -- every list under garbage -- or any list where nothing played was proven (breakOpen), plays off it only when no break within it is found: the break off the list
   // is searched first, quick to find, so a break to play is in hand however long the list's own takes; the rest of the share then goes
   // to a break within the list, which is played instead if found). Both carry on the frontier the last decision kept: under garbage
   // with no break found, the off-list search is the only one asked, and a search begun again from the first swap every decision never
   // grows past a few swaps)
   listDefault = 0;
-  if (R->end == 1) {
+  if (R->end == 1 || breakOpen) {
     static LOCAL Broke off;
     listDefault = 1;
     breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, into);
@@ -309,7 +309,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   towardRestLen = 0;
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
-  touchDepth = touchDepthNext; wideFirstNow = 0;
+  touchDepth = touchDepthNext; breakOpen = proofSought; wideFirstNow = 0;
   carryFrom = lineFrom; carryPressed = linePressed;
   memset(frontLinesHeld, 0, sizeof frontLinesHeld); memset(frontLinesIn, 0, sizeof frontLinesIn); memset(frontLetGo, 0, sizeof frontLetGo);
   planSeedsHave = plannedPaths(decQ.b, lineFrom, linePressed, &planSeeds); planOut.n = 0; planSeeded = 0;
@@ -657,7 +657,7 @@ static void modeLeft(void) {
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
   breakWalk = LAND_RESERVE;   // (a new game measures its own)
-  proofSought = 0; touchDepthNext = TOUCH_DEPTH;
+  proofSought = 0; breakOpen = 0; touchDepthNext = TOUCH_DEPTH;
   modeLeft(); lifeDumps = 0; forceDone = 0; openerOver = 0;
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)

@@ -98,3 +98,10 @@ line short at once by a block shown (**demand**).
   every margin at 0.3: the log now names the four shares (mgs=: room, material, window, contact) to find which hid it.
 - 1285, 11/24: combo_storm 8/8 a second run in a row -- done. Factory 2, large_garbage 1: the reaction of slack on the beam's doomed
   lines cost what 1284 had. Taken back out; the beam keeps a line with a break's time to spare. Factory next, read by mgs=.
+- 1286, 18/24 (combo_storm 8, factory 5, large_garbage 5): 1284's numbers again. combo_storm 8/8 three runs running.
+- 1287, 36/72, the same build over seeds 1-24 and three rounds (combo_storm 16, factory 8, large_garbage 12): one round is 24 games of
+  72, and combo_storm 8/8 on round 1 is 16/24 over three. The measure from here is the 72. In every loss no break was found after the
+  last break, and no proven line was passed over. The piece: the break search. Where nothing is proven it still held each line to the
+  mode's list and no wasted three, which step 8 asks only of proven lines -- so a break that needs a three first was never offered.
+  Fixed: where the last decision played nothing proven, the break search is held to neither; the order ranks what it finds, and a
+  three is played only where the save finds it needed.
