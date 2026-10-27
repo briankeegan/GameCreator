@@ -235,7 +235,7 @@ static int32_t anchorIdAt(const Board *b, int c) {
 // question's frame before (readyAt): for a line longer than that it was n with no block on it, for a shorter one the idle rain before
 // that frame topped the board first (11594 of 20981 askings lost first, run 1322) -- readiness asked of the wrong board either way
 #define LAND_CAP 150
-static int32_t landOnceAt;   // (the frame the block dropped on, from the root: the readiness break's wait -- j->readyWait)
+static LOCAL int32_t landOnceAt;   // (the frame the board to come is settled on, from the root: the readiness break's wait, j->readyWait -- the frame the promise is pressed from. The drop's frame, a few earlier, pressed it on a board with the block still falling: 1085 proofs lost, 13/24, run 1332)
 static int landOnce(Ctx *x, int n) {
   Node *N = NODE(x, n);
   landOnceAt = N->t;
@@ -260,6 +260,7 @@ static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int
   if (readyDefer && !readyCollect) return NOT_ASKED;
   int calm = settleOf(x, land);
   if (liveNode(x, calm)) land = calm;
+  landOnceAt = NODE(x, land)->t;   // (the board to come, settled: where the break is found, and the frame it is pressed from)
   if (readyDefer) {
     Board *lb = ensureBoard(x, land);
     readyNearLast = lb ? (garbageOn(lb) ? nearOf(lb) : 0) : -1;
