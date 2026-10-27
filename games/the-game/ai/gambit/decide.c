@@ -255,8 +255,9 @@ static double contLostOf(const Judge *J, double give) {
 }
 // (THE BEST ON FROM A BOARD: the survival search asked of board e, with the garbage still on its way, for `give` ms -- the frame from
 // now that board is lost, 1e9 if it lives, -1 if it could not be asked: a line's plan ends here, whatever its last step was)
-static double contBoardLost(const Board *e, double give) {
+static double contBoardLostLine(const Board *e, double give, int32_t *seq, int32_t *nseq) {
   static Board *cb; if (!cb) cb = nb_new();
+  if (nseq) *nseq = 0;
   if (!cb || !e) return -1;
   cloneBoard(cb, e);
   int32_t dt = imax(0, cb->clock - decQ.b->clock);
@@ -265,8 +266,10 @@ static double contBoardLost(const Board *e, double give) {
   Outlived c = outlive(&q2, HORIZON + REST, REST, give, 6, 30);
   int32_t lost = c.set ? c.lostAt : diesIn(&q2, HORIZON + REST);
   if (lost < 0) return -1;
+  if (seq && nseq && c.set) { int k = 0; for (; k < c.nseq && k < MAXLINE; k++) seq[k] = c.seq[k]; *nseq = k; }
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
+static double contBoardLost(const Board *e, double give) { return contBoardLostLine(e, give, 0, 0); }
 // THE JUDGING ON EVERY THREAD: the candidates judged on the workers, each from the work the decision had done when the judging began
 // and in the share it had, into a slot of its own with what it adds to the decision's tallies (rank.c dropped, cutWhy, unbroken) --
 // added in candidate order after, so the order is the same whichever thread judged what. The decision's clock is charged the judging's
@@ -598,11 +601,18 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
 // same promise.
 // (THE BREAK A LINE IS READY FOR: the judge's readiness once everything lands, else its plan's next break (rank.c readyNextFor) -- the
 // break it was ranked by either way; 0 none)
-static int readyBreakOfLine(const Judge *L, const int32_t **row1, const int32_t **line, int32_t *n, int32_t *wait) {
+// (at: each swap's frame after the first, where the plan says one -- 0 none; the line's own readiness break has none but its wait)
+static int readyBreakOfLine(const Judge *L, const int32_t **row1, const int32_t **line, int32_t *n, int32_t *wait, const int32_t **at) {
   if (!L) return 0;
+  *at = 0;
+  if (L->readyNext == 1 && L->planN > 0) { *row1 = L->planRow1; *line = L->planLine; *n = L->planN; *wait = L->planWait; *at = L->planAt; return 1; }
   if (L->o.ready == 1 && L->o.j.readyN > 0) { *row1 = L->o.j.readyRow1; *line = L->o.j.readyLine; *n = L->o.j.readyN; *wait = L->o.j.readyWait; return 1; }
-  if (L->readyNext == 1 && L->planN > 0) { *row1 = L->planRow1; *line = L->planLine; *n = L->planN; *wait = L->planWait; return 1; }
   return 0;
+}
+// (the promise's frames: its first swap where the readiness found it, each later one where the plan says, else as the board lets)
+static void carryFramesOf(Carry *C, int nl, int32_t wait, const int32_t *at) {
+  C->restAt[0] = decAt + wait;
+  for (int i = 1; i < nl; i++) C->restAt[i] = at && at[i] > 0 ? decAt + at[i] : 0;
 }
 // (A PROMISE'S ANCHOR, plans/gambit-next.md 6: a readiness break is found on the board once everything lands -- a board to come, whose
 // bottom row is not yet on the board as it is -- and pressed, when carried, on that same board run to the same frame (carriedCand wTo).
@@ -616,18 +626,18 @@ static int anchorNow(Carry *C, const int32_t *seq, int n) {
 }
 static void carryNextOf(const Judge *L) {
   memset(&theCarryNext, 0, sizeof theCarryNext);
-  const int32_t *row1, *line; int32_t nl, wait;
-  if (!L || L->hold || !theCarry.set || !readyBreakOfLine(L, &row1, &line, &nl, &wait)) return;
+  const int32_t *row1, *line, *at; int32_t nl, wait;
+  if (!L || L->hold || !theCarry.set || !readyBreakOfLine(L, &row1, &line, &nl, &wait, &at)) return;
   if (!anchorNow(&theCarryNext, line, nl)) return;
   theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.play = PLAY_CARRY; theCarryNext.nrest = nl;
   for (int i = 0; i < nl; i++) theCarryNext.rest[i] = line[i];
   theCarryNext.settled = 0; theCarryNext.broke = 1; theCarryNext.ready = 1;
-  theCarryNext.restAt[0] = decAt + wait;   // (pressed where the readiness found it)
+  carryFramesOf(&theCarryNext, nl, wait, at);
 }
 static void carryReady(const Judge *H, int32_t qid) {
-  const int32_t *row1, *line; int32_t nl, wait;
+  const int32_t *row1, *line, *at; int32_t nl, wait;
   carryKept = 2;
-  if ((!H->hold && H->k.nseq != 1) || !readyBreakOfLine(H, &row1, &line, &nl, &wait)) return;
+  if ((!H->hold && H->k.nseq != 1) || !readyBreakOfLine(H, &row1, &line, &nl, &wait, &at)) return;
   memset(&theCarry, 0, sizeof theCarry);
   carryKept = 3;
   if (!anchorNow(&theCarry, line, nl)) return;
@@ -635,7 +645,7 @@ static void carryReady(const Judge *H, int32_t qid) {
   theCarry.set = 1; theCarry.id = qid; theCarry.play = PLAY_CARRY; theCarry.nrest = nl;
   for (int i = 0; i < nl; i++) theCarry.rest[i] = line[i];
   theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0; theCarry.ready = !H->hold;
-  theCarry.tap = decTap; theCarry.restAt[0] = decAt + wait;   // (pressed where the readiness found it: the board run to that frame)
+  theCarry.tap = decTap; carryFramesOf(&theCarry, nl, wait, at);   // (pressed where the readiness found it: the board run to that frame)
 }
 // THE READINESS BESIDE THE DECISION (search/break.c readyJob): the boards the order will ask readiness of handed to the workers,
 // worst-ranked first -- the decision asks them best-ranked first -- each searched by whichever thread begins it first. They search on
@@ -805,7 +815,11 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // (a readiness break not yet begun is pressed as its promise was judged: the board run to the frame the readiness found it on, let
   // settle, then pressed -- outcome.c promised)
   int32_t wTo = C->ready && skip == 0 ? imax(1, at0) : moving ? 1 : 0;
-  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, wTo, 0, 0, 0, 0, wTo ? 0 : at0 };
+  // (a promise's later swaps each pressed where its plan says -- the board run to that frame and let settle, as the plan was judged:
+  // outcome.c readyNextOf's later breaks and the survival line on from its end)
+  int32_t mAt[MAXLINE], mTo[MAXLINE], nm = 0;
+  if (C->ready) for (int i = 1; i < nrest; i++) if (lineAt[skip + i] > decAt) { mAt[nm] = i; mTo[nm++] = lineAt[skip + i] - decAt; }
+  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, wTo, 0, nm, nm ? mAt : 0, nm ? mTo : 0, wTo ? 0 : at0 };
   Judged j;
   { int32_t t = pressTap; pressTap = C->tap; judge(&decQ, rest, nrest, &jo, &j); pressTap = t; }
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];

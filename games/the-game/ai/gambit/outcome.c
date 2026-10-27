@@ -29,6 +29,7 @@ typedef struct {
   int32_t planBroke;   // the garbage the plan converts beyond the board left alone (readyNextOf)
   int32_t planTop, planMat, planContact, planUnder, planEndAt;   // the margin the plan leaves (planLanded); planTop -1 not read
   int32_t endReady;    // the board the line (or its plan) ends on is ready for the next block (endReadyOf): 1, 0, NOT_ASKED
+  int32_t planFullN, planFullLine[MAXLINE], planFullAt[MAXLINE];   // the whole plan after the line: its breaks and the survival line on from its end, each swap with the frame it is pressed from (0: as the board lets) -- readyNextOf
   Judged j;
 } Outcome;
 
@@ -236,6 +237,7 @@ static double contBoardLost(const Board *e, double give);   // (decide.c)
 static double readyShareMs;   // (search/break.c)
 static LOCAL int32_t planBreakN, planBreakAt[PLANBREAKS], planBroke;   // (the last readyNextOf's plan: the frame each break is pressed from, and what it converts)
 static LOCAL int32_t planEndReady;   // (and whether the board it ends on is ready for the next block: endReadyOf)
+static double contBoardLostLine(const Board *e, double give, int32_t *seq, int32_t *nseq);   // (decide.c: and the line that lives on from it)
 // READY FOR THE NEXT BLOCK (plans/gambit-next.md 1): the board a line or its plan ends on, with the biggest block shown this game landed
 // on it, has a break -- the break search's own answer on that board (judge.c breaksAfterLanding). 1 ready, 0 not (none found, or the board
 // is lost when it lands), NOT_ASKED the clock cut it. With no block shown yet this game, 1: nothing to be ready for
@@ -305,11 +307,14 @@ static void planMark(Outcome *o, const Board *e) {
 #define PLAN_LANDINGS 4   // (the landings a plan's next break is asked from, the last first)
 static int32_t planEarlier;   // (this decision's plan breaks found from a landing before the last: the log's lands=)
 static LOCAL int32_t readyKind = 2;
-static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait) {
+// (pAt: each swap of the plan handed out (pLine) with the frame it is pressed from -- the first break's its wait, each later break's the
+// landing its readiness found it from, the survival line on from the plan's end board that board's frame; 0 as the board lets.
+// THE WHOLE PLAN IS HANDED OUT, plans/gambit-next.md 6: a proof kept is the plan carried, not its first break alone)
+static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait, int32_t *pAt) {
   *extLost = NOT_ASKED; *extSpent = NOT_ASKED; *pN = 0; planBreakN = 0; planBroke = 0; planMargin[0] = -1; planEndReady = NOT_ASKED;
   if (land == NOT_ASKED) return NOT_ASKED;
   Outcome *hit = cached(seq, n, settled, readyKind);
-  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; if (hit->ready == 1) readyPlanOut(&hit->j, pLine, pN, pRow1, pWait); planBreakN = hit->nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = hit->breakAt[k]; planBroke = hit->planBroke; planMargin[0] = hit->planTop; planMargin[1] = hit->planMat; planMargin[2] = hit->planContact; planMargin[3] = hit->planUnder; planMargin[4] = hit->planEndAt; planEndReady = hit->endReady; return hit->ready; }
+  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; if (hit->ready == 1) { readyPlanOut(&hit->j, pLine, pN, pRow1, pWait); if (hit->planFullN > 0) { *pN = hit->planFullN; for (int k = 0; k < hit->planFullN; k++) { pLine[k] = hit->planFullLine[k]; pAt[k] = hit->planFullAt[k]; } } else for (int k = 0; k < *pN; k++) pAt[k] = k ? 0 : *pWait; } planBreakN = hit->nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = hit->breakAt[k]; planBroke = hit->planBroke; planMargin[0] = hit->planTop; planMargin[1] = hit->planMat; planMargin[2] = hit->planContact; planMargin[3] = hit->planUnder; planMargin[4] = hit->planEndAt; planEndReady = hit->endReady; return hit->ready; }
   if (clockOut()) return NOT_ASKED;
   JudgeOpts jo = { settled, decQ.tight, land, 1, 1, -1, 0, 1 };
   Outcome o;
@@ -317,8 +322,9 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
   judge(&decQ, seq, n, &jo, &o.j);
   if (o.j.late) return NOT_ASKED;
   o.ready = !o.j.dead && o.j.ready == 1;
-  if (o.ready) readyPlanOut(&o.j, pLine, pN, pRow1, pWait);
+  if (o.ready) { readyPlanOut(&o.j, pLine, pN, pRow1, pWait); for (int k = 0; k < *pN; k++) pAt[k] = k ? 0 : *pWait; }
   o.lostAt = NOT_ASKED;
+  o.planFullN = 0;
   // (the board the line itself ends on, kept before the next judging resets the nodes: the plan's end board replaces it where a plan is found)
   static LOCAL Board *lineEndB, *planEnd; if (!lineEndB) lineEndB = nb_new(); if (!planEnd) planEnd = nb_new();
   int haveLineEnd = 0;
@@ -329,6 +335,7 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
     for (int k = 0; k < n; k++) ext[k] = seq[k];
     for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
     Outcome e = promised(ext, en, settled, n, w0To, 0, 0, 0);
+    int enOk = en, nmOk = 0;   // (the plan as accepted: a later break the loop tries and rejects stays in ext past enOk)
     if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; o.nBreakAt = 0; o.breakAt[o.nBreakAt++] = w0To; o.planBroke = e.j.made.broke; o.planEndAt = e.j.endAt;
       if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; planMark(&o, planEnd); } } }
     // (A PLAN OF SEVERAL STEPS: the board the break leaves, once it has settled, asked again for a break in reach -- played where its
@@ -364,15 +371,28 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land,
       int32_t lost = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
       if (lost == NOT_ASKED || (lost != FOREVER && o.lostAt != FOREVER && lost <= o.lostAt)) break;
       o.lostAt = lost; *extSpent = e.j.spent; o.planBroke = e.j.made.broke; o.planEndAt = e.j.endAt;
+      enOk = en; nmOk = nm;
       if (o.nBreakAt < PLANBREAKS) o.breakAt[o.nBreakAt++] = mTo[nm - 1];
       haveEnd = 0; if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; planMark(&o, planEnd); } }
     }
     // (AND ON: past its last break the plan goes on as the survival search plays on from the board it leaves -- every plan ends the
     // same way, so a plan of breaks is never judged left alone where a line that only survives is judged played on)
+    int32_t cseq[MAXLINE], cn = 0; double c = -1;
     if (haveEnd && o.lostAt != NOT_ASKED && o.lostAt != FOREVER && readyShareMs > 0 && !clockOut()) {
-      double c = contBoardLost(planEnd, readyShareMs);
-      if (c >= 1e9) o.lostAt = FOREVER; else if (c > o.lostAt) o.lostAt = (int32_t)c;
+      c = contBoardLostLine(planEnd, readyShareMs, cseq, &cn);
+      if (c >= 1e9) o.lostAt = FOREVER; else if (c > o.lostAt) o.lostAt = (int32_t)c; else cn = 0;
     }
+    // (the whole plan after the line: its breaks, each from the frame its readiness found it, and the survival line on from the end
+    // board, from that board's frame -- what the next decision carries, pressed as judged here)
+    { int m = 0;
+      for (int k = n; k < enOk && m < MAXLINE; k++, m++) {
+        int32_t at = k == n ? w0To : 0;
+        for (int q = 0; q < nmOk; q++) if (mAt[q] == k) at = mTo[q];
+        o.planFullLine[m] = ext[k]; o.planFullAt[m] = at;
+      }
+      for (int k = 0; k < cn && m < MAXLINE; k++, m++) { o.planFullLine[m] = cseq[k]; o.planFullAt[m] = k ? 0 : o.planEndAt; }
+      o.planFullN = m;
+      *pN = m; for (int k = 0; k < m; k++) { pLine[k] = o.planFullLine[k]; pAt[k] = o.planFullAt[k]; } }
   }
   // (READY FOR THE NEXT BLOCK, plans/gambit-next.md 1: asked of the board the plan ends on, else the line's own)
   o.endReady = endReadyOf(haveEnd ? planEnd : haveLineEnd ? lineEndB : 0);

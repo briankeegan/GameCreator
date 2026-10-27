@@ -30,6 +30,7 @@ typedef struct {
   int32_t endReady;    // the board it (or its plan) ends on is ready for the next block the mode sends (outcome.c endReadyOf): 1, 0, NOT_ASKED
   int32_t endReadyWhy; // and why not (outcome.c endReadyWhy)
   int32_t planN, planWait, planLine[MAXLINE], planRow1[W + 1];
+  int32_t planAt[MAXLINE];   // each swap of the plan's frame, 0 as the board lets (outcome.c readyNextOf pAt)
   int32_t planBreaks, planBreakAt[16];   // the frame each of its plan's breaks is pressed from (outcome.c readyNextOf)
   int32_t planBroke;   // the garbage its plan converts beyond the board left alone (outcome.c readyNextOf)
   int32_t planMargin[5];   // the margin its plan leaves: top, material, contact, under, its last swap's frame (outcome.c planLanded); [0] -1 not read
@@ -239,7 +240,7 @@ static void readyNextFor(Judge *J) {
   if (!J->hold) asLine(&J->k);
   int32_t land = decF.next;
   if (land == NOT_ASKED && garbageOn(decQ.b)) { int32_t end = J->hold ? 0 : J->o.j.endAt; land = end + regainAfter(end, J->hold ? 0 : J->o.j.spent); }
-  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, land, &J->extLost, &J->extSpent, J->planLine, &J->planN, J->planRow1, &J->planWait);
+  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, land, &J->extLost, &J->extSpent, J->planLine, &J->planN, J->planRow1, &J->planWait, J->planAt);
   J->planBreaks = imin(planBreakN, 16); for (int k = 0; k < J->planBreaks; k++) J->planBreakAt[k] = planBreakAt[k];
   J->planBroke = planBroke; for (int k = 0; k < 5; k++) J->planMargin[k] = planMargin[k];
   J->endReady = planEndReady;
@@ -259,15 +260,15 @@ static void readyNextFor(Judge *J) {
     }
     if (na > PLAN_LANDS) na = PLAN_LANDS;
     for (int i = 0; i < na && !clockOut(); i++) {
-      int32_t xl, xs, xn, xw, xline[MAXLINE], xrow[W + 1];
+      int32_t xl, xs, xn, xw, xline[MAXLINE], xrow[W + 1], xat[MAXLINE];
       readyKind = READY_KIND_LAND + i;
-      int r = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, ats[i], &xl, &xs, xline, &xn, xrow, &xw);
+      int r = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, ats[i], &xl, &xs, xline, &xn, xrow, &xw, xat);
       readyKind = 2; landsAsked++;
       if (r != 1 || !planBetter(xl, planBroke, J->extLost, J->planBroke)) continue;
       landsTaken++;
       J->readyNext = r; J->extLost = xl; J->extSpent = xs; J->planN = xn; J->planWait = xw; J->planBroke = planBroke; J->endReady = planEndReady;
       for (int k = 0; k < 5; k++) J->planMargin[k] = planMargin[k];
-      for (int k = 0; k < xn; k++) J->planLine[k] = xline[k];
+      for (int k = 0; k < xn; k++) { J->planLine[k] = xline[k]; J->planAt[k] = xat[k]; }
       for (int k = 0; k <= W; k++) J->planRow1[k] = xrow[k];
       J->planBreaks = imin(planBreakN, 16); for (int k = 0; k < J->planBreaks; k++) J->planBreakAt[k] = planBreakAt[k];
     }

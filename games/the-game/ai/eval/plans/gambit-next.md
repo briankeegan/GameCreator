@@ -217,3 +217,8 @@ games do between breaks that the survived ones do not.
   is 1300's (d46faa5f) again. Its turns show the other recurring pattern twice more: a one-swap setup whose plan lives (einf) played
   over a break of 32 cells (11705), and the plan gone at the next decision -- the summary counts it: of lines that lived with nothing
   new told, 22% did not live on at the next decision ("a life kept"), and 696 decisions a run lose the proof with nothing new shown.
+- The whole plan carried (step 6): a line's proof is its plan -- its first break, each later break from the landing its readiness
+  found it, and the survival line on from the plan's end board -- and only the first break was carried; the rest was found again each
+  decision, in a decision's time, and often was not (proofLost=none with carryKept=2 in the logs; a 32-cell break passed over twice
+  at a turn for a one-swap setup whose plan lived and was then gone). Now readyNextOf hands out the whole plan with each swap's frame,
+  the outcome keeps it, the promise is carried whole, and the judge presses each later swap where the plan said.
