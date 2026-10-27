@@ -262,3 +262,8 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   window and contact of a board that line never reaches. Fixed: a line judged dead with no plan board reads room below none.
 - 1307, combo_storm 17/24, gates green, the best of the mode: a dead line reads room below none. combo_storm-3 survived (896 in
   seven runs running). Lost games now convert 132 of 147 a minute landed (-13), survived 147 of 148.
+- combo_storm-1 (1307, lost 3379), read: with the board clean and 48 panels, four clears of one swap that made nothing (3061 to 3126,
+  combo 0, broke 0) were played over the hold by the margin's window share -- 2 against 1 -- and spent the window from 11 to 1; the
+  block then landed on a board that could press nothing. The window's cover moved each due to the line's end, where the window had
+  refilled, while the hold read it at the due. A due is when the row must be paid; a line still pressing past it has not covered it.
+  Fixed: a due is never moved to the line's end.

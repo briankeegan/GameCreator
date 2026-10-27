@@ -145,17 +145,21 @@ static double actionFrames(void) {
 // (THE WINDOW'S COVER: of the breaks the blocks on their way are due, soonest first, how many the window keeps a walk for -- at each due
 // its walk (walkDue) besides the walks the breaks before it took, each pressed as its block lands and aged out as any action is, with what the
 // window has given back by then; none on its way, 1 where the window keeps the walk at the line's end. WINDOW_ALL: no allowance said)
+// (A DUE IS WHEN THE ROW MUST BE PAID: a line still pressing past a due has not covered it -- the due is never moved to the line's end,
+// where the window has refilled. 1307 combo_storm-1, 3061 to 3126: four clears of one swap that made nothing read more window than the
+// hold, each due read at their end, and spent the window to 1 by the block)
 #define WINDOW_ALL (LANDN + 1)
 static int windowCover(int32_t endAt, int spent) {
   if (pressAllowance < 0) return WINDOW_ALL;
   if (nLandAts <= 0) { int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1; return allowLeftAt(tl > endAt ? tl : endAt, spent) >= breakWalk; }
   int k = 0;
   for (; k < nLandAts; k++) {
-    int32_t tk = landAts[k] - pressFrom; if (tk < endAt) tk = endAt;
+    int32_t tk = landAts[k] - pressFrom;
     int before = 0;
-    for (int i = 0; i < k; i++) { int32_t ti = landAts[i] - pressFrom; if (ti < endAt) ti = endAt; if (tk - ti < winLen) before += walkDue(i); }
+    for (int i = 0; i < k; i++) { int32_t ti = landAts[i] - pressFrom; if (tk - ti < winLen) before += walkDue(i); }
     if (allowLeftAt(tk, spent) - before < walkDue(k)) break;
   }
+  (void)endAt;
   return k;
 }
 // (whether the window keeps the next break's walk: the next block's, or the line's end where none is on its way)
