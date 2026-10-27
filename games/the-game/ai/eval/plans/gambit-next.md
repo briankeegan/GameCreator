@@ -59,6 +59,10 @@ What follows, and what does not:
    beats every unproven one. Real play in reach on the board it leaves (The idle frame: `playReady`) is read, not ranked on. Whether its end board is ready for the next
    block the mode sends by the fuller shape math (the nearest break with the biggest block of the game landed on it) is read and logged
    (`er=`) but not part of the proof -- see Learned, 1289 to 1292 and 1299.
+   **1b. The rules' keep.** Among proven lines, one that keeps the floor the rules set (material 30 and up for combo_storm), or nets
+   material, before one that spends it -- ahead of the mode's list. A line spends the floor when the board it leaves is below the keep
+   and the line nets material away: the panels its clears take beyond what its breaks convert (`netPanels`), a break that clears more
+   than it converts included. One test (`outcome.c spendsFloor`), the shared line check's and the order's.
 2. **Unproven: the most left to find a proof with.** Of lines not proven, one that dies before it could press anything ranks last;
    then the one that leaves the most of its scarcest resource, then of the next -- the two scarcest only (`marginKey`: room, material,
    contact, and the window as the dues ask it), each enough at three rows; then the later loss. The build that measured best (1284,

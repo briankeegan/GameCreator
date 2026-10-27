@@ -135,9 +135,12 @@ static int32_t aloneBuildable(void) {
 static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
-// THE FLOOR SPENT, the one test every reader asks (the shared line check, the rank's keep): a line that clears panels and breaks nothing,
-// leaving a board the rules' keep does not hold (floorKept: floorOf on the board the line leaves -- facts.c keepsFloor)
-static int spendsFloor(Made m, int32_t floorKept) { return floorKept == 0 && (m.combo > 0 || m.chain > 0) && !(m.broke > 0); }
+// THE FLOOR SPENT, the one test every reader asks (the shared line check, the rank's keep): a line that nets material away -- the
+// panels its clears take beyond what its breaks convert, beyond the board left alone (judge.c netPanels) -- leaving a board the rules'
+// keep does not hold (floorKept: floorOf on the board the line leaves -- facts.c keepsFloor). A break that clears more than it converts
+// spends the floor as a clear that breaks nothing does: the board's material is what the next break is made of, and every loss of
+// combo_storm ends below the keep with no break to find (plans/gambit-next.md, 1319 to 1322)
+static int spendsFloor(Made m, int32_t floorKept, int32_t netPanels) { (void)m; return floorKept == 0 && netPanels < 0; }
 // THE RESERVE SPENT, beside it: with garbage on the board or on its way, a line that breaks nothing and walks the window below a break's
 // walk (LAND_RESERVE, core/nodes.h) at the next landing has spent what that break is pressed out of -- attacks and walks are free while
 // the next break stays in hand
@@ -148,7 +151,7 @@ static int spendsReserve(Made m, const Judged *j) {
 // (what the one line check asks of the list, a last resort too with last, and of the floor and the reserve -- lineOk below, the order's
 // outcome and rank.c judgeCand asking the same)
 static int lineInList(const Judged *j, int last) { return fitsList(&theList, j->made, j, last) && imax(j->made.chain, j->chainAll) <= MAXCHAIN; }
-static int lineSpends(const Judged *j, int32_t floorKept) { return spendsFloor(j->made, floorKept) || spendsReserve(j->made, j); }
+static int lineSpends(const Judged *j, int32_t floorKept) { return spendsFloor(j->made, floorKept, j->netPanels) || spendsReserve(j->made, j); }
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) { return outcomeOfW(seq, n, settled, waitAt, waitTo, 0, 0, 0); }
 // (A PROMISED BREAK JUDGED: the line and the break a readiness found, played where it found it -- the promise's own judging, which
