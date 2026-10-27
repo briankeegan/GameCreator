@@ -327,6 +327,10 @@ line short at once by a block shown (**demand**).
   carried an introduced bug: the promise's wait was the frame the block dropped on, not the frame the board to come was settled on,
   so every carried readiness break was pressed a few frames early on a board with the block still falling (1085 proofs lost with
   nothing new shown), and the new record was shared across threads. Both fixed in the one function; 1333 runs it.
+- 1333, combo_storm 13/24: the promise's frame fixed and still 13 -- the board to come, walked four frames at a time to a cap of
+  150 per candidate line, cost the judge most of its readiness askings (4494 a game where 1330 asked 12217): the breaks and lives
+  categories collapsed (59 to 4, 18 to 1) and the order fell back to buys. The definition stays; the computation is three steps:
+  settle, two frames (the drop comes on the first idle frame), settle. One put-back refused (red), 1 in 24 games, noted.
 
 ## Where this stands
 

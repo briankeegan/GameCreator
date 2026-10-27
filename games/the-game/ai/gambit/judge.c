@@ -234,23 +234,30 @@ static int32_t anchorIdAt(const Board *b, int c) {
 // settle -- the board the next block lands on. Nothing queued and nothing on its way: n itself. The landing was taken from the
 // question's frame before (readyAt): for a line longer than that it was n with no block on it, for a shorter one the idle rain before
 // that frame topped the board first (11594 of 20981 askings lost first, run 1322) -- readiness asked of the wrong board either way
-#define LAND_CAP 150
 static LOCAL int32_t landOnceAt;   // (the frame the board to come is settled on, from the root: the readiness break's wait, j->readyWait -- the frame the promise is pressed from. The drop's frame, a few earlier, pressed it on a board with the block still falling: 1085 proofs lost, 13/24, run 1332)
+// (three steps, not a walk: the board let settle, then two frames -- a block drops on the first idle frame, and the frame after a settle
+// is the first (pa.c shouldDropGarbage: nothing active this frame nor the one before) -- then let settle again. Walked four frames at a
+// time to a cap of 150 it cost the judge most of its readiness askings (4494 a game where 12217 were asked), 13/24, run 1333)
 static int landOnce(Ctx *x, int n) {
   Node *N = NODE(x, n);
   landOnceAt = N->t;
-  if (N->garb < 0) return n;
   const Board *b0 = ensureBoard(x, n);
   if (b0 && b0->ninc == 0 && N->narr == 0) return n;
-  int32_t garb0 = N->garb, t0 = N->t;
-  int w = n;
-  while (NODE(x, w)->t - t0 < LAND_CAP) {
-    int v = step(x, w, MK_LONG, 0, 0, 4);
+  int32_t garb0 = N->garb;
+  int calm = settleOf(x, n);
+  if (!liveNode(x, calm)) return calm;
+  int w = calm;
+  for (int tries = 0; tries < 3; tries++) {
+    int v = step(x, w, MK_LONG, 0, 0, 2);
     if (!liveNode(x, v)) return v;
     w = v;
-    if (NODE(x, w)->garb > garb0) { landOnceAt = NODE(x, w)->t; return w; }
+    if (NODE(x, w)->garb > garb0) break;
   }
-  return w;
+  if (NODE(x, w)->garb <= garb0) { landOnceAt = NODE(x, w)->t; return w; }   // (nothing dropped: the board as it settles)
+  int land = settleOf(x, w);
+  if (!liveNode(x, land)) return land;
+  landOnceAt = NODE(x, land)->t;
+  return land;
 }
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   readyPendLast = 0; readyWalkLast = -1; readyNearLast = -1; readyMatLast = -1; readyTopLast = -1; readyContactLast = readyUnderLast = -1;
