@@ -480,6 +480,14 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; }
+    // THE WINDOW RESERVE KEPT (plans/gambit-next.md, The idle frame; 1329: two of six losses with the hands down to 0 and 1 actions, a
+    // break's walk unpaid): under garbage, a line that breaks nothing and leaves the window below a break's walk at the next landing
+    // (outcome.c spendsReserve) is out of the order, as a wasted three is -- a reserve that is a key is no reserve -- unless it is the
+    // save, or every line but the hold spends it (then the order ranks them: a reserve kept to the death is no reserve either)
+    if (R->under) {
+      int any = 0; for (int i = 0; i < n; i++) if (!order[i]->hold && !order[i]->spendsWin) any = 1;
+      if (any) { int m = 0; for (int i = 0; i < n; i++) { Judge *J = order[i]; if (!J->hold && J->spendsWin && !J->threeNeeded) { dropAs(J->k.play, DROP_FLOOR); if (J == carriedJ) carriedJ = 0; } else order[m++] = J; } n = m; }
+    }
     // (a save confirmed: the survival search found the board lives on with it, or outlasts every line without it by a break's time -- its
     // three is no wasted three, a fact of the line the order reads like any other (rank.c threeNeeded), and the order ranks it)
     else if (saveLine) {

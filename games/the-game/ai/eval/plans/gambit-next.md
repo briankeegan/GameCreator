@@ -308,6 +308,14 @@ line short at once by a block shown (**demand**).
   the press (red): the judge read the swap's making at its line's own step kind, the guard at a settle, and a swap back that made a
   combo read as play to one and nothing to the other. One reading now (judge.c madeSettled), asked only when the pair matches.
   Pushed with the veto measured for truth (GAMBITV boards searched again by the report).
+- 1330, combo_storm 18/24, every gate green, put back 0: the veto measured for truth -- 40 of 144 vetoes took a line off a board
+  that had a break (searched again with 3000 ms). A none at 40 ms with the clock not out is still not exhaustive: the beam ends. A
+  wrong veto is cheap, though: the line it takes instead is alike as proven and as lost and its reserve is a fact (a break found is
+  a fact either way); the veto prefers a confirmed reserve to an unconfirmed one. Six losses, the six of 1329: two with the hands
+  down to 0 and 1 actions, four dead-end boards held 48 to 139 decisions.
+- The window reserve as a filter (1329's two hand deaths): under garbage a line that breaks nothing and leaves the window below a
+  break's walk at the next landing is out of the order, as a wasted three is -- unless it is the save, or every line but the hold
+  spends it. A reserve that is a key is no reserve.
 
 ## Where this stands
 
