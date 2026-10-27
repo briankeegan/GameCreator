@@ -342,6 +342,13 @@ line short at once by a block shown (**demand**).
   sets its own reference (rankTogether). The window reserve filter changes 1 move of 207 replayed and stays. For reading a verdict:
   GC_GAMBIT_LOG writes the checks' decisions, GC_GAMBIT_TRACE the order after each stage and the walked-order comparison,
   `test DIR one N` asks one question twice.
+- 1335, combo_storm 13/24, both bugs fixed and the put-back gate red by one, the thread check red: the pair's reference was a plain
+  static written on a worker (LOCAL now). Still 13 with the bugs out, so the board one block landed is itself the loss: readiness
+  found a third as often (lives 1.49% of lines to 0.39% over every game's first hundred decisions, 1330 against 1334) and the
+  proof's lines with it. The board readiness is asked of is the board at the frame the next decision can act (the line's end, +2),
+  settled, with whatever landed before it -- a swap pressed there holds the block off, so nothing that lands later is on it. One
+  function (judge.c boardAt) with the asker's own frame: the judge's is the line's end, the landed-break search's the next block's
+  landing. The replay moves 1 of 207 against the golden; 1336 runs it.
 
 ## Where this stands
 

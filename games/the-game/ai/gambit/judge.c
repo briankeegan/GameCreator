@@ -230,50 +230,26 @@ static int32_t anchorIdAt(const Board *b, int c) {
   const int32_t *f = b->p[1][c].f;
   return f[COLOR] && !f[ISGARBAGE] && f[STATE] == NORMAL ? f[ID] : NUL;
 }
-// THE BOARD TO COME: node n run on, left idle, until exactly one block has dropped on it (the garbage on the board grows), then let
-// settle -- the board the next block lands on. Nothing queued and nothing on its way: n itself. The landing was taken from the
-// question's frame before (readyAt): for a line longer than that it was n with no block on it, for a shorter one the idle rain before
-// that frame topped the board first (11594 of 20981 askings lost first, run 1322) -- readiness asked of the wrong board either way
-static LOCAL int32_t landOnceAt;   // (the frame the board to come is settled on, from the root: the readiness break's wait, j->readyWait -- the frame the promise is pressed from. The drop's frame, a few earlier, pressed it on a board with the block still falling: 1085 proofs lost, 13/24, run 1332)
-// (three steps, not a walk: the board let settle, then two frames -- a block drops on the first idle frame, and the frame after a settle
-// is the first (pa.c shouldDropGarbage: nothing active this frame nor the one before) -- then let settle again. Walked four frames at a
-// time to a cap of 150 it cost the judge most of its readiness askings (4494 a game where 12217 were asked), 13/24, run 1333)
-static int landOnce(Ctx *x, int n) {
-  Node *N = NODE(x, n);
-  landOnceAt = N->t;
+// THE BOARD AT A FRAME, left idle (one definition, two askers): node n run on to `wait` frames from the root -- n itself where it is
+// past it -- then let settle: the board the next decision acts on from that frame, with whatever landed before it. Dead before the
+// frame: the dead node, lost first; a settle that dies keeps the live board as it stands. The judge asks it of the line's end, the frame its next decision can act (j->readyWait, readyAt + 2): a swap pressed
+// there holds the block off (test/stall_check.c), so nothing that lands later is on it. The landed-break search (search/ready.c) asks
+// it of the next block's landing (decF.next + 2). Asked instead of the board one block landed -- the end board settled, stepped to
+// the drop, settled again -- readiness was found a third as often (lives 1.49% of lines to 0.39% over the first hundred decisions of
+// every game) and the proof's lines went with it: 18 of 24 (run 1330) to 12 and 13 (1332 to 1335, two introduced bugs fixed between)
+static int boardAt(Ctx *x, int n, int32_t wait) {
   if (!liveNode(x, n)) return n;
-  const Board *b0 = ensureBoard(x, n);
-  if (b0 && b0->ninc == 0 && N->narr == 0) return n;
-  int32_t garb0 = N->garb;
-  // (NEVER A DEAD BOARD WHERE A LIVE ONE COMES FIRST: the next decision acts on the board as the line leaves it, and a swap pressed
-  // there holds the block off (the stall, test/stall_check.c). A board left idle that dies -- under the block that lands -- says only that the break must be in hand before that; the board to act on is the last live one. Answered with the
-  // dead board, a readiness never found and no line proven: a board lost in 18 frames left alone, outlived by the 18 build's answer,
-  // lost by this one's -- test/main.c, a board on its way out; 13 and 12 of 24, runs 1332 to 1334)
-  int calm = settleOf(x, n);
-  if (!liveNode(x, calm)) return calm;   // (the line's own settle dies: lost first)
-  landOnceAt = NODE(x, calm)->t;
-  int w = calm;
-  for (int tries = 0; tries < 3; tries++) {
-    int v = step(x, w, MK_LONG, 0, 0, 2);
-    if (!liveNode(x, v)) return calm;
-    w = v;
-    if (NODE(x, w)->garb > garb0) break;
-  }
-  if (NODE(x, w)->garb <= garb0) { landOnceAt = NODE(x, w)->t; return w; }   // (nothing dropped: the board as it settles)
-  int land = settleOf(x, w);
-  if (!liveNode(x, land)) return calm;
-  landOnceAt = NODE(x, land)->t;
-  return land;
+  int32_t dt = wait - NODE(x, n)->t;
+  int land = dt > 0 ? step(x, n, MK_LONG, 0, 0, dt) : n;
+  if (!liveNode(x, land)) return land;
+  int calm = settleOf(x, land);
+  return liveNode(x, calm) ? calm : land;
 }
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   readyPendLast = 0; readyWalkLast = -1; readyNearLast = -1; readyMatLast = -1; readyTopLast = -1; readyContactLast = readyUnderLast = -1;
-  (void)wait;
-  int land = landOnce(x, n);
+  int land = boardAt(x, n, wait);
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   if (readyDefer && !readyCollect) return NOT_ASKED;
-  int calm = settleOf(x, land);
-  if (liveNode(x, calm)) land = calm;
-  landOnceAt = NODE(x, land)->t;   // (the board to come, settled: where the break is found, and the frame it is pressed from)
   if (readyDefer) {
     Board *lb = ensureBoard(x, land);
     readyNearLast = lb ? (garbageOn(lb) ? nearOf(lb) : 0) : -1;
@@ -544,7 +520,6 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     { int32_t from0 = pressFrom, spent0 = pressSpent;
       pressFrom = from0 + imax(j->readyWait, NODE(x, n)->t); pressSpent = spent0 + spent;   // (the readiness search's window: core/nodes.h pressFrom)
       j->ready = breaksAfterLanding(x, n, j->readyWait, wl, wn);
-      if (j->ready == 1) j->readyWait = imax(j->readyWait, landOnceAt);   // (the landing as the board to come had it: the break's wait)
       pressFrom = from0; pressSpent = spent0; }
     if (j->ready == 1 && pressAllowance >= 0 && wl && *wn > 0) {
       const Board *eb = ensureBoard(x, n);

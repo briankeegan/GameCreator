@@ -508,7 +508,7 @@ static int32_t marginKey(const Judge *J) {
 // (LOST ALIKE: lost in the same break's time, counted back from the latest loss of the lines ranked together (rankLostRef, sortJudged)
 // -- less than a break's time apart buys no break more -- a line lost within a break's time each alone, and one with three breaks'
 // time left alike with every other. Bands from one reference, so alike is one relation for every pair and the order one order)
-static double rankLostRef;
+static LOCAL double rankLostRef;   // (each thread's own: the walking order's pair is ranked on a worker, decide.c judgeJob)
 // (the bands are a decision wide (rankReact): the search for the proof is carried from decision to decision (plans/gambit-next.md 3 and
 // 7), so a line lost a decision later leaves the search one more decision to find it with -- only lines lost within one decision of each
 // other are alike, and among them the margin decides)
@@ -555,7 +555,7 @@ static Ledger ledgerOf(const Judge *J) {
   L.shortBy = imax(1, due - got); L.at = at;
   return L;
 }
-static const Judge *rankHold;   // (the decision's hold among the lines ranked: sortJudged)
+static LOCAL const Judge *rankHold;   // (the decision's hold among the lines ranked: sortJudged; each thread's own, as rankLostRef)
 // VALUE FOR MOVES: what a line gives less what it costs, in frames -- the time it buys over the hold (its plan's loss less the hold's),
 // a break's time for each row of garbage it converts (rankSave, a row of W cells) and for each block it throws, the actions it takes
 // off the next break's walk, less the frames the

@@ -48,11 +48,9 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   Ctx *x = landedCtx = ctxOf(landedCtx);
   int root = rootOf(x, q);
   if (root < 0) return 0;
-  (void)wait;
-  int land = landOnce(x, root);   // (the board to come: one block landed, judge.c)
+  int land = boardAt(x, root, wait);   // (the board at the next block's landing, settled: judge.c, the judge's own)
   landedWhy = 2;
   if (!liveNode(x, land)) return 0;
-  int calm = settleOf(x, land); if (liveNode(x, calm)) land = calm;
   const Board *lb = ensureBoard(x, land);
   landedWhy = 3;
   if (!lb || !garbageOn(lb)) return 0;
