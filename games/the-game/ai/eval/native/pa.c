@@ -745,6 +745,7 @@ static void removeExtraRows(Board *b) {
 }
 static int shouldDropGarbage(Board *b) {
   if (!b->ninc) return 0;
+  if (b->rainEvery > 0 && b->rainIn > 0) return 0;   // (the rest at a pace: not yet)
   Incoming *g = &b->inc[b->ninc - 1];
   if (isToppedOut(b)) return 0;
   if (hasFallingGarbage(b)) return 0;
@@ -1000,7 +1001,8 @@ static void run(Board *b) {
   if (shouldDropGarbage(b)) {
     Incoming g = b->inc[--b->ninc];
     dropGarbage(b, g.width, g.height, g.isMetal);
-  }
+    if (b->rainEvery > 0) b->rainIn = b->rainEvery;
+  } else if (b->rainIn > 0) b->rainIn--;
   b->stopWatch++;
   b->clock++;
 }
@@ -1060,6 +1062,7 @@ static int countdown(Board *b, int32_t maxk) {
   int32_t k = maxk;
   if (b->nextSpeedIncreaseClock >= b->clock) k = imin(k, b->nextSpeedIncreaseClock - b->clock);
   if (b->health <= 0) k = imin(k, b->shakeTime - 1);
+  if (b->rainEvery > 0 && b->rainIn > 0) k = imin(k, b->rainIn);   // (the rest at a pace: never past the frame a block is due)
   int n = rowsTo(b);
   k = imin(k, countdownRoom(b));   // with nothing popping the board is quiet, which run() already makes cheap
   if (k <= 0) return 0;
@@ -1082,6 +1085,7 @@ static int countdown(Board *b, int32_t maxk) {
   b->curRow = bound(1, b->curRow, b->topCurRow);
   b->swapThisFrame = 0; b->swapDenied = 0; b->inputBits = 0;
   b->quiet = 0;
+  if (b->rainIn > 0) b->rainIn -= k;
   b->stopWatch += k; b->clock += k;
   b->cdLeft = imax(0, b->cdLeft - k);
   STAT(18) += k;
@@ -1146,6 +1150,7 @@ EXPORT(nb_load) int nb_load(Board *b) {
   const int32_t *x = ioBody;
   b->nRowFeed = b->rowFeedAt = b->nBrkFeed = b->brkFeedAt = 0;
   b->lastSwapA = b->lastSwapB = 0;   // (the game's board carries no record of its last swap: the host's to set, front.c)
+  b->rainEvery = b->rainIn = 0;      // (the engine as the game is: the rest at a pace is a step's own, search.h MK_REST)
   b->riseTimer = ioHead[k++];
 #define LOAD1(fl, n) b->fl = fromD(ioHead[k++]);
   HEAD(LOAD1)

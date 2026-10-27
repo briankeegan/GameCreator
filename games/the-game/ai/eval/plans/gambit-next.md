@@ -50,8 +50,12 @@ What follows, and what does not:
   a line lost sooner for it 145 times in a run (1315, 6/24); as a tie-break among proven lines the list ranks alike, 306 times (1316,
   14/24). The shape math's reach is not the fact it needs to be; what keeps the next decision from idling is the carried break search
   and the readiness proposer (step 3).
-- **The rest stays silence.** After a plan runs out the judge assumes nothing pressed, because that is the truth when the bot has
-  nothing; what keeps the bot from idling is the proof asking for play in reach, not an assumed future line.
+- **The rest at the game's pace.** After a line the judge used to leave the board idle under the whole queue: a block every 15 frames,
+  every end board a rain death within a block or two, so nothing under garbage could live, the proof never engaged and readiness was
+  asked of boards already lost (56% of its askings). The game as measured lands a block every 97 frames, lost and survived games
+  alike. The judge's loss of a line is now read with the game going on at that pace after it (`search.h MK_REST`, the engine's
+  `rainEvery`): what the board stands if the bot keeps its pace. The save and every other reader of the board left alone stay exact:
+  a save must be true of the board as it is.
 
 ## The steps
 

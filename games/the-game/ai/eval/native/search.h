@@ -22,7 +22,12 @@ typedef struct { int32_t at, width, height, isChain, isMetal; } Arr;
 #define CAPPED_AT 72
 #define MAXARR 64   // pa.c / engine.c NBODY leave room for this many after the board
 #define KEYMAX (16 * W)
-enum { MK_LONG, MK_HOLD, MK_RAISE, MK_SWAP, MK_SETTLE };
+enum { MK_LONG, MK_HOLD, MK_RAISE, MK_SWAP, MK_SETTLE, MK_REST = 7 };
+// THE REST AT THE GAME'S PACE (MK_REST): a long step on which a block lands only every restRainEvery frames -- the judge's model of the
+// game going on after a line, the bot keeping its measured pace, where MK_LONG is the board left idle and the whole queue raining in.
+// 97: a block every 97 frames, 37 a minute, measured over runs 1316 to 1322 (gambit_summary.js "idle with garbage queued"), games lost
+// and survived alike (plans/gambit-next.md, The idle frame)
+static int32_t restRainEvery = 97;
 // MK_SETTLE (engines with STEP_STATS): a swap at (mr, mc) -- or, with mr 0, a
 // hold -- and then the frames until nothing moves, at most `frames` (or
 // SETTLE_CAP when that is 0), as the
@@ -256,14 +261,14 @@ static int advanceRest(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames,
   if (REFUSED || (bot.w.active && bot.w.retries)) GIVE(STEP_NULL);
   FRAME();
   for (int guard = guard0; guard < 4000; guard++) {
-    if (kind == MK_LONG && f >= frames) break;
+    if ((kind == MK_LONG || kind == MK_REST) && f >= frames) break;
     input = 0;
     raiseStep(&bot, st, &input);
 #ifdef COUNTDOWN
     // Frames on which only timers run are played at once (countdown), up to
     // the frame before the step ends or garbage on its way lands.
     if (!tape && !input && !bot.w.active) {
-      int32_t room = kind == MK_LONG ? frames - f - 1
+      int32_t room = kind == MK_LONG || kind == MK_REST ? frames - f - 1
                    : bot.cooldown > 0 ? bot.cooldown - 1
                    : kind == MK_SETTLE && f >= 3 ? (frames > 0 ? frames : SETTLE_CAP) - f - 1 : 0;
       room = imin(room, imin(due[0], due[1]) - f - 1);
@@ -277,7 +282,7 @@ static int advanceRest(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames,
       FRAME();
       continue;
     }
-    if (kind != MK_LONG) {
+    if (kind != MK_LONG && kind != MK_REST) {
       if (bot.cooldown > 0) { bot.cooldown--; FRAME(); continue; }
 #ifdef STEP_STATS
       if (kind == MK_SETTLE && (f < 3 || !st->quiet) && f < (frames > 0 ? frames : SETTLE_CAP)) { FRAME(); continue; }
@@ -321,6 +326,7 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 #else
   if (kind == MK_SETTLE) GIVE0(STEP_ERR);
 #endif
+  if (kind == MK_REST) st->rainEvery = restRainEvery;   // (and the step's children keep the pace: the board carries it, paCopy)
   if (swapping) { beginWalk(&bot, mr, mc, x->swapGap); driveWalk(x, &bot, st, &input); }
   else if (kind == MK_RAISE) { bot.raiseFrames = 20; bot.raiseStarted = 0; bot.cooldown = x->reaction; }
   else if (kind == MK_HOLD || kind == MK_SETTLE) bot.cooldown = x->reaction;
