@@ -186,3 +186,17 @@ line short at once by a block shown (**demand**).
   times; the loss first 11 and 10. The margin stays first, as the plan says. Taken back out.
 - Readiness in the proof, measured alone: it ran only with the hold for the proof (1289 to 1292), which cost the games by itself.
   Now: the shape-math readiness in proofOf, the lines that live asked, no hold rule, the 14 build's order otherwise.
+- 1299, combo_storm 6/24: readiness in the proof alone. The worst of the night; taken back out. The build is the 14 build again
+  (margin first, no readiness in the proof, the promise anchored to the board as it is, the gates, the logs, the reach).
+
+## Where this stands
+
+Fourteen runs of combo_storm's 24 since the plan: 16, 15, 14, 9, 11, 5, 14, 14, 14, 11, 14, 10, 6, and 14 again now. Every piece of
+the plan as built measured at or below the build before it: readiness in the proof (6 alone, 9 to 14 with the hold), the hold for the
+proof (5 to 11), the loss before the margin (10, 11), the bands (14, neutral), the promise's anchor (14, neutral). What held: the
+gates (truth, one order, proven first, every share a fact -- all green on every run but the one they caught), the loss logs, and the
+reach report, which says the search is not the piece: of the boards it comes up empty on, 389 of 397 have no break to find. The
+board is made unbreakable before the search runs, between the last break and the next block, and no ordering of the lines offered has
+changed that. The next piece has to come from a comparison the logs can make and I have not: the boards the survived games leave
+after each break against the boards the lost games leave -- height, material, where the next block lands -- to see what the lost
+games do between breaks that the survived ones do not.
