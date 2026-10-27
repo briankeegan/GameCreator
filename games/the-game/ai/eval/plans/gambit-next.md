@@ -237,6 +237,8 @@ line short at once by a block shown (**demand**).
 - 1317, combo_storm 16/24, gates green, put back 0: readiness out of the order gave two back. The gap to 19 is the put-back rule as
   the judge applied it -- seeded into the in-line undo rule, it cut any line swapping the pressed pair back, a clear or a break too.
   Now the judge asks the one test (putBackFor, with what the swap makes) of every swap of a line, as the guard asks it of the press.
+- 1318, combo_storm 15/24, put back 199 (red): the judge's put-back cut came after the swap's press frame was recorded (ats), so the
+  cut line was handed on whole and the guard refused the swap. The cut now sits with the in-line undo cut, before the swap is recorded.
 
 ## Where this stands
 
