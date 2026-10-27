@@ -126,7 +126,11 @@ static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *ar
   k += b64(bytes, (int)n, line + k);
   k += snprintf(line + k, sizeof line - (unsigned long)k, " [");
   for (int i = 0; i < narr; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, "%s[%d,%d,%d]", i ? "," : "", arr[i].at, arr[i].width, arr[i].height);
-  snprintf(line + k, sizeof line - (unsigned long)k, "] a%d g%d", dumpAllow, dumpGap);
+  k += snprintf(line + k, sizeof line - (unsigned long)k, "] a%d g%d", dumpAllow, dumpGap);
+  // (and the input window the decision read -- its length and the age of every action still inside it (core/nodes.h winAges): a board
+  // replayed without them is judged under another window than the decision was)
+  if (hostWin && nWinAges >= 0) { k += snprintf(line + k, sizeof line - (unsigned long)k, " W%d:", winLen);
+    for (int i = 0; i < nWinAges && k < (int)sizeof line - 16; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, "%s%d", i ? "," : "", winAges[i]); }
   flog(line);
 }
 // A question answered: the board judged at level 10's health. It stops in time for its move, on

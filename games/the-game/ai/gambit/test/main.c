@@ -17,10 +17,13 @@ const char *gb_log(void);
 void gb_trace(int on);
 int gb_solve(int depth, int ms, int32_t *line, int32_t *best);
 int gb_solve2(int depth, int beam, int ms, int32_t *line, int32_t *expanded);
+int gb_solve_two(int depth, int beam, int ms, int32_t *out);
+#define SOLVE_TWO_OUT (8 * 18)
 int gb_break_test(int ms, int noBand, int noDoomed, int beam, int open, int32_t *line);
 void gb_line_verdict(const int32_t *seq, int n, char *out, int cap);
 void gb_break_trace(int32_t mv, char *out, int cap);
 void gb_line_trace(const int32_t *seq, int n, char *out, int cap);
+void gb_window(int len, int n, const int32_t *ages);
 int gb_question_bytes(int nbytes, int narr);
 int gb_bits_agree(void);
 int gb_bits_boards(void);
@@ -134,7 +137,17 @@ int main(int argc, char **argv) {
       if (n < 0 || gb_question_bytes(n, narr) != 0) { printf("solve %s: does not load\n", tag); continue; }
       // (GC_PRESS: the decision's own window, as the dump logs it -- a<actions left> g<pace gap>)
       { const char *pa = strstr(b, " a"), *pg = pa ? strstr(pa + 2, " g") : 0; extern void gb_press(int allow, int gap);
-        if (getenv("GC_PRESS") && pa && pg) gb_press(atoi(pa + 2), atoi(pg + 2)); else gb_press(-1, 0); }
+        if (getenv("GC_PRESS") && pa && pg) gb_press(atoi(pa + 2), atoi(pg + 2)); else gb_press(-1, 0);
+        // (and the window's ages, where the dump carries them: W<len>:<age>,<age>,...)
+        const char *pw = getenv("GC_PRESS") ? strstr(b, " W") : 0; static int32_t ages[512]; int na = 0;
+        if (pw) { int len = atoi(pw + 2); const char *c = strchr(pw, ':'); while (c && *c && *c != ' ' && *c != '\n' && na < 512) { ages[na++] = atoi(c + 1); c = strchr(c + 1, ','); if (c && strchr(c, ' ') && strchr(c, ' ') < c) break; }
+                  gb_window(len, na, ages); } else gb_window(0, -1, 0); }
+      if (getenv("GC_SOLVE_TWO")) {
+        static int32_t o2[SOLVE_TWO_OUT]; int nb = gb_solve_two(depth, atoi(getenv("GC_SOLVE_TWO")), ms, o2), k = 0, with = 0;
+        printf("solve2 %s: %d breaks:", tag, nb);
+        for (int q = 0; q < nb; q++) { int L = o2[k++]; printf(" ["); for (int z = 0; z < L; z++) printf("%s%d,%d", z ? " " : "", o2[k] >> 3, o2[k] & 7), k++; int f = o2[k++]; printf(" -> %s]", f > 0 ? "FOLLOW" : f < 0 ? "cut" : "dead end"); with += f > 0; }
+        printf(" | with a follow-up %d\n", with); fflush(stdout); continue;
+      }
       int32_t sol[64], best = 0; int r = getenv("GC_BREAK_TEST") ? gb_break_test(ms, getenv("GC_NOBAND") != 0, getenv("GC_NODOOMED") != 0, getenv("GC_TBEAM") ? atoi(getenv("GC_TBEAM")) : 0, getenv("GC_OPEN") != 0, sol) : getenv("GC_SOLVE_BEAM") ? gb_solve2(depth, atoi(getenv("GC_SOLVE_BEAM")), ms, sol, &best) : gb_solve(depth, ms, sol, &best);
       printf("solve %s: %s", tag, r > 0 ? "BREAK" : r < 0 ? "cut" : "none");
       if (getenv("GC_TRACE_MV")) { static char to[512]; int rr, cc; sscanf(getenv("GC_TRACE_MV"), "%d,%d", &rr, &cc); n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_break_trace(rr * 8 + cc, to, sizeof to); printf(" [trace %d,%d: %s]", rr, cc, to); }

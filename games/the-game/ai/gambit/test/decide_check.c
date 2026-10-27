@@ -369,6 +369,10 @@ static int32_t solveShape(const Board *b) {
   return -(imin(SS.hollow, 255) << 20) + (imin(SS.contact, 15) << 16) - (imin(SS.top, 63) << 8) - imin(SS.even, 255);
 }
 #define SOLVE_BEAM 1500
+// (COLLECTING, gb_solve_collect: every distinct break line found is kept, up to SOLVE_KEEP, and the search goes on to the end of its depth
+// or its time -- the breaks to choose among, each asked for a follow-up by the caller)
+#define SOLVE_KEEP 8
+static int32_t solveCollect, solveNKept, solveKeptN[SOLVE_KEEP], solveKept[SOLVE_KEEP][16];
 EXPORT(gb_solve2) int gb_solve2(int depth, int beam, int ms, int32_t *line, int32_t *expanded) {
   static Ctx *sx; sx = ctxOf(sx);
   Question q = hostQ; q.b = hostBoard;
@@ -399,7 +403,10 @@ EXPORT(gb_solve2) int gb_solve2(int depth, int beam, int ms, int32_t *line, int3
           // (found: the line read back through the kept parents)
           int L = d + 1; line[d] = ms2[k];
           for (int dd = d - 1, slot = i; dd >= 0; dd--) { line[dd] = hist[dd + 1][slot][1]; slot = hist[dd + 1][slot][0]; }
-          return L;
+          if (!solveCollect) return L;
+          if (solveNKept < SOLVE_KEEP && L <= 16) { int q = solveNKept++; solveKeptN[q] = L; for (int z = 0; z < L; z++) solveKept[q][z] = line[z]; }
+          if (solveNKept >= SOLVE_KEEP) return L;
+          continue;
         }
         Board *cb = ensureBoard(sx, c); if (!cb) continue;
         uint32_t key = solveKey(cb), slot = key & 0xffff;
@@ -481,4 +488,45 @@ EXPORT(gb_line_trace) void gb_line_trace(const int32_t *seq, int n, char *out, i
                   liveNode(tx, z) ? NODE(tx, z)->t : -1, liveNode(tx, z) ? NODE(tx, z)->brk : -1, liveNode(tx, z) ? aloneBrokeAt(tx, root, NODE(tx, z)->t) : -1, liveNode(tx, z) ? nearScore(ensureBoard(tx, z)) : 0);
     node = c;
   }
+}
+
+// EVERY BREAK AND ITS FOLLOW-UP: the beam solver collecting up to SOLVE_KEEP break lines; each played on the engine from the question
+// (pressed back to back, then settled), the board it leaves made the question, and the solver asked again on it. out: per break, its
+// length, its swaps, and its follow-up's length (0 none, -1 the time). Returns the breaks found.
+EXPORT(gb_solve_two) int gb_solve_two(int depth, int beam, int ms, int32_t *out) {
+  solveCollect = 1; solveNKept = 0;
+  int32_t line[16], ex = 0;
+  gb_solve2(depth, beam, ms, line, &ex);
+  solveCollect = 0;
+  int nk = solveNKept, k = 0;
+  static int32_t keptN[SOLVE_KEEP], kept[SOLVE_KEEP][16];
+  for (int q = 0; q < nk; q++) { keptN[q] = solveKeptN[q]; for (int z = 0; z < keptN[q]; z++) kept[q][z] = solveKept[q][z]; }
+  static Board *keep; if (!keep) keep = nb_new();
+  cloneBoard(keep, hostBoard); Question kq = hostQ;
+  for (int q = 0; q < nk; q++) {
+    static Ctx *px; px = ctxOf(px);
+    hostQ = kq; hostQ.b = hostBoard; cloneBoard(hostBoard, keep);
+    curQid = abortId + 1; gb_clock_start(nowMs() + 2000);
+    int node = rootOf(px, &hostQ);
+    for (int z = 0; z < keptN[q] && liveNode(px, node); z++) node = step(px, node, MK_SWAP, CR(kept[q][z]), CC(kept[q][z]), 0);
+    int st = liveNode(px, node) ? settleOf(px, node) : -1;
+    int follow = 0;
+    if (liveNode(px, st)) {
+      Board *eb = ensureBoard(px, st); int32_t t = NODE(px, st)->t;
+      cloneBoard(hostBoard, eb); hostQ.b = hostBoard; hostQ.narr = 0;
+      for (int a = 0; a < kq.narr; a++) if (kq.arr[a].at > t) { hostQ.arr[hostQ.narr] = kq.arr[a]; hostQ.arr[hostQ.narr++].at -= t; }
+      int32_t l2[16], e2 = 0;
+      follow = gb_solve2(depth, beam, ms, l2, &e2);
+    } else follow = -2;
+    out[k++] = keptN[q]; for (int z = 0; z < keptN[q]; z++) out[k++] = kept[q][z]; out[k++] = follow;
+  }
+  hostQ = kq; hostQ.b = hostBoard; cloneBoard(hostBoard, keep);
+  return nk;
+}
+
+// THE INPUT WINDOW A DUMPED BOARD WAS DECIDED UNDER (native.c dumpBoard, W<len>:<ages>): loaded with its allowance for a replay of that
+// decision; n -1 lets it go
+EXPORT(gb_window) void gb_window(int len, int n, const int32_t *ages) {
+  if (n < 0) { nWinAges = -1; hostWin = 0; return; }
+  winLen = len; nWinAges = n < WINMAX ? n : WINMAX; for (int i = 0; i < nWinAges; i++) winAges[i] = ages[i]; hostWin = 1;
 }
