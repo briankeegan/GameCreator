@@ -66,6 +66,10 @@ What follows, and what does not:
    then the one that leaves the most of its scarcest resource, then of the next -- the two scarcest only (`marginKey`: room, material,
    contact, and the window as the dues ask it), each enough at three rows; then the later loss. The build that measured best (1284,
    1286) ranks this way, and the play follows the order.
+   **2b. The reserve veto.** Before the line on top is played, the break search itself is asked of the board it leaves -- as it is,
+   known colours, no projection, bounded to 20 ms. No break in reach there, while a line below it, alike as proven and as lost (a
+   break's time), leaves one: that line is played. Every loss is a board with no break in reach, entered and not escaped; the veto
+   refuses the avoidable entries, exactly, and costs at most three bounded searches a decision (`decide.c reserveOf`, logged `veto=`).
 3. **Search for the proof.** When nothing offered is proven, the decision's search time goes to the break on the board the best line
    leaves, carried from decision to decision, and a readiness proposer offers the swap after which the board is ready for the next
    block. The hold is not a safe default at this level: the board left alone is lost within a few decisions (Learned, 1291).

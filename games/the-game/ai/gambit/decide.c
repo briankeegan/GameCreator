@@ -497,6 +497,36 @@ typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, w
 // once a game -- a lost game played again from a decision with another choice, to find the decision that lost it)
 static int32_t forceAt = -1, forceK = 0, forceDone, forcedNow, decAt;
 EXPORT(gb_force) void gb_force(int at, int k) { forceAt = at; forceK = k; forceDone = 0; }
+// THE RESERVE (plans/gambit-next.md, The idle frame): whether the board a line leaves has a break in reach -- the break search itself
+// (search/break.c breakMoves), asked of that board as it is, known colours only, no projection, bounded to VETO_MS. 1 a break, 0 none,
+// -1 not asked (no end board, or the clock out). A board with no garbage on it has nothing to break: 1.
+#define VETO_MS 20
+#define VETO_LOOK 3
+static Board *reserveB;
+static int32_t vetoed, vetoAsked;   // (the log's veto=: the place of the line played for its reserve, 0 none; the boards asked)
+static int reserveOf(const Judge *J) {
+  if (clockOut()) return -1;
+  const Board *eb = J->hold ? decQ.b : lineEnd(J->k.seq, J->k.nseq, J->settled);
+  if (!eb) return -1;
+  if (!garbageOn(eb)) return 1;
+  if (!reserveB) reserveB = nb_new();
+  if (!reserveB) return -1;
+  cloneBoard(reserveB, eb);
+  Question q2 = decQ; q2.b = reserveB; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+  static LOCAL Broke rbr;
+  double old = clockShareBegin(nowMs() + VETO_MS);
+  breakMoves(&q2, 0, 0, &rbr);
+  clockShareEnd(old);
+  vetoAsked++;
+  return rbr.pathLen > 0;
+}
+// (alike for the veto: as proven, and lost within a break's time of each other -- or both standing)
+static int vetoAlike(const Judge *x, const Judge *y) {
+  if (proofOf(x) != proofOf(y)) return 0;
+  double lx = lostOf(x), ly = lostOf(y);
+  if (lx >= 1e9 && ly >= 1e9) return 1;
+  return lostAlike(x, y) || (lx < 1e9 && ly < 1e9 && (lx > ly ? lx - ly : ly - lx) <= imax(1, rankSave));
+}
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   forcedNow = -1;
@@ -504,6 +534,17 @@ static Played playOf(const Read *R, int n) {
     forceDone = 1;
     if (forceK > 0 && forceK < n) { Judge *t = order[0]; order[0] = order[forceK]; order[forceK] = t; forcedNow = forceK; }
     else forcedNow = forceK < n ? 0 : -2;
+  }
+  // THE RESERVE VETO: every loss is a board with no break in reach, entered and not escaped (none at the next decision 86% of the
+  // time). The line on top leaves a board with none in reach while a line below it, alike as proven and as lost, leaves one: that line
+  // is played. Exact, and bounded: VETO_LOOK boards at VETO_MS each
+  vetoed = 0; vetoAsked = 0;
+  if (n > 1 && R->under && reserveOf(order[0]) == 0) {
+    for (int k = 1; k < n && k <= VETO_LOOK; k++) {
+      Judge *c = order[k];
+      if (!vetoAlike(order[0], c)) continue;
+      if (reserveOf(c) == 1) { Judge *t = order[0]; order[0] = c; order[k] = t; vetoed = k; break; }
+    }
   }
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
   // is never passed over for a raise to come)
