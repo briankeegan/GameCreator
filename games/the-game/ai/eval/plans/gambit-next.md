@@ -205,3 +205,6 @@ games do between breaks that the survived ones do not.
   of 152 landed and cleared 150; games survived 149 of 149, and cleared 149. combo_storm's blocks are 4x1: the board dies of room. The
   room share reads none for every line under a block (floored at none), so no line that lowers the stack is preferred for it. Room
   below none was measured only with the hold for the proof (1292). Measured alone now.
+- 1300, combo_storm 15/24: the room share below none, alone. The first number over the 14 in twelve runs; kept. The ledger: games
+  lost 152 landed, 142 converted, 150 cleared (-8 a minute); survived 148, 146, 148 (-2). The board to come lost before the block
+  lands in 11,193 of 20,286 checks.
