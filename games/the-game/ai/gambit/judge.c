@@ -66,7 +66,6 @@ typedef struct {
   int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 a first walk not begun within a reaction
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
-  int32_t fell;                 // the line let a block down onto a break (its lowest garbage below where it began, and a break made or in reach): no wasted three, no floor spent
 } Judged;
 
 static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -126,9 +125,6 @@ static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 #define FIRST_LOOK 30
 static int garbageCells(const Board *b) { int n = 0; for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) n += !!b->p[r][c].f[ISGARBAGE]; return n; }
 #define THREE_SETTLE 400
-static int breakBuildable(const Board *b);   // (search/break.c: a break within the shape math's reach)
-// (the lowest row garbage rests in, nrows where none: where a block came down to)
-static int lowestGarbageOn(const Board *b) { for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) if (b->p[r][c].f[ISGARBAGE]) return r; return b->nrows; }
 static int wastedThree(Board *g, Board *a) {
   static LOCAL int32_t was[MAXROWS * W * 2], got[MAXROWS * W * 2];
   int nw = 0, ng = 0, touch = 0, first = -1;
@@ -160,7 +156,6 @@ static int wastedThree(Board *g, Board *a) {
     gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
     if (!boardMoving(g) && !boardMoving(a)) break;
   }
-  if (lowestGarbageOn(g) < lowestGarbageOn(a) && breakBuildable(g)) return 0;   // (the three let a block down onto a break in reach: the judge's rule, on the settled boards)
   return !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
 }
 // THE FIRST SWAP'S OWN CLEAR (the line's wasted three, as the game makes it): the board the swap is pressed on beside the board left
@@ -226,7 +221,7 @@ static void contactOn(const Board *b, int32_t *contact, int32_t *under) {
   }
 }
 static int32_t materialOn(const Board *b); static int32_t topOn(const Board *b);   // (facts.c)
-static int nearOf(const Board *b); static int garbageOn(const Board *b); static int32_t walkOfBoard(const Board *b); static int breakBuildable(const Board *b);   // (search/break.c)
+static int nearOf(const Board *b); static int garbageOn(const Board *b); static int32_t walkOfBoard(const Board *b);   // (search/break.c)
 static LOCAL int32_t readyRow1Buf[W + 1];
 // A LINE'S ANCHOR: a bottom-row cell's id, where the cell is a coloured panel at rest -- an empty cell keeps its id too, and goes up
 // the stack as each panel above it falls into its place (pa.c switchPanels), so a line anchored to one is found rows above where it was
@@ -235,26 +230,16 @@ static int32_t anchorIdAt(const Board *b, int c) {
   const int32_t *f = b->p[1][c].f;
   return f[COLOR] && !f[ISGARBAGE] && f[STATE] == NORMAL ? f[ID] : NUL;
 }
-// THE BOARD AT A FRAME, left idle (one definition, two askers): node n run on to `wait` frames from the root -- n itself where it is
-// past it -- then let settle: the board the next decision acts on from that frame, with whatever landed before it. Dead before the
-// frame: the dead node, lost first; a settle that dies keeps the live board as it stands. The judge asks it of the line's end, the frame its next decision can act (j->readyWait, readyAt + 2): a swap pressed
-// there holds the block off (test/stall_check.c), so nothing that lands later is on it. The landed-break search (search/ready.c) asks
-// it of the next block's landing (decF.next + 2). Asked instead of the board one block landed -- the end board settled, stepped to
-// the drop, settled again -- readiness was found a third as often (lives 1.49% of lines to 0.39% over the first hundred decisions of
-// every game) and the proof's lines went with it: 18 of 24 (run 1330) to 12 and 13 (1332 to 1335, two introduced bugs fixed between)
-static int boardAt(Ctx *x, int n, int32_t wait) {
-  if (!liveNode(x, n)) return n;
-  int32_t dt = wait - NODE(x, n)->t;
-  int land = dt > 0 ? step(x, n, MK_LONG, 0, 0, dt) : n;
-  if (!liveNode(x, land)) return land;
-  int calm = settleOf(x, land);
-  return liveNode(x, calm) ? calm : land;
-}
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
   readyPendLast = 0; readyWalkLast = -1; readyNearLast = -1; readyMatLast = -1; readyTopLast = -1; readyContactLast = readyUnderLast = -1;
-  int land = boardAt(x, n, wait);
+  // (a line that ends past the landing is ready from where it ends -- never a frame on: the same trajectory, asked from any root,
+  // lands on the same board, so a break found on it once is found again by its key)
+  int dt = wait - NODE(x, n)->t;
+  int land = dt > 0 ? step(x, n, MK_LONG, 0, 0, dt) : n;
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   if (readyDefer && !readyCollect) return NOT_ASKED;
+  int calm = settleOf(x, land);
+  if (liveNode(x, calm)) land = calm;
   if (readyDefer) {
     Board *lb = ensureBoard(x, land);
     readyNearLast = lb ? (garbageOn(lb) ? nearOf(lb) : 0) : -1;
@@ -327,14 +312,6 @@ static int madeBy(Ctx *x, int n, int root) {
   if (NODE(x, n)->brk > NODE(x, a)->brk) return 2;
   return NODE(x, n)->cleared > NODE(x, a)->cleared;
 }
-// WHAT THE SWAP AT (r, c) MAKES, pressed from node `from` and let settle (MK_SETTLE): the one reading the judge takes of a swap that puts
-// the last pair back and the press guard takes of the swap about to be pressed (front.c putsBack) -- a clear it makes shows before it is
-// read, where a step that ends when the swap shows reads nothing made of any swap. 1319 to 1329: the two read a swap apart when each
-// read it at its own step
-static int madeSettled(Ctx *x, int from, int root, int r, int c) {
-  int w = step(x, from, MK_SETTLE, r, c, 0);
-  return liveNode(x, w) ? madeBy(x, w, root) : 0;
-}
 // A LINE THAT WASTES A THREE, as the judge saw it: a clear of three it makes for nothing, or the board's own chain left short of the
 // link it reaches alone (keepsChain) -- the one test the shared line check (outcome.c lineFits) and the order (rank.c wastesThree) ask
 static int judgedWastes(const Judged *j) { return j->threes > 0 || (ownChainBy > 0 && j->keepsChain == 0); }
@@ -366,7 +343,7 @@ static int movedUndoes(const Board *b, int32_t mv, const Moved *m) {
 static LOCAL int32_t lineAt0, lineWaitTo;   // (and lineWaitTo: its board run to that frame and let settle before its first swap)
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fell = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -435,8 +412,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         // (THE PAIR THE LAST SWAP PRESSED SWAPPED, put back for nothing by this swap -- the one test, rules.c putBackFor, with what the
         // swap makes read as the first swap's is (madeBy): the line is cut here, before the swap is recorded as pressed (ats), so it is
         // never handed on. A swap back that clears or breaks is play. The owner: never a pair swapped back and forth to hold garbage off)
-        if (fb && liveNode(x, out) && putBackFor(fb, fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], 0) &&
-            putBackFor(fb, fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], madeSettled(x, from, root, CR(seq[k]), CC(seq[k])))) { j->cut = k; j->cutWhy = 2; break; } }
+        if (fb && liveNode(x, out) && putBackFor(fb, fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from; KB(n);
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
@@ -535,16 +511,6 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     j->readyPend = readyPendLast; j->readyWalk = readyWalkLast; j->readyNear = readyNearLast; j->readyMat = readyMatLast; j->readyTop = readyTopLast; j->readyContact = readyContactLast; j->readyUnder = readyUnderLast;
     memcpy(j->readyRow1, readyRow1Buf, sizeof j->readyRow1);
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
-  }
-  // A THREE THAT LETS A BLOCK DOWN ONTO A BREAK is no wasted three, and spends no floor: the line's lowest garbage ends below where it
-  // began (search.h Node glow: a block that lands on its own only lands higher; the stack's rise moves everything up), and the line
-  // breaks garbage or its end board has a break in reach (ready). The owner's move on the boards the bot died on: a block perched on one
-  // tall column, four columns low beside it; clear under the block, it comes down onto panels, break it with a three beside it. Read as
-  // "breaks nothing" that clear was refused in the search, by the judge and by the press guard alike. Any three that moves garbage made
-  // free instead (1337, 9 of 23): the bot spent its panels digging. Read off the nodes alone, on any thread
-  { int32_t glow0 = NODE(x, root)->glow, glow1 = liveNode(x, n) ? NODE(x, n)->glow : glow0;
-    j->fell = glow1 < glow0 && (j->made.broke > 0 || j->ready == 1);
-    if (j->fell) j->threes = 0;
   }
   j->late = j->late || clockOut();
   if (j->late && !j->dead) j->aliveTo = liveNode(x, n) ? NODE(x, n)->t - NODE(x, root)->t : 0;

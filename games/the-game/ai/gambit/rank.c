@@ -39,7 +39,6 @@ typedef struct {
   int32_t extSpent;    // and the actions that plan presses, the line and its breaks (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for spending the rules' floor or the reserve (outcome.c spendsFloor, spendsReserve)
-  int32_t spendsWin;   // the window reserve spent: breaks nothing and leaves the window below a break's walk at the next landing (spendsReserve) -- out of the order under garbage (decide.c ranked)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
@@ -96,10 +95,6 @@ static LOCAL int32_t unTap;
 static void asLine(const Cand *k) { lineAt0 = k->at0; lineWaitTo = k->waitTo; unTap = pressTap; if (k->tapOf) pressTap = k->tapOf - 1; }
 static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int nearActsOf(const Judge *J, int32_t near);
-#ifdef GB_TEST
-static void gb_trace_cand(int play, const int32_t *seq, int n, int fc);   // (test/decide_check.c, under GC_GAMBIT_TRACE)
-static void gb_trace_walked(int ok, int wok, int cmp, int key, const char *why, const Judge *J, const Judge *JW);
-#endif
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->endReady = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0;
@@ -136,7 +131,6 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
   if (j && lineSpends(j, oc.floorKept)) J->outside = J->spends = 1;
-  J->spendsWin = j && spendsReserve(m, j);
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
   // entries, then the one rule's three that breaks)
   // (read off what the board ends up making, the chain already under way included: a swap that cuts it short meets what is left of it,
@@ -156,9 +150,6 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   Xs x = k->x;
   if (setupPlay(play)) {
     int fc = firstClear(&decQ, k->seq, k->nseq);
-#ifdef GB_TEST
-    gb_trace_cand(play, k->seq, k->nseq, fc);
-#endif
     if (fc == 0) { play = PLAY_CLEAR; memset(&x, 0, sizeof x); x.combo = 3; x.chain = 1; x.floor = -1; m.combo = 3; m.chain = 1; m.broke = 0; m.cells = 0; }
     else if (fc > 0) k->nseq = fc;
   }
@@ -508,7 +499,7 @@ static int32_t marginKey(const Judge *J) {
 // (LOST ALIKE: lost in the same break's time, counted back from the latest loss of the lines ranked together (rankLostRef, sortJudged)
 // -- less than a break's time apart buys no break more -- a line lost within a break's time each alone, and one with three breaks'
 // time left alike with every other. Bands from one reference, so alike is one relation for every pair and the order one order)
-static LOCAL double rankLostRef;   // (each thread's own: the walking order's pair is ranked on a worker, decide.c judgeJob)
+static double rankLostRef;
 // (the bands are a decision wide (rankReact): the search for the proof is carried from decision to decision (plans/gambit-next.md 3 and
 // 7), so a line lost a decision later leaves the search one more decision to find it with -- only lines lost within one decision of each
 // other are alike, and among them the margin decides)
@@ -555,7 +546,7 @@ static Ledger ledgerOf(const Judge *J) {
   L.shortBy = imax(1, due - got); L.at = at;
   return L;
 }
-static LOCAL const Judge *rankHold;   // (the decision's hold among the lines ranked: sortJudged; each thread's own, as rankLostRef)
+static const Judge *rankHold;   // (the decision's hold among the lines ranked: sortJudged)
 // VALUE FOR MOVES: what a line gives less what it costs, in frames -- the time it buys over the hold (its plan's loss less the hold's),
 // a break's time for each row of garbage it converts (rankSave, a row of W cells) and for each block it throws, the actions it takes
 // off the next break's walk, less the frames the
@@ -711,7 +702,6 @@ static int walkOrder(const Cand *k, Cand *out) {
   return 1;
 }
 static int compareJudged(const Judge *x, const Judge *y);
-static void rankTogether(Judge **a, int n);
 // A CANDIDATE JUDGED, and in walking order too when that walks less: the walking order is played when the one order puts it no lower --
 // what it makes is the engine's, as for every line; only the drops and the log's count are the line's own order's
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
@@ -722,28 +712,17 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int keepUnbroken = unbroken.set;
   int wok = judgeCand(R, &w, &JW);
   memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
-  if (wok && ok) { Judge *pair[2] = { J, &JW }; rankTogether(pair, 2); }   // (the pair ranked together: the bands from its own reference)
-#ifdef GB_TEST
-  { int c = wok && ok ? compareJudged(&JW, J) : 99; gb_trace_walked(ok, wok, c, cmpKey, cmpWhy, J, &JW); }
-#endif
   if (!wok || (ok && compareJudged(&JW, J) > 0)) return ok;
   *J = JW;
   return 1;
 }
 // sorted stably by the one order
-// THE LINES RANKED TOGETHER, before any comparison of them: the hold among them, the loss the bands count back from (of the lines
-// banded by it), each line's idle marks. Set by every entry to compareJudged -- the sort's, and the walking order's pair (judgeWalked)
-// -- never left from the decision before: a reference left over banded a pair alike on one asking and apart on the next, and the
-// answer differed (test/main.c, unsteady, run 1334's build)
-static void rankTogether(Judge **a, int n) {
+static void sortJudged(Judge **a, int n) {
+  static Judge *tmp[512];
   markIdle(a, n);
   rankHold = 0; for (int i = 0; i < n; i++) if (a[i]->hold) { rankHold = a[i]; break; }
   rankLostRef = 0;
-  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }
-}
-static void sortJudged(Judge **a, int n) {
-  static Judge *tmp[512];
-  rankTogether(a, n);
+  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }   // (of the lines banded by it)
   for (int i = 0; i < n; i++) {
     Judge *h = a[i]; h->holdSunk = 0;
     if (!h->hold || livesOf(h)) continue;

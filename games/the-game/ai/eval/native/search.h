@@ -35,7 +35,6 @@ typedef struct Node {
   int32_t tag, prev, mk, mr, mc, frames, seed, pins, err, live, kept;
   int32_t held, garb, top, pos0, pos1, brk;   // brk: garbage rows broken so far (NODE_BREAKS)
   int32_t cleared;                            // panels cleared so far on the board (pa.c panelsCleared): what a swap made, judge.c madeBy
-  int32_t glow;                               // the lowest row garbage rests in, MAXROWS where none: a block let down, judge.c (read beside the board alone)
   int32_t stopTime, preStopTime, shakeTime, displacement, speed;
   double riseTimer;
   uint32_t hash;
@@ -103,12 +102,12 @@ EXPORT(ns_reset) void ns_reset(Ctx *x) {
 // ---- what the search reads off a board (puyocpu.js _engineNode, FastStack.grid)
 static const char STATE_KEY[10] = { 0, 1, 2, 3, 4, 4, 5, 6, 7, 8 };   // 'popping' and 'popped' share their 'p'
 static void readBoard(Node *n, Board *b) {
-  int H = b->height, r, c, k = 0, g = 0, top = 0, glow = MAXROWS;
+  int H = b->height, r, c, k = 0, g = 0, top = 0;
   uint32_t h = 2166136261u;
   for (r = 1; r <= H + 1 && r < b->nrows; r++)
     for (c = 1; c <= W; c++) {
       const int32_t *f = b->p[r][c].f;
-      if (f[COLOR] != 0) { top = r; if (f[ISGARBAGE]) { g++; if (r < glow) glow = r; } }
+      if (f[COLOR] != 0) { top = r; if (f[ISGARBAGE]) g++; }
       // The key holds 19 bits of timer: one outside them is clamped, which
       // only lets two boards that differ there share a key.
       int32_t tm = f[TIMER];
@@ -122,7 +121,7 @@ static void readBoard(Node *n, Board *b) {
   n->stopTime = b->stopTime; n->preStopTime = b->preStopTime; n->shakeTime = b->shakeTime;
   n->displacement = b->displacement; n->riseTimer = b->riseTimer; n->speed = b->speed;
   n->held = b->stopTime + b->preStopTime + b->shakeTime;
-  n->brk = NODE_BREAKS(b); n->cleared = b->panelsCleared; n->glow = glow;
+  n->brk = NODE_BREAKS(b); n->cleared = b->panelsCleared;
 }
 static int legalSwaps(Board *b, int32_t *out) {
   int n = 0;

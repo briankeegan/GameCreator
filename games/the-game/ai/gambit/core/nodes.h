@@ -414,11 +414,11 @@ static int pressWalk(Ctx *x, int n, int kind, int mr, int mc, int (*walk)(Ctx *,
 }
 // WHAT A STEP DID (pa.c ns_step_stats), read off the board it made: each clear's size and the chain counter it reached, panels
 // cleared, garbage cells converted, the most stop one clear paid.
-typedef struct { int32_t n, size[MAXCOMBOS], chainAt[MAXCOMBOS], link[MAXCOMBOS], touch[MAXCOMBOS], cleared, broke, earned, fell; } Stats;   // fell: garbage cells at rest that started to fall in the step (pa.c sFell): a block let down
+typedef struct { int32_t n, size[MAXCOMBOS], chainAt[MAXCOMBOS], link[MAXCOMBOS], touch[MAXCOMBOS], cleared, broke, earned; } Stats;
 static int statsOf(Ctx *x, int i, Stats *s) {
   Board *b = ensureBoard(x, i);
   if (!b) return 0;
-  s->n = b->sNCombo; s->cleared = b->sCleared; s->broke = b->sBroke; s->earned = b->sEarned; s->fell = b->sFell;
+  s->n = b->sNCombo; s->cleared = b->sCleared; s->broke = b->sBroke; s->earned = b->sEarned;
   for (int j = 0; j < b->sNCombo; j++) { s->size[j] = b->sCombo[j]; s->chainAt[j] = b->sChainAt[j]; s->link[j] = b->sLink[j]; s->touch[j] = b->sTouch[j]; }
   return 1;
 }

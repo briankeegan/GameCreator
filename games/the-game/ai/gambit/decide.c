@@ -316,12 +316,6 @@ static int judgeAll(const Read *R, int nc, int n) {
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   return n;
 }
-#ifdef GB_TEST
-static void gb_trace_ranked(const char *stage, Judge **o, int n);   // (test/decide_check.c: the order after each stage, under GC_GAMBIT_TRACE)
-#define TRACE(stage) gb_trace_ranked(stage, order, n)
-#else
-#define TRACE(stage)
-#endif
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; unbroken.set = 0; saveLine = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
@@ -335,8 +329,8 @@ static int ranked(const Read *R, const Found *S) {
   rankReact = C2.reaction + 1;
   rankSave = rankReact + popFrames(decQ.b, W);   // (a row of W cells)
   rankLow = lowOnPanels(decQ.b);
-  n = judgeAll(R, nc, n); TRACE("judged");
-  n = keptJudged(R, n); TRACE("kept");   // (the intentions the last decision kept, found again)
+  n = judgeAll(R, nc, n);
+  n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0;
@@ -486,14 +480,6 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; }
-    // THE WINDOW RESERVE KEPT (plans/gambit-next.md, The idle frame; 1329: two of six losses with the hands down to 0 and 1 actions, a
-    // break's walk unpaid): under garbage, a line that breaks nothing and leaves the window below a break's walk at the next landing
-    // (outcome.c spendsReserve) is out of the order, as a wasted three is -- a reserve that is a key is no reserve -- unless it is the
-    // save, or every line but the hold spends it (then the order ranks them: a reserve kept to the death is no reserve either)
-    if (R->under) {
-      int any = 0; for (int i = 0; i < n; i++) if (!order[i]->hold && !order[i]->spendsWin) any = 1;
-      if (any) { int m = 0; for (int i = 0; i < n; i++) { Judge *J = order[i]; if (!J->hold && J->spendsWin && !J->threeNeeded) { dropAs(J->k.play, DROP_FLOOR); if (J == carriedJ) carriedJ = 0; } else order[m++] = J; } n = m; }
-    }
     // (a save confirmed: the survival search found the board lives on with it, or outlasts every line without it by a break's time -- its
     // three is no wasted three, a fact of the line the order reads like any other (rank.c threeNeeded), and the order ranks it)
     else if (saveLine) {
@@ -501,7 +487,6 @@ static int ranked(const Read *R, const Found *S) {
       sortJudged(order, n);
     } }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
-  TRACE("ranked");
   return n;
 }
 

@@ -374,6 +374,13 @@ line short at once by a block shown (**demand**).
   by flatness the solver breaks on 97 of 290 (`test DIR solve`, GC_SOLVE_BEAM). The C check now carries the tools: `solve` (both
   solvers), GC_BREAK_TEST (the bot's break search on a board, with the touch beam's switches), GC_JUDGE (the judge's verdict on a
   line), GC_TRACE_LINE (a line through the search's eyes, swap by swap). The flatten search is in; 1338 runs it.
+- 1338, combo_storm 11/24, all 24 played: wasted threes 140 a run. Read against every run: 16 a run through 1330 (18/24), then 52 to
+  57 in every run from 1332 on, 140 in 1338. The window reserve filter (88da8c92) was put between the save's two halves -- "drop every
+  wasted-three line" and "else mark the confirmed save needed" -- and took the else for its own: under garbage the save's three was
+  never marked needed. The let-down rule called a three free on a break in reach, a guess, not a break. Back to 1330's build
+  (63598f5f) for Gambit's source; each idea since is put back one at a time, each checked on the C check and the death boards before
+  the next: the test tools, the put-back reading shared by judge and guard, the bands set by every comparison and kept per thread, the
+  window filter after the save, the let-down three only where the line breaks, the flatten search with the one break test.
 
 ## Where this stands
 

@@ -27,7 +27,7 @@ function add(into, from) { Object.keys(from).forEach(function (k) { into[k] = (i
 var BUCKETS = [20, 100, 300, 1000, Infinity], bucketOf = function (ms) { for (var i = 0; i < BUCKETS.length; i++) if (ms < BUCKETS[i]) return BUCKETS[i] === Infinity ? '1000+' : '<' + BUCKETS[i]; };
 // One game written up: its lines, and its counts as data (what --game writes, and what a run of games adds up)
 function reachGame(gdir, g) {
-  var R = { name: g, found: {}, lines: [], missedB: [], needs: [], totals: { missed: 0, impossible: 0, boards: 0, inTime: 0, notInTime: 0, window: 0 }, turns: {}, how: {}, took: {} };
+  var R = { name: g, lines: [], missedB: [], needs: [], totals: { missed: 0, impossible: 0, boards: 0, inTime: 0, notInTime: 0, window: 0 }, turns: {}, how: {}, took: {} };
   var totals = R.totals, turns = R.turns, how = R.how, took = R.took, say = function (l) { R.lines.push(l); };
   var rf = path.join(gdir, 'results.txt'), lf = path.join(gdir, 'survivor.log');
   if (!fs.existsSync(rf) || !fs.existsSync(lf)) return R;
@@ -71,7 +71,6 @@ function reachGame(gdir, g) {
       found = !!(j && !j.dead && j.made.broke > 0);
     }
     totals.boards++; if (found) totals.missed++; else totals.impossible++;
-    if (found) R.found[x.at] = line.slice();   // (the break's line, swap by swap: the death boards viewer draws it)
     // (a break the search's own first step finds is one the live search could not have missed on this board: the board, whole, for a replay)
     if (found && line.how === 'first' && R.missedB.length < 12) R.missedB.push('MISSEDB ' + g + ' ' + x.at + ' ' + x.b64 + ' ' + JSON.stringify(x.arr));
     if (found && line.how) { how[line.how] = (how[line.how] || 0) + 1; var bk = bucketOf(line.ms); took[bk] = (took[bk] || 0) + 1; }
