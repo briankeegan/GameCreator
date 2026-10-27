@@ -115,6 +115,19 @@ static int speed(const char *dir) {
   return 0;
 }
 int hostOpenLog(const char *path);
+
+// THE CONDITIONS A DUMPED BOARD WAS DECIDED UNDER (native.c Conds: a<allowance> g<gap> W<window>:<ages>), for a replay of that decision
+// under GC_PRESS; without it, none (the replay's own)
+void gb_replay_allow(int a);
+static void condsOfLine(const char *b) {
+  extern void gb_press(int allow, int gap);
+  const char *pa = getenv("GC_PRESS") ? strstr(b, "] a") : 0, *pg = pa ? strstr(pa + 3, " g") : 0, *pw = pa ? strstr(pa, " W") : 0;
+  static int32_t ages[512]; int na = 0;
+  if (!pa) { gb_replay_allow(-1); gb_press(-1, 0); gb_window(0, -1, 0); return; }
+  gb_replay_allow(atoi(pa + 3)); gb_press(atoi(pa + 3), pg ? atoi(pg + 2) : 0);
+  if (pw) { const char *c = strchr(pw, ':'); while (c && na < 512) { ages[na++] = atoi(c + 1); const char *nx = strchr(c + 1, ','), *sp = strchr(c + 1, ' '); c = nx && (!sp || nx < sp) ? nx : 0; } gb_window(atoi(pw + 2), na, ages); }
+  else gb_window(0, -1, 0);
+}
 int main(int argc, char **argv) {
   if (getenv("GC_GAMBIT_LOG")) hostOpenLog(getenv("GC_GAMBIT_LOG"));
   if (getenv("GC_GAMBIT_TRACE")) gb_trace(1);   // (and the order after each stage of every decision, into that log)   // (the bot's own log of every decision the checks make it take: GAMBITD lines, where a check's verdict needs reading)
@@ -210,6 +223,7 @@ int main(int argc, char **argv) {
     if (!b) b = strstr(line, "GAMBITB ");
     if (!b) continue;
     if (only && nq + 1 != only) { nq++; continue; }
+    condsOfLine(b);
     int narr, n = loadLine(b, &narr);
     if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) { fprintf(stderr, "test: question %d does not load\n", nq); return 1; }
     // (the answer: when anything lives, what is played lives -- or is the raise; a low stack with nothing on it or on its way is raised;
@@ -235,6 +249,7 @@ int main(int argc, char **argv) {
     nq++;
   }
   gzclose(z);
+  gb_replay_allow(-1); gb_window(0, -1, 0);   // (the dumped conditions let go: the checks after this ask their own)
   if (only) return unsteady ? 1 : 0;   // (one question asked: its answer is the whole check)
   fclose(g);
   // (the raise: each mode's question boards cut to a low stack with nothing on it or on its way -- each raised, and held down)
