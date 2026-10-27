@@ -234,8 +234,11 @@ static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int
   readyPendLast = 0; readyWalkLast = -1; readyNearLast = -1; readyMatLast = -1; readyTopLast = -1; readyContactLast = readyUnderLast = -1;
   // (a line that ends past the landing is ready from where it ends -- never a frame on: the same trajectory, asked from any root,
   // lands on the same board, so a break found on it once is found again by its key)
+  // (THE BOARD TO COME, at the game's pace (search.h MK_REST): run to the landing with a block landing every restRainEvery frames, as the
+  // game is measured to land them -- left idle instead, the whole queue rains in before the landing and the board is lost first on half
+  // of the askings (11594 of 20981, run 1322), so readiness could not be asked at all)
   int dt = wait - NODE(x, n)->t;
-  int land = dt > 0 ? step(x, n, MK_LONG, 0, 0, dt) : n;
+  int land = dt > 0 ? step(x, n, MK_REST, 0, 0, dt) : n;
   if (!liveNode(x, land)) return clockOut() ? NOT_ASKED : LOST_FIRST;
   if (readyDefer && !readyCollect) return NOT_ASKED;
   int calm = settleOf(x, land);
@@ -365,7 +368,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     { int32_t to = o->waitTo > 0 && k == o->waitAt ? o->waitTo : k == 0 && !last ? lineWaitTo : 0;
       for (int m = 0; !to && m < o->nmore; m++) if (o->moreTo[m] > 0 && k == o->moreAt[m]) to = o->moreTo[m];
       if (to > 0) {
-        int w = step(x, n, MK_LONG, 0, 0, imax(1, to - NODE(x, n)->t));
+        int w = step(x, n, MK_REST, 0, 0, imax(1, to - NODE(x, n)->t));   // (a wait for a landing, at the game's pace: the board to come)
         if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
         if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
         int calm = settleOf(x, w);
@@ -488,11 +491,10 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->endNode = n;
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
-  // (THE LINE'S LOSS, judged with the game going on at its measured pace after it (search.h MK_REST), not with the board left idle under
-  // the whole queue: the idle rest made every end board a rain death within a block or two and nothing under garbage could live, so the
-  // proof never engaged and readiness was asked of boards already lost -- plans/gambit-next.md, The idle frame. The save (search/outlive.c)
-  // and every other reader of the board left alone stay exact)
-  if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAloneAs(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest), MK_REST);
+  // (the line's loss with the board left idle, exact: at the game's pace instead (MK_REST) nearly every line passed the proof's bar and
+  // the list decided everything, 16/24; with the bar raised to the horizon nothing passed and the margin decided everything, 14/24 --
+  // runs 1324, 1325. The pace is the projection's, below: the board to come, and the plan's waits for a landing)
+  if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));
   // (readiness, the dearer check, only when the board left alone does not stand to lifeTo -- always, or for a line that breaks)
   int standsOut = j->lostAt == FOREVER && (o->readyIfLost || (o->readyIfBreak && j->made.broke > 0));
   if (o->readyAt != NOT_ASKED && !j->dead && !standsOut) {

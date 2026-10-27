@@ -53,9 +53,11 @@ What follows, and what does not:
 - **The rest at the game's pace.** After a line the judge used to leave the board idle under the whole queue: a block every 15 frames,
   every end board a rain death within a block or two, so nothing under garbage could live, the proof never engaged and readiness was
   asked of boards already lost (56% of its askings). The game as measured lands a block every 97 frames, lost and survived games
-  alike. The judge's loss of a line is now read with the game going on at that pace after it (`search.h MK_REST`, the engine's
-  `rainEvery`): what the board stands if the bot keeps its pace. The save and every other reader of the board left alone stay exact:
-  a save must be true of the board as it is.
+  alike. As the judge's own loss of a line the pace measured 16 and 14 (1324, 1325: the proof's bar then fits nothing or everything).
+  It is the projection's: the board to come that readiness is asked of, and the plan's waits for a landing, are run to the landing
+  at the game's pace (`search.h MK_REST`, the engine's `rainEvery`) -- left idle, the whole queue rained in first and the board to
+  come was lost on half of readiness's askings. The judge's loss, the save and every other reader of the board left alone stay
+  exact: a save must be true of the board as it is.
 
 ## The steps
 
@@ -273,6 +275,10 @@ line short at once by a block shown (**demand**).
   wall a decision, the game waiting). Lines that live stayed at 4% -- living is gated on readiness found, not on standing. What moved:
   at pace nearly every line passes the proof's bar (the last row shown and a break's time: 120 frames), so the list decided more and
   the margin less. Next: the proof as the pace world needs it -- proven only when the line stands to the whole horizon at pace.
+- 1325, combo_storm 14/24: the pace as the judge's loss with proven = stands the whole horizon. Nothing passed, the margin decided
+  6240 plays of a line lost sooner (2500 in the 19 build). The judge's loss is exact again with its 120-frame bar; the pace goes to the
+  projections only -- the board to come (readiness: 11594 of 20981 askings found it lost first under the idle rain, unchanged by
+  the judge's pace, 11108 and 10565 in 1324 and 1325) and the plan's waits for a landing.
 
 ## Where this stands
 
