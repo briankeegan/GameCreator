@@ -269,6 +269,10 @@ line short at once by a block shown (**demand**).
   own key (step 4) and the floor spent is the clear that breaks nothing, as in the 19 build. Learned: every loss ends below the keep,
   but holding material by refusing net-negative breaks loses more than the material buys -- a break is income in the colours it
   reveals, whatever it nets in panels.
+- 1324, combo_storm 16/24: the rest at the game's pace alone. The clock was not it (the budget line is the 19 build's: ~190 ms of
+  wall a decision, the game waiting). Lines that live stayed at 4% -- living is gated on readiness found, not on standing. What moved:
+  at pace nearly every line passes the proof's bar (the last row shown and a break's time: 120 frames), so the list decided more and
+  the margin less. Next: the proof as the pace world needs it -- proven only when the line stands to the whole horizon at pace.
 
 ## Where this stands
 

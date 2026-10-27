@@ -599,11 +599,13 @@ static int catOf(const Judge *J, const Judge *H) {
 // The shape math's reach is not the fact it needs to be -- the readiness proposer and the carried break search stand in for it)
 static int playReady(const Judge *J) { return J->o.endNear < 0 || J->o.endNear < NEAR_MISS; }
 static int playReadyRead(const Judge *J) { return playReady(J); }   // (kept read: answer.c may log it)
+// (PROVEN, with the judge's rest at the game's pace (search.h MK_REST): a line that stands to the whole horizon with the game going on
+// at its pace after it. The bar of the last row shown and a break's time more (proofFrame) was the idle rest's: at pace nearly every
+// line passes it, the list then decides everything and the margin nothing -- 16/24, run 1324)
 static int proofOf(const Judge *J) {
   if (J->o.lives) return 3;
   if (J->extLost == FOREVER) return 2;
-  double l = lostOf(J);
-  return l < 1e9 && l > proofFrame();
+  return lostOf(J) >= 1e9;
 }
 // (DEAD BEFORE IT COULD PRESS ANYTHING: unproven and lost within a break's time -- the hold's loss not known among them)
 static int diesNow(const Judge *J) { return !livesOf(J) && lostOf(J) < imax(1, rankSave); }
