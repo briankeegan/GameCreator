@@ -59,10 +59,6 @@ What follows, and what does not:
    beats every unproven one. Real play in reach on the board it leaves (The idle frame: `playReady`) is read, not ranked on. Whether its end board is ready for the next
    block the mode sends by the fuller shape math (the nearest break with the biggest block of the game landed on it) is read and logged
    (`er=`) but not part of the proof -- see Learned, 1289 to 1292 and 1299.
-   **1b. The rules' keep.** Among proven lines, one that keeps the floor the rules set (material 30 and up for combo_storm), or nets
-   material, before one that spends it -- ahead of the mode's list. A line spends the floor when the board it leaves is below the keep
-   and the line nets material away: the panels its clears take beyond what its breaks convert (`netPanels`), a break that clears more
-   than it converts included. One test (`outcome.c spendsFloor`), the shared line check's and the order's.
 2. **Unproven: the most left to find a proof with.** Of lines not proven, one that dies before it could press anything ranks last;
    then the one that leaves the most of its scarcest resource, then of the next -- the two scarcest only (`marginKey`: room, material,
    contact, and the window as the dues ask it), each enough at three rows; then the later loss. The build that measured best (1284,
@@ -263,6 +259,12 @@ line short at once by a block shown (**demand**).
   none. The cleared count is on the node now, as the break count is.
 - 1322, combo_storm 19/24, every gate green, put back 0, truth 0: the 19 again, with the owner's rule in -- no pair put back for
   nothing, judge and guard reading one record the engine writes. The five losses are 1321's.
+- 1323, combo_storm 14/24: the rules' keep as the order's key after the proof, with the floor spent read as net material (a break
+  that clears more than it converts included). The key decided 428 plays of a line lost sooner, and the shared line check, asking the
+  same test, kept no net-negative break below the keep for the searches -- fewer breaks found. Both back out; the keep is the list's
+  own key (step 4) and the floor spent is the clear that breaks nothing, as in the 19 build. Learned: every loss ends below the keep,
+  but holding material by refusing net-negative breaks loses more than the material buys -- a break is income in the colours it
+  reveals, whatever it nets in panels.
 
 ## Where this stands
 

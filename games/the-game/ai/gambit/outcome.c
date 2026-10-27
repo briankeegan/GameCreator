@@ -140,7 +140,10 @@ static int32_t materialOn(const Board *b);   // (facts.c: the panels under the l
 // keep does not hold (floorKept: floorOf on the board the line leaves -- facts.c keepsFloor). A break that clears more than it converts
 // spends the floor as a clear that breaks nothing does: the board's material is what the next break is made of, and every loss of
 // combo_storm ends below the keep with no break to find (plans/gambit-next.md, 1319 to 1322)
-static int spendsFloor(Made m, int32_t floorKept, int32_t netPanels) { (void)m; return floorKept == 0 && netPanels < 0; }
+// (measured as net material, a break that clears more than it converts included, with the keep as the order's key after the proof: 14/24,
+// run 1323 -- the shared line check then kept no net-negative break below the keep, and the searches found fewer breaks. The test is
+// the clear that breaks nothing, as before)
+static int spendsFloor(Made m, int32_t floorKept, int32_t netPanels) { (void)netPanels; return floorKept == 0 && (m.combo > 0 || m.chain > 0) && !(m.broke > 0); }
 // THE RESERVE SPENT, beside it: with garbage on the board or on its way, a line that breaks nothing and walks the window below a break's
 // walk (LAND_RESERVE, core/nodes.h) at the next landing has spent what that break is pressed out of -- attacks and walks are free while
 // the next break stays in hand

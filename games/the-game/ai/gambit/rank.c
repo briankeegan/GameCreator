@@ -625,10 +625,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
 
     } }
-  // 1b. THE RULES' KEEP, among proven lines: the one that keeps the floor -- or nets material, outcome.c spendsFloor -- before the one
-  // that spends it, ahead of the mode's list: every mode defends itself while it attacks, and the material is what the next break is
-  // made of (the goal: aggressive within the mode, never at the cost of the proof)
-  if (proofOf(x) && proofOf(y) && x->spends != y->spends) K(1, "floor", x->spends ? 1 : -1);
+  // (the rules' keep as a key here, among proven lines ahead of the list: 428 plays of a line lost sooner for it, 14/24, run 1323 --
+  // it stays the list's own key, step 4)
   // 3. THE BOARD'S OWN CHAIN kept before cut short (the owner: never spoil the board's own chain)
   if (cutsShort(x) != cutsShort(y)) K(3, "chain", cutsShort(x) ? 1 : -1);
   // 4. THE MODE'S RULES: the earlier entry of its list the line meets, as the board asks it (rules.c metOf: in time, the list's own
