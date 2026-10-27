@@ -172,3 +172,9 @@ line short at once by a block shown (**demand**).
   combo_storm-4 at 6774 the same (8 cells at 244 over 32 at 513) -- both by the mode's list (k4.list): every loss past three breaks'
   time was read alike, so the later loss never decided and the list did, among unproven lines. Fixed: losses are banded at any
   distance; a line lost four breaks' time later than another is not alike with it. The list ranks among proven lines.
+- 1296, combo_storm 11/24: losses banded at any distance measured below the 14 and is taken back out. The turns: combo_storm-6 at
+  19696 and 19713, the hold (lost at 123, then 106) over a survive line that breaks a slab and is lost at 299, and a toward line lost
+  at 223, both by the margin's contact share (the hold's block lands flush on the stack, 12; the line's on a jagged one, 2). The loss
+  reports have named 2.margin as the key most passed over in every run since 1294. One piece of step 2: a loss later by a break's time
+  or more decides before the margin -- a break's time more to find the proof in is more than any share -- and within a break's time the
+  margin decides as before.
