@@ -45,12 +45,17 @@ What follows, and what does not:
 - **A line's idle frames are its landings.** The judge plays the line on the engine with the queue on the board, so each idle frame
   with garbage queued lands a block in the judging, as in the game. The hold is a rain. Counted on the game: `idleQueued`, frames idle
   with garbage queued, a minute, games lost against survived.
-- **The board to come is one block landed.** Readiness, and the search for the break on the board to come, took "the next landing"
-  from the question's frame: for a line longer than that they were asked of the line's end board with no block on it, for a shorter
-  one the idle rain before that frame topped the board first (11594 of 20981 askings lost first, 1322). Now one definition, from the
-  board itself (`judge.c landOnce`): the line's end board run idle until exactly one block drops, then settled. The four dead-end
-  deaths of 1329 held 48 to 139 decisions with level and toward lines offered on every one and the hold played over them; their
-  readiness was asked of the wrong board.
+- **The board readiness is asked of is the board at the frame the next decision can act** -- the line's end, settled, with whatever
+  landed before it (`judge.c boardAt`, one function; the landed-break search asks it of the next block's landing). A swap pressed there
+  holds the block off, so nothing that lands later is on it. Asked of the board one block landed instead (1332 to 1335), readiness was
+  found a third as often and the proof's lines went with it: 18 to 12 and 13.
+- **A three that lets a block down is real play, never a wasted three.** The owner's move on the boards the bot died on (the death
+  boards, run 1335): a block perched on one tall column with four columns low beside it; clear a three under the block, it comes down
+  onto panels it did not touch, break it with a three beside it. Read as "breaks nothing" that clear was refused in the search, by the
+  judge and by the press guard alike, so the way down was closed on every board of that shape. One rule, read beside the board left
+  alone: a step whose lowest garbage is below the board alone's by then let a block down (`judge.c`, the step loop; `wastedThree` on the
+  settled boards for the press guard); no wasted three in it, no floor spent (`outcome.c lineSpends`). A block that lands or falls on its
+  own is no let-down.
 - **Ready is real play in reach.** The board a line leaves is ready when it has garbage on it and a break within the shape math's reach
   (`outcome.c endNear`, `nearOf`), or no garbage on it (`rank.c playReady`). Read, and in no key of the order: in the proof it played
   a line lost sooner for it 145 times in a run (1315, 6/24); as a tie-break among proven lines the list ranks alike, 306 times (1316,
@@ -349,6 +354,12 @@ line short at once by a block shown (**demand**).
   settled, with whatever landed before it -- a swap pressed there holds the block off, so nothing that lands later is on it. One
   function (judge.c boardAt) with the asker's own frame: the judge's is the line's end, the landed-break search's the next block's
   landing. The replay moves 1 of 207 against the golden; 1336 runs it.
+- 1336, combo_storm 14/24, green: readiness back on the board at the line's end and the thread check green. 14, not 1330's 18: the
+  audit's fixes, the shared put-back reading and the window filter stand between, each measured as a move or two of 207 replayed;
+  the seed-to-seed noise is two games. The owner, shown the death boards (Gambit Death Boards): "all should be able to drop down the
+  top blocks (or one below) and break with a 3" -- the let-down three above, the structural blind spot: the reach math walks panels
+  sideways to a block as it stands, and the rule against wasted threes refused the clear that brings the block down. Measured first on
+  the death boards replayed (`test DIR` on the 397 run-up boards of the 11 lost games), then the 24.
 
 ## Where this stands
 

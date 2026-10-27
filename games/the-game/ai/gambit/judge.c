@@ -66,6 +66,7 @@ typedef struct {
   int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 a first walk not begun within a reaction
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
+  int32_t fell;                 // steps of the line that let a block down (its lowest garbage below the board alone's): no wasted three in them, no floor spent
 } Judged;
 
 static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -125,6 +126,8 @@ static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 #define FIRST_LOOK 30
 static int garbageCells(const Board *b) { int n = 0; for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) n += !!b->p[r][c].f[ISGARBAGE]; return n; }
 #define THREE_SETTLE 400
+// (the lowest row garbage rests in, nrows where none: where a block came down to)
+static int lowestGarbageOn(const Board *b) { for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) if (b->p[r][c].f[ISGARBAGE]) return r; return b->nrows; }
 static int wastedThree(Board *g, Board *a) {
   static LOCAL int32_t was[MAXROWS * W * 2], got[MAXROWS * W * 2];
   int nw = 0, ng = 0, touch = 0, first = -1;
@@ -156,6 +159,7 @@ static int wastedThree(Board *g, Board *a) {
     gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
     if (!boardMoving(g) && !boardMoving(a)) break;
   }
+  if (lowestGarbageOn(g) < lowestGarbageOn(a)) return 0;   // (the three let a block down: threesOf, the same rule on the settled boards)
   return !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
 }
 // THE FIRST SWAP'S OWN CLEAR (the line's wasted three, as the game makes it): the board the swap is pressed on beside the board left
@@ -361,7 +365,7 @@ static int movedUndoes(const Board *b, int32_t mv, const Moved *m) {
 static LOCAL int32_t lineAt0, lineWaitTo;   // (and lineWaitTo: its board run to that frame and let settle before its first swap)
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fell = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -461,7 +465,13 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     // (a settled step's chain ends in it, so each is an attack of its own; steps pressed at once are one chain, counted at its longest)
     if (o->settled || last) links += imax(0, chainOfStats(&st) - 1);
     if (chainOfStats(&st) > chain) chain = chainOfStats(&st);
-    broke += st.broke; cleared += st.cleared; threes += threesOf(&st);
+    // (A THREE THAT LETS A BLOCK DOWN is no wasted three: the garbage above it comes down in the step, beyond where the board left alone
+    // has it by then -- onto panels it did not touch before, where a three beside it breaks it. The owner's move on the boards the bot
+    // died on: a block perched on one tall column, four columns low beside it; clear under the block, it comes down, break it with a
+    // three. Read as "breaks nothing" it was refused in the search, by the judge and by the press guard alike, so the way down was
+    // closed on every board of that shape. Read beside the board alone: a block that lands or falls on its own is no let-down)
+    int down = NODE(x, out)->glow < NODE(x, aloneNodeAt(x, root, NODE(x, out)->t))->glow;
+    broke += st.broke; cleared += st.cleared; threes += down ? 0 : threesOf(&st); j->fell += down;
     // (A SWAP THAT SPOILS THE BOARD'S OWN CHAIN, a swap at a time: the board it is pressed on left alone to rest makes a chain of two or
     // more, and with the swap pressed and let rest a shorter one, no more garbage broken -- the three that began that chain made for
     // nothing, whatever the line's later swaps make; the press guard's test, front.c wastedSwap)

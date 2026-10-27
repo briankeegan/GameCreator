@@ -294,7 +294,7 @@ EXPORT(gb_trace) void gb_trace(int on) { traceOn = on; }
 static void gb_trace_ranked(const char *stage, Judge **o, int n) {
   if (!traceOn) return;
   static char line[4096]; int k = snprintf(line, sizeof line, "TRACE ranked %s: %d lines:", stage, n);
-  for (int i = 0; i < n && k < (int)sizeof line - 40; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, " %d/%d@%d", o[i]->hold ? PLAY_HOLD : o[i]->k.play, o[i]->o.lives, o[i]->o.lostAt);
+  for (int i = 0; i < n && k < (int)sizeof line - 40; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, " %d/%d@%d/f%d/w%d", o[i]->hold ? PLAY_HOLD : o[i]->k.play, o[i]->o.lives, o[i]->o.lostAt, o[i]->o.j.fell, o[i]->o.j.threes);
   hostLog(line);
 }
 static void gb_trace_cand(int play, const int32_t *seq, int n, int fc) {

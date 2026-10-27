@@ -154,7 +154,7 @@ static int spendsReserve(Made m, const Judged *j) {
 // (what the one line check asks of the list, a last resort too with last, and of the floor and the reserve -- lineOk below, the order's
 // outcome and rank.c judgeCand asking the same)
 static int lineInList(const Judged *j, int last) { return fitsList(&theList, j->made, j, last) && imax(j->made.chain, j->chainAll) <= MAXCHAIN; }
-static int lineSpends(const Judged *j, int32_t floorKept) { return spendsFloor(j->made, floorKept, j->netPanels) || spendsReserve(j->made, j); }
+static int lineSpends(const Judged *j, int32_t floorKept) { return (spendsFloor(j->made, floorKept, j->netPanels) && !(j->fell > 0)) || spendsReserve(j->made, j); }   // (a three that let a block down is the way to the break, no floor spent: judge.c threesOf)
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) { return outcomeOfW(seq, n, settled, waitAt, waitTo, 0, 0, 0); }
 // (A PROMISED BREAK JUDGED: the line and the break a readiness found, played where it found it -- the promise's own judging, which
