@@ -478,6 +478,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the floor's raise: the rows asked, how many leave a break once everything lands, how many the board lives through -- or, asked
   // while the board is busy, -1 a cascade, -2 the game's raise not allowed)
   L_s(" sv="); L_i(__atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? 1 : 0); if (surviveAsked) L_s("/asked");   // (the survival job finished this decision; the backup asked of it)
+  if (landedOneBroke != -2) { L_s(" landedOne="); L_i(landedOneBroke); landedOneBroke = -2; }   // (a one-swap break on the board to come, judged pressed at the landing: the cells it broke)
   if (landedWhy >= 0) { L_s(" landed="); L_i(landedWhy); if (landedWhy == 0 || landedWhy == 4) { L_s("/d"); L_i(landedDeep); L_s("/r"); L_i(landedRes); L_s("/"); L_i(landedIn); } landedWhy = -1; }   // (the break on the board to come: 0 found, 1 no root, 2 lost before it lands, 3 no garbage then, 4 none found)
   // (THE FRONTIERS CARRIED ON, search/frontier.c: each one's lines kept last decision / carried in this one, and what changed under it
   // -- g the garbage dug at changed, a the anchor gone, k its key no longer held; and the survival search's played again of carried in)

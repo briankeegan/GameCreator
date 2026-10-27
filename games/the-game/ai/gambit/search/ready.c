@@ -41,6 +41,7 @@ static Readied readyFor(const Question *q, double ms) {
 static Board *landedB; static Ctx *landedCtx;   // (its own: it runs as a job of its own beside the proposers' readiness -- answer.c JOB_LANDED)
 static int32_t landedOne;   // (the break found is one swap: handed out whole, to be pressed once the block has landed -- the line's waitTo)
 static int32_t landedWhy = -1, landedDeep, landedRes, landedIn;   // (the depth its beam reached, its carried lines played again of those carried in)
+static int32_t landedOneBroke = -2;   // (the one-swap break judged pressed at the landing: the cells it broke, -1 dead or late, -2 not asked -- the log's landedOne=)
 // (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found, 5 below the stack as it is now; -1 not asked)
 static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path, int *n) {
   *n = 0; landedWhy = 1;
@@ -82,7 +83,11 @@ static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path
   int32_t dr = 0, id = NUL;
   for (int c = 1; c <= W && id == NUL; c++) if (q->b->p[1][c].f[COLOR] && !q->b->p[1][c].f[ISGARBAGE]) id = q->b->p[1][c].f[ID];
   if (id != NUL) { int found = 0; for (int r = 1; r < landedB->nrows && !found; r++) for (int c = 1; c <= W; c++) if (landedB->p[r][c].f[ID] == id) { dr = r - 1; found = 1; break; } }
-  landedOne = lbr.pathLen == 1;   // (a break of one swap has no set-up to hand out: offered whole and pressed at the landing it broke nothing in 33 of 37 lines judged, 1304 -- the press at the landing against the search's board is the piece to check before it is offered again)
+  // (A BREAK OF ONE SWAP has no set-up to hand out. Handed out whole, in the rows of the board to come, it is not offered (1304: pressed
+  // at the landing by the judge it broke nothing in 33 of 37) but judged and logged -- landedOne=, propose.c -- the judge's press at
+  // the landing against the search's board, until the two agree)
+  landedOne = lbr.pathLen == 1;
+  if (landedOne) { path[0] = lbr.path[0]; *n = 1; return 1; }
   for (int k = 0; k + 1 < lbr.pathLen && k < MAXLINE; k++) {
     int r = CR(lbr.path[k]) - dr;
     if (r < 1) { *n = 0; landedWhy = 5; return 0; }

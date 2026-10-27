@@ -224,6 +224,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var pl = / proofLost=(\w+)/.exec(l);
       if (pl) { if (pl[1] === 'none') gates.proofNone++; else if (pl[1] === 'new') gates.proofNew++; else gates.proofCut++; }
       if (/ heldFor=1/.test(l)) gates.heldFor++;
+      var lo1 = / landedOne=(-?\d+)/.exec(l);
+      if (lo1) { gates.landedOne = (gates.landedOne || 0) + 1; if (+lo1[1] <= 0) gates.landedOneNone = (gates.landedOneNone || 0) + 1; }
       var mg = / mgs=(\S+)/.exec(l);
       if (mg) mg[1].split(',').forEach(function (s) { s.split('.').forEach(function (v, i) { if (i < 4) gates.shares[i][v] = 1; }); });
       // (EVERY LINE CATEGORISED: a decision that offered lines logs a category for each (answer.c cat=, rank.c catOf))
@@ -394,6 +396,7 @@ console.log('state: ' + carried.lost + ' decisions started from a state no answe
 console.log('one order: ' + beaten.n + ' of ' + sooner.dec + ' decisions played a line beaten head to head by one ranked under it');
 console.log('proven first: ' + gates.lessProven + ' decisions played a line less proven than one offered, or dead at once while one offered was not');
 console.log('readiness: ' + gates.proofNone + ' decisions lost the proof with nothing new shown and nothing cut (the end board was marked ready and no extension found); ' + gates.proofNew + ' lost it on a block shown, ' + gates.proofCut + ' to the clock');
+console.log('landed one-swap: ' + (gates.landedOneNone || 0) + ' of ' + (gates.landedOne || 0) + ' one-swap breaks on the board to come broke nothing when the judge pressed them at the landing (search/ready.c landedOne)');
 console.log('held for the proof: ' + gates.heldFor + ' of ' + sooner.dec + ' decisions played the hold for an unproven first line');
 var constShares = ['room', 'material', 'window', 'contact'].filter(function (nm, i) { return Object.keys(gates.shares[i]).length < 2; });
 console.log('shares: ' + constShares.length + ' margin shares constant over the run' + (constShares.length ? ' (' + constShares.join(', ') + ')' : ''));

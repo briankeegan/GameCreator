@@ -512,7 +512,10 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // READY: the swap that leaves the next block breakable when it lands, and the line that leaves a plan once everything has landed
   if (S->haveRd && !S->rd.ready && S->rd.setup) { int32_t one = S->rd.setup; ADD(PLAY_READY, &one, 1, -1, 0); }
   if (S->haveRl) { int m0 = n; ADD(PLAY_READY, S->rl, S->rlN, -1, 0); if (n > m0) out[m0].xDone = S->rlAt; }
-  if (S->haveLb) ADD(PLAY_READY, S->lb, S->lbN, -1, 0);
+  if (S->haveLb && !S->lbOne) ADD(PLAY_READY, S->lb, S->lbN, -1, 0);
+  // (THE ONE-SWAP BREAK CHECKED, not offered: judged pressed once the block has landed, its cells broken logged against the search's
+  // claim of a break -- search/ready.c landedOne)
+  if (S->haveLb && S->lbOne && decF.next != NOT_ASKED && timeLeftMs() > 2) { Outcome lo = outcomeOf(S->lb, 1, 0, 0, decF.next + 2); landedOneBroke = lo.late || lo.j.dead ? -1 : lo.j.made.broke; }
   // (LOWERING THE STACK: the tallest column's top walked onto a lower one, each step settled -- on any board with a column two above
   // its neighbour, the move when there is nothing better to do (rank.c markIdle); topped or under garbage, a perched block let down too
   // -- its supports walked out from under it (search/break.c perchedDrops). Each judged as any line: a lower stack is a later loss)
