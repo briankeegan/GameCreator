@@ -347,7 +347,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 }, pieces = 0, links = 0;
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
   int kb = root;   // (the line's last node by ownChainBy)
-  Moved moved = { 0 };   // (the pairs the line's swaps moved: movedUndoes)
+  Moved moved = { 0 };   // (the pairs the line's swaps moved: movedUndoes -- and the pair the last swap pressed on the game swapped, rules.c gb_pressed)
+  if (pressedA && pressedB) { MovedPair p = { pressedA, pressedB }; moved.p[0] = p; moved.n = 1; }
 #define KB(m) do { if (ownChainBy > 0 && liveNode(x, (m)) && NODE(x, (m))->t <= ownChainBy) kb = (m); } while (0)
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);

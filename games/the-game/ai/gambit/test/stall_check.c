@@ -46,3 +46,9 @@ EXPORT(gb_stall_check) int gb_stall_check(int gap, int frames, int32_t *out) {
   nb_free(b);
   return 0;
 }
+// (the question's board, read: queued, active now and the frame before, garbage falling, topped -- for the checks' own eyes)
+EXPORT(gb_board_probe) int gb_board_probe(int32_t *out) {
+  Board *b = hostQ.b; if (!b) return -1;
+  out[0] = b->ninc; out[1] = b->nActive; out[2] = b->nPrevActive; out[3] = hasFallingGarbage(b); out[4] = isToppedOut(b); out[5] = b->swappingCount;
+  return 0;
+}

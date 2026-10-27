@@ -124,7 +124,8 @@ static struct {
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
   int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil, guardSpoil, loggedRefusedBoards;
-  int32_t lastPressA, lastPressB;   // (the pair the last swap pressed swapped: its panels' ids, as the swap found them -- the question's backA, backB)
+  int32_t lastPressA, lastPressB;   // (the pair the last swap pressed swapped: its panels' ids, as the swap found them)
+  int32_t pBackA, pBackB;           // (the same as of the frame a question is asked for: the swaps planned until then pressed on the predicted board -- predict; the question's backA, backB)
   int32_t pGap, lineGap, altGap, keyGap, linePlay, altPlay;   // (the pace the question out, the line in hand and the move in hand were judged with; the keys made now)
   int32_t pPosted, lineAsked, altAsked, lastReveal;   // (the frames questions were posted on, and colours were last shown on)   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
 } F;
@@ -347,12 +348,16 @@ static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdSta
                    int32_t *hL, int32_t *hS) {
   copyBoard(out, b);
   memcpy(F.prPend, from, sizeof(Arrival) * (unsigned long)nfrom); F.nprPend = nfrom;
-  int32_t hl = holdLeft, hs = holdStarted;
+  int32_t hl = holdLeft, hs = holdStarted, prev = F.prevBits;
+  F.pBackA = F.lastPressA; F.pBackB = F.lastPressB;
   while (out->clock < at && out->gameOverClock <= 0) {
     Planned *p = planOf(out->clock);
     int32_t bits = 0;
     if (p) { bits = p->bits; hl = p->holdLeft; hs = p->holdStarted; }
     else if (hl > 0) holdRaise(out, &hl, &hs, &bits);
+    // (a swap planned before the question's frame: the pair it swaps, on the board it is pressed on, is the last pressed by then)
+    if ((bits & IN_SWAP & ~prev) && out->curRow >= 1 && out->curRow < out->nrows && out->curCol >= 1 && out->curCol + 1 <= W) { F.pBackA = out->p[out->curRow][out->curCol].f[ID]; F.pBackB = out->p[out->curRow][out->curCol + 1].f[ID]; }
+    prev = bits;
     out->input = bits & ~IN_SWAP;
     if (bits & IN_SWAP) out->pressSwap = 1;
     run(out);
@@ -525,7 +530,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
     for (int32_t t = F.now; t < at; t++) { Planned *p = planOf(t); int32_t bits = p ? p->bits : 0, down = bits & COUNTED & ~prev; prev = bits;
       for (int b = 1; b <= 16; b <<= 1) if ((down & b) && at - t < F.window && q.nages < 512) q.ages[q.nages++] = at - t; } }
   q.refA = F.refUntil > at ? F.refA : 0; q.refB = F.refUntil > at ? F.refB : 0; q.refUntil = F.refUntil;
-  q.backA = F.lastPressA; q.backB = F.lastPressB;
+  q.backA = F.pBackA; q.backB = F.pBackB;
   q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop; q.oppStop = imax(0, F.oppStop - (at - F.now));
   q.b = F.pBoard;
   postQuestion(&q);
@@ -869,7 +874,6 @@ static int frontFrame(void) {
   F.curRowWas = t->curRow; F.curColWas = t->curCol;
   F.toppedNow = isToppedOut(t);
   F.st.frames++;
-  if (t->ninc > 0 && !hasActivePanels(t) && !hasFallingGarbage(t) && !F.toppedNow) F.st.idleQueued++;   // (a block lands on this frame)
   double wall = fNow();
   if (F.wall) F.wallPerFrame += ((wall - F.wall < 100 ? wall - F.wall : 100) - F.wallPerFrame) / 60;
   F.wall = wall;
@@ -976,6 +980,7 @@ static void afterFrame(int32_t bits) {
   F.expect->input = bits & ~IN_SWAP;
   if (bits & IN_SWAP) F.expect->pressSwap = 1;
   run(F.expect);
+  if (F.expect->ninc < F.truth->ninc) F.st.idleQueued++;   // (an idle frame with garbage queued: the engine landed a block on it)
   memcpy(F.nextPend, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.nnextPend = F.narr;
   landOn(F.expect, F.nextPend, &F.nnextPend);
   F.haveExpect = 1;
