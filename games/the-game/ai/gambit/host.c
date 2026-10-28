@@ -86,8 +86,11 @@ static void *workerStart(void *arg) {
 }
 // A THREAD AT THE IDLE CLASS beside the workers, on their CPUs, named `name`: 0 started
 static void *(*idleFn)(void *); static const char *idleName;
+// (on GC_GAMBIT_SPARE_CPU where it is set -- the game's own CPU, eval/training.sh: at the idle class it takes only the cycles the game
+// leaves, about seven tenths of that CPU -- else where the workers are)
 static void *idleStart(void *arg) {
-  const char *w = getenv("GC_GAMBIT_WORKER_CPUS");
+  const char *w = getenv("GC_GAMBIT_SPARE_CPU");
+  if (!w || !*w) w = getenv("GC_GAMBIT_WORKER_CPUS");
   if (w && *w) pinnedTo(w); else pinned();
   pthread_setname_np(pthread_self(), idleName);
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);

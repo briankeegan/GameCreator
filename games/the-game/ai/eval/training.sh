@@ -64,7 +64,9 @@ elif [ "$BOT" = gambit ]; then
   # work clock's alone, so a seed is the same game on any runner, as fast as the runner plays it; live play sets neither)
   export GC_GAMBIT_LOCKSTEP="${GC_GAMBIT_LOCKSTEP:-1}" PA_UNPACED="${PA_UNPACED:-1}"
   export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS"
-  echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS"
+  # (the break search beside the decisions on the game's own CPU, at the idle class: the cycles the game leaves -- host.c idleStart)
+  [ "$NCPU" -ge 2 ] && export GC_GAMBIT_SPARE_CPU="$CLIENT_CPU"
+  echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS, the search beside on ${GC_GAMBIT_SPARE_CPU:-$WORKER_CPUS}"
   : > "$OUT_DIR/survivor.log"
 fi
 
