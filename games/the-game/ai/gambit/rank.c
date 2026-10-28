@@ -506,7 +506,7 @@ static int32_t marginKey(const Judge *J) {
 // (LOST ALIKE: lost in the same break's time, counted back from the latest loss of the lines ranked together (rankLostRef, sortJudged)
 // -- less than a break's time apart buys no break more -- a line lost within a break's time each alone, and one with three breaks'
 // time left alike with every other. Bands from one reference, so alike is one relation for every pair and the order one order)
-static double rankLostRef;
+static LOCAL double rankLostRef;
 // (the bands are a decision wide (rankReact): the search for the proof is carried from decision to decision (plans/gambit-next.md 3 and
 // 7), so a line lost a decision later leaves the search one more decision to find it with -- only lines lost within one decision of each
 // other are alike, and among them the margin decides)
@@ -553,7 +553,7 @@ static Ledger ledgerOf(const Judge *J) {
   L.shortBy = imax(1, due - got); L.at = at;
   return L;
 }
-static const Judge *rankHold;   // (the decision's hold among the lines ranked: sortJudged)
+static LOCAL const Judge *rankHold;   // (the decision's hold among the lines ranked: rankTogether)
 // VALUE FOR MOVES: what a line gives less what it costs, in frames -- the time it buys over the hold (its plan's loss less the hold's),
 // a break's time for each row of garbage it converts (rankSave, a row of W cells) and for each block it throws, the actions it takes
 // off the next break's walk, less the frames the
@@ -619,17 +619,18 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. PROVEN FIRST: a line that lives left alone, then one that lives by its plan, then one whose plan meets every row shown with the
   // margin to spare, then the rest
   { int px = proofOf(x), py = proofOf(y); if (px != py) K(1, "proven", py - px);
-    // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
-    // resource, then of the next (marginKey: room, material, the window's cover of the rows due, contact, in rows); then the later loss,
-    // unless lost alike (lostAlike: the same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
+    // 2. UNPROVEN: a line dead before it could press anything last; then the later loss, the engine's own, unless lost alike (lostAlike:
+    // the same band of a break's time); among lines lost alike, the most left to find a proof with -- the more of its scarcest resource,
+    // then of the next (marginKey: room, material, the window's cover of the rows due, contact, in rows). The categories fold into this:
+    // lives and plan are proven, breaks to dies unproven
     if (!px) {
       int nx = diesNow(x), ny = diesNow(y); if (nx != ny) K(2, "now", nx ? 1 : -1);
       // (UNDER ATTACK, MATERIAL ONLY COMES FROM BREAKING, plans/gambit-next.md 5: of two unproven lines under garbage, one that converts
       // garbage before one that converts none -- the margin reads material as enough down to three rows, and a board spent from 51 to 22
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
       if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
-      int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
+      int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
 
     } }
   // (the rules' keep as a key here, among proven lines ahead of the list: 428 plays of a line lost sooner for it, 14/24, run 1323 --
@@ -709,6 +710,7 @@ static int walkOrder(const Cand *k, Cand *out) {
   return 1;
 }
 static int compareJudged(const Judge *x, const Judge *y);
+static void rankTogether(Judge **a, int n);
 // A CANDIDATE JUDGED, and in walking order too when that walks less: the walking order is played when the one order puts it no lower --
 // what it makes is the engine's, as for every line; only the drops and the log's count are the line's own order's
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
@@ -719,6 +721,7 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int keepUnbroken = unbroken.set;
   int wok = judgeCand(R, &w, &JW);
   memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
+  if (wok && ok) { Judge *pair[2] = { J, &JW }; rankTogether(pair, 2); }   // (the pair ranked together: the bands from its own reference)
 #ifdef GB_TEST
   { int c = wok && ok ? compareJudged(&JW, J) : 99; gb_trace_walked(ok, wok, c, cmpKey, cmpWhy, J, &JW); }
 #endif
@@ -727,12 +730,18 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   return 1;
 }
 // sorted stably by the one order
-static void sortJudged(Judge **a, int n) {
-  static Judge *tmp[512];
+// THE LINES RANKED TOGETHER, before any comparison of them: the hold among them, the loss the bands count back from (of the lines
+// banded by it), each line's idle marks. Set by every entry to compareJudged -- the sort's, and the walking order's pair (judgeWalked)
+// -- never left from another ranking, on this thread or another: each thread's own
+static void rankTogether(Judge **a, int n) {
   markIdle(a, n);
   rankHold = 0; for (int i = 0; i < n; i++) if (a[i]->hold) { rankHold = a[i]; break; }
   rankLostRef = 0;
-  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }   // (of the lines banded by it)
+  for (int i = 0; i < n; i++) { double l = lostOf(a[i]); if (l < 3.0 * imax(1, rankSave) && l > rankLostRef) rankLostRef = l; }
+}
+static void sortJudged(Judge **a, int n) {
+  static Judge *tmp[512];
+  rankTogether(a, n);
   for (int i = 0; i < n; i++) {
     Judge *h = a[i]; h->holdSunk = 0;
     if (!h->hold || livesOf(h)) continue;
