@@ -681,8 +681,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // the board more of them (judge.c netPanels: the garbage it converts less the panels its clears take, beyond the board left alone, in
       // threes: a match's worth) first: the lineup and the chain convert a row out of the panels the row before turned into, a combo
       // spends the stack's own)
-      // (on the board only: before a block lands there is nothing to convert, and the panels a clear takes are the board's life)
-      if (decF.under) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
+      // (and with a block shown on its way, before it lands: the panels a clear takes then are the ones the block is broken with -- in
+      // combo_storm the board ran out of them under the blocks shown, 49 to 13 panels before a loss)
+      if (garbHere()) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
         if (nx != ny) K(2, "material", ny - nx); }
       // (THE LONGER LOSS IN WHOLE BREAKS' TIME: of two lines alike in the next break and the material, the one lost a break's time later
       // has a break more to find before it -- the margin and the later loss decide within a break's time; from now, read off each line alone)
