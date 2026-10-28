@@ -179,17 +179,21 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   wideFirstNow = wideFirst;
   if (wideFirst) jobKinds[njobKinds++] = JOB_WIDE;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
+  // (A BLOCK ON ITS WAY, the board to come next (search/ready.c landedBreak): its size and its frame are shown, and the break the board
+  // will need when it lands is lined up while there is time to press it -- a worker of its own after the survival search, never only
+  // what the others leave)
+  landedJobOn = 0;
+  if (decF.next != NOT_ASKED && decF.next > 0) { jobKinds[njobKinds++] = JOB_LANDED; landedJobOn = 1; }
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside && !extFirst) jobKinds[njobKinds++] = JOB_EXT;
   // (the wider beam last: the worker the planner's half and the extension leave)
   if (!wideFirst && R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
   // is this thread's whole)
-  while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; if (k == JOB_FLAT) flatJobOn = 0; }
-  // (THE BOARD TO COME, search/ready.c, queued behind them: the first worker whose search ends before the searches do takes it, in the
-  // time they have left -- it ends with them, so the decision waits no longer for it)
-  landedJobOn = 0;
-  if (decF.next != NOT_ASKED && decF.next > 0) { jobKinds[njobKinds++] = JOB_LANDED; landedJobOn = 1; }
+  while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; if (k == JOB_FLAT) flatJobOn = 0; if (k == JOB_LANDED) landedJobOn = 0; }
+  // (with too few workers for it, the board to come is queued behind them: the first worker whose search ends before the searches do
+  // takes it, in the time they have left -- it ends with them, so the decision waits no longer for it)
+  if (!landedJobOn && decF.next != NOT_ASKED && decF.next > 0) { jobKinds[njobKinds++] = JOB_LANDED; landedJobOn = 1; }
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of

@@ -425,6 +425,12 @@ line short at once by a block shown (**demand**).
   on its way out with no break found -- whose facts (lastHold, lastBrk) were the dropped answer's. Nothing was pressed from 2801 to
   2891; asked then, 32 frames were left. A drop now clears them (front.c dropAll, dropFrom: havePace), so the question after a drop
   is asked as soon as it can be.
+- 1369, 18/24 (7, 5, 6), every gate green; combo_storm-5 to 10659 from 2922. Five of six losses ran the window to 0-4 with no break
+  found. factory-1 at 4365: a 12-swap carry broke 6 at its end, 149 frames on, and a block shown at 4148 landing before it took the
+  break away; the window went 41 to 26 pressing it. While a slab pops the lineup search finds nothing on these boards -- the row's
+  colours are unseen until they pop -- and the board to come (search/ready.c landedBreak: the break the shown block will need, found
+  before it lands) was queued behind every other job and ran at depth 0 in 31-34 decisions a lost game. With a block on its way it
+  now takes a worker after the survival search, ahead of the planner's half, the extension and the wider beam.
 
 ## Where this stands
 
