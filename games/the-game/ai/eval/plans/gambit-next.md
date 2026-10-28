@@ -435,6 +435,12 @@ line short at once by a block shown (**demand**).
   its walk began, where its two cells were empty; the pair the last swap moved fell into them a frame later, so the swap pressed put
   that pair back for nothing and the frame loop refused it. The judge now reads the pair a swap swapped from the engine's record on
   the swap's own board (lastSwapA, lastSwapB) against the pair before it, and holds a line's last swap to the same test (it had none).
+- 1371-1373: 17/24 (5, 6, 6), every gate green; 1373 played 1371's games exactly (lockstep). The one put-back refusal left came after a
+  colour was shown that the line was judged without, now counted apart (put back after a colour shown); the report names each
+  refusal's game and frame. large_garbage-7 at 11045: a 6x12 queued at 10926 lands on a board topped by it, 12-18 panels of material
+  -- lost before then. While a slab pops its colours are shown a cell at a time, and a hold with no break found was held out on the
+  colours known when it was asked: such a hold is now asked again at once when a colour is shown (front.c take and the reveal), every
+  question still answered before the next.
 
 ## Where this stands
 

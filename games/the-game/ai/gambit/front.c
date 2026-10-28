@@ -59,6 +59,7 @@ typedef struct {
           raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps, starved, inHand;
   int32_t behind, behindWorst;   // (a line's swaps whose keys began later than the frame the judge pressed them from, and by how much at most)
   int32_t putBack;               // (swaps refused at the press for putting the last pair pressed back for nothing: front.c putsBack -- the owner: never)
+  int32_t reaskShown;            // (holds asked again at once for a colour shown since their question: take)
   int32_t putBackShown;          // (and those refused after a colour the line was judged without was shown: a board the judge could not know)
   int32_t idleQueued;            // (frames the board was idle with garbage queued on it: each one a block landing -- pa.c shouldDropGarbage)
   int32_t winChecked, winShort, winShortWorst;   // (THE WINDOW HELD: lines whose second swap the frame loop reached as judged, those that
@@ -108,7 +109,7 @@ static struct {
   int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
   int32_t playedId;   // the answer last put in the plan: its swap, its hold, its raise put off (0: none yet)
   int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
-  int32_t lastHold, lastBrk, lastUrgent, havePace;
+  int32_t lastHold, lastBrk, lastUrgent, havePace, lastKind;   // (lastKind: the last answer taken's, 0 a hold)
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
   int32_t lineProven;   // and was proven (FAnswer.proven): its swaps pressed as judged
   int32_t winAt, winLeft;      // (the line in hand: the frame its second swap's walk begins, as judged, and the actions the judge read the window holding then)
@@ -602,7 +603,7 @@ static void take(void) {
       at += a.raiseWait;
       F.st.played++;
       for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 0, 0, F.pPosted, NPLAYS, -1, 0, 0 });
-      F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
+      F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1; F.lastKind = a.kind;
       memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
       F.lineN = 0; F.haveLineOf = 0; F.playedId = a.id;
       continue;
@@ -635,11 +636,15 @@ static void take(void) {
     for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play, a.id, 0, a.nhand, a.proven });
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
-    F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
+    F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1; F.lastKind = a.kind;
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
     F.lineWastes = a.wastes; F.lineProven = a.proven;
     unseenOf(F.pBoard);
     F.winAt = a.kind == 1 && a.leftNext >= 0 && a.nextAt > 0 ? a.at + a.nextAt : -1; F.winLeft = a.leftNext;
+    // (A COLOUR SHOWN SINCE THE QUESTION, a broken slab's as it pops: a hold with no break found was decided without it -- the line-up
+    // the slab's row allows is only seen once its colours are -- so the next question is asked now, on the board as the game shows it,
+    // not once the hold is out. Every question is answered before the next: a colour shown never leaves one unanswered)
+    if (a.kind == 0 && !a.nhand && !a.brk && F.lastReveal > 0 && F.lastReveal >= F.pPosted && F.nextAt > F.now + 1) { F.nextAt = F.now + 1; F.st.reaskShown++; }
     F.lineN = a.nhand; F.lineGap = F.pGap; F.linePlay = a.play; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0; F.playedId = a.id;
   }
@@ -926,7 +931,11 @@ static int frontFrame(void) {
   // (colours shown where the board had them unseen -- a broken slab's, a cell at a time as it pops: the plan stands and so does the
   // question out -- a swap is where it is whatever the colour, and a board the colour does change is caught as one that differs. Asked
   // again on every colour shown, a slab popping would leave no question answered until it is done.)
-  if (!diverged && F.haveExpect && revealed(F.expect, t)) { F.st.revealed++; F.lastReveal = now; }
+  if (!diverged && F.haveExpect && revealed(F.expect, t)) {
+    F.st.revealed++; F.lastReveal = now;
+    // (and a hold in force that found no break, nothing in hand and no question out: the next question asked now, the colour known -- take)
+    if (!F.pending && !F.lineN && F.havePace && !F.lastBrk && F.lastKind == 0 && F.nextAt > now + 1) { F.nextAt = now + 1; F.st.reaskShown++; }
+  }
   // (and a colour shown coming to a clear: the plan was made on a board without it -- dropped, the next question asked on this one)
   if (!diverged && F.nunseen && revealClears(t)) {
     if (F.loggedDiffer < 40) { char l[120]; snprintf(l, sizeof l, "REVEALCLEAR clock %d: a panel the plan was made without came to a clear", now); flog(l); F.loggedDiffer++; }
@@ -1064,10 +1073,10 @@ static void afterFrame(int32_t bits) {
 static void statsLine(char *out, int cap) {
   int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"pastFrame\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
-                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"putBack\":%d,\"putBackShown\":%d,\"idleQueued\":%d,\"winChecked\":%d,\"winShort\":%d,\"winShortWorst\":%d,\"attacks\":{\"combo\":{",
+                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"putBack\":%d,\"putBackShown\":%d,\"reaskShown\":%d,\"idleQueued\":%d,\"winChecked\":%d,\"winShort\":%d,\"winShortWorst\":%d,\"attacks\":{\"combo\":{",
                    F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.pastFrame, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
-                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.behind, F.st.behindWorst, F.st.revealCleared, F.st.putBack, F.st.putBackShown, F.st.idleQueued, F.st.winChecked, F.st.winShort, F.st.winShortWorst);
+                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.behind, F.st.behindWorst, F.st.revealCleared, F.st.putBack, F.st.putBackShown, F.st.reaskShown, F.st.idleQueued, F.st.winChecked, F.st.winShort, F.st.winShortWorst);
   int first = 1;
   for (int z = 0; z < 64 && k < cap; z++) if (F.st.combo[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.combo[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");
