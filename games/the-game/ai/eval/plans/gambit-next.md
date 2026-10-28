@@ -639,3 +639,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   the wider beam runs every decision under garbage, where on the pool it ran only with a worker to spare, and its deep breaks are
   played far more. Reverted; the lock kept.
 - 1405, big chain 12/24 (6, 2, 4) with the open search held to the wasted three first: its pass ate the search's time and found none where the open search found the breaks played. Reverted.
+- 1406 (big chain, play as 1404, wdrop= logged): of factory-2's 79 breaks taken out as wasted threes, 32 cut the board's own chain
+  short (a real break: 6/6 -- 11960 and 12077 among them), 47 the judge played to no break at all (6/0). Those 47 came from the
+  flatten search (br=0, fs=1 at 387, 8281, 8365): a break in its pressing, swaps back to back, none in the judge's, the window's pace
+  at every swap. The flatten search now takes a line only where the judge's own pressing of it breaks.

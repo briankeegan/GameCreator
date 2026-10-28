@@ -240,6 +240,8 @@ int main(int argc, char **argv) {
       if (nb < 0 || gb_question_bytes(nb, narr) != 0) { printf("verdict %s: does not load\n", tag); continue; }
       gb_line_verdict(seq, n, vo, sizeof vo);
       printf("verdict %s: %d swaps: %s\n", tag, n, vo); fflush(stdout);
+      // (GC_TRACE_LINE: the line as the searches step it -- each swap's node, its garbage broken against the board left alone's)
+      if (getenv("GC_TRACE_LINE")) { static char to[8192]; extern void gb_line_trace(const int32_t *, int, char *, int); nb = loadLine(b, &narr); gb_question_bytes(nb, narr); gb_line_trace(seq, n, to, sizeof to); printf("  trace: %s\n", to); }
     }
     gzclose(z); fclose(lf);
     return 0;
