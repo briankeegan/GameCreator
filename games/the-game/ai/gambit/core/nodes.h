@@ -13,6 +13,7 @@ EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 // frames later, from node pi -- the search's keys for the swap, walked as the frame loop walks them.
 #define TAP_GAP 4         // frames between taps (cursorMoveFrames)
 #define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
+#define WINDOW_WAIT 60    // the frames a line's later swap may wait for the input window to pay for its walk (judge.c): a second
 #define HOLDTIGHT 76      // the actions short of the input limit at which every walk is walked as cheaply as the walls allow -- the limit: always
                           // (the search and the frame loop); HOLDTIGHT + 1 asks a walk's cost tapped
 static LOCAL int32_t pressTight;

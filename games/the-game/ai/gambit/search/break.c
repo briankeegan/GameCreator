@@ -465,10 +465,11 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       for (int i = 0; i < ntl; i++) {
         bAt[i] = nb;
         int nm = swapsOfNode(x, tl[i]->n, ms);
-        // (THE WINDOW AS THE JUDGE PRESSES IN IT: a swap whose walk is over what the window leaves at its frame is never pressed -- the
-        // judge cuts the line there (judge.c, cutWhy 1) -- so the beam does not grow it: its width goes to lines the window pays for)
+        // (THE WINDOW AS THE JUDGE PRESSES IN IT: a swap whose walk is over what the window leaves at its frame, even once the line has
+        // waited WINDOW_WAIT frames for it, is never pressed -- the judge cuts the line there (judge.c, cutWhy 1) -- so the beam does not
+        // grow it: its width goes to lines the window pays for)
         int left = -1; const Board *lb = 0;
-        if (pressAllowance >= 0) { lb = ensureBoard(x, tl[i]->n); left = allowLeftAt(NODE(x, tl[i]->n)->t - NODE(x, s->root)->t, spentOn(s, tl[i]->path, tl[i]->len)); }
+        if (pressAllowance >= 0) { lb = ensureBoard(x, tl[i]->n); left = allowLeftAt(NODE(x, tl[i]->n)->t - NODE(x, s->root)->t + WINDOW_WAIT, spentOn(s, tl[i]->path, tl[i]->len)); }
         for (int j = 0; j < nm && nb < (int)(sizeof bPar / sizeof bPar[0]); j++) {
           if (undoesMoved(x, tl[i]->n, ms[j], &tl[i]->last)) continue;
           if (lb && actionsFor(lb->curRow, lb->curCol, CR(ms[j]), CC(ms[j]), left) > left) continue;

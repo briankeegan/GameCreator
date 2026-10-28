@@ -404,6 +404,23 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       if (nWinAges >= 0) ns_ctx_gap(x, handsGap(paceGap(left, pressAllowance + nWinAges, winLen)));
       // (a swap whose walk is over what the window leaves at its frame is not there to press: the frame loop refuses a first swap's keys
       // -- front.c keysFit, GUARDED -- and drops a line at a later one -- front.c follow -- so the line is cut there)
+      // A LATER SWAP WAITS FOR THE WINDOW: the actions it is short of come back as older ones age out of the window, and the frame loop
+      // presses a line's later swaps from the frames judged (front.c follow) -- so the line waits, the board played on, until the window
+      // pays for the walk (WINDOW_WAIT frames at most), and is cut only where waiting does not. A first swap is pressed as its answer is
+      // taken: it is cut
+      if (acts > left && k > 0) {
+        int32_t t0 = NODE(x, n)->t - NODE(x, root)->t, w = 1;
+        for (; w <= WINDOW_WAIT; w++) { int l2 = allowLeftAt(t0 + w, spent); if (bn && actionsFor(bn->curRow, bn->curCol, mr, mc, l2) <= l2) break; }
+        if (w <= WINDOW_WAIT) {
+          int wn = step(x, n, MK_LONG, 0, 0, w);
+          if (wn == STEP_NULL && clockOut()) { j->late = 1; break; }
+          if (!liveNode(x, wn)) { j->dead = 1; j->deadAt = wn == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+          n = wn; KB(n); bn = ensureBoard(x, n);
+          left = allowLeftAt(NODE(x, n)->t - NODE(x, root)->t, spent); pressTight = tightAt(left);
+          acts = bn ? actionsFor(bn->curRow, bn->curCol, mr, mc, left) : 0;
+          if (nWinAges >= 0) ns_ctx_gap(x, handsGap(paceGap(left, pressAllowance + nWinAges, winLen)));
+        }
+      }
       if (acts > left) { j->cut = k; j->cutWhy = 1; break; }
       spent += acts;
     }

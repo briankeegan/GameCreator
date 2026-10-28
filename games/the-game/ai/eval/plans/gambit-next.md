@@ -480,6 +480,10 @@ line short at once by a block shown (**demand**).
 - 1382, 19/24 (5, 7, 7): the order's unit of time from the row broken next shrank on combo_storm's narrow blocks (a 3-wide row 77 frames
   against 95), and combo_storm lost two; factory and large_garbage played 1379's games exactly. The unit is a full row's break again; the
   dues of a block shown stay its own rows' pops.
+- 1383, 21/24 (7, 7, 7): 1379's games exactly. combo_storm-3 at 867: an 8-swap line breaking 32, judged at 739 with every swap in the
+  window; the frame loop pressed exactly the keys judged (2,1 three actions, 5,2 five, 6,1 two); judged again at 830 its next swap, 3,1,
+  came 15 frames sooner than 801's plan had it, one action short, and the line was cut -- 20 frames later the window had room. A later
+  swap now waits for the window, the board played on, up to WINDOW_WAIT frames (judge.c), and the beam grows what waiting pays for.
 
 ## Where this stands
 
