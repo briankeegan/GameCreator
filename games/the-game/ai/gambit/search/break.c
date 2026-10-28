@@ -22,7 +22,6 @@ static int32_t touchDepth = TOUCH_DEPTH;
 // the search for the proof is held to neither -- the order ranks what it finds, and a three is played only where the save says it is
 // needed: decide.c)
 static int32_t breakOpen;
-#define CHEAP_BREAK 6    // the actions a break may walk for before the level after it is searched for a cheaper one
 #define TOUCH_BEAM 60
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
 #ifdef GB_TEST
@@ -407,9 +406,9 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
 #ifdef GB_TEST
     if (tbBeam > 0) beam = tb ? 2 * tbBeam : tbBeam;
 #endif
-    // (A CHEAPER BREAK ONE SWAP ON: a break found that the cursor walks more than CHEAP_BREAK actions for is kept, and the level after
-    // searched too -- one more swap near the cursor can cost fewer actions than one far from it; the better of the two by the level's
-    // own key, actions before the material)
+    // (MORE BROKEN PER ACTION, ONE SWAP ON: with an input window to keep, a break found is kept and the level after searched too -- one
+    // swap more can break a row more, or walk less; the better of the two by the level's own key, the cells broken per action first:
+    // the window pays for every action, and a break that converts more for them leaves the next one more to press with)
     int64_t heldB = -1; int foundTd = -1;
     for (int i = 0; i < n0; i++) tl[i] = tl0[i];
     for (int td = 2; td <= touchDepth && ntl && !tpath && !SEARCH_OUT(); td++) {
@@ -481,7 +480,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       // (the level a break is found on is taken whole: of its lines that break, one that keeps the board's own chain first -- a chain cut
       // leaves the three that began it wasted -- then the one that leaves the most material once its board settles, then the one that
       // has broken most: a break whose converted panels match again is rows more of the slab -- and, with an input allowance to keep (a
-      // host that says it), the one the cursor walks fewer actions for before the material: the window pays for every cell of it
+      // host that says it), the one that breaks most per action, then the one the cursor walks fewer actions for, before the material
       const Board *rb = ensureBoard(x, s->root);
       int starved = pressAllowance >= 0 && rb;
       int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestPath[MAXPATH];
@@ -496,7 +495,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
             int32_t mat, br = brokeSettled(x, t3, &mat);
             int acts = 0;
             if (starved) { int r = rb->curRow, c = rb->curCol; for (int k = 0; k < nl->len; k++) { acts += actionsFor(r, c, CR(nl->path[k]), CC(nl->path[k]), pressAllowance - acts); r = CR(nl->path[k]); c = CC(nl->path[k]); } }
-            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
+            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 56) + ((int64_t)(starved ? imin(65535, 16 * imax(0, br) / imax(1, acts)) : 0) << 40) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
             if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
             continue;
           }
@@ -506,7 +505,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       batchDone();
       if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; }
       if (bestB >= 0 && foundTd < 0) foundTd = td;
-      if (foundTd >= 0 && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == touchDepth)) tpath = 1;
+      if (foundTd >= 0 && (!starved || td > foundTd || td == touchDepth)) tpath = 1;
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)
       if (ntn) keepPaths(&o->keepOut, tn, ntn < KEEPN ? ntn : KEEPN);
       for (int i = 0; i < ntn; i++) tl[i] = tn[i];

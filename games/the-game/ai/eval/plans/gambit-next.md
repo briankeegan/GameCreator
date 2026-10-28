@@ -454,6 +454,11 @@ line short at once by a block shown (**demand**).
   block shown and none on the board, the material key (netPanels) played holds over clears and survive lines lost 55 to 75 frames
   later -- before a block lands there is nothing to convert, and the panels a clear takes are what keeps the board up. The next break
   and the material read garbage on the board only again; converts reads garbage on its way too.
+- 1377, 19/24 (6, 6, 7), every gate green. factory-2 at 6239 (1376 and 1377): from 5770 to 6078 every break was a 6-cell row for 1 to
+  7 swaps, and they spent the window from 39 to 3; it stayed at 1 until the loss -- actions come back only as they age out of 600
+  frames. With a window to keep, the touch beam now ranks a level's breaks by cells broken per action, then the fewer actions, and
+  searches the level after the first break found every time (it did only past CHEAP_BREAK actions). On these boards no bigger break
+  is one swap on: the blocks convert a row a break, and only a chain through the converted panels breaks more.
 
 ## Where this stands
 
