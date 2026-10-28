@@ -20,6 +20,7 @@ int hostLockstep(void);
 int hostForce(int *at, int *k);
 int hostThread(void *(*fn)(void *));
 int hostWorkers(void *(*fn)(void *), int most);
+int hostIdleThread(void *(*fn)(void *), const char *name);
 int hostOpenLog(const char *path);
 void hostCrashHandler(void);
 void hostLog(const char *s);
@@ -262,13 +263,16 @@ static void *workerMain(void *arg) {
   for (;;) {
     hostLock();
     while (!qHas && !qReset) hostWait();
-    if (qReset) { qReset = 0; ringCount = 0; hostUnlock(); gb_new_game(); hostLock(); hostSignalDone(); hostUnlock(); continue; }
+    if (qReset) { qReset = 0; ringCount = 0; hostUnlock(); onStop(); gb_new_game(); hostLock(); hostSignalDone(); hostUnlock(); continue; }
     q = qSlot; copyBoard(b, qSlotBoard); q.b = b; qHas = 0; qBusy = 1;
     __atomic_store_n(&curQid, q.id, __ATOMIC_SEQ_CST);
     hostUnlock();
     FAnswer a;
     int kept = 0;
+    // (the break search going on since the last answer let go first: what it grew is the frontier this decision resumes)
+    onStop();
     if (abort_poll() != 1) { answerOne(&q, b, &a); kept = abort_poll() != 1; }
+    if (kept) onStart();
     hostLock();
     if (kept) {
       if (ansN == ANSN) { ansHead = (ansHead + 1) % ANSN; ansN--; }
@@ -288,6 +292,7 @@ static int32_t ages[512];
 // THE WORKERS: GC_GAMBIT_WORKERS of them (host.c hostWorkers; none unset), each the
 // engine's pool's (search.h workerLoop) -- every batch of steps a search hands the pool (core/nodes.h stepMany) is played on them all.
 static void *gnWorker(void *arg) { paThreadId((int)(long)arg); workerLoop(); return 0; }
+static void *onThreadMain(void *arg) { (void)arg; paThreadId(MAXTHREADS - 2); onThread(); return 0; }
 static void vetoDumpNative(int32_t at, const Board *b) { dumpBoard("GAMBITV", at, b, 0, 0); }
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {
   hostTaps = 1;
@@ -305,8 +310,10 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   static int started;
   if (!started) {
     started = 1;
-    int n = hostWorkers(gnWorker, MAXTHREADS - 2);
+    int n = hostWorkers(gnWorker, MAXTHREADS - 3);
     while (__atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST) < n) {}
+    // (and the break search between decisions, a thread of its own beside the pool, where there are workers' CPUs for it)
+    if (n > 0 && hostIdleThread(onThreadMain, "gbetween") == 0) onThreadOn = 1;
     static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
   }
   return 0;
@@ -382,6 +389,8 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   }
   double t2 = clock_ms();
   afterFrame(bits);
+  // (a frame with no question out: Gambit's thread waits, and the break search going on since its last answer has the frame)
+  if (!F.pending) onGrant(gnLockstep);
   double t3 = clock_ms();
   // (a frame loop over a frame's time: where it went)
   if (t3 - t0 > 8) { char l[200]; snprintf(l, sizeof l, "SLOWLOOP clock %d: %.1f ms (arrivals %.1f, frame %.1f, after %.1f)", clock, t3 - t0, t1 - t0, t2 - t1, t3 - t2); flog(l); }

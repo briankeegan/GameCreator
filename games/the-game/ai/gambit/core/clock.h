@@ -33,7 +33,10 @@ static int32_t jobStop;
 // (A SEARCH ON ITS OWN BUDGET on the decision's thread -- a pend searched here as a job would search it, search/break.c readySearchOf:
 // its share alone, so its answer and its work are the same whichever thread searched it)
 static LOCAL int ownBudget;
+// (THE SEARCH BETWEEN DECISIONS, answer.c onThread: inJob 2 -- its slice and its own stop, never the decision's jobs' stop)
+static int32_t onStopReq;
 static int clockOut(void) {
+  if (inJob == 2) return __atomic_load_n(&onStopReq, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (ownBudget) return clockShare && nowMs() >= clockShare;
   if (clockAborted) return 1;

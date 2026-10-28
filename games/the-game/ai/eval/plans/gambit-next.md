@@ -626,3 +626,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - 1400, 21/24 (8, 6, 7), the key on breaks only and the board left: factory-1 and large_garbage-3 die as in 1393 (the key changed
   nothing there), factory-6 dies at 13099 -- at 1606, two breaks of 6 lost alike, the key took a new line over the line in progress
   that rule 5 keeps for what of it is pressed. Reverted to 1393's play.
+- The break search goes on between decisions (plans/gambit-machinery.md step 2): a decision that found no break leaves its frontier to
+  a thread of its own (gbetween, the idle class, the workers' CPUs), which grows it a frame's work on each frame no question is out --
+  the frame loop waits for it in lockstep -- and keeps what it reaches for the next decision; a question coming stops it at once.

@@ -84,6 +84,23 @@ static void *workerStart(void *arg) {
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
   return workerFn(arg);
 }
+// A THREAD AT THE IDLE CLASS beside the workers, on their CPUs, named `name`: 0 started
+static void *(*idleFn)(void *); static const char *idleName;
+static void *idleStart(void *arg) {
+  const char *w = getenv("GC_GAMBIT_WORKER_CPUS");
+  if (w && *w) pinnedTo(w); else pinned();
+  pthread_setname_np(pthread_self(), idleName);
+  struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
+  return idleFn(arg);
+}
+int hostIdleThread(void *(*fn)(void *), const char *name) {
+  pthread_t t; pthread_attr_t at;
+  idleFn = fn; idleName = name;
+  pthread_attr_init(&at); pthread_attr_setstacksize(&at, 64ul << 20);
+  int r = pthread_create(&t, &at, idleStart, 0);
+  pthread_attr_destroy(&at);
+  return r;
+}
 int hostWorkers(void *(*fn)(void *), int most) {
   const char *e = getenv("GC_GAMBIT_WORKERS");
   int n = e && *e ? atoi(e) : 0;
