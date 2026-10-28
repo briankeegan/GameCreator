@@ -495,6 +495,9 @@ static int ranked(const Read *R, const Found *S) {
       for (int i = 0; i < n; i++) if (order[i] == saveLine) { order[i]->threeNeeded = 1; break; }
       sortJudged(order, n);
     } }
+  // (THE ORDER AS IT STANDS: sorted once more when every stage has written its lines -- a plan read, a hold judged again, a three
+  // marked needed -- so the line played is the first of the one order over the lines as they are)
+  sortJudged(order, n);
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   TRACE("ranked");
   return n;
