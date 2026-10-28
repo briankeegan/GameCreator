@@ -485,7 +485,10 @@ static int32_t marginKey(const Judge *J) {
   int plan = J->planMargin[0] >= 0 && J->extSpent != NOT_ASKED;
   // (read once everything shown has landed: a line's landed board (readyTop), or its plan's; else the board it ends on, with the rows
   // still coming after its end counted against its room -- never a board that has not yet taken what is on its way)
-  int32_t t = plan ? J->planMargin[0] : J->o.j.readyTop >= 0 ? J->o.j.readyTop : J->o.topLeft >= 0 ? J->o.topLeft + rowsComing(&decQ, J->hold ? 0 : J->o.j.endAt) : -1;
+  // (ONE READING FOR EVERY LINE: a plan's board is the one everything shown has landed on; a line's landed board is the one the next block
+  // lands on, so the rows still coming after it are counted against its room as they are against the board it ends on -- read apart, a
+  // line read on the board to come stood rows higher than a plan read under every block shown)
+  int32_t t = plan ? J->planMargin[0] : J->o.j.readyTop >= 0 ? J->o.j.readyTop + rowsComing(&decQ, imax(0, J->o.j.readyWait)) : J->o.topLeft >= 0 ? J->o.topLeft + rowsComing(&decQ, J->hold ? 0 : J->o.j.endAt) : -1;
   int32_t m = plan ? J->planMargin[1] : J->o.j.readyMat >= 0 ? J->o.j.readyMat : J->o.matLeft;
   int32_t contact = plan ? J->planMargin[2] : J->o.j.readyContact, under = plan ? J->planMargin[3] : J->o.j.readyUnder;
   // (THE WINDOW AS THE DUES ASK IT: of the rows due, the share the window still covers a break's walk for (core/nodes.h windowCover),
