@@ -625,6 +625,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. PROVEN FIRST: a line that lives left alone, then one that lives by its plan, then one whose plan meets every row shown with the
   // margin to spare, then the rest
   { int px = proofOf(x), py = proofOf(y); if (px != py) K(1, "proven", py - px);
+    // (PROVEN BY ITS PLAN ALONE, of two: the one whose plan stands longer, in whole breaks' time from now -- the plan meets the rows shown,
+    // but its loss is where the board still goes, and a break's time more is a break more to find before it; read off each line alone)
+    if (px == 1) { double s = imax(1, rankSave); int32_t bx = (int32_t)(lostOf(x) / s), by = (int32_t)(lostOf(y) / s); if (bx != by) K(1, "longer", by - bx); }
     // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
     // resource, then of the next (marginKey: room, material, the window's cover of the rows due, contact, in rows); then the later loss,
     // unless lost alike (lostAlike: the same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
