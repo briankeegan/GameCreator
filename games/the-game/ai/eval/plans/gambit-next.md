@@ -638,8 +638,4 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - 1403, 15/24 (7, 2, 6), the wider beam on gbetween with the lock: no crash, and 1402's deaths frame for frame -- on its own thread
   the wider beam runs every decision under garbage, where on the pool it ran only with a worker to spare, and its deep breaks are
   played far more. Reverted; the lock kept.
-- Big chain, 1404, 21/24 (7, 6, 8): combo_storm-4 at 9650, factory-2 at 12289, factory-8 at 11577, each "couldn't find a break".
-  factory-2 from 11960: the break search found breaks (br 1/9, 1/4) and the decision dropped every one for a wasted three (DROP_WASTE,
-  the save: 361 against the hold's 330, short of a break's time), and held to its death; the solver finds a break with no wasted three
-  there that lives. In 6-11 decisions of every dying game (finish's too: 1401 factory-1, large_garbage-3) every break found went so.
-  The open search (breakOpen) is held to the wasted three first, and searched without it only where that found none in its time.
+- 1405, big chain 12/24 (6, 2, 4) with the open search held to the wasted three first: its pass ate the search's time and found none where the open search found the breaks played. Reverted.
