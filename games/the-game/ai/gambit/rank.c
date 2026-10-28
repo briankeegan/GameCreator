@@ -94,7 +94,7 @@ static void tierInsert(Tier *t, int pos, double v) {
 static LOCAL int32_t unTap;
 static void asLine(const Cand *k) { lineAt0 = k->at0; lineWaitTo = k->waitTo; unTap = pressTap; if (k->tapOf) pressTap = k->tapOf - 1; }
 static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
-static int nearActsOf(const Judge *J, int32_t near); static int nextWalkOf(const Judge *J);
+static int nearActsOf(const Judge *J, int32_t near);
 #ifdef GB_TEST
 static void gb_trace_cand(int play, const int32_t *seq, int n, int fc);   // (test/decide_check.c, under GC_GAMBIT_TRACE)
 static void gb_trace_walked(int ok, int wok, int cmp, int key, const char *why, const Judge *J, const Judge *JW);
@@ -444,8 +444,6 @@ static int saveKept(const Judge *J) {
 // HOW NEAR THE NEXT BREAK A LINE LEAVES THE BOARD, the one measure every reader asks (the order's survival key, a move beating the hold,
 // the tier): the swaps to it (outcome.c nearAfter) -- and with an input window to keep, the actions: the line's own walk and NEAR_ACTS
 // a swap left, so a line that walks more than the swaps it saves brings the break no nearer
-// (and the next break's walk alone, on the board the line leaves: the order's last key under garbage)
-static int nextWalkOf(const Judge *J) { return J->o.j.readyWalk > 0 ? J->o.j.readyWalk : NEAR_ACTS * J->o.nearAfter; }
 static int nearActsOf(const Judge *J, int32_t near) { return pressAllowance >= 0 ? lineWalk(J) + (J->o.j.readyWalk > 0 ? J->o.j.readyWalk : NEAR_ACTS * near) : near; }   // (the next break's walk measured on the board the line leaves where it was read)
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
 // break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
@@ -675,11 +673,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
       { int32_t lx = ownBreaksTo(x), ly = ownBreaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
-      // (THE NEXT BREAK NEARER, last: under garbage, of two lines alike in all of the above, the one that leaves the board its next break
-      // the fewer actions away on the board it leaves (its readiness walk where read, else the shape's swaps to it at NEAR_ACTS each) --
-      // every break is pressed out of the window, and a board whose next break is far spends it getting there. Not the line's own walk:
-      // that is what it does, and a line that does less is not a board nearer its next break. A line dead, or with no reading, reads furthest)
-      if (decF.under) { int32_t ex = x->o.dead || x->o.nearAfter < 0 ? 1 << 20 : nextWalkOf(x), ey = y->o.dead || y->o.nearAfter < 0 ? 1 << 20 : nextWalkOf(y);
+      // (THE NEXT BREAK NEARER, last: under garbage, of two breaks alike in all of the above, the one that leaves the board its next break
+      // the fewer actions away (nearActsOf: the shape's swaps to it on the board it leaves, its own walk counted) -- every break is pressed
+      // out of the window, and a board whose next break is far spends it getting there. A break dead, or with no reading, reads furthest;
+      // a line that breaks nothing reads none -- "converts" above has put every break before it)
+      if (decF.under) { int32_t ex = !(x->apBroke > 0) ? 0 : x->o.dead || x->o.nearAfter < 0 ? 1 << 20 : nearActsOf(x, x->o.nearAfter), ey = !(y->apBroke > 0) ? 0 : y->o.dead || y->o.nearAfter < 0 ? 1 << 20 : nearActsOf(y, y->o.nearAfter);
         if (ex != ey) K(2, "near", ex - ey); }
 
     } }

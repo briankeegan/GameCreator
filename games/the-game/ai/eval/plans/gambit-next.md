@@ -623,6 +623,3 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - The nearness key last in rule 2 (after margin and later), under garbage: a tie-break only.
 - 1397, 21/24 (6, 8, 7) with the nearness key last in rule 2: factory 8/8 and large_garbage-3 survive; combo_storm-2 (2897),
   combo_storm-5 (1820) and large_garbage-2 (3136) die early. The key now reads breaks only -- a line that breaks nothing reads none.
-- 1398, 21/24 (7, 7, 7), the key on breaks only: combo_storm-5 dies at 1820 as in 1397 -- at 547 it played carry_wait 6,3 over
-  1393's survive 2,1;6,3, both breaking 16, because nearActsOf counts the line's own walk: the key preferred the line that does less.
-  The key reads the next break's walk on the board left alone (nextWalkOf), on every line under garbage as in 1397.
