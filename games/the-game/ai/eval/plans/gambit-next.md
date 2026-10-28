@@ -623,3 +623,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - 1399, 20/24 (7, 7, 6), the key on the board left: factory-1 and large_garbage-3 survive again; combo_storm-2, factory-4,
   large_garbage-5 and -7 die. Every form of the nearness key (1394, 1396-1399) saves factory-1 and large_garbage-3 and loses 2-5
   others. Reverted to 1393's play.
+- 1399's combo_storm-2 at 590: a hold and a setup 1,1;3,5 alike, both lost at 240; the shape's nearness took the setup, which breaks
+  nothing, and the decisions after carried it past 1393's better setup at 624. The key on breaks only (1398) and on the board left
+  (1399) together: breaks ordered by the next break's walk on the board each leaves.
