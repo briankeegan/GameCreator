@@ -488,6 +488,9 @@ line short at once by a block shown (**demand**).
   combo_storm-6 at 11676: a line 5,4;5,4 -- the judge read what the swap back makes against the decision's board left alone, which
   counts the first swap's clears to it; the frame loop reads it against the board as it is at the press. The judge now reads it so too:
   against the board its walk begins on, the last swap against the board before it.
+- 1385, 2/24: the last swap's put-back read against the board before it cut nearly every line under an input window -- the C check's
+  "line pressed as judged" keyed 0 swaps of 0 lines (it had keyed 71 of 32). The last swap reads as it did through 1384; a later swap's
+  reading against the board its walk begins on stays (combo_storm-6's 5,4;5,4 was a second swap of five).
 
 ## Where this stands
 

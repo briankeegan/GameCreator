@@ -430,7 +430,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       // (the last swap is held to the same put-back test: the pair as the engine recorded it pressed, against the one pressed before it)
       { const Board *fb = ensureBoard(x, n), *ob = liveNode(x, out) ? ensureBoard(x, out) : 0;
         if (fb && ob && ob->lastSwapA && putBackFor(fb, ob->lastSwapA, ob->lastSwapB, 0) &&
-            putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeBy(x, out, n))) { j->cut = k; j->cutWhy = 2; break; } }
+            putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
     } else {
       // (pressed as the frame loop presses it, core/nodes.h pressWalk: a swap whose pair still moves is walked to from the first frame its
       // walk is taken on, found with the walk tapped as the frame loop's keys are, then pressed as the frame loop walks it -- held, when
