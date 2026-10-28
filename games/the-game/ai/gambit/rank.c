@@ -621,6 +621,7 @@ static int proofOf(const Judge *J) {
 // (DEAD BEFORE IT COULD PRESS ANYTHING: unproven and lost within a break's time -- the hold's loss not known among them)
 static int diesNow(const Judge *J) { return !livesOf(J) && lostOf(J) < imax(1, rankSave); }
 // (A LINE'S LOSS IN WHOLE BREAKS' TIME from now: lostOf over rankSave, a loss not known or never as the most there is)
+#define SOON_BREAKS 3   // (a break popping, the next built, the next popping)
 static int32_t breaksTo(const Judge *J) { double l = lostOf(J); return l >= 1e8 ? 1 << 30 : (int32_t)(l / imax(1, rankSave)); }
 static int compareJudged(const Judge *x, const Judge *y) {
 #define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
@@ -639,6 +640,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // garbage before one that converts none -- the margin reads material as enough down to three rows, and a board spent from 51 to 22
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
       if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
+      // (A BOARD LOST BEFORE ITS NEXT BREAK COULD POP: the material is worth a break only to a board that lives to build and pop it --
+      // its own break popping, the next one built, then popped: SOON_BREAKS breaks' time. Within it the line lost later first; past it
+      // the material decides and the loss comes after it. One key, read off each line alone: the breaks' time to its loss, capped)
+      { int32_t sx = imin(breaksTo(x), SOON_BREAKS), sy = imin(breaksTo(y), SOON_BREAKS); if (sx != sy) K(2, "soon", sy - sx); }
       // (THE NEXT BREAK LEFT TO BUILD: of two lines that convert, the one whose board still has a break to build and keeps the floor
       // (judgeCand material: outcome.c nextBuild, floorKept) -- a break that leaves none is the last the board makes. Each key of the
       // order is read off each line alone and is had by every line -- a line with none reads last -- so the order is one order)

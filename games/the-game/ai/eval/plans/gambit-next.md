@@ -414,6 +414,12 @@ line short at once by a block shown (**demand**).
   call, the call's step grew the nodes, and the new node's index read past the old block -- a crash when it reached unmapped memory,
   a wrong `brk` (stillAt, every break test of every search) when it did not. Fixed, and `gate_gambit_engine` fails on
   `NODE(x, call(...))` anywhere in gambit/.
+- 1367, 15/24 (5, 4, 6), no crash, every gate but the score green. combo_storm-1 at 2284: at 2069 "next" played a break lost at 174
+  over a survive line lost at 275, at 2099 "material" a hold lost at 144 over a line lost at 292, and nothing broke again. The
+  material is worth a break only to a board that lives to build and pop it: its own break popping, the next built, the next popping
+  -- three breaks' time (a row's pop at level 11 is 84 frames, a break's time about 95). A key before the next break and the
+  material, the breaks' time to the loss capped at three (SOON_BREAKS), puts the line lost later first within that horizon and leaves
+  the material to decide past it.
 
 ## Where this stands
 
