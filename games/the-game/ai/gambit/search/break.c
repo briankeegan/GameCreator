@@ -849,7 +849,11 @@ static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_
 // decision asks them best-ranked first in its own shares, exactly as with no workers: whichever thread begins a board first searches
 // it (its state claimed), and the other reads the answer -- a break found, or none in the time it had. A worker's break is kept across
 // decisions as any is. Only with workers.
-#define READYPEND 512   // (every line a decision judges, walked or not, may land on a board and a window of its own: decide.c MAXCANDS)
+#define READYPEND 512
+// (THE READINESS SIDE BY SIDE: the boards readySpread hands out are searched by the decision and the workers at once -- Gambit's CPU and
+// the two the workers have, about half idle (cpu_watch.sh) -- so each is given READY_PAR times the share the decision would give it
+// alone, and the decision is charged a READY_PAR'th of what each search did, whichever thread did it: the same charge for the same board)
+#define READY_PAR 3   // (every line a decision judges, walked or not, may land on a board and a window of its own: decide.c MAXCANDS)
 typedef struct { int32_t gen, h, nb, tight, tap, from, spent, state, whyN, why[MAXLINE], hasLeft, resumed; double budget; int64_t work; Node nd; Question q; unsigned char *key; Paths *left; } ReadyPend;   // (left: the frontier a worker's search left unfinished, kept by the decision that reads it)   // (from, spent: the window its breaks are pressed in, core/nodes.h pressFrom)   // (budget: the work-ms its search is given, whichever thread searches it; work: what that search did)
 #define PEND_WAITING 0
 #define PEND_FOUND 1
@@ -917,9 +921,9 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
     if (st == PEND_BUSY) while ((st = __atomic_load_n(&p->state, __ATOMIC_ACQUIRE)) == PEND_BUSY) {}
     // (searched out of its budget -- on a worker or here -- is the answer too: the same whichever thread ran it)
     if ((st == PEND_OUT || st == PEND_NONE || st == PEND_FOUND) && p->resumed) __atomic_add_fetch(&readyBeamIn, 1, __ATOMIC_RELAXED);
-    if (st == PEND_OUT) { readyPre++; clockCharge(p->work); if (p->left && kn && __atomic_exchange_n(&p->hasLeft, 0, __ATOMIC_ACQ_REL)) readyBeamKeep(kh, readyKeyBuf, kn, p->left); return NOT_ASKED; }
+    if (st == PEND_OUT) { readyPre++; clockCharge(p->work / READY_PAR); if (p->left && kn && __atomic_exchange_n(&p->hasLeft, 0, __ATOMIC_ACQ_REL)) readyBeamKeep(kh, readyKeyBuf, kn, p->left); return NOT_ASKED; }
     if (st == PEND_NONE || st == PEND_FOUND) {
-      readyPre++; clockCharge(p->work);
+      readyPre++; clockCharge(p->work / READY_PAR);
       if (st == PEND_NONE) return 0;
       if (why) { for (int i = 0; i < p->whyN; i++) why[i] = p->why[i]; *whyN = p->whyN; }
       if (kn) readyKeep(kh, readyKeyBuf, kn, p->why, p->whyN);
@@ -935,6 +939,7 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   int64_t w0 = clockWork;
   int32_t r = readySearchOf(&q, nowMs() + (p && p->budget > 0 ? p->budget : readyShareMs >= 0 ? readyShareMs : timeLeftMs() / 2), line, &k, p && p->budget > 0, kn ? readyKeyBuf : 0, kn, kh, 1);
   if (p) { p->work = clockWork - w0; p->resumed = readyResumed; }   // (what a later check of it is charged, as for a worker's)
+  if (p && p->budget > 0) clockWork = w0 + p->work / READY_PAR;      // (and this one the same: a READY_PAR'th, as if a worker's)
   if (p) { if (r == 1) { for (int i = 0; i < k; i++) p->why[i] = line[i]; p->whyN = k; } __atomic_store_n(&p->state, r == 1 ? PEND_FOUND : r == 0 ? PEND_NONE : PEND_OUT, __ATOMIC_RELEASE); }
   if (r != 1) return r;
   if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }
