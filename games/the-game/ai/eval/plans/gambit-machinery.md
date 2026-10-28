@@ -17,7 +17,12 @@ so far. This is `gambit-infra.md` E (every core) and F (one plan, kept and repai
   and the next decision's searches grow them on.
 - The clock cuts the break search in most decisions: 557 of 895 in factory-1 (run 1393). factory-1's break at 14034 (run 1390) takes
   300k frames of work; the decision had 180k.
-- Not measured: how busy each worker is over a game, and how long each sits idle between its job ending and the next decision.
+- The machine (`cpu_watch.sh`, every game's `results.txt`; run 1400, factory-6, 189 s): Gambit's thread 0.82 of a CPU, each of the
+  four workers 0.31-0.32, the game 0.17, the machine 42% idle of 4 CPUs. The runner's 4 CPUs are 2 cores: the game on CPU 0, Gambit's
+  thread on the other core, the workers on the two CPUs left -- each the other hyperthread of a busy core -- at the idle class
+  (`host.c` `workerStart`: at the normal class they took cycles from Gambit's thread and the game's, and lost games). The workers use
+  1.25 of their 2 CPUs; what standing searches can add is the rest, about 0.75 of a hyperthread -- some 1.6x the workers' search, not
+  a multiple.
 
 ## The design: standing searches
 
@@ -43,7 +48,7 @@ so far. This is `gambit-infra.md` E (every core) and F (one plan, kept and repai
 
 ## Steps, each with its check
 
-1. **Measure the machine.** At each game's end, each worker's CPU time (`hostThreadStats`) and the wall time, and for each search the
+1. **Measure the machine.** (The per-thread CPU is measured already, above; what is left is reporting it per run.) At each game's end, each worker's CPU time (`hostThreadStats`) and the wall time, and for each search the
    share of decisions its clock cut; `gambit_summary.js` writes them per pattern ("the machine: Gambit's thread N%, workers a/b/c/d%,
    the break search cut in K% of decisions"). Check: the line is in every 24-game report (`gambit_summary.js` fails without it).
 2. **The work clock at the runner's speed.** `WORK_PER_MS` from step 1's numbers, the measurement recorded beside it.
@@ -54,6 +59,9 @@ so far. This is `gambit-infra.md` E (every core) and F (one plan, kept and repai
 5. **The judging and the readiness take workers first** (step 3's yield). Check: the answers' lateness (`late`, `pastFrame` in the
    stats) no higher than the build before.
 6. **Measured on the 24**: survived per pattern, the searches the clock cut, each worker's busy share -- against the build before.
+
+- **Search efficiency beside it**: on two cores, the lines found per engine frame weigh as much as the frames: the break search's
+  cost per line (`search/break.c` touch beam: boards built, lines judged twice) measured before the frames are added.
 
 ## What could go wrong
 
