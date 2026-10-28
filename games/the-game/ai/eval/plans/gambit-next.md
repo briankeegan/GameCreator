@@ -618,3 +618,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   asks the next question at once (front.c take), so each colour is in the first decision after it.
 - 1394, 19/24 (7, 7, 5) with the next break's nearness in rule 2: factory-1 survives and large_garbage-3 lives to 21185, but
   combo_storm-2, factory-2, large_garbage-5 and -8 die. Reverted to 1393's build.
+- 1395, 22/24 on 1393's play (the PASTFRAME log added): the same deaths at the same frames, 29 answers past their frame -- a game is
+  its seed's in outcome, so a change is measured by one run. 1394's nearness key read only with the window short (under two breaks'
+  walks, breakWalk): a change the other games do not meet leaves them as they were.
