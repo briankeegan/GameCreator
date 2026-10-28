@@ -62,159 +62,94 @@ static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
 static void keepPlan(int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
   frontierKeep(FR_PLAN, &planOut, kind, move, handed, nhanded, qid, 0, 0);
 }
-// THE BREAK SEARCH GOING ON BESIDE THE DECISIONS (plans/gambit-machinery.md): under garbage, a thread of its own at the idle class, a
-// frame's work a frame (onGrant, native.c gn_frame), until the next decision takes it back (onStop) -- never over what the decision
-// searches. Where the decision's break search found none, it goes on from the frontier that search left, through the judging and past
-// the answer, and what it reaches is kept in place of the decision's frontier; where the decision plays a break, it searches the board
-// that break leaves for the next one (onAfterBreak). A break it finds is kept as the frontier's first line, played again first.
+// THE BREAK SEARCH GOING ON BETWEEN DECISIONS (plans/gambit-machinery.md): a decision that found no break keeps its frontier; on the
+// frames no question is out -- Gambit's thread waiting, the machine its decisions do not need -- a worker grows that frontier on, on
+// the decision's own board, a frame's work a frame (onGrant, native.c gn_frame), and what it reaches is kept in its place for the next
+// decision to resume (onStop). A break it finds is kept as the frontier's first line, played again first.
 #define ON_SLICE_MS (1000.0 / 60)
-// (THREADS SIDE BY SIDE: ONN of them, one on the game's own CPU and the rest on the workers' -- host.c hostIdleThread -- each with
-// its own part of the frontier: line i to thread i % ONN. A start with no frontier is searched by thread 0 alone until it has one,
-// then split (onSplit). The first break any finds stops them all)
-#define ONN 3
-static Broke onBrOf[ONN]; static Paths onSeedsOf[ONN];
+static Broke onBr; static Paths onSeeds;
 static int32_t onKind, onMove, onHand[MAXLINE], onNhand, onQid, onToward[MAXPATH], onNtoward, onWanted;
-static int32_t onActive, onGranted, onDoneOf[ONN], onSlicesOf[ONN], onFound, onFoundBy, onSplit, onLogSlices, onLogFound, onLogAfter;   // (onFound: a break found, by thread onFoundBy; the log's: the last let go, onStop)
+static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound;   // (the slices searched and a break found; the log's: the last let go, onStop)
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
   onWanted = 0;
   if (!br || br->depth) { memset(&theFront[FR_BREAK], 0, sizeof theFront[FR_BREAK]); return; }
   frontierKeep(FR_BREAK, &br->keepOut, kind, move, handed, nhanded, qid, towardPlayed, towardPlayedN);
-  if (!theFront[FR_BREAK].set) return;
-  onWanted = 1; onKind = kind; onMove = move; onNhand = nhanded; onQid = qid;
+  if (!theFront[FR_BREAK].set || !br->keepOut.n) return;
+  onWanted = 1; onSeeds = br->keepOut; onKind = kind; onMove = move; onNhand = nhanded; onQid = qid;
   for (int i = 0; i < nhanded && i < MAXLINE; i++) onHand[i] = handed[i];
   onNtoward = towardPlayedN; for (int i = 0; i < towardPlayedN && i < MAXPATH; i++) onToward[i] = towardPlayed[i];
 }
-// (each its own thread at the idle class: native.c onThreadMain. onStateOf: 0 idle, 1 asked to run, 2 running; onThreads the ones begun)
-static int32_t onStateOf[ONN], onThreads, onThreadOn;
-// (THE BOARD A BREAK LEAVES: where the decision plays a break, the threads search on the board its line leaves once played -- the
-// garbage still on its way after it, the window as the line leaves it -- for the next break, while this one is pressed; onAfter)
-static Question onQ; static Board *onBoard; static int32_t onAfter, onFrom, onSpent;
-// (the frontier split: line i of `from` to thread i % onThreads)
-static void onSplitOut(const Paths *from) {
-  for (int t = 0; t < onThreads; t++) onSeedsOf[t].n = 0;
-  for (int i = 0; i < from->n; i++) {
-    Paths *to = &onSeedsOf[i % onThreads];
-    if (to->n >= KEEPN) continue;
-    to->len[to->n] = from->len[i]; for (int k = 0; k < from->len[i]; k++) to->path[to->n][k] = from->path[i][k];
-    to->n++;
-  }
-}
-static void onThread(int me) {
+// (its own thread, beside the pool -- the pool may be the readiness's past the decision: native.c onThreadMain at the idle class on the
+// workers' CPUs. onState: 0 idle, 1 asked to run, 2 running)
+static int32_t onState, onThreadOn;
+static void onThread(void) {
   inJob = 2;
   for (;;) {
     int32_t st;
-    while ((st = __atomic_load_n(&onStateOf[me], __ATOMIC_ACQUIRE)) != 1) __builtin_wasm_memory_atomic_wait32(&onStateOf[me], st, -1);
-    __atomic_store_n(&onStateOf[me], 2, __ATOMIC_RELEASE);
-    const Question *q = onAfter ? &onQ : &decQ;
-    pressTight = q->tight; pressTap = decTap; pressFrom = onAfter ? onFrom : 0; pressSpent = onAfter ? onSpent : 0; ncache = 0;
-    int32_t pop = popLeft(q->b);
+    while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 1) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
+    __atomic_store_n(&onState, 2, __ATOMIC_RELEASE);
+    pressTight = decQ.tight; pressTap = decTap; pressFrom = pressSpent = 0; ncache = 0;
+    int32_t pop = popLeft(decQ.b);
     for (;;) {
       int32_t g;
-      while ((g = __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE)) == __atomic_load_n(&onDoneOf[me], __ATOMIC_ACQUIRE) && !__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE))
+      while ((g = __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE)) == __atomic_load_n(&onDone, __ATOMIC_ACQUIRE) && !__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE))
         __builtin_wasm_memory_atomic_wait32(&onGranted, g, -1);
       if (__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE)) break;
-      // (thread 0 searches a start with no frontier alone; the others wait for its split)
-      int mine = me == 0 || __atomic_load_n(&onSplit, __ATOMIC_ACQUIRE);
-      if (mine && !__atomic_load_n(&onFound, __ATOMIC_ACQUIRE) && (me == 0 || onSeedsOf[me].n)) {
-        Broke *br = &onBrOf[me];
+      if (!onFound) {
         clockWork = 0; clockAborted = 0; clockPoll = 0; clockShare = nowMs() + ON_SLICE_MS;
         listDefault = 1;
-        breakMoves(q, pop ? pop + LINEUP_AFTER : 0, &onSeedsOf[me], br);
+        breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, &onSeeds, &onBr);
         listDefault = 0;
         clockShare = 0;
         // (a slice the stop cut short is not counted: its frontier is the one before it)
         if (!__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE)) {
-          int32_t none = 0;
-          if (br->depth) { if (__atomic_compare_exchange_n(&onFound, &none, 1, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) onFoundBy = me; }
-          else if (br->keepOut.n) {
-            if (me == 0 && !__atomic_load_n(&onSplit, __ATOMIC_ACQUIRE)) { onSplitOut(&br->keepOut); __atomic_store_n(&onSplit, 1, __ATOMIC_RELEASE); }
-            else onSeedsOf[me] = br->keepOut;
-          }
-          onSlicesOf[me]++;
+          if (onBr.depth) onFound = 1;
+          else if (onBr.keepOut.n) onSeeds = onBr.keepOut;
+          onSlices++;
         }
       }
-      __atomic_add_fetch(&onDoneOf[me], 1, __ATOMIC_RELEASE);
-      __builtin_wasm_memory_atomic_notify(&onDoneOf[me], 1);
+      __atomic_add_fetch(&onDone, 1, __ATOMIC_RELEASE);
+      __builtin_wasm_memory_atomic_notify(&onDone, 1);
     }
-    __atomic_store_n(&onStateOf[me], 0, __ATOMIC_RELEASE);
-    __builtin_wasm_memory_atomic_notify(&onStateOf[me], 1);
+    __atomic_store_n(&onState, 0, __ATOMIC_RELEASE);
+    __builtin_wasm_memory_atomic_notify(&onState, 1);
   }
 }
-static int32_t onSlicesAll(void) { int32_t n = 0; for (int t = 0; t < onThreads; t++) n += onSlicesOf[t]; return n; }
-// (begun with the decision's break search, from the frontier it left, on the decision's thread; let go before the next question is
-// answered, on the same thread)
-static void onRun(void) {
+// (begun once the answer is out, on the thread that answered; let go before the next question is answered, on the same thread)
+static void onStart(void) {
+  onSlices = 0; onFound = 0;
+  if (!onWanted || !onThreadOn) return;
   __atomic_store_n(&onStopReq, 0, __ATOMIC_SEQ_CST);
-  int32_t g = __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE);
-  for (int t = 0; t < onThreads; t++) { onSlicesOf[t] = 0; __atomic_store_n(&onDoneOf[t], g, __ATOMIC_RELEASE); }
-  __atomic_store_n(&onFound, 0, __ATOMIC_RELEASE);
+  __atomic_store_n(&onDone, __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE), __ATOMIC_RELEASE);
   __atomic_store_n(&onActive, 1, __ATOMIC_RELEASE);
-  for (int t = 0; t < onThreads; t++) { __atomic_store_n(&onStateOf[t], 1, __ATOMIC_RELEASE); __builtin_wasm_memory_atomic_notify(&onStateOf[t], 1); }
+  __atomic_store_n(&onState, 1, __ATOMIC_RELEASE);
+  __builtin_wasm_memory_atomic_notify(&onState, 1);
 }
-static void onSeedsFrom(const Paths *seeds) {
-  if (seeds && seeds->n) { onSplitOut(seeds); onSplit = 1; }
-  else { for (int t = 0; t < onThreads; t++) onSeedsOf[t].n = 0; onSplit = 0; }
-}
-static void onStart(const Paths *seeds) {
-  onWanted = 0; onAfter = 0;
-  if (!onThreadOn) return;
-  onSeedsFrom(seeds);
-  onRun();
-}
-// (every frame: a frame's work handed to each; the frame loop in lockstep waits for them all, so each has the frame the live game would
-// give it)
+// (a frame with no question out: a frame's work handed to it; the frame loop in lockstep waits for it, so it has the frame the live
+// game would give it)
 static void onGrant(int wait) {
   if (!__atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) return;
   int32_t g = __atomic_add_fetch(&onGranted, 1, __ATOMIC_RELEASE);
-  __builtin_wasm_memory_atomic_notify(&onGranted, ONN);
-  if (wait) for (int t = 0; t < onThreads; t++) { int32_t d; while ((d = __atomic_load_n(&onDoneOf[t], __ATOMIC_ACQUIRE)) < g && __atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) __builtin_wasm_memory_atomic_wait32(&onDoneOf[t], d, -1); }
-}
-static int onHalt(void) {
-  if (!__atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) return 0;
-  __atomic_store_n(&onStopReq, 1, __ATOMIC_SEQ_CST);
-  __builtin_wasm_memory_atomic_notify(&onGranted, ONN);
-  for (int t = 0; t < onThreads; t++) { int32_t st; while ((st = __atomic_load_n(&onStateOf[t], __ATOMIC_ACQUIRE)) != 0) __builtin_wasm_memory_atomic_wait32(&onStateOf[t], st, -1); }
-  __atomic_store_n(&onActive, 0, __ATOMIC_RELEASE);
-  for (int t = 0; t < onThreads; t++) __builtin_wasm_memory_atomic_notify(&onDoneOf[t], 1);
-  return 1;
+  __builtin_wasm_memory_atomic_notify(&onGranted, 1);
+  if (wait) { int32_t d; while ((d = __atomic_load_n(&onDone, __ATOMIC_ACQUIRE)) < g && __atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) __builtin_wasm_memory_atomic_wait32(&onDone, d, -1); }
 }
 static void onStop(void) {
-  if (!onHalt()) return;
-  int32_t found = __atomic_load_n(&onFound, __ATOMIC_ACQUIRE);
-  onLogSlices = onSlicesAll(); onLogFound = found; onLogAfter = onAfter;
-  // (handed on where the decision kept a frontier -- found no break -- or where they searched the board a break leaves: either way they
-  // searched past what the decision did)
-  if (!onLogSlices || !onWanted) return;
-  // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first, then each thread's
-  // frontier in turn)
+  if (!__atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) return;
+  __atomic_store_n(&onStopReq, 1, __ATOMIC_SEQ_CST);
+  __builtin_wasm_memory_atomic_notify(&onGranted, 1);
+  int32_t st;
+  while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 0) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
+  __atomic_store_n(&onActive, 0, __ATOMIC_RELEASE);
+  __builtin_wasm_memory_atomic_notify(&onDone, 1);
+  onLogSlices = onSlices; onLogFound = onFound;
+  if (!onSlices) return;
+  // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
   static Paths kept;
   kept.n = 0;
-  const Broke *fb = found ? &onBrOf[onFoundBy] : 0;
-  if (fb && fb->pathLen > 0) { kept.len[0] = fb->pathLen; for (int k = 0; k < fb->pathLen && k < MAXPATH; k++) kept.path[0][k] = fb->path[k]; kept.n = 1; }
-  for (int i = 0; kept.n < KEEPN; i++) {
-    int any = 0;
-    for (int t = 0; t < onThreads && kept.n < KEEPN; t++) {
-      const Paths *from = &onSeedsOf[t];
-      if (i >= from->n) continue;
-      any = 1; kept.len[kept.n] = from->len[i]; for (int k = 0; k < from->len[i]; k++) kept.path[kept.n][k] = from->path[i][k]; kept.n++;
-    }
-    if (!any) break;
-  }
-  // (the board a break leaves: its lines kept on that board, carried by their panels -- nothing of the line played is taken off them)
-  if (kept.n && onAfter) { frontKeepOn = onQ.b; frontierKeep(FR_BREAK, &kept, 0, 0, 0, 0, onQid, 0, 0); frontKeepOn = 0; }
-  else if (kept.n) frontierKeep(FR_BREAK, &kept, onKind, onMove, onHand, onNhand, onQid, onToward, onNtoward);
-}
-// (the decision plays a break: the threads taken off the decision's board, where the break is found, and put on the board the line
-// leaves -- decide.c endQuestionOf)
-static void onAfterBreak(const Judge *J, int32_t qid) {
-  if (!onThreadOn || !J || J->hold || !(J->apBroke > 0)) return;
-  onHalt();
-  if (!onBoard) onBoard = nb_new();
-  int32_t dt;
-  if (!onBoard || !endQuestionOf(J, onBoard, &onQ, &dt)) return;
-  onFrom = dt; onSpent = J->o.j.spent; onAfter = 1; onWanted = 1; onQid = qid;
-  onSeedsFrom(0);
-  onRun();
+  if (onFound && onBr.pathLen > 0) { kept.len[0] = onBr.pathLen; for (int k = 0; k < onBr.pathLen && k < MAXPATH; k++) kept.path[0][k] = onBr.path[k]; kept.n = 1; }
+  const Paths *from = onFound ? &onBr.keepOut : &onSeeds;
+  for (int i = 0; i < from->n && kept.n < KEEPN; i++, kept.n++) { kept.len[kept.n] = from->len[i]; for (int k = 0; k < from->len[i]; k++) kept.path[kept.n][k] = from->path[i][k]; }
+  if (kept.n) frontierKeep(FR_BREAK, &kept, onKind, onMove, onHand, onNhand, onQid, onToward, onNtoward);
 }
 
 // THE BREAK SEARCH, in its share of the decision's time -- or, with workers, on one of them beside the other searches, in all of theirs
@@ -509,8 +444,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   double ts = nowMs();
   searchAll(&R, &S);
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
-  // (no break found: the search beside goes on from where the decision's left off, never over what it searched)
-  if (R.under && ran && !theBr.depth) onStart(&theBr.keepOut);
   searchMerge(&R, &S);
   S.searchMs = nowMs() - ts;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
@@ -567,7 +500,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (d.kind == 1 && P.line && P.line->k.play == PLAY_TOWARD) { towardPlayedN = P.line->k.nseq; for (int i = 0; i < P.line->k.nseq; i++) towardPlayed[i] = P.line->k.seq[i]; }
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
-  if (d.kind == 1 && R.under) onAfterBreak(P.line, qid);
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
   frontierKeep(FR_SURVIVE, &outKeep, d.kind, d.move, A->hand, A->nhand, qid, 0, 0);   // (and the survival search's: search/outlive.c)
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
@@ -645,7 +577,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1");
-  for (int i = 0; i < wasteDropN; i++) { const int32_t *w = wasteDrop[i]; L_s(i ? "," : " wdrop="); L_play(w[0]); L_s(":"); L_i(w[1]); L_s(":"); L_i(w[2]); L_s("/"); L_i(w[3]); L_s(":t"); L_i(w[4]); L_s(":"); for (int k = 0; k < w[5] && k < MAXLINE; k++) { if (k) L_s(";"); L_i(CR(w[6 + k])); L_s("."); L_i(CC(w[6 + k])); } } if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); L_s("/"); L_i(onLogAfter); onLogSlices = 0; }
+  for (int i = 0; i < wasteDropN; i++) { const int32_t *w = wasteDrop[i]; L_s(i ? "," : " wdrop="); L_play(w[0]); L_s(":"); L_i(w[1]); L_s(":"); L_i(w[2]); L_s("/"); L_i(w[3]); L_s(":t"); L_i(w[4]); L_s(":"); for (int k = 0; k < w[5] && k < MAXLINE; k++) { if (k) L_s(";"); L_i(CR(w[6 + k])); L_s("."); L_i(CC(w[6 + k])); } } if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); onLogSlices = 0; }
   L_s(" back="); L_i(decQ.b->lastSwapA); L_s(","); L_i(decQ.b->lastSwapB);   // (the pair the last swap swapped, on the decision's board: rules.c putBackFor)
   if (flatAsked) { L_s(" fs="); L_i(flatFound); L_s("/"); L_i(flatLen); L_s("/"); L_i(flatSteps); L_s("/"); L_i((int64_t)flatMsUsed); }   // (the flatten search: found, its length, the swaps it pressed, its ms -- search/solve.c)
   L_s(" br=");

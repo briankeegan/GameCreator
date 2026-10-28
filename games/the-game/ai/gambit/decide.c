@@ -272,20 +272,6 @@ static double contLostOfLine(const Judge *J, double give, int32_t *seq, int32_t 
   return contBoardLostLine(e, give, J->hold ? 0 : J->o.j.spent, seq, nseq);
 }
 static double contLostOf(const Judge *J, double give) { return contLostOfLine(J, give, 0, 0); }
-// THE BOARD A LINE LEAVES, AS A QUESTION: the line played to its end on `into`, the garbage still on its way after it, *dt the frames
-// from now to its end -- contBoardLostLine's question. 0 where the line is lost or its end could not be played
-static int endQuestionOf(const Judge *J, Board *into, Question *q, int32_t *dt) {
-  if (!J || J->hold || J->o.dead || !into) return 0;
-  endNoKeep = 1; asLine(&J->k);
-  const Board *e = lineEnd(J->k.seq, J->k.nseq, J->settled);
-  unLine(); endNoKeep = 0;
-  if (!e) return 0;
-  cloneBoard(into, e);
-  *dt = imax(0, into->clock - decQ.b->clock);
-  *q = decQ; q->b = into; q->holdLeft = 0; q->holdStarted = 0; q->narr = 0;
-  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > *dt) { q->arr[q->narr] = decQ.arr[a]; q->arr[q->narr++].at -= *dt; }
-  return 1;
-}
 // (THE BEST ON FROM A BOARD: the survival search asked of board e, with the garbage still on its way, for `give` ms -- the frame from
 // now that board is lost, 1e9 if it lives, -1 if it could not be asked: a line's plan ends here, whatever its last step was)
 static double contBoardLostLine(const Board *e, double give, int32_t spent, int32_t *seq, int32_t *nseq) {
@@ -573,63 +559,6 @@ static int reserveOf(const Judge *J) {
   if (cut) { vetoCut++; return -1; }
   return 0;
 }
-// THE VETO'S BOARDS AT ONCE: the top line's end board and those of the lines below it alike with it searched together, a job each on
-// the workers, VETO_MS * VETO_PAR of work each -- the workers search side by side, so the decision is charged what one would search in
-// VETO_MS on its own thread. Every job is done before any answer is read (jobsAll): the answers are the boards' alone, whatever the
-// threads' timing. Without workers, or with the pool not to be had, each is asked on the decision's thread as before (reserveOf)
-#define VETO_PAR 3
-static Board *vetoBoard[VETO_LOOK + 1]; static Question vetoQ[VETO_LOOK + 1];
-static int32_t vetoAns[VETO_LOOK + 1], vetoJobOf[VETO_LOOK + 1]; static int64_t vetoWork[VETO_LOOK + 1], vetoBase;
-static Ctx *vetoCtx;
-static void vetoJob(int32_t i) {
-  int32_t s = vetoJobOf[i];
-  clockWork = vetoBase; clockShare = 0; clockAborted = 0; clockPoll = 0;
-  inJob = 1; pressTight = decQ.tight; pressTap = decTap; pressFrom = pressSpent = 0; ncache = 0;
-  static LOCAL Broke rb;
-  int ownWas = ownBudget; int64_t w0 = clockWork;
-  clockShare = nowMs() + VETO_MS * VETO_PAR; ownBudget = 1;
-  breakMoves(&vetoQ[s], 0, 0, &rb);
-  int cut = clockOut();
-  ownBudget = ownWas; clockShare = 0;
-  vetoWork[s] = clockWork - w0;
-  vetoAns[s] = rb.pathLen > 0 ? 1 : cut ? -1 : 0;
-  inJob = 0;
-}
-// (the boards asked: slot s the line at order[ks[s]]. 1 where every answer was searched on the workers, 0 where none was)
-static int vetoAtOnce(const int32_t *ks, int nk) {
-  if (pool.nworkers < 2 || clockOut()) return 0;
-  int nj = 0;
-  for (int s = 0; s < nk; s++) {
-    const Judge *J = order[ks[s]];
-    vetoAns[s] = -1; vetoWork[s] = 0;
-    const Board *eb = J->hold ? decQ.b : lineEnd(J->k.seq, J->k.nseq, J->settled);
-    if (!eb) continue;
-    if (!garbageOn(eb)) { vetoAns[s] = 1; continue; }
-    if (!vetoBoard[s]) vetoBoard[s] = nb_new();
-    if (!vetoBoard[s]) return 0;
-    cloneBoard(vetoBoard[s], eb);
-    vetoQ[s] = decQ; vetoQ[s].b = vetoBoard[s]; vetoQ[s].holdLeft = 0; vetoQ[s].holdStarted = 0; vetoQ[s].narr = 0;
-    vetoJobOf[nj++] = s;
-  }
-  if (!nj) return 1;
-  // (the readiness searching on past the decision lets the pool go for them, and what it had not begun takes it again after: readyResume)
-  readyStop();
-  if (!vetoCtx) vetoCtx = ctxOf(0);
-  vetoBase = clockWork;
-  __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
-  if (!startJobs(vetoCtx, vetoJob, nj)) return 0;
-  jobsAll(vetoCtx);
-  return 1;
-}
-// (a slot's answer read: the decision charged its search's work up to VETO_MS, as one asked on its own thread would be)
-static int vetoRead(int s) {
-  int64_t w = vetoWork[s], cap = (int64_t)(VETO_MS * WORK_PER_MS);
-  if (w > 0) clockCharge(w < cap ? w : cap);
-  vetoAsked++;
-  if (vetoAns[s] == -1 && vetoWork[s] > 0) vetoCut++;
-  return vetoAns[s];
-}
-static void readyResume(void);
 // (alike for the veto: as proven, and lost within a break's time of each other -- or both standing)
 static int vetoAlike(const Judge *x, const Judge *y) {
   if (proofOf(x) != proofOf(y)) return 0;
@@ -649,15 +578,11 @@ static Played playOf(const Read *R, int n) {
   // time). The line on top leaves a board with none in reach while a line below it, alike as proven and as lost, leaves one: that line
   // is played. Exact, and bounded: VETO_LOOK boards at VETO_MS each
   vetoed = 0; vetoAsked = 0; vetoCut = 0;
-  int32_t vk[VETO_LOOK + 1], nvk = 0;
-  if (n > 1 && R->under) { vk[nvk++] = 0; for (int k = 1; k < n && k <= VETO_LOOK; k++) if (vetoAlike(order[0], order[k])) vk[nvk++] = k; }
-  int atOnce = nvk > 1 && vetoAtOnce(vk, nvk);
-  if (atOnce) readyResume();
-  if (n > 1 && R->under && (atOnce ? vetoRead(0) : reserveOf(order[0])) == 0) {
-    for (int k = 1, s = 1; k < n && k <= VETO_LOOK; k++) {
+  if (n > 1 && R->under && reserveOf(order[0]) == 0) {
+    for (int k = 1; k < n && k <= VETO_LOOK; k++) {
       Judge *c = order[k];
       if (!vetoAlike(order[0], c)) continue;
-      if ((atOnce ? vetoRead(s++) : reserveOf(c)) == 1) {
+      if (reserveOf(c) == 1) {
         Judge *t = order[0]; order[0] = c; order[k] = t; vetoed = k;
         if (vetoDump) { const Board *tb = t->hold ? decQ.b : lineEnd(t->k.seq, t->k.nseq, t->settled); if (tb) vetoDump(decAt, tb); }
         break;
@@ -830,7 +755,7 @@ static void readySpread(int n) {
   if (!jobCtx) jobCtx = ctxOf(0);
   // (each board's budget the share the decision would give it when it asks them all: the time left over twice the asks -- readyShare)
   int asks = 0; for (int i = 0; i < n; i++) asks += READY_ASKS(order[i]) && !EXTRA(order[i]);
-  double each = timeLeftMs() / (2.0 * imax(1, asks)) * READY_PAR;
+  double each = timeLeftMs() / (2.0 * imax(1, asks));
   for (int j = 0; j < nj; j++) { readyPend[readyJobs[j]].budget = each; readyPend[readyJobs[j]].work = 0; }
   readyJobWork = clockWork; readyJobEnd = 0;
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
@@ -840,16 +765,6 @@ static void readyStop(void) {
   if (!poolBusy) return;
   __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
   jobsDone(jobCtx);
-}
-// (the boards readySpread handed out that no thread had begun, handed out again with their budgets: the pool let go for the veto)
-static void readyResume(void) {
-  if (pool.nworkers <= 0 || poolBusy || !jobCtx) return;
-  int nj = 0;
-  for (int i = 0; i < readyPendN && nj < READYPEND; i++) { ReadyPend *p = &readyPend[i]; if (p->gen == readyPendGen && p->state == PEND_WAITING && p->budget > 0) readyJobs[nj++] = i; }
-  if (!nj) return;
-  readyJobWork = clockWork;
-  __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
-  startJobs(jobCtx, readyJob, nj);
 }
 // THE INTENTIONS (plans/gambit-infra.md A, F): besides the line in progress, the best lines a decision ranked that make something -- a
 // clear, a chain, a combo, a break -- each kept with a bottom-row panel it does not touch (found again by it once the stack has risen,

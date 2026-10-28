@@ -474,7 +474,6 @@ EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft) {
 }
 // (and the decision's press, for a search asked of a logged board: the allowance left, and the pace's gap -- native.c dumpBoard's a, g)
 EXPORT(gb_press) void gb_press(int allow, int gap) {
-  onStop();   // (the search beside the decisions reads the press -- let go before it is set)
   pressAllowance = allow; decQ.tight = pressTight = allow >= 0 && tightAt(allow); decGap = gap;
 }
 // The line in the io body (nseq words); back: dead, lostAt, lives, fits, ready, late, then the judge's answer as gb_judge writes it.
