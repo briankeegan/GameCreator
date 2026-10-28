@@ -587,7 +587,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   }
   // (THE ORDER NOT ONE ORDER: a line ranked under the line played that beats it head to head -- its play and the key it wins on,
   // beaten=play:kKEY; the order's keys must make one order, or its first is not the best of the lines)
+  // (read as the sort read them: the lines ranked together again first -- another ranking since, the walking order's pair, sets its own)
   { int ti = -1; for (int i = 0; top && i < P.ncands && ti < 0; i++) if (order[i] == top) ti = i;
+    if (ti >= 0) rankTogether(order, P.ncands);
     for (int i = ti + 1; ti >= 0 && i < P.ncands; i++) if (compareJudged(order[i], top) < 0) {
       L_s(" beaten="); L_play(order[i]->hold ? PLAY_HOLD : order[i]->k.play); L_s(":k"); L_i(cmpKey); L_s("."); L_s(cmpWhy); break;
     } }

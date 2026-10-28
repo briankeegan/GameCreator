@@ -636,13 +636,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
       // (THE NEXT BREAK LEFT TO BUILD: of two lines that convert, the one whose board still has a break to build and keeps the floor
       // (judgeCand material: outcome.c nextBuild, floorKept) -- a break that leaves none is the last the board makes. Each key of the
-      // order is read off each line alone, so the order is one order: a line dead before it could press anything is already last, above)
-      if (decF.under && x->material >= 0 && y->material >= 0 && x->material != y->material) K(2, "next", x->material - y->material);
+      // order is read off each line alone and is had by every line -- a line with none reads last -- so the order is one order)
+      if (decF.under) { int mx = x->material >= 0 ? x->material : 3, my = y->material >= 0 ? y->material : 3; if (mx != my) K(2, "next", mx - my); }
       // (THE LINEUP FIRST: under garbage every later break is made of the board's panels -- of two lines that convert, the one that leaves
       // the board more of them (judge.c netPanels: the garbage it converts less the panels its clears take, beyond the board left alone, in
       // threes: a match's worth) first: the lineup and the chain convert a row out of the panels the row before turned into, a combo
       // spends the stack's own)
-      if (decF.under && !x->o.dead && !y->o.dead) { int nx = x->o.j.netPanels / 3, ny = y->o.j.netPanels / 3;
+      if (decF.under) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
         if (nx != ny) K(2, "material", ny - nx); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
