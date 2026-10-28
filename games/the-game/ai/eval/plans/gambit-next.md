@@ -469,6 +469,9 @@ line short at once by a block shown (**demand**).
   the toward lines proven by a loss a few frames past the proof frame (199 and 218 against 193 and 174) -- every flip a line part
   pressed and left. Under garbage a line that converts nothing, now or in its plan, proves nothing (rank.c proofOf): it is only lost
   later.
+- 1380, 16/24 (4, 7, 5): a line converting nothing unproven under garbage took the proof from holds and from survive lines that clear
+  for the stop time -- large_garbage-8 lived to 21509, five others lost. Narrowed to what 1379 showed: under garbage, a line that
+  presses swaps and neither breaks, plans a break nor clears (the toward lines) proves nothing.
 
 ## Where this stands
 
