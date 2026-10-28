@@ -596,3 +596,5 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - 1312, combo_storm 13/24: the survival line handed out as the plan cost six -- carried and pressed as judged, those lines did not live
   (a life kept 82%, readiness 986 misses): a survival line found in a few ms is not a plan. Out. The net later loss runs alone on
   1309's build.
+
+- Window wait is a budget per line: WINDOW_WAIT frames in all across a line's swaps, so a long clear line under a thin window cannot hold the window empty to its end (factory-3, 1386: 15 swaps under allow 6).

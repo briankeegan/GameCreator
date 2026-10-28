@@ -367,7 +367,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; baseCleared = bs.cleared; baseThrees = threesOf(&bs); if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
   j->base = baseBroke;
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 }, pieces = 0, links = 0;
-  int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
+  int32_t spent = 0, waited = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
   int kb = root;   // (the line's last node by ownChainBy)
   Moved moved = { 0 };   // (the pairs the line's swaps moved: movedUndoes)
 #define KB(m) do { if (ownChainBy > 0 && liveNode(x, (m)) && NODE(x, (m))->t <= ownChainBy) kb = (m); } while (0)
@@ -406,12 +406,13 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       // -- front.c keysFit, GUARDED -- and drops a line at a later one -- front.c follow -- so the line is cut there)
       // A LATER SWAP WAITS FOR THE WINDOW: the actions it is short of come back as older ones age out of the window, and the frame loop
       // presses a line's later swaps from the frames judged (front.c follow) -- so the line waits, the board played on, until the window
-      // pays for the walk (WINDOW_WAIT frames at most), and is cut only where waiting does not. A first swap is pressed as its answer is
-      // taken: it is cut
+      // pays for the walk, and is cut only where waiting does not. WINDOW_WAIT frames in all, over the line's swaps: a line that must wait
+      // at every swap holds the window empty to its end. A first swap is pressed as its answer is taken: it is cut
       if (acts > left && k > 0) {
         int32_t t0 = NODE(x, n)->t - NODE(x, root)->t, w = 1;
-        for (; w <= WINDOW_WAIT; w++) { int l2 = allowLeftAt(t0 + w, spent); if (bn && actionsFor(bn->curRow, bn->curCol, mr, mc, l2) <= l2) break; }
-        if (w <= WINDOW_WAIT) {
+        for (; w <= WINDOW_WAIT - waited; w++) { int l2 = allowLeftAt(t0 + w, spent); if (bn && actionsFor(bn->curRow, bn->curCol, mr, mc, l2) <= l2) break; }
+        if (w <= WINDOW_WAIT - waited) {
+          waited += w;
           int wn = step(x, n, MK_LONG, 0, 0, w);
           if (wn == STEP_NULL && clockOut()) { j->late = 1; break; }
           if (!liveNode(x, wn)) { j->dead = 1; j->deadAt = wn == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
