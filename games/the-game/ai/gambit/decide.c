@@ -229,6 +229,19 @@ static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
 static int carriedFromReady(void), carryWaitsOut(void);
+// (A BREAK TAKEN OUT AS A WASTED THREE, the log's wdrop=: its play, why -- 1 the judge played it to no break with a three made, 2 it
+// cuts the board's own chain short, 4 a combo or chain made outside every break -- the cells the search said it breaks and the judge
+// did, the wasted threes, and its swaps)
+#define WASTEDROPS 3
+static int32_t wasteDropN, wasteDrop[WASTEDROPS][6 + MAXLINE];
+static void wasteDropOf(const Judge *J) {
+  if (!(J->k.x.broke > 0) || wasteDropN >= WASTEDROPS) return;
+  int32_t *w = wasteDrop[wasteDropN++];
+  w[0] = J->k.play;
+  w[1] = (judgedWastes(&J->o.j) ? 1 : 0) | (cutsShort(J) ? 2 : 0) | ((J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0 ? 4 : 0);
+  w[2] = J->k.x.broke; w[3] = J->o.j.made.broke; w[4] = J->o.j.threes; w[5] = J->k.nseq;
+  for (int i = 0; i < J->k.nseq && i < MAXLINE; i++) w[6 + i] = J->k.seq[i];
+}
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
@@ -445,6 +458,8 @@ static int ranked(const Read *R, const Found *S) {
     }
     if (ns) sortJudged(order, n);
   }
+  // (the log's: of the lines the search offered as breaks taken out here, why -- wasteDropOf)
+  wasteDropN = 0;
   // NO WASTED THREE (the owner: only when not doing it would kill it): a line whose clears break nothing and throw nothing is taken out
   // of the order -- unless every other line is lost and a three lives, or is lost later: only there is a three a save, and the save asks
   // whether it outlasts them by a break's time
@@ -490,7 +505,7 @@ static int ranked(const Read *R, const Found *S) {
     }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { wasteDropOf(order[i]); dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; }
     // (a save confirmed: the survival search found the board lives on with it, or outlasts every line without it by a break's time -- its
     // three is no wasted three, a fact of the line the order reads like any other (rank.c threeNeeded), and the order ranks it)
     else if (saveLine) {

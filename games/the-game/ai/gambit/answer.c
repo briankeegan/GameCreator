@@ -576,7 +576,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(" svSeed="); L_i(outSeedPlayed); L_s("/"); L_i(outSeedIn); }
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
-  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1"); if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); onLogSlices = 0; }
+  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1");
+  for (int i = 0; i < wasteDropN; i++) { const int32_t *w = wasteDrop[i]; L_s(i ? "," : " wdrop="); L_play(w[0]); L_s(":"); L_i(w[1]); L_s(":"); L_i(w[2]); L_s("/"); L_i(w[3]); L_s(":t"); L_i(w[4]); L_s(":"); for (int k = 0; k < w[5] && k < MAXLINE; k++) { if (k) L_s(";"); L_i(CR(w[6 + k])); L_s("."); L_i(CC(w[6 + k])); } } if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); onLogSlices = 0; }
   L_s(" back="); L_i(decQ.b->lastSwapA); L_s(","); L_i(decQ.b->lastSwapB);   // (the pair the last swap swapped, on the decision's board: rules.c putBackFor)
   if (flatAsked) { L_s(" fs="); L_i(flatFound); L_s("/"); L_i(flatLen); L_s("/"); L_i(flatSteps); L_s("/"); L_i((int64_t)flatMsUsed); }   // (the flatten search: found, its length, the swaps it pressed, its ms -- search/solve.c)
   L_s(" br=");
