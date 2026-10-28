@@ -24,7 +24,9 @@ typedef struct { int32_t n; Outlived o[OUT_POOL]; } OPool;
 // actions: the order's own keys (rank.c compareJudged), so the search keeps what the order will want. A line that buys a few frames by
 // clearing the panels the next break is made of spends the board's life, not saves it)
 static int32_t rankSave;   // (rank.c: the frames one break takes)
-static int32_t outBand(int32_t lost) { return lost == FOREVER ? 0x7fffffff : lost / imax(1, rankSave > 0 ? rankSave : 60); }
+static LOCAL int32_t lookSaveOwn;   // (the look-ahead's thread: the decision's rankSave when it asked -- decide.c lookThread)
+static int32_t saveFrames(void) { return inJob == 3 ? lookSaveOwn : rankSave; }
+static int32_t outBand(int32_t lost) { int32_t rs = saveFrames(); return lost == FOREVER ? 0x7fffffff : lost / imax(1, rs > 0 ? rs : 60); }
 static double outMargin(const Question *q, const Board *b, int32_t endAt, int acts) {
   if (!b) return -1;
   // (as if everything shown has landed: the rows still coming after the line's end counted against its room -- the order's own reading)
@@ -38,7 +40,7 @@ static double outMargin(const Question *q, const Board *b, int32_t endAt, int ac
 static int outBefore(const OItem *it, const Outlived *o) {
   int fi = it->lost == FOREVER, fo = o->lostAt == FOREVER;
   if (fi != fo) return fi;
-  int32_t save = imax(1, rankSave > 0 ? rankSave : 60);
+  int32_t rs = saveFrames(), save = imax(1, rs > 0 ? rs : 60);
   int di = !fi && it->lost < save, d0 = !fo && o->lostAt < save;
   if (di != d0) return !di;
   if (it->margin != o->margin) return it->margin > o->margin;

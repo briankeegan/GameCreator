@@ -20,7 +20,7 @@ int hostLockstep(void);
 int hostForce(int *at, int *k);
 int hostThread(void *(*fn)(void *));
 int hostWorkers(void *(*fn)(void *), int most);
-int hostIdleThread(void *(*fn)(void *), const char *name);
+int hostIdleThread(void *(*fn)(void *), const char *name, int spare);
 int hostOpenLog(const char *path);
 void hostCrashHandler(void);
 void hostLog(const char *s);
@@ -169,6 +169,7 @@ static int frameOut(void) {
 }
 static void ringKeep(int32_t at, int32_t id);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
+  lookPause();   // (the look-ahead held while the window and the pace it reads are written: let go once the board is read, answer.c)
   double t0 = clock_ms();
   wallCut = 0;
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
@@ -293,6 +294,7 @@ static int32_t ages[512];
 // engine's pool's (search.h workerLoop) -- every batch of steps a search hands the pool (core/nodes.h stepMany) is played on them all.
 static void *gnWorker(void *arg) { paThreadId((int)(long)arg); workerLoop(); return 0; }
 static void *onThreadMain(void *arg) { (void)arg; paThreadId(MAXTHREADS - 2); onThread(); return 0; }
+static void *lookMain(void *arg) { (void)arg; paThreadId(MAXTHREADS - 3); lookThread(); return 0; }
 static void vetoDumpNative(int32_t at, const Board *b) { dumpBoard("GAMBITV", at, b, 0, 0); }
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {
   hostTaps = 1;
@@ -310,10 +312,12 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   static int started;
   if (!started) {
     started = 1;
-    int n = hostWorkers(gnWorker, MAXTHREADS - 3);
+    int n = hostWorkers(gnWorker, MAXTHREADS - 4);
     while (__atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST) < n) {}
     // (and the break search between decisions, a thread of its own beside the pool, where there are workers' CPUs for it)
-    if (n > 0 && hostIdleThread(onThreadMain, "gbetween") == 0) onThreadOn = 1;
+    if (n > 0 && hostIdleThread(onThreadMain, "gbetween", 0) == 0) onThreadOn = 1;
+    // (and the look-ahead beside the decisions, on the game's own CPU: decide.c lookThread)
+    if (n > 0 && hostIdleThread(lookMain, "glook", 1) == 0) __atomic_store_n(&lookOn, 1, __ATOMIC_RELEASE);
     static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
   }
   return 0;
