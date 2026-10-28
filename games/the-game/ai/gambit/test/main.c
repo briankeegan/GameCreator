@@ -196,6 +196,31 @@ int main(int argc, char **argv) {
     gzclose(z);
     return 0;
   }
+  // test DIR front FRAMES: each question of decisions.txt.gz played FRAMES frames by the frame loop and Gambit's thread (gb_front_sim), its
+  // window as the dump logs it -- the frames played, and the window held (front.c: the lines reached as judged, those the window held
+  // fewer actions for)
+  if (argc > 3 && !strcmp(argv[2], "front")) {
+    snprintf(path, sizeof path, "%s/rules.words", dir);
+    if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+    snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
+    gzFile z = gzopen(path, "r");
+    if (!z) { fprintf(stderr, "test: no %s\n", path); return 2; }
+    static int32_t fo[2 * 8000]; int frames = atoi(argv[3]), tc = 0, ts = 0, tw = 0;
+    while (gzgets(z, line, sizeof line)) {
+      int mode = atoi(line);
+      const char *b = strstr(line, "GAMBITB "); if (!b) continue;
+      char tag[64]; snprintf(tag, sizeof tag, "%.20s", b + 8); char *sp = strchr(tag, ' '); if (sp) *sp = 0;
+      condsOfLine(b);
+      int narr, n = loadLine(b, &narr);
+      if (n < 0 || gb_question_bytes(n, narr) != 0) continue;
+      int k = gb_front_sim(frames < 8000 ? frames : 8000, 16, mode, fo);
+      int32_t wh[3]; gb_win_held(wh); tc += wh[0]; ts += wh[1]; if (wh[2] > tw) tw = wh[2];
+      printf("front %s: %d frames played, window held %d of %d short (%d at most)\n", tag, k, wh[1], wh[0], wh[2]); fflush(stdout);
+    }
+    gzclose(z);
+    printf("the window held: %d of %d lines reached as judged found the window holding fewer actions than the judge read (%d fewer at most)\n", ts, tc, tw);
+    return 0;
+  }
   // test DIR verdict LINES: the judge's verdict (gb_line_verdict) on the line LINES gives each question of decisions.txt.gz, a line each --
   // "hold" or r,c;r,c;... -- every line judged on one judge, whoever chose it
   if (argc > 3 && !strcmp(argv[2], "verdict")) {

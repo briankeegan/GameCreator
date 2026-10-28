@@ -59,6 +59,8 @@ typedef struct {
   int32_t late;                 // the clock stopped it: no answer
   int32_t firstMade;            // what the line's first swap made, as the swap back reads it (madeBy)
   int32_t leftEnd;              // the actions the input window leaves once the line's swaps are pressed (allowLeftAt; -1 none said)
+  int32_t leftNext, nextAt;     // the actions the window holds when the line's second swap's walk begins, and that frame from the root
+                                // (-1: no second swap, or none said) -- the frame loop holds the window to it (front.c, the window held)
   int32_t netPanels;            // THE MATERIAL LEDGER: garbage cells the line converts less the panels its clears take, beyond the board left
                                 // alone -- what the line leaves the next break made of (rank.c, under the floor)
   int32_t spent, endAt;         // the actions the line's swaps spend, and the frame from the root its last is pressed by (outcome.c leftAtLanding)
@@ -353,7 +355,7 @@ static int movedUndoes(const Board *b, int32_t mv, const Moved *m) {
 static LOCAL int32_t lineAt0, lineWaitTo;   // (and lineWaitTo: its board run to that frame and let settle before its first swap)
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->readyLeft = -1; j->readyActs = -1; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->readyLeft = -1; j->readyActs = -1; j->leftNext = -1; j->nextAt = -1; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -393,6 +395,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (!last && pressAllowance >= 0) {
       Board *bn = ensureBoard(x, n);
       int left = allowLeftAt(NODE(x, n)->t - NODE(x, root)->t, spent);
+      if (k == 1) { j->leftNext = left; j->nextAt = NODE(x, n)->t - NODE(x, root)->t; }
       pressTight = tightAt(left);
       int acts = bn ? actionsFor(bn->curRow, bn->curCol, mr, mc, left) : 0;
       // (THE PACE AT THIS SWAP: the wait after it as the window it is pressed in sets it -- the frame loop keys every swap with the pace of

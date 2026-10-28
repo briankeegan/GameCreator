@@ -42,7 +42,7 @@ typedef struct {
   int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
   double ms, idleMs, closeMs;
   int32_t readyFrame;          // the frame the frame loop takes it on: the question's frame and its work's frames (native.c answerOne)
-  int32_t leftEnd, endAt;      // the actions the judge read the window leaving once its line is pressed, by the frame `at` + endAt (-1 none)
+  int32_t leftNext, nextAt;    // the actions the judge read the window holding when its line's second swap's walk begins, at `at` + nextAt (-1 none)
 } FAnswer;
 static void postQuestion(FQuestion *q);   // native.c
 static int takeAnswer(FAnswer *a);        // native.c: 1 when one was waiting
@@ -60,8 +60,8 @@ typedef struct {
   int32_t behind, behindWorst;   // (a line's swaps whose keys began later than the frame the judge pressed them from, and by how much at most)
   int32_t putBack;               // (swaps refused at the press for putting the last pair pressed back for nothing: front.c putsBack -- the owner: never)
   int32_t idleQueued;            // (frames the board was idle with garbage queued on it: each one a block landing -- pa.c shouldDropGarbage)
-  int32_t winChecked, winShort, winShortWorst;   // (THE WINDOW HELD: lines whose end the frame loop reached as judged, those that found the
-                                                 // window holding fewer actions than the judge read, and by how many at most)
+  int32_t winChecked, winShort, winShortWorst;   // (THE WINDOW HELD: lines whose second swap the frame loop reached as judged, those that
+                                                 // found the window holding fewer actions than the judge read, and by how many at most)
   int32_t revealCleared;         // (plans dropped for a panel unseen when they were made coming to a clear: front.c revealClears)
   int32_t combo[64], chain[32];
   // each chain link past the list's two, by its cause: panels out of garbage (colours not shown when it was decided), a swap pressed
@@ -110,7 +110,7 @@ static struct {
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
   int32_t lineProven;   // and was proven (FAnswer.proven): its swaps pressed as judged
-  int32_t winAt, winLeft;      // (the line in hand: the frame it is pressed by, as judged, and the actions the judge read the window leaving then)
+  int32_t winAt, winLeft;      // (the line in hand: the frame its second swap's walk begins, as judged, and the actions the judge read the window holding then)
   double thinking[FTHINK]; int32_t nthinking;
   double msPerFrame, wall, wallPerFrame;   // a frame on the work clock (the game's 1/60 s, every decision's) and on the wall's (native.c's guard)
   // the input budget: its limit and window, the frames the keys still inside it were pressed, the keys held last frame
@@ -636,7 +636,7 @@ static void take(void) {
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
     F.lineWastes = a.wastes; F.lineProven = a.proven;
     unseenOf(F.pBoard);
-    F.winAt = a.leftEnd >= 0 && a.endAt >= 0 && a.nhand > 0 ? a.at + a.endAt : -1; F.winLeft = a.leftEnd;
+    F.winAt = a.kind == 1 && a.leftNext >= 0 && a.nextAt > 0 ? a.at + a.nextAt : -1; F.winLeft = a.leftNext;
     F.lineN = a.nhand; F.lineGap = F.pGap; F.linePlay = a.play; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0; F.playedId = a.id;
   }
@@ -891,8 +891,9 @@ static int frontFrame(void) {
   char why[160];
   F.now = now;
   countAttacks(t);
-  // (THE WINDOW HELD: at the frame the judge said the line in hand is pressed by, the window holds what the judge read it leaving --
-  // the presses made, as the game counts them. A window holding fewer is a line judged pressable that the frame loop cannot press)
+  // (THE WINDOW HELD: at the frame the judge said the line in hand's second swap's walk begins, the window holds what the judge read --
+  // the first swap's keys pressed, as the game counts them. A window holding fewer is a line judged pressable that the frame loop cannot
+  // press -- the frame loop asks again before every swap, so the second swap's frame is the one every line reaches)
   if (F.winAt >= 0 && now == F.winAt) {
     int real = allowanceAt(now); F.st.winChecked++;
     if (real < F.winLeft) { F.st.winShort++; if (F.winLeft - real > F.st.winShortWorst) F.st.winShortWorst = F.winLeft - real;

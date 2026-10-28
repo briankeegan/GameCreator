@@ -196,7 +196,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   out->id = q->id; out->epoch = q->epoch; out->at = q->at; out->kind = A->d.kind; out->move = A->d.move; out->play = A->play;
   out->tap = A->tap; out->raiseNow = A->raiseNow; out->raiseAfter = A->raiseAfter; out->raiseWait = A->raiseWait; out->nhand = A->nhand;
   for (int i = 0; i < A->nhand; i++) { out->hand[i] = A->hand[i]; out->handAt[i] = A->handAt[i]; }
-  out->wastes = A->wastes; out->proven = A->proven; out->leftEnd = A->leftEnd; out->endAt = A->endAt;
+  out->wastes = A->wastes; out->proven = A->proven; out->leftNext = A->leftNext; out->nextAt = A->nextAt;
   out->holdLives = A->holdLives; out->brk = A->brk; out->urgent = A->urgent; out->idleMs = A->idleMs;
   out->empty = A->empty; out->nalt = A->nalt; for (int i = 0; i < A->nalt; i++) out->alt[i] = A->alt[i];
   out->ms = nowMs(); out->closeMs = clockWentOut ? nowMs() - clockWentOut : 0;
