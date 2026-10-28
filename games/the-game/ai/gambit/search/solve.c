@@ -6,7 +6,7 @@
 // Each line is asked after every swap: once the board has settled, has it broken more garbage than the board left alone has by then?
 // A break made by a fall -- panels or a block let down into a match against garbage -- shows only once the board has settled, so the
 // swap's own frame is never where it is asked. The line found goes through the shared line check (outcome.c lineCheckOn), as every
-// search's does, and the judge's own pressing of it must break too: it is proposed and judged like any other (propose.c).
+// search's does, and is proposed and judged like any other (propose.c).
 // (WANTED: garbage on the board resting with a gap under it -- of the columns under the lowest garbage, some whose top panel does not touch
 // it (judge.c contactOn): the board the owner's play is for, "drop the top blocks down and break with a three". Elsewhere the break search
 // and the extension reach every break a flatten would)
@@ -68,12 +68,7 @@ static int flattenBreak(const Question *q, double ms, int32_t *path, int *n) {
         if (liveNode(x, st) && NODE(x, st)->brk > flatStill(x, root, NODE(x, st)->t)) {
           int32_t line[FLAT_DEPTH + 1]; int L = d + 1; line[d] = ms2[k];
           for (int dd = d - 1, slot = i; dd >= 0; dd--) { line[dd] = hist[dd + 1][slot][1]; slot = hist[dd + 1][slot][0]; }
-          // (and the break as the judge presses it -- the window's pace at every swap, the walks as the frame loop walks them -- not only
-          // as this search pressed it: a line offered as a break the judge plays to none is one the order throws away)
-          if (lineCheckOn(q, line, L, 0, breakOpen ? 0 : CHECK_WASTE)) {
-            Outcome oc = outcome(line, L, 1);
-            if (!oc.dead && !oc.late && !judgedCut(&oc.j) && oc.j.made.broke > 0) { for (int j = 0; j < L; j++) path[j] = line[j]; *n = L; found = 1; break; }
-          }
+          if (lineCheckOn(q, line, L, 0, breakOpen ? 0 : CHECK_WASTE)) { for (int j = 0; j < L; j++) path[j] = line[j]; *n = L; found = 1; break; }
           continue;
         }
         Board *cb = ensureBoard(x, c); if (!cb) continue;
