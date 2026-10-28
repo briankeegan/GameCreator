@@ -394,6 +394,20 @@ line short at once by a block shown (**demand**).
   461 dropped for a three on its way, the line played lost at 333).
 - 1345: a line that breaks garbage wastes no three (judge.c judgedWastes). On the 299 run-up boards, 20 decisions change, 15 lost later
   and none sooner.
+- 1346 to 1358, on the goal's 24: 13 (combo_storm 8/8 for the first time), then 5 to 11 while the order was searched, then 17
+  (combo_storm 6, factory 7, large_garbage 4). The old build 01290f76 played again on today's runners scored 15 (1, 7, 7): it held
+  factory and large_garbage. Today's Gambit on the wall clock scored 2 (gambit-paced, 1352): lockstep hides how heavy a decision
+  has become. What the old build did and today's did not, each found on a board and fixed in the order or the searches:
+  - the margin's penalty for a line dead or spending the next break was a row over the top, better than a board buried under the
+    blocks shown reads -- the penalised line ranked first (MARGIN_LEAST);
+  - a hold lived by a readiness break the board died before pressing, ready again each decision under a queue of blocks;
+  - of two lines that convert, the one that leaves the board more panels (netPanels), and the one that leaves a next break to build,
+    first -- a 6-combo bought two rows with the stack's own panels until no break could be built (large_garbage-3, 8622 to 9417);
+  - the flatten search where a block rests over a gap: the well under it was dug out where the towers had to come down (factory-4,
+    8413). factory 2 to 7.
+  Every key of the order is read off each line alone: keys guarded by the pair's losses ranked three lines in a ring (one order, 56).
+  The C check gains `test DIR replay WORK` (each question decided on WORK frames, with its log line) and `test DIR verdict LINES` (any
+  chooser's lines judged on one judge); the report counts, per mode, what is played while a slab pops.
 
 ## Where this stands
 
