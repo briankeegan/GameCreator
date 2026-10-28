@@ -84,23 +84,26 @@ static void *workerStart(void *arg) {
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
   return workerFn(arg);
 }
-// A THREAD AT THE IDLE CLASS beside the workers, on their CPUs, named `name`: 0 started
-static void *(*idleFn)(void *); static const char *idleName;
-// (on GC_GAMBIT_SPARE_CPU where it is set -- the game's own CPU, eval/training.sh: at the idle class it takes only the cycles the game
-// leaves, about seven tenths of that CPU -- else where the workers are)
-static void *idleStart(void *arg) {
-  const char *w = getenv("GC_GAMBIT_SPARE_CPU");
+// A THREAD AT THE IDLE CLASS, named `name`, handed `arg`: on the spare CPU (GC_GAMBIT_SPARE_CPU -- the game's own, eval/training.sh: at
+// the idle class it takes only the cycles the game leaves, about seven tenths of that CPU) where `spare` and it is set, else where the
+// workers are. 0 started
+typedef struct { void *(*fn)(void *); const char *name; void *arg; int spare; } IdleArg;
+static void *idleStart(void *p) {
+  IdleArg *a = (IdleArg *)p;
+  const char *w = a->spare ? getenv("GC_GAMBIT_SPARE_CPU") : 0;
   if (!w || !*w) w = getenv("GC_GAMBIT_WORKER_CPUS");
   if (w && *w) pinnedTo(w); else pinned();
-  pthread_setname_np(pthread_self(), idleName);
+  pthread_setname_np(pthread_self(), a->name);
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
-  return idleFn(arg);
+  return a->fn(a->arg);
 }
-int hostIdleThread(void *(*fn)(void *), const char *name) {
+int hostIdleThread(void *(*fn)(void *), const char *name, void *arg, int spare) {
+  static IdleArg args[8]; static int nargs;
+  if (nargs >= 8) return -1;
+  IdleArg *a = &args[nargs++]; a->fn = fn; a->name = name; a->arg = arg; a->spare = spare;
   pthread_t t; pthread_attr_t at;
-  idleFn = fn; idleName = name;
   pthread_attr_init(&at); pthread_attr_setstacksize(&at, 64ul << 20);
-  int r = pthread_create(&t, &at, idleStart, 0);
+  int r = pthread_create(&t, &at, idleStart, a);
   pthread_attr_destroy(&at);
   return r;
 }
