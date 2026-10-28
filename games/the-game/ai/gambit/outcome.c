@@ -181,7 +181,11 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
     int32_t ready = o.j.ready;
     int breaks = o.j.made.broke > 0, stands = o.j.lostAt == FOREVER;
     o.dead = 0; o.ready = ready;
-    o.lives = breaks || !coming ? (stands || ready == 1) : (ready == 1 || (ready == NOT_ASKED && stands));
+    // (READY IS LIFE ONLY IF THE BOARD LASTS TO IT: the break readiness found is pressed on the board to come, so a line lives by it only
+    // when its board, left alone, stands until that break is pressed and done -- the readiness frame and a break's time. Under a queue of
+    // blocks the board to come is always one landing on: a hold whose board dies first, ready again every decision, waited itself out)
+    int readyLasts = ready == 1 && (stands || o.j.lostAt == NOT_ASKED || o.j.lostAt > o.j.readyWait + imax(1, rankSave));
+    o.lives = breaks || !coming ? (stands || readyLasts) : (readyLasts || (ready == NOT_ASKED && stands));
     o.fits = lineInList(&o.j, 1);
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
