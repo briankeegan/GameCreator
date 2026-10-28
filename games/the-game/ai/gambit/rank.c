@@ -623,6 +623,13 @@ static int diesNow(const Judge *J) { return !livesOf(J) && lostOf(J) < imax(1, r
 // (A LINE'S LOSS IN WHOLE BREAKS' TIME from now: lostOf over rankSave, a loss not known or never as the most there is)
 #define SOON_BREAKS 3   // (a break popping, the next built, the next popping)
 static int32_t breaksTo(const Judge *J) { double l = lostOf(J); return l >= 1e8 ? 1 << 30 : (int32_t)(l / imax(1, rankSave)); }
+// (THE LINE'S OWN LOSS IN BREAKS' TIME, of an unproven line: its board's, without the readiness break it leads to -- that break is still
+// to be pressed after the line, through garbage not yet shown, and the proof is what reads it, with its margin for that garbage)
+static int32_t ownBreaksTo(const Judge *J) {
+  if (J->idle) return breaksTo(J);
+  double l = lostAtOf(J->o.lostAt, J->hold);
+  return l >= 1e8 ? 1 << 30 : l < 0 ? -1 : (int32_t)(l / imax(1, rankSave));
+}
 // (GARBAGE TO BREAK: on the board, or shown on its way -- a block shown lands and is broken as one on the board is)
 static int garbHere(void) { return decF.under || (decF.next != NOT_ASKED && decF.next >= 0); }
 static int compareJudged(const Judge *x, const Judge *y) {
@@ -648,7 +655,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (A BOARD LOST BEFORE ITS NEXT BREAK COULD POP: the material is worth a break only to a board that lives to build and pop it --
       // its own break popping, the next one built, then popped: SOON_BREAKS breaks' time. Within it the line lost later first; past it
       // the material decides and the loss comes after it. One key, read off each line alone: the breaks' time to its loss, capped)
-      { int32_t sx = imin(breaksTo(x), SOON_BREAKS), sy = imin(breaksTo(y), SOON_BREAKS); if (sx != sy) K(2, "soon", sy - sx); }
+      { int32_t sx = imin(ownBreaksTo(x), SOON_BREAKS), sy = imin(ownBreaksTo(y), SOON_BREAKS); if (sx != sy) K(2, "soon", sy - sx); }
       // (THE NEXT BREAK LEFT TO BUILD: of two lines that convert, the one whose board still has a break to build and keeps the floor
       // (judgeCand material: outcome.c nextBuild, floorKept) -- a break that leaves none is the last the board makes. Each key of the
       // order is read off each line alone and is had by every line -- a line with none reads last -- so the order is one order)
@@ -662,7 +669,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
         if (nx != ny) K(2, "material", ny - nx); }
       // (THE LONGER LOSS IN WHOLE BREAKS' TIME: of two lines alike in the next break and the material, the one lost a break's time later
       // has a break more to find before it -- the margin and the later loss decide within a break's time; from now, read off each line alone)
-      { int32_t lx = breaksTo(x), ly = breaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
+      { int32_t lx = ownBreaksTo(x), ly = ownBreaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
 

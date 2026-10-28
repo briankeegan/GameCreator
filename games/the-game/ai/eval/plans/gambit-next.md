@@ -459,6 +459,11 @@ line short at once by a block shown (**demand**).
   frames. With a window to keep, the touch beam now ranks a level's breaks by cells broken per action, then the fewer actions, and
   searches the level after the first break found every time (it did only past CHEAP_BREAK actions). On these boards no bigger break
   is one swap on: the blocks convert a row a break, and only a chain through the converted panels breaks more.
+- 1378, 18/24 (7, 4, 7), every gate green; factory-2 and factory-4 as in 1377. factory-4 at 3311: from 2907 to 2983 toward lines of 8
+  to 11 swaps that break nothing, lost at 302 and at 405 by the readiness break they lead to, were played over lines lost at 339 on
+  their own, by "longer"; at 2999 a block shown landing a frame later took the plan away, the window ran from 17 to 5. Of unproven
+  lines, "soon" and "longer" now read a line's own loss (ownBreaksTo): the readiness break is still to be pressed after the line,
+  through garbage not yet shown, and the proof is what reads it, with its margin for that garbage.
 
 ## Where this stands
 
