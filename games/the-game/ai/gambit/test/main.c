@@ -37,6 +37,7 @@ int gb_line_agree(int *n);
 int gb_held_off(int *held, int *offCell);
 const char *gb_line_shown(void);
 int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out);
+void gb_win_held(int32_t *o);
 int gb_frames(int mr, int mc, int frames, int32_t *out);
 int gb_stall_check(int gap, int frames, int32_t *out);
 int gb_clock_work(void);
@@ -352,6 +353,7 @@ int main(int argc, char **argv) {
   FILE *fb = getenv("TSAN_OPTIONS") ? 0 : fopen(path, "r");
   if (fb) {
     int boards = 0, outlived = 0;
+    int winChecked = 0, winShort = 0, winWorst = 0;
     static int32_t fo[2 * 4000];
     while (fgets(line, sizeof line, fb)) {
       int mode = atoi(line), narr;
@@ -362,11 +364,13 @@ int main(int argc, char **argv) {
       int alone = gb_frames(0, 0, 2000, fo);
       if (gb_question_bytes(n, 0) != 0) continue;
       int k = gb_front_sim(alone + 120, 16, mode, fo);
+      { int32_t wh[3]; gb_win_held(wh); winChecked += wh[0]; winShort += wh[1]; if (wh[2] > winWorst) winWorst = wh[2]; }
       boards++; outlived += k > alone + 1;
       if (k <= alone + 1) printf("  lost on its way out (mode %d): %d frames left alone, %d played\n", mode, alone, k);
     }
     fclose(fb);
     printf("%s: a board on its way out -- %d of %d outlived the frame they are lost on left alone\n", outlived < boards || !boards ? "FAIL" : "ok", outlived, boards);
+    printf("the window held: %d of %d lines reached as judged found the window holding fewer actions than the judge read (%d fewer at most)\n", winShort, winChecked, winWorst);
     fail |= outlived < boards || !boards;
   }
   // ---- switching: every direction between the modes, over a run's games (gambit-switch.json's stretch)

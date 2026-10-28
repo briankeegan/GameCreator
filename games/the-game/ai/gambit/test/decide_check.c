@@ -278,6 +278,8 @@ EXPORT(gb_front_sim) int gb_front_sim(int frames, int msPerFrame, int mode, int3
   paThreadId(0);
   return k;
 }
+// (THE WINDOW HELD on the last frame loop played: lines reached as judged, those the window held fewer actions for, by how many at most)
+EXPORT(gb_win_held) void gb_win_held(int32_t *o) { o[0] = F.st.winChecked; o[1] = F.st.winShort; o[2] = F.st.winShortWorst; }
 // (the board kept at gb_frames_keep's frame, a few of its numbers: its clock, stop, shake, the queue, the garbage made, the top -- for the
 // checks' tools to hold it beside a board the game logged)
 EXPORT(gb_frames_kept_info) int gb_frames_kept_info(int32_t *out) {

@@ -130,6 +130,7 @@ var beaten = { n: 0, by: {} };
 var gates = { lessProven: 0, proofNone: 0, proofNew: 0, proofCut: 0, heldFor: 0, shares: [{}, {}, {}, {}] };
 var veto = { asked: 0, boards: 0, played: 0, cut: 0 };
 var brNone = { n: 0, cut: 0 };   // (decisions whose break search found none, and those the clock cut)   // (the reserve veto, decide.c: decisions that asked it, boards searched, lines played below the top for a break in reach)
+var winHeld = { checked: 0, short: 0, worst: 0 };   // (THE WINDOW HELD, front.c: lines reached as judged, those the window held fewer actions for)
 var putBack = 0, idleQ = { lost: { frames: 0, idle: 0 }, survived: { frames: 0, idle: 0 } };   // (pairs put back for nothing refused at the press; frames idle with garbage queued, by outcome)
 var catd = { n: 0, missing: 0 };   // (decisions that offered lines, and those whose lines carry no category)   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
@@ -297,6 +298,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       budget.diverged += o.diverged || 0; if (o.diverged) budget.divergedGames++;
       budget.behind += o.behind || 0; if (o.behind) budget.behindGames++; budget.behindWorst = Math.max(budget.behindWorst, o.behindWorst || 0);
       budget.starved += o.starved || 0; budget.inHand += o.inHand || 0; budget.guarded += o.guarded || 0; budget.refused += o.refused || 0;
+      winHeld.checked += o.winChecked || 0; winHeld.short += o.winShort || 0; winHeld.worst = Math.max(winHeld.worst, o.winShortWorst || 0);
       putBack += o.putBack || 0; idleQ[m[2]].frames += o.frames || 0; idleQ[m[2]].idle += o.idleQueued || 0;
       var a = o.attacks || {};
       ['combo', 'chain'].forEach(function (k) { Object.keys(a[k] || {}).forEach(function (z) { t[k][z] = (t[k][z] || 0) + a[k][z]; }); });
@@ -423,6 +425,7 @@ console.log('shares: ' + constShares.length + ' margin shares constant over the 
 // refusals, each a line the judge let through with its first swap putting the last pair pressed back for nothing (rules.c putBackFor)
 console.log('reserve veto: ' + veto.played + ' decisions played a line below the top for a break in reach on the board it leaves, of ' + veto.asked + ' that asked (' + veto.boards + ' boards searched, ' + veto.cut + ' answers the clock cut, taken as unknown)');
 console.log('no break found: ' + brNone.n + ' decisions, the clock cut ' + brNone.cut + ' of those searches (a cut none is not none)');
+console.log('the window held: ' + winHeld.short + ' of ' + winHeld.checked + ' lines reached as judged found the window holding fewer actions than the judge read (' + winHeld.worst + ' fewer at most)');
 console.log('put back: ' + putBack + ' swaps refused at the press for putting the last pair pressed back for nothing');
 // THE IDLE FRAME: garbage lands only on a frame the board is idle (test/stall_check.c) -- how many a minute, games lost against survived
 function idleRate(k) { return idleQ[k].frames ? (idleQ[k].idle * 3600 / idleQ[k].frames).toFixed(0) : '-'; }

@@ -240,6 +240,8 @@ typedef struct {
   int32_t sooner;   // the line played is less proven than one offered, or dead before it could press anything while one is not
   int32_t wastes;   // the line played makes a three for nothing as the judge saw it, and the survival search found the board needed it (decide.c saveOk)
   int32_t proven;   // the line played is proven (rank.c proofOf): the frame loop presses it as judged (plans/gambit-next.md 6)
+  int32_t leftEnd, endAt;   // the actions the judge read the window leaving once the line played is pressed, and the frame from `at` it
+                            // is pressed by (judge.c leftEnd, endAt; -1 none) -- the frame loop holds the window to it (front.c)
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
   int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
   int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
@@ -393,6 +395,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!R.under || (ran && theBr.depth)) touchDepthNext = TOUCH_DEPTH;
   else if (ran && !brCut && !theBr.depth) touchDepthNext = imin(touchDepth + 1, TOUCH_DEPTH_MAX);
   A->proven = top ? proofOf(top) > 0 : 0;
+  A->leftEnd = P.line && !P.line->hold ? P.line->o.j.leftEnd : -1; A->endAt = P.line && !P.line->hold ? P.line->o.j.endAt : -1;
   A->holdLives = d.kind == 0 && top && top->o.lives;
   A->wastes = P.line && !R.up && wastesThree(P.line) && P.line->threeNeeded;   // (the line's own verdict: its three the board's save)   // (a three the survival search found the board needed not to die)
   // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
