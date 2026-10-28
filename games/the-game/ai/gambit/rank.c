@@ -44,6 +44,7 @@ typedef struct {
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
   int32_t threeNeeded;   // its three the save confirmed the board needs not to die (decide.c): no wasted three to the list
+  int32_t fallback;      // an attack of its own, breaking nothing, that meets an entry of the list after its first, or none (offList)
   int32_t holdSunk;    // a hold lost sooner than a line lost alike with it that keeps the board's own chain: after every line lost alike (sortJudged)
   double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
@@ -52,7 +53,7 @@ typedef struct {
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press, w a wasted three, j the clock stopped its judging)
-enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, NDROPS };
+enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, DROP_FALLBACK, NDROPS };
 // (each thread's own -- the judging runs on every thread, decide.c judgeJob, and each candidate's are added in order after)
 static LOCAL int32_t dropped[NPLAYS][NDROPS];
 static int32_t offered[NPLAYS];
@@ -142,6 +143,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // and leaving it alone -- the hold -- meets what it makes)
   int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
   J->met = j ? entry : -1;
+  // (THE LIST'S FIRST ENTRY IS WHAT THE MODE GOES FOR, the owner: the rest are for when not doing them would kill it -- decide.c takes a
+  // fallback out of the order as it takes a wasted three. A break is the rule under garbage, never a fallback)
+  J->fallback = j && R->asked.n > 0 && entry != 0 && !(m.broke > 0) && (m.combo >= 4 || m.chain >= 2);
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
   J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;
   // (the entry a line is ranked for is the one the judged line meets; the search's word only where the judge could not play it out)
