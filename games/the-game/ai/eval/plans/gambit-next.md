@@ -610,6 +610,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   with 300k frames of work and not the decision's 180k.
 - 1391, 21/24 (6, 7, 8): a breaking line lost at the window's pace with every swap pressed, judged again and played unpaced. Both of
   1390's deaths survive; combo_storm-1, combo_storm-4 and factory-3 die. Reverted to 1390's build.
-- The work clock re-measured on 1390's runners: 760-897 engine frames a wall ms at the median of decisions (407-473 at the 5th
-  percentile), against the 600 of run 1055. WORK_PER_MS 800. In the deaths of 1388-1391 the clock cut 3-27 searches each; factory-1's
-  break at 14034 takes 300k frames and had 180k.
+- 1392, 21/24 (8, 6, 7) at WORK_PER_MS 800: factory-5 (a solvent line passed over), factory-7, large_garbage-3. Back to 600. Every run
+  1389-1392 took 34-43 answers past their frame (the work clock behind the wall), so a game is not its seed's alone: 22 against 21 is
+  inside one run's noise.
