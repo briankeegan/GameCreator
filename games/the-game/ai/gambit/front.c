@@ -59,6 +59,7 @@ typedef struct {
           raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps, starved, inHand;
   int32_t behind, behindWorst;   // (a line's swaps whose keys began later than the frame the judge pressed them from, and by how much at most)
   int32_t putBack;               // (swaps refused at the press for putting the last pair pressed back for nothing: front.c putsBack -- the owner: never)
+  int32_t putBackShown;          // (and those refused after a colour the line was judged without was shown: a board the judge could not know)
   int32_t idleQueued;            // (frames the board was idle with garbage queued on it: each one a block landing -- pa.c shouldDropGarbage)
   int32_t winChecked, winShort, winShortWorst;   // (THE WINDOW HELD: lines whose second swap the frame loop reached as judged, those that
                                                  // found the window holding fewer actions than the judge read, and by how many at most)
@@ -982,9 +983,12 @@ static int frontFrame(void) {
   // (NO PAIR PUT BACK FOR NOTHING, the owner: refused whatever the plan, the plan dropped, the next decision asked on the board as it is
   // -- and the pair kept out of its first swaps a while, as a wasted three's is)
   if ((bits & IN_SWAP & ~F.prevBits) && putsBack(t)) {
-    bits &= ~IN_SWAP; dropAll(); F.st.putBack++;
+    // (a colour shown since the line's question -- a broken slab's, unseen when it was judged -- can make the board clear alone what the
+    // swap was judged to clear: the refusal is the board's news, not the judge's error, counted apart -- as a wasted three is, above)
+    int shown = F.lastReveal >= asked && F.lastReveal > 0;
+    bits &= ~IN_SWAP; dropAll(); if (shown) F.st.putBackShown++; else F.st.putBack++;
     F.refA = t->lastSwapA; F.refB = t->lastSwapB; F.refUntil = now + REFUSE_BLOCK;
-    if (F.st.putBack <= 12) { char l[240]; snprintf(l, sizeof l, "PUTBACK clock %d: the pair the last swap swapped (%d,%d at %d,%d), put back for nothing, refused -- made %d root %d out %d, asked %d for %d, play %d line %d idx %d", now, t->lastSwapA, t->lastSwapB, t->curRow, t->curCol, putBackMade, putBackRoot, putBackOut, asked, F.pAt, pk.play, pk.line, pk.idx); flog(l); }
+    if (F.st.putBack + F.st.putBackShown <= 12) { char l[260]; snprintf(l, sizeof l, "%s clock %d: the pair the last swap swapped (%d,%d at %d,%d), put back for nothing, refused -- made %d root %d out %d, asked %d for %d, play %d line %d idx %d", shown ? "PUTBACKSHOWN" : "PUTBACK", now, t->lastSwapA, t->lastSwapB, t->curRow, t->curCol, putBackMade, putBackRoot, putBackOut, asked, F.pAt, pk.play, pk.line, pk.idx); flog(l); }
   }
   if (bits & IN_SWAP & ~F.prevBits) { moveBegin(t, save, guard, &pk); if (pk.line >= 0) { F.pressedLine = pk.line; F.pressedIdx = pk.idx; } }
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
@@ -1060,10 +1064,10 @@ static void afterFrame(int32_t bits) {
 static void statsLine(char *out, int cap) {
   int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"pastFrame\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
-                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"putBack\":%d,\"idleQueued\":%d,\"winChecked\":%d,\"winShort\":%d,\"winShortWorst\":%d,\"attacks\":{\"combo\":{",
+                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"putBack\":%d,\"putBackShown\":%d,\"idleQueued\":%d,\"winChecked\":%d,\"winShort\":%d,\"winShortWorst\":%d,\"attacks\":{\"combo\":{",
                    F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.pastFrame, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
-                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.behind, F.st.behindWorst, F.st.revealCleared, F.st.putBack, F.st.idleQueued, F.st.winChecked, F.st.winShort, F.st.winShortWorst);
+                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.behind, F.st.behindWorst, F.st.revealCleared, F.st.putBack, F.st.putBackShown, F.st.idleQueued, F.st.winChecked, F.st.winShort, F.st.winShortWorst);
   int first = 1;
   for (int z = 0; z < 64 && k < cap; z++) if (F.st.combo[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.combo[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");
