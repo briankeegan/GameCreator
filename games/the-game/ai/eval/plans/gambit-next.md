@@ -477,6 +477,9 @@ line short at once by a block shown (**demand**).
   of the row the board breaks next -- the lowest garbage row on the board, else the first block shown -- and each row of a block shown is
   due its own row's pop after the last. Shake is the engine's already in every line's loss: on a landing the shake is the peak of the
   stretch in progress, the largest, reset to it by any block landing before it is out (Stack.lua 1679).
+- 1382, 19/24 (5, 7, 7): the order's unit of time from the row broken next shrank on combo_storm's narrow blocks (a 3-wide row 77 frames
+  against 95), and combo_storm lost two; factory and large_garbage played 1379's games exactly. The unit is a full row's break again; the
+  dues of a block shown stay its own rows' pops.
 
 ## Where this stands
 
