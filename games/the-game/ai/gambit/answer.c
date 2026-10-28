@@ -163,6 +163,10 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
+  // (A SLAB POPPING: the extension lines it up -- the colours it converts into met by the panels above, the next break made of them --
+  // and takes the worker second, before every other search: let go last, it was never begun while a slab popped)
+  int extFirst = extBeside && R->pop;
+  if (extFirst) jobKinds[njobKinds++] = JOB_EXT;
   // (THE SEARCH FOR THE PROOF, plans/gambit-next.md 3: where the last decision had no proven line, the break search's wider beam takes a
   // worker before the planner's half and the extension, which go back to this thread -- the decision's time to the break, not the set-up)
   wideFirstNow = 0;
@@ -172,7 +176,7 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   if (wideFirst) jobKinds[njobKinds++] = JOB_WIDE;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
-  if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
+  if (extBeside && !extFirst) jobKinds[njobKinds++] = JOB_EXT;
   // (the wider beam last: the worker the planner's half and the extension leave)
   if (!wideFirst && R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go

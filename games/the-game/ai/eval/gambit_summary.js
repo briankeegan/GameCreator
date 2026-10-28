@@ -216,6 +216,15 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       // (THE BREAK THE LINEUP MAKES: of the lines played under garbage that break it, the ones that make a chain on the way)
       var bk = / broke=(\d+)/.exec(l), ch = / chain=(\d+)/.exec(l);
       if (um && +um[1] && bk && +bk[1] > 0) { t.breaks = (t.breaks || 0) + 1; if (ch && +ch[1] >= 2) t.chainBreaks = (t.chainBreaks || 0) + 1; }
+      // (A SLAB POPPING: the decisions made while one pops, the lineups the extension offered there (cands= lineup:N), and the plays --
+      // a lineup, and a full row broken beyond the board left alone)
+      var po = / pop=(\d+)/.exec(l);
+      if (po && +po[1] > 0) {
+        t.pop = (t.pop || 0) + 1;
+        var lc = / cands=\S*?(?:^|,|=)lineup:(\d+)/.exec(l); if (lc) t.popLineups = (t.popLineups || 0) + +lc[1];
+        if (/ play=lineup /.test(l)) t.popLineupPlayed = (t.popLineupPlayed || 0) + 1;
+        if (bk && +bk[1] >= 6) t.popFull = (t.popFull || 0) + 1;
+      }
       if (wm) think.wall.push(+wm[1]);
       // (THE LINE PLAYED OVER ONE LOST LATER: answer.c sooner=, by the order's key that decided it, rank.c cmpKey)
       var so = / sooner=(\w+):(L|-?\d+):k(\d+(?:\.\w+)?)/.exec(l);
@@ -335,7 +344,9 @@ Object.keys(modes).sort().forEach(function (k) {
   console.log(k + ': survived ' + t.survived + '/' + t.games + '; lost at ' + (t.lost.sort(function (a, b) { return a - b; }).join(', ') || '-') +
               '; combos ' + fmt(t.combo) + '; chains ' + fmt(t.chain) +
               (t.dec ? '; under garbage ' + Math.round(100 * t.under / t.dec) + '% of decisions, material there ' + (t.under ? (t.mat / t.under).toFixed(1) : '-') : '') +
-              (t.breaks ? '; breaks by a chain ' + (t.chainBreaks || 0) + ' of ' + t.breaks + ' (' + Math.round(100 * (t.chainBreaks || 0) / t.breaks) + '%)' : ''));
+              (t.breaks ? '; breaks by a chain ' + (t.chainBreaks || 0) + ' of ' + t.breaks + ' (' + Math.round(100 * (t.chainBreaks || 0) / t.breaks) + '%)' : '') +
+              (t.pop ? '; while a slab pops ' + t.pop + ' decisions, lineups offered ' + ((t.popLineups || 0) / t.pop).toFixed(2) + ' a decision, a lineup played ' +
+                Math.round(100 * (t.popLineupPlayed || 0) / t.pop) + '%, a full row broken ' + Math.round(100 * (t.popFull || 0) / t.pop) + '%' : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
 // (WHY EACH GAME WAS LOST: causeOf, a tag a loss, the first that holds; the losses counted by tag, then each loss with its numbers)
