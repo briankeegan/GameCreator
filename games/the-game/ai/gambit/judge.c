@@ -408,8 +408,13 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       spent += acts;
     }
     int kind = last || o->settled ? MK_SETTLE : MK_SWAP, out;
-    if (last) out = step(x, n, kind, mr, mc, 0);
-    else {
+    if (last) {
+      out = step(x, n, kind, mr, mc, 0);
+      // (the last swap is held to the same put-back test: the pair as the engine recorded it pressed, against the one pressed before it)
+      { const Board *fb = ensureBoard(x, n), *ob = liveNode(x, out) ? ensureBoard(x, out) : 0;
+        if (fb && ob && ob->lastSwapA && putBackFor(fb, ob->lastSwapA, ob->lastSwapB, 0) &&
+            putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
+    } else {
       // (pressed as the frame loop presses it, core/nodes.h pressWalk: a swap whose pair still moves is walked to from the first frame its
       // walk is taken on, found with the walk tapped as the frame loop's keys are, then pressed as the frame loop walks it -- held, when
       // tight; one refused on a still board is not there to press)
@@ -425,9 +430,12 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       { Board *fb = ensureBoard(x, from); if (movedUndoes(fb, seq[k], &moved)) { j->cut = k; j->cutWhy = 2; break; } movedAdd(fb, seq[k], &moved);
         // (THE PAIR THE LAST SWAP PRESSED SWAPPED, put back for nothing by this swap -- the one test, rules.c putBackFor, with what the
         // swap makes read as the first swap's is (madeBy): the line is cut here, before the swap is recorded as pressed (ats), so it is
-        // never handed on. A swap back that clears or breaks is play. The owner: never a pair swapped back and forth to hold garbage off)
-        if (fb && liveNode(x, out) && putBackFor(fb, fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], 0) &&
-            putBackFor(fb, fb->p[CR(seq[k])][CC(seq[k])].f[ID], fb->p[CR(seq[k])][CC(seq[k]) + 1].f[ID], madeSettled(x, from, root, CR(seq[k]), CC(seq[k])))) { j->cut = k; j->cutWhy = 2; break; } }
+        // never handed on. A swap back that clears or breaks is play. The owner: never a pair swapped back and forth to hold garbage off.
+        // The pair is the one the swap swapped as it was pressed -- the engine's record on the swap's board (lastSwapA, lastSwapB) -- not
+        // the cells where its walk began: a pair falling into them meanwhile is the pair the frame loop presses, and refuses)
+        { const Board *ob = liveNode(x, out) ? ensureBoard(x, out) : 0;
+          if (fb && ob && ob->lastSwapA && putBackFor(fb, ob->lastSwapA, ob->lastSwapB, 0) &&
+              putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeSettled(x, from, root, CR(seq[k]), CC(seq[k])))) { j->cut = k; j->cutWhy = 2; break; } } }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from; KB(n);
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;

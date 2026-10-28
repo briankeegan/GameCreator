@@ -431,6 +431,10 @@ line short at once by a block shown (**demand**).
   colours are unseen until they pop -- and the board to come (search/ready.c landedBreak: the break the shown block will need, found
   before it lands) was queued behind every other job and ran at depth 0 in 31-34 decisions a lost game. With a block on its way it
   now takes a worker after the survival search, ahead of the planner's half, the extension and the wider beam.
+- 1370, 19/24 (6, 6, 7); the put-back gate red by one. combo_storm-1 at 1716: the line's first swap was judged on the board where
+  its walk began, where its two cells were empty; the pair the last swap moved fell into them a frame later, so the swap pressed put
+  that pair back for nothing and the frame loop refused it. The judge now reads the pair a swap swapped from the engine's record on
+  the swap's own board (lastSwapA, lastSwapB) against the pair before it, and holds a line's last swap to the same test (it had none).
 
 ## Where this stands
 
