@@ -616,9 +616,6 @@ static int proofOf(const Judge *J) {
   if (J->o.lives) return 3;
   if (J->extLost == FOREVER) return 2;
   double l = lostOf(J);
-  // (UNDER GARBAGE, SWAPS THAT MAKE NOTHING PROVE NOTHING: a line that presses swaps and neither breaks, plans a break nor clears is only
-  // lost later -- its loss past the rows shown is a bound, not a proof. The hold presses nothing; a line that clears buys the stop time)
-  if (decF.under && !J->hold && !clears(J) && J->planBroke <= 0) return 0;
   return l < 1e9 && l > proofFrame();
 }
 // (DEAD BEFORE IT COULD PRESS ANYTHING: unproven and lost within a break's time -- the hold's loss not known among them)

@@ -472,6 +472,11 @@ line short at once by a block shown (**demand**).
 - 1380, 16/24 (4, 7, 5): a line converting nothing unproven under garbage took the proof from holds and from survive lines that clear
   for the stop time -- large_garbage-8 lived to 21509, five others lost. Narrowed to what 1379 showed: under garbage, a line that
   presses swaps and neither breaks, plans a break nor clears (the toward lines) proves nothing.
+- 1381, 16/24 (5, 3, 8) with the narrowed rule: both readings of "a line that converts nothing proves nothing" won large_garbage 8/8
+  and lost factory and combo_storm more; out. The order is 1379's. A break's time is now the blocks' own (decide.c breakCellsOf): the pop
+  of the row the board breaks next -- the lowest garbage row on the board, else the first block shown -- and each row of a block shown is
+  due its own row's pop after the last. Shake is the engine's already in every line's loss: on a landing the shake is the peak of the
+  stretch in progress, the largest, reset to it by any block landing before it is out (Stack.lua 1679).
 
 ## Where this stands
 

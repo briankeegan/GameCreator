@@ -32,6 +32,14 @@ static int decisionFloor(const Board *b) {
   if (savingPanels && panelsOn(b) < bandTop) return 0;
   return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1;
 }
+// THE ROW THE BOARD BREAKS NEXT: its cells -- the lowest garbage row on the board, else the first block shown on its way, else a full row.
+// A break's time is that row's pop (core/nodes.h popFrames), so the order's horizons are the blocks' own, a narrow block's shorter
+static int32_t breakCellsOf(const Question *q) {
+  const Board *b = q->b;
+  for (int r = 1; b && r < b->nrows; r++) { int n = 0; for (int c = 1; c <= W; c++) n += !!b->p[r][c].f[ISGARBAGE]; if (n) return n; }
+  int32_t first = -1; for (int a = 0; a < q->narr; a++) if (first < 0 || q->arr[a].at < q->arr[first].at) first = a;
+  return first >= 0 && q->arr[first].width > 0 ? q->arr[first].width : W;
+}
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -48,10 +56,12 @@ static int readBoard_(Read *R) {
   // break's time after; the next landing with no block shown, one)
   nLandAts = 0;
   int32_t landBlk[LANDN];   // (the block each due is of: -1 the next landing with none shown)
-  { int32_t gap = C2.reaction + 1 + popFrames(decQ.b, W), shown = 0;
+  { int32_t shown = 0;
     for (int i = 0; i < decQ.narr; i++) shown |= decQ.arr[i].at == landingAt;
     if (landingAt >= 0 && !shown) { landBlk[nLandAts] = -1; landAts[nLandAts++] = landingAt; }
+    // (each row of a block shown is due a break's time after the one before: the time its own row takes to pop -- its width's cells)
     for (int i = 0; i < decQ.narr; i++) for (int r = 0; r < imax(1, decQ.arr[i].height) && nLandAts < LANDN; r++) {
+      int32_t gap = C2.reaction + 1 + popFrames(decQ.b, decQ.arr[i].width > 0 ? decQ.arr[i].width : W);
       int32_t a = decQ.arr[i].at + r * gap; int k = nLandAts++;
       while (k > 0 && landAts[k - 1] > a) { landAts[k] = landAts[k - 1]; landBlk[k] = landBlk[k - 1]; k--; }
       landAts[k] = a; landBlk[k] = i;
@@ -336,7 +346,7 @@ static int ranked(const Read *R, const Found *S) {
   readyDefer = 1;   // (the proposers above ask readiness whole; the judging below ranks first)
   readyStop(); readyPendClear(); readyCollect = 1;   // (and keeps each landed board: searched once, its nearest break measured)
   rankReact = C2.reaction + 1;
-  rankSave = rankReact + popFrames(decQ.b, W);   // (a row of W cells)
+  rankSave = rankReact + popFrames(decQ.b, breakCellsOf(&decQ));   // (the row the board breaks next, its own cells)
   rankLow = lowOnPanels(decQ.b);
   n = judgeAll(R, nc, n); TRACE("judged");
   n = keptJudged(R, n); TRACE("kept");   // (the intentions the last decision kept, found again)
