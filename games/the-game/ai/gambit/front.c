@@ -109,7 +109,8 @@ static struct {
   int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
   int32_t playedId;   // the answer last put in the plan: its swap, its hold, its raise put off (0: none yet)
   int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
-  int32_t lastHold, lastBrk, lastUrgent, havePace, lastKind;   // (lastKind: the last answer taken's, 0 a hold)
+  int32_t lastHold, lastBrk, lastUrgent, havePace, lastKind;
+  int32_t putBackLine;   // (the answer whose swap was refused for putting the last pair back: its question dumped -- native.c gn_frame; -1 none)   // (lastKind: the last answer taken's, 0 a hold)
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
   int32_t lineProven;   // and was proven (FAnswer.proven): its swaps pressed as judged
   int32_t winAt, winLeft;      // (the line in hand: the frame its second swap's walk begins, as judged, and the actions the judge read the window holding then)
@@ -995,7 +996,7 @@ static int frontFrame(void) {
     // (a colour shown since the line's question -- a broken slab's, unseen when it was judged -- can make the board clear alone what the
     // swap was judged to clear: the refusal is the board's news, not the judge's error, counted apart -- as a wasted three is, above)
     int shown = F.lastReveal >= asked && F.lastReveal > 0;
-    bits &= ~IN_SWAP; dropAll(); if (shown) F.st.putBackShown++; else F.st.putBack++;
+    bits &= ~IN_SWAP; dropAll(); if (shown) F.st.putBackShown++; else { F.st.putBack++; F.putBackLine = pk.line; }
     F.refA = t->lastSwapA; F.refB = t->lastSwapB; F.refUntil = now + REFUSE_BLOCK;
     if (F.st.putBack + F.st.putBackShown <= 12) { char l[260]; snprintf(l, sizeof l, "%s clock %d: the pair the last swap swapped (%d,%d at %d,%d), put back for nothing, refused -- made %d root %d out %d, asked %d for %d, play %d line %d idx %d", shown ? "PUTBACKSHOWN" : "PUTBACK", now, t->lastSwapA, t->lastSwapB, t->curRow, t->curCol, putBackMade, putBackRoot, putBackOut, asked, F.pAt, pk.play, pk.line, pk.idx); flog(l); }
   }
@@ -1107,7 +1108,7 @@ static void frontNew(int ahead, int gap, int jitter) {
   if (F.pending) abortTo(F.pId);
   Board *keep[4] = { F.truth, F.expect, F.pr, F.pBoard };
   int32_t nextId = F.nextId;
-  memset(&F, 0, sizeof F); F.winAt = -1;
+  memset(&F, 0, sizeof F); F.winAt = -1; F.putBackLine = -1;
   F.pressedLine = -1;   // (no swap pressed yet: playedRollBack)
   F.truth = keep[0] ? keep[0] : nb_new(); F.expect = keep[1] ? keep[1] : nb_new(); F.pr = keep[2] ? keep[2] : nb_new(); F.pBoard = keep[3];
   for (int i = 0; i < PLANN; i++) F.planAt[i] = NUL;

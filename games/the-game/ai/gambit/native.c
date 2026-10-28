@@ -100,7 +100,7 @@ static int raisePresses(const FQuestion *q, Board *b) {
 }
 // (THE LAST BOARDS, ringKeep below)
 #define RINGN 32
-static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
+static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN], ringId[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
 // The board as base64 of its bytes (the head, the queue, the rows), for the reach report (GAMBITB)
 static int b64(const unsigned char *p, int n, char *out) {
   static const char A[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -166,7 +166,7 @@ static int frameOut(void) {
   if (out) wallCut = 1;
   return out;
 }
-static void ringKeep(int32_t at);
+static void ringKeep(int32_t at, int32_t id);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   wallCut = 0;
@@ -230,11 +230,11 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   // fails any such answer)
   static int32_t lastS = NUL;
   if (A->sooner && (lastS == NUL || q->at - lastS >= 60 || q->at < lastS)) { lastS = q->at; dumpBoard("GAMBITS", q->at, hostBoard, hostQ.arr, hostQ.narr); }
-  ringKeep(q->at);
+  ringKeep(q->at, q->id);
 }
 // THE LAST BOARDS: every question's board and garbage on its way, the last RINGN decisions kept, written out when the match ends (GAMBITL lines,
 // oldest first) -- what a loss is replayed from.
-static void ringKeep(int32_t at) {
+static void ringKeep(int32_t at, int32_t id) {
   hostLock();
   // (a question asked again for a frame no later than ones kept takes their place: the plans made past it were dropped -- the ring holds
   // one board a frame, in order, the last RINGN decisions forward)
@@ -242,7 +242,7 @@ static void ringKeep(int32_t at) {
   int k = ringHead;
   if (!ring[k]) ring[k] = nb_new();
   if (ring[k]) {
-    cloneBoard(ring[k], hostBoard); ringAt[k] = at; ringNarr[k] = hostQ.narr; ringConds[k] = condsNow;
+    cloneBoard(ring[k], hostBoard); ringAt[k] = at; ringId[k] = id; ringNarr[k] = hostQ.narr; ringConds[k] = condsNow;
     for (int i = 0; i < hostQ.narr; i++) ringArr[k][i] = hostQ.arr[i];
     ringHead = (ringHead + 1) % RINGN; if (ringCount < RINGN) ringCount++;
   }
@@ -372,6 +372,14 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   arrivalsOf(F.truth);
   double t1 = clock_ms();
   int32_t bits = frontFrame();
+  // (A PAIR PUT BACK REFUSED AT THE PRESS: the question the pressed line was judged on, from the ring, as GAMBITP -- the board the judge
+  // read the swap on, to be replayed beside the frame loop's reading)
+  if (F.putBackLine >= 0) {
+    hostLock();
+    for (int i = 0; i < ringCount; i++) { int k = (ringHead - 1 - i + RINGN) % RINGN; if (ring[k] && ringId[k] == F.putBackLine) { dumpBoardIn("GAMBITP", ringAt[k], ring[k], ringArr[k], ringNarr[k], &ringConds[k]); break; } }
+    hostUnlock();
+    F.putBackLine = -1;
+  }
   double t2 = clock_ms();
   afterFrame(bits);
   double t3 = clock_ms();
