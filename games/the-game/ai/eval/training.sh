@@ -43,10 +43,6 @@ for c in $(seq 1 $(( NCPU - 1 ))); do
   if [ -z "$GAMBIT_CPU" ] && [ "$(core "$c")" != "$(core "$CLIENT_CPU")" ]; then GAMBIT_CPU=$c; else WORKER_CPUS=${WORKER_CPUS:+$WORKER_CPUS,}$c; fi
 done
 [ -z "$GAMBIT_CPU" ] && { GAMBIT_CPU=$MIND_CPUS; WORKER_CPUS=$MIND_CPUS; }
-# (the CPU beside the game's core: the one Gambit's thread between and beside the decisions runs on -- answer.c onThread -- never the one
-# beside Gambit's own thread)
-SPARE_CPU=
-for c in $(seq 1 $(( NCPU - 1 ))); do [ "$c" != "$GAMBIT_CPU" ] && [ "$(core "$c")" = "$(core "$CLIENT_CPU")" ] && { SPARE_CPU=$c; break; }; done
 MIND=
 cleanup() { [ -n "$MIND" ] && kill "$MIND" 2>/dev/null; [ -n "${CLIENT:-}" ] && kill "$CLIENT" 2>/dev/null; }
 trap cleanup EXIT
@@ -67,7 +63,7 @@ elif [ "$BOT" = gambit ]; then
   # (LOCKSTEP and UNPACED: the game waits on every answer Gambit was asked and plays its frames back to back -- each decision's time the
   # work clock's alone, so a seed is the same game on any runner, as fast as the runner plays it; live play sets neither)
   export GC_GAMBIT_LOCKSTEP="${GC_GAMBIT_LOCKSTEP:-1}" PA_UNPACED="${PA_UNPACED:-1}"
-  export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS" GC_GAMBIT_SPARE_CPU="$SPARE_CPU"
+  export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS"
   echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS"
   : > "$OUT_DIR/survivor.log"
 fi

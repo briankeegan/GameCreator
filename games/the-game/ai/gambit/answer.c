@@ -79,24 +79,14 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
   for (int i = 0; i < nhanded && i < MAXLINE; i++) onHand[i] = handed[i];
   onNtoward = towardPlayedN; for (int i = 0; i < towardPlayedN && i < MAXPATH; i++) onToward[i] = towardPlayed[i];
 }
-// (its own thread, beside the pool -- the pool may be the readiness's past the decision: native.c onThreadMain at the idle class, on the
-// CPU beside the game's core, never the one beside Gambit's thread. onState: 0 idle, 1 asked to run, 2 running; 3 asked for the wider
-// beam of a decision, 4 running it -- wideOnThread)
+// (its own thread, beside the pool -- the pool may be the readiness's past the decision: native.c onThreadMain at the idle class on the
+// workers' CPUs. onState: 0 idle, 1 asked to run, 2 running)
 static int32_t onState, onThreadOn;
-static void wideJobHere(void);
 static void onThread(void) {
   inJob = 2;
   for (;;) {
     int32_t st;
-    while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 1 && st != 3) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
-    if (st == 3) {
-      __atomic_store_n(&onState, 4, __ATOMIC_RELEASE);
-      wideJobHere();
-      inJob = 2;
-      __atomic_store_n(&onState, 0, __ATOMIC_RELEASE);
-      __builtin_wasm_memory_atomic_notify(&onState, 1);
-      continue;
-    }
+    while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 1) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
     __atomic_store_n(&onState, 2, __ATOMIC_RELEASE);
     pressTight = decQ.tight; pressTap = decTap; pressFrom = pressSpent = 0; ncache = 0;
     int32_t pop = popLeft(decQ.b);
@@ -249,21 +239,6 @@ static void breakJob(int32_t i) {
   inJob = 0;
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
-// (THE WIDER BEAM ON THE THREAD BESIDE THE GAME'S CORE: a decision's own search, in the searches' time on the work clock as a worker's
-// job is, on the CPU the game's core leaves -- so the wider beam takes no cycle from Gambit's thread and no worker from the others)
-static int32_t wideOnThread;
-static void wideJobHere(void) {
-  clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
-  inJob = 1; pressTight = decQ.tight; pressTap = decTap; pressFrom = pressSpent = 0; ncache = 0;
-  touchFrom = 1; breakRunTo(brJobR, brJobBy, &theBrWide); touchFrom = 0;
-  __atomic_store_n(&wideDone, 1, __ATOMIC_RELEASE);
-}
-static void wideWait(void) {
-  if (!wideOnThread) return;
-  int32_t st;
-  while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) == 3 || st == 4) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
-  wideOnThread = 0;
-}
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
   brCut = 0; brResumed = 0; landedJobOn = 0; flatJobOn = 0; __atomic_store_n(&flatDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&landedDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || timeLeftMs() < BREAK_MIN_MS) return 0;
@@ -285,9 +260,9 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   // worker before the planner's half and the extension, which go back to this thread -- the decision's time to the break, not the set-up)
   wideFirstNow = 0;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
-  int wideFirst = proofSought && R->under && pool.nworkers >= 4, wideHere = onThreadOn && R->under;
+  int wideFirst = proofSought && R->under && pool.nworkers >= 4;
   wideFirstNow = wideFirst;
-  if (wideFirst && !wideHere) jobKinds[njobKinds++] = JOB_WIDE;
+  if (wideFirst) jobKinds[njobKinds++] = JOB_WIDE;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   // (A BLOCK ON ITS WAY, the board to come next (search/ready.c landedBreak): its size and its frame are shown, and the break the board
   // will need when it lands is lined up while there is time to press it -- a worker of its own after the survival search, never only
@@ -297,16 +272,14 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside && !extFirst) jobKinds[njobKinds++] = JOB_EXT;
   // (the wider beam last: the worker the planner's half and the extension leave)
-  if (!wideFirst && !wideHere && R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
+  if (!wideFirst && R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
   // is this thread's whole)
   while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; if (k == JOB_FLAT) flatJobOn = 0; if (k == JOB_LANDED) landedJobOn = 0; }
   // (with too few workers for it, the board to come is queued behind them: the first worker whose search ends before the searches do
   // takes it, in the time they have left -- it ends with them, so the decision waits no longer for it)
   if (!landedJobOn && decF.next != NOT_ASKED && decF.next > 0) { jobKinds[njobKinds++] = JOB_LANDED; landedJobOn = 1; }
-  int started = startJobs(brCtx, breakJob, njobKinds);
-  if (started && wideHere) { wideOnThread = 1; __atomic_store_n(&onState, 3, __ATOMIC_RELEASE); __builtin_wasm_memory_atomic_notify(&onState, 1); }
-  return started;
+  return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
 // 120 boards searched again, run 415, where 1 to 3 had been)
@@ -320,7 +293,7 @@ static int wideKeepsWindow(const Broke *w) {
   return windowKeepsBreak(0, acts);
 }
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  jobsAll(brCtx); wideWait();
+  jobsAll(brCtx);
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = timeLeftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;
   if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth && wideKeepsWindow(&theBrWide)) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
