@@ -264,13 +264,16 @@ static void *workerMain(void *arg) {
     hostLock();
     while (!qHas && !qReset) hostWait();
     if (qReset) { qReset = 0; ringCount = 0; hostUnlock(); onStop(); gb_new_game(); hostLock(); hostSignalDone(); hostUnlock(); continue; }
+    hostUnlock();
+    // (the break search going on since the last answer let go first -- it reads the board the question is written into, and what it
+    // grew is the frontier this decision resumes)
+    onStop();
+    hostLock();
     q = qSlot; copyBoard(b, qSlotBoard); q.b = b; qHas = 0; qBusy = 1;
     __atomic_store_n(&curQid, q.id, __ATOMIC_SEQ_CST);
     hostUnlock();
     FAnswer a;
     int kept = 0;
-    // (the break search going on since the last answer let go first: what it grew is the frontier this decision resumes)
-    onStop();
     if (abort_poll() != 1) { answerOne(&q, b, &a); kept = abort_poll() != 1; }
     hostLock();
     if (kept) {
