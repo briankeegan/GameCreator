@@ -620,6 +620,8 @@ static int proofOf(const Judge *J) {
 }
 // (DEAD BEFORE IT COULD PRESS ANYTHING: unproven and lost within a break's time -- the hold's loss not known among them)
 static int diesNow(const Judge *J) { return !livesOf(J) && lostOf(J) < imax(1, rankSave); }
+// (A LINE'S LOSS IN WHOLE BREAKS' TIME from now: lostOf over rankSave, a loss not known or never as the most there is)
+static int32_t breaksTo(const Judge *J) { double l = lostOf(J); return l >= 1e8 ? 1 << 30 : (int32_t)(l / imax(1, rankSave)); }
 static int compareJudged(const Judge *x, const Judge *y) {
 #define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
   // 1. PROVEN FIRST: a line that lives left alone, then one that lives by its plan, then one whose plan meets every row shown with the
@@ -627,7 +629,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   { int px = proofOf(x), py = proofOf(y); if (px != py) K(1, "proven", py - px);
     // (PROVEN BY ITS PLAN ALONE, of two: the one whose plan stands longer, in whole breaks' time from now -- the plan meets the rows shown,
     // but its loss is where the board still goes, and a break's time more is a break more to find before it; read off each line alone)
-    if (px == 1) { double s = imax(1, rankSave); int32_t bx = (int32_t)(lostOf(x) / s), by = (int32_t)(lostOf(y) / s); if (bx != by) K(1, "longer", by - bx); }
+    if (px == 1) { int32_t bx = breaksTo(x), by = breaksTo(y); if (bx != by) K(1, "longer", by - bx); }
     // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
     // resource, then of the next (marginKey: room, material, the window's cover of the rows due, contact, in rows); then the later loss,
     // unless lost alike (lostAlike: the same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
@@ -637,6 +639,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // garbage before one that converts none -- the margin reads material as enough down to three rows, and a board spent from 51 to 22
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
       if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
+      // (THE LONGER LOSS IN WHOLE BREAKS' TIME: a line lost a break's time later has a break more to find before it -- death first, every
+      // key after it within a break's time; from now, read off each line alone)
+      { int32_t lx = breaksTo(x), ly = breaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
       // (THE NEXT BREAK LEFT TO BUILD: of two lines that convert, the one whose board still has a break to build and keeps the floor
       // (judgeCand material: outcome.c nextBuild, floorKept) -- a break that leaves none is the last the board makes. Each key of the
       // order is read off each line alone and is had by every line -- a line with none reads last -- so the order is one order)
