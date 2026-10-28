@@ -644,10 +644,11 @@ static void take(void) {
     F.lineWastes = a.wastes; F.lineProven = a.proven;
     unseenOf(F.pBoard);
     F.winAt = a.kind == 1 && a.leftNext >= 0 && a.nextAt > 0 ? a.at + a.nextAt : -1; F.winLeft = a.leftNext;
-    // (A COLOUR SHOWN SINCE THE QUESTION, a broken slab's as it pops: a hold with no break found was decided without it -- the line-up
-    // the slab's row allows is only seen once its colours are -- so the next question is asked now, on the board as the game shows it,
-    // not once the hold is out. Every question is answered before the next: a colour shown never leaves one unanswered)
-    if (a.kind == 0 && !a.nhand && !a.brk && F.lastReveal > 0 && F.lastReveal >= F.pPosted && F.nextAt > F.now + 1) { F.nextAt = F.now + 1; F.st.reaskShown++; }
+    // (A COLOUR SHOWN SINCE THE QUESTION, a broken slab's as it pops, a cell at a time: the hold was decided without it -- the line-up
+    // each colour allows is only seen once it is -- so the next question is asked now, on the board as the game shows it, not once the
+    // hold is out; a line handed on whole is still pressed from its own frame. Every question is answered before the next: each colour
+    // shown is in the first question asked after it)
+    if (a.kind == 0 && F.lastReveal > 0 && F.lastReveal >= F.pPosted && F.nextAt > F.now + 1) { F.nextAt = F.now + 1; F.st.reaskShown++; }
     F.lineN = a.nhand; F.lineGap = F.pGap; F.linePlay = a.play; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0; F.playedId = a.id;
   }

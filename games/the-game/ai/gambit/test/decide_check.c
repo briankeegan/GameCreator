@@ -429,6 +429,21 @@ EXPORT(gb_solve2) int gb_solve2(int depth, int beam, int ms, int32_t *line, int3
 }
 
 static int getenv_test(void) { return traceOn; }
+// THE QUESTION'S BOARD, a row a line from the top: a panel its colour, garbage G (g matched, its colour once shown, g? not yet), an
+// empty cell '.' -- what the search was asked on, the colours a pop has not shown left unshown
+EXPORT(gb_board_show) void gb_board_show(char *out, int cap) {
+  const Board *b = hostQ.b; int k = 0;
+  for (int r = b->nrows - 1; r >= 1 && k < cap - 40; r--) {
+    k += snprintf(out + k, (unsigned long)(cap - k), "%2d ", r);
+    for (int c = 1; c <= W; c++) {
+      const int32_t *f = b->p[r][c].f;
+      if (f[ISGARBAGE]) k += snprintf(out + k, (unsigned long)(cap - k), f[STATE] == MATCHED ? (f[COLOR] >= 1 && f[COLOR] <= 8 ? "g%d " : "g? ") : "G  ", f[COLOR]);
+      else if (f[COLOR] > 0) k += snprintf(out + k, (unsigned long)(cap - k), "%d%c ", f[COLOR], f[STATE] == MATCHED ? '*' : ' ');
+      else k += snprintf(out + k, (unsigned long)(cap - k), ".  ");
+    }
+    k += snprintf(out + k, (unsigned long)(cap - k), "\n");
+  }
+}
 // THE BOT'S OWN BREAK SEARCH on a board (search/break.c breakMoves, as the reach report asks it: no list, the clock `ms`), with the touch
 // beam's switches: the line's length returned, its swaps into line; 0 none
 EXPORT(gb_break_test) int gb_break_test(int ms, int noBand, int noDoomed, int beam, int open, int32_t *line) {

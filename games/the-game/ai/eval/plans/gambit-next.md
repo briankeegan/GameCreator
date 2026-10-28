@@ -613,3 +613,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - 1392, 21/24 (8, 6, 7) at WORK_PER_MS 800: factory-5 (a solvent line passed over), factory-7, large_garbage-3. Back to 600. Every run
   1389-1392 took 34-43 answers past their frame (the work clock behind the wall), so a game is not its seed's alone: 22 against 21 is
   inside one run's noise.
+- factory-1 in 1390: the question for 14034 was asked at 14015, the slab's cells all unshown; they showed by 14033 and no question
+  asked after them came before 14057. A hold taken after a colour was shown since its question -- with a line handed on or a break --
+  asks the next question at once (front.c take), so each colour is in the first decision after it.
