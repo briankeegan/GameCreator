@@ -621,3 +621,5 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - 1396, 20/24 (7, 5, 8) with the nearness key under two breaks' walks: large_garbage 8/8, but factory-8 dies at 893 (the window down
   to 2 in the opening), factory-1 at 19289, factory-7, combo_storm-7. Reverted to 1393's play.
 - The nearness key last in rule 2 (after margin and later), under garbage: a tie-break only.
+- 1397, 21/24 (6, 8, 7) with the nearness key last in rule 2: factory 8/8 and large_garbage-3 survive; combo_storm-2 (2897),
+  combo_storm-5 (1820) and large_garbage-2 (3136) die early. The key now reads breaks only -- a line that breaks nothing reads none.
