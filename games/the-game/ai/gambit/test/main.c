@@ -195,6 +195,28 @@ int main(int argc, char **argv) {
     gzclose(z);
     return 0;
   }
+  // test DIR verdict LINES: the judge's verdict (gb_line_verdict) on the line LINES gives each question of decisions.txt.gz, a line each --
+  // "hold" or r,c;r,c;... -- every line judged on one judge, whoever chose it
+  if (argc > 3 && !strcmp(argv[2], "verdict")) {
+    snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
+    gzFile z = gzopen(path, "r");
+    FILE *lf = fopen(argv[3], "r");
+    if (!z || !lf) { fprintf(stderr, "test: no %s or %s\n", path, argv[3]); return 2; }
+    static char want[4096], vo[512];
+    while (gzgets(z, line, sizeof line) && fgets(want, sizeof want, lf)) {
+      const char *b = strstr(line, "GAMBITB "); if (!b) continue;
+      char tag[64]; snprintf(tag, sizeof tag, "%.20s", b + 8); char *sp = strchr(tag, ' '); if (sp) *sp = 0;
+      int32_t seq[64]; int n = 0; const char *c = want;
+      while (n < 64 && *c && *c != '\n') { int r, cc; if (sscanf(c, "%d,%d", &r, &cc) == 2) seq[n++] = r * 8 + cc; else break; c = strchr(c, ';'); if (!c) break; c++; }
+      condsOfLine(b);
+      int narr, nb = loadLine(b, &narr);
+      if (nb < 0 || gb_question_bytes(nb, narr) != 0) { printf("verdict %s: does not load\n", tag); continue; }
+      gb_line_verdict(seq, n, vo, sizeof vo);
+      printf("verdict %s: %d swaps: %s\n", tag, n, vo); fflush(stdout);
+    }
+    gzclose(z); fclose(lf);
+    return 0;
+  }
   // ---- the bits
   snprintf(path, sizeof path, "%s/boards.txt", dir);
   FILE *f = fopen(path, "r");

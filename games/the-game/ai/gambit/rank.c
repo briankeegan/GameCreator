@@ -473,6 +473,9 @@ static int coverOf(const Judge *J) {
 // (the stack's 12 rows, the window's limit, the columns under garbage), scarcest first (core/nodes.h marginKeyOf): a board dies of the one
 // it runs out of first. Read on the board once everything shown has landed; a line whose landed board was not read, on the board it ends on)
 #define MARGIN_ROWS 12
+// (THE LEAST ROOM: a line dead or spending the next break reads below every board read -- the room share clamps at a stack's height over
+// the top, core/nodes.h marginKeyOf -- never a row over, which a board buried under the blocks shown reads worse than)
+#define MARGIN_LEAST (2 * MARGIN_ROWS)
 // (a line with a plan, the margin its plan leaves: the board its last break leaves once everything shown has landed, and the window once
 // the plan has pressed what it presses -- a break is credited with what it converts, plans/gambit-next.md 2; a line whose board was not
 // read -- its judging the clock cut -- the board's as it is now: never unknown, so never ranked for not being read)
@@ -493,11 +496,11 @@ static int32_t marginKey(const Judge *J) {
   double win = winCoverShare(endAt, spent, paid);
   // (A LINE JUDGED DEAD with no plan board read has no board to read a margin on: the fallback below is for a judging the clock cut, and
   // handed to a dead line it reads the board as it is now -- the best margin in the order (1306, combo_storm-3 at 372: a carry dead at 32
-  // read 5.5.12.12 and was played over one lost at 260). A dead line's room is below none: a row over, what it died of)
-  if (t < 0 && J->o.dead && !J->hold) { t = MARGIN_ROWS + 1; m = m < 0 ? materialOn(decQ.b) : m; if (contact < 0 || under < 0) contactOn(decQ.b, &contact, &under); if (win < 0) win = winCoverShare(0, 0, 0); }
+  // read 5.5.12.12 and was played over one lost at 260). A dead line's room is below none: the least room, MARGIN_LEAST)
+  if (t < 0 && J->o.dead && !J->hold) { t = MARGIN_LEAST; m = m < 0 ? materialOn(decQ.b) : m; if (contact < 0 || under < 0) contactOn(decQ.b, &contact, &under); if (win < 0) win = winCoverShare(0, 0, 0); }
   // (and a line that SPENDS the next break -- it leaves no break to build where the board left alone keeps one, outcome.c -- is lost the
-  // frame it is done, however its end board reads: room below none for it too. 1307 combo_storm-7 round 2, 5265: such a line read 4.5.12.12)
-  if (J->o.spent && !plan && !J->hold) t = MARGIN_ROWS + 1;
+  // frame it is done, however its end board reads: the least room for it too. 1307 combo_storm-7 round 2, 5265: such a line read 4.5.12.12)
+  if (J->o.spent && !plan && !J->hold) t = MARGIN_LEAST;
   if (t < 0 || m < 0) { t = topOn(decQ.b) + rowsComing(&decQ, 0); m = materialOn(decQ.b); contactOn(decQ.b, &contact, &under); win = winCoverShare(0, 0, 0); }
   marginShares[0] = (MARGIN_ROWS - t) / (double)MARGIN_ROWS; marginShares[1] = (double)m / W / MARGIN_ROWS; marginShares[2] = win < 0 ? 1 : win;
   marginShares[3] = under > 0 ? (double)contact / under : 1;
