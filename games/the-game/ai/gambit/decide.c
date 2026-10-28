@@ -272,6 +272,20 @@ static double contLostOfLine(const Judge *J, double give, int32_t *seq, int32_t 
   return contBoardLostLine(e, give, J->hold ? 0 : J->o.j.spent, seq, nseq);
 }
 static double contLostOf(const Judge *J, double give) { return contLostOfLine(J, give, 0, 0); }
+// THE BOARD A LINE LEAVES, AS A QUESTION: the line played to its end on `into`, the garbage still on its way after it, *dt the frames
+// from now to its end -- contBoardLostLine's question. 0 where the line is lost or its end could not be played
+static int endQuestionOf(const Judge *J, Board *into, Question *q, int32_t *dt) {
+  if (!J || J->hold || J->o.dead || !into) return 0;
+  endNoKeep = 1; asLine(&J->k);
+  const Board *e = lineEnd(J->k.seq, J->k.nseq, J->settled);
+  unLine(); endNoKeep = 0;
+  if (!e) return 0;
+  cloneBoard(into, e);
+  *dt = imax(0, into->clock - decQ.b->clock);
+  *q = decQ; q->b = into; q->holdLeft = 0; q->holdStarted = 0; q->narr = 0;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > *dt) { q->arr[q->narr] = decQ.arr[a]; q->arr[q->narr++].at -= *dt; }
+  return 1;
+}
 // (THE BEST ON FROM A BOARD: the survival search asked of board e, with the garbage still on its way, for `give` ms -- the frame from
 // now that board is lost, 1e9 if it lives, -1 if it could not be asked: a line's plan ends here, whatever its last step was)
 static double contBoardLostLine(const Board *e, double give, int32_t spent, int32_t *seq, int32_t *nseq) {

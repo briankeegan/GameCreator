@@ -16,6 +16,7 @@ typedef struct {
   int32_t pid[KEEPN][MAXPATH]; uint8_t side[KEEPN][MAXPATH];   // (each swap's panel, and the cell of the pair it is in)
 } Kept;
 static Kept theFront[NFRONT];
+static const Board *frontKeepOn;   // (the board a frontier is kept on, where not the decision's: answer.c onStop, the board a break leaves)
 // (the log's, per frontier and decision: the lines kept, those carried in, and why a whole frontier was let go -- 1 the garbage dug
 // at changed, 2 the anchor panel gone, 3 its key no longer held)
 static int32_t frontLinesHeld[NFRONT], frontLinesIn[NFRONT], frontLetGo[NFRONT], frontById[NFRONT];   // (by id: carried by their panels that the cells alone would have let go)
@@ -83,7 +84,7 @@ static void frontierKeep(int kind, const Paths *paths, int moveKind, int32_t mov
   Kept *K = &theFront[kind];
   memset(K, 0, sizeof *K);
   if (!paths || !paths->n || !(moveKind == 0 || moveKind == 1)) return;
-  const Board *b = decQ.b;
+  const Board *b = frontKeepOn ? frontKeepOn : decQ.b;
   for (int col = 1; col <= W; col++) {
     int32_t id = b->p[1][col].f[ID];
     if (id == NUL) continue;
