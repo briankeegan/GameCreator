@@ -62,21 +62,21 @@ static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
 static void keepPlan(int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
   frontierKeep(FR_PLAN, &planOut, kind, move, handed, nhanded, qid, 0, 0);
 }
-// THE BREAK SEARCH GOING ON BESIDE THE DECISIONS (plans/gambit-machinery.md): under garbage, from the frontier a decision resumes, a
-// thread of its own at the idle class searches the decision's board on through the decision and past its answer, a frame's work a
-// frame (onGrant, native.c gn_frame), until the next decision takes it back (onStop). Where the decision found no break, what the thread
-// reached is kept in place of the decision's frontier for the next decision to resume -- when it searched longer than the decision did,
-// or found one. A break it finds is kept as the frontier's first line, played again first.
+// THE BREAK SEARCH GOING ON BESIDE THE DECISIONS (plans/gambit-machinery.md): under garbage, a thread of its own at the idle class, a
+// frame's work a frame (onGrant, native.c gn_frame), until the next decision takes it back (onStop) -- never over what the decision
+// searches. Where the decision's break search found none, it goes on from the frontier that search left, through the judging and past
+// the answer, and what it reaches is kept in place of the decision's frontier; where the decision plays a break, it searches the board
+// that break leaves for the next one (onAfterBreak). A break it finds is kept as the frontier's first line, played again first.
 #define ON_SLICE_MS (1000.0 / 60)
 static Broke onBr; static Paths onSeeds;
-static int32_t onKind, onMove, onHand[MAXLINE], onNhand, onQid, onToward[MAXPATH], onNtoward, onWanted; static double onDecMs;
+static int32_t onKind, onMove, onHand[MAXLINE], onNhand, onQid, onToward[MAXPATH], onNtoward, onWanted;
 static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound, onLogAfter;   // (the slices searched and a break found; the log's: the last let go, onStop)
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
   onWanted = 0;
   if (!br || br->depth) { memset(&theFront[FR_BREAK], 0, sizeof theFront[FR_BREAK]); return; }
   frontierKeep(FR_BREAK, &br->keepOut, kind, move, handed, nhanded, qid, towardPlayed, towardPlayedN);
   if (!theFront[FR_BREAK].set) return;
-  onWanted = 1; onKind = kind; onMove = move; onNhand = nhanded; onQid = qid; onDecMs = C2.brMs;
+  onWanted = 1; onKind = kind; onMove = move; onNhand = nhanded; onQid = qid;
   for (int i = 0; i < nhanded && i < MAXLINE; i++) onHand[i] = handed[i];
   onNtoward = towardPlayedN; for (int i = 0; i < towardPlayedN && i < MAXPATH; i++) onToward[i] = towardPlayed[i];
 }
@@ -156,9 +156,9 @@ static int onHalt(void) {
 static void onStop(void) {
   if (!onHalt()) return;
   onLogSlices = onSlices; onLogFound = onFound; onLogAfter = onAfter;
-  // (handed on only where the decision kept a frontier, found no break, and the thread searched longer than it did -- or found one;
-  // and always where it searched the board a break leaves: the decision kept none there)
-  if (!onSlices || !onWanted || (!onAfter && !onFound && onSlices * ON_SLICE_MS <= onDecMs)) return;
+  // (handed on where the decision kept a frontier -- found no break -- or where it searched the board a break leaves: either way it
+  // searched past what the decision did)
+  if (!onSlices || !onWanted) return;
   // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
   static Paths kept;
   kept.n = 0;
@@ -471,10 +471,11 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   brWhere = 0; brGiven = 0;
   if (!beside) { brWhere = 3; brGiven = timeLeftMs(); }
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
-  if (R.under) onStart(brHave ? &brResume : 0);
   double ts = nowMs();
   searchAll(&R, &S);
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
+  // (no break found: the search beside goes on from where the decision's left off, never over what it searched)
+  if (R.under && ran && !theBr.depth) onStart(&theBr.keepOut);
   searchMerge(&R, &S);
   S.searchMs = nowMs() - ts;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
