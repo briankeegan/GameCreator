@@ -673,11 +673,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
       { int32_t lx = ownBreaksTo(x), ly = ownBreaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
-      // (THE NEXT BREAK NEARER, last: under garbage, of two lines alike in all of the above, the one that leaves the board its next break
-      // the fewer actions away (nearActsOf: the shape's swaps to it on the board it leaves, its own walk counted) -- every break is pressed
-      // out of the window, and a board whose next break is far spends it getting there. A line dead, or with no reading, reads furthest)
-      if (decF.under) { int32_t ex = x->o.dead || x->o.nearAfter < 0 ? 1 << 20 : nearActsOf(x, x->o.nearAfter), ey = y->o.dead || y->o.nearAfter < 0 ? 1 << 20 : nearActsOf(y, y->o.nearAfter);
-        if (ex != ey) K(2, "near", ex - ey); }
 
     } }
   // (the rules' keep as a key here, among proven lines ahead of the list: 428 plays of a line lost sooner for it, 14/24, run 1323 --
