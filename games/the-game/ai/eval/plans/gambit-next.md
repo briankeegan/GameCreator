@@ -441,6 +441,11 @@ line short at once by a block shown (**demand**).
   -- lost before then. While a slab pops its colours are shown a cell at a time, and a hold with no break found was held out on the
   colours known when it was asked: such a hold is now asked again at once when a colour is shown (front.c take and the reveal), every
   question still answered before the next.
+- 1374, 18/24 (5, 7, 6), every gate green; a hold asked again 1889 times for a colour shown. combo_storm-3 at 3256, the same in
+  1371, 1373 and 1374: at 2999, with a block shown landing in 89 frames and none on the board yet (under=0), a clear that breaks nothing,
+  lost at 190 and at 522 by a readiness break still to find, was played over two lines that wait for the block and break 40 of it, lost
+  at 520 -- by the mode's list; the window then ran from 8 to 0 and nothing broke again. The material keys (converts, next, material)
+  read garbage on its way as garbage (rank.c garbHere), and of two lines proven by their plans alike, the one that converts goes first.
 
 ## Where this stands
 
