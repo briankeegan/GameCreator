@@ -634,3 +634,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   Under garbage the wider beam now runs on gbetween, pinned beside the game's core (GC_GAMBIT_SPARE_CPU, eval/training.sh), in the
   searches' time: no cycle beside Gambit's thread, and a pool worker more for the other jobs.
 - The spares' list locked where the searching thread drains and fills it (eval/native/search.h startPhase, finishPhase): a thread outside the pool -- gbetween -- takes spares. 1402's crashes were that race (tsan: finishPhase against takeSpare); the wider beam on gbetween again, tsan clean, and red again without the lock.
+- 1402: the wider beam on gbetween -- eight games crashed, the tsan check red, 8 of the 16 left survived. Reverted to 1401.
+- 1403, 15/24 (7, 2, 6), the wider beam on gbetween with the lock: no crash, and 1402's deaths frame for frame -- on its own thread
+  the wider beam runs every decision under garbage, where on the pool it ran only with a worker to spare, and its deep breaks are
+  played far more. Reverted; the lock kept.
