@@ -598,3 +598,5 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   1309's build.
 
 - Window wait is a budget per line: WINDOW_WAIT frames in all across a line's swaps, so a long clear line under a thin window cannot hold the window empty to its end (factory-3, 1386: 15 swaps under allow 6).
+- 1388, 17/24 (5, 5, 7) with the wait capped per line. Through 1384-1388 the wait never beat 1383's 21: a later swap the window
+  cannot pay for at its frame is cut again, and the touch beam grows only swaps the window pays for at their own frame.
