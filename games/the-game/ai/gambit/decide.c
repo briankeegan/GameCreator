@@ -234,6 +234,8 @@ static int carriedFromReady(void), carryWaitsOut(void);
 // did, the wasted threes, and its swaps)
 #define WASTEDROPS 3
 static int32_t wasteDropN, wasteDrop[WASTEDROPS][6 + MAXLINE];
+// (a break whose only waste is the board's own chain cut short: garbage broken as the judge plays it, no three for nothing beside it)
+static int cutBreak(const Judge *J) { return !J->hold && J->o.j.made.broke > 0 && J->o.j.threes == 0 && cutsShort(J); }
 static void wasteDropOf(const Judge *J) {
   if (!(J->k.x.broke > 0) || wasteDropN >= WASTEDROPS) return;
   int32_t *w = wasteDrop[wasteDropN++];
@@ -505,7 +507,10 @@ static int ranked(const Read *R, const Found *S) {
     }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { wasteDropOf(order[i]); dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; }
+    // (SURVIVAL FIRST, the owner: where no line that keeps the board's own chain lives, a break that cuts it short -- garbage broken on the
+    // engine, no three made for nothing beside it -- stays: the order ranks it as the break it is)
+    int keptLives = 0; for (int i = 0; i < n; i++) if (!wastesThree(order[i]) && order[i]->o.lives) keptLives = 1;
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && !(!keptLives && cutBreak(order[i]))) { wasteDropOf(order[i]); dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; }
     // (a save confirmed: the survival search found the board lives on with it, or outlasts every line without it by a break's time -- its
     // three is no wasted three, a fact of the line the order reads like any other (rank.c threeNeeded), and the order ranks it)
     else if (saveLine) {
