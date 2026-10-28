@@ -668,13 +668,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (on the board only: before a block lands there is nothing to convert, and the panels a clear takes are the board's life)
       if (decF.under) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
         if (nx != ny) K(2, "material", ny - nx); }
-      // (THE NEXT BREAK NEARER, THE WINDOW SHORT: under garbage with the window holding less than two breaks' walks (breakWalk, the
-      // board's own), of two lines alike in the next break and the material, the one that leaves the board its next break the fewer
-      // actions away (nearActsOf: the shape's swaps to it on the board it leaves, its own walk counted) -- a board whose next break is far
-      // spends the little left getting there. A line dead, or with no reading, reads furthest)
-      if (decF.under && pressAllowance >= 0 && pressAllowance < 2 * breakWalk) {
-        int32_t ex = x->o.dead || x->o.nearAfter < 0 ? 1 << 20 : nearActsOf(x, x->o.nearAfter), ey = y->o.dead || y->o.nearAfter < 0 ? 1 << 20 : nearActsOf(y, y->o.nearAfter);
-        if (ex != ey) K(2, "near", ex - ey); }
       // (THE LONGER LOSS IN WHOLE BREAKS' TIME: of two lines alike in the next break and the material, the one lost a break's time later
       // has a break more to find before it -- the margin and the later loss decide within a break's time; from now, read off each line alone)
       { int32_t lx = ownBreaksTo(x), ly = ownBreaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
