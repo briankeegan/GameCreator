@@ -600,3 +600,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - Window wait is a budget per line: WINDOW_WAIT frames in all across a line's swaps, so a long clear line under a thin window cannot hold the window empty to its end (factory-3, 1386: 15 swaps under allow 6).
 - 1388, 17/24 (5, 5, 7) with the wait capped per line. Through 1384-1388 the wait never beat 1383's 21: a later swap the window
   cannot pay for at its frame is cut again, and the touch beam grows only swaps the window pays for at their own frame.
+- 1389, 20/24 (7, 6, 7), no wait. combo_storm-3 at 830: the question posted at 740 for 830 read a press at 741 that was never made --
+  the window's projection (allowanceAt, keysFit, the question's ages) read the frame just pressed from its plan, already taken and
+  dropped, so a key held on into the next frame counted again. One action short, the 8-swap break line was cut. The frame just pressed
+  is read as its own keys (front.c plannedBits).

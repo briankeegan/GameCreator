@@ -452,7 +452,9 @@ EXPORT(gb_line_verdict) void gb_line_verdict(const int32_t *seq, int n, char *ou
   decQ = hostQ;
   Outcome o = outcomeOf(seq, n, 0, 0, 0);
   const Judged *j = &o.j;
-  snprintf(out, (unsigned long)cap, "dead %d late %d cut %d why %d broke %d threes %d fell %d combo %d chain %d lost %d lives %d ok %d okNoWaste %d", j->dead, j->late, j->cut, j->cutWhy, j->made.broke, j->threes, 0, j->made.combo, j->made.chain, o.lostAt, o.lives, lineOk(&o, CHECK_WASTE | CHECK_LIST), lineOk(&o, 0));
+  int k = snprintf(out, (unsigned long)cap, "dead %d late %d cut %d why %d broke %d threes %d fell %d combo %d chain %d lost %d lives %d ok %d okNoWaste %d", j->dead, j->late, j->cut, j->cutWhy, j->made.broke, j->threes, 0, j->made.combo, j->made.chain, o.lostAt, o.lives, lineOk(&o, CHECK_WASTE | CHECK_LIST), lineOk(&o, 0));
+  // (and the frames its swaps were pressed on, as the judge pressed them)
+  for (int i = 0; i < j->nats && k < cap - 12; i++) k += snprintf(out + k, (unsigned long)(cap - k), "%s%d", i ? "/" : " ats ", j->ats[i]);
 }
 
 // ONE SWAP THROUGH THE SEARCH'S BREAK TEST, stage by stage (search/break.c breaksAt): what it reads at the swap's frame and settled

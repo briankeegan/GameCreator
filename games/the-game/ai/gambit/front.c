@@ -118,6 +118,7 @@ static struct {
   double msPerFrame, wall, wallPerFrame;   // a frame on the work clock (the game's 1/60 s, every decision's) and on the wall's (native.c's guard)
   // the input budget: its limit and window, the frames the keys still inside it were pressed, the keys held last frame
   int32_t limit, window, pressFrames[512], npress, prevBits;
+  int32_t nowBits, nowBitsAt;   // (the keys this frame presses, once its plan is taken: plannedBits)
   int32_t oppHas, oppOut, oppTop, oppStop;
   int32_t toppedNow;
   // the attacks made, read off the board as it is shown
@@ -318,6 +319,9 @@ static int revealed(const Board *w, const Board *g) {
 static Planned *planOf(int32_t t) { int i = t & (PLANN - 1); return F.planAt[i] == t ? &F.plan[i] : 0; }
 static void planSet(int32_t t, Planned p) { int i = t & (PLANN - 1); F.plan[i] = p; F.planAt[i] = t; }
 static void planDrop(int32_t t) { int i = t & (PLANN - 1); if (F.planAt[i] == t) F.planAt[i] = NUL; }
+// (the keys of frame t as the window counts them: this frame's are the ones it presses, its plan taken and dropped -- read as no keys,
+// a key held on into the next frame would count again there as pressed)
+static int32_t plannedBits(int32_t t) { if (t == F.nowBitsAt) return F.nowBits; Planned *p = planOf(t); return p ? p->bits : 0; }
 // THE FRAMES TRACED (GAMBITF, the last FTRACE frames, written when the match ends beside the last boards): each frame's clock, the keys
 // pressed, whether they were planned, the question out, the plan's end, the line in hand and its next swap's frame, and what was
 // dropped in it (1 all, 2 from a frame, 4 cleared for an answer's keys) -- where a swap a decision played went, when one never comes down
@@ -476,8 +480,7 @@ static int allowanceAt(int32_t at) {
   int32_t lo = at - F.window, used = 0, prev = F.prevBits;
   for (int i = 0; i < F.npress; i++) if (F.pressFrames[i] > lo) used++;
   for (int32_t t = F.now; t < at; t++) {
-    Planned *p = planOf(t);
-    int32_t bits = p ? p->bits : 0, down = bits & COUNTED & ~prev;
+    int32_t bits = plannedBits(t), down = bits & COUNTED & ~prev;
     prev = bits;
     for (int b = 1; b <= 16; b <<= 1) if ((down & b) && t > lo) used++;
   }
@@ -490,8 +493,7 @@ static int keysFit(int32_t at, const Keys *k) {
   for (int i = 0; i < F.npress && ns < 1024; i++) spent[ns++] = F.pressFrames[i];
   int32_t prev = F.prevBits;
   for (int32_t t = F.now; t < at + k->n; t++) {
-    Planned *p = planOf(t);
-    int32_t bits = t >= at ? k->ins[t - at] : (p ? p->bits : 0), down = bits & COUNTED & ~prev;
+    int32_t bits = t >= at ? k->ins[t - at] : plannedBits(t), down = bits & COUNTED & ~prev;
     prev = bits;
     for (int b = 1; b <= 16; b <<= 1) if (down & b) {
       while (head < ns && t - spent[head] >= F.window) head++;
@@ -503,7 +505,7 @@ static int keysFit(int32_t at, const Keys *k) {
 }
 static void countActions(int32_t bits, int32_t now, int32_t play) {
   int32_t down = bits & COUNTED & ~F.prevBits;
-  F.prevBits = bits;
+  F.prevBits = bits; F.nowBits = bits; F.nowBitsAt = now;
   for (int b = 1; b <= 16; b <<= 1) if ((down & b) && F.npress < 512) { F.pressFrames[F.npress++] = now; F.st.actions++; F.st.actsBy[play >= 0 && play <= NPLAYS ? play : NPLAYS + 1]++; }
   int k = 0;
   for (int i = 0; i < F.npress; i++) if (now - F.pressFrames[i] < F.window) F.pressFrames[k++] = F.pressFrames[i];
@@ -551,7 +553,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
   { int32_t prev = F.prevBits; q.nages = 0; q.window = F.window;
     for (int i = 0; i < F.npress && q.nages < 512; i++) if (at - F.pressFrames[i] < F.window) q.ages[q.nages++] = at - F.pressFrames[i];
-    for (int32_t t = F.now; t < at; t++) { Planned *p = planOf(t); int32_t bits = p ? p->bits : 0, down = bits & COUNTED & ~prev; prev = bits;
+    for (int32_t t = F.now; t < at; t++) { int32_t bits = plannedBits(t), down = bits & COUNTED & ~prev; prev = bits;
       for (int b = 1; b <= 16; b <<= 1) if ((down & b) && at - t < F.window && q.nages < 512) q.ages[q.nages++] = at - t; } }
   q.refA = F.refUntil > at ? F.refA : 0; q.refB = F.refUntil > at ? F.refB : 0; q.refUntil = F.refUntil;
   q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop; q.oppStop = imax(0, F.oppStop - (at - F.now));
@@ -950,7 +952,7 @@ static int frontFrame(void) {
   take();
   int32_t bits, save = 0, asked = 0;
   Planned *p = planOf(now), pk = { 0 }; pk.play = NPLAYS; pk.line = -1;
-  if (p) { pk = *p; bits = p->bits; save = p->save; asked = p->asked; F.holdLeft = p->holdLeft; F.holdStarted = p->holdStarted; planDrop(now); }
+  if (p) { pk = *p; bits = p->bits; save = p->save; asked = p->asked; F.holdLeft = p->holdLeft; F.holdStarted = p->holdStarted; planDrop(now); F.nowBits = bits; F.nowBitsAt = now; }
   else {
     bits = 0;
     if (F.holdLeft > 0) holdRaise(t, &F.holdLeft, &F.holdStarted, &bits);
@@ -1108,7 +1110,7 @@ static void frontNew(int ahead, int gap, int jitter) {
   if (F.pending) abortTo(F.pId);
   Board *keep[4] = { F.truth, F.expect, F.pr, F.pBoard };
   int32_t nextId = F.nextId;
-  memset(&F, 0, sizeof F); F.winAt = -1; F.putBackLine = -1;
+  memset(&F, 0, sizeof F); F.winAt = -1; F.putBackLine = -1; F.nowBitsAt = -1;
   F.pressedLine = -1;   // (no swap pressed yet: playedRollBack)
   F.truth = keep[0] ? keep[0] : nb_new(); F.expect = keep[1] ? keep[1] : nb_new(); F.pr = keep[2] ? keep[2] : nb_new(); F.pBoard = keep[3];
   for (int i = 0; i < PLANN; i++) F.planAt[i] = NUL;
