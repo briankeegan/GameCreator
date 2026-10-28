@@ -631,6 +631,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // garbage before one that converts none -- the margin reads material as enough down to three rows, and a board spent from 51 to 22
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
       if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
+      // (THE LINEUP FIRST: under garbage the block's size is known and every row of it is a break to make -- of two lines that convert,
+      // the one that converts more full rows (the lineup that keeps a slab breaking, row after row) first, unless it is lost a break's time
+      // sooner: what the board is made of comes from breaking, and a row a line leaves is a row a later break must make)
+      if (decF.under) { int rx = imax(0, x->apBroke) / W, ry = imax(0, y->apBroke) / W;
+        if (rx != ry && (lostAlike(x, y) || (rx > ry) == (lostOf(x) > lostOf(y)))) K(2, "rows", ry - rx); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
 
