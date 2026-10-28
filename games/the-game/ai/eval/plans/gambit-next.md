@@ -446,6 +446,10 @@ line short at once by a block shown (**demand**).
   lost at 190 and at 522 by a readiness break still to find, was played over two lines that wait for the block and break 40 of it, lost
   at 520 -- by the mode's list; the window then ran from 8 to 0 and nothing broke again. The material keys (converts, next, material)
   read garbage on its way as garbage (rank.c garbHere), and of two lines proven by their plans alike, the one that converts goes first.
+- 1375, 18/24 (5, 7, 6), every gate green. factory-7 at 5113, the same in 1371 to 1375: from 4641, 40 panels and the window at 11 to
+  15, every break the search found walked 8 to 10 swaps and the judge cut each for the window (cutWhy 1); the touch beam grew those
+  lines on anyway. The beam now holds every swap it grows to the judge's window test (search/break.c: allowLeftAt at the swap's frame,
+  less the line's own walk), so its width goes to lines the window pays for.
 
 ## Where this stands
 
