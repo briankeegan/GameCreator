@@ -420,6 +420,11 @@ line short at once by a block shown (**demand**).
   -- three breaks' time (a row's pop at level 11 is 84 frames, a break's time about 95). A key before the next break and the
   material, the breaks' time to the loss capped at three (SOON_BREAKS), puts the line lost later first within that horizon and leaves
   the material to decide past it.
+- 1368, 18/24 (6, 6, 6), every gate green, put back 0. combo_storm-5 at 2922: at 2801 a broken slab's colour came to a clear the plan
+  was made without (REVEALCLEAR) and the plan was dropped; the next question was asked for 2891, 90 frames on, by the rule for a board
+  on its way out with no break found -- whose facts (lastHold, lastBrk) were the dropped answer's. Nothing was pressed from 2801 to
+  2891; asked then, 32 frames were left. A drop now clears them (front.c dropAll, dropFrom: havePace), so the question after a drop
+  is asked as soon as it can be.
 
 ## Where this stands
 

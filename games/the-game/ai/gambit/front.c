@@ -340,6 +340,7 @@ static void dropAll(void) {
   if (F.pending) abortTo(F.pId);
   playedRollBack(F.now + 1);
   F.epoch++; planClearFrom(NUL + 1); F.nextAt = 0; F.lineN = 0; F.pending = 0; F.winAt = -1;
+  F.havePace = 0;   // (what the last answer found was of a board that no longer is: the next question is asked as soon as it can be)
 }
 // Everything planned from frame `t` and asked is dropped: the board is the one it was made for until then. (from the next frame or
 // sooner: all of it)
@@ -349,6 +350,7 @@ static void dropFrom(int32_t t) {
   if (F.pending) abortTo(F.pId);
   playedRollBack(t);
   F.epoch++; planClearFrom(t); if (F.nextAt > t) F.nextAt = t; F.lineN = 0; F.pending = 0; if (F.winAt >= t) F.winAt = -1;
+  F.havePace = 0;   // (and the board past t is not the one the last answer was found for)
   // (the garbage now on its way is what the keys kept are pressed knowing: told once, not again every frame till they end)
   memcpy(F.knew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.nknew = F.narr;
 }
