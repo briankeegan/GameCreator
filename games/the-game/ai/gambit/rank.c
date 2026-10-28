@@ -116,9 +116,10 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
   if (judgedCut(&oc.j)) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
   // (ONE THE CLOCK STOPPED THE JUDGE ON: its board past that frame unknown -- ranked as a line lost on the frame it was judged alive to,
-  // what it makes on the search's word: never a board that lasts, and never dropped for a hold that dies sooner)
+  // what it makes on the search's word: never a board that lasts, and never dropped for a hold that dies sooner. A grown line has no
+  // search's word, only the judge's, so one the judge did not finish is no line)
   if (oc.late) {
-    if (oc.j.aliveTo <= 0) { dropAs(play, DROP_UNJUDGED); return 0; }
+    if (oc.j.aliveTo <= 0 || k->grown) { dropAs(play, DROP_UNJUDGED); return 0; }
     oc.late = 0; oc.dead = 1; oc.lives = 0; oc.lostAt = oc.j.aliveTo; oc.ready = NOT_ASKED;
   }
   const Judged *j = oc.dead ? 0 : &oc.j;
