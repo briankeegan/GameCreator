@@ -450,6 +450,10 @@ line short at once by a block shown (**demand**).
   15, every break the search found walked 8 to 10 swaps and the judge cut each for the window (cutWhy 1); the touch beam grew those
   lines on anyway. The beam now holds every swap it grows to the judge's window test (search/break.c: allowLeftAt at the swap's frame,
   less the line's own walk), so its width goes to lines the window pays for.
+- 1376, 18/24 (5, 5, 8): large_garbage 8/8 for the first time, every gate green. combo_storm-3 at 780 (3256 before e9df5ae3): with a
+  block shown and none on the board, the material key (netPanels) played holds over clears and survive lines lost 55 to 75 frames
+  later -- before a block lands there is nothing to convert, and the panels a clear takes are what keeps the board up. The next break
+  and the material read garbage on the board only again; converts reads garbage on its way too.
 
 ## Where this stands
 
