@@ -44,7 +44,7 @@ typedef struct {
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
   int32_t threeNeeded;   // its three the save confirmed the board needs not to die (decide.c): no wasted three to the list
-  int32_t fallback;      // an attack of its own, breaking nothing, that meets an entry of the list after its first, or none (offList)
+  int32_t fallback;      // an attack of its own, breaking nothing, that meets an entry of the list after its first, or none (rule 4)
   int32_t holdSunk;    // a hold lost sooner than a line lost alike with it that keeps the board's own chain: after every line lost alike (sortJudged)
   double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
@@ -53,7 +53,7 @@ typedef struct {
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press, w a wasted three, j the clock stopped its judging)
-enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, DROP_FALLBACK, NDROPS };
+enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, NDROPS };
 // (each thread's own -- the judging runs on every thread, decide.c judgeJob, and each candidate's are added in order after)
 static LOCAL int32_t dropped[NPLAYS][NDROPS];
 static int32_t offered[NPLAYS];
@@ -143,8 +143,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // and leaving it alone -- the hold -- meets what it makes)
   int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
   J->met = j ? entry : -1;
-  // (THE LIST'S FIRST ENTRY IS WHAT THE MODE GOES FOR, the owner: the rest are for when not doing them would kill it -- decide.c takes a
-  // fallback out of the order as it takes a wasted three. A break is the rule under garbage, never a fallback)
+  // (THE LIST'S FIRST ENTRY IS WHAT THE MODE GOES FOR, the owner: the rest are for when not doing them would kill it -- the order's
+  // survival keys come before the list, and within the list a fallback ranks after a line that fires nothing. A break is the rule under
+  // garbage, never a fallback)
   J->fallback = j && R->asked.n > 0 && entry != 0 && !(m.broke > 0) && (m.combo >= 4 || m.chain >= 2);
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
   J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;
@@ -637,6 +638,9 @@ static int32_t ownBreaksTo(const Judge *J) {
 }
 // (GARBAGE TO BREAK: on the board, or shown on its way -- a block shown lands and is broken as one on the board is)
 static int garbHere(void) { return decF.under || (decF.next != NOT_ASKED && decF.next >= 0); }
+// (THE LIST'S KEY with no garbage: 0 the first entry met, 1 nothing fired of the line's own, then each fallback by its entry, a wasted
+// three last)
+static int listClass(const Judge *J) { return J->met == 0 ? 0 : J->fallback || wastesThree(J) ? 2 + (J->met >= 0 ? J->met : MAXAIMS) : 1; }
 static int compareJudged(const Judge *x, const Judge *y) {
 #define K(rule, why, v) return (cmpKey = (rule), cmpWhy = (why), (v))
   // 1. PROVEN FIRST: a line that lives left alone, then one that lives by its plan, then one whose plan meets every row shown with the
@@ -688,6 +692,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // outside the list -- a three, the last choice; then a line that breaks nothing; and last of all a line the rules' keep puts outside
   // (judgeCand: the rules' floor spent -- outcome.c spendsFloor)
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS;
+    // (with no garbage the list's first entry first, then a line that fires nothing of its own -- the hold, a line building toward the
+    // first entry -- then the fallbacks, in the list's order: the survival keys above are where a fallback the board needs comes first)
+    if (!decF.under) { ax = listClass(x); ay = listClass(y); }
     // (under garbage a line that breaks nothing meets no entry: the rule is to break, and an attack that breaks nothing spends the
     // window the next break is pressed out of)
     if (decF.under) { ax = x->apBroke > 0 ? ax : 2 * MAXAIMS + 1; ay = y->apBroke > 0 ? ay : 2 * MAXAIMS + 1; }
