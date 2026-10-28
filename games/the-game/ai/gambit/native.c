@@ -272,7 +272,6 @@ static void *workerMain(void *arg) {
     // (the break search going on since the last answer let go first: what it grew is the frontier this decision resumes)
     onStop();
     if (abort_poll() != 1) { answerOne(&q, b, &a); kept = abort_poll() != 1; }
-    if (kept) onStart();
     hostLock();
     if (kept) {
       if (ansN == ANSN) { ansHead = (ansHead + 1) % ANSN; ansN--; }
@@ -389,8 +388,8 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   }
   double t2 = clock_ms();
   afterFrame(bits);
-  // (a frame with no question out: Gambit's thread waits, and the break search going on since its last answer has the frame)
-  if (!F.pending) onGrant(gnLockstep);
+  // (every frame: the break search going on beside the decisions has the frame's work)
+  onGrant(gnLockstep);
   double t3 = clock_ms();
   // (a frame loop over a frame's time: where it went)
   if (t3 - t0 > 8) { char l[200]; snprintf(l, sizeof l, "SLOWLOOP clock %d: %.1f ms (arrivals %.1f, frame %.1f, after %.1f)", clock, t3 - t0, t1 - t0, t2 - t1, t3 - t2); flog(l); }
