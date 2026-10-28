@@ -620,3 +620,6 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   combo_storm-2, factory-2, large_garbage-5 and -8 die. Reverted to 1393's build.
 - 1396, 20/24 (7, 5, 8) with the nearness key under two breaks' walks: large_garbage 8/8, but factory-8 dies at 893 (the window down
   to 2 in the opening), factory-1 at 19289, factory-7, combo_storm-7. Reverted to 1393's play.
+- 1399, 20/24 (7, 7, 6), the key on the board left: factory-1 and large_garbage-3 survive again; combo_storm-2, factory-4,
+  large_garbage-5 and -7 die. Every form of the nearness key (1394, 1396-1399) saves factory-1 and large_garbage-3 and loses 2-5
+  others. Reverted to 1393's play.
