@@ -437,7 +437,10 @@ EXPORT(gb_break_test) int gb_break_test(int ms, int noBand, int noDoomed, int be
   curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0;
   gb_list_on(0); gb_decision_on(-1, 0, 1);
   gb_clock_start(nowMs() + ms);
-  static Broke br; breakMoves(&hostQ, 0, 0, &br);
+  // (GC_BREAK_WAIT: the frames a popping slab has left, as the decision hands them -- the line-ups searched first)
+  extern char *getenv(const char *); const char *bw = getenv("GC_BREAK_WAIT");
+  static Broke br; breakMoves(&hostQ, bw ? atoi(bw) : 0, 0, &br);
+  if (bw) { extern int printf(const char *, ...); printf("[lineup %d nmoves %d] ", br.lineup, br.nmoves); }
   if (getenv_test()) { static char l[256]; snprintf(l, sizeof l, "BREAKTEST depth %d nmoves %d pathLen %d towardLen %d touch %d built %d lowestG %d gridLen %d clockOut %d", br.depth, br.nmoves, br.pathLen, br.towardLen, br.touch, br.built, lowestG(hostQ.b), gridLen(hostQ.b), clockOut()); hostLog(l); }
   tbNoBand = tbNoDoomed = tbBeam = 0; breakOpen = 0;
   if (!br.depth) return 0;
