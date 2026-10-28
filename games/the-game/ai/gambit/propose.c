@@ -177,7 +177,7 @@ static void searchMerge(const Read *R, Found *S) {
     if (pLineBetter(&planB.lowest, &S->ap.lowest, 2)) S->ap.lowest = planB.lowest;
     if (pLineBetter(&planB.stopBest, &S->ap.stopBest, 3)) S->ap.stopBest = planB.stopBest;
     if (pLineBetter(&planB.pair, &S->ap.pair, 4)) { S->ap.pair = planB.pair; if (S->ap.pair.aimIndex >= 0) S->ap.pair.aimIndex += planSplitAt; }
-    if (!S->haveAp) { S->haveAp = 1; S->ap.setup = planB.setup; S->ap.nsetupLine = planB.nsetupLine; memcpy(S->ap.setupLine, planB.setupLine, sizeof planB.setupLine); }
+    if (!S->haveAp) { S->haveAp = 1; S->ap.setup = planB.setup; S->ap.nsetupLine = planB.nsetupLine; S->ap.setupReach = planB.setupReach; S->ap.rootReach = planB.rootReach; memcpy(S->ap.setupLine, planB.setupLine, sizeof planB.setupLine); }
     for (int i = 0; i < planOutB.n; i++) planKeep(planOutB.path[i], planOutB.len[i]);
   }
   // (a chain the workers did not begin: extended or begun here, in what is left)
@@ -545,9 +545,13 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // SET UP: the planner's swap toward the ask, with no block on its way; CLEAR: the line that leaves the lowest stack
   // (the set-up as the line the planner found it on, the whole way to the board it builds toward: its first swap played, the rest carried
   // on as the line in progress -- decide.c carryOf -- judged again each decision, so a set-up built is one the next decisions know of)
-  if (S->haveAp && S->ap.setup && R->readyAt == NOT_ASKED && !seenDigHas(decQ.b, S->ap.setup)) {
-    if (S->ap.nsetupLine > 1) { int m0 = n; ADD(PLAY_SETUP, S->ap.setupLine, S->ap.nsetupLine, -1, 0); if (n > m0) out[m0].settled = 1; }
-    int32_t one = S->ap.setup; ADD(PLAY_SETUP, &one, 1, -1, 0);
+  // (offered with a block on its way too: the order's survival keys come before the list, so a set-up the block leaves no room for
+  // ranks where its survival puts it. It builds where the board it reaches comes nearer the list's first entry, one swap on, than the
+  // board as it is: the planner's reach, the first entry its whole part -- facts.c nearList)
+  if (S->haveAp && S->ap.setup && !seenDigHas(decQ.b, S->ap.setup)) {
+    int builds = (int)S->ap.setupReach > (int)S->ap.rootReach;
+    if (S->ap.nsetupLine > 1) { int m0 = n; ADD(PLAY_SETUP, S->ap.setupLine, S->ap.nsetupLine, -1, 0); if (n > m0) { out[m0].settled = 1; out[m0].builds = builds; } }
+    int32_t one = S->ap.setup; { int m0 = n; ADD(PLAY_SETUP, &one, 1, -1, 0); if (n > m0) out[m0].builds = builds; }
   }
   if (S->haveAp && S->ap.lowest.set) { int m0 = n; ADD(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.lowest); }
   #undef ADD

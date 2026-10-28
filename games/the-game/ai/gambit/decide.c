@@ -630,7 +630,7 @@ static Played playOf(const Read *R, int n) {
 // only when none was then)
 // (ready: a break found on the board once everything lands, carried from a swap played for it -- offered, not put first: it was found
 // on a board the stack is not yet)
-typedef struct { int32_t set, id, play, nrest, rest[MAXLINE], restAt[MAXLINE], tap, settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, move, moveAt; Aim aim; } Carry;   // restAt: the frame each swap was judged pressed at, -1 not said; move, moveAt: the answer's own first swap (the move, not handed on) and its frame, 0 none; play: the kind of line it was chosen as
+typedef struct { int32_t set, id, play, nrest, rest[MAXLINE], restAt[MAXLINE], tap, settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, move, moveAt, builds; Aim aim; } Carry;   // restAt: the frame each swap was judged pressed at, -1 not said; move, moveAt: the answer's own first swap (the move, not handed on) and its frame, 0 none; play: the kind of line it was chosen as
 static Carry theCarry;
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
@@ -681,6 +681,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   for (int i = first; i < k->k.nseq; i++) { theCarry.rest[i - first] = k->k.seq[i]; theCarry.restAt[i - first] = !k->hold && i < k->o.j.nats ? decAt + k->o.j.ats[i] : -1; }
   theCarry.tap = k->k.tapOf ? k->k.tapOf - 1 : decTap; theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
+  theCarry.builds = k->builds;
 }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach -- once everything lands, or its
 // plan's next -- is a promise
@@ -931,7 +932,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   int aim = -1;
   if (C->hasAim && !aimGone) for (int i = 0; i < R->guides.n && aim < 0; i++) if (!memcmp(&R->guides.aim[i], &C->aim, sizeof(Aim))) aim = i;
   if (!candOf(k, *wait ? PLAY_CARRYWAIT : PLAY_CARRY, rest, nrest, aim, 0)) return 0;
-  k->settled = C->settled; k->at0 = wTo ? 0 : at0; k->waitTo = wTo; k->tapOf = 1 + C->tap;
+  k->settled = C->settled; k->at0 = wTo ? 0 : at0; k->waitTo = wTo; k->tapOf = 1 + C->tap; k->builds = C->builds;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;
   k->xNats = nats; for (int i = 0; i < nats; i++) k->xAts[i] = ats[i];
   return 1;

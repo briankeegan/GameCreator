@@ -49,7 +49,7 @@ typedef struct {
   double ms;                 // the planner's share, ms
   const Paths *seeds;        // the lines the last decision's plan ended with, the swaps played since taken off (answer.c plannedPaths)
 } PlanOpts;
-typedef struct { PLine perAim[MAXAIMS], nearest, quick, lowest, stopBest, pair; int32_t setup, nsetupLine, setupLine[PLAN_SEQ]; double ms; int32_t base; } Plan;
+typedef struct { PLine perAim[MAXAIMS], nearest, quick, lowest, stopBest, pair; int32_t setup, nsetupLine, setupLine[PLAN_SEQ]; double ms; int32_t base; double setupReach, rootReach; } Plan;
 
 static LOCAL Ctx *planCtx;   // (each thread its own, as every buffer here: two plans search at once -- answer.c searchJob)
 // THE PLAN KEPT (plans/gambit-infra.md F, as tree reuse keeps the subtree under the move played): the lines a plan ends with -- each
@@ -127,7 +127,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   #define BROKE_OF(it, st) ((st).broke > 0 ? imax(0, NODE(x, out)->brk - stillAt(&still, NODE(x, out)->t)) : 0)
   P->base = base;
   int32_t rootH = connectedOf(ensureBoard(x, root));
-  int32_t setH = rootH, haveSetup = 0, setIdeas = 0; double setReachD = 0;
+  int32_t setH = rootH, haveSetup = 0, setIdeas = 0; double setReachD = 0, rootReachD = 0;
   // (garbage broken by frame t standing still: a slab already popping goes on converting whatever is pressed)
   BS still; memset(&still, 0, sizeof still); still.x = x; still.root = root;
   static LOCAL PItem poolA[PLAN_POOL], poolB[PLAN_POOL];
@@ -290,6 +290,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     // swap on comes first (its reach), then one as near with more ideas ready, so the setup is played toward the same list
     for (int r = 0; r < npool; r++) {
       PItem *it = &pool[idx[r]];
+      if (!it->nseq && it->reach > rootReachD) rootReachD = it->reach;   // (the board as it is: how near the list one swap from now)
       if (it->nseq && (it->reach > (haveSetup ? setReachD : 0) || (haveSetup && setReachD > 0 && it->reach == setReachD && it->ideas > setIdeas) ||
                        (!(haveSetup && setReachD) && !it->reach && it->h > (haveSetup ? setH : rootH)))) {
         haveSetup = 1; setReachD = it->reach; setH = it->h; setIdeas = it->ideas; P->setup = it->seq[0];
@@ -313,6 +314,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     if (P->nearest.set && !readyAfter(x, P->nearest.n, o->readyAt)) P->nearest.set = 0;
   }
   if (!haveSetup) { P->setup = 0; P->nsetupLine = 0; }
+  P->setupReach = haveSetup ? setReachD : 0; P->rootReach = rootReachD;
   // (the plan kept for the next decision: the lines it found, then the beam's last boards, most connected first)
   planOut.n = 0;
   for (int ai = 0; ai < na; ai++) if (P->perAim[ai].set) planKeep(P->perAim[ai].seq, P->perAim[ai].nseq);
