@@ -275,11 +275,12 @@ static double contLostOf(const Judge *J, double give) { return contLostOfLine(J,
 // THE LOOK-AHEAD PER CHOICE, AT ONCE: of the lines none of which lives, the DEEP_K best each played to its end here (the judge's replay is
 // this thread's), and from each board it leaves the survival search asked on the workers side by side -- DEEP_MS of work each, where the
 // order alone would give each the readiness share -- the garbage still on its way landing as it would (contBoardLostLine's question).
-// The answer is the line's loss from now as the best played after it has it (rank.c readyNextFor reads it in place of its own). The
-// decision is charged a DEEP_PAR'th of the work done; every job is done before any answer is read (jobsAll)
-#define DEEP_K 6
+// The answer is the line's loss from now as the best played after it has it (rank.c readyNextFor reads it in place of its own). No
+// more lines than workers, so the jobs run in one wave, and the decision is charged the longest of them -- the time it waits; every job
+// is done before any answer is read (jobsAll). Six at a third of their work each cost 120 of a decision's 300 ms and cut half of them
+// (run 1432)
+#define DEEP_K 4
 #define DEEP_MS 60
-#define DEEP_PAR 3
 static Board *deepBoard[DEEP_K]; static int32_t deepSpent[DEEP_K], deepJobN; static double deepAns[DEEP_K]; static Judge *deepFor[DEEP_K];
 static int64_t deepBase, deepWork[DEEP_K]; static Ctx *deepCtx;
 static void deepJob(int32_t i) {
@@ -308,7 +309,7 @@ static void readyResume(void);
 static void deepAhead(int n) {
   if (pool.nworkers < 2) return;
   deepJobN = 0;
-  for (int i = 0; i < n && deepJobN < DEEP_K; i++) {
+  for (int i = 0; i < n && deepJobN < DEEP_K && deepJobN < pool.nworkers; i++) {
     Judge *J = order[i];
     if (J->hold || J->o.lives || J->o.dead || J->deepAsked || J->extLost != NOT_ASKED) continue;
     endNoKeep = 1; asLine(&J->k);
@@ -328,8 +329,8 @@ static void deepAhead(int n) {
   if (!startJobs(deepCtx, deepJob, deepJobN)) { readyResume(); return; }
   jobsAll(deepCtx);
   int64_t w = 0;
-  for (int s = 0; s < deepJobN; s++) { deepFor[s]->deepAsked = 1; deepFor[s]->deepLost = deepAns[s]; w += deepWork[s]; }
-  clockCharge(w / DEEP_PAR);
+  for (int s = 0; s < deepJobN; s++) { deepFor[s]->deepAsked = 1; deepFor[s]->deepLost = deepAns[s]; if (deepWork[s] > w) w = deepWork[s]; }
+  clockCharge(w);
   readyResume();
 }
 // (THE BEST ON FROM A BOARD: the survival search asked of board e, with the garbage still on its way, for `give` ms -- the frame from
