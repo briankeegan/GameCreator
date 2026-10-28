@@ -272,18 +272,19 @@ static double contLostOfLine(const Judge *J, double give, int32_t *seq, int32_t 
   return contBoardLostLine(e, give, J->hold ? 0 : J->o.j.spent, seq, nseq);
 }
 static double contLostOf(const Judge *J, double give) { return contLostOfLine(J, give, 0, 0); }
-// THE LOOK-AHEAD PER CHOICE, AT ONCE: of the lines none of which lives, the DEEP_K best each played to its end here (the judge's replay is
-// this thread's), and from each board it leaves the survival search asked on the workers side by side -- DEEP_MS of work each, where the
-// order alone would give each the readiness share -- the garbage still on its way landing as it would (contBoardLostLine's question).
-// The answer is the line's loss from now as the best played after it has it (rank.c readyNextFor reads it in place of its own). No
-// more lines than workers, so the jobs run in one wave, and the decision is charged the longest of them -- the time it waits; every job
-// is done before any answer is read (jobsAll). Six at a third of their work each cost 120 of a decision's 300 ms and cut half of them
-// (run 1432)
+// THE LOOK-AHEAD PER CHOICE, BESIDE THE READINESS: of the lines none of which lives, the DEEP_K best are each played to their end here
+// (the judge's replay is this thread's) and from each board it leaves the survival search is asked on the workers -- the first jobs of
+// the readiness's own (readySpread), so nothing the workers search is let go for them -- DEEP_MS of work each, the garbage still on its
+// way landing as it would (contBoardLostLine's question). The answer is the line's loss from now as the best played after it has it
+// (rank.c readyNextFor reads it in place of its own). The decision waits for those its workers began and charges itself the longest
+// (the jobs run side by side); one no worker began by then is left to the readiness's own share
 #define DEEP_K 4
 #define DEEP_MS 60
-static Board *deepBoard[DEEP_K]; static int32_t deepSpent[DEEP_K], deepJobN; static double deepAns[DEEP_K]; static Judge *deepFor[DEEP_K];
-static int64_t deepBase, deepWork[DEEP_K]; static Ctx *deepCtx;
+static Board *deepBoard[DEEP_K]; static int32_t deepSpent[DEEP_K], deepJobN, deepState[DEEP_K]; static double deepAns[DEEP_K]; static Judge *deepFor[DEEP_K];
+static int64_t deepBase, deepWork[DEEP_K];
 static void deepJob(int32_t i) {
+  int32_t w = 0;
+  if (!__atomic_compare_exchange_n(&deepState[i], &w, 1, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return;
   clockWork = deepBase; clockShare = 0; clockAborted = 0; clockPoll = 0;
   inJob = 1; pressTight = decQ.tight; pressTap = decTap; pressFrom = pressSpent = 0; ncache = 0;
   int64_t w0 = clockWork;
@@ -304,14 +305,15 @@ static void deepJob(int32_t i) {
   }
   deepWork[i] = clockWork - w0;
   inJob = 0; pressFrom = pressSpent = 0;
+  __atomic_store_n(&deepState[i], 2, __ATOMIC_RELEASE);
 }
-static void readyResume(void);
-static void deepAhead(int n) {
-  if (pool.nworkers < 2) return;
+// (the boards, before the readiness is handed out: none of the lines lives)
+static void deepPrep(int n) {
   deepJobN = 0;
+  if (pool.nworkers < 2 || (n && order[0]->o.lives)) return;
   for (int i = 0; i < n && deepJobN < DEEP_K && deepJobN < pool.nworkers; i++) {
     Judge *J = order[i];
-    if (J->hold || J->o.lives || J->o.dead || J->deepAsked || J->extLost != NOT_ASKED) continue;
+    if (J->hold || J->o.lives || J->o.dead || J->extLost != NOT_ASKED) continue;
     endNoKeep = 1; asLine(&J->k);
     const Board *e = lineEnd(J->k.seq, J->k.nseq, J->settled);
     unLine(); endNoKeep = 0;
@@ -319,19 +321,22 @@ static void deepAhead(int n) {
     int s = deepJobN;
     if (!deepBoard[s]) deepBoard[s] = nb_new();
     if (!deepBoard[s]) break;
-    cloneBoard(deepBoard[s], e); deepSpent[s] = J->o.j.spent; deepFor[s] = J; deepJobN++;
+    cloneBoard(deepBoard[s], e); deepSpent[s] = J->o.j.spent; deepFor[s] = J; deepState[s] = 0; deepJobN++;
   }
-  if (!deepJobN) return;
-  readyStop();
-  if (!deepCtx) deepCtx = ctxOf(0);
   deepBase = clockWork;
-  __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
-  if (!startJobs(deepCtx, deepJob, deepJobN)) { readyResume(); return; }
-  jobsAll(deepCtx);
+}
+// (the answers, where the readiness is asked: a job no worker began is taken back, not searched)
+static void deepCollect(void) {
   int64_t w = 0;
-  for (int s = 0; s < deepJobN; s++) { deepFor[s]->deepAsked = 1; deepFor[s]->deepLost = deepAns[s]; if (deepWork[s] > w) w = deepWork[s]; }
-  clockCharge(w);
-  readyResume();
+  for (int s = 0; s < deepJobN; s++) {
+    int32_t z = 0;
+    if (__atomic_compare_exchange_n(&deepState[s], &z, 3, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) continue;
+    while (__atomic_load_n(&deepState[s], __ATOMIC_ACQUIRE) != 2) {}
+    deepFor[s]->deepAsked = 1; deepFor[s]->deepLost = deepAns[s];
+    if (deepWork[s] > w) w = deepWork[s];
+  }
+  if (w) clockCharge(w);
+  deepJobN = 0;
 }
 // (THE BEST ON FROM A BOARD: the survival search asked of board e, with the garbage still on its way, for `give` ms -- the frame from
 // now that board is lost, 1e9 if it lives, -1 if it could not be asked: a line's plan ends here, whatever its last step was)
@@ -454,6 +459,7 @@ static int ranked(const Read *R, const Found *S) {
   // (THE KEPT PLAN'S LINES -- intentions and routes -- are asked as every line is: a worker's answer or this thread's search, the same
   // either way; the readiness of a break in reach, below, is asked of the decision's own lines alone)
   #define EXTRA(J_) ((J_)->k.kept || (J_)->k.route)
+  deepPrep(n);
   readySpread(n);
   int toAsk = 0;
   for (int i = 0; i < n; i++) toAsk += READY_ASKS(order[i]);
@@ -494,7 +500,7 @@ static int ranked(const Read *R, const Found *S) {
   // (none lives: each is asked too whether a break is in reach once the next block lands -- the order puts those first. A ready line
   // first of all: being ready is all it is for, and asked last, in the order's tail, it was asked out of time -- 42 of 53 unanswered)
   if (!(n && order[0]->o.lives)) {
-    deepAhead(n);
+    deepCollect();
     int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
     for (int pass = 0; pass < 2; pass++)
       for (int i = 0; i < n; i++) if (!EXTRA(order[i]) && (order[i]->k.play == PLAY_READY) == !pass) { readyShare(own--); readyNextFor(order[i]); }
@@ -803,17 +809,19 @@ static void carryReady(const Judge *H, int32_t qid) {
 // past the decision, until the next one takes the pool back (readyStop): a break found then is kept for the decisions after. The
 // decision itself runs as it would with no workers.
 static Ctx *jobCtx;   // (the phase's own: the jobs make nodes only on their threads' contexts)
+// (the look-ahead's jobs first, then the readiness's boards: deepPrep)
+static void spreadJob(int32_t i) { if (i < deepJobN) deepJob(i); else readyJob(i - deepJobN); }
 static void readySpread(int n) {
-  if (pool.nworkers <= 0 || !readyPendN || timeLeftMs() <= 0) return;
+  if (pool.nworkers <= 0) return;
   uint8_t queued[READYPEND] = { 0 };
   int nj = 0;
-  for (int i = n - 1; i >= 0 && nj < READYPEND; i--) {
+  for (int i = n - 1; i >= 0 && nj < READYPEND && readyPendN && timeLeftMs() > 0; i--) {
     const Judge *J = order[i];
     int32_t p = J->o.j.readyPend - 1;
     if (!READY_ASKS(J) || p < 0 || p >= readyPendN || queued[p] || readyPend[p].gen != readyPendGen || readyPend[p].state != PEND_WAITING) continue;
     queued[p] = 1; readyJobs[nj++] = p;
   }
-  if (!nj) return;
+  if (!nj && !deepJobN) return;
   if (!jobCtx) jobCtx = ctxOf(0);
   // (each board's budget the share the decision would give it when it asks them all: the time left over twice the asks -- readyShare)
   int asks = 0; for (int i = 0; i < n; i++) asks += READY_ASKS(order[i]) && !EXTRA(order[i]);
@@ -821,22 +829,12 @@ static void readySpread(int n) {
   for (int j = 0; j < nj; j++) { readyPend[readyJobs[j]].budget = each; readyPend[readyJobs[j]].work = 0; }
   readyJobWork = clockWork; readyJobEnd = 0;
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
-  startJobs(jobCtx, readyJob, nj);
+  if (!startJobs(jobCtx, spreadJob, deepJobN + nj)) deepJobN = 0;
 }
 static void readyStop(void) {
   if (!poolBusy) return;
   __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
   jobsDone(jobCtx);
-}
-// (the boards readySpread handed out that no thread had begun, handed out again with their budgets: the pool let go for the look-ahead)
-static void readyResume(void) {
-  if (pool.nworkers <= 0 || poolBusy || !jobCtx) return;
-  int nj = 0;
-  for (int i = 0; i < readyPendN && nj < READYPEND; i++) { ReadyPend *p = &readyPend[i]; if (p->gen == readyPendGen && p->state == PEND_WAITING && p->budget > 0) readyJobs[nj++] = i; }
-  if (!nj) return;
-  readyJobWork = clockWork;
-  __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
-  startJobs(jobCtx, readyJob, nj);
 }
 // THE INTENTIONS (plans/gambit-infra.md A, F): besides the line in progress, the best lines a decision ranked that make something -- a
 // clear, a chain, a combo, a break -- each kept with a bottom-row panel it does not touch (found again by it once the stack has risen,
