@@ -68,7 +68,7 @@ static int flattenBreak(const Question *q, double ms, int32_t *path, int *n) {
         if (liveNode(x, st) && NODE(x, st)->brk > flatStill(x, root, NODE(x, st)->t)) {
           int32_t line[FLAT_DEPTH + 1]; int L = d + 1; line[d] = ms2[k];
           for (int dd = d - 1, slot = i; dd >= 0; dd--) { line[dd] = hist[dd + 1][slot][1]; slot = hist[dd + 1][slot][0]; }
-          if (lineCheckOn(q, line, L, 0, breakOpen ? 0 : CHECK_WASTE)) { for (int j = 0; j < L; j++) path[j] = line[j]; *n = L; found = 1; break; }
+          if (lineCheckOn(q, line, L, 0, breakOpen && !breakWasteFirst ? 0 : CHECK_WASTE)) { for (int j = 0; j < L; j++) path[j] = line[j]; *n = L; found = 1; break; }
           continue;
         }
         Board *cb = ensureBoard(x, c); if (!cb) continue;

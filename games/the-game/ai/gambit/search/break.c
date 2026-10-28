@@ -20,8 +20,10 @@
 static int32_t touchDepth = TOUCH_DEPTH;
 // (nothing the last decision played was proven, plans/gambit-next.md 8: the mode's list and the wasted three rank proven lines only, so
 // the search for the proof is held to neither -- the order ranks what it finds, and a three is played only where the save says it is
-// needed: decide.c)
+// needed: decide.c). The wasted three only once a search held to it has found none: the decision drops a three it does not need, so
+// a break with none is the one it can play (breakWasteFirst, answer.c breakRunTo)
 static int32_t breakOpen;
+static LOCAL int32_t breakWasteFirst;
 #define TOUCH_BEAM 60
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
 #ifdef GB_TEST
@@ -313,11 +315,12 @@ static int breaksAt(BS *s, int n, const int32_t *path, int len) {
   Ctx *x = s->x;
   if (!liveNode(x, n) || !within(s, n) || !(NODE(x, n)->brk > stillAt(s, NODE(x, n)->t))) return 0;
   if (clockOut()) return 0;
-  // (off the list, the line still through the order's own checks: not dead, pressed whole, no three wasted unless breakOpen -- outcome.c lineCheck. A
+  // (off the list, the line still through the order's own checks: not dead, pressed whole, no three wasted unless breakOpen and a search
+  // held to it found none -- outcome.c lineCheck. A
   // readiness search, rooted at a line's board once everything lands, asks only that a break is there: the decisions until then judge
   // the line that presses it, each through the check)
   int ready = s->q != &decQ;
-  return (!BREAK_LIST || allowedAt(x, n)) && (!path || ready || lineCheckOn(s->q, path, len, 0, BREAK_LIST ? CHECK_LIST | CHECK_WASTE : breakOpen ? 0 : CHECK_WASTE));
+  return (!BREAK_LIST || allowedAt(x, n)) && (!path || ready || lineCheckOn(s->q, path, len, 0, BREAK_LIST ? CHECK_LIST | CHECK_WASTE : breakOpen && !breakWasteFirst ? 0 : CHECK_WASTE));
 }
 // (what a break leaves once its board has settled: the garbage rows broken -- a break whose converted panels match again breaks on --
 // and the material, the panels under each column's first garbage: a slab broken above another leaves its panels on the lower one,

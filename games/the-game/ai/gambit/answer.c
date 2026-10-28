@@ -159,7 +159,14 @@ static Paths brResume; static int brHave;
 // (the search itself, on whichever thread runs it: what it reads is the question, the read and the kept paths, its nodes its thread's)
 static void breakRunTo(const Read *R, double by, Broke *into);
 static void breakRun(const Read *R, double by) { breakRunTo(R, by, &theBr); }
+static void breakRunTo1(const Read *R, double by, Broke *into);
+// (the open search held to the wasted three first, and searched again without it only where that found none in its time to the end)
 static void breakRunTo(const Read *R, double by, Broke *into) {
+  if (!breakOpen) { breakRunTo1(R, by, into); return; }
+  breakWasteFirst = 1; breakRunTo1(R, by, into); breakWasteFirst = 0;
+  if (!into->depth && !clockOut()) breakRunTo1(R, by, into);
+}
+static void breakRunTo1(const Read *R, double by, Broke *into) {
   int32_t pop = popLeft(decQ.b);
   double old = clockShareBegin(by);
   // (a list ended by "default" -- every list under garbage -- or any list where nothing played was proven (breakOpen), plays off it only when no break within it is found: the break off the list
