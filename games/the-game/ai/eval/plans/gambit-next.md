@@ -408,6 +408,12 @@ line short at once by a block shown (**demand**).
   Every key of the order is read off each line alone: keys guarded by the pair's losses ranked three lines in a ring (one order, 56).
   The C check gains `test DIR replay WORK` (each question decided on WORK frames, with its log line) and `test DIR verdict LINES` (any
   chooser's lines judged on one judge); the report counts, per mode, what is played while a slab pops.
+- 1359 to 1366: 16 to 19 (1362 to 1365 19, all gates green), then 15/23. The unproven "longer" (a break's time later) ahead of the
+  next break and the material saved factory-5 and lost factory 6, 7, 8 to material passed over; it now sits after them, ahead of the
+  margin. combo_storm-5 in 1366 crashed on a worker in the touch beam: `NODE(x, aloneNodeAt(...))->brk` read x->nodes before the
+  call, the call's step grew the nodes, and the new node's index read past the old block -- a crash when it reached unmapped memory,
+  a wrong `brk` (stillAt, every break test of every search) when it did not. Fixed, and `gate_gambit_engine` fails on
+  `NODE(x, call(...))` anywhere in gambit/.
 
 ## Where this stands
 

@@ -924,7 +924,7 @@ static int32_t readyBreakOf(Ctx *x, int n, int32_t *why, int32_t *whyN) {
   if (r != 1) return r;
   if (why) { for (int i = 0; i < k; i++) why[i] = line[i]; *whyN = k; }
   // (the board as keyed before the search: the break search plays it, so it is keyed again from the node)
-  if (kn && readyKey(ensureBoard(x, n), NODE(x, n), decQ.tight, &kh) == kn) readyKeep(kh, readyKeyBuf, kn, line, k);
+  if (kn) { Board *kb = ensureBoard(x, n); if (readyKey(kb, NODE(x, n), decQ.tight, &kh) == kn) readyKeep(kh, readyKeyBuf, kn, line, k); }
   return 1;
 }
 // THE JOBS: readySpread's boards in the order it hands them (readyJobs), each searched on whichever worker takes it, if no thread has

@@ -639,9 +639,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // garbage before one that converts none -- the margin reads material as enough down to three rows, and a board spent from 51 to 22
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
       if (decF.under) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
-      // (THE LONGER LOSS IN WHOLE BREAKS' TIME: a line lost a break's time later has a break more to find before it -- death first, every
-      // key after it within a break's time; from now, read off each line alone)
-      { int32_t lx = breaksTo(x), ly = breaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
       // (THE NEXT BREAK LEFT TO BUILD: of two lines that convert, the one whose board still has a break to build and keeps the floor
       // (judgeCand material: outcome.c nextBuild, floorKept) -- a break that leaves none is the last the board makes. Each key of the
       // order is read off each line alone and is had by every line -- a line with none reads last -- so the order is one order)
@@ -652,6 +649,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // spends the stack's own)
       if (decF.under) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
         if (nx != ny) K(2, "material", ny - nx); }
+      // (THE LONGER LOSS IN WHOLE BREAKS' TIME: of two lines alike in the next break and the material, the one lost a break's time later
+      // has a break more to find before it -- the margin and the later loss decide within a break's time; from now, read off each line alone)
+      { int32_t lx = breaksTo(x), ly = breaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
       int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(2, "margin", my > mx ? 1 : -1);
       if (!lostAlike(x, y) && lostOf(x) != lostOf(y)) K(2, "later", lostOf(y) > lostOf(x) ? 1 : -1);
 

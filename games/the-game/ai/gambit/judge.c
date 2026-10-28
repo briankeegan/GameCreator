@@ -303,7 +303,8 @@ static int aloneNodeAt(Ctx *x, int root, int32_t t) {
   int w = t > NODE(x, root)->t ? step(x, root, MK_LONG, 0, 0, t - NODE(x, root)->t) : root;
   return liveNode(x, w) ? w : root;
 }
-static int32_t aloneBrokeAt(Ctx *x, int root, int32_t t) { return NODE(x, aloneNodeAt(x, root, t))->brk; }
+// (the node first, then its field: the step may grow the nodes, and NODE(x, call) can read x->nodes before the call)
+static int32_t aloneBrokeAt(Ctx *x, int root, int32_t t) { int w = aloneNodeAt(x, root, t); return NODE(x, w)->brk; }
 // WHAT A SWAP MADE, as the swap back reads it (rules.c swapBack, putBackFor): 2 garbage broken beyond the board alone by then, 1 panels
 // cleared beyond it (the board's own chain clears whether or not the swap is pressed: a clear counted to the swap is one the board alone
 // did not make by then -- pa.c panelsCleared), 0 nothing. Asked of a swap's node: by the searches as they grow a line, by the judge as it
