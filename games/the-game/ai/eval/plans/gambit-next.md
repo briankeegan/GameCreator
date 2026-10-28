@@ -616,3 +616,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - factory-1 in 1390: the question for 14034 was asked at 14015, the slab's cells all unshown; they showed by 14033 and no question
   asked after them came before 14057. A hold taken after a colour was shown since its question -- with a line handed on or a break --
   asks the next question at once (front.c take), so each colour is in the first decision after it.
+- 1393, 22/24 (8, 7, 7): factory-1 lives to 20139 (14083 in 1390), large_garbage-3 at 7784 as in 1390. factory-1's end: a 9-slab
+  cascade (rows 5-13 matched at once, colours shown a row at a time, no line-up within 4 swaps) pours ~54 panels onto the stack; after
+  it every break is 8-12 swaps, most of them dead without the window. Both deaths are boards whose next break got expensive. The order's
+  rule 2 reads the next break's nearness (nearActsOf) after the material: of two unproven lines alike there, the nearer first.
