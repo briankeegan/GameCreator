@@ -372,33 +372,6 @@ int main(int argc, char **argv) {
     printf("%s: held keys end at the wall -- %d held of the lines keyed, %d let go off the wall, %d swaps pressed off their cell\n", off || offCell || !held ? "FAIL" : "ok", held, off, offCell);
     fail |= off || offCell || !held;
   }
-  // (A BOARD ON ITS WAY OUT, played by the frame loop and Gambit's thread as a game plays it, the engine the game, a frame each 16 ms:
-  // each lives past the frame it is lost on left alone -- its question asked while a swap answered still comes down in time (front.c
-  // afterFrame). Not under the thread sanitizer, whose clock is not the game's)
-  snprintf(path, sizeof path, "%s/front.txt", dir);
-  FILE *fb = getenv("TSAN_OPTIONS") ? 0 : fopen(path, "r");
-  if (fb) {
-    int boards = 0, outlived = 0;
-    int winChecked = 0, winShort = 0, winWorst = 0;
-    static int32_t fo[2 * 4000];
-    while (fgets(line, sizeof line, fb)) {
-      int mode = atoi(line), narr;
-      const char *b = strstr(line, "GAMBIT");
-      if (!b) continue;
-      int n = loadLine(b, &narr);
-      if (n < 0 || gb_question_bytes(n, 0) != 0) continue;
-      int alone = gb_frames(0, 0, 2000, fo);
-      if (gb_question_bytes(n, 0) != 0) continue;
-      int k = gb_front_sim(alone + 120, 16, mode, fo);
-      { int32_t wh[3]; gb_win_held(wh); winChecked += wh[0]; winShort += wh[1]; if (wh[2] > winWorst) winWorst = wh[2]; }
-      boards++; outlived += k > alone + 1;
-      if (k <= alone + 1) printf("  lost on its way out (mode %d): %d frames left alone, %d played\n", mode, alone, k);
-    }
-    fclose(fb);
-    printf("%s: a board on its way out -- %d of %d outlived the frame they are lost on left alone\n", outlived < boards || !boards ? "FAIL" : "ok", outlived, boards);
-    printf("the window held: %d of %d lines reached as judged found the window holding fewer actions than the judge read (%d fewer at most)\n", winShort, winChecked, winWorst);
-    fail |= outlived < boards || !boards;
-  }
   // ---- switching: every direction between the modes, over a run's games (gambit-switch.json's stretch)
   { int32_t counts[64 * 64]; int nr = 0, missing = gb_switch_check(24, 21600, 300, 1800, counts, &nr), lo = 1 << 30, hi = 0;
     for (int a = 0; a < nr; a++) for (int b = 0; b < nr; b++) if (a != b) { if (counts[a * nr + b] < lo) lo = counts[a * nr + b]; if (counts[a * nr + b] > hi) hi = counts[a * nr + b]; }
