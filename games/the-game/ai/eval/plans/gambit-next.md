@@ -464,6 +464,11 @@ line short at once by a block shown (**demand**).
   their own, by "longer"; at 2999 a block shown landing a frame later took the plan away, the window ran from 17 to 5. Of unproven
   lines, "soon" and "longer" now read a line's own loss (ownBreaksTo): the readiness break is still to be pressed after the line,
   through garbage not yet shown, and the proof is what reads it, with its margin for that garbage.
+- 1379, 21/24 (7, 7, 7), every gate green -- own losses in rule 2. large_garbage-8 at 10637 (1378, 1379): under garbage with 12 to 18
+  panels, from 10356 to 10503 the line played flipped between a carry breaking 6 and toward lines of 8 to 10 swaps breaking nothing,
+  the toward lines proven by a loss a few frames past the proof frame (199 and 218 against 193 and 174) -- every flip a line part
+  pressed and left. Under garbage a line that converts nothing, now or in its plan, proves nothing (rank.c proofOf): it is only lost
+  later.
 
 ## Where this stands
 
