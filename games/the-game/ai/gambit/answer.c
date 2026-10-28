@@ -238,7 +238,7 @@ static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c', 'w', 
 typedef struct { int32_t kind, move; } Move;   // kind: 0 hold, 1 swap, 2 raise
 // THE ANSWER, read by the host (gb_answer): the move, the raise held, the line handed on, and what the log and the audit read
 typedef struct {
-  Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled, tap;
+  Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled, tap, unpaced;
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
   int32_t sooner;   // the line played is less proven than one offered, or dead before it could press anything while one is not
@@ -340,7 +340,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   // (a board near its end, by the frames the decision reads it is lost in left alone -- the dies fact, the garbage on its way landing)
   pressTap = decTap = hostTaps && allowanceKnown && R.F.v[FACT_US_DIES] <= TAP_DIES;
-  A->tap = pressTap;
+  A->tap = pressTap; A->unpaced = 0;
   // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks)
   decQ.tight = allowanceKnown && tightAt(allowance);
   pressTight = decQ.tight;
@@ -375,6 +375,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   }
   Played P = playOf(&R, n);
   if (P.line && P.line->k.tapOf) A->tap = P.line->k.tapOf - 1;   // (the line in progress handed on walked as it was chosen)
+  A->unpaced = P.line ? P.line->k.unpaced : 0;   // (and pressed at the pace it was judged at)
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
@@ -491,7 +492,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(" svSeed="); L_i(outSeedPlayed); L_s("/"); L_i(outSeedIn); }
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
-  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1");
+  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1"); if (theAnswer.unpaced) L_s(" unpaced=1");
   L_s(" back="); L_i(decQ.b->lastSwapA); L_s(","); L_i(decQ.b->lastSwapB);   // (the pair the last swap swapped, on the decision's board: rules.c putBackFor)
   if (flatAsked) { L_s(" fs="); L_i(flatFound); L_s("/"); L_i(flatLen); L_s("/"); L_i(flatSteps); L_s("/"); L_i((int64_t)flatMsUsed); }   // (the flatten search: found, its length, the swaps it pressed, its ms -- search/solve.c)
   L_s(" br=");

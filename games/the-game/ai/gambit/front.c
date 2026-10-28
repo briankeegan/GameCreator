@@ -34,6 +34,7 @@ typedef struct {
   int32_t id, epoch, at, kind, move, raiseNow, raiseAfter, nhand, hand[MAXLINE], holdLives, brk, urgent, error;
   int32_t play;                // the kind of line played (facts.c PLAY_NAME)
   int32_t tap;                 // the board near its end: the line's walks tapped while the allowance has some to spare (core/nodes.h pressTap)
+  int32_t unpaced;             // the line's swaps keyed without the window's pace, as it was judged (core/nodes.h pressUnpaced)
   int32_t raiseWait;           // a raise held from this many frames after `at`, the first the stack takes one (0: from `at`)
   int32_t handAt[MAXLINE];     // the frame each swap handed on was judged pressed from (0: as soon as the one before is done)
   int32_t empty;               // a hold the clock left no time to judge anything for
@@ -108,7 +109,7 @@ static struct {
   // the one before is done)
   int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
   int32_t playedId;   // the answer last put in the plan: its swap, its hold, its raise put off (0: none yet)
-  int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
+  int32_t lineMode, altMode, lineTap, lineUnpaced;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace, lastKind;
   int32_t putBackLine;   // (the answer whose swap was refused for putting the last pair back: its question dumped -- native.c gn_frame; -1 none)   // (lastKind: the last answer taken's, 0 a hold)
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
@@ -590,7 +591,7 @@ static void take(void) {
     if (a.kind == 0 && a.empty) {
       F.st.starved++;
       if (F.nalt && F.altMode != modeAt(at)) F.nalt = 0;
-      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineGap = F.altGap; F.linePlay = F.altPlay; F.lineTap = 0; F.lineN = F.nalt; F.lineAsked = F.altAsked; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
+      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineGap = F.altGap; F.linePlay = F.altPlay; F.lineTap = 0; F.lineUnpaced = 0; F.lineN = F.nalt; F.lineAsked = F.altAsked; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
       if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
     }
     if (!a.empty) { F.altMode = modeAt(a.at); F.altGap = F.pGap; F.altPlay = a.play; F.altAsked = F.pPosted; F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
@@ -611,7 +612,7 @@ static void take(void) {
       F.lineN = 0; F.haveLineOf = 0; F.playedId = a.id;
       continue;
     }
-    F.keyGap = fPace(at);
+    F.keyGap = a.unpaced ? 0 : fPace(at);
     if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
       F.st.refused++;
       if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
@@ -648,7 +649,7 @@ static void take(void) {
     // the slab's row allows is only seen once its colours are -- so the next question is asked now, on the board as the game shows it,
     // not once the hold is out. Every question is answered before the next: a colour shown never leaves one unanswered)
     if (a.kind == 0 && !a.nhand && !a.brk && F.lastReveal > 0 && F.lastReveal >= F.pPosted && F.nextAt > F.now + 1) { F.nextAt = F.now + 1; F.st.reaskShown++; }
-    F.lineN = a.nhand; F.lineGap = F.pGap; F.linePlay = a.play; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
+    F.lineN = a.nhand; F.lineGap = F.pGap; F.linePlay = a.play; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; F.lineUnpaced = a.unpaced; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0; F.playedId = a.id;
   }
 }
@@ -673,7 +674,7 @@ static int follow(void) {
   }
   int32_t mv = F.line[0], hl, hs;
   if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) return lineDropped(due, "no board predicted");
-  F.keyGap = fPace(due);
+  F.keyGap = F.lineUnpaced ? 0 : fPace(due);
   if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) return lineDropped(due, "no keys press it");
   if (F.pending) abortTo(F.pId);
   F.pending = 0;

@@ -401,7 +401,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       int acts = bn ? actionsFor(bn->curRow, bn->curCol, mr, mc, left) : 0;
       // (THE PACE AT THIS SWAP: the wait after it as the window it is pressed in sets it -- the frame loop keys every swap with the pace of
       // the window at its frame (front.c fPace), so a line is judged pressed as it will be, at whatever decision it is judged)
-      if (nWinAges >= 0) ns_ctx_gap(x, handsGap(paceGap(left, pressAllowance + nWinAges, winLen)));
+      if (nWinAges >= 0) ns_ctx_gap(x, handsGap(pressUnpaced ? 0 : paceGap(left, pressAllowance + nWinAges, winLen)));
       // (a swap whose walk is over what the window leaves at its frame is not there to press: the frame loop refuses a first swap's keys
       // -- front.c keysFit, GUARDED -- and drops a line at a later one -- front.c follow -- so the line is cut there)
       if (acts > left) { j->cut = k; j->cutWhy = 1; break; }

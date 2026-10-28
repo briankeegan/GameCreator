@@ -132,6 +132,7 @@ static void condsOfLine(const char *b) {
 int main(int argc, char **argv) {
   if (getenv("GC_GAMBIT_LOG")) hostOpenLog(getenv("GC_GAMBIT_LOG"));
   if (getenv("GC_GAMBIT_TRACE")) gb_trace(1);   // (and the order after each stage of every decision, into that log)   // (the bot's own log of every decision the checks make it take: GAMBITD lines, where a check's verdict needs reading)
+  { extern void gb_no_pace(int); if (getenv("GC_NOPACE")) gb_no_pace(1); }
   const char *dir = argc > 1 ? argv[1] : "test";
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   int golden = argc > 2 && !strcmp(argv[2], "golden"), fail = 0;
@@ -163,6 +164,7 @@ int main(int argc, char **argv) {
         printf(" | with a follow-up %d\n", with); fflush(stdout); continue;
       }
       int32_t sol[64], best = 0; int r = getenv("GC_BREAK_TEST") ? gb_break_test(ms, getenv("GC_NOBAND") != 0, getenv("GC_NODOOMED") != 0, getenv("GC_TBEAM") ? atoi(getenv("GC_TBEAM")) : 0, getenv("GC_OPEN") != 0, sol) : getenv("GC_SOLVE_BEAM") ? gb_solve2(depth, atoi(getenv("GC_SOLVE_BEAM")), ms, sol, &best) : gb_solve(depth, ms, sol, &best);
+      if (getenv("GC_SHOW")) { static char sb[4096]; extern void gb_board_show(char *, int); n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_board_show(sb, sizeof sb); printf("board %s:\n%s", tag, sb); }
       printf("solve %s: %s", tag, r > 0 ? "BREAK" : r < 0 ? "cut" : "none");
       if (getenv("GC_TRACE_MV")) { static char to[512]; int rr, cc; sscanf(getenv("GC_TRACE_MV"), "%d,%d", &rr, &cc); n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_break_trace(rr * 8 + cc, to, sizeof to); printf(" [trace %d,%d: %s]", rr, cc, to); }
       if (r > 0 && getenv("GC_TRACE_LINE")) { static char to[4096]; n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_line_trace(sol, r, to, sizeof to); printf("\n   [line: %s]\n", to); }
