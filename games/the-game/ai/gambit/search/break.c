@@ -423,37 +423,8 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       sortByKeyDesc(idx, ntl, keyS, tmp);
       for (int i = 0; i < ntl; i++) tn[i] = tl[idx[i]];
       for (int i = 0; i < ntl; i++) tl[i] = tn[i];
-      // (THE ORDER'S FIRST KEY at the top of the beam: of the lines the beam would keep, the board each leaves judged on the engine left
-      // alone (judge.c lostAlone) -- survival first, in bands of a break's time as the order reads them -- and its nearness to a break
-      // within the band; only those, so the judging is bounded by the beam)
-      { int top = ntl < beam ? ntl : beam, nb2 = 0; static LOCAL int32_t band[LINEPOOL], idx2[LINEPOOL], key2[LINEPOOL], tmp2[LINEPOOL];
-        int32_t save = imax(1, rankSave > 0 ? rankSave : 60), to = NODE(x, s->root)->t + HORIZON + REST;
-        static LOCAL int32_t lraw[LINEPOOL];
-        for (int i = 0; i < top && !SEARCH_OUT(); i++, nb2++) { int32_t l = lostAlone(x, tl[i]->n, to); lraw[i] = l; band[i] = l == FOREVER ? (1 << 20) : l == NOT_ASKED ? -1 : l / save; }
-#ifdef GB_TEST
-        if (tbNoBand) nb2 = -1;
-#endif
-        if (nb2 == top && top > 1) {
-          for (int i = 0; i < top; i++) { idx2[i] = i; key2[i] = band[i]; }
-          sortByKeyDesc(idx2, top, key2, tmp2);   // (stable: within a band, the nearness order the beam had)
-          for (int i = 0; i < top; i++) tn[i] = tl[idx2[i]];
-          for (int i = 0; i < top; i++) tl[i] = tn[i];
-          // (A LINE THAT CANNOT SAVE THE BOARD, plans/gambit-next.md 3: its board, left alone, lost within a break's time of the line's
-          // end -- no break grown from it can be pressed and pop before the board dies. Such lines leave the beam while any other is in
-          // it: the beam's width goes to lines that still have the time a break takes)
-          { int nv = 0, nd = 0;
-            for (int i = 0; i < top; i++) { int32_t l = lraw[idx2[i]];
-              int viable = l == FOREVER || l == NOT_ASKED || l - NODE(x, tl[i]->n)->t >= save;
-              if (viable) tn[nv++] = tl[i]; else nd++; }
-#ifdef GB_TEST
-            if (tbNoDoomed) nd = 0;
-#endif
-            if (nv > 0 && nd > 0) {
-              for (int i = 0; i < nv; i++) tl[i] = tn[i];
-              for (int i = top; i < ntl; i++) tl[nv + i - top] = tl[i];
-              ntl -= nd; o->doomed += nd;
-            } }
-        } }
+      // (THE BEAM IN NEARNESS ORDER: a line's board is judged on the engine when it breaks -- the shared line check, then the order -- and
+      // the beam's time goes to its depth)
       // (the line nearest a break the beam has seen: TOWARD, returned when no break is found)
       if (ntl && (!s->haveToward || tl[0]->s > s->towardS)) { s->haveToward = 1; s->towardS = tl[0]->s; s->towardLen = tl[0]->len; for (int k = 0; k < tl[0]->len; k++) s->toward[k] = tl[0]->path[k]; }
       keepPaths(&o->keepOut, tl, ntl < KEEPN ? ntl : KEEPN);
