@@ -640,6 +640,4 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   played far more. Reverted; the lock kept.
 - 1405, big chain 12/24 (6, 2, 4) with the open search held to the wasted three first: its pass ate the search's time and found none where the open search found the breaks played. Reverted.
 - 1407, big chain 16/24 (6, 3, 7) with the flatten search's break checked by the judge: its lines the judge plays to no break were played, and kept boards alive. Reverted.
-- The dropped "breaks" the judge played to none (6/0) were grown copies (propose.c growLines: a walk put in before the last swap) of
-  the flatten line played -- harmless. factory-2's real cause is its 32 breaks dropped for cutting the board's own chain short (11960,
-  12077). The owner: survival first -- where no line keeping the chain lives, such a break stays (decide.c cutBreak).
+- 1408, big chain 19/24 (6, 6, 7) with the break that cuts the board's chain short kept where nothing keeping it lives. Reverted.
