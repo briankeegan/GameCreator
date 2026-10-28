@@ -47,6 +47,7 @@ typedef struct {
   int32_t haveLb, lbN, lb[MAXLINE], lbOne;   // (the break on the board to come: search/ready.c landedBreak; lbOne: one swap, pressed once the block has landed)
   int32_t nstart; XLine start[MAXSTARTS];  // chains begun: a swap that starts a clear, and the links its fall is continued by
   int32_t tried; double idleMs, searchMs;
+  int32_t haveFs, fsN, fs[MAXPATH];   // (the flatten search's line: search/solve.c)
 } Found;
 #define READY_LINE_MS 120
 // whether a list asks for a chain at all
@@ -159,6 +160,13 @@ static int pLineBetter(const PLine *a, const PLine *b, int how) {   // (a over b
   return a->earned > b->earned || (a->earned == b->earned && a->nseq < b->nseq);
 }
 static void searchMerge(const Read *R, Found *S) {
+  // (THE FLATTEN SEARCH'S LINE, search/solve.c: its own job's answer; with no worker for it, searched here in a third of what is left)
+  S->haveFs = 0;
+  if (flatJobOn) { if (__atomic_load_n(&flatDone, __ATOMIC_ACQUIRE) && flatOk && flatOutN > 0) { S->haveFs = 1; S->fsN = flatOutN; for (int k = 0; k < flatOutN; k++) S->fs[k] = flatOut[k]; } }
+  else if (flatWanted(decQ.b)) {
+    double m5 = timeLeftMs() / 3 < FLAT_MS ? timeLeftMs() / 3 : FLAT_MS;
+    if (m5 > 1) { int fn = 0; S->haveFs = flattenBreak(&decQ, m5, S->fs, &fn); S->fsN = fn; }
+  }
   // (the board to come, its own job's answer once the jobs are taken back: answer.c breakEnd)
   if (landedJobOn && __atomic_load_n(&landedDone, __ATOMIC_ACQUIRE) && landedOk && landedOutN > 0) { S->haveLb = 1; S->lbN = landedOutN; S->lbOne = landedOutOne; for (int k = 0; k < landedOutN; k++) S->lb[k] = landedOut[k]; }
   if (planSplit && __atomic_load_n(&planBDone, __ATOMIC_ACQUIRE)) {
@@ -480,6 +488,8 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     }
     #undef BX
   }
+  // THE FLATTEN SEARCH'S BREAK (search/solve.c): a break search line, its break known once the board settles
+  if (S->haveFs && S->fsN > 0) { int m0 = n; ADD(PLAY_BREAKSEARCH, S->fs, S->fsN, -1, 0); if (n > m0) { out[m0].x.broke = 6; out[m0].xDone = -1; out[m0].xFire = -1; } }
   // TOWARD A BREAK: under garbage with none in reach, the line begun last gone on with first, then the break search's lines: the first
   // whose first swap does not bring back a board this dig has already stood on
   if (R->under && br) {
