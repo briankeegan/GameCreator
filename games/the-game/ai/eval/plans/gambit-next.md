@@ -629,4 +629,7 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
 - The break search goes on between decisions (plans/gambit-machinery.md step 2): a decision that found no break leaves its frontier to
   a thread of its own (gbetween, the idle class, the workers' CPUs), which grows it a frame's work on each frame no question is out --
   the frame loop waits for it in lockstep -- and keeps what it reaches for the next decision; a question coming stops it at once.
-- 1402: the wider beam on gbetween -- eight games crashed, the tsan check red, 8 of the 16 left survived. Reverted to 1401.
+- 1401, 22/24 (8, 7, 7), the break search between decisions: the same games as 1393 -- it ran in 4 of factory-1's 895 decisions and in
+  none of large_garbage-3's; a question is out on nearly every frame. The workers are about 0.3 of a CPU each during the decisions.
+  Under garbage the wider beam now runs on gbetween, pinned beside the game's core (GC_GAMBIT_SPARE_CPU, eval/training.sh), in the
+  searches' time: no cycle beside Gambit's thread, and a pool worker more for the other jobs.
