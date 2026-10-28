@@ -92,7 +92,7 @@ typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
-  int32_t holdLeft, holdStarted, overLogged, loggedAskNow, loggedRefused, nalt, alt[MAXLINE];
+  int32_t holdLeft, holdStarted, overLogged, loggedAskNow, loggedRefused, loggedPast, nalt, alt[MAXLINE];
   Planned plan[PLANN]; int32_t planAt[PLANN];
   Board *truth, *expect, *pr, *scratch;
   int32_t haveExpect;
@@ -575,7 +575,10 @@ static void take(void) {
     F.thinking[F.nthinking++] = took < most ? took : most;
     // (an answer taken after its own frame (native.c readyFrame): the work clock's machine fell behind the wall's, and the game is no
     // longer the seed's alone -- counted, as the reports read it)
-    if (a.readyFrame < F.now) F.st.pastFrame++;
+    if (a.readyFrame < F.now) {
+      F.st.pastFrame++;
+      if (F.loggedPast < 12) { char l[200]; snprintf(l, sizeof l, "PASTFRAME clock %d: answer %d for %d ready at %d (%.1f ms of work), the question out %d posted %d", F.now, a.id, a.at, a.readyFrame, a.ms, F.pending ? F.pId : -1, F.pPosted); flog(l); F.loggedPast++; }
+    }
     if (!F.pending || a.id != F.pId) { F.st.unasked++; continue; }
     F.pending = 0;
     if (a.error || a.kind < 0) continue;
