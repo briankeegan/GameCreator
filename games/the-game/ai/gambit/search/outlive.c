@@ -9,7 +9,7 @@
 #define OUT_SEQ 16
 typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts, t; double margin; Moved last; } OItem;   // t: the line's end, frames from the root; acts: the cursor's actions for its swaps, from the root's cursor; last: the pairs its swaps moved (judge.c Moved)
 typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts, endAt; double margin; } Outlived;
-static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
+static LOCAL Ctx *outCtx;   // (each thread its own, its working arrays too: the survival search runs on workers beside the decision, several at once -- answer.c, decide.c deepAhead)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
 // (THE RESERVE: with an input allowance said, the line kept is the latest lost of those that leave the next landing a break's walk -- the
 // window plan, core/nodes.h windowKeepsBreak -- unless one that spends it is lost later and the walk is worth spending (core/nodes.h
@@ -91,7 +91,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
   if (root < 0) return best;
   if (q == &decQ) { outSeedIn = outSeedsHave ? outSeeds.n : 0; outSeedPlayed = 0; }
   for (int i = 0; q == &decQ && outSeedsHave && i < outSeeds.n && nowMs() - t0 < ms / 4; i++) {
-    static OItem sd; memset(&sd, 0, sizeof sd);
+    static LOCAL OItem sd; memset(&sd, 0, sizeof sd);
     int n = root, ok = outSeeds.len[i] > 0 && outSeeds.len[i] <= OUT_SEQ;
     const Board *rb = ensureBoard(x, root); int r0 = rb ? rb->curRow : 0, c0 = rb ? rb->curCol : 0;
     for (int k = 0; k < outSeeds.len[i] && ok; k++) {
@@ -111,8 +111,8 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     poolAdd(windowKeepsBreak(sd.t, sd.acts) ? &bestP : &overP, &sd);
   }
   BS still; memset(&still, 0, sizeof still); still.x = x; still.root = root;
-  static OItem level[PLAN_POOL], kids[PLAN_KIDS];
-  static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ka[PLAN_KIDS], ms1[MAXROWS * W];
+  static LOCAL OItem level[PLAN_POOL], kids[PLAN_KIDS];
+  static LOCAL int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ka[PLAN_KIDS], ms1[MAXROWS * W];
   int nlev = 1;
   memset(&level[0], 0, sizeof level[0]); level[0].n = root;
   for (int d = 1; d <= depth && nlev; d++) {
@@ -123,7 +123,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     if (nowMs() - t0 + perStep * nsteps > ms) break;
     int nk = 0;
     // (the level's swaps stepped on every thread first, then taken in this order: core/nodes.h stepBatch)
-    static int32_t bPar[PLAN_KIDS], bMv[PLAN_KIDS], bAt[PLAN_KIDS + 1];
+    static LOCAL int32_t bPar[PLAN_KIDS], bMv[PLAN_KIDS], bAt[PLAN_KIDS + 1];
     int nb = 0;
     for (int i = 0; i < nlev; i++) {
       bAt[i] = nb;
@@ -156,7 +156,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     for (int i = 0; i < nk; i++) { idx[i] = i; kh[i] = kids[i].h; kr[i] = kids[i].room; kg[i] = -kids[i].g; ka[i] = -kids[i].acts; }
     sortByKeyDesc(idx, nk, ka, tmpI); sortByKeyDesc(idx, nk, kg, tmpI); sortByKeyDesc(idx, nk, kr, tmpI); sortByKeyDesc(idx, nk, kh, tmpI);
     int nkeep = imin(nk, 2 * width);
-    static OItem top[PLAN_POOL];
+    static LOCAL OItem top[PLAN_POOL];
     for (int i = 0; i < nkeep; i++) top[i] = kids[idx[i]];
     for (int i = 0; i < nkeep; i++) {
       top[i].t = NODE(x, top[i].n)->t - NODE(x, root)->t;

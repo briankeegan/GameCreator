@@ -45,6 +45,7 @@ typedef struct {
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
   int32_t threeNeeded;   // its three the save confirmed the board needs not to die (decide.c): no wasted three to the list
+  int32_t deepAsked; double deepLost;   // the look-ahead from the board it leaves, searched on the workers (decide.c deepAhead): its loss from now, 1e9 lives, -1 not known
   int32_t fallback;      // an attack of its own, breaking nothing, that meets an entry of the list after its first, or none (rule 4)
   int32_t builds;        // a line that fires nothing and builds toward the list's first entry (Cand builds)
   int32_t holdSunk;    // a hold lost sooner than a line lost alike with it that keeps the board's own chain: after every line lost alike (sortJudged)
@@ -104,7 +105,7 @@ static void gb_trace_walked(int ok, int wok, int cmp, int key, const char *why, 
 #endif
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->endReady = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0;
+  J->readyNext = NOT_ASKED; J->endReady = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0; J->deepAsked = 0;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -207,7 +208,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->endReady = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0;
+  J->readyNext = NOT_ASKED; J->endReady = NOT_ASKED; J->extLost = NOT_ASKED; J->extSpent = NOT_ASKED; J->planN = 0; J->planBroke = 0; J->planMargin[0] = -1; J->threeNeeded = 0; J->deepAsked = 0;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -304,8 +305,8 @@ static void readyNextFor(Judge *J) {
   // (and where no break is found to lead on to, the plan goes on as the survival search plays on from the board the line leaves
   // (decide.c contLostOf), in the readiness check's share: a line is lost where the best that can be played after it is -- a break that
   // converts its garbage and survives on outlasts a line that only survives, and is judged so)
-  if (!J->hold && J->extLost == NOT_ASKED && readyShareMs > 0 && !clockOut()) {
-    double c = contLostOf(J, readyShareMs);
+  if (!J->hold && J->extLost == NOT_ASKED && (J->deepAsked || (readyShareMs > 0 && !clockOut()))) {
+    double c = J->deepAsked ? J->deepLost : contLostOf(J, readyShareMs);
     if (c >= 1e9) J->extLost = FOREVER;
     else if (c >= 0 && c > lostAtOf(J->o.lostAt, 0)) J->extLost = (int32_t)c;
   }
