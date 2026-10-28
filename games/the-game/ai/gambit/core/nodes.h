@@ -22,9 +22,6 @@ static LOCAL int32_t pressTight;
 #define TAP_RESERVE 16
 #define TAP_DIES 60
 static LOCAL int32_t pressTap;
-// (A LINE PRESSED UNPACED: each swap's keys followed by the hands' own gap alone, not the window's pace -- a line the pace would lose and the
-// window lets press sooner: rank.c judgeCand, front.c fPace)
-static LOCAL int32_t pressUnpaced;
 static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }
 // THE FRAMES A GARBAGE GROUP OF `cells` CELLS POPS IN once matched: flash, face, a pop a cell and three (pa.c matchGarbagePanels) -- the
 // facts' wait for a break, the order's break time (decide.c rankSave: a full-width row)
@@ -347,14 +344,8 @@ EXPORT(gb_config) void gb_config(int reaction, int swapGap, int cursorMoveFrames
 // the share of the limit spent: SWAP_SHOWN's 5 frames with the window full, 8 at half, 12 at a quarter, 16 empty (the standard budget, 76
 // actions in 600 frames). The frame loop sets it with each question (front.c ask: left, the allowance at the question's frame) and
 // presses each line with the pace it was judged with; the decision's every context is made with it (decGap).
-#ifdef GB_TEST
-static int noPaceTest;   // (test/main.c GC_NOPACE: the window kept, its pace not)
-#endif
 static int paceGap(int left, int limit, int window) {
   if (limit <= 0 || window <= 0 || left < 0) return 0;
-#ifdef GB_TEST
-  if (noPaceTest) return 0;
-#endif
   int spent = limit - imin(left, limit);
   return (2 * window * spent + limit * limit - 1) / (limit * limit);
 }

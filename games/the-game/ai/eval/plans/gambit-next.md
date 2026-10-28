@@ -605,8 +605,8 @@ defect with a number and a place (search/ready.c landedBreak against judge.c's w
   dropped, so a key held on into the next frame counted again. One action short, the 8-swap break line was cut. The frame just pressed
   is read as its own keys (front.c plannedBits).
 - 1390, 22/24 (8, 7, 7). large_garbage-3 at 7784: the window spent on single-row breaks (6 cells, ~10 actions each) for 600 frames;
-  from 7632 the breaks on the board (8-12 swaps, ~25 actions) do not fit the 6-8 left. factory-1 at 14083: no break within 4 swaps on
-  the board from 13947 to 14034 (the popping slab's colours unshown); at 14034, the converted row down, a 9-swap break of 30 the
-  search finds with 300k frames of work and not the decision's 180k. The 9-swap line the solver found there dies 23 frames late at the
-  window's pace and lives pressed as the window allows: a breaking line lost with every swap pressed is judged again unpaced
-  (rank.c judgeCand, core/nodes.h pressUnpaced) and keyed so by the frame loop.
+  from 7632 the breaks on the board (8-12 swaps, ~25 actions) do not fit the 6-8 left. factory-1 at 14083: no break within 4 swaps
+  from 13947 to 14034 (the popping slab's colours unshown); at 14034, the converted row down, a 9-swap break of 30 the search finds
+  with 300k frames of work and not the decision's 180k.
+- 1391, 21/24 (6, 7, 8): a breaking line lost at the window's pace with every swap pressed, judged again and played unpaced. Both of
+  1390's deaths survive; combo_storm-1, combo_storm-4 and factory-3 die. Reverted to 1390's build.

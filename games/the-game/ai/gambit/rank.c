@@ -15,7 +15,6 @@ typedef struct {
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
   int32_t at0;     // the line in progress: its first swap's walk begun no sooner than this frame, as it was chosen (decide.c carriedCand)
   int32_t tapOf;   // and its walks tapped or held as they were when it was chosen: 1 + that pressTap (0: the decision's)
-  int32_t unpaced; // its swaps pressed without the window's pace (core/nodes.h pressUnpaced)
   int32_t waitTo;  // and the frame its board is run to and let settle before its first swap (0: none)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
@@ -92,9 +91,9 @@ static void tierInsert(Tier *t, int pos, double v) {
 }
 // (THE LINE IN PROGRESS AS IT WAS CHOSEN, every judging of it: from its planned frame, its walks as they were -- asLine before, unLine
 // after; any other line, the decision's own)
-static LOCAL int32_t unTap, unPaced;
-static void asLine(const Cand *k) { lineAt0 = k->at0; lineWaitTo = k->waitTo; unTap = pressTap; if (k->tapOf) pressTap = k->tapOf - 1; unPaced = pressUnpaced; pressUnpaced = k->unpaced; }
-static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; pressUnpaced = unPaced; }
+static LOCAL int32_t unTap;
+static void asLine(const Cand *k) { lineAt0 = k->at0; lineWaitTo = k->waitTo; unTap = pressTap; if (k->tapOf) pressTap = k->tapOf - 1; }
+static void unLine(void) { lineAt0 = lineWaitTo = 0; pressTap = unTap; }
 static int nearActsOf(const Judge *J, int32_t near);
 #ifdef GB_TEST
 static void gb_trace_cand(int play, const int32_t *seq, int n, int fc);   // (test/decide_check.c, under GC_GAMBIT_TRACE)
@@ -113,15 +112,6 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   asLine(k);
   Outcome oc = play == PLAY_CARRYWAIT && !k->waitTo ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
   unLine();
-  // (THE PACE GIVES WAY TO THE BOARD: a line that breaks, every swap of it pressed at the window's pace and the board lost all the same,
-  // is judged again pressed as soon as the window lets each swap -- the hands' own gap alone -- and played so where it lives so; the
-  // pace is for playing slowly where the board allows)
-  if (oc.dead && !k->unpaced && pressAllowance >= 0 && k->x.broke > 0 && k->nseq > 1 && oc.j.nats >= k->nseq && !clockOut()) {
-    k->unpaced = 1; asLine(k);
-    Outcome o2 = play == PLAY_CARRYWAIT && !k->waitTo ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
-    unLine();
-    if (!o2.dead && !o2.late && !judgedCut(&o2.j)) oc = o2; else k->unpaced = 0;
-  }
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
   if (judgedCut(&oc.j)) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
