@@ -1022,11 +1022,10 @@ static void afterFrame(int32_t bits) {
   // (and one due before an answer could be had is pressed then, the question asked after it)
   while (F.lineN && F.lineAt[0] && lineDue() - now < soon() && follow()) {}
   int lead = F.nextAt > now ? soon() : imax(soon(), imin(aheadOf(), popLeft(next) / 4));
-  // (A BOARD ON ITS WAY OUT WITH NO BREAK FOUND: the last answer held a board that dies and its break search found none -- asked a
-  // reaction ahead at least, so the decision has a reaction's time to find one where it had the few ms recent answers took (run 448: 4
-  // of 5 breaks missed were not found again in the live search's own 3 to 27 ms); a board lost before then is asked for its last frame
-  // alive, below)
-  if (F.havePace && !F.lastHold && !F.lastBrk && F.nextAt <= now) lead = imax(lead, imin(aheadOf(), cfgReaction + 1));
+  // (A BOARD ON ITS WAY OUT WITH NO BREAK FOUND: the last answer held a board that dies and its break search found none -- asked as far
+  // ahead as the profile looks (aheadOf), so the break search has that time to find one: with nothing in hand to press until then, a
+  // nearer question buys no reaction, only a search the clock cuts. A board lost before then is asked for its last frame alive, below)
+  if (F.havePace && !F.lastHold && !F.lastBrk && F.nextAt <= now) lead = imax(lead, aheadOf());
   int32_t at = imax(F.nextAt > now ? F.nextAt : 0, now + lead);
   int paced = 0;
   if (gap >= 0 && F.lastSwapEnd + gap > at) { at = F.lastSwapEnd + gap; paced = 1; }
