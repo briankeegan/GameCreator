@@ -484,6 +484,10 @@ line short at once by a block shown (**demand**).
   window; the frame loop pressed exactly the keys judged (2,1 three actions, 5,2 five, 6,1 two); judged again at 830 its next swap, 3,1,
   came 15 frames sooner than 801's plan had it, one action short, and the line was cut -- 20 frames later the window had room. A later
   swap now waits for the window, the board played on, up to WINDOW_WAIT frames (judge.c), and the beam grows what waiting pays for.
+- 1384, 20/24 (7, 5, 8) with the wait: combo_storm-3 and large_garbage-8 survive; no death of the window. The put-back gate red by one,
+  combo_storm-6 at 11676: a line 5,4;5,4 -- the judge read what the swap back makes against the decision's board left alone, which
+  counts the first swap's clears to it; the frame loop reads it against the board as it is at the press. The judge now reads it so too:
+  against the board its walk begins on, the last swap against the board before it.
 
 ## Where this stands
 

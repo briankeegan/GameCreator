@@ -430,7 +430,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       // (the last swap is held to the same put-back test: the pair as the engine recorded it pressed, against the one pressed before it)
       { const Board *fb = ensureBoard(x, n), *ob = liveNode(x, out) ? ensureBoard(x, out) : 0;
         if (fb && ob && ob->lastSwapA && putBackFor(fb, ob->lastSwapA, ob->lastSwapB, 0) &&
-            putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
+            putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeBy(x, out, n))) { j->cut = k; j->cutWhy = 2; break; } }
     } else {
       // (pressed as the frame loop presses it, core/nodes.h pressWalk: a swap whose pair still moves is walked to from the first frame its
       // walk is taken on, found with the walk tapped as the frame loop's keys are, then pressed as the frame loop walks it -- held, when
@@ -449,10 +449,12 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         // swap makes read as the first swap's is (madeBy): the line is cut here, before the swap is recorded as pressed (ats), so it is
         // never handed on. A swap back that clears or breaks is play. The owner: never a pair swapped back and forth to hold garbage off.
         // The pair is the one the swap swapped as it was pressed -- the engine's record on the swap's board (lastSwapA, lastSwapB) -- not
-        // the cells where its walk began: a pair falling into them meanwhile is the pair the frame loop presses, and refuses)
+        // the cells where its walk began: a pair falling into them meanwhile is the pair the frame loop presses, and refuses. What it
+        // makes is read against the board its walk begins on left alone, as the frame loop reads it at the press (front.c putsBack) --
+        // never against the decision's, which would count the line's earlier swaps' clears to it)
         { const Board *ob = liveNode(x, out) ? ensureBoard(x, out) : 0;
           if (fb && ob && ob->lastSwapA && putBackFor(fb, ob->lastSwapA, ob->lastSwapB, 0) &&
-              putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeSettled(x, from, root, CR(seq[k]), CC(seq[k])))) { j->cut = k; j->cutWhy = 2; break; } } }
+              putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeSettled(x, from, from, CR(seq[k]), CC(seq[k])))) { j->cut = k; j->cutWhy = 2; break; } } }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from; KB(n);
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
