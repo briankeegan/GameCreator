@@ -37,6 +37,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - B5, the window's reserve for the next break (2e96f75a, cb346b2c) [skipped for now: made for swapGap 0, which the base does not play; the base's rule 1' keeps BREAK_WALK]
 - `9042f200` C9, under garbage the break that converts more full rows (1d596973) -- 23 (1550), 20 (1551) [kept: 43 of 48 against 41 for main before it]
 - `1d98225c` C9 again, of two breaks alike in rows the one that leaves more panels (e3f9eb3a, read off panelsLeft) -- 19 (1552) [dropped]
+- `a5efe28f` B6, the touch beam grows only swaps the window can press (8b8a9618) -- 20 (1553) [dropped: factory 5/8 as before; and tsan red, the beam reading the window's globals on the thread beside the decisions]
 
 ## The shortlist for pressure, in the order to try
 
