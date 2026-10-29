@@ -36,6 +36,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - A3, a board on its way out asked further ahead (c63d971c, d0d80e33) [skipped: three reactions ahead played 10/24 against 12 (240f17b3); the search beside now gives the break search its time]
 - B5, the window's reserve for the next break (2e96f75a, cb346b2c) [skipped for now: made for swapGap 0, which the base does not play; the base's rule 1' keeps BREAK_WALK]
 - `9042f200` C9, under garbage the break that converts more full rows (1d596973) -- 23 (1550), 20 (1551) [kept: 43 of 48 against 41 for main before it]
+- `1d98225c` C9 again, of two breaks alike in rows the one that leaves more panels (e3f9eb3a, read off panelsLeft) -- 19 (1552) [dropped]
 
 ## The shortlist for pressure, in the order to try
 
