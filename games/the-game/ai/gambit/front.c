@@ -15,7 +15,7 @@
 #define FTHINK 8           // the answers' times kept, for how soon the next comes
 
 typedef struct { int32_t at, capped; Incoming g; } Arrival;   // at: the stopWatch it is received on; capped: held back (search.h CAPPED_AT)
-typedef struct { int32_t bits, holdLeft, holdStarted, swap, save, asked, play, line, idx, left, proven; } Planned;   // save: a key of a line the survival search found the board needed; asked: the frame the question it came of was posted on; play: the kind of line it is a key of (facts.c PLAY_NAME; NPLAYS a raise); line, idx, left: the answer its line came of, the swap's place in it and the swaps after it
+typedef struct { int32_t bits, holdLeft, holdStarted, swap, save, asked, play, line, idx, left, proven, back; } Planned;   // save: a key of a line the survival search found the board needed; asked: the frame the question it came of was posted on; play: the kind of line it is a key of (facts.c PLAY_NAME; NPLAYS a raise); line, idx, left: the answer its line came of, the swap's place in it and the swaps after it
 typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys;
 
 // what the worker is asked, and what it answers (native.c carries them across)
@@ -39,6 +39,7 @@ typedef struct {
   int32_t empty;               // a hold the clock left no time to judge anything for
   int32_t wastes;              // the line makes a three for nothing, kept by the order as the board's save (answer.c)
   int32_t proven;              // the line is proven (rank.c proofOf): pressed as judged, never refused (plans/gambit-next.md 6)
+  int32_t backBreaks;          // its first swap puts the last pair back and begins the break the board is lost without (answer.c)
   int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
   double ms, idleMs, closeMs;
   int32_t readyFrame;          // the frame the frame loop takes it on: the question's frame and its work's frames (native.c answerOne)
@@ -639,7 +640,7 @@ static void take(void) {
     F.st.heldWalks += k.held;
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
-    for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play, a.id, 0, a.nhand, a.proven });
+    for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play, a.id, 0, a.nhand, a.proven, a.backBreaks });
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1; F.lastKind = a.kind;
@@ -998,7 +999,8 @@ static int frontFrame(void) {
   }
   // (NO PAIR PUT BACK FOR NOTHING, the owner: refused whatever the plan, the plan dropped, the next decision asked on the board as it is
   // -- and the pair kept out of its first swaps a while, as a wasted three's is)
-  if ((bits & IN_SWAP & ~F.prevBits) && putsBack(t)) {
+  // (the line's own first swap where it begins the break the board is lost without: the swap back that breaks, answer.c backBreaks)
+  if ((bits & IN_SWAP & ~F.prevBits) && !pk.back && putsBack(t)) {
     // (a colour shown since the line's question -- a broken slab's, unseen when it was judged -- can make the board clear alone what the
     // swap was judged to clear: the refusal is the board's news, not the judge's error, counted apart -- as a wasted three is, above)
     int shown = F.lastReveal >= asked && F.lastReveal > 0;

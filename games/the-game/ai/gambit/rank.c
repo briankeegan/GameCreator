@@ -45,6 +45,7 @@ typedef struct {
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
   int32_t threeNeeded;   // its three the save confirmed the board needs not to die (decide.c): no wasted three to the list
+  int32_t backBreaks;    // its first swap puts the last pair back, and begins the break the board left alone is lost without (judgeCand)
   int32_t fallback;      // an attack of its own, breaking nothing, that meets an entry of the list after its first, or none (rule 4)
   int32_t builds;        // a line that fires nothing and builds toward the list's first entry (Cand builds)
   int32_t holdSunk;    // a hold lost sooner than a line lost alike with it that keeps the board's own chain: after every line lost alike (sortJudged)
@@ -132,7 +133,11 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
     if (!unbroken.set) { unbroken.set = 1; unbroken.play = play; unbroken.nseq = k->nseq; for (int i = 0; i < k->nseq; i++) unbroken.seq[i] = k->seq[i]; unbroken.said = k->x.broke; unbroken.judged = j->made.broke; }
   }
   // (the swap back asks what the first swap made -- judge.c madeBy, as the searches ask it; a line judged dead, what it was offered for)
-  if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), j ? j->firstMade : m.broke > 0 ? 2 : m.combo > 0 || m.chain > 0)) { dropAs(play, DROP_BACK); return 0; }
+  // (A SWAP BACK THAT BEGINS A BREAK, the board left alone lost within a break's time: what it makes is the line's break -- the owner: a
+  // swap back that breaks is play; this one holds no garbage off, it is the first swap of the line that breaks it. The press guard lets
+  // that swap through as the line's own, front.c)
+  J->backBreaks = j && j->made.broke > 0 && R->F.v[FACT_US_DIES] >= 0 && R->F.v[FACT_US_DIES] < rankSave && k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), j->firstMade);
+  if (k->nseq && !J->backBreaks && swapBack(CR(k->seq[0]), CC(k->seq[0]), j ? j->firstMade : m.broke > 0 ? 2 : m.combo > 0 || m.chain > 0)) { dropAs(play, DROP_BACK); return 0; }
   // (it fits the list -- the chain as the game counts it -- or it is outside it: ranked after every line within it that lives, and kept,
   // so a list never chooses a death. A line that spends the rules' floor (outcome.c spendsFloor, the shared line check's own test) is
   // outside too)
