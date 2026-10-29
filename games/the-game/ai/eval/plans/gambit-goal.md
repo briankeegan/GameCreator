@@ -49,7 +49,7 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    **The order (the owner's):** the goal stays 24/24 in every mode; 22 of 24 is where a mode is left for the next -- a change made for
    one mode can undo another's, so the last two are won with every mode run together. Once every mode is at 22, they are run together
    and each change is checked for a mode it set back, until all are at 24, twice.
-   Finish them reached 22 in run 432; big chain next.
+   Finish them reached 22 in run 432; big chain in run 1464; pressure and build next.
 
 ## Open questions for the owner
 
