@@ -16,6 +16,12 @@ Real-time infra found on Oct 29, after the base (each worth bringing first -- se
 - a decision out on its frame stops its jobs (its move waited 100-400 ms on them)
 - the countdown opener, offered no raise
 
+The profiles changed after the base too (`survivor-profiles/gambit.json`, `gambit-rules.json`), and are the base's again: run 1532
+played the base's Gambit on the profiles since and lost every game (0/24 against 1526's 20/24):
+
+- `27ddee63`, `c85a14cb`, `4c7089c6`, `5f23df9b` -- `swapGap` 12 to 0 (no wait after a swap), back and forth; it ended at 0
+- `d9310324`, `24a46a0e` -- the rules' `opener`: big chains (>=8, >=6, >=4) from a game's start until garbage first touches the board
+
 ## The commits
 
 - `954eefa1` 2026-10-24 Gambit: a board is ready only for a break the input window pays for
