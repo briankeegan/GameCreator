@@ -224,7 +224,7 @@ static int fairShare(Cand *c, int n, int cap) {
 #define NSTRIP 12   // the lines judged again with one swap left out (THE THREE TAKEN OUT)
 #define STRIP_LINES 3   // the best lines that waste a three, each judged again so
 static int32_t decTap;   // (the decision's pressTap, set by answer.c, for its jobs' threads and the line in progress)
-static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
+static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 6 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
@@ -280,11 +280,14 @@ static double contLostOf(const Judge *J, double give) { return contLostOfLine(J,
 #define LOOK_Q 16
 #define LOOK_N 512
 #define LOOK_MS 120
-typedef struct { uint32_t h; int32_t dt, spent, tap, save; Question q; Board *b; } LookAsk;
+typedef struct { uint32_t h, hb; int32_t dt, spent, tap, save; Question q; Board *b; } LookAsk;
 typedef struct { uint32_t h; int32_t set; double lost; } LookAns;   // (lost: frames from the board's own, 1e9 lives)
+// (THE LINE ON FROM A BOARD: the survival search's best line from it, by the board alone -- the garbage shown since may differ, and
+// the line is judged on the engine as any is before it is played: lookOffer)
+typedef struct { uint32_t hb; int32_t n, seq[OUT_SEQ]; } LookLine;
 static LookAsk lookQ[LOOK_Q]; static int32_t lookQN, lookQTop;   // (a stack: the newest asked first, the oldest let go when full)
-static LookAns lookA[LOOK_N];
-static int32_t lookLock, lookBusy, lookSig, lookOn, lookAsked, lookHit, lookUsed;   // (the log's: asked, found, read longer)
+static LookAns lookA[LOOK_N]; static LookLine lookL[LOOK_N];
+static int32_t lookLock, lookBusy, lookSig, lookOn, lookAsked, lookHit, lookUsed, lookOffered, lookPlayedN;   // (the log's: asked, found, read longer; lines on offered, played)
 static void lookLockOn(void) { while (__atomic_exchange_n(&lookLock, 1, __ATOMIC_ACQUIRE)) {} }
 static void lookLockOff(void) { __atomic_store_n(&lookLock, 0, __ATOMIC_RELEASE); }
 static uint32_t lookHash(const Board *e, const Question *q) {
@@ -293,8 +296,16 @@ static uint32_t lookHash(const Board *e, const Question *q) {
   for (unsigned long i = 0; i < BOARD_HEAD; i++) { h ^= p[i]; h *= 16777619u; }
   p = (const unsigned char *)e->p;
   for (unsigned long i = 0; i < (unsigned long)e->nrows * sizeof(Panel) * (W + 1); i++) { h ^= p[i]; h *= 16777619u; }
-  for (int a = 0; a < q->narr; a++) { const unsigned char *r = (const unsigned char *)&q->arr[a]; for (unsigned long i = 0; i < sizeof(Arr); i++) { h ^= r[i]; h *= 16777619u; } }
+  for (int a = 0; q && a < q->narr; a++) { const unsigned char *r = (const unsigned char *)&q->arr[a]; for (unsigned long i = 0; i < sizeof(Arr); i++) { h ^= r[i]; h *= 16777619u; } }
   return h ? h : 1;
+}
+static int lookLineOf(uint32_t hb, int32_t *seq) {
+  int n = 0;
+  lookLockOn();
+  const LookLine *l = &lookL[hb % LOOK_N];
+  if (l->n && l->hb == hb) { n = l->n; for (int k = 0; k < n; k++) seq[k] = l->seq[k]; }
+  lookLockOff();
+  return n;
 }
 static int lookFind(uint32_t h, double *lost) {
   int got = 0;
@@ -305,13 +316,14 @@ static int lookFind(uint32_t h, double *lost) {
   return got;
 }
 static void lookAsk(const Board *e, const Question *q, uint32_t h, int32_t dt, int32_t spent) {
+  uint32_t hb = lookHash(e, 0);
   if (!__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
   lookLockOn();
   int k = lookQTop; lookQTop = (lookQTop + 1) % LOOK_Q; if (lookQN < LOOK_Q) __atomic_add_fetch(&lookQN, 1, __ATOMIC_RELEASE);
   LookAsk *s = &lookQ[k];
   if (!s->b) s->b = nb_new();
   if (s->b) {
-    cloneBoard(s->b, e); s->q = *q; s->q.b = s->b; s->h = h; s->dt = dt; s->spent = spent; s->tap = pressTap; s->save = rankSave;
+    cloneBoard(s->b, e); s->q = *q; s->q.b = s->b; s->h = h; s->hb = hb; s->dt = dt; s->spent = spent; s->tap = pressTap; s->save = rankSave;
     lookAsked++;
   } else __atomic_sub_fetch(&lookQN, 1, __ATOMIC_RELEASE);
   lookLockOff();
@@ -354,7 +366,12 @@ static void lookThread(void) {
     int held = __atomic_load_n(&lookHold, __ATOMIC_SEQ_CST);
     clockShare = 0; pressFrom = pressSpent = 0;
     // (a search the hold cut short is no answer)
-    if (!held && lost >= 0) { lookLockOn(); LookAns *a = &lookA[s.h % LOOK_N]; a->h = s.h; a->set = 1; a->lost = lost == FOREVER ? 1e9 : lost; lookLockOff(); }
+    if (!held && lost >= 0) {
+      lookLockOn();
+      LookAns *a = &lookA[s.h % LOOK_N]; a->h = s.h; a->set = 1; a->lost = lost == FOREVER ? 1e9 : lost;
+      if (c.set && c.nseq > 0) { LookLine *l = &lookL[s.hb % LOOK_N]; l->hb = s.hb; l->n = imin(c.nseq, OUT_SEQ); for (int k = 0; k < l->n; k++) l->seq[k] = c.seq[k]; }
+      lookLockOff();
+    }
     __atomic_store_n(&lookBusy, 0, __ATOMIC_RELEASE);
   }
 }
@@ -383,6 +400,48 @@ static double contBoardLostLine(const Board *e, double give, int32_t spent, int3
   return own;
 }
 static double contBoardLost(const Board *e, double give, int32_t spent) { return contBoardLostLine(e, give, spent, 0, 0); }
+// THE OPTIONS PONDERED: while the decision weighs them, the boards its best LOOK_TOP lines end on asked of the look-ahead -- each a
+// line the next decision may be carrying on, the best line on from its end found by the time it asks (lookOffer)
+#define LOOK_TOP 3
+static const Board *lookEndOf(const Judge *J, Question *q2, int32_t *dt) {
+  if (!J || J->hold || J->o.dead) return 0;
+  endNoKeep = 1; asLine(&J->k);
+  const Board *e = lineEnd(J->k.seq, J->k.nseq, J->settled);
+  unLine(); endNoKeep = 0;
+  if (!e) return 0;
+  *dt = imax(0, e->clock - decQ.b->clock);
+  *q2 = decQ; q2->b = (Board *)e; q2->holdLeft = 0; q2->holdStarted = 0; q2->narr = 0;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > *dt) { q2->arr[q2->narr] = decQ.arr[a]; q2->arr[q2->narr++].at -= *dt; }
+  return e;
+}
+static void lookPonder(int n) {
+  if (!__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
+  for (int i = 0, k = 0; i < n && k < LOOK_TOP; i++) {
+    const Judge *J = order[i];
+    if (J->hold || J->o.dead || J->k.nseq < 1) continue;
+    k++;
+    Question q2; int32_t dt; const Board *e = lookEndOf(J, &q2, &dt);
+    if (!e) continue;
+    uint32_t h = lookHash(e, &q2); double d;
+    if (!lookFind(h, &d)) lookAsk(e, &q2, h, dt, J->o.j.spent);
+  }
+}
+// (THE LINE IN PROGRESS AND THE LINE ON FROM WHERE IT ENDS, one line: offered beside the line in progress, judged on the engine as any)
+static Judge lookJ;
+static int lookOffer(const Read *R, const Judge *cj, int n) {
+  if (!cj || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE) || cj->k.nseq >= MAXLINE) return n;
+  Question q2; int32_t dt; const Board *e = lookEndOf(cj, &q2, &dt);
+  if (!e) return n;
+  int32_t on[OUT_SEQ]; int m = lookLineOf(lookHash(e, 0), on);
+  if (!m) return n;
+  Cand k = cj->k;
+  for (int i = 0; i < m && k.nseq < MAXLINE; i++) k.seq[k.nseq++] = on[i];
+  k.settled = 1; k.x.combo = k.x.chain = k.x.broke = 0; k.xFire = k.xDone = -1; k.xNats = 0;
+  lookOffered++;
+  if (!judgeCand(R, &k, &lookJ)) return n;
+  lookJ.carried = 1; order[n++] = &lookJ;
+  return n;
+}
 // THE JUDGING ON EVERY THREAD: the candidates judged on the workers, each from the work the decision had done when the judging began
 // and in the share it had, into a slot of its own with what it adds to the decision's tallies (rank.c dropped, cutWhy, unbroken) --
 // added in candidate order after, so the order is the same whichever thread judged what. The decision's clock is charged the judging's
@@ -462,6 +521,7 @@ static int ranked(const Read *R, const Found *S) {
     static Judge thru;
     Cand k2 = ck; k2.settled = 0; k2.play = PLAY_CARRY;
     if (cwait && judgeCand(R, &k2, &thru)) { thru.carried = 1; order[n] = &thru; n++; }
+    n = lookOffer(R, cj, n);
   }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
@@ -469,6 +529,7 @@ static int ranked(const Read *R, const Found *S) {
   order[n] = H; n++;
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);
+  lookPonder(n);
   // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)
   { int n0 = n; n = routeJudged(R, n); if (n > n0) sortJudged(order, n); }
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each

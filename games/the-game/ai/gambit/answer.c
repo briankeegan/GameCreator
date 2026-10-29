@@ -660,7 +660,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (top) for (int i = 0; i < P.ncands && !A->sooner; i++) { const Judge *j = order[i];
     A->sooner = j != top && (proofOf(j) > proofOf(top) || (diesNow(top) && !diesNow(j))); }
   if (A->sooner) L_s(" lessProven=1");   // (the gate, plans/gambit-next.md: a proven line passed over, or dead at once while one offered is not)
-  if (lookAsked || lookHit) { L_s(" look="); L_i(lookAsked); L_s("/"); L_i(lookHit); L_s("/"); L_i(lookUsed); lookAsked = lookHit = lookUsed = 0; }   // (the look-ahead beside, decide.c: boards asked of it, found answered, read as longer)
+  if (P.line == &lookJ) lookPlayedN++;
+  if (lookAsked || lookHit || lookOffered) { L_s(" look="); L_i(lookAsked); L_s("/"); L_i(lookHit); L_s("/"); L_i(lookUsed); L_s("/"); L_i(lookOffered); L_s("/"); L_i(lookPlayedN); lookAsked = lookHit = lookUsed = lookOffered = lookPlayedN = 0; }   // (the look-ahead beside, decide.c: boards asked of it, found answered, read as longer)
   if (vetoAsked) { L_s(" veto="); L_i(vetoed); L_s("/"); L_i(vetoAsked); L_s("/"); L_i(vetoCut); }   // (the reserve veto, decide.c: the place of the line played for its reserve, the boards asked, those the clock cut)
   // (THE PROOF LOST, plans/gambit-next.md the gates: the last decision played a proven line and this one has none -- new: a block shown
   // since; cut: the clock cut the first line's readiness; none: nothing new shown and nothing cut, the proof should have held)
