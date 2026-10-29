@@ -826,7 +826,7 @@ static int32_t modeAt(int32_t at) {
 // A QUESTION ON THE BOARD IN hostQ (hostBoard, its hold and garbage on its way): the answer into theAnswer, the log line at logBuf
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
-  lookPause();   // (the look-ahead beside held while the decision reads its board and writes what it reads: let go in answerTurn)
+  lookPause();   // (the look-ahead beside runs only within a decision, once it has read its board: let go in answerTurn)
   decQ = hostQ; decQ.b = hostBoard;
   ncache = 0; cacheGen = __atomic_add_fetch(&decGen, 1, __ATOMIC_RELAXED); rootBuildable = NOT_ASKED;
   carriedResume();
@@ -840,6 +840,7 @@ static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, 
   clockStart(due ? due - margin : 0);
   decF.timeLeft = -1;   // (readiness is asked while the searches have time left, as each outcome finds it)
   answerTurn(qid, at, allowanceKnown, allowance, lineFrom, linePressed);
+  lookPause();   // (and held again once the answer is out: between decisions the host sets the game, the rules and the press)
 }
 // A QUESTION: its board, hold and garbage on its way are node i of the host's search (the root it made); then its own facts. The answer
 // into the io body (gb_answer's words below); the log line at gb_log.
