@@ -54,7 +54,9 @@ static int clockOut(void) {
   // after it waits behind nothing)
   if (abort_poll() == 1) { clockAborted = 1; return 1; }
 #endif
-  if (clockFrameOut && clockFrameOut()) { if (!clockWentOut) clockWentOut = nowMs(); return 1; }
+  // (out on the game's frame: the decision's jobs out with it -- it waits on them, search.h jobsAll, and a job past its frame is closing
+  // work the decision's move waits for)
+  if (clockFrameOut && clockFrameOut()) { if (!clockWentOut) { clockWentOut = nowMs(); __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST); } return 1; }
   if (!clockDue && !clockShare) return 0;
   double t = nowMs();
   if (clockDue && t >= clockDue && !clockWentOut) clockWentOut = t;
