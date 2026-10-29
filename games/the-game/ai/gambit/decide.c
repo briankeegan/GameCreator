@@ -352,7 +352,12 @@ static int ranked(const Read *R, const Found *S) {
         }
         saveAsked++;
         saveCw = cw; saveCk = ck;
-        if (cw >= 0 && ck >= 0 && ck >= cw) { keeps = 1; saveNot++; }
+        // (or the best line without a three is lost within a break's time by its own judging -- not making the three is the loss -- and
+        // the three's board outlasts that by a break's time (1479f155))
+        double kOwn = lostOf(bk);
+        int ownDies = kOwn >= 0 && kOwn < rankSave && cw >= 0 && (cw >= 1e9 || cw - kOwn >= rankSave);
+        if (ownDies) saveOk = 1;
+        else if (cw >= 0 && ck >= 0 && ck >= cw) { keeps = 1; saveNot++; }
         else if (cw >= 0 && ck >= 0) saveOk = 1;
       }
     }
