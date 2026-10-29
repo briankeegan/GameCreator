@@ -642,8 +642,6 @@ static int32_t ownBreaksTo(const Judge *J) {
 }
 // (GARBAGE TO BREAK: on the board, or shown on its way -- a block shown lands and is broken as one on the board is)
 static int garbHere(void) { return decF.under || (decF.next != NOT_ASKED && decF.next >= 0); }
-// (THE DIG: garbage on the board and no line offered that breaks any of it -- set by the sort, sortJudged)
-static LOCAL int32_t digging;
 // (THE LIST'S KEY with no garbage: 0 the first entry met, 1 a line building toward it, 2 nothing fired of the line's own, then each
 // fallback by its entry, a wasted three last)
 static int listClass(const Judge *J) { return J->met == 0 ? 0 : J->fallback || wastesThree(J) ? 3 + (J->met >= 0 ? J->met : MAXAIMS) : J->builds ? 1 : 2; }
@@ -674,28 +672,20 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // garbage before one that converts none -- the margin reads material as enough down to three rows, and a board spent from 51 to 22
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
       if (garbHere()) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
-      // (A BOARD LOST BEFORE ITS NEXT BREAK COULD POP: the material is worth a break only to a board that lives to build and pop it --
-      // its own break popping, the next one built, then popped: SOON_BREAKS breaks' time. Within it the line lost later first; past it
-      // the material decides and the loss comes after it. One key, read off each line alone: the breaks' time to its loss, capped)
-      // (IN THE DIG, THE PANELS FIRST: with no break offered, a line that buys time spending panels buys it with the material the next
-      // break is to be made of -- factory-1, run 1435: 53 decisions with none found, 49 panels spent to 8 on combos lost later than the
-      // hold. Of two lines neither lost within a break's time (the key above), the one that leaves the board more panels; the time comes
-      // after)
-      if (digging) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
-        if (nx != ny) K(2, "dig", ny - nx); }
+      // (THE PANELS FIRST: under garbage every later break is made of the board's panels -- of two lines alike in converting, the one
+      // that leaves the board more of them (judge.c netPanels: the garbage it converts less the panels its clears take, beyond the board
+      // left alone, in threes: a match's worth) first, before the time to a loss: a line that buys time spending panels buys it with the
+      // material the next break is to be made of. The lineup and the chain convert a row out of the panels the row before turned into, a
+      // combo spends the stack's own; and with a block shown on its way, the panels a clear takes are the ones the block is broken with)
+      if (garbHere()) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
+        if (nx != ny) K(2, "material", ny - nx); }
+      // (A BOARD LOST BEFORE ITS NEXT BREAK COULD POP: of two lines alike in the panels they leave, the one lost later, in breaks' time
+      // to its loss up to SOON_BREAKS -- its own break popping, the next one built, then popped; read off each line alone)
       { int32_t sx = imin(ownBreaksTo(x), SOON_BREAKS), sy = imin(ownBreaksTo(y), SOON_BREAKS); if (sx != sy) K(2, "soon", sy - sx); }
       // (THE NEXT BREAK LEFT TO BUILD: of two lines that convert, the one whose board still has a break to build and keeps the floor
       // (judgeCand material: outcome.c nextBuild, floorKept) -- a break that leaves none is the last the board makes. Each key of the
       // order is read off each line alone and is had by every line -- a line with none reads last -- so the order is one order)
       if (decF.under) { int mx = x->material >= 0 ? x->material : 3, my = y->material >= 0 ? y->material : 3; if (mx != my) K(2, "next", mx - my); }
-      // (THE LINEUP FIRST: under garbage every later break is made of the board's panels -- of two lines that convert, the one that leaves
-      // the board more of them (judge.c netPanels: the garbage it converts less the panels its clears take, beyond the board left alone, in
-      // threes: a match's worth) first: the lineup and the chain convert a row out of the panels the row before turned into, a combo
-      // spends the stack's own)
-      // (and with a block shown on its way, before it lands: the panels a clear takes then are the ones the block is broken with -- in
-      // combo_storm the board ran out of them under the blocks shown, 49 to 13 panels before a loss)
-      if (garbHere()) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
-        if (nx != ny) K(2, "material", ny - nx); }
       // (THE LONGER LOSS IN WHOLE BREAKS' TIME: of two lines alike in the next break and the material, the one lost a break's time later
       // has a break more to find before it -- the margin and the later loss decide within a break's time; from now, read off each line alone)
       { int32_t lx = ownBreaksTo(x), ly = ownBreaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
@@ -815,7 +805,6 @@ static void rankTogether(Judge **a, int n) {
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   rankTogether(a, n);
-  digging = decF.under; for (int i = 0; i < n && digging; i++) if (!a[i]->o.dead && a[i]->apBroke > 0) digging = 0;
   for (int i = 0; i < n; i++) {
     Judge *h = a[i]; h->holdSunk = 0;
     if (!h->hold || livesOf(h)) continue;
