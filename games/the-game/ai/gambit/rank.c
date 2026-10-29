@@ -672,6 +672,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // garbage before one that converts none -- the margin reads material as enough down to three rows, and a board spent from 51 to 22
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
       if (garbHere()) { int bx = x->apBroke > 0, by = y->apBroke > 0; if (bx != by) K(2, "converts", bx ? -1 : 1); }
+      // (A BOARD LOST BEFORE ONE BREAK COULD POP: a line lost within a break's time, its own loss in breaks' time (ownBreaksTo) none,
+      // after a line that lasts one -- the panels are worth something only to a board that lives to break with them)
+      { int ax = ownBreaksTo(x) == 0, ay = ownBreaksTo(y) == 0; if (ax != ay) K(2, "break", ax ? 1 : -1); }
       // (THE PANELS FIRST: under garbage every later break is made of the board's panels -- of two lines alike in converting, the one
       // that leaves the board more of them (judge.c netPanels: the garbage it converts less the panels its clears take, beyond the board
       // left alone, in threes: a match's worth) first, before the time to a loss: a line that buys time spending panels buys it with the
