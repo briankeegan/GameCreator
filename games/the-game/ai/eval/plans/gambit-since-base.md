@@ -50,6 +50,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - main with B7: build 18 (1563) -- combo_storm 6/8, factory 6/8, large_garbage 6/8; the window 1, reach 3, board 2 (main before it: the window 3)
 - `f80a6dac` A2, the off-list break search carries the frontier on (367b9140) -- build 17 (1564) [dropped: factory 4/8, reach 3 as before. factory-4's last 1,200 frames: breaks found 9-12 swaps deep, each cut by the window]
 - `f2cf4fc4` B6 again, on B7 (a5efe28f) -- build 21 (1565) [kept: factory 8/8; no loss to the window or the reach, three to the board]
+- C10, of two breaks lost alike the next break's material (9791a6e2, c5b65ba8) [skipped: the base has it, rank.c 1'' and 6, 7a]
+- `6e66d9f6` A4, the break on the board to come (fe8e28f4) -- build 21 (1566) [dropped: as main, three losses to the reach; it found a break 2,057 times and took up to 40 ms of the searches' time]
 
 ## The shortlist for pressure, in the order to try
 

@@ -145,7 +145,7 @@ static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
 static Broke onBr; static Paths onSeeds;
 static int32_t onWanted; static double onDecMs;   // (the decision kept a frontier, and the time its own break search took)
 static int32_t decTap;   // (the decision's pressTap, for its jobs' threads and the search between decisions)
-static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound;   // (the slices searched and a break found; the log's: the last let go, onStop)
+static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound, onLogDeep, onLogKept;   // (the slices searched and a break found; the log's: the last let go, onStop -- and its deepest line, and whether it was handed on)
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
   memset(&theKept, 0, sizeof theKept); onWanted = 0;
   if (!br || !br->keepOut.n || br->depth || !(kind == 0 || kind == 1)) return;
@@ -229,7 +229,8 @@ static void onStop(void) {
   while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 0) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
   __atomic_store_n(&onActive, 0, __ATOMIC_RELEASE);
   __builtin_wasm_memory_atomic_notify(&onDone, 1);
-  onLogSlices = onSlices; onLogFound = onFound;
+  onLogSlices = onSlices; onLogFound = onFound; onLogKept = 0;
+  onLogDeep = 0; for (int i = 0; i < onSeeds.n; i++) onLogDeep = imax(onLogDeep, onSeeds.len[i]);
   // (handed on only where the decision kept a frontier, found no break, and the thread searched longer than it did -- or found one)
   if (!onSlices || !onWanted || (!onFound && onSlices * ON_SLICE_MS <= onDecMs)) return;
   // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
@@ -238,7 +239,7 @@ static void onStop(void) {
   if (onFound && onBr.pathLen > 0) { kept.len[0] = onBr.pathLen; for (int k = 0; k < onBr.pathLen && k < MAXPATH; k++) kept.path[0][k] = onBr.path[k]; kept.n = 1; }
   const Paths *from = onFound ? &onBr.keepOut : &onSeeds;
   for (int i = 0; i < from->n && kept.n < KEEPN; i++, kept.n++) { kept.len[kept.n] = from->len[i]; for (int k = 0; k < from->len[i]; k++) kept.path[kept.n][k] = from->path[i][k]; }
-  if (kept.n && theKept.set) theKept.paths = kept;
+  if (kept.n && theKept.set) { theKept.paths = kept; onLogKept = 1; }
 }
 
 // THE BREAK SEARCH, in its share of the decision's time -- or, with workers, on one of them beside the other searches, in all of theirs
@@ -560,11 +561,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" sv="); L_i(__atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? 1 : 0); if (surviveAsked) L_s("/asked");   // (the survival job finished this decision; the backup asked of it)
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
-  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1"); if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); }
+  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1"); if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); L_s(" onDeep="); L_i(onLogDeep); if (onLogKept) L_s("/kept"); }
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }
   else L_s("none");
+  // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
+  if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); }
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" plan="); L_i((int64_t)S.planShare); L_s("/"); L_i((int64_t)S.planFirst); L_s("/"); L_i(S.wide); L_s("/"); L_i((int64_t)S.ap.ms);
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
