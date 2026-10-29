@@ -329,9 +329,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
-  // 1. (neither lives, lost alike) the one whose board keeps the rules' floor (outcome.c floorKept: the mode's keep, its material, height
-  // and evenness): where the loss cannot tell two lines apart, the margin the board keeps can
-  if (!lx && lostAlike(x, y) && x->o.floorKept >= 0 && y->o.floorKept >= 0 && x->o.floorKept != y->o.floorKept) return (cmpKey = __LINE__, (x->o.floorKept ? -1 : 1));
   // 1'. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
   // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
   // spent comes back only a window later, the garbage it is needed for may be told of by then or not

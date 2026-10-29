@@ -28,6 +28,35 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `ab031ecf` the opening is idle time, planned with the searches' whole share -- 17 (1537) [kept: it only adds time]
 - `cd09f589` the planner's beam sized by its time, the profile's beam the first pass -- 20 (1538) [kept]
 - `d62e91e0` the judging keeps its measured time, not a quarter -- 17 (1539) [dropped: the searches 257 to 264 ms, the clock cut 0.3% to 1.0%]
+- `d269024d` of two lines lost alike, the one whose board keeps the floor (7114babb) -- 14 (1540) [dropped: factory 1/8, four losses with the window spent]
+
+## The shortlist for pressure, in the order to try
+
+Of the 506: about 130 change nothing in play (the "one test of" refactors, logs, reports, the gates, measurements, reverts). The rest,
+read for what they would add to the base in real time -- each a 24 of its own, kept only where it holds:
+
+A. More search for the same decision (the clock the base has, used better)
+1. The break search goes on between decisions, on idle threads: `4d6a325c`, `175862a2`, `1ba504e3`, `8811737d`, `f98cfc39`
+2. The break frontier carried across decisions: `367b9140`, `78008582`, `0c28768c`, `c20727b3`
+3. A board on its way out with no break found is asked further ahead: `c63d971c`, `240f17b3`, `d0d80e33`
+4. The board to come searched for its break before the block lands: `fe8e28f4`, `0edd5ea7`, `fc8f72ad`, `e4808f70`
+
+B. The input window (the "window" losses: the window spent with no break found)
+5. A line that breaks nothing leaves the window a reserve for the next break: `2e96f75a`, `cb346b2c`, `f0b3e89f`
+6. The touch beam grows only swaps the window can press: `8b8a9618`, `a958a5b2`
+7. Ready only for a break the window pays for: `954eefa1`, `5836931c`
+8. A board near its end walked held to the walls, the window kept: `8818b250`
+
+C. Material (the "board" losses: no panels left to break with)
+9. Under garbage, the line that converts more full rows, then leaves more panels: `1d596973`, `e3f9eb3a`, `6ffd46ba`, `baca4268`
+10. Of two breaks lost alike, the next break's material: `9791a6e2`, `c5b65ba8`
+
+D. The save
+11. A three needed where the best line without one dies within a break's time; a confirmed save played: `1479f155`, `c482500c`, `1461c644`
+
+E. The owner's rules, put back to the base's for now
+12. No wait after a swap (`swapGap` 0): `27ddee63`
+13. The opener's rule, big chains until garbage first touches the board: `d9310324`, `24a46a0e`
 
 ## The commits
 

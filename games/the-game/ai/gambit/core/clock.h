@@ -30,7 +30,10 @@ static int (*clockFrameOut)(void);
 // next decision takes the pool back (jobStop)
 static LOCAL int inJob;
 static int32_t jobStop;
+// (THE SEARCH BETWEEN DECISIONS, answer.c onThread: inJob 2 -- its slice and its own stop, never the decision's jobs' stop)
+static int32_t onStopReq;
 static int clockOut(void) {
+  if (inJob == 2) return __atomic_load_n(&onStopReq, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (clockAborted) return 1;
 #ifdef __wasm__
