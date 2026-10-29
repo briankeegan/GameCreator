@@ -137,13 +137,16 @@ static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
   return out->n > 0;
 }
 // THE BREAK SEARCH GOING ON BESIDE THE DECISIONS (plans/gambit-machinery.md): under garbage, from the frontier a decision resumes, a
-// thread of its own at the idle class searches the decision's board on through the decision and past its answer, a frame's work a
-// frame (onGrant, native.c gn_frame), until the next decision takes it back (onStop). Where the decision found no break, what the thread
-// reached is kept in place of the decision's frontier for the next decision to resume -- when it searched longer than the decision did,
-// or found one. A break it finds is kept as the frontier's first line, played again first.
+// thread of its own at the idle class searches the decision's board on through the decision and past its answer, in slices from the
+// frontier the last one reached -- a frame's time, then two, then ON_SLICE_MAX: each slice plays its frontier again first, so a longer
+// one grows it further for the same time -- until the next decision takes it back (onStop; a slice it cuts short is not counted).
+// Where the decision found no break, what the thread reached is kept in place of the decision's frontier for the next decision to
+// resume -- when it searched longer than the decision did, reached deeper, or found one. A break it finds is kept as the frontier's first
+// line, played again first.
 #define ON_SLICE_MS (1000.0 / 60)
+#define ON_SLICE_MAX 4   // (frames: the longest slice)
 static Broke onBr; static Paths onSeeds;
-static int32_t onWanted; static double onDecMs;   // (the decision kept a frontier, and the time its own break search took)
+static int32_t onWanted; static double onDecMs, onMs;   // (the decision kept a frontier, and the time its own break search took; the thread's slices counted)
 static int32_t decTap;   // (the decision's pressTap, for its jobs' threads and the search between decisions)
 static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound, onLogDeep, onLogKept;   // (the slices searched and a break found; the log's: the last let go, onStop -- and its deepest line, and whether it was handed on)
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
@@ -183,7 +186,8 @@ static void onThread(void) {
         __builtin_wasm_memory_atomic_wait32(&onGranted, g, -1);
       if (__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE)) break;
       if (!onFound) {
-        clockWork = 0; clockAborted = 0; clockPoll = 0; clockShare = nowMs() + ON_SLICE_MS;
+        double sliceMs = ON_SLICE_MS * (onSlices < 2 ? 1 << onSlices : ON_SLICE_MAX);
+        clockWork = 0; clockAborted = 0; clockPoll = 0; clockShare = nowMs() + sliceMs;
         listDefault = 1;
         breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, &onSeeds, &onBr);
         listDefault = 0;
@@ -192,7 +196,7 @@ static void onThread(void) {
         if (!__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE)) {
           if (onBr.depth) onFound = 1;
           else if (onBr.keepOut.n) onSeeds = onBr.keepOut;
-          onSlices++;
+          onSlices++; onMs += sliceMs;
         }
       }
       __atomic_add_fetch(&onDone, 1, __ATOMIC_RELEASE);
@@ -205,7 +209,7 @@ static void onThread(void) {
 // (begun with the decision's break search, from the frontier it resumes, on the decision's thread; let go before the next question is
 // answered, on the same thread)
 static void onStart(const Paths *seeds) {
-  onSlices = 0; onFound = 0; onWanted = 0;
+  onSlices = 0; onFound = 0; onWanted = 0; onMs = 0;
   if (!onThreadOn) return;
   if (seeds) onSeeds = *seeds; else onSeeds.n = 0;
   __atomic_store_n(&onStopReq, 0, __ATOMIC_SEQ_CST);
@@ -234,7 +238,7 @@ static void onStop(void) {
   // (handed on only where the decision kept a frontier, found no break, and the thread searched longer than it did, reached deeper than
   // the frontier it kept, or found one)
   int keptDeep = 0; for (int i = 0; theKept.set && i < theKept.paths.n; i++) keptDeep = imax(keptDeep, theKept.paths.len[i]);
-  if (!onSlices || !onWanted || (!onFound && onLogDeep <= keptDeep && onSlices * ON_SLICE_MS <= onDecMs)) return;
+  if (!onSlices || !onWanted || (!onFound && onLogDeep <= keptDeep && onMs <= onDecMs)) return;
   // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
   static Paths kept;
   kept.n = 0;
