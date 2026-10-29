@@ -385,6 +385,20 @@ static double contBoardLostLine(const Board *e, double give, int32_t spent, int3
   return own;
 }
 static double contBoardLost(const Board *e, double give, int32_t spent) { return contBoardLostLine(e, give, spent, 0, 0); }
+// (THE LINE PLAYED, asked of the look-ahead first: the board it ends on is the one the next decisions' line in progress reaches -- the
+// stack asks newest first)
+static void lookPlayed(const Judge *J) {
+  if (!J || J->hold || J->o.dead || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
+  endNoKeep = 1; asLine(&J->k);
+  const Board *e = lineEnd(J->k.seq, J->k.nseq, J->settled);
+  unLine(); endNoKeep = 0;
+  if (!e) return;
+  int32_t dt = imax(0, e->clock - decQ.b->clock);
+  Question q2 = decQ; q2.b = (Board *)e; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
+  uint32_t h = lookHash(e, &q2); double d;
+  if (!lookFind(h, &d)) lookAsk(e, &q2, h, dt, J->o.j.spent);
+}
 // THE JUDGING ON EVERY THREAD: the candidates judged on the workers, each from the work the decision had done when the judging began
 // and in the share it had, into a slot of its own with what it adds to the decision's tallies (rank.c dropped, cutWhy, unbroken) --
 // added in candidate order after, so the order is the same whichever thread judged what. The decision's clock is charged the judging's

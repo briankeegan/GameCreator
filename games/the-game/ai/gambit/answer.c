@@ -501,6 +501,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (d.kind == 1 && P.line && P.line->k.play == PLAY_TOWARD) { towardPlayedN = P.line->k.nseq; for (int i = 0; i < P.line->k.nseq; i++) towardPlayed[i] = P.line->k.seq[i]; }
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
+  if (R.under || decF.next != NOT_ASKED) lookPlayed(P.line);   // (the look-ahead beside: the line played's board first)
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
   frontierKeep(FR_SURVIVE, &outKeep, d.kind, d.move, A->hand, A->nhand, qid, 0, 0);   // (and the survival search's: search/outlive.c)
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);

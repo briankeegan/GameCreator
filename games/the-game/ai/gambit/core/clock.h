@@ -15,7 +15,10 @@ static LOCAL int64_t clockWork;
 static LOCAL int32_t clockAborted;
 // (the time a decision reads: the host's, or a replay's, which runs on the work done -- test/decide_check.c)
 static double (*clockNowOf)(void);
-static double nowMs(void) { return clockNowOf ? clockNowOf() : clock_ms(); }
+static LOCAL int inJob;
+static double workNowMs(void);
+// (the look-ahead's thread, inJob 3, on the work clock alone: the host's clock is the decision's to set -- decide.c lookThread)
+static double nowMs(void) { return inJob == 3 ? workNowMs() : clockNowOf ? clockNowOf() : clock_ms(); }
 // A decision begun: its deadline (0: none).
 static LOCAL double clockWentOut;   // when the decision first ran out of time (0: not yet), for the host to time its closing work
 static void clockStart(double due) { clockDue = due; clockShare = 0; clockWork = 0; clockAborted = 0; clockWentOut = 0; }
@@ -28,7 +31,6 @@ static LOCAL int64_t clockPoll;
 static int (*clockFrameOut)(void);
 // A JOB BESIDE THE DECISION (decide.c readySpread): no deadline of the decision's -- its searches end in their own share, or when the
 // next decision takes the pool back (jobStop)
-static LOCAL int inJob;
 static int32_t jobStop;
 // (A SEARCH ON ITS OWN BUDGET on the decision's thread -- a pend searched here as a job would search it, search/break.c readySearchOf:
 // its share alone, so its answer and its work are the same whichever thread searched it)
