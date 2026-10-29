@@ -201,7 +201,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   out->wastes = A->wastes; out->proven = A->proven; out->backBreaks = A->backBreaks; out->leftNext = A->leftNext; out->nextAt = A->nextAt;
   out->holdLives = A->holdLives; out->brk = A->brk; out->urgent = A->urgent; out->idleMs = A->idleMs;
   out->empty = A->empty; out->nalt = A->nalt; for (int i = 0; i < A->nalt; i++) out->alt[i] = A->alt[i];
-  out->ms = nowMs(); out->closeMs = clockWentOut ? nowMs() - clockWentOut : 0;
+  out->ms = nowMs() - from; out->closeMs = clockWentOut ? nowMs() - clockWentOut : 0;
   // (never the frame it was asked on: the frame loop takes answers before it asks, so the soonest it can take one is the frame after)
   out->readyFrame = imax(q->at - q->lead + 1, (q->at - q->lead) + (int32_t)__builtin_ceil(out->ms / (1000.0 / 60)));
   // the log line, its rule named and its wall time added
