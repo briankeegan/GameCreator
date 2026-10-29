@@ -245,6 +245,11 @@ static int ideasOf(const Judge *J0) {
 static int moreIdeas(const Judge *x, const Judge *y) { int a = ideasOf(x), b = ideasOf(y); return a >= 0 && b >= 0 && a > b; }
 // THE BLOCKS A LINE THROWS (judge.c blocks: every attack its own)
 static int thrownOf(const Judge *J) { return J->hold || J->o.dead ? 0 : J->o.j.blocks; }
+// (A FALLBACK: a line that meets an entry of the list after its first and breaks no garbage -- the owner: a mode plays its first entry,
+// builds toward it otherwise, and takes a fallback only where the board dies without it. Of two that live, a fallback ranks after a
+// line that fires nothing (the hold, a set-up toward the first entry) and throws nothing the order counts (63b466be))
+static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
+static int listKeyOf(const Judge *J) { return fallbackOf(J) ? 1 + J->met : J->met == 0 ? 0 : J->met < 0 ? 1 : 1 + J->met; }
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
 // and none broken
@@ -364,7 +369,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (x->outside != y->outside) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
     // 2b. (both live) the line that throws before one that throws nothing -- a three that breaks, a set-up, the hold: a board that lives
     // either way sends garbage (the owner: twice as aggressive, no threes)
-    if ((thrownOf(x) > 0) != (thrownOf(y) > 0)) return (cmpKey = __LINE__, (thrownOf(x) > 0 ? -1 : 1));
+    { int tx = !fallbackOf(x) && thrownOf(x) > 0, ty = !fallbackOf(y) && thrownOf(y) > 0;   // (a fallback's throw is not the mode's)
+      if (tx != ty) return (cmpKey = __LINE__, (tx ? -1 : 1)); }
     // 3. (both live) a hold that lives by the break it waits for is that break played later: a line that breaks and lives now first
     int hx = x->hold && x->o.ready == 1 && !(y->hold) && y->apBroke > 0, hy = y->hold && y->o.ready == 1 && !(x->hold) && x->apBroke > 0;
     if (hx != hy) return (cmpKey = __LINE__, (hx ? 1 : -1));
@@ -418,7 +424,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // -- and a far line earns its walk only within WALK_EARN actions of the nearer: of two that live and both attack, the one the cursor
   // walks much less is played (the owner: no big corner-to-corner moves; the far idea is still there next decision, nearer)
   if (lx && x->met >= 0 && y->met >= 0 && !x->hold && !y->hold) { int wx = lineWalk(x), wy = lineWalk(y); if (iabs(wx - wy) > WALK_EARN) return (cmpKey = __LINE__, (wx - wy)); }
-  if (lx) { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return (cmpKey = __LINE__, (ax - ay)); }
+  // (of two that live: the first entry, then a line that fires nothing -- the hold, a set-up toward the first entry -- then each
+  // fallback in the list's order: listKeyOf)
+  if (lx) { int ax = listKeyOf(x), ay = listKeyOf(y); if (ax != ay) return (cmpKey = __LINE__, (ax - ay)); }
   // 6. THE NEXT BREAK'S MATERIAL: of two breaks under garbage, the one that leaves a break to build (outcome.c nextBuild) and keeps the
   // board's floor -- before the list's entry: the list orders the breaks the board can afford
   if (x->material >= 0 && y->material >= 0 && x->material != y->material) return (cmpKey = __LINE__, (x->material - y->material));
