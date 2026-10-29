@@ -29,6 +29,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `cd09f589` the planner's beam sized by its time, the profile's beam the first pass -- 20 (1538) [kept]
 - `d62e91e0` the judging keeps its measured time, not a quarter -- 17 (1539) [dropped: the searches 257 to 264 ms, the clock cut 0.3% to 1.0%]
 - `d269024d` of two lines lost alike, the one whose board keeps the floor (7114babb) -- 14 (1540) [dropped: factory 1/8, four losses with the window spent]
+- the game drawn a frame in four, then sixty (panel-game PA_DRAW_EVERY) -- 20 (1541), 20 (1542) [kept: infra, the renderer 0.86 of a CPU to 0.38]
+- `358fd544` A1, the break search goes on between decisions (4d6a325c, the spares' lock ada4fe6c) -- 22 (1547) [kept: it ran on 26 decisions and found no break, so the 22 is not its doing]
 
 ## The shortlist for pressure, in the order to try
 

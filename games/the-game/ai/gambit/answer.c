@@ -136,13 +136,14 @@ static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
   }
   return out->n > 0;
 }
-// THE BREAK SEARCH GOING ON BETWEEN DECISIONS (plans/gambit-machinery.md): a decision that found no break keeps its frontier; on the
-// frames no question is out -- Gambit's thread waiting, the machine its decisions do not need -- a worker grows that frontier on, on
-// the decision's own board, a frame's work a frame (onGrant, native.c gn_frame), and what it reaches is kept in its place for the next
-// decision to resume (onStop). A break it finds is kept as the frontier's first line, played again first.
+// THE BREAK SEARCH GOING ON BESIDE THE DECISIONS (plans/gambit-machinery.md): under garbage, from the frontier a decision resumes, a
+// thread of its own at the idle class searches the decision's board on through the decision and past its answer, a frame's work a
+// frame (onGrant, native.c gn_frame), until the next decision takes it back (onStop). Where the decision found no break, what the thread
+// reached is kept in place of the decision's frontier for the next decision to resume -- when it searched longer than the decision did,
+// or found one. A break it finds is kept as the frontier's first line, played again first.
 #define ON_SLICE_MS (1000.0 / 60)
 static Broke onBr; static Paths onSeeds;
-static int32_t onWanted;
+static int32_t onWanted; static double onDecMs;   // (the decision kept a frontier, and the time its own break search took)
 static int32_t decTap;   // (the decision's pressTap, for its jobs' threads and the search between decisions)
 static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound;   // (the slices searched and a break found; the log's: the last let go, onStop)
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
@@ -161,7 +162,7 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
     K->playedHold = kind == 0; K->played = move; K->nhanded = nhanded; for (int i = 0; i < nhanded; i++) K->handed[i] = handed[i];
     K->ntoward = towardPlayedN; for (int i = 0; i < towardPlayedN; i++) K->toward[i] = towardPlayed[i];
     // (and grown on between decisions: the frontier the next decision resumes -- onThread)
-    onWanted = 1; onSeeds = br->keepOut;
+    onWanted = 1; onDecMs = C2.brMs;
     return;
   }
 }
@@ -201,18 +202,19 @@ static void onThread(void) {
     __builtin_wasm_memory_atomic_notify(&onState, 1);
   }
 }
-// (begun once the answer is out, on the thread that answered; let go before the next question is answered, on the same thread)
-static void onStart(void) {
-  onSlices = 0; onFound = 0;
-  if (!onWanted || !onThreadOn) return;
+// (begun with the decision's break search, from the frontier it resumes, on the decision's thread; let go before the next question is
+// answered, on the same thread)
+static void onStart(const Paths *seeds) {
+  onSlices = 0; onFound = 0; onWanted = 0;
+  if (!onThreadOn) return;
+  if (seeds) onSeeds = *seeds; else onSeeds.n = 0;
   __atomic_store_n(&onStopReq, 0, __ATOMIC_SEQ_CST);
   __atomic_store_n(&onDone, __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE), __ATOMIC_RELEASE);
   __atomic_store_n(&onActive, 1, __ATOMIC_RELEASE);
   __atomic_store_n(&onState, 1, __ATOMIC_RELEASE);
   __builtin_wasm_memory_atomic_notify(&onState, 1);
 }
-// (a frame with no question out: a frame's work handed to it; the frame loop in lockstep waits for it, so it has the frame the live
-// game would give it)
+// (every frame: a frame's work handed to it)
 static void onGrant(int wait) {
   if (!__atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) return;
   int32_t g = __atomic_add_fetch(&onGranted, 1, __ATOMIC_RELEASE);
@@ -228,7 +230,8 @@ static void onStop(void) {
   __atomic_store_n(&onActive, 0, __ATOMIC_RELEASE);
   __builtin_wasm_memory_atomic_notify(&onDone, 1);
   onLogSlices = onSlices; onLogFound = onFound;
-  if (!onSlices) return;
+  // (handed on only where the decision kept a frontier, found no break, and the thread searched longer than it did -- or found one)
+  if (!onSlices || !onWanted || (!onFound && onSlices * ON_SLICE_MS <= onDecMs)) return;
   // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
   static Paths kept;
   kept.n = 0;
@@ -429,6 +432,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   brWhere = 0; brGiven = 0;
   if (!beside) { brWhere = 3; brGiven = leftMs(); }
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
+  if (R.under) onStart(brHave ? &brResume : 0);   // (the search beside the decision, from the frontier this one resumes)
   double ts = nowMs();
   searchAll(&R, &S);
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
