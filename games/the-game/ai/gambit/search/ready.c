@@ -34,81 +34,6 @@ static Readied readyFor(const Question *q, double ms) {
   return out;
 }
 
-// THE BREAK ON THE BOARD TO COME (landedBreak): the board run with nothing pressed to the frame the next block lands and settles, the
-// break search asked of that board -- the break the board will need, found while there is still time to press it, not once the block
-// is down. Its line, as the board stands now, is the proposer's to offer and the judge's to try: pressed early, its swaps meet the block
-// as the judge plays them. 1 and the line; 0 none (nothing coming, the board lost first, no garbage on it then, none found)
-static Board *landedB; static Ctx *landedCtx;   // (its own: it runs as a job of its own beside the proposers' readiness -- answer.c JOB_LANDED)
-static int32_t landedOne;   // (the break found is one swap: handed out whole, to be pressed once the block has landed -- the line's waitTo)
-static int32_t landedWhy = -1, landedDeep, landedRes, landedIn;   // (the depth its beam reached, its carried lines played again of those carried in)
-static int32_t landedOneBroke = -2;   // (the one-swap break judged pressed at the landing: the cells it broke, -1 dead or late, -2 not asked -- the log's landedOne=)
-// (the log's: 0 found; 1 no root, 2 lost before it lands, 3 no garbage on it, 4 none found, 5 below the stack as it is now; -1 not asked)
-static int landedBreak(const Question *q, int32_t wait, double ms, int32_t *path, int *n) {
-  *n = 0; landedWhy = 1;
-  Ctx *x = landedCtx = ctxOf(landedCtx);
-  int root = rootOf(x, q);
-  if (root < 0) return 0;
-  int land = step(x, root, MK_LONG, 0, 0, wait);
-  landedWhy = 2;
-  if (!liveNode(x, land)) return 0;
-  int calm = settleOf(x, land); if (liveNode(x, calm)) land = calm;
-  const Board *lb = ensureBoard(x, land);
-  landedWhy = 3;
-  if (!lb || !garbageOn(lb)) return 0;
-  if (!landedB) landedB = nb_new();
-  if (!landedB) return 0;
-  cloneBoard(landedB, lb);
-  int32_t dt = imax(0, landedB->clock - q->b->clock);
-  Question q2 = *q; q2.b = landedB; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
-  for (int a = 0; a < q->narr; a++) if (q->arr[a].at > dt) { q2.arr[q2.narr] = q->arr[a]; q2.arr[q2.narr++].at -= dt; }
-  // (CARRIED TO THE LANDING: the lines the last decision's search was growing on the same board to come -- the same block, landing on
-  // the same frame -- are its beam's seeds, so the search grows deeper decision after decision until the block is down)
-  static LOCAL Broke lbr; static Paths landedSeeds;
-  int32_t landsOn = q->b->clock + wait, shape = 0, first = -1;
-  for (int a = 0; a < q->narr; a++) if (first < 0 || q->arr[a].at < q->arr[first].at) first = a;
-  if (first >= 0) shape = q->arr[first].width * 64 + q->arr[first].height;
-  int carried = frontierResumeKeyed(FR_LANDED, landsOn, shape, &landedSeeds) && landedSeeds.n > 0;
-  double old = clockShareBegin(nowMs() + ms);
-  Later lt = laterBegin(dt, 0);   // (the board to come, dt frames on: its break pressed in the window as it is then -- core/nodes.h laterBegin)
-  breakMoves(&q2, 0, carried ? &landedSeeds : 0, &lbr);
-  laterEnd(lt);
-  clockShareEnd(old);
-  frontierKeepKeyed(FR_LANDED, &lbr.keepOut, landsOn, shape);
-  landedDeep = 0; for (int i = 0; i < lbr.keepOut.n; i++) landedDeep = imax(landedDeep, lbr.keepOut.len[i]);
-  landedRes = lbr.resPlayed; landedIn = lbr.resIn;
-  landedWhy = 4;
-  if (lbr.pathLen <= 0) return 0;
-  landedWhy = 0;
-  // (as the board stands NOW: the rows the stack rises before the block lands taken off -- a bottom-row panel found again on the board to
-  // come, by its id -- and the break's own last swap left to the landing: the line offered is the setup, and the readiness the judge asks
-  // of it, a break in reach once the block lands, is that last swap. A break one swap deep has nothing to set up)
-  int32_t dr = 0, id = NUL;
-  for (int c = 1; c <= W && id == NUL; c++) if (q->b->p[1][c].f[COLOR] && !q->b->p[1][c].f[ISGARBAGE]) id = q->b->p[1][c].f[ID];
-  if (id != NUL) { int found = 0; for (int r = 1; r < landedB->nrows && !found; r++) for (int c = 1; c <= W; c++) if (landedB->p[r][c].f[ID] == id) { dr = r - 1; found = 1; break; } }
-  // (A BREAK OF ONE SWAP has no set-up to hand out. Handed out whole, in the rows of the board to come, it is not offered (1304: pressed
-  // at the landing by the judge it broke nothing in 33 of 37) but judged and logged -- landedOne=, propose.c -- the judge's press at
-  // the landing against the search's board, until the two agree)
-  landedOne = lbr.pathLen == 1;
-  if (landedOne) { path[0] = lbr.path[0]; *n = 1; return 1; }
-  for (int k = 0; k + 1 < lbr.pathLen && k < MAXLINE; k++) {
-    int r = CR(lbr.path[k]) - dr;
-    if (r < 1) { *n = 0; landedWhy = 5; return 0; }
-    path[(*n)++] = r * 8 + CC(lbr.path[k]);
-  }
-  return *n > 0;
-}
-
-// (THE BOARD TO COME AS A JOB OF ITS OWN: on a worker beside the decision's other searches, in the searches' time, so it takes from no
-// other search; its answer the proposers' once the jobs are taken back -- propose.c searchMerge)
-static int32_t landedOk, landedOutN, landedOut[MAXLINE], landedOutOne, landedDone, landedJobOn;   // (landedJobOn: a worker has it this decision)
-static void landedJobRun(double by) {
-  landedOk = 0; landedOutN = 0; landedOutOne = 0;
-  double ms = by - nowMs();
-  if (decF.next == NOT_ASKED || decF.next <= 0 || ms < 1) return;
-  int n = 0;
-  if (landedBreak(&decQ, decF.next + 2, ms, landedOut, &n)) { landedOutN = n; landedOk = 1; landedOutOne = landedOne; }
-}
-
 // THE ORDER OF THE FIRST SWAPS: nearest the top of the stack first. The comparator says "b first" only when b is strictly nearer; the
 // order it leaves (a run found and turned, then binary insertion) is part of what the search finds first, so it is kept exactly
 static int nearerFirst(int32_t a, int32_t b, int32_t top) { int da = CR(a) - top, db = CR(b) - top; if (da < 0) da = -da; if (db < 0) db = -db; return db < da ? 1 : -1; }
@@ -138,7 +63,7 @@ static int readyLines(const Question *q, int32_t land, double ms, int32_t *seq, 
   for (int i = 0; i < nf && !clockOut() && !found; i++) {
     judge(q, &firsts[i], 1, &jo, &j);
     if (j.dead || j.late) continue;
-    if (!firstOk(CR(firsts[i]), CC(firsts[i]), j.firstMade)) continue;
+    if (!firstOk(CR(firsts[i]), CC(firsts[i]), j.made.broke > 0 ? 2 : j.made.combo > 0 || j.made.chain > 0)) continue;
     if (j.ready == 1 && lineFits(&firsts[i], 1, 0)) { seq[0] = firsts[i]; *nseq = 1; *at = j.done; found = 1; break; }
     live[nl++] = firsts[i];
   }
@@ -151,7 +76,7 @@ static int readyLines(const Question *q, int32_t land, double ms, int32_t *seq, 
     for (int k = 0; k < ns && !clockOut(); k++) {
       int32_t two[2] = { live[i], seconds[k] };
       judge(q, two, 2, &jo, &j);
-      if (!j.dead && !j.late && j.ready == 1 && firstOk(CR(live[i]), CC(live[i]), j.firstMade) && lineFits(two, 2, 0)) {
+      if (!j.dead && !j.late && j.ready == 1 && firstOk(CR(live[i]), CC(live[i]), j.made.broke > 0 ? 2 : j.made.combo > 0 || j.made.chain > 0) && lineFits(two, 2, 0)) {
         seq[0] = two[0]; seq[1] = two[1]; *nseq = 2; *at = j.done; found = 1; break;
       }
     }
@@ -181,7 +106,7 @@ static Board *landedAll(const Board *b0, const Arr *arr, int narr, int32_t last,
   return 0;
 }
 // THE FRAMES UNTIL THE STACK TAKES A RAISE (raiseOpenIn): the board left alone, run a frame at a time with the garbage shown landing as the
-// game lands it, to the first frame the engine would act on a raise (raiseOpen: raiseShutOf, the one test, the host's too -- native.c canRaiseOn) -- that board
+// game lands it, to the first frame the engine would act on a raise (raiseOpen, the host's own test: native.c canRaiseOn) -- that board
 // into `at`; NOT_ASKED when it does not within `most` frames, or the board is lost first -- and raiseShut, what held it shut on every
 // frame searched (a bit each: 1 a raise prevented, 2 one held, 4 topped, 8 garbage falling, 16 the rise locked, 32 panels moving, 64 the
 // shake), the log's
@@ -234,14 +159,6 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     return ok;
   }
   Ctx *x = readyCtx = ctxOf(readyCtx);
-  // (THE BOARD UNRAISED, everything landed and left alone a REST: the frame it is lost on, -1 alive -- a raise that leaves the board lost
-  // no sooner than this is no raise into its death: below the floor the board dies either way, and the raised rows are the panels of
-  // its next break)
-  int32_t baseLost = -1;
-  { static Board *b0, *b1; if (!b0) { b0 = nb_new(); b1 = nb_new(); }
-    Board *g0 = landedAll(q->b, q->arr, q->narr, last, b1);
-    if (g0) { cloneBoard(b0, g0); for (int g = 0; g < REST && b0->gameOverClock <= 0; g++) { b0->input = 0; run(b0); if (b0->gameOverClock > 0) baseLost = g; } }
-    else baseLost = 0; }
   for (int k = 1; k <= rows; k++) {
     cloneBoard(st, q->b);
     int32_t f = 0;
@@ -254,10 +171,8 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     // (and once landed, alive a REST left alone (outcome.c): a raise that leaves the board only a break found in its last frames is one
     // it dies of -- the decisions after it have no time to press it)
     { static Board *rest; if (!rest) rest = nb_new(); cloneBoard(rest, got);
-      int32_t lostAt = -1;
-      for (int g = 0; g < REST && rest->gameOverClock <= 0; g++) { rest->input = 0; run(rest); if (rest->gameOverClock > 0) lostAt = g; }
-      if (lostAt >= 0 && !(baseLost >= 0 && lostAt >= baseLost)) break;
-      if (lostAt >= 0) { raiseAlive = k; continue; } }   // (lost no sooner than unraised: raised, no plan asked of it)
+      for (int g = 0; g < REST && rest->gameOverClock <= 0; g++) { rest->input = 0; run(rest); }
+      if (rest->gameOverClock > 0) break; }
     raiseAlive = k;
     // (a plan once landed: the readiness every move is held to -- a break within two swaps that the list allows)
     Question q2 = *q; q2.b = got; q2.narr = 0;

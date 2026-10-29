@@ -1,4 +1,0 @@
-{
- "base": "gambit-finish.json",
- "gambit": { "rules": "survivor-profiles/gambit-rules-m36.json" }
-}

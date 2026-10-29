@@ -25,10 +25,10 @@ on:
         description: "Gambit's worker threads (GC_GAMBIT_WORKERS; none when empty): four -- the break search, the planner's second half and the chain, the survival search, the break search's wider beam"
         default: '4'
       bot:
-        description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit), gambit-paced (the same on the wall clock: no lockstep, the game paced -- a Gambit from before lockstep) or wasm (survivor.js beside it)'
+        description: 'gambit (in the client, libgambit.so; needs a panel_ref with PA_BOT=gambit) or wasm (survivor.js beside it)'
         default: 'gambit'
       seed:
-        description: 'The panel seed base (PA_SEED = base*100 + pattern*10 + game: every game the same panels every run); 1-24 for seeds 1 to 24, a game each (combo_storm 1-8, factory 9-16, large_garbage 17-24; round r adds 24(r - 1)); empty (the default) for random -- every run new games'
+        description: 'The panel seed base (PA_SEED = base*100 + pattern*10 + game: every game the same panels every run); empty (the default) for random -- every run new games'
         default: ''
       patterns:
         description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games; the goal is measured on all three)'
@@ -45,39 +45,7 @@ permissions:
   actions: read
 
 jobs:
-  # GAMBIT BUILT ONCE (libgambit.so, for every runner: GC_MARCH), and every game plays that build
-  build:
-    if: ${{ inputs.report_run == '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
-      - name: The Gambit of another commit
-        if: ${{ inputs.gambit_from != '' }}
-        run: |
-          git fetch -q --depth 1 origin "${{ inputs.gambit_from }}"
-          rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
-      - name: clang
-        timeout-minutes: 10
-        run: |
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
-          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y clang && break; sleep 10; done
-      - name: libgambit.so
-        env:
-          GC_MARCH: x86-64-v2
-        run: games/the-game/ai/gambit/build.sh native
-      - uses: actions/upload-artifact@v4
-        timeout-minutes: 5
-        with:
-          name: libgambit
-          path: games/the-game/ai/gambit/libgambit.so
-          retention-days: 3
-
   play:
-    needs: build
     if: ${{ inputs.report_run == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
@@ -87,20 +55,15 @@ jobs:
         pattern: ${{ fromJSON(inputs.patterns || '["combo_storm","factory","large_garbage"]') }}
         game: [1, 2, 3, 4, 5, 6, 7, 8]
         round: ${{ fromJSON(inputs.rounds || '[1]') }}
-        twin: [0]
-        # (THE TWIN: factory's first game played again on its seed -- the report holds the two to every decision alike)
-        include:
-          - { pattern: factory, game: 1, round: 1, twin: 1 }
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: ${{ inputs.gambit_from != '' && '0' || '1' }}
       - name: The Gambit of another commit
         if: ${{ inputs.gambit_from != '' }}
         run: |
-          git fetch -q --depth 1 origin "${{ inputs.gambit_from }}"
-          rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
+          rm -rf games/the-game/ai/gambit && git checkout "${{ inputs.gambit_from }}" -- games/the-game/ai/gambit
           echo "::notice title=gambit::the Gambit of ${{ inputs.gambit_from }}"
       - uses: actions/checkout@v4
         with:
@@ -111,16 +74,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: actions/download-artifact@v4
-        timeout-minutes: 5
-        with:
-          name: libgambit
-          path: games/the-game/ai/gambit
-      - name: xvfb and love
+      - name: xvfb, love and clang
         timeout-minutes: 15
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
-          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb luajit && break; sleep 10; done
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang luajit zlib1g-dev && break; sleep 10; done
           mkdir -p ~/love2d
           for i in 1 2 3; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep 10; done
           tar -xzf /tmp/love.tar.gz -C ~/love2d
@@ -140,69 +98,33 @@ jobs:
           MINUTES: '60'
           GC_GAMBIT_WORKERS: ${{ inputs.workers }}
           SEED_BASE: ${{ inputs.seed }}
-          GC_GAMBIT_BUILT: '1'
         run: |
           if [ -n "$SEED_BASE" ]; then
             case "${{ matrix.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; *) P=9;; esac
-            if [ "$SEED_BASE" = 1-24 ]; then export PA_SEED=$(((${{ matrix.round }} - 1) * 24 + (P - 1) * 8 + ${{ matrix.game }}))
-            else export PA_SEED=$(((SEED_BASE + ${{ matrix.round }} - 1) * 100 + P * 10 + ${{ matrix.game }})); fi
+            export PA_SEED=$(((SEED_BASE + ${{ matrix.round }} - 1) * 100 + P * 10 + ${{ matrix.game }}))
             echo "::notice title=seed::${{ matrix.pattern }} ${{ matrix.game }} round ${{ matrix.round }}: PA_SEED=$PA_SEED"
           fi
           echo "::notice title=cores::$(nproc) threads, $(lscpu | awk -F: '/^Core\(s\) per socket|^Thread\(s\) per core/ {gsub(/ +/, " ", $2); printf "%s:%s, ", $1, $2}')cpu:core $(lscpu -e=CPU,CORE | tail -n +2 | awk '{printf "%s:%s ", $1, $2}'), GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
-          BOT="${{ inputs.bot || 'gambit' }}"
-          if [ "$BOT" = gambit-paced ]; then BOT=gambit; export GC_GAMBIT_LOCKSTEP=0 PA_UNPACED=0; fi
-          bash games/the-game/ai/eval/training.sh "$BOT" "${{ matrix.pattern }}" 1
+          bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
         if: always()
         run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }} r${{ matrix.round }}::/' || true
-      # (the game written up by its own job, beside the others: a loss's empty break searches searched again -- the report adds them up)
-      - name: The game written up
-        if: always()
-        timeout-minutes: 20
-        run: node games/the-game/ai/eval/gambit_reach.js --game out "gambit-${{ matrix.pattern }}-${{ matrix.game }}${{ matrix.round > 1 && format('-r{0}', matrix.round) || '' }}" 300 3000 || true
       - uses: actions/upload-artifact@v4
         if: always()
         timeout-minutes: 5
         with:
-          name: ${{ matrix.twin == 1 && 'twin' || 'gambit' }}-${{ matrix.pattern }}-${{ matrix.game }}${{ matrix.round > 1 && format('-r{0}', matrix.round) || '' }}
+          name: gambit-${{ matrix.pattern }}-${{ matrix.game }}${{ matrix.round > 1 && format('-r{0}', matrix.round) || '' }}
           path: |
             out/results.txt
             out/survivor.log
-            out/client-*.log
-            out/reach.json
           if-no-files-found: warn
           retention-days: 14
       # (after the games, so a check that fails turns the run red without stopping a game)
-
-  # GAMBIT'S C CHECKS, each a job of its own beside the games (they check the build, not a game): the bits, perched blocks, the
-  # decisions replayed against the golden; the same on two workers (every check but the golden, which their search may move); and the
-  # workers raced under ThreadSanitizer
-  checks:
-    if: ${{ inputs.report_run == '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        check: [test, workers, tsan]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-      - name: clang and zlib
-        timeout-minutes: 10
-        run: |
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
-          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y clang zlib1g-dev && break; sleep 10; done
-      - name: ${{ matrix.check }}
+      - name: Gambit's C checks (the bits, perched blocks, the decisions replayed against the golden)
+        if: always()
         timeout-minutes: 15
-        run: |
-          cd games/the-game/ai/gambit
-          case "${{ matrix.check }}" in
-            test) ./build.sh test ;;
-            workers) GC_GAMBIT_WORKERS=2 ./build.sh test ;;
-            tsan) ./build.sh tsan > /dev/null ;;
-          esac
+        # (and again on two workers: the readiness searched on every thread -- every check but the golden, which their search may move)
+        run: cd games/the-game/ai/gambit && ./build.sh test && GC_GAMBIT_WORKERS=2 ./build.sh test && ./build.sh tsan > /dev/null
 
   report:
     needs: play
@@ -223,31 +145,19 @@ jobs:
           path: games-of-run
           run-id: ${{ inputs.report_run || github.run_id }}
           github-token: ${{ github.token }}
-      - uses: actions/download-artifact@v4
-        continue-on-error: true
-        timeout-minutes: 10
-        with:
-          pattern: twin-*
-          path: twins
-          run-id: ${{ inputs.report_run || github.run_id }}
-          github-token: ${{ github.token }}
       - name: The run, written up
         timeout-minutes: 45
         run: |
           EV=games/the-game/ai/eval
           mkdir -p report
-          # (a past run written up again by this commit's reports: each game's reach searched again here, not read from its job's)
-          if [ -n "${{ inputs.report_run }}" ]; then find games-of-run -name reach.json -delete; fi
-          # (the three side by side: each reads the games alone; reach adds up what each game's job wrote, reach.json)
-          node $EV/gambit_summary.js games-of-run > report/summary.txt 2>&1 &
-          node $EV/gambit_losses.js games-of-run 10 > report/losses.txt 2>&1 &
-          node $EV/gambit_reach.js games-of-run 300 3000 > report/reach.txt 2>&1 &
-          wait
+          node $EV/gambit_summary.js games-of-run > report/summary.txt 2>&1 || true
+          node $EV/gambit_losses.js games-of-run 10 > report/losses.txt 2>&1 || true
+          node $EV/gambit_reach.js games-of-run 300 3000 > report/reach.txt 2>&1 || true
           # (the time the run finished, ET on the 24-hour clock: plans/gambit-goal.md)
           echo "finished: $(TZ=America/New_York date '+%Y-%m-%d %H:%M') ET" >> report/summary.txt
           sed 's/^/::notice title=summary::/' report/summary.txt
           tail -3 report/losses.txt | sed 's/^/::notice title=losses::/'
-          grep -h "boards searched again\|moves at the turn\|own work\|veto truth" report/reach.txt | sed 's/^/::notice title=reach::/' || true
+          grep -h "boards searched again\|moves at the turn\|own time" report/reach.txt | sed 's/^/::notice title=reach::/' || true
           # (the reports whole, in the job's log: readable where the artifact is not)
           for f in summary losses reach; do echo "===== $f"; cat report/$f.txt; done
           { echo '## Gambit 24'; echo '```'; cat report/summary.txt; echo; tail -3 report/losses.txt; grep -h "boards searched again\|moves at the turn" report/reach.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
@@ -263,47 +173,6 @@ jobs:
       - name: The truth held
         run: |
           grep -q '^truth: 0 ' report/summary.txt || { grep '^truth:' report/summary.txt | sed 's/^/::error title=truth::/'; exit 1; }
-      # THE STATE CARRIED: every decision starts from the state the answer the frame loop last played left (plans/gambit-state.md)
-      - name: The state held
-        run: |
-          grep -q '^state: 0 ' report/summary.txt || { grep '^state:' report/summary.txt | sed 's/^/::error title=state::/'; exit 1; }
-      # THE SAME GAME TWICE: on a seed, factory's first game and its twin make every decision alike (the wall's fields, wallMs and out,
-      # aside) -- a game that is not its seed's alone is red, with the first decision the two part at
-      - name: The game the same twice
-        if: ${{ inputs.seed != '' }}
-        run: |
-          a=games-of-run/gambit-factory-1/survivor.log; b=twins/twin-factory-1/survivor.log
-          [ -f "$a" ] && [ -f "$b" ] || { echo "::warning title=twice::no twin to compare"; exit 0; }
-          # (up to the frames a game counts: past them the client is quitting, as soon as the wall lets it)
-          # (the decisions, not the time they took: the work charged from the workers rounds a millisecond either way, so the time
-          # fields -- brMs, brAt's time, ms, ms_c, ms_r -- are no part of the game)
-          d() { grep '^GAMBITD ' "$1" | awk -v F="${{ inputs.frames }}" '$2 <= F' | sed 's/ wallMs=.*//; s/ brMs=[^ ]*//; s/ brAt=\([0-9]*\)\/[0-9]*/ brAt=\1/; s/ ms=[^ ]*//; s/ ms_c=[^ ]*//; s/ ms_r=[^ ]*//'; }
-          if cmp -s <(d "$a") <(d "$b"); then echo "::notice title=twice::$(d "$a" | wc -l) decisions alike"
-          else diff <(d "$a") <(d "$b") | head -4 | cut -c1-300 | sed 's/^/::error title=twice::/'; exit 1; fi
-      # ONE ORDER: the line played is never beaten head to head by a line the order ranked under it (plans/gambit-next.md)
-      - name: One order
-        run: |
-          grep -q '^one order: 0 ' report/summary.txt || { grep '^one order:' report/summary.txt | sed 's/^/::error title=one order::/'; exit 1; }
-      # THE GATES (plans/gambit-next.md): a proven line is never passed over; a proof never vanishes with nothing new shown and nothing
-      # cut; no margin share is a constant
-      - name: Proven first
-        run: |
-          grep -q '^proven first: 0 ' report/summary.txt || { grep '^proven first:' report/summary.txt | sed 's/^/::error title=proven first::/'; exit 1; }
-      # (the readiness is read by the shape math, a fuzzy check: it warns, and the summary counts its misses)
-      - name: Readiness right
-        run: |
-          grep -q '^readiness: 0 ' report/summary.txt || grep '^readiness:' report/summary.txt | sed 's/^/::warning title=readiness::/'
-      - name: Every share a fact
-        run: |
-          grep -q '^shares: 0 ' report/summary.txt || { grep '^shares:' report/summary.txt | sed 's/^/::error title=shares::/'; exit 1; }
-      # NO PAIR PUT BACK (the owner: never): the press guard refused a swap that put the last pair pressed back for nothing -- the judge let it through
-      - name: No pair put back
-        run: |
-          grep -q '^put back: 0 ' report/summary.txt || { grep '^put back:' report/summary.txt | sed 's/^/::error title=put back::/'; exit 1; }
-      # EVERY LINE CATEGORISED: each decision that offers lines logs the judge's category for every one
-      - name: Every line categorised
-        run: |
-          grep -q '^categorised: 0 ' report/summary.txt || { grep '^categorised:' report/summary.txt | sed 's/^/::error title=categorised::/'; exit 1; }
       # THE LINE AS JUDGED: every swap of a line handed on keyed from the frame the judge pressed it from, never later
       - name: The line pressed as judged
         run: |

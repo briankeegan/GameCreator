@@ -56,16 +56,10 @@ if [ "$BOT" = wasm ]; then
   for i in $(seq 1 300); do grep -q listening "$OUT_DIR/survivor.log" && break; sleep 0.2; done
   grep -q listening "$OUT_DIR/survivor.log" || { cat "$OUT_DIR/survivor.log"; echo "training.sh: WasmSurvivor did not start" >&2; exit 1; }
 elif [ "$BOT" = gambit ]; then
-  # Gambit's library, built for this machine unless the run built it once for every game (GC_GAMBIT_BUILT), and the profile as numbers
-  # (words.js); its log is the run's survivor.log
-  [ -n "$GC_GAMBIT_BUILT" ] && [ -f "$EVAL/../gambit/libgambit.so" ] || "$EVAL/../gambit/build.sh" native || exit 1
+  # Gambit's library, built for this machine, and the profile as numbers (words.js); its log is the run's survivor.log
+  "$EVAL/../gambit/build.sh" native || exit 1
   GC_SURVIVOR_PROFILE="$EVAL/${PROFILE:-survivor-profiles/gambit-finish.json}" node "$EVAL/../gambit/words.js" > "$OUT_DIR/gambit.words" || exit 1
-  # (LOCKSTEP and UNPACED: the game waits on every answer Gambit was asked and plays its frames back to back -- each decision's time the
-  # work clock's alone, so a seed is the same game on any runner, as fast as the runner plays it; live play sets neither)
-  export GC_GAMBIT_LOCKSTEP="${GC_GAMBIT_LOCKSTEP:-1}" PA_UNPACED="${PA_UNPACED:-1}"
   export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS"
-  # (the look-ahead beside the decisions on the game's own CPU, at the idle class: the cycles the game leaves -- host.c idleStart)
-  [ "$NCPU" -ge 2 ] && export GC_GAMBIT_SPARE_CPU="$CLIENT_CPU"
   echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS"
   : > "$OUT_DIR/survivor.log"
 fi
@@ -106,13 +100,6 @@ for g in $(seq 1 "$GAMES"); do
   sleep 3; kill "$CLIENT" 2>/dev/null; wait "$CLIENT" 2>/dev/null
   cp "$OUT" "$OUT_DIR/pa_out-$g.txt"
   r=$(grep -h '^training ' "$OUT" | tail -1); echo "game $g $PATTERN ${r:-no result}" | tee -a "$OUT_DIR/results.txt"
-  # (a game the client died in: the crash its handler wrote (gambit/host.c crashOut), the frames in libgambit.so resolved by addr2line)
-  if [ -z "$r" ]; then
-    grep -h '^GAMBIT CRASH' "$OUT_DIR/client-$g.log" 2>/dev/null | head -1 | sed "s/^/game $g /" | tee -a "$OUT_DIR/results.txt"
-    grep -h '^GAMBIT FRAME' "$OUT_DIR/client-$g.log" 2>/dev/null | while read -r _ _ n lib off; do
-      case "$lib" in *libgambit.so) echo "game $g crash frame $n $(addr2line -f -i -C -e "$lib" "$off" 2>/dev/null | paste -sd' ')";; *) echo "game $g crash frame $n $lib $off";; esac
-    done | tee -a "$OUT_DIR/results.txt"
-  fi
   for i in $(seq 1 20); do [ -s "$OUT_DIR/cpu-$g.txt" ] && break; sleep 1; done
   [ -s "$OUT_DIR/cpu-$g.txt" ] && echo "game $g $(cat "$OUT_DIR/cpu-$g.txt")" | tee -a "$OUT_DIR/results.txt"
   # the first frame this game's health fell: where a game of one health (levels 10 and 11) is lost

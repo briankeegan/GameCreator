@@ -162,21 +162,11 @@ PROFILES = {
     # when it is needed, not a one-off prompt nobody can hold to a standard.
     "icon": {
         "model": MODEL, "size": "1024x1024", "quality": "medium",
-        # FLAT WHITE AND KEYED OUT, not transparent. This asked the API for a
-        # transparent background and the model refuses it outright now
-        # ("Transparent background is not supported for this model", HTTP
-        # 400), which took EVERY game-asset generation down, not just one —
-        # the whole front door returned nothing but a 400 for anybody who
-        # called it. It also never agreed with the standard it is meant to
-        # serve: README.md §"Ask for flat pure white, never transparency"
-        # has said so the whole time, because transparency comes back as a
-        # beige wash and the cutters key white out cleanly.
-        "background": "opaque",
+        "background": "transparent",
         "verify": None,
         "note": "A single item dropped onto the game's own UI as a sprite — a "
-                "card, a weapon, a ship, a badge. Drawn on FLAT PURE WHITE and "
-                "keyed out afterwards, which is how every other sheet in here "
-                "is made; ask the prompt for white, never for transparency.",
+                "card, a weapon, a ship, a badge. ALWAYS transparent: it has to "
+                "sit on whatever background the UI already has, not carry its own.",
     },
     "wreck_sheet": {
         "model": MODEL, "size": "1536x1024", "quality": "medium",

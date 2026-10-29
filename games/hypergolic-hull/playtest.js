@@ -95,32 +95,7 @@ function bestShot(state) {
         const victims =
           weapon.targets === "all" ? living.filter((e) => reach.some((h) => Engine.posEq(h, e))) : [enemy];
         const kills = victims.filter((e) => e.hp <= weapon.damage).length;
-        let score = kills * 100 + (victims.length - 1) * 45 - weapon.energyCost - Engine.hexDistance(state.playerPos, enemy);
-        // AN AIMED GUN KILLS NOTHING THIS ROUND. It locks a lane and looses
-        // it next round, and the enemy phase runs in between — so scoring it
-        // as a kill made the pilot fire it at anything that moves and bank
-        // nothing: 9 shots, 0 kills, measured. What it is really worth is a
-        // kill NEXT round times the chance the target is still on the lane,
-        // which is close to zero against a hull that can simply step aside
-        // and close to certain against one that cannot.
-        if (weapon.aims) {
-          const def = Engine.ENEMY_TYPES[enemy.type] || {};
-          const ship = def.ship || {};
-          // An emplacement has no drive and cannot leave the lane at all.
-          // Anything else is only pinned if it has nowhere off the lane to
-          // step, which on an open board it always has.
-          // Against anything that can MOVE, a lock is a round spent on a hex
-          // the target has already been handed a free round to leave — and
-          // it leaves. Measured before this: 9 shots, 0 kills, every one of
-          // them loosed down an empty lane. So the pilot does not take the
-          // shot at all unless the target is bolted down, which is what this
-          // gun is actually for; everything else it would rather shoot with
-          // something that lands the same round.
-          const pinned = !ship.hasDrive;
-          score = pinned
-            ? kills * 100 - weapon.energyCost - Engine.hexDistance(state.playerPos, enemy)
-            : -1;
-        }
+        const score = kills * 100 + (victims.length - 1) * 45 - weapon.energyCost - Engine.hexDistance(state.playerPos, enemy);
         if (!best || score > best.score) best = { enemy, weapon, facing, score };
       }
     }

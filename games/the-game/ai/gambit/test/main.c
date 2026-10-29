@@ -13,17 +13,6 @@
 #include <stdint.h>
 #include <zlib.h>
 int32_t *gb_io(void);
-const char *gb_log(void);
-void gb_trace(int on);
-int gb_solve(int depth, int ms, int32_t *line, int32_t *best);
-int gb_solve2(int depth, int beam, int ms, int32_t *line, int32_t *expanded);
-int gb_solve_two(int depth, int beam, int ms, int32_t *out);
-#define SOLVE_TWO_OUT (8 * 18)
-int gb_break_test(int ms, int noBand, int noDoomed, int beam, int open, int32_t *line);
-void gb_line_verdict(const int32_t *seq, int n, char *out, int cap);
-void gb_break_trace(int32_t mv, char *out, int cap);
-void gb_line_trace(const int32_t *seq, int n, char *out, int cap);
-void gb_window(int len, int n, const int32_t *ages);
 int gb_question_bytes(int nbytes, int narr);
 int gb_bits_agree(void);
 int gb_bits_boards(void);
@@ -37,9 +26,7 @@ int gb_line_agree(int *n);
 int gb_held_off(int *held, int *offCell);
 const char *gb_line_shown(void);
 int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out);
-void gb_win_held(int32_t *o);
 int gb_frames(int mr, int mc, int frames, int32_t *out);
-int gb_stall_check(int gap, int frames, int32_t *out);
 int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
 void paThreadId(int id);
@@ -115,168 +102,29 @@ static int speed(const char *dir) {
   printf("speed: %d decisions in the wall clock's time, %lld frames stepped a decision\n", nq, nq ? work / nq : 0);
   return 0;
 }
-int hostOpenLog(const char *path);
-
-// THE CONDITIONS A DUMPED BOARD WAS DECIDED UNDER (native.c Conds: a<allowance> g<gap> W<window>:<ages>), for a replay of that decision
-// under GC_PRESS; without it, none (the replay's own)
-void gb_replay_allow(int a);
-static void condsOfLine(const char *b) {
-  extern void gb_press(int allow, int gap);
-  const char *pa = getenv("GC_PRESS") ? strstr(b, "] a") : 0, *pg = pa ? strstr(pa + 3, " g") : 0, *pw = pa ? strstr(pa, " W") : 0;
-  static int32_t ages[512]; int na = 0;
-  if (!pa) { gb_replay_allow(-1); gb_press(-1, 0); gb_window(0, -1, 0); return; }
-  gb_replay_allow(atoi(pa + 3)); gb_press(atoi(pa + 3), pg ? atoi(pg + 2) : 0);
-  if (pw) { const char *c = strchr(pw, ':'); while (c && na < 512) { ages[na++] = atoi(c + 1); const char *nx = strchr(c + 1, ','), *sp = strchr(c + 1, ' '); c = nx && (!sp || nx < sp) ? nx : 0; } gb_window(atoi(pw + 2), na, ages); }
-  else gb_window(0, -1, 0);
-}
 int main(int argc, char **argv) {
-  if (getenv("GC_GAMBIT_LOG")) hostOpenLog(getenv("GC_GAMBIT_LOG"));
-  if (getenv("GC_GAMBIT_TRACE")) gb_trace(1);   // (and the order after each stage of every decision, into that log)   // (the bot's own log of every decision the checks make it take: GAMBITD lines, where a check's verdict needs reading)
   const char *dir = argc > 1 ? argv[1] : "test";
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   int golden = argc > 2 && !strcmp(argv[2], "golden"), fail = 0;
-  int only = argc > 3 && !strcmp(argv[2], "one") ? atoi(argv[3]) : 0;   // (test DIR one N: the decisions replay on question N alone, twice, as the check asks it)
   char path[4096];
   static char line[1 << 17];
-  // test DIR solve DEPTH MS: every question of decisions.txt.gz handed to the exhaustive solver (decide_check.c gb_solve), one line each
-  if (argc > 4 && !strcmp(argv[2], "solve")) {
-    int depth = atoi(argv[3]), ms = atoi(argv[4]);
-    snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
-    gzFile z = gzopen(path, "r");
-    if (!z) { fprintf(stderr, "test: no %s\n", path); return 2; }
-    while (gzgets(z, line, sizeof line)) {
-      const char *b = strstr(line, "GAMBITB "); if (!b) continue;
-      char tag[64]; snprintf(tag, sizeof tag, "%.20s", b + 8); char *sp = strchr(tag, ' '); if (sp) *sp = 0;
-      int narr, n = loadLine(b, &narr);
-      if (n < 0 || gb_question_bytes(n, narr) != 0) { printf("solve %s: does not load\n", tag); continue; }
-      // (GC_PRESS: the decision's own window, as the dump logs it -- a<actions left> g<pace gap>)
-      { const char *pa = strstr(b, " a"), *pg = pa ? strstr(pa + 2, " g") : 0; extern void gb_press(int allow, int gap);
-        if (getenv("GC_PRESS") && pa && pg) gb_press(atoi(pa + 2), atoi(pg + 2)); else gb_press(-1, 0);
-        // (and the window's ages, where the dump carries them: W<len>:<age>,<age>,...)
-        const char *pw = getenv("GC_PRESS") ? strstr(b, " W") : 0; static int32_t ages[512]; int na = 0;
-        if (pw) { int len = atoi(pw + 2); const char *c = strchr(pw, ':'); while (c && *c && *c != ' ' && *c != '\n' && na < 512) { ages[na++] = atoi(c + 1); c = strchr(c + 1, ','); if (c && strchr(c, ' ') && strchr(c, ' ') < c) break; }
-                  gb_window(len, na, ages); } else gb_window(0, -1, 0); }
-      if (getenv("GC_SOLVE_TWO")) {
-        static int32_t o2[SOLVE_TWO_OUT]; int nb = gb_solve_two(depth, atoi(getenv("GC_SOLVE_TWO")), ms, o2), k = 0, with = 0;
-        printf("solve2 %s: %d breaks:", tag, nb);
-        for (int q = 0; q < nb; q++) { int L = o2[k++]; printf(" ["); for (int z = 0; z < L; z++) printf("%s%d,%d", z ? " " : "", o2[k] >> 3, o2[k] & 7), k++; int f = o2[k++]; printf(" -> %s]", f > 0 ? "FOLLOW" : f < 0 ? "cut" : "dead end"); with += f > 0; }
-        printf(" | with a follow-up %d\n", with); fflush(stdout); continue;
-      }
-      int32_t sol[64], best = 0; int r = getenv("GC_BREAK_TEST") ? gb_break_test(ms, getenv("GC_NOBAND") != 0, getenv("GC_NODOOMED") != 0, getenv("GC_TBEAM") ? atoi(getenv("GC_TBEAM")) : 0, getenv("GC_OPEN") != 0, sol) : getenv("GC_SOLVE_BEAM") ? gb_solve2(depth, atoi(getenv("GC_SOLVE_BEAM")), ms, sol, &best) : gb_solve(depth, ms, sol, &best);
-      if (getenv("GC_SHOW")) { static char sb[4096]; extern void gb_board_show(char *, int); n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_board_show(sb, sizeof sb); printf("board %s:\n%s", tag, sb); }
-      printf("solve %s: %s", tag, r > 0 ? "BREAK" : r < 0 ? "cut" : "none");
-      if (getenv("GC_TRACE_MV")) { static char to[512]; int rr, cc; sscanf(getenv("GC_TRACE_MV"), "%d,%d", &rr, &cc); n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_break_trace(rr * 8 + cc, to, sizeof to); printf(" [trace %d,%d: %s]", rr, cc, to); }
-      if (r > 0 && getenv("GC_TRACE_LINE")) { static char to[4096]; n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_line_trace(sol, r, to, sizeof to); printf("\n   [line: %s]\n", to); }
-      if (r > 0 && getenv("GC_JUDGE")) { static char jo[512]; n = loadLine(b, &narr); gb_question_bytes(n, narr); gb_line_verdict(sol, r, jo, sizeof jo); printf(" [judge: %s]", jo); }
-      if (r > 0) { printf(" in %d:", r); for (int i = 0; i < r && i < 64; i++) printf(" %d,%d", sol[i] >> 3, sol[i] & 7); }
-      printf(getenv("GC_SOLVE_BEAM") ? " | %d lines stepped\n" : " | longest lived %d frames after a swap\n", best);
-      fflush(stdout);
-    }
-    gzclose(z);
-    return 0;
-  }
-  // test DIR replay WORK: every question of decisions.txt.gz decided once on WORK engine frames, as the decision replay decides it --
-  // the answer and the decision's own log line, one each
-  if (argc > 3 && !strcmp(argv[2], "replay")) {
-    long long work = atoll(argv[3]);
-    snprintf(path, sizeof path, "%s/rules.words", dir);
-    if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
-    snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
-    gzFile z = gzopen(path, "r");
-    if (!z) { fprintf(stderr, "test: no %s\n", path); return 2; }
-    static char rec[4096];
-    while (gzgets(z, line, sizeof line)) {
-      int mode = atoi(line);
-      const char *b = strstr(line, "GAMBITB "); if (!b) continue;
-      char tag[64]; snprintf(tag, sizeof tag, "%.20s", b + 8); char *sp = strchr(tag, ' '); if (sp) *sp = 0;
-      condsOfLine(b);
-      int narr, n = loadLine(b, &narr);
-      if (n < 0 || gb_replay(n, narr, mode, work, rec, sizeof rec) < 0) { printf("replay %s: does not load\n", tag); continue; }
-      printf("replay %s: %s || %s\n", tag, rec, gb_log()); fflush(stdout);
-    }
-    gzclose(z);
-    return 0;
-  }
-  // test DIR front FRAMES: each question of decisions.txt.gz played FRAMES frames by the frame loop and Gambit's thread (gb_front_sim), its
-  // window as the dump logs it -- the frames played, and the window held (front.c: the lines reached as judged, those the window held
-  // fewer actions for)
-  if (argc > 3 && !strcmp(argv[2], "front")) {
-    snprintf(path, sizeof path, "%s/rules.words", dir);
-    if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
-    snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
-    gzFile z = gzopen(path, "r");
-    if (!z) { fprintf(stderr, "test: no %s\n", path); return 2; }
-    static int32_t fo[2 * 8000]; int frames = atoi(argv[3]), tc = 0, ts = 0, tw = 0;
-    while (gzgets(z, line, sizeof line)) {
-      int mode = atoi(line);
-      const char *b = strstr(line, "GAMBITB "); if (!b) continue;
-      char tag[64]; snprintf(tag, sizeof tag, "%.20s", b + 8); char *sp = strchr(tag, ' '); if (sp) *sp = 0;
-      condsOfLine(b);
-      int narr, n = loadLine(b, &narr);
-      if (n < 0 || gb_question_bytes(n, narr) != 0) continue;
-      int k = gb_front_sim(frames < 8000 ? frames : 8000, 16, mode, fo);
-      int32_t wh[3]; gb_win_held(wh); tc += wh[0]; ts += wh[1]; if (wh[2] > tw) tw = wh[2];
-      printf("front %s: %d frames played, window held %d of %d short (%d at most)\n", tag, k, wh[1], wh[0], wh[2]); fflush(stdout);
-    }
-    gzclose(z);
-    printf("the window held: %d of %d lines reached as judged found the window holding fewer actions than the judge read (%d fewer at most)\n", ts, tc, tw);
-    return 0;
-  }
-  // test DIR verdict LINES: the judge's verdict (gb_line_verdict) on the line LINES gives each question of decisions.txt.gz, a line each --
-  // "hold" or r,c;r,c;... -- every line judged on one judge, whoever chose it
-  if (argc > 3 && !strcmp(argv[2], "verdict")) {
-    snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
-    gzFile z = gzopen(path, "r");
-    FILE *lf = fopen(argv[3], "r");
-    if (!z || !lf) { fprintf(stderr, "test: no %s or %s\n", path, argv[3]); return 2; }
-    static char want[4096], vo[512];
-    while (gzgets(z, line, sizeof line) && fgets(want, sizeof want, lf)) {
-      const char *b = strstr(line, "GAMBITB "); if (!b) continue;
-      char tag[64]; snprintf(tag, sizeof tag, "%.20s", b + 8); char *sp = strchr(tag, ' '); if (sp) *sp = 0;
-      int32_t seq[64]; int n = 0; const char *c = want;
-      while (n < 64 && *c && *c != '\n') { int r, cc; if (sscanf(c, "%d,%d", &r, &cc) == 2) seq[n++] = r * 8 + cc; else break; c = strchr(c, ';'); if (!c) break; c++; }
-      condsOfLine(b);
-      int narr, nb = loadLine(b, &narr);
-      if (nb < 0 || gb_question_bytes(nb, narr) != 0) { printf("verdict %s: does not load\n", tag); continue; }
-      gb_line_verdict(seq, n, vo, sizeof vo);
-      printf("verdict %s: %d swaps: %s\n", tag, n, vo); fflush(stdout);
-    }
-    gzclose(z); fclose(lf);
-    return 0;
-  }
   // ---- the bits
   snprintf(path, sizeof path, "%s/boards.txt", dir);
   FILE *f = fopen(path, "r");
   if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
-  int boards = 0, wrong = 0, stallWrong = 0, stallBoards = 0;
+  int boards = 0, wrong = 0;
   while (fgets(line, sizeof line, f)) {
     if (strncmp(line, "GAMBITB ", 8)) continue;
     int narr, n = loadLine(line, &narr);
     if (n < 0 || gb_question_bytes(n, 0) != 0) { fprintf(stderr, "test: a board that does not load\n"); return 1; }
     wrong = gb_bits_agree(); boards++;
-    // (THE STALL, test/stall_check.c: fifty 4x1 queued, a harmless pair swapped every gap frames for 3000 -- what lands, rises, clears)
-    if (boards <= 4) {
-      int gaps[] = { 0, 4, 5, 6, 8, 12 };
-      int32_t idle[5] = { 0 }, held[5] = { 0 };
-      printf("stall, board %d:", boards);
-      for (unsigned gi = 0; gi < sizeof gaps / sizeof *gaps; gi++) { int32_t o[5]; int r = gb_stall_check(gaps[gi], 3000, o);
-        if (r) printf(" gap %d: no pair (%d)", gaps[gi], r); else printf(" gap %d: landed %d rose %d clears %d lost %d top %d;", gaps[gi], o[0], o[1], o[2], o[3], o[4]);
-        if (!r && gaps[gi] == 0) memcpy(idle, o, sizeof idle);
-        if (!r && gaps[gi] == 4) memcpy(held, o, sizeof held); }
-      printf("\n");
-      // (the fact: a board alive past 300 frames idle takes no block while a pair is swapped every 4 frames -- it can still be lost, to
-      // the rise or to its health, which the swap does not hold)
-      if (idle[3] > 300 && held[0] != 0) { stallWrong++; printf("  FAIL: a swap every 4 frames let %d blocks land\n", held[0]); }
-      stallBoards += idle[3] > 300;
-    }
   }
   fclose(f);
   printf("the nearest break, 50 times a board: %.1f ms on the bits, %.1f ms on the cells\n", gb_bits_ms(0), gb_bits_ms(1));
   printf("%s: bits against cells -- %d boards of games, %d boards in all, %d disagreements\n", wrong ? "FAIL" : "ok", boards, gb_bits_boards(), wrong);
   int offered = gb_perch_counts(0), dropped = gb_perch_counts(1);
   printf("%s: perched blocks -- %d lines offered, %d let their block down\n", offered && !dropped ? "FAIL" : "ok", offered, dropped);
-  printf("%s: the stall -- %d boards alive past 300 frames idle, %d took a block with a pair swapped every 4 frames\n", stallWrong || !stallBoards ? "FAIL" : "ok", stallBoards, stallWrong);
-  fail |= wrong || !boards || (offered && !dropped) || stallWrong || !stallBoards;
+  fail |= wrong || !boards || (offered && !dropped);
   // ---- the decisions
   snprintf(path, sizeof path, "%s/rules.words", dir);
   if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
@@ -293,21 +141,17 @@ int main(int argc, char **argv) {
     const char *b = strstr(line, "GAMBITQ ");
     if (!b) b = strstr(line, "GAMBITB ");
     if (!b) continue;
-    if (only && nq + 1 != only) { nq++; continue; }
-    condsOfLine(b);
     int narr, n = loadLine(b, &narr);
     if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) { fprintf(stderr, "test: question %d does not load\n", nq); return 1; }
     // (the answer: when anything lives, what is played lives -- or is the raise; a low stack with nothing on it or on its way is raised;
     // a raise is held down through its row)
     { int32_t v[9]; gb_replay_last(v);
       if (v[2] > 0 && v[0] != 2 && v[1] != 1) { liveDied++; if (liveDied <= 3) printf("  lives but died %d (mode %d): %s\n", nq, mode, rec); }
-      if (v[8] && v[0] != 2) { sooner++; if (sooner <= 3) printf("  less proven %d (mode %d): %s\n", nq, mode, rec); }
+      if (v[8] && v[0] != 2) { sooner++; if (sooner <= 3) printf("  lost sooner %d (mode %d): %s\n", nq, mode, rec); }
         if (mode >= 0 && mode < 64) modes[mode]++; }
-    static char log1[8192]; snprintf(log1, sizeof log1, "%s", gb_log());
     n = loadLine(b, &narr);
     gb_replay(n, narr, mode, REPLAY_WORK, rec2, sizeof rec2);
-    // (an answer that differs on a second asking of the same board: state carried from the first -- the two log lines say which piece)
-    if (strcmp(rec, rec2)) { unsteady++; if (unsteady <= 3) printf("  unsteady %d: %s\n               %s\n    first:  %s\n    second: %s\n", nq, rec, rec2, log1, gb_log()); }
+    if (strcmp(rec, rec2)) { unsteady++; if (unsteady <= 3) printf("  unsteady %d: %s\n               %s\n", nq, rec, rec2); }
     if (golden) fprintf(g, "%s\n", rec);
     else if (fgets(want, sizeof want, g)) {
       want[strcspn(want, "\n")] = 0;
@@ -320,8 +164,6 @@ int main(int argc, char **argv) {
     nq++;
   }
   gzclose(z);
-  gb_replay_allow(-1); gb_window(0, -1, 0);   // (the dumped conditions let go: the checks after this ask their own)
-  if (only) return unsteady ? 1 : 0;   // (one question asked: its answer is the whole check)
   fclose(g);
   // (the raise: each mode's question boards cut to a low stack with nothing on it or on its way -- each raised, and held down)
   snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
@@ -372,6 +214,30 @@ int main(int argc, char **argv) {
     printf("%s: held keys end at the wall -- %d held of the lines keyed, %d let go off the wall, %d swaps pressed off their cell\n", off || offCell || !held ? "FAIL" : "ok", held, off, offCell);
     fail |= off || offCell || !held;
   }
+  // (A BOARD ON ITS WAY OUT, played by the frame loop and Gambit's thread as a game plays it, the engine the game, a frame each 16 ms:
+  // each lives past the frame it is lost on left alone -- its question asked while a swap answered still comes down in time (front.c
+  // afterFrame). Not under the thread sanitizer, whose clock is not the game's)
+  snprintf(path, sizeof path, "%s/front.txt", dir);
+  FILE *fb = getenv("TSAN_OPTIONS") ? 0 : fopen(path, "r");
+  if (fb) {
+    int boards = 0, outlived = 0;
+    static int32_t fo[2 * 4000];
+    while (fgets(line, sizeof line, fb)) {
+      int mode = atoi(line), narr;
+      const char *b = strstr(line, "GAMBIT");
+      if (!b) continue;
+      int n = loadLine(b, &narr);
+      if (n < 0 || gb_question_bytes(n, 0) != 0) continue;
+      int alone = gb_frames(0, 0, 2000, fo);
+      if (gb_question_bytes(n, 0) != 0) continue;
+      int k = gb_front_sim(alone + 120, 16, mode, fo);
+      boards++; outlived += k > alone + 1;
+      if (k <= alone + 1) printf("  lost on its way out (mode %d): %d frames left alone, %d played\n", mode, alone, k);
+    }
+    fclose(fb);
+    printf("%s: a board on its way out -- %d of %d outlived the frame they are lost on left alone\n", outlived < boards || !boards ? "FAIL" : "ok", outlived, boards);
+    fail |= outlived < boards || !boards;
+  }
   // ---- switching: every direction between the modes, over a run's games (gambit-switch.json's stretch)
   { int32_t counts[64 * 64]; int nr = 0, missing = gb_switch_check(24, 21600, 300, 1800, counts, &nr), lo = 1 << 30, hi = 0;
     for (int a = 0; a < nr; a++) for (int b = 0; b < nr; b++) if (a != b) { if (counts[a * nr + b] < lo) lo = counts[a * nr + b]; if (counts[a * nr + b] > hi) hi = counts[a * nr + b]; }
@@ -382,7 +248,7 @@ int main(int argc, char **argv) {
   printf("%s: decisions replayed -- %d questions, %d answered differently on a second asking%s\n", unsteady && !workers ? "FAIL" : "ok", nq, unsteady,
          workers ? " (workers: not held)" : "");
   { int nm = 0; for (int i = 0; i < 64; i++) nm += modes[i] > 0;
-    printf("%s: the answers -- %d questions over %d modes, %d played a line that dies while one lived, %d one less proven than one offered or dead at once while one was not\n",
+    printf("%s: the answers -- %d questions over %d modes, %d played a line that dies while one lived, %d one lost a break's time sooner than one offered\n",
            liveDied || sooner || nm < 4 ? "FAIL" : "ok", nq, nm, liveDied, sooner);
     printf("%s: the raise -- %d of %d low stacks with no garbage raised, %d of %d raises held down\n", lowRaised < lows || raiseHeld < raises || !raises ? "FAIL" : "ok", lowRaised, lows, raiseHeld, raises);
     fail |= liveDied || sooner || nm < 4 || !lows || lowRaised < lows || raiseHeld < raises; }

@@ -106,53 +106,34 @@ assert.ok(
 // Attacks and damage emit events too (drives the lunge + hit-flash animations).
 // Impulse Cannon locked out (actions: ["sublight"]) so the interceptor survives
 // to strike back instead of being auto-killed on approach.
-// Room to be shot from, because the Interceptor is a lane gun that keeps its
-// distance: walk up to it and it gives ground instead of firing, which is the
-// one thing this fixture must not have happen. The flagship stands on its
-// axis, well outside the gap it defends, and takes the shot it is offered.
 const meleeLevel = {
   id: 995,
   name: "melee fixture",
-  board: { type: "rect", cols: 4, rows: 8 },
-  playerStart: { q: 2, r: 6 },
+  board: { type: "rect", cols: 4, rows: 5 },
+  playerStart: { q: 2, r: 3 },
   exit: { q: 2, r: -1 },
   outpost: null,
-  enemies: [{ type: "interceptor", q: 2, r: 1 }],
+  enemies: [{ type: "interceptor", q: 1, r: 2 }],
   hazards: [],
   exitRule: "all-enemies-dead",
   actions: ["sublight"],
 };
 const meleeState = Engine.createGameState(meleeLevel);
-Engine.applySublight(meleeState, { q: 2, r: 5 }); // a step up the lane — 1 AP, still on its axis
+Engine.applySublight(meleeState, { q: 2, r: 2 }); // step adjacent (straight up, direction 2) — 1 AP, no reaction yet
 assert.ok(
-  meleeState.events.some((e) => e.type === "playerMove" && e.to.q === 2 && e.to.r === 5),
+  meleeState.events.some((e) => e.type === "playerMove" && e.to.q === 2 && e.to.r === 2),
   "player moves emit a playerMove event (drives the flight animation)"
 );
-// THE INTERCEPTOR LINES UP FIRST. Its Pin Lance locks the lane the round it
-// has one and fires down it the round after, so the reply arrives a round
-// later than it used to. Standing still through that round is what this
-// fixture does, and is exactly the mistake the telegraph is warning about.
-assert.ok(meleeState.enemies[0].aim, "it spends the round lining the lane up");
-assert.strictEqual(meleeState.hull, Engine.START_HULL, "and nothing is spent on hull that round");
-Engine.applyEndTurn(meleeState);
 assert.strictEqual(meleeState.hull, Engine.START_HULL - 1, "a strike costs 1 Hull — no longer instant death");
 assert.strictEqual(meleeState.status, "playing", "the run survives a single hit");
-// A Pin Lance shot is a `beam`, carrying the lane it was locked on, because
-// what has to be drawn is the whole line and not a bolt between two hulls.
-// `damage` is unchanged, which is what every other listener keys on.
-assert.ok(meleeState.events.some((e) => e.type === "beam"), "an aimed shot emits a beam event with its lane");
-assert.ok(
-  meleeState.events.some((e) => e.type === "beam" && e.lane.some((h) => Engine.posEq(h, meleeState.playerPos))),
-  "and the lane it reports is the one the flagship was standing on"
-);
+assert.ok(meleeState.events.some((e) => e.type === "attack"), "attacks emit an attack event");
 assert.ok(meleeState.events.some((e) => e.type === "damage"), "damage emits a damage event");
 
 // The killing blow still ends the run and emits playerDeath — it just takes
 // three hits now instead of one.
 const deathState = Engine.createGameState(meleeLevel);
 deathState.hull = 1;
-Engine.applySublight(deathState, { q: 2, r: 5 }); // it locks the lane
-Engine.applyEndTurn(deathState); // and stands there for the shot
+Engine.applySublight(deathState, { q: 2, r: 2 });
 assert.strictEqual(deathState.status, "lost", "the final hit still ends the run");
 assert.ok(deathState.events.some((e) => e.type === "playerDeath"), "lethal damage emits a playerDeath event");
 
@@ -264,19 +245,13 @@ while (state.status === "playing" && Engine.livingEnemies(state).length > 0 && g
     const d = Engine.hexDistance(state.playerPos, e);
     return !best || d < best.d ? { e, d } : best;
   }, null);
-  // STAY OFF WHAT IS ACTUALLY DANGEROUS, which is the threat map and not a
-  // ring of one. The Interceptor stands off and lines up a lane now, so a
-  // stalk that refuses to come within a hex of it never closes at all and
-  // never fires a shot — the hull it is hunting simply backs away forever.
-  // Off the locked lane, then toward the prey, closing the last hex itself.
-  const danger = Engine.computeThreatHexes(state);
-  const steps = Engine.legalSublightTargets(state);
-  const candidates = steps.filter((cand) => !danger.has(Engine.hexKey(cand)));
-  if (!steps.length) {
-    Engine.applyEndTurn(state); // nowhere to step — hold position instead
+  const candidates = Engine.legalSublightTargets(state).filter((cand) =>
+    living.every((e) => Engine.hexDistance(cand, e) > 1)
+  );
+  if (!candidates.length) {
+    Engine.applyEndTurn(state); // nowhere safe to step — hold position instead
     continue;
   }
-  if (!candidates.length) candidates.push(...steps);
   const step = candidates.reduce((best, cand) => {
     const d = Engine.hexDistance(cand, prey.e);
     return !best || d < best.d ? { to: cand, d } : best;
@@ -336,33 +311,12 @@ const mistakeState = Engine.createGameState(goldenLevel);
 // flagship in this round too, and the exact hull figure below would have
 // been measuring the crowd instead of the mistake.
 mistakeState.enemies.slice(1).forEach((e) => (e.alive = false));
-// On its axis and OUTSIDE the gap it keeps: walk right up to it and it gives
-// ground instead of shooting, which is a different lesson.
 mistakeState.enemies[0].q = mistakeState.playerPos.q;
-mistakeState.enemies[0].r = mistakeState.playerPos.r - 3;
-// IT LOCKS THE LANE FIRST. The mistake is no longer "ended your turn beside
-// it" — the hull has to spend a round lining up, and the mistake is staying
-// on the line it locked.
-Engine.applyEndTurn(mistakeState); // it lines up
-const locked = mistakeState.enemies[0].aim;
-assert.ok(locked, "the chaser spends a round locking a lane");
-assert.ok(
-  locked.lane.some((h) => Engine.posEq(h, mistakeState.playerPos)),
-  "the lane it locked runs through where the flagship is standing"
-);
-// A lane weapon stops at the first hull, so the lane ends where the flagship
-// stands: stepping BACK down it is still on the line, and stepping aside is
-// not. Both are one move, which is the whole decision.
-const stillOnIt = Engine.legalSublightTargets(mistakeState).filter((to) =>
-  locked.lane.some((h) => Engine.posEq(h, to))
-);
-const clearOfIt = Engine.legalSublightTargets(mistakeState).filter(
-  (to) => !locked.lane.some((h) => Engine.posEq(h, to))
-);
-assert.ok(clearOfIt.length, "there is always somewhere off the line to step");
-assert.ok(stillOnIt.length, "and somewhere on it to step to, so staying on the line is a choice you can make");
-Engine.applySublight(mistakeState, stillOnIt[0]); // move, but stay on the line
-assert.strictEqual(mistakeState.hull, Engine.START_HULL - 1, "standing on a locked lane eats the shot — the warning was the whole turn you had");
+mistakeState.enemies[0].r = mistakeState.playerPos.r - 1; // adjacent, directly up
+const stillInReach = Engine.legalSublightTargets(mistakeState).find((to) => Engine.isAdjacent(to, mistakeState.enemies[0]));
+assert.ok(stillInReach, "expected a destination still inside the chaser's reach");
+Engine.applySublight(mistakeState, stillInReach);
+assert.strictEqual(mistakeState.hull, Engine.START_HULL - 1, "moving while engaged eats the strike — the turn went to repositioning, not defense");
 assert.strictEqual(mistakeState.enemies[0].alive, true, "and moving killed nothing — shooting is its own action");
 
 // ---- AP bookkeeping: one action commits the round; plumbing is intact ---
@@ -430,11 +384,6 @@ assert.strictEqual(correctState.status, "won", "reaching the unlocked Warp Gate 
 // screen choose what's armed; Target Lock/warpdrive-off gates movement
 // for aiming.)
 
-// A CRUISER, because this fixture is about the Autocannon killing the thing
-// standing next to it, and the Interceptor will not stand next to anything —
-// it gives ground the moment the flagship is within two, so by the time FIRE
-// was called there was nothing in arc. The Cruiser is the contact brawler:
-// it closes, it stays, and it dies to one shot like everything else.
 const weaponLevel = {
   id: 993,
   name: "weapon fixture",
@@ -442,7 +391,7 @@ const weaponLevel = {
   playerStart: { q: 2, r: 3 },
   exit: { q: 2, r: -1 },
   outpost: null,
-  enemies: [{ type: "cruiser", q: 1, r: 2 }],
+  enemies: [{ type: "interceptor", q: 1, r: 2 }],
   hazards: [],
   exitRule: "all-enemies-dead",
 };
@@ -469,7 +418,7 @@ assert.strictEqual(weaponState.enemies[0].alive, true, "moving fires NOTHING —
 
 // FIRE volleys the armed Autocannon and kills it.
 Engine.applyFire(weaponState);
-assert.strictEqual(weaponState.enemies[0].alive, false, "FIRE kills the adjacent Cruiser");
+assert.strictEqual(weaponState.enemies[0].alive, false, "FIRE kills the adjacent Interceptor");
 assert.ok(weaponState.events.some((e) => e.type === "kill"), "the volley emits a kill event");
 assert.ok(
   weaponState.events.some((e) => e.type === "kill" && e.source === "weapon"),
@@ -669,8 +618,8 @@ assert.strictEqual(holdCarryState.maxEnergy, maxEnergyBefore + 1, "maxEnergy car
 // Interceptor's own weapon rather than special-cased.
 assert.deepStrictEqual(
   Engine.ENEMY_TYPES.interceptor.ship.weapons,
-  [Engine.WEAPONS.pinLance],
-  "an Interceptor shoots you with the very Pin Lance a station will sell you — no enemy-only gear"
+  [Engine.WEAPONS.autocannon],
+  "an Interceptor shoots you with the very Autocannon you fly with — no enemy-only gear"
 );
 const interceptorPos = { q: 0, r: 0 };
 const interceptorWeapon = Engine.ENEMY_TYPES.interceptor.ship.weapons[0];
@@ -693,25 +642,17 @@ assert.ok(
     Engine.hexDistance(facedState.enemies[0], facedState.playerPos),
   "from range, its nose still points at the hex that closes the gap"
 );
-// ALL SIX AXES, SO THERE IS NO BLIND SIDE TO STAND IN. The Pin Lance is an
-// all-directions lane gun: every hex on any of the six lines out of the hull
-// is somewhere it can lock, whichever way its nose happens to point. That is
-// deliberate — a gun with an arc would make the answer "stand behind it",
-// which is a position you take once and then stop thinking about, where this
-// one's answer is to leave the line it actually locked, every time it locks
-// one. Facing never enters into it.
+// The contact gun covers all six hexes touching the hull, on both sides of
+// the board. It was a three-hex wedge off the nose, which gave every chaser
+// in the game a blind side you could stand in for free — and Hoplite's
+// footman, the thing this class IS, "can only attack adjacent tiles" with no
+// arc at all. Facing stops mattering at contact, which is also why Hoplite
+// has no facing.
 const aimedHexes = Engine.weaponHexes(interceptorPos, 0, interceptorWeapon);
-const axesCovered = new Set(
-  aimedHexes.map((h) => Engine.axisIndex(interceptorPos, h)).filter((d) => d >= 0)
-);
-assert.strictEqual(axesCovered.size, 6, "its Pin Lance reaches down every one of the six axes — no blind side");
+assert.strictEqual(aimedHexes.length, 6, "its Autocannon covers every hex touching it — no blind side");
 assert.ok(
-  aimedHexes.some((h) => Engine.hexDistance(interceptorPos, h) > 6),
-  "and it reaches the length of the board, so backing away is not an answer to it"
-);
-assert.ok(
-  aimedHexes.every((h) => Engine.axisIndex(interceptorPos, h) >= 0),
-  "and nothing OFF an axis — one step sideways is out of every lane it has"
+  aimedHexes.every((h) => Engine.hexDistance(interceptorPos, h) === 1),
+  "and nothing further out than contact"
 );
 assert.deepStrictEqual(
   Engine.weaponHexes(interceptorPos, 0, interceptorWeapon).map(Engine.hexKey).sort(),
@@ -719,12 +660,10 @@ assert.deepStrictEqual(
   "facing makes no difference to it at all"
 );
 assert.ok(!aimedHexes.some((h) => Engine.posEq(h, interceptorPos)), "a weapon never threatens its own hex");
-// REACH IS NOT WHAT IT PAYS IN — TIME IS. The old Interceptor had to be in
-// contact, and reach was a thing you bought. This one outreaches everything
-// on the shelf from the first sector, and pays for it by never being able to
-// fire the round it decides to: it locks, you get the round, then it looses.
-assert.ok(aimedHexes.some((h) => Engine.hexDistance(h, interceptorPos) > 1), "it is not a contact gun");
-assert.strictEqual(interceptorWeapon.aims, true, "and it cannot fire the round it lines up — that is what it pays");
+assert.ok(
+  aimedHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
+  "and it has to be in contact to use it — reach is a thing you BUY"
+);
 
 // The Autocannon covers CONTACT, all the way round. It was a wedge off the
 // nose, which meant every chaser in the game had three hexes behind it you
@@ -1303,11 +1242,7 @@ assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to inst
 {
   const level = {
     id: 2, radius: 3, playerStart: { q: 0, r: 0 }, exit: { q: 3, r: 0 }, outpost: null,
-    // A Sentry, because the claim below is about a hull that paints THREAT
-    // while it sits there. The Interceptor's Pin Lance paints nothing until
-    // it has locked a lane, which would make "out in the open it threatens
-    // ground" read zero and pass for the wrong reason.
-    enemies: [{ type: "sentry", q: 2, r: 0 }],
+    enemies: [{ type: "interceptor", q: 2, r: 0 }],
     hazards: [],
     exitRule: "all-enemies-dead",
     actions: ["sublight", "autocannon"],
@@ -1604,17 +1539,15 @@ const shieldLevel = {
   playerStart: { q: 2, r: 3 },
   exit: { q: 2, r: -1 },
   outpost: null,
-  // A Cruiser: the shield has to be hit to be spent, and the Interceptor
-  // backs away from anything inside two rather than firing at it.
-  enemies: [{ type: "cruiser", q: 1, r: 2 }],
+  enemies: [{ type: "interceptor", q: 1, r: 2 }],
   hazards: [],
   exitRule: "all-enemies-dead",
-  actions: ["sublight"], // gun locked out so the hostile survives to strike back
+  actions: ["sublight"], // Impulse Cannon locked out so the interceptor survives to strike back
 };
 const shieldState = Engine.createGameState(shieldLevel);
 shieldState.shieldCharges = 1;
 const hullBeforeShield = shieldState.hull;
-Engine.applySublight(shieldState, { q: 2, r: 2 }); // step adjacent — the move commits the round and it strikes
+Engine.applySublight(shieldState, { q: 2, r: 2 }); // step adjacent — the move commits the round, the interceptor attacks
 assert.strictEqual(shieldState.hull, hullBeforeShield, "a raised Shield charge fully absorbs the phase — no Hull lost");
 assert.strictEqual(shieldState.shieldCharges, 0, "absorbing consumes the Shield charge");
 assert.ok(shieldState.events.some((e) => e.type === "shieldAbsorb"), "absorbing emits a shieldAbsorb event for the UI");
@@ -2053,14 +1986,6 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       // of all of them — what it gives up is immediacy, and no footprint
       // comparison can see that.
       if (wb.places && !wa.places) continue;
-      // Nor is a shot you have to announce the same as one you simply take.
-      // An aiming weapon locks a lane this round and looses it the next, so
-      // everything standing on that lane is handed a free round to leave —
-      // it covers the ground on paper and lands only on whoever ignored the
-      // warning. That is the same blind spot the charge exemption above
-      // describes: what it gives up is immediacy, and a footprint comparison
-      // cannot see immediacy at all.
-      if (wb.aims && !wa.aims) continue;
       // Nor is a shove a shot. A push weapon does no damage at all, so
       // every damaging weapon that shares its ground looks like a strict
       // upgrade and no damaging weapon can ever look like one to IT. What
@@ -2170,12 +2095,8 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     ),
   });
   assert.strictEqual(grounded.hasDrive, false, "pull an Interceptor's drive and it is an emplacement");
-  // Named by KIND here too: the Interceptor's gun is a Pin Lance now, and a
-  // test that knew the part number would have passed an armed hull.
   const disarmed = Engine.deriveShip({
-    items: Engine.ENEMY_TYPES.interceptor.hold.items.filter(
-      (it) => (Engine.EQUIPMENT[it.id] || {}).kind !== "weapon"
-    ),
+    items: Engine.ENEMY_TYPES.interceptor.hold.items.filter((it) => it.id !== "autocannon"),
   });
   assert.deepStrictEqual(disarmed.weapons, [], "pull its gun and it has nothing to shoot you with");
 
@@ -2326,10 +2247,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     exit: { q: 6, r: -3 },
     outpost: null,
     enemies: [
-      // A Corsair Lead, because this is about a SPREAD weapon declining to
-      // catch its own side, and the Cruiser carries a single-target
-      // Autocannon now — which cannot catch anybody and so can never jam.
-      { type: "corsairLead", q: 3, r: 2 }, // Flak Burst: every adjacent hex at once
+      { type: "cruiser", q: 3, r: 2 }, // Flak Burst: every adjacent hex at once
       { type: "cutter", q: 1, r: 4 },
     ],
     hazards: [],
@@ -2356,9 +2274,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     exit: { q: 6, r: -3 },
     outpost: null,
     enemies: [
-      // Spread weapon, same reason as the fixture above: the Cruiser's gun is
-      // a single-target Autocannon now and can never catch its own side.
-      { type: "corsairLead", q: 3, r: 2 },
+      { type: "cruiser", q: 3, r: 2 },
       // An UNARMED wingman, adjacent to the gunner and so inside its own
       // burst. It was an Interceptor, which is a contact chaser — and a
       // contact chaser now closes and fires in the same round, so it landed
@@ -2371,7 +2287,6 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     exitRule: "all-enemies-dead",
   });
   const jammedGun = jammed.enemies[0];
-  jammedGun.energy = jammedGun.maxEnergy; // charged, so the hold below is the inhibition and not the bus
   jammed.playerPos = { q: jammedGun.q, r: jammedGun.r + 1 };
   assert.strictEqual(
     Engine.computeThreatHexes(jammed).has(Engine.hexKey(jammed.playerPos)),
@@ -3441,17 +3356,12 @@ Engine.applyFire(slowInitState);
 assert.strictEqual(slowInitState.enemies[0].alive, false, "the Railgun kills its target");
 assert.strictEqual(slowInitState.hull, Engine.START_HULL, "a kill in your phase means no reply — phases are sequential, not simultaneous");
 
-// One action per round means closing the gap is its own turn — approach a
-// charged CRUISER to adjacency and it fires when your turn commits; the NEXT
-// round, your FIRE kills it before it acts again. Stated on the brawler
-// rather than the Interceptor, which gives ground instead of trading and so
-// never has this exchange with anybody.
-const tradeState = Engine.createGameState({
-  ...initiativeLevel,
-  id: 985,
-  actions: ["sublight", "autocannon"],
-  enemies: [{ type: "cruiser", q: 2, r: 3 }],
-});
+// One action per round means closing the gap is its own turn — approach
+// a charged interceptor to adjacency and it fires when your turn
+// commits; the NEXT round, your FIRE kills it before it acts again.
+const tradeState = Engine.createGameState({ ...initiativeLevel, id: 985, actions: ["sublight", "autocannon"] });
+tradeState.enemies[0].q = 2;
+tradeState.enemies[0].r = 3; // distance 2, dead ahead
 Engine.applySublight(tradeState, { q: 2, r: 4 }); // close to adjacent — the round commits
 assert.strictEqual(tradeState.hull, Engine.START_HULL - 1, "ending your turn beside a charged chaser eats its shot");
 Engine.applyFire(tradeState); // your phase first: the kill lands before its next shot
@@ -3459,73 +3369,27 @@ assert.strictEqual(tradeState.enemies[0].alive, false, "the next round's FIRE ki
 assert.strictEqual(tradeState.hull, Engine.START_HULL - 1, "with no reply — the dead don't get a phase");
 assert.strictEqual(tradeState.turnCount, 2, "the exchange took two full rounds");
 
-// THE INTERCEPTOR DOES NOT CLOSE. It lines up from wherever it is standing
-// and it keeps its distance while it works you — `standsOff` — so the answer
-// to it is never "wait for it to come to you". Nothing arrives.
+// A CONTACT CHASER CLOSES AND HITS IN THE SAME ROUND. Its burn resolves
+// before the shooting and its shot is re-decided from where it landed, so
+// an Interceptor two hexes out is not standing on safe ground: it is one
+// round from hull. That is the whole reason a chaser is worth the name —
+// while it closed first and fired a round later, the flagship's turn always
+// came in between, and every gun in the game kills a one-hull contact
+// outright, so it was never alive to fire. Measured: 91% of these hulls
+// never got a shot off.
+//
+// It does NOT extend to a gun that reaches: see enemyPhase. Reach belongs
+// to the things that cannot chase you.
 const closerState = Engine.createGameState({ ...initiativeLevel, id: 984 });
 closerState.enemies[0].q = 2;
-closerState.enemies[0].r = 2; // on the axis and OUTSIDE the gap it keeps
-const gapBefore = Engine.hexDistance(closerState.playerPos, closerState.enemies[0]);
-Engine.applyEndTurn(closerState); // its phase: it has a lane, so it locks one
-assert.ok(closerState.enemies[0].aim, "it spends the round locking the lane it has");
-assert.strictEqual(closerState.hull, Engine.START_HULL, "and the round it locks costs no hull — that round is yours");
-assert.ok(
-  Engine.computeThreatHexes(closerState).has(Engine.hexKey(closerState.playerPos)),
-  "the overlay paints the lane before the shot — the warning is on the board, not in the log"
+closerState.enemies[0].r = 3; // distance 2 — outside a contact weapon's reach
+Engine.applyEndTurn(closerState); // hold: it burns into contact and fires
+assert.strictEqual(
+  Engine.isAdjacent(closerState.enemies[0], closerState.playerPos),
+  true,
+  "the chaser closed"
 );
-Engine.applyEndTurn(closerState); // stand on it
-assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "the round after, it looses down that lane");
-
-// AND STEPPING OFF IT COSTS NOTHING. Same board, same lock, one step aside.
-{
-  const dodge = Engine.createGameState({ ...initiativeLevel, id: 982 });
-  dodge.enemies[0].q = 2;
-  dodge.enemies[0].r = 2;
-  Engine.applyEndTurn(dodge);
-  const lane = dodge.enemies[0].aim.lane;
-  const off = Engine.legalSublightTargets(dodge).filter((to) => !lane.some((h) => Engine.posEq(h, to)));
-  assert.ok(off.length, "there is always somewhere off the line to stand");
-  Engine.applySublight(dodge, off[0]);
-  assert.strictEqual(dodge.hull, Engine.START_HULL, "off the line, the shot costs nothing at all");
-  assert.ok(
-    dodge.events.some((e) => e.type === "beam" && !e.hit),
-    "and it fires anyway, down the lane it locked — the shot is committed, not re-aimed"
-  );
-}
-
-// IT WORKS ITS WAY ONTO A LINE, which is the point of keeping its distance
-// rather than the other way round. Chased from OFF its axis it manoeuvres
-// until the flagship is in one of its six lanes and then holds that lane —
-// a hull that only ever maximised distance was measured walking the edge of
-// the board for six straight rounds, never lined up and never firing, which
-// is not a threat, it is a thing running away.
-{
-  const kite = Engine.createGameState({ ...initiativeLevel, id: 981 });
-  kite.enemies[0].q = kite.playerPos.q - 2;
-  kite.enemies[0].r = kite.playerPos.r - 3; // deliberately off every axis
-  assert.strictEqual(
-    Engine.axisIndex(kite.enemies[0], kite.playerPos),
-    -1,
-    "the fixture starts it off every lane, or this proves nothing"
-  );
-  let linedUp = 0;
-  for (let round = 0; round < 6; round++) {
-    const foe = kite.enemies[0];
-    const steps = Engine.legalSublightTargets(kite).sort(
-      (a, b) => Engine.hexDistance(a, foe) - Engine.hexDistance(b, foe)
-    );
-    if (!steps.length) break;
-    Engine.applySublight(kite, steps[0]); // walk straight at it
-    if (Engine.axisIndex(kite.enemies[0], kite.playerPos) >= 0) linedUp++;
-  }
-  assert.ok(linedUp >= 2, `it works its way onto a lane during the chase (${linedUp}/6 rounds)`);
-  // And having got one it KEEPS it — a lane in hand beats a hex, so it stops
-  // manoeuvring and locks rather than drifting off the line it just earned.
-  assert.ok(
-    Engine.axisIndex(kite.enemies[0], kite.playerPos) >= 0,
-    "and it is still on that lane at the end of the chase, not drifting off it"
-  );
-}
+assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "and hit on arrival — closing is not a free round for you");
 
 // A LONG GUN STILL SPENDS ITS ROUND ON ONE OR THE OTHER. The Bombard
 // carries a Mortar that lands at three and has a drive to carry it there;
@@ -3562,7 +3426,7 @@ const chaserEnergyLevel = {
   playerStart: { q: 2, r: 5 },
   exit: { q: 4, r: -2 },
   outpost: null,
-  enemies: [{ type: "interceptor", q: 2, r: 2 }], // on the axis, outside the gap it keeps
+  enemies: [{ type: "interceptor", q: 2, r: 3 }],
   hazards: [],
   exitRule: "all-enemies-dead",
   actions: ["sublight"], // no Autocannon — let it survive to attack repeatedly
@@ -3576,8 +3440,8 @@ for (let t = 1; t <= 6; t++) {
 const CH = Engine.START_HULL;
 assert.deepStrictEqual(
   chaserHullTimeline,
-  [CH, CH - 1, CH - 1, CH - 2, CH - 2, CH - 3],
-  "lock, loose, lock, loose — lining up IS the charging, so there is no third round spent refilling"
+  [CH - 1, CH - 1, CH - 2, CH - 2, CH - 3, CH - 3],
+  "hits on arrival, then alternates a shot with a recharge round — no shot two rounds running"
 );
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
@@ -4391,198 +4255,6 @@ assert.deepStrictEqual(
       probe.items.push({ id: it.id, x: it.x, y: it.y });
     }
   }
-}
-
-// LEVEL ONE IS A BARE BOARD WITH ONE INTERCEPTOR ON IT, however the seed
-// rolls. It is still generated — the hand-authored LEVELS entries are dealt
-// to nobody, so a rule for a level has to live in the generator or it is not
-// a rule. Stated over many seeds because this is exactly the kind of claim a
-// single sample agrees with and the game then breaks: before LEVEL_RULES,
-// depth 1 dealt two contacts in 109 of 300 seeds, between one and seven
-// hazards in all 300, and the one hull was an Interceptor, a Cruiser or a
-// gunless Salvager depending on the roll.
-{
-  for (let seed = 1; seed <= 120; seed++) {
-    const lvl = HypergolicLevels.generateLevel(1, null, seed);
-    assert.strictEqual(
-      (lvl.hazards || []).length,
-      0,
-      `level 1, seed ${seed}: no ground of any kind — got ${(lvl.hazards || []).map((h) => h.type).join(",")}`
-    );
-    assert.deepStrictEqual(
-      (lvl.enemies || []).map((e) => e.type),
-      ["cruiser"],
-      `level 1, seed ${seed}: exactly one Cruiser and nothing else`
-    );
-    // AND NOTHING IS PAINTED ON IT EITHER. The hazard list was empty the
-    // whole time the Ironway's backdrop was drawing boulders across the
-    // board behind the grid — not hazards, flown straight through, and
-    // indistinguishable from cover at a glance. A set locale is a set
-    // backdrop, so the board looks the same every run as well as playing
-    // the same.
-    assert.ok(
-      lvl.locale.feature && lvl.locale.id !== "belt",
-      `level 1, seed ${seed}: somewhere that still paints its own look, and is not made of rock`
-    );
-    // The board is still dealt by the generator, not written down here.
-    const st = Engine.createGameState(lvl, { runSeed: seed });
-    assert.strictEqual((st.hazards || []).length, 0, `level 1, seed ${seed}: and nothing adds ground on the way in`);
-    assert.strictEqual(st.enemies.length, 1, `level 1, seed ${seed}: one hull at spawn`);
-  }
-  // And the rule is scoped to the level it was set for — depth 2 still rolls
-  // its own ground, or "no hazards on level 1" would quietly mean "no
-  // hazards", which is a different game.
-  let groundLater = 0;
-  for (let seed = 1; seed <= 60; seed++) {
-    if ((HypergolicLevels.generateLevel(2, null, seed).hazards || []).length) groundLater++;
-  }
-  assert.ok(groundLater > 30, `level 2 still has ground of its own (${groundLater}/60 seeds)`);
-  // AND LEVEL 1 IS STILL ROLLED. Dropping the painted feature is the rule;
-  // the sector it is rolled in is not, and pinning that to buy a bare board
-  // spent variety that was never the complaint.
-  const placesHere = new Set();
-  for (let seed = 1; seed <= 60; seed++) placesHere.add(HypergolicLevels.generateLevel(1, null, seed).locale.id);
-  assert.ok(placesHere.size > 1, `level 1 is still somewhere different run to run (${[...placesHere].join(",")})`);
-  const placesLater = new Set();
-  for (let seed = 1; seed <= 60; seed++) placesLater.add(HypergolicLevels.generateLevel(2, null, seed).locale.id);
-  assert.ok(placesLater.size > 1, `level 2 is still somewhere different run to run (${[...placesLater].join(",")})`);
-}
-
-// THE PIN LANCE NEVER REFUSES A SHOT IT SAID IT HAD. The flagship's own
-// aimed gun picks a lane from the hull it was pointed at — and a lane
-// weapon's footprint can cover a hex that no axis passes through, so
-// "nothing lined up on an axis" threw on about one full run in thirty,
-// taking the player's turn and handing back an error instead of a shot.
-// If fire controls say it bears, it locks something.
-{
-  const lanceLevel = {
-    id: 901,
-    name: "pin lance fixture",
-    board: { type: "rect", cols: 7, rows: 9 },
-    playerStart: { q: 3, r: 6 },
-    exit: { q: 6, r: -3 },
-    outpost: null,
-    enemies: [{ type: "cruiser", q: 3, r: 2 }],
-    hazards: [],
-    exitRule: "all-enemies-dead",
-  };
-  for (const [dq, dr] of [[0, -4], [2, -2], [-2, 0], [1, -3], [2, -3], [-1, -2]]) {
-    const st = Engine.createGameState(lanceLevel);
-    st.hold.items = st.hold.items.filter((it) => (Engine.EQUIPMENT[it.id] || {}).kind !== "weapon");
-    st.hold.items.push({ id: "pinLance", x: 0, y: 0 });
-    Engine.syncHoldDerived(st);
-    st.energy = st.maxEnergy;
-    st.enemies[0].q = st.playerPos.q + dq;
-    st.enemies[0].r = st.playerPos.r + dr;
-    if (!Engine.weaponsWithTargets(st).some((w) => w.systemKey === "pinLance")) continue;
-    Engine.applyFire(st, st.enemies[0].id, "pinLance"); // must not throw
-    assert.ok(st.playerAim, `offset ${dq},${dr}: a gun that bears locks a lane`);
-    assert.ok(st.playerAim.lane.length, `offset ${dq},${dr}: and the lane has hexes in it`);
-  }
-  // It looses AFTER the enemy phase, so a hull that walked out of the lane
-  // is gone — the same rule its own Interceptors play by.
-  const st = Engine.createGameState(lanceLevel);
-  st.hold.items = st.hold.items.filter((it) => (Engine.EQUIPMENT[it.id] || {}).kind !== "weapon");
-  st.hold.items.push({ id: "pinLance", x: 0, y: 0 });
-  Engine.syncHoldDerived(st);
-  st.energy = st.maxEnergy;
-  Engine.applyFire(st, st.enemies[0].id, "pinLance");
-  assert.ok(st.playerAim, "the flagship's lock is held over the round");
-  assert.strictEqual(st.enemies[0].alive, true, "and nothing dies the round it is locked");
-  Engine.applyEndTurn(st);
-  assert.strictEqual(st.playerAim, null, "the lock is spent on the round after, whatever it caught");
-}
-
-// IT LOCKS THE ROUND IT GETS YOU IN SIGHT, not the round after. The lane is
-// captured after the burn, from wherever the hull ended up — so a round
-// spent manoeuvring onto a line is also the round that line is taken.
-// Before this the lock resolved before anything moved, so getting into
-// position cost a round and then lining up cost another, and the two rounds
-// in between were dead: it arrived and sat there while you watched.
-//
-// Locking after a move is fair where FIRING after one is not, and the
-// difference is what it costs you. A lock costs nothing yet: the lane is
-// painted the instant it is taken and the whole of your next round is
-// yours to leave it in.
-{
-  const st = Engine.createGameState({
-    id: 902,
-    name: "lines up on the move",
-    board: { type: "rect", cols: 7, rows: 9 },
-    playerStart: { q: 3, r: 6 },
-    exit: { q: 6, r: -3 },
-    outpost: null,
-    enemies: [{ type: "interceptor", q: 1, r: 3 }],
-    hazards: [],
-    exitRule: "all-enemies-dead",
-    actions: ["sublight", "autocannon"],
-  });
-  assert.strictEqual(
-    Engine.axisIndex(st.enemies[0], st.playerPos),
-    -1,
-    "the fixture starts it off every lane, or there is nothing to manoeuvre onto"
-  );
-  let lockedOnTheMove = false;
-  for (let round = 0; round < 6 && !lockedOnTheMove; round++) {
-    const was = { q: st.enemies[0].q, r: st.enemies[0].r };
-    const hullBefore = st.hull;
-    Engine.applyEndTurn(st); // the flagship stands still; only the hull moves
-    const foe = st.enemies[0];
-    const moved = !Engine.posEq(foe, was);
-    if (moved && foe.aim) {
-      lockedOnTheMove = true;
-      assert.strictEqual(hullBefore, st.hull, "and the round it locks still costs no hull — a lock is not a shot");
-      assert.ok(
-        foe.aim.lane.some((h) => Engine.posEq(h, st.playerPos)),
-        "the lane it took runs through the flagship, from the hex it just moved to"
-      );
-    }
-  }
-  assert.ok(lockedOnTheMove, "it lines up the same round it moves into sight, not a round later");
-}
-
-// THE CYCLE HAS NO DEAD ROUND IN IT: work onto a line, lock it the moment
-// there is one, loose it, then go and find another. The round after a shot
-// used to be spent motionless refilling the bus, which is a third of every
-// round this class gets with nothing on it to read — reported live as "it's
-// not charging up... most of the time". It was charging. It was doing it
-// standing still. Repositioning refills it just as waiting would, so the
-// round goes back on the board as movement.
-{
-  const st = Engine.createGameState({
-    id: 903,
-    name: "no dead rounds",
-    board: { type: "rect", cols: 7, rows: 9 },
-    playerStart: { q: 3, r: 6 },
-    exit: { q: 6, r: -3 },
-    outpost: null,
-    enemies: [{ type: "interceptor", q: 3, r: 2 }],
-    hazards: [],
-    exitRule: "all-enemies-dead",
-    actions: ["sublight", "autocannon"],
-  });
-  let blank = 0;
-  const seen = [];
-  for (let round = 0; round < 9 && st.status === "playing"; round++) {
-    // It hits once every two rounds now, so a flagship that stands there
-    // taking it is dead well before nine — which is the point of the cycle,
-    // and not something this fixture should walk into.
-    const was = { q: st.enemies[0].q, r: st.enemies[0].r };
-    Engine.applyEndTurn(st);
-    const foe = st.enemies[0];
-    if (!foe || !foe.alive) break;
-    const kinds = (st.events || []).map((e) => e.type);
-    const did =
-      kinds.includes("aimStart") ? "lock"
-      : kinds.includes("beam") ? "fire"
-      : !Engine.posEq(foe, was) ? "move"
-      : "nothing";
-    seen.push(did);
-    if (did === "nothing") blank++;
-  }
-  assert.ok(seen.includes("lock"), `it locks (${seen.join(",")})`);
-  assert.ok(seen.includes("fire"), `it fires (${seen.join(",")})`);
-  assert.ok(blank <= 1, `and it is never just standing there for long (${seen.join(",")})`);
 }
 
 console.log("All golden-path assertions passed.");

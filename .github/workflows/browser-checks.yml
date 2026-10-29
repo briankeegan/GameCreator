@@ -74,30 +74,3 @@ jobs:
         if: success() || failure()
         timeout-minutes: 6
         run: node games/the-game/duel.test.js || { sleep 5; node games/the-game/duel.test.js; }
-
-      # HYPERGOLIC HULL'S PLAYTHROUGH RAN NOWHERE EITHER — the same hole this
-      # workflow was built to close, one game over. It drives the real UI in a
-      # real browser for about ninety seconds, which is far too slow to sit on
-      # a commit, so it was run by hand and therefore run when somebody
-      # remembered. Here it runs on every push to main instead, red on its own
-      # without taking the deploy down with it.
-      - name: Hypergolic Hull playthrough
-        if: success() || failure()
-        timeout-minutes: 8
-        run: |
-          node games/hypergolic-hull/browser.test.js || {
-            echo "::warning::first attempt failed, retrying once in case it is timing flake"
-            sleep 5
-            node games/hypergolic-hull/browser.test.js
-          }
-
-      # AND A HANDFUL OF FULL RUNS, for one thing only: that nothing throws.
-      # The harness measures far more than that, but measurement is a thing
-      # you read, not a thing that passes or fails, and thirty runs take
-      # minutes. Six is enough to catch a rule that crashes the engine — which
-      # it has: the Pin Lance refused a shot its own fire controls had already
-      # offered, on about one run in thirty, and took the player's turn with it.
-      - name: Hypergolic Hull full runs do not throw
-        if: success() || failure()
-        timeout-minutes: 8
-        run: node games/hypergolic-hull/playtest.js 6

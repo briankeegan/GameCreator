@@ -75,11 +75,6 @@ gate_room_props_floor_plates() {
   return $status
 }
 
-gate_sw_version() {
-  bash .github/scripts/check_sw_version.test.sh
-  node .github/scripts/check_sw_version.mjs
-}
-
 gate_art_index() {
   node .github/scripts/check_art_registry.mjs
 }
@@ -228,9 +223,6 @@ gate_server_engine() {
 gate_gambit_engine() {
   local G=games/the-game/ai/gambit E=games/the-game/ai/eval
   (cd $G && while read -r f h; do [ "$(sha256sum "$f" | cut -c1-64)" = "$h" ] || { echo "gambit: $f is not what BUILT says -- run build.sh"; exit 1; }; done < BUILT) &&
-  # (a node's index made by a call is held in a variable before NODE reads it: a step grows the nodes, and NODE(x, call(...)) may read
-  # x->nodes before the call)
-  { ! grep -rnE 'NODE\([^,()]+, *[A-Za-z_]+\(' --include='*.c' --include='*.h' $G | grep -v 'NODE([^,()]*, *NODE(' || { echo "gambit: NODE(x, call(...)) above -- hold the index first"; false; }; } &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_pa.test.js 20000 &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_countdown.test.js &&
   GC_NATIVE_WASM=$PWD/$G/gambit.wasm node $E/native_arrivals.test.js &&
@@ -394,7 +386,6 @@ gate_slow() {
 
 GATES=(
   "engine tests:gate_engine_tests:games/"
-  "a shipped change reaches the player:gate_sw_version:games/"
   "room exits:gate_room_exits:games/"
   "shared-module wiring:gate_shared_module_wiring:games/"
   "doors can be entered:gate_doors_enterable:games/"

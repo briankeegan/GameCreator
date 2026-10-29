@@ -67,7 +67,6 @@ static void lowestGroupTop(const Board *b, int H, int32_t *top, int32_t *onScree
 }
 // THE MATERIAL: the panels under the lowest garbage (search/bits.c bitsShape), the one reading the facts and a judged board share
 static int32_t materialOn(const Board *b) { static LOCAL Bits MB; static LOCAL BoardShape MS; bitsOf(b, &MB); bitsShape(&MB, &MS); return MS.material; }
-static int32_t topOn(const Board *b) { static LOCAL Bits MB; static LOCAL BoardShape MS; bitsOf(b, &MB); bitsShape(&MB, &MS); return MS.top; }
 // THE FACTS OF OUR BOARD: the garbage on its way as the question gives it (arrivals), topped as the game says
 static void factsOf(const Board *b, const Arr *arr, int narr, int topped, FactSet *F) {
   // (the board's shape, the one reading of it: search/bits.c bitsShape)
@@ -84,7 +83,7 @@ static void factsOf(const Board *b, const Arr *arr, int narr, int topped, FactSe
     int32_t gtop, onScreen;
     lowestGroupTop(b, H, &gtop, &onScreen);
     int inAir = hasFallingGarbage((Board *)b);
-    int32_t pop = gtop ? popFrames(b, onScreen) : 0;
+    int32_t pop = gtop ? b->fFLASH + b->fFACE + b->fPOP * (3 + onScreen) : 0;
     breakWaits = gtop && gtop == top && top < (b->height ? b->height : H) && (inAir || (next != NUL && next <= pop));
   }
   int hi = peaks[1], lo = peaks[1];

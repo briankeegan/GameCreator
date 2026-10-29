@@ -506,36 +506,9 @@
     maw: 7,      // something out here eats light
   };
 
-  // ---- RULES SET FOR A LEVEL, rather than rolled for it ------------------
-  //
-  // A level listed here is still GENERATED — same boards, same seeds, same
-  // locale, same everything — it just has to obey what is written here
-  // instead of what the roll would have said. Reviving the hand-authored
-  // LEVELS entries was the wrong answer to the same question: those were the
-  // only boards in the game with no ground on them, nothing dealt them any
-  // more, and a bespoke first board teaches a game the rest of the run does
-  // not play.
-  //
-  // `enemies` is an exact roster size. `rock`/`cloud`/`mines` replace the
-  // zone's own multipliers (see ZONE_GROUND), so 0 means none of that kind
-  // here whatever the locale carries.
-  //
-  // Level 1 is a bare board with one hull on it. Measured before this: depth
-  // 1 dealt two contacts in 109 of 300 seeds and between one and seven
-  // hazards in every single one, so the opening fight was never the same
-  // question twice and never a clean look at the one thing on the board.
-  const LEVEL_RULES = {
-    // `places` is the pool this level may roll, not a pin — the Ironway is
-    // left out because that place IS boulders, drawn across the whole board
-    // behind the grid, and 91 of 300 seeds opened a run in there.
-    1: { enemies: 1, type: "cruiser", places: ["shallows", "void"], rock: 0, cloud: 0, mines: 0 },
-  };
-
-  function localeFor(depth, variantId, runSeed, only) {
+  function localeFor(depth, variantId, runSeed) {
     const rng = seededRandom(depth * 6151 + (variantId ? variantId.length * 977 : 0) + (variantId || "x").charCodeAt(0) * 31 + runMix(runSeed));
-    const open = LOCALES.filter(
-      (l) => (LOCALE_FROM[l.id] || 1) <= depth && (!only || only.includes(l.id))
-    );
+    const open = LOCALES.filter((l) => (LOCALE_FROM[l.id] || 1) <= depth);
     const pool = open.length ? open : LOCALES;
     return pool[Math.floor(rng() * pool.length)];
   }
@@ -748,22 +721,7 @@
     const variant = BRANCH_VARIANTS.find((v) => v.id === variantId) || null;
     // WHERE this sector is — drives its look, its furniture, and how much
     // of everything it has (see LOCALES).
-    // What this level has been TOLD to be, if anything (see LEVEL_RULES).
-    const ruled = LEVEL_RULES[depth] || {};
-    // WHERE a sector is decides what is PAINTED on it, not just what is laid
-    // on it. "No ground" was read as the hazard list and the hazard list only,
-    // and the hazard list was empty — while the Ironway's backdrop went on
-    // drawing boulders across the whole board behind the grid. They are not
-    // hazards and you fly straight through them, which is worse than if they
-    // were: the board looked like cover and none of it was. 91 of 300 seeds
-    // opened a run in there.
-    //
-    // So the rule goes on WHICH PLACES a level may roll, not on the backdrop
-    // and not on a pinned locale. A place's look belongs to that place and
-    // stays its own; a level that has been told it is bare simply isn't
-    // dealt the places that are made of rock. Still rolled, still different
-    // run to run, still painted as wherever it landed.
-    const locale = localeFor(depth, variantId, runSeed, ruled.places);
+    const locale = localeFor(depth, variantId, runSeed);
     const variantSeedOffset = variant ? (BRANCH_VARIANTS.indexOf(variant) + 1) * 104729 : 0;
     const rng = seededRandom(depth * 2654435761 + variantSeedOffset + runMix(runSeed));
 
@@ -797,7 +755,7 @@
     // contact is another gun, another firing arc and another thing that can
     // jam its own wingman, where another hit point was only ever a longer
     // turn count.
-    const roster = ruled.enemies != null ? ruled.enemies : Math.max(
+    const roster = Math.max(
       1,
       // BACK TO THE SHALLOWER RAMP, because the wreck loop is now spending
       // the actions the steeper one was priced against. Cutting a wreck open
@@ -1096,12 +1054,6 @@
       maw: { rock: 1.4, cloud: 4, mines: 1.4 },      // it eats light, and it is crowded
     };
     const zone = { ...(ZONE_GROUND[locale.id] || { rock: 1, cloud: 1, mines: 1 }) };
-    // A SET SHARE BEATS THE ZONE, and it beats the weather below it too —
-    // applied before the nebula line on purpose, so a level told it has no
-    // dust has none however the sky rolled.
-    for (const kind of ["rock", "cloud", "mines"]) {
-      if (ruled[kind] != null) zone[kind] = ruled[kind];
-    }
     // WEATHER BEATS THE ZONE. A nebula rolling through the Deep is still a
     // nebula; a zone that normally has nothing to hide behind does not get to
     // cancel it, or the condition would silently do nothing in half of them.
@@ -1396,11 +1348,7 @@
     //   carrier  — depth 8. Three Hull that walks at you and detonates a
     //              full ring in contact. Wants an answer at range, which
     //              is exactly what the depth-8 shelf is selling.
-    // A SET TYPE IS THE WHOLE POOL (see LEVEL_RULES). Level 1 rolled an
-    // Interceptor, a Cruiser or a Salvager depending on the seed — three
-    // different opening fights, one of them against a tug with no gun on it,
-    // so "what does the first thing in the game do" had no answer.
-    const typePool = ruled.type ? [ruled.type] : typePoolFor(depth);
+    const typePool = typePoolFor(depth);
     // At most TWO emplacements on a board. A Sentry or a Railgun Destroyer
     // doesn't chase you — it denies ground — and three of them on a 9x11
     // field is a wall with no way around it, which is exactly what full-run

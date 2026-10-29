@@ -13,22 +13,15 @@ EXPORT(gb_io) int32_t *gb_io(void) { return gbIo; }
 // frames later, from node pi -- the search's keys for the swap, walked as the frame loop walks them.
 #define TAP_GAP 4         // frames between taps (cursorMoveFrames)
 #define REPEAT_FIRST 10   // frames from the press to the second cell (curWaitTime 20, counted twice a frame)
-#define HOLDTIGHT 76      // the actions short of the input limit at which every walk is walked as cheaply as the walls allow -- the limit: always
-                          // (the search and the frame loop); HOLDTIGHT + 1 asks a walk's cost tapped
+#define HOLDTIGHT 40      // the actions short of the input limit at which every walk of two cells or more is held (the search and the frame loop)
 static LOCAL int32_t pressTight;
-// A BOARD NEAR ITS END (pressTap): lost within TAP_DIES frames left alone, as the decision reads it (the dies fact: decide.c read) -- its
+// A BOARD NEAR ITS END (pressTap): lost within TAP_DIES frames left alone (its stop, or its rise to the top, and its health) -- its
 // walks tapped, on time, while the allowance keeps TAP_RESERVE actions to spare; held as when tight below that. The decision says so
 // (answer.c), the frame loop presses its line so.
 #define TAP_RESERVE 16
 #define TAP_DIES 60
 static LOCAL int32_t pressTap;
 static int tightAt(int left) { return left <= HOLDTIGHT && !(pressTap && left > TAP_RESERVE); }
-// THE FRAMES A GARBAGE GROUP OF `cells` CELLS POPS IN once matched: flash, face, a pop a cell and three (pa.c matchGarbagePanels) -- the
-// facts' wait for a break, the order's break time (decide.c rankSave: a full-width row)
-static int32_t popFrames(const Board *b, int32_t cells) { return b->fFLASH + b->fFACE + b->fPOP * (3 + cells); }
-// THE BOARD STILL MOVING: a chain counting, panels chaining or active (clearing, falling), or a pair swapping -- the one test every reader
-// asks (a step judged once it is still, a press that waits for its pair, a wasted three played on until both boards stop)
-static int boardMoving(const Board *b) { Board *m = (Board *)b; return b->chainCounter > 0 || hasChainingPanels(m) || hasActivePanels(m) || b->swappingCount > 0; }
 #define MIN_LEG 3          // the shortest walk a held key is no later on
 // A HELD KEY ENDS AT THE WALL: a direction is held only for a walk the board stops -- to column 1 or W - 1, or down to row 1 -- as a
 // player slides to the edge and taps back from it; a walk that ends anywhere else is tapped a cell at a time (the owner: the bot slides
@@ -86,139 +79,17 @@ static int actionsFor(int row, int col, int r, int c, int left) {
 // THE ALLOWANCE A JUDGED LINE PRESSES UNDER: the decision's (NOT_ASKED: the host did not say), less what the line's own swaps spend --
 // a line long enough walks held from two cells once its own presses bring the budget to HOLDTIGHT, as the frame loop walks it
 static int32_t pressAllowance = -1;
-// (the allowance a walk's cost is asked at, for a reader that ranks or proposes by it: the decision's, as the frame loop will walk it)
-static int walkLeft(void) { return pressAllowance >= 0 ? pressAllowance : HOLDTIGHT + 1; }
 // THE INPUT WINDOW THE LINE IS PRESSED IN (a native host's frame loop says it, front.c ask): how many frames before the question's frame
 // each action still inside the window went down -- planned ones up to it too -- and the window's length. The actions left at frame t
 // from the question's: the limit less those still inside the window then, less what the line has spent. nWinAges -1: not said, the
 // decision's allowance less what is spent.
 #define WINMAX 512
-// THE RESERVE: the actions the window keeps for the next break, a line that breaks nothing leaving it (outcome.c spendsReserve) and the
-// survival search keeping it unless spending it buys a later loss (search/outlive.c). None: the pace keeps the window
-// (paceGap), and the line check presses every line in the window as it will be
-#define RESERVE 0
-// THE NEXT LANDING'S BREAK: the actions a break's walk takes, kept in the window for the frame the next block lands (outcome.c
-// leftAtLanding, spendsReserve) -- what a line spends before then the window has back only as it ages
-#define LAND_RESERVE 20
 static int32_t winAges[WINMAX], nWinAges = -1, winLen = 600, hostWin;
-// (A SEARCH ROOTED LATER: a readiness search's board is a line's once everything lands, pressFrom frames after the question with the line
-// having spent pressSpent -- its breaks are pressed in the window as it is then, every search asking it here; 0 for the question's own)
-static LOCAL int32_t pressFrom, pressSpent;
-// (THE ONE WAY IN for a search rooted later: `from` frames after the board it is asked from, a line having spent `spent` of the window
-// to reach it -- set here and put back by laterEnd, nested as the searches nest. Every search asked of a line's end board or of the board
-// to come goes through it: judge.c's readiness, decide.c's survival continuation, search/ready.c's landed break. Nothing else sets
-// pressFrom or pressSpent but a job's reset)
-typedef struct { int32_t from, spent; } Later;
-static Later laterBegin(int32_t from, int32_t spent) { Later l = { pressFrom, pressSpent }; pressFrom += from; pressSpent += spent; return l; }
-static void laterEnd(Later l) { pressFrom = l.from; pressSpent = l.spent; }
 static int allowLeftAt(int32_t t, int spent) {
   if (pressAllowance < 0) return -1;
-  t += pressFrom; spent += pressSpent;
   if (nWinAges < 0) return pressAllowance - spent;
   int in = 0; for (int i = 0; i < nWinAges; i++) in += winAges[i] + t < winLen;
   return imax(0, pressAllowance + nWinAges - in - spent);
-}
-// THE WINDOW PLAN, the one reading every reader asks of a line (the order's reserve, the line check, the survival search), its values the
-// decision's own: whether the window keeps the next break's walk -- breakWalk, the actions this board's nearest break takes (decide.c
-// read) -- the frame the next block lands, or the line's end when it is still pressing then or nothing is on its way (landingAt: frames
-// from the question, -1 none), with `spent` pressed by its end and every action before aged as the window ages; regainAfter, the frames
-// from then until the window gives that walk back to a line short of it; and spendPays, whether a line that spends the walk is worth it
-// over one that keeps it: it is, lost after the window has given the walk back -- it never dies on the way, the walk in hand again --
-// or where the line that keeps it is lost before it could press that walk -- the walk's frames, a cell every TAP_GAP, past the landing
-// or the keeper's end -- and the spender outlives it by a break's time (rankSave): a walk kept by a board dead before it is pressed
-// keeps nothing, and a spend that buys less than a break's time buys nothing either
-static int32_t landingAt = -1, breakWalk = LAND_RESERVE;
-#define LANDN 64
-static int32_t landAts[LANDN], nLandAts;   // (every break the blocks shown on their way are due: a row each, its block's landing and a break's
-                                            // time after each row before it -- the frames from the question, soonest first)
-static int32_t landWalk[LANDN];   // (and each due's walk: the nearest break's on the board its block lands on -- decide.c read; 0 not known)
-// (THE WALK A DUE ASKS: its own, measured on the board it lands on; the question's board's where none is known or nothing is shown)
-static int32_t walkDue(int k) { return k >= 0 && k < nLandAts && landWalk[k] > 0 ? landWalk[k] : breakWalk; }
-static int32_t rankSave;   // (rank.c: the frames one break takes)
-// (THE WINDOW'S SHARE a line leaves: the actions left at its end, or at the landing when that is later, of the window's whole limit --
-// the third margin beside the stack's room and its material; -1 with no allowance said)
-static double windowShareAt(int32_t endAt, int spent) {
-  if (pressAllowance < 0) return -1;
-  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1;
-  int32_t lim = pressAllowance + (nWinAges > 0 ? nWinAges : 0);
-  return (double)allowLeftAt(tl > endAt ? tl : endAt, spent) / (lim > 0 ? lim : 1);
-}
-// (AN ACTION IN FRAMES: the frames the window takes to give one back -- its length over its limit; 0 with no allowance said)
-static double actionFrames(void) {
-  if (pressAllowance < 0) return 0;
-  int32_t lim = pressAllowance + (nWinAges > 0 ? nWinAges : 0);
-  return lim > 0 ? (double)winLen / lim : 0;
-}
-// (THE WINDOW'S COVER: of the breaks the blocks on their way are due, soonest first, how many the window keeps a walk for -- at each due
-// its walk (walkDue) besides the walks the breaks before it took, each pressed as its block lands and aged out as any action is, with what the
-// window has given back by then; none on its way, 1 where the window keeps the walk at the line's end. WINDOW_ALL: no allowance said)
-// (A DUE IS WHEN THE ROW MUST BE PAID: a line still pressing past a due has not covered it -- the due is never moved to the line's end,
-// where the window has refilled. 1307 combo_storm-1, 3061 to 3126: four clears of one swap that made nothing read more window than the
-// hold, each due read at their end, and spent the window to 1 by the block)
-#define WINDOW_ALL (LANDN + 1)
-static int windowCover(int32_t endAt, int spent) {
-  if (pressAllowance < 0) return WINDOW_ALL;
-  if (nLandAts <= 0) { int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1; return allowLeftAt(tl > endAt ? tl : endAt, spent) >= breakWalk; }
-  int k = 0;
-  for (; k < nLandAts; k++) {
-    int32_t tk = landAts[k] - pressFrom;
-    int before = 0;
-    for (int i = 0; i < k; i++) { int32_t ti = landAts[i] - pressFrom; if (tk - ti < winLen) before += walkDue(i); }
-    if (allowLeftAt(tk, spent) - before < walkDue(k)) break;
-  }
-  (void)endAt;
-  return k;
-}
-// (whether the window keeps the next break's walk: the next block's, or the line's end where none is on its way)
-static int windowKeepsBreak(int32_t endAt, int spent) { return windowCover(endAt, spent) >= 1; }
-// THE WINDOW'S SHARE AS THE DUES ASK IT (plans/gambit-next.md 2): of the rows due, the share the window covers a break's walk for, with
-// `paid` rows the line's own breaks pay; with nothing due or no allowance said, the window's own share (-1 none said)
-static double winCoverShare(int32_t endAt, int spent, int32_t paid) {
-  if (pressAllowance < 0) return -1;
-  if (nLandAts <= 0) return windowShareAt(endAt, spent);
-  double s = (double)(windowCover(endAt, spent) + paid) / nLandAts;
-  return s > 1 ? 1 : s;
-}
-// THE MARGIN AS ONE KEY (plans/gambit-next.md 2): the shares of what a board runs out of -- room, material, the window, contact -- each
-// in rows of the stack's twelve, scarcest first, so that of two the more of the scarcest wins, then of the next (under garbage the room
-// is nearly none for every line, and the next decides) -- the two scarcest only: a board dies of what it runs out of first, and a row
-// more of what it has plenty of is no reason to give up a later loss; one integer, the order's and the survival search's alike. A
-// share not said (no window allowance, no column under garbage) is whole
-// (ENOUGH: a share of MARGIN_ENOUGH rows or more is not scarce -- a row more of what a board has enough of is no reason to give up a
-// later loss, and every clear spends a little material: only scarcity decides. A number to measure on the engine, plans/gambit-next.md)
-#define MARGIN_ENOUGH 3
-// (ROOM BELOW NONE: a stack over the top once everything shown has landed reads as the rows it is over, down to a stack's worth -- a line
-// that leaves the board two rows over beats one that leaves it four, where both read none before and the next share decided. The run
-// summaries: the board to come is lost before the block lands in half the readiness checks, and the room share read none for every
-// line under a block)
-static int32_t marginKeyOf(double room, double mat, double win, double touch) {
-  double s[4] = { room, mat, win, touch }; int32_t b[4];
-  for (int i = 0; i < 4; i++) { double lo = i == 0 ? -1 : 0; double v = s[i] < lo ? lo : s[i] > 1 ? 1 : s[i]; b[i] = imin((int32_t)(v * 12), MARGIN_ENOUGH); }
-  for (int i = 1; i < 4; i++) { int32_t v = b[i]; int k = i; while (k > 0 && b[k - 1] > v) { b[k] = b[k - 1]; k--; } b[k] = v; }
-  return b[0] * 13 + b[1];
-}
-static int32_t regainAfter(int32_t endAt, int spent) {
-  if (pressAllowance < 0) return 0;
-  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt;
-  int shortBy = walkDue(0) - allowLeftAt(t0, spent);
-  if (shortBy <= 0) return 0;
-  if (nWinAges < 0) return winLen;
-  int32_t oldest[WINMAX]; int k = 0;   // (the actions still in the window then, oldest first, as many as it is short by)
-  for (int i = 0; i < nWinAges; i++) {
-    int32_t a = winAges[i] + t0 + pressFrom; if (a >= winLen) continue;
-    int at = k < shortBy ? k++ : shortBy;
-    if (at == shortBy && a <= oldest[shortBy - 1]) continue;
-    if (at == shortBy) at = shortBy - 1;
-    while (at > 0 && oldest[at - 1] < a) { oldest[at] = oldest[at - 1]; at--; }
-    oldest[at] = a;
-  }
-  // (short by more than the actions before it: the line's own come back, the first a window after it was pressed)
-  return k < shortBy ? imax(1, winLen - t0) : winLen - oldest[shortBy - 1];
-}
-static int spendPays(int32_t lostSpender, int32_t endAt, int spent, int32_t lostKeeper, int32_t keeperEnd) {
-  int32_t tl = landingAt >= 0 ? landingAt - pressFrom : -1, t0 = tl > endAt ? tl : endAt, k0 = tl > keeperEnd ? tl : keeperEnd;
-  if (lostKeeper < k0 + walkDue(0) * TAP_GAP && lostSpender - lostKeeper >= rankSave) return 1;
-  return lostSpender >= t0 + regainAfter(endAt, spent);
 }
 static LOCAL int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
 static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
@@ -293,9 +164,9 @@ static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 }
 
 // MANY STEPS AT ONCE: a batch of steps (each a parent and a move) played on every thread the host gave the engine's pool (search.h
-// runPhase: native.c's workers), then TAKEN one at a time in the batch's order (stepTake): each charged to the clock as the threads
-// spent it -- its frames over the workers that shared the batch, as the order's judging is charged (decide.c judgeAll) -- and none
-// taken once the clock is out, so a search that takes its batch in order makes the same children on every run. With no workers, a batch too small to share, or a swap whose press
+// runPhase: native.c's workers), then TAKEN one at a time in the batch's order (stepTake): each charged to the clock as step() charges
+// it, and none taken once the clock is out -- so a search that takes its batch in order, and stops where it would have stopped, makes
+// the same children and spends the same clock as one step at a time. With no workers, a batch too small to share, or a swap whose press
 // waits its walk first (pressDelay), the step is made when it is taken.
 // A search run as a job on the threads (search/break.c readyJob) is a thread's whole: its steps are its own, never a batch; and while jobs
 // hold the pool (search.h poolBusy) the decision's own steps are made one at a time.
@@ -324,8 +195,8 @@ static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int 
 static int stepTake(Ctx *x, int j, int pi, int kind, int32_t mv) {
   if (j >= batchN || batchRes.a[j] == UNBATCHED || batchRes.a[j] == PENDING) return clockOut() ? STEP_NULL : step(x, pi, kind, CR(mv), CC(mv), 0);
   if (clockOut()) return STEP_NULL;
-  int32_t r = batchRes.a[j], t0 = NODE(x, pi)->t, u = r >= 0 ? NODE(x, r)->t - t0 : r == STEP_DEAD ? batchDead.a[j] - t0 : 1, nw = imax(pool.nworkers, 1);
-  clockCharge((u + nw - 1) / nw);
+  int32_t r = batchRes.a[j], t0 = NODE(x, pi)->t;
+  clockCharge(r >= 0 ? NODE(x, r)->t - t0 : r == STEP_DEAD ? batchDead.a[j] - t0 : 1);
   if (r == STEP_DEAD) deadAt = batchDead.a[j];
   return r;
 }
@@ -334,44 +205,15 @@ static void batchDone(void) { batchN = 0; }
 
 // THE BOT'S HANDS, as the host has them (gb_config): the frames it waits after a decision, after a swap, and a cursor step. Every
 // context a search makes is set so (surviveFrames and surviveRest 0).
-// (A SWAP'S OWN TIME: a swap step ends no sooner than SWAP_SHOWN frames after its press -- the swapped panels move for 4 frames (pa.c,
-// the SWAPPING timer) and match the frame after -- so the board a swap step leaves shows what the swap made; the profile's swapGap is
-// any wait the hands add beyond it)
-#define SWAP_SHOWN 5
 static int32_t cfgReaction = 12, cfgSwapGap = 12, cfgCursor = 4;
 EXPORT(gb_config) void gb_config(int reaction, int swapGap, int cursorMoveFrames) { cfgReaction = reaction; cfgSwapGap = swapGap; cfgCursor = cursorMoveFrames; }
-// THE PACE: the hands slow as the input window empties -- the wait after a swap twice the window's time to give back an action, times
-// the share of the limit spent: SWAP_SHOWN's 5 frames with the window full, 8 at half, 12 at a quarter, 16 empty (the standard budget, 76
-// actions in 600 frames). The frame loop sets it with each question (front.c ask: left, the allowance at the question's frame) and
-// presses each line with the pace it was judged with; the decision's every context is made with it (decGap).
-static int paceGap(int left, int limit, int window) {
-  if (limit <= 0 || window <= 0 || left < 0) return 0;
-  int spent = limit - imin(left, limit);
-  return (2 * window * spent + limit * limit - 1) / (limit * limit);
-}
-static int32_t decGap;
-static int handsGap(int pace) { return imax(imax(cfgSwapGap, SWAP_SHOWN), pace); }
 static Ctx *ctxOf(Ctx *x) {
   if (!x) x = ns_ctx_new();
-  ns_ctx_set(x, cfgReaction, cfgCursor, 0, 0); ns_ctx_gap(x, handsGap(__atomic_load_n(&decGap, __ATOMIC_RELAXED)));
+  ns_ctx_set(x, cfgReaction, cfgCursor, 0, 0); ns_ctx_gap(x, cfgSwapGap);
   return x;
 }
 // THE QUESTION: the board a decision is made on, the raise in hand and the garbage on its way -- what every search roots its lines at.
 typedef struct { Board *b; int32_t holdLeft, holdStarted, narr; Arr arr[MAXARR]; int32_t tight; } Question;
-// (THE ROWS STILL COMING after frame `after` from the question: what a board read before everything shown has landed has not yet lost of
-// its room -- plans/gambit-next.md 2, every margin read as if everything shown has landed)
-// THE NEXT BLOCK THE MODE SENDS (plans/gambit-next.md 1): the biggest block shown so far this game, by its cells, and the lead it was
-// shown with -- what a proven line's end board must be ready for (outcome.c endReadyOf). height 0: none shown yet, nothing to be ready for
-static Arr nextBlk;
-static int32_t nextBlkAt;
-static void nextBlkSeen(const Question *q) {
-  for (int i = 0; i < q->narr; i++) {
-    const Arr *a = &q->arr[i];
-    if (a->height <= 0 || a->width <= 0) continue;
-    if (a->width * a->height > nextBlk.width * nextBlk.height) { nextBlk = *a; nextBlkAt = a->at > 0 ? a->at : nextBlkAt; }
-  }
-}
-static int32_t rowsComing(const Question *q, int32_t after) { int32_t r = 0; for (int i = 0; i < q->narr; i++) if (q->arr[i].at > after) r += imax(1, q->arr[i].height); return r; }
 // A search's root, made from the question: every node before it is let go.
 static int rootOf(Ctx *x, const Question *q) {
   ns_reset(x);
@@ -412,7 +254,7 @@ static int pressWalk(Ctx *x, int n, int kind, int mr, int mc, int (*walk)(Ctx *,
     if (r != STEP_NULL) return r;
     tapeN = mark;
     Board *b = ensureBoard(x, n);
-    if (k >= PRESS_WAIT || !b || !boardMoving(b)) return STEP_NULL;
+    if (k >= PRESS_WAIT || !b || !(hasActivePanels(b) || b->swappingCount > 0)) return STEP_NULL;
     int w = walk(x, n, MK_LONG, 0, 0, 1);
     if (w == STEP_NULL || w == STEP_ERR) return w;
     if (w == STEP_DEAD || NODE(x, w)->dead) { if (w >= 0) deadAt = NODE(x, w)->t; *from = -1; return STEP_DEAD; }

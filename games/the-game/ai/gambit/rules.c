@@ -122,27 +122,29 @@ EXPORT(gb_fits) int gb_fits(int combo, int chain, int broke, int cells) { Made m
 EXPORT(gb_entry_of) int gb_entry_of(int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return metOf(&theList, m); }
 EXPORT(gb_meets) int gb_meets(int i, int combo, int chain, int broke, int cells) { Made m = { combo, chain, broke, cells }; return i >= 0 && i < theList.n && meets(&theList.aim[i], m); }
 
-// A SWAP BACK: the same two panels the last swap swapped, which puts the board back as it was -- no play, unless the line clears or
-// breaks on this board; and even then not after the same pair three times running, which keeps the pair out for a second. The record
-// is the engine's, on the board a decision is made on (pa.c doSwap: Board.lastSwapA/B, lastSwapRuns, lastSwapAt); nothing is carried
-// from answer to answer. clears: 0 nothing, 1 a clear, 2 a break -- judge.c madeBy
+// A SWAP BACK: the same two panels the last swap swapped, which puts the board back as it was -- no play,
+// unless the line clears or breaks on this board; and even then not after the same pair twice running; and never a pair blocked
+// until a frame. What the last decisions swapped is the host's (gb_back), the panels' ids on the board the decision is made on.
+typedef struct { int32_t lastA, lastB, runs, blockA, blockB, blockUntil, at; } Back;
+static Back theBack;   // ids 0: none
 static const Board *backBoard;
 static int samePair(int32_t a, int32_t b, int32_t x, int32_t y) { return (a == x && b == y) || (a == y && b == x); }
+// clears: 0 nothing, 1 a clear, 2 a break -- a swap that breaks garbage is the board's defence, never refused as a swap back
 // (and a pair the press guard refused as a wasted three, kept out until a frame whatever the line makes: front.c wastedSwap)
 static int32_t refusedA, refusedB;
 EXPORT(gb_refused) void gb_refused(int a, int b) { refusedA = a; refusedB = b; }
-// (the one test: on board `on`, the pair (a, b) swapped for `clears` puts the last pair swapped back for nothing. The judge asks it of
-// every swap of a line; the press guard of the swap about to be pressed -- front.c putsBack)
-static int putBackFor(const Board *on, int32_t a, int32_t b, int clears) { return on && on->lastSwapA && clears == 0 && a != NUL && b != NUL && samePair(a, b, on->lastSwapA, on->lastSwapB); }
-#define RUNS_OUT 60   // (the frames a pair swapped three times running is kept out for)
 static int swapBack(int r, int c, int clears) {
   if (!backBoard || r < 0 || r >= backBoard->nrows || c < 1 || c + 1 > W) return 0;
   int32_t a = backBoard->p[r][c].f[ID], b = backBoard->p[r][c + 1].f[ID];
   if (a == NUL || b == NUL) return 0;
   if (refusedA && samePair(a, b, refusedA, refusedB)) return 1;
-  if (putBackFor(backBoard, a, b, clears)) return 1;
-  const Board *k = backBoard;
-  return k->lastSwapA && samePair(a, b, k->lastSwapA, k->lastSwapB) && k->lastSwapRuns >= 3 && k->clock < k->lastSwapAt + RUNS_OUT;
+  if (clears == 2) return 0;
+  if (theBack.blockA && samePair(a, b, theBack.blockA, theBack.blockB) && theBack.at < theBack.blockUntil) return 1;
+  return theBack.lastA && samePair(a, b, theBack.lastA, theBack.lastB) && (!clears || theBack.runs >= 2);
 }
 // a line's first swap: not the swap back the judge refuses
 static int firstOk(int r, int c, int clears) { return !swapBack(r, c, clears); }
+EXPORT(gb_back) void gb_back(int lastA, int lastB, int runs, int blockA, int blockB, int blockUntil, int at) {
+  Back k = { lastA, lastB, runs, blockA, blockB, blockUntil, at };
+  theBack = k;
+}

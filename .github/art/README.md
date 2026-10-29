@@ -168,7 +168,6 @@ Two callers, one script, is the fix.
 |---|---|
 | [`build_sheet.py`](build_sheet.py) | Raw rows → shipped sheet: keys the background, cuts at gutters or blobs, one scale per row, snaps to the art-pixel grid and the locked palette, common foot baseline. `--build-steps` constructs front/back step frames; `--mirror-step` mirrors just the second one. |
 | [`slice_walksheet.py`](slice_walksheet.py) | The other cutter: a chroma-green 4x3 grid → individual `<id>_<dir>_<n>.png` files. |
-| [`key_white.py`](key_white.py) | The single-icon cutter: floods flat white out of a generated icon from the border in, so it ships cut to its own silhouette. Flood-fill and not a pixel-value key — keying every white pixel punches holes through highlights inside the subject. |
 | [`tileset.py`](tileset.py) | The one front door for tiled levels: `generate`, `cut`, `check`, `verify`, `prompt`. |
 | [`build_tiles.py`](build_tiles.py) | Cuts tile sheets into a shipped strip. Makes `texture:` tiles SEAMLESS — a generator will not draw a tile that repeats, so the seam is made here. |
 | [`preview_tiles.py`](preview_tiles.py) | Lays the tile strip out as a floor: each tile once, each floor tile repeated (a grid shows here or nowhere), and a mixed field. |
