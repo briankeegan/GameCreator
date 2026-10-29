@@ -826,6 +826,7 @@ static int32_t modeAt(int32_t at) {
 // A QUESTION ON THE BOARD IN hostQ (hostBoard, its hold and garbage on its way): the answer into theAnswer, the log line at logBuf
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
+  lookPause();   // (the look-ahead beside held while the decision reads its board and writes what it reads: let go in answerTurn)
   decQ = hostQ; decQ.b = hostBoard;
   ncache = 0; cacheGen = __atomic_add_fetch(&decGen, 1, __ATOMIC_RELAXED); rootBuildable = NOT_ASKED;
   carriedResume();
