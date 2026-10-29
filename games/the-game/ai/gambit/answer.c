@@ -253,12 +253,14 @@ static void breakRunTo(const Read *R, double by, Broke *into) {
   double old = clockShareBegin(by);
   // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
   // is searched first, quick to find, so a break to play is in hand however long the list's own takes; the rest of the share then goes
-  // to a break within the list, which is played instead if found)
+  // to a break within the list, which is played instead if found). Both carry on the frontier the last decision kept: under garbage
+  // with no break found, the off-list search is the only one asked, and a search begun again from the first swap every decision never
+  // grows past a few swaps)
   listDefault = 0;
   if (R->end == 1) {
     static LOCAL Broke off;
     listDefault = 1;
-    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, 0, into);
+    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, into);
     listDefault = 0;
     off = *into;
     if (off.depth && !clockOut()) {
