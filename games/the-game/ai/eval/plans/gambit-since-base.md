@@ -47,6 +47,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `13985d39` D11, the save where the best line without a three dies within a break's time (1479f155) -- build 17 (1560) [dropped: factory 3/8, four of its losses the window spent]
 - build on main again: 19 (1561) -- combo_storm 6/8, factory 5/8, large_garbage 8/8; three losses the window spent
 - `2a73b501` B7, ready only for a break the window pays for (954eefa1) -- build 23 (1562) [kept: combo_storm 8/8, factory 7/8, large_garbage 8/8; one loss, the window spent]
+- main with B7: build 18 (1563) -- combo_storm 6/8, factory 6/8, large_garbage 6/8; the window 1, reach 3, board 2 (main before it: the window 3)
 
 ## The shortlist for pressure, in the order to try
 
