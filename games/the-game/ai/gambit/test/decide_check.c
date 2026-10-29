@@ -45,7 +45,7 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   // (work 0: the wall clock's REPLAY_MS, as a game gives it -- the speed check's; else the work's, the same answer every time)
   double t0 = work > 0 ? 0 : clock_ms(), due = t0 + REPLAY_MS;
   int32_t taps = hostTaps; if (replayAllow >= 0) hostTaps = 1;
-  decGap = replayAllow >= 0 ? paceGap(replayAllow, 76, 600) : 0;   // (the pace the frame loop would ask with: the standard budget)
+  __atomic_store_n(&decGap, replayAllow >= 0 ? paceGap(replayAllow, 76, 600) : 0, __ATOMIC_RELAXED);   // (the pace the frame loop would ask with: the standard budget)
   answerQuestion(1, 0, topped, 0, 0, 0, 0, 0, 0, replayAllow >= 0, imax(0, replayAllow), -1, 0, (replayLow || replayRaise) && canRaiseOn(hostBoard), due, t0, 0);
   hostTaps = taps;   // (the raise asked of a low stack only)
   readyStop();   // (the readiness left searching beside the decision taken back before its clock is: the next decision would discard it)
@@ -197,7 +197,8 @@ static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int
 EXPORT(gb_judge_line) int gb_judge_line(int n, const int32_t *mv, int allow, int tap, int settled, int32_t *out) {
   curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
   decQ = hostQ;
-  pressTap = decTap = tap; decQ.tight = tightAt(allow); pressTight = decQ.tight; pressAllowance = allow; decGap = paceGap(allow, 76, 600);
+  lookPause();   // (the look-ahead beside reads the press and the pace: held while they are set)
+  pressTap = decTap = tap; decQ.tight = tightAt(allow); pressTight = decQ.tight; pressAllowance = allow; __atomic_store_n(&decGap, paceGap(allow, 76, 600), __ATOMIC_RELAXED);
   JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0 };
   Judged j;
   judge(&decQ, mv, n, &jo, &j);
