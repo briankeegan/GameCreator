@@ -664,7 +664,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (A->sooner) L_s(" lessProven=1");   // (the gate, plans/gambit-next.md: a proven line passed over, or dead at once while one offered is not)
   if (P.line == &lookJ) lookPlayedN++;
   // (the rollouts done since the last decision: the frame of the decision that asked, and where the rollout lost the board -- -1 lived)
-  { lookLockOn(); for (int i = 0; i < rollLogN; i++) { L_s(i ? "," : " roll="); L_i(rollLog[i][0]); L_s(":"); L_i(rollLog[i][1]); } rollLogN = 0; lookLockOff(); }
+  if (lookGrown) { L_s(" grow="); L_i(lookGrown); L_s("/"); L_i(__atomic_exchange_n(&lookGrowFound, 0, __ATOMIC_RELAXED)); lookGrown = 0; }   // (the look-ahead beside, decide.c lookGrowOf: checks handed it since the last line, breaks they found)
   if (lookAsked || lookHit || lookOffered) { L_s(" look="); L_i(lookAsked); L_s("/"); L_i(lookHit); L_s("/"); L_i(lookUsed); L_s("/"); L_i(lookOffered); L_s("/"); L_i(lookPlayedN); lookAsked = lookHit = lookUsed = lookOffered = lookPlayedN = 0; }   // (the look-ahead beside, decide.c: boards asked of it, found answered, read as longer)
   if (vetoAsked) { L_s(" veto="); L_i(vetoed); L_s("/"); L_i(vetoAsked); L_s("/"); L_i(vetoCut); }   // (the reserve veto, decide.c: the place of the line played for its reserve, the boards asked, those the clock cut)
   // (THE PROOF LOST, plans/gambit-next.md the gates: the last decision played a proven line and this one has none -- new: a block shown

@@ -800,6 +800,16 @@ static void readyBeamKeep(uint32_t h, const unsigned char *key, int32_t nb, cons
   readyLockOff();
   __atomic_add_fetch(&readyBeamOut, 1, __ATOMIC_RELAXED);
 }
+// (the frontier kept for the key, whichever decision kept it: the look-ahead grows the decision's own on before the next reads it)
+static int readyBeamGet(uint32_t h, const unsigned char *key, int32_t nb, Paths *out) {
+  out->n = 0;
+  readyLockOn();
+  ReadyBeam *e = &readyBeams[h % READYBEAMN];
+  int hit = e->bytes && e->paths && e->h == h && e->nbytes == nb && !memcmp(e->bytes, key, (unsigned long)nb);
+  if (hit) *out = *e->paths;
+  readyLockOff();
+  return hit && out->n > 0;
+}
 static void readyKeptClear(void) {
   readyLockOn();
   for (int i = 0; i < READYN; i++) readyKept[i].h = 0, readyKept[i].nbytes = 0;
@@ -814,6 +824,7 @@ static void readyKeptClear(void) {
 // check), else left in readyLeft for the decision that reads it)
 static LOCAL const Paths *readyLeft;
 static LOCAL int readyResumed;   // (the search grew a kept frontier on: counted by the decision that reads it)
+static LOCAL const Paths *readySeed;   // (the frontier to grow on, set by the look-ahead beside: decide.c lookThread)
 static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_t *k, int own, const unsigned char *key, int32_t nb, uint32_t h, int keep) {
   int32_t pop = popLeft(q->b), saved = listDefault;
   static LOCAL Broke rb;
@@ -823,7 +834,7 @@ static int32_t readySearchOf(const Question *q, double by, int32_t *line, int32_
   if (keyed && !keyOwn) keyOwn = (unsigned char *)grab(READYKEYMAX);
   if (keyed && !keyOwn) keyed = 0;
   if (keyed) memcpy(keyOwn, key, (unsigned long)nb);   // (the search may key boards of its own in the buffer it came in)
-  int resumed = keyed && readyBeamFind(h, keyOwn, nb, &seeds);
+  int resumed = keyed && (readySeed ? (seeds = *readySeed, seeds.n > 0) : readyBeamFind(h, keyOwn, nb, &seeds));
   if (resumed && keep) __atomic_add_fetch(&readyBeamIn, 1, __ATOMIC_RELAXED);
   readyLeft = 0; readyResumed = resumed;
   if (!own && clockShare && clockShare < by) by = clockShare;   // (never past the share of the search that asks)
