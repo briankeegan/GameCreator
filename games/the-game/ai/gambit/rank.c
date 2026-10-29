@@ -679,13 +679,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // combo spends the stack's own; and with a block shown on its way, the panels a clear takes are the ones the block is broken with)
       if (garbHere()) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
         if (nx != ny) K(2, "material", ny - nx); }
-      // (A BOARD LOST BEFORE ITS NEXT BREAK COULD POP: of two lines alike in the panels they leave, the one lost later, in breaks' time
-      // to its loss up to SOON_BREAKS -- its own break popping, the next one built, then popped; read off each line alone)
-      { int32_t sx = imin(ownBreaksTo(x), SOON_BREAKS), sy = imin(ownBreaksTo(y), SOON_BREAKS); if (sx != sy) K(2, "soon", sy - sx); }
       // (THE NEXT BREAK LEFT TO BUILD: of two lines that convert, the one whose board still has a break to build and keeps the floor
       // (judgeCand material: outcome.c nextBuild, floorKept) -- a break that leaves none is the last the board makes. Each key of the
       // order is read off each line alone and is had by every line -- a line with none reads last -- so the order is one order)
       if (decF.under) { int mx = x->material >= 0 ? x->material : 3, my = y->material >= 0 ? y->material : 3; if (mx != my) K(2, "next", mx - my); }
+      // (A BOARD LOST BEFORE ITS NEXT BREAK COULD POP: of two lines alike in the panels they leave and the break they leave to build, the one lost later, in breaks' time
+      // to its loss up to SOON_BREAKS -- its own break popping, the next one built, then popped; read off each line alone)
+      { int32_t sx = imin(ownBreaksTo(x), SOON_BREAKS), sy = imin(ownBreaksTo(y), SOON_BREAKS); if (sx != sy) K(2, "soon", sy - sx); }
       // (THE LONGER LOSS IN WHOLE BREAKS' TIME: of two lines alike in the next break and the material, the one lost a break's time later
       // has a break more to find before it -- the margin and the later loss decide within a break's time; from now, read off each line alone)
       { int32_t lx = ownBreaksTo(x), ly = ownBreaksTo(y); if (lx != ly) K(2, "longer", ly - lx); }
