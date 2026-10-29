@@ -556,9 +556,7 @@ EXPORT(gb_question) int gb_question(Ctx *hx, int i, int tight) {
 }
 // The question from a board's bytes as a native host logs them (GAMBITB: the head, the queue and the rows, packed), in the io from its
 // first word, then narr arrivals (at, width, height) -- for the reach report.
-static void lookPause(void);   // (decide.c: the look-ahead beside held while a host's board is written)
 EXPORT(gb_question_bytes) int gb_question_bytes(int nbytes, int narr) {
-  lookPause();
   if (!hostBoard) hostBoard = nb_new();
   const unsigned char *p = (const unsigned char *)gbIo;
   memcpy(hostBoard, p, BOARD_HEAD);
