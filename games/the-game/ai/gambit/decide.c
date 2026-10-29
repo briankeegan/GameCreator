@@ -733,7 +733,11 @@ static int ranked(const Read *R, const Found *S) {
         saveCw = cw; saveCk = ck;
         // (needed not to die -- the rule above asks it only where every line without one is lost within a break's time: with the three
         // the board lives on, or outlasts the board without it by a break's time at least; a three that puts the loss off by less is wasted)
-        if (cw >= 0 && ck >= 0 && ck < 1e9 && (cw >= 1e9 || cw - ck >= rankSave)) { saveOk = 1; saveLine = bw; }
+        // (or the best line without a three is lost within a break's time by its own judging -- not making the three is the loss -- and
+        // the three's board outlasts that by a break's time)
+        double kOwn = lostOf(bk);
+        int ownDies = kOwn >= 0 && kOwn < rankSave && cw >= 0 && (cw >= 1e9 || cw - kOwn >= rankSave);
+        if (ownDies || (cw >= 0 && ck >= 0 && ck < 1e9 && (cw >= 1e9 || cw - ck >= rankSave))) { saveOk = 1; saveLine = bw; }
         else if (cw >= 0 && ck >= 0) { keeps = 1; saveNot++; }
       }
     }
