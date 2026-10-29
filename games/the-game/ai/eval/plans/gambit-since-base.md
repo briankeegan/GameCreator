@@ -55,6 +55,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - main with the depths logged (31295ac1): build 21 (1567) -- under garbage with no break found, the search between decisions reached deeper than the decision's frontier 7,102 times of 14,955 and was handed on 1,273
 - `a27030f6` the search between decisions handed on where it reached deeper -- build 22 (1568) [kept: handed on 8,090 times; its depth median 3 to 4, p90 7 to 8]
 - `4081eefe` the search between decisions in slices of 1, 2, then 4 frames -- build 19 (1569) [dropped: large_garbage 4/8, four losses to the reach; a slice the next decision cuts is lost whole]
+- main with the mode's list logged (9872cbab): build 21 (1570) -- of 5,321 lines begun that meet the list, 177 its first entry, 2,080 a fallback, 1,681 of them unforced (a line with none left the next decision a break's time); 1,418 of those lost later than that line, 1,489 under garbage
 
 ## The shortlist for pressure, in the order to try
 
