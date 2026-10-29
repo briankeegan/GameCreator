@@ -40,6 +40,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `a5efe28f` B6, the touch beam grows only swaps the window can press (8b8a9618) -- 20 (1553) [dropped: factory 5/8 as before]
 - `14799c22` B, every walk as cheap as the walls allow (bb44c817, HOLDTIGHT 76) -- 18 (1554) [dropped: factory 7/8, combo_storm 5/8]
 - tsan red in 1553 and 1554 was main's: the search beside the decisions ran on while the C checks wrote the next question's board (gb_question_bytes); it now lets it go first
+- main (`7959dfdb`): 23 (1555), 21 (1556), every check green -- pressure left at 22 for build
 
 ## The shortlist for pressure, in the order to try
 
