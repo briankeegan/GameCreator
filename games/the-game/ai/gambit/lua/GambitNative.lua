@@ -21,7 +21,7 @@ local InputBudget = budgetClass("InputBudget")
 -- GAMBIT'S INPUT BUDGET: a held key stops only at the wall (core/nodes.h legHeld), so a walk that ends mid-board is tapped, an action a
 -- cell, as a player taps it. The standard CPU budget (InputBudget.standard) prices a slide of many cells as one action and is too few
 -- for the taps; Gambit spends GAMBIT_APM a minute in the standard window instead.
-local GAMBIT_APM = 900
+local GAMBIT_APM = 600
 local function counting(stack)
   if stack.do_countdown ~= nil then return stack.do_countdown end
   return stack.in_countdown
