@@ -279,7 +279,9 @@ static double contLostOf(const Judge *J, double give) { return contLostOfLine(J,
 // exactly what it would without it; the thread is held only while the decision writes the window and the pace it reads (lookPause).
 #define LOOK_Q 16
 #define LOOK_N 512
-#define LOOK_MS 120
+#define LOOK_MS 400
+#define LOOK_DEPTH 10   // (the decision's own asks 6 deep, 30 wide: a search that ends before its time is up finds nothing more with more time)
+#define LOOK_WIDTH 60
 typedef struct { uint32_t h; int32_t dt, spent, tap, save; Question q; Board *b; } LookAsk;
 typedef struct { uint32_t h; int32_t set; double lost; } LookAns;   // (lost: frames from the board's own, 1e9 lives)
 static LookAsk lookQ[LOOK_Q]; static int32_t lookQN, lookQTop;   // (a stack: the newest asked first, the oldest let go when full)
@@ -307,13 +309,13 @@ static int lookFind(uint32_t h, double *lost) {
 static void lookAsk(const Board *e, const Question *q, uint32_t h, int32_t dt, int32_t spent) {
   if (!__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
   lookLockOn();
-  int k = lookQTop; lookQTop = (lookQTop + 1) % LOOK_Q; if (lookQN < LOOK_Q) lookQN++;
+  int k = lookQTop; lookQTop = (lookQTop + 1) % LOOK_Q; if (lookQN < LOOK_Q) __atomic_add_fetch(&lookQN, 1, __ATOMIC_RELEASE);
   LookAsk *s = &lookQ[k];
   if (!s->b) s->b = nb_new();
   if (s->b) {
     cloneBoard(s->b, e); s->q = *q; s->q.b = s->b; s->h = h; s->dt = dt; s->spent = spent; s->tap = pressTap; s->save = rankSave;
     lookAsked++;
-  } else lookQN--;
+  } else __atomic_sub_fetch(&lookQN, 1, __ATOMIC_RELEASE);
   lookLockOff();
   __atomic_add_fetch(&lookSig, 1, __ATOMIC_RELEASE);
   __builtin_wasm_memory_atomic_notify(&lookSig, 1);
@@ -342,13 +344,14 @@ static void lookThread(void) {
       continue;
     }
     lookLockOn();
-    int k = (lookQTop - 1 + LOOK_Q) % LOOK_Q; lookQTop = k; lookQN--;
+    if (!__atomic_load_n(&lookQN, __ATOMIC_ACQUIRE)) { lookLockOff(); __atomic_store_n(&lookBusy, 0, __ATOMIC_RELEASE); continue; }
+    int k = (lookQTop - 1 + LOOK_Q) % LOOK_Q; lookQTop = k; __atomic_sub_fetch(&lookQN, 1, __ATOMIC_RELEASE);
     LookAsk s = lookQ[k]; cloneBoard(b, lookQ[k].b); s.q.b = b;
     lookLockOff();
     pressTight = s.q.tight; pressTap = s.tap; ncache = 0; lookSaveOwn = s.save;
     clockWork = 0; clockAborted = 0; clockPoll = 0; clockShare = nowMs() + LOOK_MS;
     pressFrom = s.dt; pressSpent = s.spent;
-    Outlived c = outlive(&s.q, HORIZON + REST, REST, LOOK_MS, 6, 30);
+    Outlived c = outlive(&s.q, HORIZON + REST, REST, LOOK_MS, LOOK_DEPTH, LOOK_WIDTH);
     int32_t lost = c.set ? c.lostAt : diesIn(&s.q, HORIZON + REST);
     int held = __atomic_load_n(&lookHold, __ATOMIC_SEQ_CST);
     clockShare = 0; pressFrom = pressSpent = 0;
