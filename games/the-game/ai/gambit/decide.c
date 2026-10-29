@@ -299,6 +299,16 @@ static uint32_t lookHash(const Board *e, const Question *q) {
   for (int a = 0; q && a < q->narr; a++) { const unsigned char *r = (const unsigned char *)&q->arr[a]; for (unsigned long i = 0; i < sizeof(Arr); i++) { h ^= r[i]; h *= 16777619u; } }
   return h ? h : 1;
 }
+// (a board whose line on is kept, or asked and not yet searched: not asked again)
+#define LOOK_RECENT 64
+static uint32_t lookRecent[LOOK_RECENT]; static int32_t lookRecentN;
+static int lookKnown(uint32_t hb) {
+  if (!hb) return 0;
+  for (int i = 0; i < LOOK_RECENT; i++) if (lookRecent[i] == hb) return 1;
+  int got; lookLockOn(); got = lookL[hb % LOOK_N].n && lookL[hb % LOOK_N].hb == hb; lookLockOff();
+  return got;
+}
+static void lookRecentAdd(uint32_t hb) { lookRecent[lookRecentN] = hb; lookRecentN = (lookRecentN + 1) % LOOK_RECENT; }
 static int lookLineOf(uint32_t hb, int32_t *seq) {
   int n = 0;
   lookLockOn();
@@ -316,7 +326,7 @@ static int lookFind(uint32_t h, double *lost) {
   return got;
 }
 static void lookAsk(const Board *e, const Question *q, uint32_t h, int32_t dt, int32_t spent) {
-  uint32_t hb = lookHash(e, 0);
+  uint32_t hb = endCellsHash(e);
   if (!__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
   lookLockOn();
   int k = lookQTop; lookQTop = (lookQTop + 1) % LOOK_Q; if (lookQN < LOOK_Q) __atomic_add_fetch(&lookQN, 1, __ATOMIC_RELEASE);
@@ -417,7 +427,8 @@ static const Board *lookEndOf(const Judge *J, Question *q2, int32_t *dt) {
 // (THE LINE CHOSEN: once the decision has answered, the board its line ends on is the one the next decisions carry it to -- asked
 // first, on top of the stack, ahead of the options it weighed)
 static void lookChosen(const Judge *J) {
-  if (!J || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
+  if (!J || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE) || lookKnown(J->o.endHb)) return;
+  lookRecentAdd(J->o.endHb);
   Question q2; int32_t dt; const Board *e = lookEndOf(J, &q2, &dt);
   if (!e) return;
   uint32_t h = lookHash(e, &q2); double d;
@@ -429,6 +440,8 @@ static void lookPonder(int n) {
     const Judge *J = order[i];
     if (J->hold || J->o.dead || J->k.nseq < 1) continue;
     k++;
+    if (lookKnown(J->o.endHb)) continue;
+    lookRecentAdd(J->o.endHb);
     Question q2; int32_t dt; const Board *e = lookEndOf(J, &q2, &dt);
     if (!e) continue;
     uint32_t h = lookHash(e, &q2); double d;
@@ -438,10 +451,8 @@ static void lookPonder(int n) {
 // (THE LINE IN PROGRESS AND THE LINE ON FROM WHERE IT ENDS, one line: offered beside the line in progress, judged on the engine as any)
 static Judge lookJ;
 static int lookOffer(const Read *R, const Judge *cj, int n) {
-  if (!cj || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE) || cj->k.nseq >= MAXLINE) return n;
-  Question q2; int32_t dt; const Board *e = lookEndOf(cj, &q2, &dt);
-  if (!e) return n;
-  int32_t on[OUT_SEQ]; int m = lookLineOf(lookHash(e, 0), on);
+  if (!cj || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE) || cj->k.nseq >= MAXLINE || !cj->o.endHb) return n;
+  int32_t on[OUT_SEQ]; int m = lookLineOf(cj->o.endHb, on);
   if (!m) return n;
   Cand k = cj->k;
   for (int i = 0; i < m && k.nseq < MAXLINE; i++) k.seq[k.nseq++] = on[i];
