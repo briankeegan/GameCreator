@@ -24,6 +24,7 @@ typedef struct {
   int32_t oppHas, oppOut, oppTop, oppStop;   // the opponent's stop: the frames it is held up by at the question's frame
   int32_t refA, refB, refUntil;              // a pair the press guard refused (a wasted three), its panels' ids, kept out until a frame
   int32_t nages, ages[512], window;          // the input window at the question's frame: how long before it each action inside went down
+  int32_t noRaise;                           // a raise not offered: the countdown's, asked before any garbage is shown (frontCountdown)
   double ms, posted;
   Arrival arr[MAXARRIVALS];
   Board *b;
@@ -84,6 +85,9 @@ static struct {
   Arrival prPend[MAXARRIVALS]; int32_t nprPend;
   // the question out: its id and frame, the board it was asked of, its raise and garbage, the garbage known when it was asked
   int32_t pending, pId, pEpoch, pAt, pPaced, pHoldLeft, pHoldStarted, pNarr, pNknew;
+  int32_t countdownAsked;   // (the opening asked during the countdown: frontCountdown)
+  int32_t askNoRaise;       // (the question asked next offers no raise: ask)
+  Board *cdBoard;           // (and the board it was asked of)
   Board *pBoard; Arrival pArr[MAXARRIVALS], pKnew[MAXARRIVALS];
   int32_t nextId;
   // the line after the move, pressed as it was decided: its swaps, each from the frame it was judged pressed from (lineAt, 0: as soon as
@@ -486,6 +490,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   memcpy(F.pKnew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.pNknew = F.narr;
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
   q.allowance = allowanceAt(at); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
+  q.noRaise = F.askNoRaise;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
   { int32_t prev = F.prevBits; q.nages = 0; q.window = F.window;
     for (int i = 0; i < F.npress && q.nages < 512; i++) if (at - F.pressFrames[i] < F.window) q.ages[q.nages++] = at - F.pressFrames[i];
@@ -787,6 +792,46 @@ static int threeSaves(const Board *t, int32_t bits, int planned) {
   if (!dieBoard) return 0;
   return planned && lostIn(t, bits, 0);
 }
+// ---------------------------------------------------------------- the countdown
+// THE OPENING THOUGHT THROUGH THE COUNTDOWN: the board does not move while the countdown runs, so the board of the first frame in play
+// is the one shown now, its clock and stop-watch those it will have then. The opening's question is asked of it once, `left` frames before
+// play begins and for CD_SLACK frames after -- its lead, and with it the decision's time, the countdown's -- and answered as any question
+// is: the first frame in play takes the answer, its keys from that frame.
+#define CD_SLACK 4
+#define CD_ASKS 2   // (the opening and the decision after it, on the board its swaps leave -- planned on the layers shown, neither offered a raise: no garbage is shown before play begins, and the raise is the first decision's in play to make on what it shows)
+static void take(void);
+static int frontCountdown(int32_t left) {
+  if (left <= 0) return 0;
+  Board *t = F.truth;
+  int32_t now = t->clock, at = now + left + CD_SLACK;
+  // (THE NEXT ONE ASKED TOO: the opening's answer taken, its keys laid from the first frame in play, and the board they leave at the frame
+  // they end predicted from the first frame's -- asked now, in the countdown's time, as the frame loop would once they were pressed)
+  if (F.countdownAsked && F.countdownAsked < CD_ASKS && F.cdBoard) {
+    F.now = now;
+    take();
+    if (F.pending || F.nextAt <= F.cdBoard->clock) return 0;
+    int32_t hl, hs, next = F.nextAt;
+    if (!predict(F.cdBoard, next, 0, 0, 0, 0, F.pr, &hl, &hs) || F.pr->gameOverClock > 0) { F.countdownAsked = CD_ASKS; return 0; }
+    F.now = now;
+    F.askNoRaise = 1; ask(next, F.pr, hl, hs, F.prPend, F.nprPend); F.askNoRaise = 0;
+    F.countdownAsked++;
+    { char l[96]; snprintf(l, sizeof l, "COUNTDOWN clock %d: the next asked for %d, %d frames ahead", now, next, next - now); flog(l); }
+    return 1;
+  }
+  // (and the last one's answer taken while the countdown runs, as it comes: its keys laid before play begins)
+  if (F.countdownAsked >= CD_ASKS && F.pending) { F.now = now; take(); return 0; }
+  if (F.pending || F.countdownAsked) return 0;
+  if (!F.cdBoard) F.cdBoard = nb_new();
+  if (!F.cdBoard) return 0;
+  copyBoard(F.cdBoard, t);
+  F.cdBoard->inCountdown = 0; F.cdBoard->stopWatchIsRunning = 1; F.cdBoard->riseLock = 0;
+  F.cdBoard->clock = at; F.cdBoard->stopWatch = CD_SLACK - 1;
+  F.now = now;
+  F.askNoRaise = 1; ask(at, F.cdBoard, 0, 0, 0, 0); F.askNoRaise = 0;
+  F.countdownAsked = 1;
+  { char l[96]; snprintf(l, sizeof l, "COUNTDOWN clock %d: the opening asked for %d, %d frames ahead", now, at, at - now); flog(l); }
+  return 1;
+}
 // ---------------------------------------------------------------- one frame
 static int frontFrame(void) {
   Board *t = F.truth;
@@ -967,10 +1012,10 @@ static void statsLine(char *out, int cap) {
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {
   if (F.pending) abortTo(F.pId);
-  Board *keep[4] = { F.truth, F.expect, F.pr, F.pBoard };
+  Board *keep[5] = { F.truth, F.expect, F.pr, F.pBoard, F.cdBoard };
   int32_t nextId = F.nextId;
   memset(&F, 0, sizeof F);
-  F.truth = keep[0] ? keep[0] : nb_new(); F.expect = keep[1] ? keep[1] : nb_new(); F.pr = keep[2] ? keep[2] : nb_new(); F.pBoard = keep[3];
+  F.truth = keep[0] ? keep[0] : nb_new(); F.expect = keep[1] ? keep[1] : nb_new(); F.pr = keep[2] ? keep[2] : nb_new(); F.pBoard = keep[3]; F.cdBoard = keep[4];
   for (int i = 0; i < PLANN; i++) F.planAt[i] = NUL;
   F.nextId = nextId ? nextId : 1;
   F.reaction = reaction; F.ahead = ahead; F.gap = gap; F.jitter = jitter;
