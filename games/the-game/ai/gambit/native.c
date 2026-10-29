@@ -37,9 +37,9 @@ static int32_t gameFrame;   // (the frame the game last published: gn_frame)
 // 1 once the question being answered is no longer wanted: every question up to abortId is not
 int abort_poll(void) { return __atomic_load_n(&abortId, __ATOMIC_SEQ_CST) >= __atomic_load_n(&curQid, __ATOMIC_SEQ_CST) ? 1 : 0; }
 double clock_ms(void) { return hostNowMs(); }
-// THE DECISION'S CLOCK: the engine's work, never the wall's (core/clock.h WORK_PER_MS) -- so a board gets the same answer on any machine
-// and the game is its seed's. The wall stays the guard: a decision the game's frame overtakes is cut there (frameOut) and counted (wallCut),
-// and an answer taken after its own frame is counted by the frame loop (pastFrame).
+// THE DECISION'S CLOCK: in lockstep the engine's work (core/clock.h WORK_PER_MS) -- so a board gets the same answer on any machine and the
+// game is its seed's; in real time the wall's, the time the game gives it. The wall stays the guard: a decision the game's frame overtakes
+// is cut there (frameOut) and counted (wallCut), and an answer taken after its own frame is counted by the frame loop (pastFrame).
 static void flog(const char *s) { hostLog(s); }
 
 #include "front.c"
@@ -174,9 +174,9 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   wallCut = 0;
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
   dueFrame = q->at - 1; clockFrameOut = frameOut;
-  // (the searches' deadline on the work clock: the frames from the question's frame to the one before its move, less one for its
-  // closing work -- clockStart begins the count at 0)
-  double due = imax(1, q->lead - 2) * (1000.0 / 60);
+  // (the searches' deadline: the frames from the question's frame to the one before its move, less one for its closing work -- on the
+  // work clock from 0, clockStart begins the count there; on the wall's from now)
+  double from = gnLockstep ? 0 : t0, due = from + imax(1, q->lead - 2) * (1000.0 / 60);
   if (!hostBoard) hostBoard = nb_new();
   cloneBoard(hostBoard, b);
   memset(&hostQ, 0, sizeof hostQ);
@@ -190,9 +190,9 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   gb_played(q->played);
   // (topped as the question's board is, at its frame -- not as the frame loop saw it when it asked)
   answerQuestion(q->id, q->at, isToppedOut(hostBoard), q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
-                 canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, 0, 0);
+                 canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, from, 0);
   // (the closing work: from the moment it ran out of time to its answer)
-  if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = nowMs() - clockWentOut; }   // (on the work clock: the wall guard's estimate)
+  if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = nowMs() - clockWentOut; }   // (on the decision's clock: the wall guard's estimate)
   Answer *A = &theAnswer;
   memset(out, 0, sizeof *out);
   out->id = q->id; out->epoch = q->epoch; out->at = q->at; out->kind = A->d.kind; out->move = A->d.move; out->play = A->play;
@@ -307,7 +307,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   { int fa, fk; if (hostForce(&fa, &fk)) gb_force(fa, fk); }
   gnReaction = reaction; gnAhead = ahead; gnGap = gap; gnJitter = jitter; gnPlanHealth = planHealth;
   gb_config(reaction, swapGap, cursor);
-  gb_clock_on_work(1);   // (every thread's decisions on the work clock)
+  gb_clock_on_work(gnLockstep);   // (every thread's decisions on the work clock in lockstep, on the wall's in real time)
   if (logPath && *logPath) hostOpenLog(logPath);
   hostCrashHandler();
   static int started;
