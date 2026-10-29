@@ -279,9 +279,7 @@ static double contLostOf(const Judge *J, double give) { return contLostOfLine(J,
 // exactly what it would without it; the thread is held only while the decision writes the window and the pace it reads (lookPause).
 #define LOOK_Q 16
 #define LOOK_N 512
-#define LOOK_MS 400
-#define LOOK_DEPTH 10   // (the decision's own asks 6 deep, 30 wide: a search that ends before its time is up finds nothing more with more time)
-#define LOOK_WIDTH 60
+#define LOOK_MS 120
 typedef struct { uint32_t h; int32_t dt, spent, tap, save; Question q; Board *b; } LookAsk;
 typedef struct { uint32_t h; int32_t set; double lost; } LookAns;   // (lost: frames from the board's own, 1e9 lives)
 static LookAsk lookQ[LOOK_Q]; static int32_t lookQN, lookQTop;   // (a stack: the newest asked first, the oldest let go when full)
@@ -351,7 +349,7 @@ static void lookThread(void) {
     pressTight = s.q.tight; pressTap = s.tap; ncache = 0; lookSaveOwn = s.save;
     clockWork = 0; clockAborted = 0; clockPoll = 0; clockShare = nowMs() + LOOK_MS;
     pressFrom = s.dt; pressSpent = s.spent;
-    Outlived c = outlive(&s.q, HORIZON + REST, REST, LOOK_MS, LOOK_DEPTH, LOOK_WIDTH);
+    Outlived c = outlive(&s.q, HORIZON + REST, REST, LOOK_MS, 6, 30);
     int32_t lost = c.set ? c.lostAt : diesIn(&s.q, HORIZON + REST);
     int held = __atomic_load_n(&lookHold, __ATOMIC_SEQ_CST);
     clockShare = 0; pressFrom = pressSpent = 0;
@@ -385,20 +383,6 @@ static double contBoardLostLine(const Board *e, double give, int32_t spent, int3
   return own;
 }
 static double contBoardLost(const Board *e, double give, int32_t spent) { return contBoardLostLine(e, give, spent, 0, 0); }
-// (THE LINE PLAYED, asked of the look-ahead first: the board it ends on is the one the next decisions' line in progress reaches -- the
-// stack asks newest first)
-static void lookPlayed(const Judge *J) {
-  if (!J || J->hold || J->o.dead || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
-  endNoKeep = 1; asLine(&J->k);
-  const Board *e = lineEnd(J->k.seq, J->k.nseq, J->settled);
-  unLine(); endNoKeep = 0;
-  if (!e) return;
-  int32_t dt = imax(0, e->clock - decQ.b->clock);
-  Question q2 = decQ; q2.b = (Board *)e; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
-  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
-  uint32_t h = lookHash(e, &q2); double d;
-  if (!lookFind(h, &d)) lookAsk(e, &q2, h, dt, J->o.j.spent);
-}
 // THE JUDGING ON EVERY THREAD: the candidates judged on the workers, each from the work the decision had done when the judging began
 // and in the share it had, into a slot of its own with what it adds to the decision's tallies (rank.c dropped, cutWhy, unbroken) --
 // added in candidate order after, so the order is the same whichever thread judged what. The decision's clock is charged the judging's
