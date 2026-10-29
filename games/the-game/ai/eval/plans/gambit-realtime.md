@@ -17,7 +17,7 @@ its whole queue before each decision (decide.c lookPause), so a lockstep score i
 Before lockstep (`32fb0ff4`, Oct 24) every run was real time:
 
 - `adb566a6`, runs 927-930: 93 of 96, pressure 24/24 twice -- on Gambit's own input budget, 900 actions a minute, with the DAS wall
-  rule. Kept as the version `apm900` (`../gambit-versions.txt`; `gambit_from: apm900`).
+  rule. Kept as the version `gambit-900` (`../gambit-versions.txt`; `gambit_from: gambit-900`).
 - `062bd73a`, the standard input budget (456 a minute, the game's): 21 of 96.
 - `92272757`, runs 1019-1022, the best on the standard budget: 70 of 96 (finish 18, big chain 19, pressure 17, build 16).
 
