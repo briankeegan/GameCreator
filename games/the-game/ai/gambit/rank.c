@@ -248,7 +248,8 @@ static int thrownOf(const Judge *J) { return J->hold || J->o.dead ? 0 : J->o.j.b
 // (A FALLBACK: a line that meets an entry of the list after its first and breaks no garbage -- the owner: a mode plays its first entry,
 // builds toward it otherwise, and takes a fallback only where the board dies without it. Of two that live, a fallback ranks after a
 // line that fires nothing (the hold, a set-up toward the first entry) and throws nothing the order counts (63b466be))
-static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
+static int fallbackOf(const Judge *J) { return decF.belowFloor && !J->hold && J->met > 0 && !(J->apBroke > 0); }   // (below the rules'
+// floor only: there the panels a fallback spends are the next break's; above it a fallback clears height the board needs (run 1558))
 static int listKeyOf(const Judge *J) { return fallbackOf(J) ? 1 + J->met : J->met == 0 ? 0 : J->met < 0 ? 1 : 1 + J->met; }
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
