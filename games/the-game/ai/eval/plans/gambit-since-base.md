@@ -45,6 +45,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `db6a28a7` the owner's mode rule, of two lines that live the first entry, then building, then the fallbacks (63b466be) -- build 16 (1558) [dropped: combo_storm 5/8; the first aim met 4.9% of attacks]
 - `5c29d91a` the same below the rules' floor only -- build 17 (1559) [dropped: combo_storm 5/8; the first aim 4.6%. Ranking the fallbacks lower does not make 5-chains: the planner does not find their set-ups]
 - `13985d39` D11, the save where the best line without a three dies within a break's time (1479f155) -- build 17 (1560) [dropped: factory 3/8, four of its losses the window spent]
+- build on main again: 19 (1561) -- combo_storm 6/8, factory 5/8, large_garbage 8/8; three losses the window spent
 
 ## The shortlist for pressure, in the order to try
 
