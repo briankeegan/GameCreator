@@ -356,6 +356,21 @@ void gn_match(void) {
 // last one asked is the same game -- the frame loop asks again after it drops its plans.)
 static int32_t lastClock = NUL;
 // THE COUNTDOWN: the board as the countdown shows it, `left` frames before play -- the opening asked of it once (front.c frontCountdown)
+// THE FRAME PUBLISHED (the one a decision's guard reads, frameOut): the frame played, when it began, the ms a frame takes, the longest
+// burst -- every frame the game plays, the countdown's too
+static void framePublish(int32_t clock) {
+  double t = clock_ms(), per = F.wallPerFrame, last;
+  static int32_t run;
+  __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
+  run = last && t - last < per / 2 ? run + 1 : 0;
+  // (the longest burst within the input window just past, not the longest ever: a hiccup long gone takes no frames from a decision)
+  static int32_t burstAt[64], burstRun[64], nb;
+  if (run > 0) { int k = nb < 64 ? nb++ : 0; if (k == 0 && nb == 64) { for (int i = 1; i < 64; i++) { burstAt[i - 1] = burstAt[i]; burstRun[i - 1] = burstRun[i]; } k = 63; } burstAt[k] = clock; burstRun[k] = run; }
+  int32_t worst = 0, win = F.window > 0 ? F.window : 600;
+  for (int i = 0; i < nb; i++) if (clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
+  __atomic_store_n(&gameBurst, worst, __ATOMIC_SEQ_CST);
+  __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST);
+}
 int gn_countdown(int left, int limit, int window) {
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
@@ -363,6 +378,7 @@ int gn_countdown(int left, int limit, int window) {
   lastClock = clock;
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
+  framePublish(clock);
   if (!workerOn) return 0;
   // (lockstep: the question out answered before the countdown's frame is let go, as every frame in play waits for its own)
   if (gnLockstep) { hostLock(); while (qHas || qBusy || qReset) hostWaitDone(); hostUnlock(); }
@@ -375,17 +391,7 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   lastClock = clock;
   // (the game over, once: what is logged after it is the frame loop asking on a board that no longer plays)
   if (F.truth->gameOver && !F.overLogged) { char l[64]; snprintf(l, sizeof l, "GAMEOVER clock %d", clock); flog(l); F.overLogged = 1; }
-  { double t = clock_ms(), per = F.wallPerFrame, last;
-    static int32_t run;
-    __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
-    run = last && t - last < per / 2 ? run + 1 : 0;
-    // (the longest burst within the input window just past, not the longest ever: a hiccup long gone takes no frames from a decision)
-    static int32_t burstAt[64], burstRun[64], nb;
-    if (run > 0) { int k = nb < 64 ? nb++ : 0; if (k == 0 && nb == 64) { for (int i = 1; i < 64; i++) { burstAt[i - 1] = burstAt[i]; burstRun[i - 1] = burstRun[i]; } k = 63; } burstAt[k] = clock; burstRun[k] = run; }
-    int32_t worst = 0, win = F.window > 0 ? F.window : 600;
-    for (int i = 0; i < nb; i++) if (clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
-    __atomic_store_n(&gameBurst, worst, __ATOMIC_SEQ_CST);
-    __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST); }
+  framePublish(clock);
   // (lockstep: every question asked answered before the frame is played -- its answer then taken on its own frame, as the work clock says)
   if (gnLockstep && workerOn) { hostLock(); while (qHas || qBusy || qReset) hostWaitDone(); hostUnlock(); }
   if (limit > 0) F.limit = limit;
