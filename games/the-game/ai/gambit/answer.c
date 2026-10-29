@@ -501,6 +501,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (d.kind == 1 && P.line && P.line->k.play == PLAY_TOWARD) { towardPlayedN = P.line->k.nseq; for (int i = 0; i < P.line->k.nseq; i++) towardPlayed[i] = P.line->k.seq[i]; }
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
+  lookChosen(P.line);   // (the look-ahead beside: the chosen line's board first)
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
   frontierKeep(FR_SURVIVE, &outKeep, d.kind, d.move, A->hand, A->nhand, qid, 0, 0);   // (and the survival search's: search/outlive.c)
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
@@ -660,7 +661,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (top) for (int i = 0; i < P.ncands && !A->sooner; i++) { const Judge *j = order[i];
     A->sooner = j != top && (proofOf(j) > proofOf(top) || (diesNow(top) && !diesNow(j))); }
   if (A->sooner) L_s(" lessProven=1");   // (the gate, plans/gambit-next.md: a proven line passed over, or dead at once while one offered is not)
-  if (lookAsked || lookHit) { L_s(" look="); L_i(lookAsked); L_s("/"); L_i(lookHit); L_s("/"); L_i(lookUsed); lookAsked = lookHit = lookUsed = 0; }   // (the look-ahead beside, decide.c: boards asked of it, found answered, read as longer)
+  if (P.line == &lookJ) lookPlayedN++;
+  if (lookAsked || lookHit || lookOffered) { L_s(" look="); L_i(lookAsked); L_s("/"); L_i(lookHit); L_s("/"); L_i(lookUsed); L_s("/"); L_i(lookOffered); L_s("/"); L_i(lookPlayedN); lookAsked = lookHit = lookUsed = lookOffered = lookPlayedN = 0; }   // (the look-ahead beside, decide.c: boards asked of it, found answered, read as longer)
   if (vetoAsked) { L_s(" veto="); L_i(vetoed); L_s("/"); L_i(vetoAsked); L_s("/"); L_i(vetoCut); }   // (the reserve veto, decide.c: the place of the line played for its reserve, the boards asked, those the clock cut)
   // (THE PROOF LOST, plans/gambit-next.md the gates: the last decision played a proven line and this one has none -- new: a block shown
   // since; cut: the clock cut the first line's readiness; none: nothing new shown and nothing cut, the proof should have held)
@@ -775,6 +777,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
+  lookPause();   // (a new game's state written: the look-ahead beside held, let go by the next decision)
   breakWalk = LAND_RESERVE;   // (a new game measures its own)
   proofSought = 0; breakOpen = 0; touchDepthNext = TOUCH_DEPTH;
   memset(&nextBlk, 0, sizeof nextBlk); nextBlkAt = 0; lastProven = 0; lastNarr = 0;
@@ -826,6 +829,7 @@ static int32_t modeAt(int32_t at) {
 // A QUESTION ON THE BOARD IN hostQ (hostBoard, its hold and garbage on its way): the answer into theAnswer, the log line at logBuf
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
+  lookPause();   // (the look-ahead beside held while the decision reads its board and writes what it reads: let go in answerTurn)
   decQ = hostQ; decQ.b = hostBoard;
   ncache = 0; cacheGen = __atomic_add_fetch(&decGen, 1, __ATOMIC_RELAXED); rootBuildable = NOT_ASKED;
   carriedResume();
