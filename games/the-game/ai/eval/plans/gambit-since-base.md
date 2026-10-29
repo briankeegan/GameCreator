@@ -22,6 +22,12 @@ played the base's Gambit on the profiles since and lost every game (0/24 against
 - `27ddee63`, `c85a14cb`, `4c7089c6`, `5f23df9b` -- `swapGap` 12 to 0 (no wait after a swap), back and forth; it ended at 0
 - `d9310324`, `24a46a0e` -- the rules' `opener`: big chains (>=8, >=6, >=4) from a game's start until garbage first touches the board
 
+Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526, 1533, 1534):
+
+- `105c0bbe` the countdown plans the opening on the layers shown, no raise offered -- 19 (1536) [kept]
+- `ab031ecf` the opening is idle time, planned with the searches' whole share -- 17 (1537) [kept: it only adds time]
+- `cd09f589` the planner's beam sized by its time, the profile's beam the first pass -- 20 (1538) [kept]
+
 ## The commits
 
 - `954eefa1` 2026-10-24 Gambit: a board is ready only for a break the input window pays for
