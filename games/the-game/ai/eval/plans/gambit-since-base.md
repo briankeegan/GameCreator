@@ -27,6 +27,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `105c0bbe` the countdown plans the opening on the layers shown, no raise offered -- 19 (1536) [kept]
 - `ab031ecf` the opening is idle time, planned with the searches' whole share -- 17 (1537) [kept: it only adds time]
 - `cd09f589` the planner's beam sized by its time, the profile's beam the first pass -- 20 (1538) [kept]
+- `d62e91e0` the judging keeps its measured time, not a quarter -- 17 (1539) [dropped: the searches 257 to 264 ms, the clock cut 0.3% to 1.0%]
 
 ## The commits
 
