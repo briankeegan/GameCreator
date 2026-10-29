@@ -34,7 +34,7 @@ on:
         description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games; the goal is measured on all three)'
         default: '["combo_storm","factory","large_garbage"]'
       gambit_from:
-        description: 'A commit whose Gambit (games/the-game/ai/gambit) is played instead of this one, on these seeds and this harness -- a build before measured again on the same games; empty for this commit'
+        description: 'A commit whose Gambit (games/the-game/ai/gambit) is played instead of this one, on these seeds and this harness -- a build before measured again on the same games -- or a version named in games/the-game/ai/eval/gambit-versions.txt; empty for this commit'
         default: ''
       rounds:
         description: "The rounds played, a JSON list: each round plays every pattern's 8 games again on seeds of its own (round r: seed base + r - 1), so a build is measured on more games than one run holds"
@@ -57,8 +57,11 @@ jobs:
           fetch-depth: 1
       - name: The Gambit of another commit
         if: ${{ inputs.gambit_from != '' }}
+        env:
+          GAMBIT_FROM: ${{ inputs.gambit_from }}
         run: |
-          git fetch -q --depth 1 origin "${{ inputs.gambit_from }}"
+          from=$(awk -v n="$GAMBIT_FROM" '$1 == n { print $2 }' games/the-game/ai/eval/gambit-versions.txt); from=${from:-$GAMBIT_FROM}
+          git fetch -q --depth 1 origin "$from"
           rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
       - name: clang
         timeout-minutes: 10
@@ -98,8 +101,11 @@ jobs:
           fetch-depth: 1
       - name: The Gambit of another commit
         if: ${{ inputs.gambit_from != '' }}
+        env:
+          GAMBIT_FROM: ${{ inputs.gambit_from }}
         run: |
-          git fetch -q --depth 1 origin "${{ inputs.gambit_from }}"
+          from=$(awk -v n="$GAMBIT_FROM" '$1 == n { print $2 }' games/the-game/ai/eval/gambit-versions.txt); from=${from:-$GAMBIT_FROM}
+          git fetch -q --depth 1 origin "$from"
           rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
           echo "::notice title=gambit::the Gambit of ${{ inputs.gambit_from }}"
       - uses: actions/checkout@v4
