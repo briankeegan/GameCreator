@@ -231,8 +231,10 @@ static void onStop(void) {
   __builtin_wasm_memory_atomic_notify(&onDone, 1);
   onLogSlices = onSlices; onLogFound = onFound; onLogKept = 0;
   onLogDeep = 0; for (int i = 0; i < onSeeds.n; i++) onLogDeep = imax(onLogDeep, onSeeds.len[i]);
-  // (handed on only where the decision kept a frontier, found no break, and the thread searched longer than it did -- or found one)
-  if (!onSlices || !onWanted || (!onFound && onSlices * ON_SLICE_MS <= onDecMs)) return;
+  // (handed on only where the decision kept a frontier, found no break, and the thread searched longer than it did, reached deeper than
+  // the frontier it kept, or found one)
+  int keptDeep = 0; for (int i = 0; theKept.set && i < theKept.paths.n; i++) keptDeep = imax(keptDeep, theKept.paths.len[i]);
+  if (!onSlices || !onWanted || (!onFound && onLogDeep <= keptDeep && onSlices * ON_SLICE_MS <= onDecMs)) return;
   // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
   static Paths kept;
   kept.n = 0;
