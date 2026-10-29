@@ -190,7 +190,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   gb_played(q->played);
   // (topped as the question's board is, at its frame -- not as the frame loop saw it when it asked)
   answerQuestion(q->id, q->at, isToppedOut(hostBoard), q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
-                 canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, from, 0);
+                 !q->noRaise && canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, from, 0);
   // (the closing work: from the moment it ran out of time to its answer)
   if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = nowMs() - clockWentOut; }   // (on the decision's clock: the wall guard's estimate)
   Answer *A = &theAnswer;

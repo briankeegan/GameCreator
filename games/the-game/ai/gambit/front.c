@@ -26,6 +26,7 @@ typedef struct {
   int32_t refA, refB, refUntil;              // a pair the press guard refused (a wasted three), its panels' ids, kept out until a frame
   int32_t nages, ages[512], window;          // the input window at the question's frame: how long before it each action inside went down
   int32_t gap;                               // the pace the decision judges with (core/nodes.h paceGap)
+  int32_t noRaise;                           // a raise not offered: the countdown's, asked before any garbage is shown (frontCountdown)
   double ms, posted;
   Arrival arr[MAXARRIVALS];
   Board *b;
@@ -104,6 +105,7 @@ static struct {
   // the question out: its id and frame, the board it was asked of, its raise and garbage, the garbage known when it was asked
   int32_t pending, pId, pEpoch, pAt, pPaced, pHoldLeft, pHoldStarted, pNarr, pNknew;
   int32_t countdownAsked;   // (the opening asked during the countdown: frontCountdown)
+  int32_t askNoRaise;       // (the question asked next offers no raise: ask)
   Board *cdBoard;           // (and the board it was asked of)
   Board *pBoard; Arrival pArr[MAXARRIVALS], pKnew[MAXARRIVALS];
   int32_t nextId;
@@ -552,7 +554,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   memcpy(F.pKnew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.pNknew = F.narr;
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
   q.allowance = allowanceAt(at); q.gap = F.pGap = paceGap(q.allowance, F.limit, F.window); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
-  q.played = F.playedId;
+  q.played = F.playedId; q.noRaise = F.askNoRaise;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
   { int32_t prev = F.prevBits; q.nages = 0; q.window = F.window;
     for (int i = 0; i < F.npress && q.nages < 512; i++) if (at - F.pressFrames[i] < F.window) q.ages[q.nages++] = at - F.pressFrames[i];
@@ -908,7 +910,7 @@ static int threeSaves(const Board *t, int32_t bits, int planned) {
 // play begins and for CD_SLACK frames after -- its lead, and with it the decision's time, the countdown's -- and answered as any question
 // is: the first frame in play takes the answer, its keys from that frame.
 #define CD_SLACK 4
-#define CD_ASKS 2   // (the opening and the decision after it: the raise, then the board it leaves -- the rows it brings in dealt unseen, pa.c UNSEEN_COLOUR, so planned on the layers shown)
+#define CD_ASKS 2   // (the opening and the decision after it, on the board its swaps leave -- planned on the layers shown, neither offered a raise: no garbage is shown before play begins, and the raise is the first decision's in play to make on what it shows)
 static void take(void);
 static int frontCountdown(int32_t left) {
   if (left <= 0) return 0;
@@ -923,7 +925,7 @@ static int frontCountdown(int32_t left) {
     int32_t hl, hs, next = F.nextAt;
     if (!predict(F.cdBoard, next, 0, 0, 0, 0, F.pr, &hl, &hs) || F.pr->gameOverClock > 0) { F.countdownAsked = CD_ASKS; return 0; }
     F.now = now;
-    ask(next, F.pr, hl, hs, F.prPend, F.nprPend);
+    F.askNoRaise = 1; ask(next, F.pr, hl, hs, F.prPend, F.nprPend); F.askNoRaise = 0;
     F.countdownAsked++;
     { char l[96]; snprintf(l, sizeof l, "COUNTDOWN clock %d: the next asked for %d, %d frames ahead", now, next, next - now); flog(l); }
     return 1;
@@ -937,7 +939,7 @@ static int frontCountdown(int32_t left) {
   F.cdBoard->inCountdown = 0; F.cdBoard->stopWatchIsRunning = 1; F.cdBoard->riseLock = 0;
   F.cdBoard->clock = at; F.cdBoard->stopWatch = CD_SLACK - 1;
   F.now = now;
-  ask(at, F.cdBoard, 0, 0, 0, 0);
+  F.askNoRaise = 1; ask(at, F.cdBoard, 0, 0, 0, 0); F.askNoRaise = 0;
   F.countdownAsked = 1;
   { char l[96]; snprintf(l, sizeof l, "COUNTDOWN clock %d: the opening asked for %d, %d frames ahead", now, at, at - now); flog(l); }
   return 1;
