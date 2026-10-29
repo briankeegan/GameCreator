@@ -413,11 +413,15 @@ static double contBoardLost(const Board *e, double give, int32_t spent) { return
 // THE OPTIONS PONDERED: while the decision weighs them, the boards its best LOOK_TOP lines end on asked of the look-ahead -- each a
 // line the next decision may be carrying on, the best line on from its end found by the time it asks (lookOffer)
 #define LOOK_TOP 3
+static Board *lookEndB;
 static const Board *lookEndOf(const Judge *J, Question *q2, int32_t *dt) {
   if (!J || J->hold || J->o.dead) return 0;
-  endNoKeep = 1; asLine(&J->k);
-  const Board *e = lineEnd(J->k.seq, J->k.nseq, J->settled);
-  unLine(); endNoKeep = 0;
+  // (the board as its judging kept it; played out again only where none was kept)
+  if (!endKeepOn) { for (int i = 0; i < ENDKEEP; i++) if (!(endKeepB[i] = nb_new())) return 0; __atomic_store_n(&endKeepOn, 1, __ATOMIC_RELEASE); }
+  if (!lookEndB) lookEndB = nb_new();
+  const Board *e = 0;
+  if (lookEndB && endKeepGet(J->o.endHb, lookEndB)) e = lookEndB;
+  else { endNoKeep = 1; asLine(&J->k); e = lineEnd(J->k.seq, J->k.nseq, J->settled); unLine(); endNoKeep = 0; }
   if (!e) return 0;
   *dt = imax(0, e->clock - decQ.b->clock);
   *q2 = decQ; q2->b = (Board *)e; q2->holdLeft = 0; q2->holdStarted = 0; q2->narr = 0;

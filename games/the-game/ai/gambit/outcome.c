@@ -144,6 +144,27 @@ static uint32_t endCellsHash(const Board *b) {
   #undef EH
   return h ? h : 1;
 }
+// (AND THE BOARD ITSELF, kept as it is judged on whichever thread judges it: the look-ahead beside is handed the boards the best
+// options end on from here, never judged again for it -- decide.c lookPonder. Its boards are made on the decision's thread first:
+// endKeepOn)
+#define ENDKEEP 256
+static Board *endKeepB[ENDKEEP]; static uint32_t endKeepH[ENDKEEP]; static int32_t endKeepOn, endKeepLock;
+static void endKeepPut(uint32_t hb, const Board *eb) {
+  if (!__atomic_load_n(&endKeepOn, __ATOMIC_ACQUIRE) || !hb) return;
+  int k = (int)(hb % ENDKEEP);
+  while (__atomic_exchange_n(&endKeepLock, 1, __ATOMIC_ACQUIRE)) {}
+  if (endKeepH[k] != hb) { cloneBoard(endKeepB[k], eb); endKeepH[k] = hb; }
+  __atomic_store_n(&endKeepLock, 0, __ATOMIC_RELEASE);
+}
+// (the board kept for hb copied into `into`: 1 found)
+static int endKeepGet(uint32_t hb, Board *into) {
+  if (!__atomic_load_n(&endKeepOn, __ATOMIC_ACQUIRE) || !hb) return 0;
+  int k = (int)(hb % ENDKEEP), got = 0;
+  while (__atomic_exchange_n(&endKeepLock, 1, __ATOMIC_ACQUIRE)) {}
+  if (endKeepH[k] == hb) { cloneBoard(into, endKeepB[k]); got = 1; }
+  __atomic_store_n(&endKeepLock, 0, __ATOMIC_RELEASE);
+  return got;
+}
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
 // THE FLOOR SPENT, the one test every reader asks (the shared line check, the rank's keep): a line that nets material away -- the
@@ -203,7 +224,7 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
     o.panelsLeft = -1; o.nearAfter = -1; o.endNear = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.topLeft = -1;
     if (whole) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
-      if (eb) { o.endHb = endCellsHash(eb); o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.topLeft = topOn(eb); }
+      if (eb) { o.endHb = endCellsHash(eb); endKeepPut(o.endHb, eb); o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.topLeft = topOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
