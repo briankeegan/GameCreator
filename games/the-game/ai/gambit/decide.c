@@ -716,12 +716,12 @@ static int ranked(const Read *R, const Found *S) {
         else if (!bk || lostOf(J) > lostOf(bk)) bk = J;
       }
       if (bw && bk) {
-        // (the three's side first, with the time; then the side without, bounded below by what is known already -- the best line's own
-        // loss, the survival line's when it wastes none: a three that does not beat that is not needed, and only
-        // otherwise is the side without searched, in what time is left)
+        // (the three's side first, in half the time there is, so the side without has the other half; then the side without, bounded
+        // below by what is known already -- the best line's own loss, the survival line's when it wastes none: a three that does not beat
+        // that is not needed, and only otherwise is the side without searched)
         int have = svLost >= 0 && svClean;
         double kLow = lostOf(bk); if (have && svLost > kLow) kLow = svLost;
-        double give = timeLeftMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
+        double give = (timeLeftMs() - SAVE_KEEP_MS) / 2; if (give > SAVE_MS) give = SAVE_MS;
         double cw = contLostOf(bw, give), ck = -1;
         if (cw >= 0 && kLow >= cw) ck = kLow;
         else if (cw >= 0) {
