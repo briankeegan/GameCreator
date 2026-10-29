@@ -364,6 +364,8 @@ int gn_countdown(int left, int limit, int window) {
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
   if (!workerOn) return 0;
+  // (lockstep: the question out answered before the countdown's frame is let go, as every frame in play waits for its own)
+  if (gnLockstep) { hostLock(); while (qHas || qBusy || qReset) hostWaitDone(); hostUnlock(); }
   return frontCountdown(left);
 }
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop) {

@@ -908,10 +908,29 @@ static int threeSaves(const Board *t, int32_t bits, int planned) {
 // play begins and for CD_SLACK frames after -- its lead, and with it the decision's time, the countdown's -- and answered as any question
 // is: the first frame in play takes the answer, its keys from that frame.
 #define CD_SLACK 4
+#define CD_ASKS 2   // (the opening and the decision after it: the raise, then the board the raise leaves)
+static void take(void);
 static int frontCountdown(int32_t left) {
-  if (F.pending || F.countdownAsked || left <= 0) return 0;
+  if (left <= 0) return 0;
   Board *t = F.truth;
   int32_t now = t->clock, at = now + left + CD_SLACK;
+  // (THE NEXT ONE ASKED TOO: the opening's answer taken, its keys laid from the first frame in play, and the board they leave at the frame
+  // they end predicted from the first frame's -- asked now, in the countdown's time, as the frame loop would once they were pressed)
+  if (F.countdownAsked && F.countdownAsked < CD_ASKS && F.cdBoard) {
+    F.now = now;
+    take();
+    if (F.pending || F.nextAt <= F.cdBoard->clock) return 0;
+    int32_t hl, hs, next = F.nextAt;
+    if (!predict(F.cdBoard, next, 0, 0, 0, 0, F.pr, &hl, &hs) || F.pr->gameOverClock > 0) { F.countdownAsked = CD_ASKS; return 0; }
+    F.now = now;
+    ask(next, F.pr, hl, hs, F.prPend, F.nprPend);
+    F.countdownAsked++;
+    { char l[96]; snprintf(l, sizeof l, "COUNTDOWN clock %d: the next asked for %d, %d frames ahead", now, next, next - now); flog(l); }
+    return 1;
+  }
+  // (and the last one's answer taken while the countdown runs, as it comes: its keys laid before play begins)
+  if (F.countdownAsked >= CD_ASKS && F.pending) { F.now = now; take(); return 0; }
+  if (F.pending || F.countdownAsked) return 0;
   if (!F.cdBoard) F.cdBoard = nb_new();
   if (!F.cdBoard) return 0;
   copyBoard(F.cdBoard, t);

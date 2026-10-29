@@ -248,14 +248,12 @@ function GambitNative:think(stack, sources, view)
   -- (the countdown: once the cursor has come to rest, the opening asked of the board as play will begin with it -- gn_countdown)
   if counting(stack) then
     local left = stack.countdown_timer
-    if left and left > 0 and left <= COUNTDOWN_ASK and not self.countdownAsked then
-      self.countdownAsked = true
+    if left and left > 1 and left <= COUNTDOWN_ASK then
       self:load(stack)
       C.gn_countdown(left, self.inputs.limit or 0, self.inputs.window or 0)
     end
     return idle
   end
-  self.countdownAsked = nil   -- (in play: the next countdown asks again)
   if not stack.stopWatchIsRunning or stack:game_ended() then return idle end
   local t0 = ThinkBudget.now()
   self:load(stack)
