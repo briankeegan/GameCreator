@@ -42,7 +42,7 @@ typedef struct {
   int32_t lvU, lvG;                       // a level swap (0: none)
   int32_t haveRl, rlN, rl[2], rlAt;
   int32_t nstart; XLine start[MAXSTARTS];  // chains begun: a swap that starts a clear, and the links its fall is continued by
-  int32_t tried, wide; double idleMs, searchMs;   // (wide: the beams planned again wider with time over, and kept)
+  int32_t tried, wide; double idleMs, searchMs, planShare, planFirst;   // (wide: the passes planned again with time over, and kept; the planner's share, and what its first pass took)
 } Found;
 #define READY_LINE_MS 120
 // whether a list asks for a chain at all
@@ -182,16 +182,24 @@ static void searchAll(const Read *R, Found *S) {
     S->tried++;
     PlanOpts po = planOptsOf(R, planSplit ? &planHalfA : &R->guides, ms);
     double planEnd = nowMs() + ms;
-    plan(&decQ, &po, &S->ap); S->haveAp = 1;
-    // (THE WHOLE TIME PLANNED: a beam done with time over is planned again twice as wide -- the narrower one's lines among its own --
-    // and kept only where it finished in its time; one that would not finish in what is left is not begun)
-    static LOCAL Plan wide;
-    while (po.width * 2 <= PLAN_WIDE_MAX && po.pool * 2 <= PLAN_POOL && planEnd - nowMs() > 2.5 * (S->ap.ms > 1 ? S->ap.ms : 1)) {
-      po.width *= 2; po.pool *= 2; po.ms = planEnd - nowMs();
+    plan(&decQ, &po, &S->ap); S->haveAp = 1; S->planShare = ms; S->planFirst = S->ap.ms;
+    // (THE BEAM SIZED BY THE TIME: the profile's beam is the first pass; a pass done with time over is planned again from its own best
+    // lines (its seeds), deeper and as much wider as the time left pays for at the pass's own rate -- each pass holds the last one's
+    // lines, so is never the worse -- and kept only where it finished in its time)
+    static LOCAL Plan wide; static LOCAL Paths passSeeds, passOut;
+    while (!clockOut()) {
+      double left = planEnd - nowMs(), last = S->ap.ms > 1 ? S->ap.ms : 1;
+      int32_t depth = imin(po.depth + 1, PLAN_SEQ - 1);
+      int32_t width = (int32_t)(po.width * (left / (1.3 * last)) * po.depth / depth);
+      if (width > PLAN_WIDE_MAX) width = PLAN_WIDE_MAX;
+      if (width < po.width) break;
+      passSeeds = planOut; passOut = planOut;
+      PlanOpts pw = po; pw.width = width; pw.depth = depth; pw.pool = imin(PLAN_POOL, po.pool * width / po.width); pw.ms = left; pw.seeds = &passSeeds;
       double t = nowMs();
-      plan(&decQ, &po, &wide);
-      if (nowMs() - t >= po.ms - 1 || clockOut()) break;
-      wide.ms = nowMs() - t; S->ap = wide; S->wide++;
+      plan(&decQ, &pw, &wide);
+      if (nowMs() - t >= pw.ms - 1 || clockOut()) { planOut = passOut; break; }
+      wide.ms = nowMs() - t; S->ap = wide; S->wide++; po = pw;
+      if (width == PLAN_WIDE_MAX && depth == PLAN_SEQ - 1) break;
     }
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
   }
