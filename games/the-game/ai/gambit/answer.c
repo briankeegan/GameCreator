@@ -355,7 +355,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
   clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
-  double tJudge = nowMs();
   int n = ranked(&R, &S);
   // (the floor's raise gives way to nothing: a low stack is raised, and the break it holds ready is made once it has risen (the owner)
   // -- the rows raised are the ones that leave a break once everything lands, decide.c read)
@@ -433,7 +432,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // the calm board's)
   A->urgent = (P.line && P.line->k.extend) || popLeft(decQ.b) > 0 || cascadeLive(decQ.b) ||
               (d.kind == 0 && top && top->hold && top->o.lives && top->o.lostAt != FOREVER);
-  judgedOf(nowMs() - tJudge);   // (what the judging took, for the next decisions' keep: propose.c judgeKeep)
   // THE LOG LINE
   const Rule *rule = &theTables.r[R.rule];
   L_s("GAMBITD "); L_i(at); L_s(" @"); L_i(rule->name); L_s(" play="); L_play(P.name);
@@ -609,7 +607,6 @@ EXPORT(gb_new_game) void gb_new_game(void) {
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
-  njudged = judgedAt = 0;   // (a new game's judgings measured afresh)
   memset(theIntents, 0, sizeof theIntents);
   memset(&thePlanKept, 0, sizeof thePlanKept);
   gb_back(0, 0, 0, 0, 0, 0, 0);
@@ -664,7 +661,7 @@ static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, 
   hostTopped = topped;
   Opp o = { oppHas, oppOut, oppTopKnown, oppTop, oppStopKnown, oppStop }; theOpp = o;
   canRaiseNow = canRaise;
-  C2.due = due; C2.t0 = t0; C2.margin = margin; C2.keep = judgeKeep();
+  C2.due = due; C2.t0 = t0; C2.margin = margin;
   clockStart(due ? due - margin : 0);
   decF.timeLeft = -1;   // (readiness is asked while the searches have time left, as each outcome finds it)
   answerTurn(qid, at, allowanceKnown, allowance, lineFrom, linePressed);
