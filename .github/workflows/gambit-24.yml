@@ -16,8 +16,8 @@ on:
         description: 'A game survived this many frames counts as survived and ends (21600 = six minutes)'
         default: '21600'
       panel_ref:
-        description: 'The panel-game branch with AppDriver PA_SURVIVOR and trainingloop'
-        default: 'claude/newsey-game-ask-qa8u5e'
+        description: 'The panel-game commit or branch the games play on (default: the one real-time play was measured on, before lockstep)'
+        default: '17ecc69372afe84fcc9181c4309587201202a266'
       report_run:
         description: 'A past run of this workflow: its games written up again, nothing played'
         default: ''
@@ -62,13 +62,16 @@ jobs:
           fetch-depth: ${{ inputs.gambit_from != '' && '0' || '1' }}
       - name: The Gambit of another commit
         if: ${{ inputs.gambit_from != '' }}
+        env:
+          GAMBIT_FROM: ${{ inputs.gambit_from }}
         run: |
-          rm -rf games/the-game/ai/gambit && git checkout "${{ inputs.gambit_from }}" -- games/the-game/ai/gambit
+          from=$(awk -v n="$GAMBIT_FROM" '$1 == n { print $2 }' games/the-game/ai/eval/gambit-versions.txt); from=${from:-$GAMBIT_FROM}
+          rm -rf games/the-game/ai/gambit && git checkout "$from" -- games/the-game/ai/gambit
           echo "::notice title=gambit::the Gambit of ${{ inputs.gambit_from }}"
       - uses: actions/checkout@v4
         with:
           repository: briankeegan/panel-game
-          ref: ${{ inputs.panel_ref || 'claude/newsey-game-ask-qa8u5e' }}
+          ref: ${{ inputs.panel_ref || '17ecc69372afe84fcc9181c4309587201202a266' }}
           path: panel-game
           fetch-depth: 1
       - uses: actions/setup-node@v4

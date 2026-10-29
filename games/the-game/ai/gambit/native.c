@@ -157,8 +157,10 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   memset(&hostQ, 0, sizeof hostQ);
   hostQ.b = hostBoard; hostQ.holdLeft = q->holdLeft; hostQ.holdStarted = q->holdStarted; hostQ.tight = 0;
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
+  gb_refused(q->refA, q->refB);
+  hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
-                 canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
+                 !q->noRaise && canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
   // (the closing work: from the moment it ran out of time to its answer)
   if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
   Answer *A = &theAnswer;
@@ -194,6 +196,10 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   // (a line the break search said breaks and the judge says does not: its board, rate-limited, for replaying both on it -- GAMBITU)
   static int32_t lastU = NUL;
   if (unbroken.set && (lastU == NUL || q->at - lastU >= 120 || q->at < lastU)) { lastU = q->at; dumpBoard("GAMBITU", q->at, hostBoard, hostQ.arr, hostQ.narr); }
+  // (a line played lost a break's time sooner than one offered: its board, rate-limited, for the checks' questions -- GAMBITS; test/main.c
+  // fails any such answer)
+  static int32_t lastS = NUL;
+  if (A->sooner && (lastS == NUL || q->at - lastS >= 60 || q->at < lastS)) { lastS = q->at; dumpBoard("GAMBITS", q->at, hostBoard, hostQ.arr, hostQ.narr); }
   ringKeep(q->at);
 }
 // THE LAST BOARDS: every question's board and garbage on its way, the last RINGN decisions kept, written out when the match ends (GAMBITL lines,
@@ -293,29 +299,46 @@ void gn_match(void) {
   hostUnlock();
   if (!workerOn) { workerOn = 1; hostThread(workerMain); }
 }
+// THE FRAME PUBLISHED (the one a decision's guard reads, frameOut): the frame played, when it began, the ms a frame takes, the longest
+// burst -- every frame the game plays, the countdown's too
+static int32_t lastClock = NUL;
+static void framePublish(int32_t clock) {
+  double t = clock_ms(), per = F.msPerFrame, last;
+  static int32_t run;
+  __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
+  run = last && t - last < per / 2 ? run + 1 : 0;
+  // (the longest burst within the input window just past, not the longest ever: a hiccup long gone takes no frames from a decision)
+  static int32_t burstAt[64], burstRun[64], nb;
+  if (run > 0) { int k = nb < 64 ? nb++ : 0; if (k == 0 && nb == 64) { for (int i = 1; i < 64; i++) { burstAt[i - 1] = burstAt[i]; burstRun[i - 1] = burstRun[i]; } k = 63; } burstAt[k] = clock; burstRun[k] = run; }
+  int32_t worst = 0, win = F.window > 0 ? F.window : 600;
+  for (int i = 0; i < nb; i++) if (clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
+  __atomic_store_n(&gameBurst, worst, __ATOMIC_SEQ_CST);
+  __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST);
+}
+// THE COUNTDOWN (lua/GambitNative.lua, the frames before play): the opening asked on the layers shown (front.c frontCountdown)
+int gn_countdown(int left, int limit, int window) {
+  if (nb_load(F.truth)) return -1;
+  int32_t clock = F.truth->clock;
+  if (lastClock != NUL && clock < lastClock) gn_match();
+  lastClock = clock;
+  if (limit > 0) F.limit = limit;
+  if (window > 0) F.window = window;
+  framePublish(clock);
+  if (!workerOn) return 0;
+  return frontCountdown(left);
+}
 // A frame in play: the board in the engine's io (the host wrote it, nb_io_head / nb_io_body), the telegraphs in gn_tele, the input
 // budget's limit and window and the frames ago each key inside it went down (gn_ages), and the opponent. The keys to press, or -1.
 // (a clock behind the last frame's is a game begun again without gn_match: begun so. A question asked for a frame sooner than the
 // last one asked is the same game -- the frame loop asks again after it drops its plans.)
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop) {
-  static int32_t lastClock = NUL;
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
   if (lastClock != NUL && clock < lastClock) gn_match();
   lastClock = clock;
   // (the game over, once: what is logged after it is the frame loop asking on a board that no longer plays)
   if (F.truth->gameOver && !F.overLogged) { char l[64]; snprintf(l, sizeof l, "GAMEOVER clock %d", clock); flog(l); F.overLogged = 1; }
-  { double t = clock_ms(), per = F.msPerFrame, last;
-    static int32_t run;
-    __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
-    run = last && t - last < per / 2 ? run + 1 : 0;
-    // (the longest burst within the input window just past, not the longest ever: a hiccup long gone takes no frames from a decision)
-    static int32_t burstAt[64], burstRun[64], nb;
-    if (run > 0) { int k = nb < 64 ? nb++ : 0; if (k == 0 && nb == 64) { for (int i = 1; i < 64; i++) { burstAt[i - 1] = burstAt[i]; burstRun[i - 1] = burstRun[i]; } k = 63; } burstAt[k] = clock; burstRun[k] = run; }
-    int32_t worst = 0, win = F.window > 0 ? F.window : 600;
-    for (int i = 0; i < nb; i++) if (clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
-    __atomic_store_n(&gameBurst, worst, __ATOMIC_SEQ_CST);
-    __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST); }
+  framePublish(clock);
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
   F.npress = 0;

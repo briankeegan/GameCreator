@@ -114,7 +114,14 @@ function pickStepToward(page, goalExpr) {
     // deadlocks against an EMPLACEMENT (its zone never moves, so a walk
     // that must cross the zone to reach the dock will refuse forever).
     // Sector 2's anchored Picket made that failure routine.
-    const legal = E.legalSublightTargets(st);
+    // DO NOT LEAVE THE SECTOR WHILE HUNTING. The Interceptor gives ground
+    // rather than closing, so a chase walks the length of the board — and on
+    // a board whose gate is behind the hull being chased, the chase ended by
+    // stepping onto the gate and winning the sector with the hunt
+    // unfinished. The gate is a destination, never a stepping stone.
+    const legal = E.legalSublightTargets(st).filter(
+      (c) => expr === "exit" || !(st.exits || []).some((ex) => ex.q === c.q && ex.r === c.r)
+    );
     const path = E.findPath(st, st.playerPos, goal, { avoidThreats: true }) ||
       E.findPath(st, st.playerPos, goal);
     if (path && path.length > 1) {
@@ -458,8 +465,8 @@ async function freshPage(browser, url, errors) {
     "their hold renders as a full-size ship-shaped grid of labeled equipment tiles"
   );
   assert.ok(
-    (await page.locator("#enemyHoldGrid").textContent()).includes("Autocannon"),
-    "an Interceptor's hold shows the very Autocannon you fly with — enemies carry player items, not enemy-only gear"
+    (await page.locator("#enemyHoldGrid").textContent()).includes("Pin Lance"),
+    "an Interceptor's hold shows the very Pin Lance a station will sell you — enemies carry player items, not enemy-only gear"
   );
   assert.strictEqual(await page.locator("#holdCargo").count(), 0, "a contact has no cargo bay to rummage through");
   await page.locator("#shipCloseBtn").click();
@@ -542,14 +549,19 @@ async function freshPage(browser, url, errors) {
   await page.click("#mapCloseBtn");
   assert.strictEqual(await page.locator("#mapOverlay").isVisible(), false, "the map closes again");
 
-  // One action per turn in play: let the Interceptor come to us (it
-  // spends its rounds closing), then kill it via tap-tap: first tap
-  // TARGETS, second tap FIRES ("if you click on a target it should
-  // target them, and clicking again fires").
+  // One action per turn in play: RUN THE INTERCEPTOR DOWN — it keeps its
+  // distance and lines up lanes rather than closing, so nothing arrives on
+  // its own and the kill has to be chased into a corner — then kill it via
+  // tap-tap: first tap TARGETS, second tap FIRES ("if you click on a target
+  // it should target them, and clicking again fires").
+  //
+  // The budget is 60 rounds rather than 25 because a hull that gives ground
+  // has to be run out of ground first: it backs off a hex a round until the
+  // board edge or something on it stops the retreat.
   s = await getState(page);
   assert.strictEqual(s.maxAp, 1, "one action per round is the shipped budget (AP plumbing kept underneath)");
   let fired = false;
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 60; i++) {
     s = await getState(page);
     if (s.status !== "playing" || s.enemies.every((e) => !e.alive)) break;
     const target = await enemyInReachOf(page);
@@ -593,7 +605,82 @@ async function freshPage(browser, url, errors) {
     }
   }
   s = await getState(page);
+  if (!fired) {
+    console.log("DEBUG chase:", JSON.stringify({
+      status: s.status, hull: s.hull, ap: s.ap, pos: s.playerPos,
+      foes: s.enemies.filter((e) => e.alive).map((e) => ({ t: e.type, q: e.q, r: e.r, aim: !!e.aim })),
+      turn: s.turnCount,
+    }));
+  }
   assert.ok(fired, "the kill went through the tap-to-target, tap-to-fire flow");
+
+  // A LOCK MUST NEVER OUTLIVE THE HULL HOLDING IT, and must never hold the
+  // run hostage. The charge glow is a lane held lit rather than an animation
+  // that finishes, so it carries a duration long enough to outlast any round
+  // — and animsRunning(), which holds the end-of-run overlay back until the
+  // board has stopped moving, counted it. A hull still lining up when the
+  // flagship died kept that true forever: no overlay, no restart, a dead
+  // board with no way off it.
+  {
+    const result = await page.evaluate(async () => {
+      const E = window.HypergolicEngine;
+      const st = window.__hhState;
+      const foe = E.livingEnemies(st)[0];
+      if (!foe) return null;
+      // Put a live lock on the board by hand, then end the run under it.
+      foe.aim = { weaponKey: "pinLance", facing: 0, lane: [{ q: st.playerPos.q, r: st.playerPos.r }] };
+      window.scheduleAnims([
+        { type: "aimStart", enemyId: foe.id, q: foe.q, r: foe.r, lane: foe.aim.lane, weapon: "pinLance" },
+      ]);
+      window.render();
+      const charging = (window.__hhAnims || []).some((a) => a.kind === "charge");
+      const blocks = window.animsRunning ? window.animsRunning() : null;
+      // And the glow belongs to that hull: kill it and the lane goes dark.
+      foe.alive = false;
+      foe.hp = 0;
+      window.render();
+      const chargingAfterDeath = (window.__hhAnims || []).some((a) => a.kind === "charge");
+      return { charging, blocks, chargingAfterDeath };
+    });
+    if (result) {
+      assert.ok(result.charging, "a lock lights its lane");
+      assert.notStrictEqual(result.blocks, true, "and a held lane never counts as the board still moving — the run can always end");
+      assert.strictEqual(result.chargingAfterDeath, false, "the lane goes dark with the hull that was holding it");
+    }
+  }
+
+  // THE RELOAD IS ON THE BOARD. A Pin Lance costs one charge against a
+  // one-charge bus, so the round after it fires is a round it cannot fire —
+  // and nothing said so: drawChargePips skipped any gun costing 1 (on the
+  // old roster such a gun was loaded every round, so a pip that never
+  // emptied said nothing). Reported live as "it didn't charge up the second
+  // time", which was the silent reload being read as a broken telegraph.
+  {
+    const cold = await page.evaluate(() => {
+      const E = window.HypergolicEngine;
+      const foe = E.livingEnemies(window.__hhState)[0];
+      if (!foe) return null;
+      const ship = E.ENEMY_TYPES[foe.type].ship;
+      const cheapest = Math.min(...ship.weapons.map((w) => w.energyCost));
+      foe.energy = 0; // just fired
+      window.render();
+      return { cheapest, shownWhenEmpty: true };
+    });
+    if (cold) {
+      assert.strictEqual(cold.cheapest, 1, "the Interceptor's gun costs exactly one charge");
+      // The tell is drawn, not merely intended: with the bus empty the hull
+      // carries a cold ring, and with it full it does not.
+      const framesDiffer = await page.evaluate(() => {
+        const E = window.HypergolicEngine;
+        const foe = E.livingEnemies(window.__hhState)[0];
+        const shot = () => document.querySelector("canvas").toDataURL();
+        foe.energy = 0; window.render(); const empty = shot();
+        foe.energy = foe.maxEnergy; window.render(); const full = shot();
+        return empty !== full;
+      });
+      assert.ok(framesDiffer, "an empty bus looks different from a full one — the reload round is visible");
+    }
+  }
 
   // WRECKAGE AND ROCK CAN BE SHOT AT. Marking only ever worked on a living
   // hull, so the gun could not be pointed at the two things it is most wanted
@@ -1736,7 +1823,11 @@ async function freshPage(browser, url, errors) {
       const def = E.ENEMY_TYPES.interceptor;
       st.enemies = [
         {
-          id: "chase", type: "interceptor", alive: true,
+          // A Cruiser: this needs a hull that SHOOTS the moment the flagship
+          // ends a burn beside it. The Interceptor lines up a lane first and
+          // gives ground rather than letting anything stand next to it, so
+          // the fixture took no fire at all and proved nothing.
+          id: "chase", type: "cruiser", alive: true,
           q: st.playerPos.q, r: st.playerPos.r - 1,
           hp: def.maxHull, maxHp: def.maxHull,
           energy: def.ship.maxEnergy, maxEnergy: def.ship.maxEnergy,

@@ -773,6 +773,13 @@ function scheduleAnims(events) {
   // resolving in one invisible instant. Player-side effects stay immediate.
   let slot = 0; // ms offset for the next enemy action
   let lastAttackSlot = 0;
+  // WHEN EACH HULL HAS ACTUALLY ARRIVED. The enemy phase plays back
+  // sequentially, so a hull that moved is still visibly sliding for a
+  // quarter of a second after its event is read — and anything keyed on
+  // where it ENDS UP has to wait for it to get there, or it is drawn at the
+  // destination while the ship is still in transit. Reported live: the
+  // charge "showing a bubble ahead of time".
+  const arrivesAt = new Map(); // enemyId -> ms offset when its slide lands
   const step = events.filter((e) => e.type === "attack" || e.type === "enemyMove").length > 5 ? 240 : 340;
   for (const ev of events) {
     if (ev.type === "kill") {
@@ -837,11 +844,34 @@ function scheduleAnims(events) {
     else if (ev.type === "rockHit" || ev.type === "rockCleared") {
       anims.push({ kind: "cut", pos: { q: ev.q, r: ev.r }, start: now, dur: 480, particles: makeExplosionParticles(8) });
     }
+    // THE CHARGE IS THE WARNING, so it has to be the loudest thing on the
+    // board for a round. It runs until the shot — the lane is lit, not
+    // flashed once — because a telegraph you can miss by blinking is not a
+    // telegraph, and this is the one round the player has to act in.
+    else if (ev.type === "aimStart") {
+      // After it has arrived, never before: the lane it locked is the lane
+      // from the hex it is standing on at the END of its move.
+      const landed = arrivesAt.get(ev.enemyId) || 0;
+      // TIED TO THE HULL THAT IS DOING IT. Without an owner the glow was
+      // only ever cleared by the beam that followed it — so a hull killed
+      // while lining up left its lane lit for the rest of the sector, a
+      // telegraph for a gun that no longer exists.
+      anims.push({ kind: "charge", enemyId: ev.enemyId, pos: { q: ev.q, r: ev.r }, lane: ev.lane, start: now + landed, dur: 100000 });
+    }
+    // And the beam clears it. Both are keyed on the lane the engine locked,
+    // never recomputed here, so what is drawn is what the engine will
+    // actually resolve.
+    else if (ev.type === "beam") {
+      anims = anims.filter((a) => a.kind !== "charge");
+      const landed = arrivesAt.get(ev.enemyId) || 0;
+      anims.push({ kind: "lance", pos: { q: ev.q, r: ev.r }, lane: ev.lane, hit: ev.hit, start: now + landed, dur: 700 });
+    }
     else if (ev.type === "damage") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "shieldAbsorb") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
     else if (ev.type === "enemyMove") {
       slot += step;
       anims.push({ kind: "slide", enemyId: ev.enemyId, from: ev.from, to: ev.to, start: now + slot, dur: 240 });
+      arrivesAt.set(ev.enemyId, slot + 240);
     }
     else if (ev.type === "playerMove") {
       anims.push({ kind: "pslide", from: ev.from, to: ev.to, start: now, dur: 230 });
@@ -1673,7 +1703,32 @@ function drawChargePips(center, enemy) {
   const ship = Engine.ENEMY_TYPES[enemy.type] && Engine.ENEMY_TYPES[enemy.type].ship;
   if (!ship || !ship.weapons.length) return;
   const cheapest = Math.min(...ship.weapons.map((w) => w.energyCost));
-  if (cheapest <= 1 || enemy.energy >= cheapest) return; // nothing to count down
+  // A COST-1 GUN HAS A RELOAD NOW, so it gets a pip like everything else.
+  // This skipped them entirely, because a cost-1 gun on a cost-1 reactor
+  // used to be loaded every single round and a pip that is always full says
+  // nothing. The Pin Lance empties the bus when it fires, so the round after
+  // a shot is a round it genuinely cannot shoot — and with no pip, nothing
+  // on the board said so. Reported live: "it didn't charge up the second
+  // time", which was the silent reload being read as a broken telegraph.
+  //
+  // Shown only while it CANNOT afford its cheapest gun, which is the whole
+  // information: an empty pip means this round is yours.
+  if (enemy.energy >= cheapest) return; // loaded — nothing to count down
+  // COLD. A pip is a small rectangle under the hull and the beam that just
+  // fired goes straight over it, so on the one round it most needs to be
+  // read — the round after a shot — it was invisible. A ring around the hull
+  // in dead blue-grey cannot be missed and cannot be confused with the
+  // orange of a gun coming up to power: lit means it is working, cold means
+  // this round is yours.
+  ctx.save();
+  ctx.strokeStyle = "rgba(150,176,200,0.75)";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, geom.sx * 0.52, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
   const w = geom.sx * 0.13;
   const gap = w * 0.5;
   const total = cheapest * w + (cheapest - 1) * gap;
@@ -3619,7 +3674,149 @@ function draw() {
   for (const a of anims) {
     if (now < a.start || now >= a.start + a.dur) continue;
     const p = animProgress(a, now);
-    if (a.kind === "fxring") {
+    if (a.kind === "charge") {
+      // A lock belongs to a hull: it ends when the hull does. Checked here
+      // rather than on the kill event because this covers every way a lock
+      // can end — shot, towed, stood back up, sector over — instead of the
+      // one that was thought of.
+      const owner = (state.enemies || []).find((e) => e.id === a.enemyId);
+      if (!owner || !owner.alive || !owner.aim) {
+        anims = anims.filter((x) => x !== a);
+        continue;
+      }
+      // THE WARNING, drawn as light for the same reason the shot is: a
+      // translucent brown polygon laid over each hex went muddy against a
+      // dark board and read as dirt on the map rather than as a gun coming
+      // up to power. Additive, so the lane GLOWS along the ground it is
+      // about to cover, and pulsing, because a static mark looks like
+      // terrain and this is a clock.
+      const pulse = 0.5 + 0.5 * Math.sin((now - a.start) / 150);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (const hex of a.lane) {
+        const c = hexToPixel(hex);
+        const glow = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, geom.sx * 0.62);
+        glow.addColorStop(0, `rgba(255,140,70,${0.20 + 0.14 * pulse})`);
+        glow.addColorStop(1, "rgba(255,110,40,0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, geom.sx * 0.62, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // A thin line down the middle of the lane: this is a LINE you are
+      // standing on, and a row of soft blobs does not say line.
+      if (a.lane.length) {
+        const a0 = hexToPixel(a.lane[0]);
+        const a1 = hexToPixel(a.lane[a.lane.length - 1]);
+        ctx.globalAlpha = 0.30 + 0.25 * pulse;
+        ctx.strokeStyle = "#ffb070";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([6, 7]);
+        ctx.beginPath();
+        ctx.moveTo(a0.x, a0.y);
+        ctx.lineTo(a1.x, a1.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // The emitter winding up, so the eye goes to WHO is aiming.
+      const o = hexToPixel(a.pos);
+      const spin = ctx.createRadialGradient(o.x, o.y, geom.sx * 0.1, o.x, o.y, geom.sx * 0.6);
+      spin.addColorStop(0, `rgba(255,200,150,${0.30 + 0.35 * pulse})`);
+      spin.addColorStop(1, "rgba(255,120,50,0)");
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = spin;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, geom.sx * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.5 + 0.4 * pulse;
+      ctx.strokeStyle = "#ffcfa0";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, geom.sx * (0.5 - 0.1 * pulse), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    } else if (a.kind === "lance") {
+      // THE BEAM RUNS THE WHOLE ROW, and it is drawn as LIGHT.
+      //
+      // The first version painted a translucent polygon over every hex in
+      // the lane and ran a thin stroke down the middle. Both were mistakes
+      // of the same kind: paint over a dark board goes muddy, so a shot that
+      // is supposed to be the hottest thing in the sector came out a brown
+      // smear lying on top of it. Everything hot here is composited with
+      // `lighter` — it ADDS to what is underneath instead of covering it,
+      // which is the difference between a beam and a brush stroke.
+      //
+      // Three passes, widest and dimmest first: a broad halo, a saturated
+      // core, and a white-hot centre line that is almost too thin to see on
+      // its own. That stack is what makes an energy weapon read as energy.
+      const from = hexToPixel(a.pos);
+      const lane = a.lane.length ? a.lane : [a.pos];
+      const lastPt = hexToPixel(lane[lane.length - 1]);
+      // It leaves fast and lands hard: the run is the first third, and the
+      // rest is the shaft burning out. Short on purpose — a beam that hangs
+      // around stops looking like a discharge and starts looking like a
+      // drawing of one.
+      const travel = Math.min(1, p / 0.32);
+      const eased = 1 - Math.pow(1 - travel, 3);
+      const head = {
+        x: from.x + (lastPt.x - from.x) * eased,
+        y: from.y + (lastPt.y - from.y) * eased,
+      };
+      const burn = p < 0.32 ? 1 : Math.pow(1 - (p - 0.32) / 0.68, 1.6);
+      const hot = a.hit ? "#ffd2a8" : "#ff9a5a";
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineCap = "round";
+      const shaft = (width, color, alpha) => {
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(head.x, head.y);
+        ctx.stroke();
+      };
+      shaft(geom.sx * 0.52 * burn, "#b33a10", 0.30 * burn); // the halo around it
+      shaft(geom.sx * 0.20 * burn, hot, 0.70 * burn);       // the body of the beam
+      shaft(Math.max(1.4, geom.sx * 0.055), "#fff6ec", 0.95 * burn); // white-hot centre
+
+      // Muzzle bloom: the brightest point is where it is coming FROM, which
+      // is also the thing the player most needs to look at.
+      const bloom = ctx.createRadialGradient(from.x, from.y, 0, from.x, from.y, geom.sx * 0.75 * burn);
+      bloom.addColorStop(0, `rgba(255,246,236,${0.85 * burn})`);
+      bloom.addColorStop(0.45, `rgba(255,140,70,${0.40 * burn})`);
+      bloom.addColorStop(1, "rgba(255,110,40,0)");
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = bloom;
+      ctx.beginPath();
+      ctx.arc(from.x, from.y, geom.sx * 0.75 * burn, 0, Math.PI * 2);
+      ctx.fill();
+
+      // The leading edge while it is still travelling, so the eye follows it
+      // down the row rather than seeing a line appear all at once.
+      if (travel < 1) {
+        const tip = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, geom.sx * 0.42);
+        tip.addColorStop(0, "rgba(255,255,255,0.95)");
+        tip.addColorStop(0.5, "rgba(255,170,100,0.45)");
+        tip.addColorStop(1, "rgba(255,140,60,0)");
+        ctx.fillStyle = tip;
+        ctx.beginPath();
+        ctx.arc(head.x, head.y, geom.sx * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (a.hit) {
+        // And a flash where it landed, once it has arrived.
+        const land = Math.pow(1 - (p - 0.32) / 0.68, 2);
+        const hitGlow = ctx.createRadialGradient(lastPt.x, lastPt.y, 0, lastPt.x, lastPt.y, geom.sx * 0.9 * land);
+        hitGlow.addColorStop(0, `rgba(255,255,255,${0.8 * land})`);
+        hitGlow.addColorStop(0.5, `rgba(255,150,90,${0.35 * land})`);
+        hitGlow.addColorStop(1, "rgba(255,120,50,0)");
+        ctx.fillStyle = hitGlow;
+        ctx.beginPath();
+        ctx.arc(lastPt.x, lastPt.y, geom.sx * 0.9 * land, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (a.kind === "fxring") {
       const c = hexToPixel(a.pos);
       ctx.save();
       ctx.globalAlpha = 0.9 * (1 - p);
@@ -3857,9 +4054,19 @@ function persist() {
   // in the restored save) would find the in-memory guard reset to false
 }
 
+// A HELD STATE IS NOT AN ANIMATION IN FLIGHT. This gates the end-of-run and
+// end-of-sector overlays — they are held back until the board has finished
+// moving — and the charge glow is not something that finishes: it is a lane
+// held lit for as long as a hull keeps it, with a duration long enough to
+// outlast any round.
+//
+// So a hull still lining up when the flagship died kept this true forever,
+// the overlay was never revealed, and the run could not be restarted: a dead
+// board and no way off it. Reported live, and entirely this.
+const HELD_ANIMS = new Set(["charge"]);
 function animsRunning() {
   const now = performance.now();
-  return anims.some((a) => now < a.start + a.dur);
+  return anims.some((a) => !HELD_ANIMS.has(a.kind) && now < a.start + a.dur);
 }
 
 // One renderer for every HUD gauge — a labeled row of colored pips
@@ -5574,6 +5781,7 @@ function render() {
   window.__hhAutoRoute = autoRoute;
   window.__hhTargetedEnemy = targetedEnemyId;
   window.__hhTargetedGround = targetedGround; // test hook: the wreck or rock under the gun
+  window.__hhAnims = anims; // test hook: what is on screen right now
   window.__hhReachPreview = reachPreview;
   window.__hhShipAngle = shipAngle; // test hook: where the sprite is actually pointing
   window.__hhDirAngles = DIR_ANGLES; // test hook: the angle each facing should draw at

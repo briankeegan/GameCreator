@@ -6,7 +6,18 @@ importScripts("../../shared/sw-core.js");
 // online, without bloating install time or needing this list kept in sync
 // with every new icon. Only assets that must work on a first-ever OFFLINE
 // launch (before anything's had a chance to be fetched once) belong here.
-GCRegisterServiceWorker("hypergolic-hull-v78", [
+// THE VERSION IS ONE NUMBER DOING BOTH JOBS: it is what the header shows
+// the player, and it is what makes `install` refetch the precache list. They
+// were two different things and so they drifted — the badge said v1 from the
+// day the game shipped while this said v78, and neither moved again. The
+// fetch handler is network-first but falls back to cache on ANY failed fetch,
+// which on a phone is a dropped packet rather than an offline device, so one
+// hiccup pinned a single file at whatever was cached and the page ran a mix
+// of two builds with nothing able to see it.
+//
+// Bump it on every deploy of this game, and move index.html's data-version
+// with it. gate_sw_version fails a push that does either without the other.
+GCRegisterServiceWorker("hypergolic-hull-v92", [
   "./",
   "./index.html",
   "./style.css",

@@ -49,6 +49,7 @@ typedef struct {
                                 // garbage), -1 not asked
   int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
   int32_t late;                 // the clock stopped it: no answer
+  int32_t aliveTo;              // and the frame from the root the board was judged alive to when it did (0: none)
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
   int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 a first walk not begun within a reaction
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
@@ -104,36 +105,76 @@ static int stepFitsAt(Ctx *x, int i) {
 }
 static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 // (a step's wasted threes: its clears of three, no link of a chain, in a step that breaks nothing and makes no chain)
-// THE FIRST SWAP'S OWN CLEAR (the line's wasted three, as the game makes it): the swap pressed and run FIRST_LOOK frames beside the board
-// left alone as long -- the panels it matched that the board alone did not, exactly three, none beside garbage, and its settle no longer
-// a chain than the board's own: a three for nothing, whatever the line's later swaps break
-#define FIRST_LOOK 12
-static int32_t linksOf(const Stats *s);
-static int32_t firstThree(Ctx *x, int root, int mr, int mc, const Stats *bs) {
+// A WASTED THREE -- the one test, the judge's (firstThree) and the press guard's (front.c wastedSwap): g the board on the frame its swap
+// is pressed, a the same board with it not pressed, both played on FIRST_LOOK frames side by side -- the first clear g makes that a does
+// not (the panels matched on the first frame any are, as the game counts a clear), exactly three, none beside garbage -- and then on till
+// both are still (THREE_SETTLE at most): g's fall no longer a chain than
+// a's. g and a are played on (the caller's copies).
+#define FIRST_LOOK 30
+static int garbageCells(const Board *b) { int n = 0; for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) n += !!b->p[r][c].f[ISGARBAGE]; return n; }
+#define THREE_SETTLE 400
+static int wastedThree(Board *g, Board *a) {
+  static LOCAL int32_t was[MAXROWS * W * 2], got[MAXROWS * W * 2];
+  int nw = 0, ng = 0, touch = 0, first = -1;
+  static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
+  for (int f = 0; f < FIRST_LOOK && g->gameOverClock <= 0; f++) {
+    run(g); run(a); g->input = a->input = 0; g->pressSwap = a->pressSwap = 0;
+    for (int r = 1; r < a->nrows; r++) for (int c = 1; c <= W; c++) {
+      const int32_t *p = a->p[r][c].f;
+      if (p[STATE] != MATCHED || p[ISGARBAGE]) continue;
+      int old = 0; for (int q = 0; q < nw && !old; q++) old = was[q] == p[ID];
+      if (!old && nw < MAXROWS * W * 2) was[nw++] = p[ID];
+    }
+    for (int r = 1; r < g->nrows; r++) for (int c = 1; c <= W; c++) {
+      const int32_t *p = g->p[r][c].f;
+      if (p[STATE] != MATCHED || p[ISGARBAGE]) continue;
+      int old = 0; for (int q = 0; q < nw && !old; q++) old = was[q] == p[ID];
+      for (int q = 0; q < ng && !old; q++) old = got[q] == p[ID];
+      if (old || ng >= MAXROWS * W * 2 || (first >= 0 && f != first)) continue;
+      first = f; got[ng++] = p[ID];
+      for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc = c + DC[d]; if (rr >= 1 && rr < g->nrows && cc >= 1 && cc <= W && g->p[rr][cc].f[ISGARBAGE]) touch = 1; }
+    }
+  }
+  // (a panel of the three the board alone matches later is the board's own, not the swap's)
+  int n = 0; for (int q = 0; q < ng; q++) { int own = 0; for (int k = 0; k < nw && !own; k++) own = was[k] == got[q]; n += !own; }
+  if (n != 3 || touch) return 0;
+  int32_t gc = g->chainCounter, ac = a->chainCounter;
+  for (int k = 0; k < THREE_SETTLE && g->gameOverClock <= 0; k++) {
+    run(g); if (a->gameOverClock <= 0) run(a);
+    gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
+    if (g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
+  }
+  return !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
+}
+// THE BOARD'S OWN CHAIN SPOILED (rank.c cutsShort, a line at a time): g the board with the swap pressed and every key after it the line
+// presses (keyAt: the bits on the f-th frame after the press), a the same board left alone, both played to rest, the garbage on its way
+// landing on each as the game lands it (land) -- a's chain two or more
+// and g's shorter, no more garbage broken: the three that began the board's chain made for nothing. g and a are played on.
+static int spoilsChain(Board *g, Board *a, int32_t (*keyAt)(int32_t f), void (*land)(Board *g, Board *a)) {
+  int32_t gc = g->chainCounter, ac = a->chainCounter;
+  for (int f = 0; f < FIRST_LOOK + THREE_SETTLE && g->gameOverClock <= 0; f++) {
+    run(g); if (a->gameOverClock <= 0) run(a);
+    if (land) land(g, a);
+    int32_t k = keyAt ? keyAt(f) : 0;
+    g->input = k & ~(IN_SWAP | IN_RAISE); g->pressSwap = !!(k & IN_SWAP); a->input = 0; a->pressSwap = 0;
+    gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
+    if (f >= FIRST_LOOK && g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
+  }
+  return ac >= 2 && gc < ac && garbageCells(g) >= garbageCells(a);
+}
+// THE FIRST SWAP'S OWN CLEAR (the line's wasted three, as the game makes it): the board the swap is pressed on beside the board left
+// alone as long, by the one test
+static int32_t firstThree(Ctx *x, int root, int mr, int mc) {
   int a = step(x, root, MK_SWAP, mr, mc, 0);
   if (!liveNode(x, a)) return 0;
-  int w = step(x, a, MK_LONG, 0, 0, FIRST_LOOK);
-  if (!liveNode(x, w)) return 0;
-  int al = step(x, root, MK_LONG, 0, 0, NODE(x, w)->t - NODE(x, root)->t);
-  const Board *bw = ensureBoard(x, w), *ba = liveNode(x, al) ? ensureBoard(x, al) : 0;
-  if (!bw) return 0;
-  static LOCAL int32_t was[MAXROWS * W];
-  int nw = 0, n = 0, touch = 0;
-  if (ba) for (int r = 1; r < ba->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = ba->p[r][c].f; if (f[STATE] == MATCHED && !f[ISGARBAGE] && nw < MAXROWS * W) was[nw++] = f[ID]; }
-  for (int r = 1; r < bw->nrows; r++) for (int c = 1; c <= W; c++) {
-    const int32_t *f = bw->p[r][c].f;
-    if (f[STATE] != MATCHED || f[ISGARBAGE]) continue;
-    int old = 0; for (int q = 0; q < nw && !old; q++) old = was[q] == f[ID];
-    if (old) continue;
-    n++;
-    static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
-    for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc = c + DC[d]; if (rr >= 1 && rr < bw->nrows && cc >= 1 && cc <= W && bw->p[rr][cc].f[ISGARBAGE]) touch = 1; }
-  }
-  if (n != 3 || touch) return 0;
-  int sz = step(x, root, MK_SETTLE, mr, mc, 0);
-  Stats fs;
-  if (liveNode(x, sz) && statsOf(x, sz, &fs) && linksOf(&fs) > (bs ? linksOf(bs) : 0)) return 0;   // (its fall made a link)
-  return 1;
+  int al = NODE(x, a)->t > NODE(x, root)->t ? step(x, root, MK_LONG, 0, 0, NODE(x, a)->t - NODE(x, root)->t) : root;
+  const Board *ba = ensureBoard(x, a), *bl = liveNode(x, al) ? ensureBoard(x, al) : 0;
+  if (!ba || !bl) return 0;
+  Board *g = nb_new(), *h = nb_new();
+  int w = g && h ? (cloneBoard(g, ba), cloneBoard(h, bl), wastedThree(g, h)) : 0;
+  if (g) nb_free(g);
+  if (h) nb_free(h);
+  return w;
 }
 // (a step's wasted threes, as the game's own count reads them (front.c countAttacks), a clear at a time: a clear of three that is no link
 // of a chain and has no garbage joined to it -- and no chain's link after it in the step, which its fall may have made)
@@ -148,7 +189,6 @@ static int32_t threesOf(const Stats *s) {
   }
   return n;
 }
-static int32_t linksOf(const Stats *s) { int32_t n = 0; for (int j = 0; j < s->n; j++) n += !!s->link[j]; return n; }
 
 // (the garbage the board left alone has broken by frame t, from the board landed: cached per frame)
 static int32_t still_(Ctx *x, int land, int32_t t, int32_t *idleT, int32_t *idleB, int32_t *nIdle) {
@@ -269,16 +309,16 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       n = liveNode(x, calm) ? calm : w;
       KB(n);
     }
-    // (the allowance this swap is pressed under: the decision's less what the line's swaps before it spent -- core/nodes.h actionsFor)
+    // (the allowance this swap is pressed under: the input window at the frame its walk begins, less what the line's swaps before it
+    // spent -- core/nodes.h allowLeftAt, actionsFor)
     if (!last && pressAllowance >= 0) {
       Board *bn = ensureBoard(x, n);
-      int left = pressAllowance - spent;
+      int left = allowLeftAt(NODE(x, n)->t - NODE(x, root)->t, spent);
       pressTight = tightAt(left);
       int acts = bn ? actionsFor(bn->curRow, bn->curCol, mr, mc, left) : 0;
-      // (a first swap whose walk is over what the allowance leaves is not there to press: the frame loop refuses its keys -- front.c
-      // keysFit, GUARDED -- so the line is cut as one whose swap is gone; a later swap is held to the allowance at its own frame, by the
-      // frame loop as it follows the line -- front.c follow)
-      if (k == 0 && acts > left) { j->cut = k; j->cutWhy = 1; break; }
+      // (a swap whose walk is over what the window leaves at its frame is not there to press: the frame loop refuses a first swap's keys
+      // -- front.c keysFit, GUARDED -- and drops a line at a later one -- front.c follow -- so the line is cut there)
+      if (acts > left) { j->cut = k; j->cutWhy = 1; break; }
       spent += acts;
     }
     int kind = last || o->settled ? MK_SETTLE : MK_SWAP, out;
@@ -325,6 +365,17 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (o->settled || last) links += imax(0, chainOfStats(&st) - 1);
     if (chainOfStats(&st) > chain) chain = chainOfStats(&st);
     broke += st.broke; threes += threesOf(&st);
+    // (A SWAP THAT SPOILS THE BOARD'S OWN CHAIN, a swap at a time: the board it is pressed on left alone to rest makes a chain of two or
+    // more, and with the swap pressed and let rest a shorter one, no more garbage broken -- the three that began that chain made for
+    // nothing, whatever the line's later swaps make; the press guard's test, front.c wastedSwap)
+    if (!last) {
+      int al = settleOf(x, n), sw = step(x, n, MK_SETTLE, mr, mc, 0);
+      Stats sa, ss;
+      if (liveNode(x, al) && liveNode(x, sw) && statsOf(x, al, &sa) && statsOf(x, sw, &ss)) {
+        int32_t ca = sa.cleared > 0 ? chainOfStats(&sa) : 0, cs = ss.cleared > 0 ? chainOfStats(&ss) : 0;
+        if (ca >= 2 && cs < ca && ss.broke <= sa.broke) threes++;
+      }
+    }
     j->done = NODE(x, out)->t;
     if (!last) lastAt = j->done;
     n = out; KB(n);
@@ -355,7 +406,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->threes = imax(0, threes - baseThrees);
   // (and the first swap settled alone: a three it makes for nothing is wasted whatever the line does after -- a line pressed straight
   // through takes its first clear into a step its later chain is counted in, where the step's count does not see it)
-  if (nseq > 0 && !j->threes) j->threes = firstThree(x, root, CR(seq[0]), CC(seq[0]), liveNode(x, base) ? &bs : 0);
+  if (nseq > 0 && !j->threes) j->threes = firstThree(x, root, CR(seq[0]), CC(seq[0]));
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
@@ -375,6 +426,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
   }
   j->late = j->late || clockOut();
+  if (j->late && !j->dead) j->aliveTo = liveNode(x, n) ? NODE(x, n)->t - NODE(x, root)->t : 0;
 }
 
 // ---- for a host's check: the question from a node of a search the host made, and a line judged

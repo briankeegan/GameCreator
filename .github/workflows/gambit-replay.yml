@@ -1,0 +1,154 @@
+# GAMBIT REPLAYED: one game of the 24 (its seed, as gambit-24 plays it) played again with one decision forced -- the first decision at
+# or after frame F plays the order's option K in place of its first (GC_GAMBIT_FORCE=F:K, decide.c playOf). Every game is its seed's
+# alone (lockstep, the work clock), so a replay is the same game up to F; what it does after is the forced option's. Each force is a job
+# of its own, beside the unforced game; the summary says which survived and where each was lost -- the decision that lost a game is
+# the one where another option survives.
+name: Gambit replay
+
+on:
+  workflow_dispatch:
+    inputs:
+      pattern:
+        description: 'combo_storm, factory or large_garbage'
+        default: 'factory'
+      game:
+        description: "The pattern's game, 1-8"
+        default: '1'
+      round:
+        description: 'The round (its seeds: gambit-24 seed 1-24, round r adds 24(r - 1))'
+        default: '1'
+      forces:
+        description: 'The decisions forced, a JSON list of "F:K" (frame, option of the order, 0 its first)'
+        default: '["1000:1"]'
+      frames:
+        description: 'A game survived this many frames counts as survived and ends'
+        default: '21600'
+      profile:
+        description: 'The Gambit profile, relative to games/the-game/ai/eval'
+        default: 'survivor-profiles/gambit-finish.json'
+      panel_ref:
+        description: 'The panel-game branch'
+        default: 'claude/newsey-game-ask-qa8u5e'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: clang
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y clang && break; sleep 10; done
+      - name: libgambit.so
+        env:
+          GC_MARCH: x86-64-v2
+        run: games/the-game/ai/gambit/build.sh native
+      - uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: libgambit
+          path: games/the-game/ai/gambit/libgambit.so
+          retention-days: 3
+
+  play:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # (the unforced game first: it must be lost where gambit-24 lost it, or the replays are not of that game)
+        force: ${{ fromJSON(inputs.forces) }}
+        include:
+          - force: none
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/checkout@v4
+        with:
+          repository: briankeegan/panel-game
+          ref: ${{ inputs.panel_ref }}
+          path: panel-game
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: libgambit
+          path: games/the-game/ai/gambit
+      - name: xvfb and love
+        timeout-minutes: 15
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb luajit && break; sleep 10; done
+          mkdir -p ~/love2d
+          for i in 1 2 3; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep 10; done
+          tar -xzf /tmp/love.tar.gz -C ~/love2d
+          mv ~/love2d/*.AppImage ~/love2d/love.AppImage
+          chmod +x ~/love2d/love.AppImage
+      - name: Play
+        timeout-minutes: 80
+        env:
+          PG: ${{ github.workspace }}/panel-game
+          LOVE: /home/runner/love2d/love.AppImage
+          OUT_DIR: ${{ github.workspace }}/out
+          PROFILE: ${{ inputs.profile }}
+          FRAMES: ${{ inputs.frames }}
+          MINUTES: '60'
+          GC_GAMBIT_WORKERS: '4'
+          GC_GAMBIT_BUILT: '1'
+        run: |
+          case "${{ inputs.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; *) echo "no pattern ${{ inputs.pattern }}"; exit 2;; esac
+          export PA_SEED=$(((${{ inputs.round }} - 1) * 24 + (P - 1) * 8 + ${{ inputs.game }}))
+          if [ "${{ matrix.force }}" != none ]; then export GC_GAMBIT_FORCE="${{ matrix.force }}"; fi
+          echo "::notice title=replay::${{ inputs.pattern }} ${{ inputs.game }} PA_SEED=$PA_SEED force ${{ matrix.force }}"
+          bash games/the-game/ai/eval/training.sh gambit "${{ inputs.pattern }}" 1
+      - name: Result
+        if: always()
+        run: |
+          r=$(grep -h '^game .* training ' out/results.txt 2>/dev/null | head -1 | sed -E 's/.* training (survived|lost) frames=([0-9]+).*/\1 \2/')
+          f=$(grep -o ' forced=[-0-9]*' out/survivor.log 2>/dev/null | head -1)
+          echo "${{ matrix.force }} ${r:-none}${f}" > out/replay.txt
+          echo "::notice title=${{ matrix.force }}::${r:-no result}${f}"
+          echo "RNAME=replay-$(echo '${{ matrix.force }}' | tr ':' '-')" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ env.RNAME }}
+          path: |
+            out/replay.txt
+            out/results.txt
+            out/survivor.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  summary:
+    needs: play
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: replay-*
+          path: replays
+      - name: The replays
+        run: |
+          echo "${{ inputs.pattern }} ${{ inputs.game }} round ${{ inputs.round }}: force (frame:option), result, frames, forced=option played" > replay-report.txt
+          cat replays/*/replay.txt | sort -t: -k1,1n >> replay-report.txt
+          cat replay-report.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: replay-report
+          path: replay-report.txt
