@@ -103,6 +103,8 @@ static struct {
   Arrival prPend[MAXARRIVALS]; int32_t nprPend;
   // the question out: its id and frame, the board it was asked of, its raise and garbage, the garbage known when it was asked
   int32_t pending, pId, pEpoch, pAt, pPaced, pHoldLeft, pHoldStarted, pNarr, pNknew;
+  int32_t countdownAsked;   // (the opening asked during the countdown: frontCountdown)
+  Board *cdBoard;           // (and the board it was asked of)
   Board *pBoard; Arrival pArr[MAXARRIVALS], pKnew[MAXARRIVALS];
   int32_t nextId;
   // the line after the move, pressed as it was decided: its swaps, each from the frame it was judged pressed from (lineAt, 0: as soon as
@@ -900,6 +902,27 @@ static int threeSaves(const Board *t, int32_t bits, int planned) {
   if (!lostIn(t, bits, 0)) return 0;
   return planned || !lostIn(t, bits, 1);
 }
+// ---------------------------------------------------------------- the countdown
+// THE OPENING THOUGHT THROUGH THE COUNTDOWN: the board does not move while the countdown runs, so the board of the first frame in play
+// is the one shown now, its clock and stop-watch those it will have then. The opening's question is asked of it once, `left` frames before
+// play begins and for CD_SLACK frames after -- its lead, and with it the decision's time, the countdown's -- and answered as any question
+// is: the first frame in play takes the answer, its keys from that frame.
+#define CD_SLACK 4
+static int frontCountdown(int32_t left) {
+  if (F.pending || F.countdownAsked || left <= 0) return 0;
+  Board *t = F.truth;
+  int32_t now = t->clock, at = now + left + CD_SLACK;
+  if (!F.cdBoard) F.cdBoard = nb_new();
+  if (!F.cdBoard) return 0;
+  copyBoard(F.cdBoard, t);
+  F.cdBoard->inCountdown = 0; F.cdBoard->stopWatchIsRunning = 1; F.cdBoard->riseLock = 0;
+  F.cdBoard->clock = at; F.cdBoard->stopWatch = CD_SLACK - 1;
+  F.now = now;
+  ask(at, F.cdBoard, 0, 0, 0, 0);
+  F.countdownAsked = 1;
+  { char l[96]; snprintf(l, sizeof l, "COUNTDOWN clock %d: the opening asked for %d, %d frames ahead", now, at, at - now); flog(l); }
+  return 1;
+}
 // ---------------------------------------------------------------- one frame
 static int frontFrame(void) {
   Board *t = F.truth;
@@ -1114,11 +1137,11 @@ static void statsLine(char *out, int cap) {
 
 static void frontNew(int ahead, int gap, int jitter) {
   if (F.pending) abortTo(F.pId);
-  Board *keep[4] = { F.truth, F.expect, F.pr, F.pBoard };
+  Board *keep[5] = { F.truth, F.expect, F.pr, F.pBoard, F.cdBoard };
   int32_t nextId = F.nextId;
   memset(&F, 0, sizeof F); F.winAt = -1; F.putBackLine = -1; F.nowBitsAt = -1;
   F.pressedLine = -1;   // (no swap pressed yet: playedRollBack)
-  F.truth = keep[0] ? keep[0] : nb_new(); F.expect = keep[1] ? keep[1] : nb_new(); F.pr = keep[2] ? keep[2] : nb_new(); F.pBoard = keep[3];
+  F.truth = keep[0] ? keep[0] : nb_new(); F.expect = keep[1] ? keep[1] : nb_new(); F.pr = keep[2] ? keep[2] : nb_new(); F.pBoard = keep[3]; F.cdBoard = keep[4];
   for (int i = 0; i < PLANN; i++) F.planAt[i] = NUL;
   F.nextId = nextId ? nextId : 1;
   F.ahead = ahead; F.gap = gap; F.jitter = jitter;

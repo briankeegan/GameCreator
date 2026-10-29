@@ -354,8 +354,19 @@ void gn_match(void) {
 // budget's limit and window and the frames ago each key inside it went down (gn_ages), and the opponent. The keys to press, or -1.
 // (a clock behind the last frame's is a game begun again without gn_match: begun so. A question asked for a frame sooner than the
 // last one asked is the same game -- the frame loop asks again after it drops its plans.)
+static int32_t lastClock = NUL;
+// THE COUNTDOWN: the board as the countdown shows it, `left` frames before play -- the opening asked of it once (front.c frontCountdown)
+int gn_countdown(int left, int limit, int window) {
+  if (nb_load(F.truth)) return -1;
+  int32_t clock = F.truth->clock;
+  if (lastClock != NUL && clock < lastClock) gn_match();
+  lastClock = clock;
+  if (limit > 0) F.limit = limit;
+  if (window > 0) F.window = window;
+  if (!workerOn) return 0;
+  return frontCountdown(left);
+}
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop) {
-  static int32_t lastClock = NUL;
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
   if (lastClock != NUL && clock < lastClock) gn_match();

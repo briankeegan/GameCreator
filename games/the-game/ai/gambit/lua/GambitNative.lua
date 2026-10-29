@@ -44,6 +44,7 @@ int32_t *gn_tele(void);
 int32_t *gn_ages(void);
 void gn_match(void);
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop);
+int gn_countdown(int left, int limit, int window);
 void gn_end(void);
 void gn_log(const char *s);
 void gn_thread_stats(double *out);
@@ -106,6 +107,8 @@ end
 -- The stack into the engine's io as the player sees it. The queue keeps the 192 to drop soonest (the search's boards hold 256, and 64
 -- arriving).
 local KEEP_QUEUED = 192
+-- (the countdown frames left once its cursor has come to rest: Stack.runCountdown moves it for its first 40)
+local COUNTDOWN_ASK = 135
 -- (the io's head and body, and the one writer of a head field: made once, so a frame's load makes nothing)
 local H, Bd = C.nb_io_head(), C.nb_io_body()
 local function put(k, v)
@@ -242,7 +245,18 @@ end
 
 function GambitNative:think(stack, sources, view)
   local idle = KeyDataEncoding.base64encode[1]
-  if counting(stack) or not stack.stopWatchIsRunning or stack:game_ended() then return idle end
+  -- (the countdown: once the cursor has come to rest, the opening asked of the board as play will begin with it -- gn_countdown)
+  if counting(stack) then
+    local left = stack.countdown_timer
+    if left and left > 0 and left <= COUNTDOWN_ASK and not self.countdownAsked then
+      self.countdownAsked = true
+      self:load(stack)
+      C.gn_countdown(left, self.inputs.limit or 0, self.inputs.window or 0)
+    end
+    return idle
+  end
+  self.countdownAsked = nil   -- (in play: the next countdown asks again)
+  if not stack.stopWatchIsRunning or stack:game_ended() then return idle end
   local t0 = ThinkBudget.now()
   self:load(stack)
   local t1 = ThinkBudget.now()
