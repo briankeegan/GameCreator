@@ -406,14 +406,12 @@ static double contBoardLostLine(const Board *e, double give, int32_t spent, int3
   Outlived c = outlive(&q2, HORIZON + REST, REST, give, 6, 30);
   int32_t lost = c.set ? c.lostAt : diesIn(&q2, HORIZON + REST);
   laterEnd(lt);
-  // (the look-ahead beside: its deeper answer for this board where it has one and it outlasts this one, else the board asked of it)
-  double deep = -1;
-  if (!inJob) { uint32_t h = lookHash(e, &q2); if (lookFind(h, &deep)) lookHit++; else lookAsk(e, &q2, h, dt, spent); }
-  if (lost < 0 && deep < 0) return -1;
-  double own = lost < 0 ? -1 : lost == FOREVER ? 1e9 : (double)dt + lost;
-  if (deep >= 0) { double d = deep >= 1e9 ? 1e9 : (double)dt + deep; if (d > own) { lookUsed++; if (nseq) *nseq = 0; return d; } }
+  // (the board asked of the look-ahead beside, for the line on from it -- its answer is no part of this one: the decision's own search
+  // alone says where a board is lost, and the look-ahead's line is played only where it saves the board, lookAdmit)
+  if (!inJob) { uint32_t h = lookHash(e, &q2); double d; if (lookFind(h, &d)) lookHit++; else lookAsk(e, &q2, h, dt, spent); }
+  if (lost < 0) return -1;
   if (seq && nseq && c.set) { int k = 0; for (; k < c.nseq && k < MAXLINE; k++) seq[k] = c.seq[k]; *nseq = k; }
-  return own;
+  return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
 static double contBoardLost(const Board *e, double give, int32_t spent) { return contBoardLostLine(e, give, spent, 0, 0); }
 // THE OPTIONS PONDERED: while the decision weighs them, the boards its best LOOK_TOP lines end on asked of the look-ahead -- each a
