@@ -456,7 +456,7 @@ static void lookPonder(int n) {
   }
 }
 // (THE LINE IN PROGRESS AND THE LINE ON FROM WHERE IT ENDS, one line -- played only where it saves the board: the order's own first line
-// is not proven, and this one, judged on the engine, lives. Asked once the order is whole, and its judging charged to nothing -- the
+// is not proven, and this one, judged on the engine, lives or outlasts it by a break's time. Asked once the order is whole, and its judging charged to nothing -- the
 // decision's clock put back -- so every decision it does not change is the one the order makes alone)
 static Judge lookJ;
 static int lookAdmit(const Read *R, int n) {
@@ -469,7 +469,9 @@ static int lookAdmit(const Read *R, int n) {
   k.settled = 1; k.x.combo = k.x.chain = k.x.broke = 0; k.xFire = k.xDone = -1; k.xNats = 0;
   lookOffered++;
   int64_t w = clockWork; int32_t nc = ncache;
-  int ok = judgeCand(R, &k, &lookJ) && lookJ.o.lives;
+  // (it saves the board where it lives, or where the order's own first line is lost and this one, judged on the engine, is lost a
+  // break's time later at least: by the order's own reading of a loss, never a guess)
+  int ok = judgeCand(R, &k, &lookJ) && !lookJ.o.dead && (lookJ.o.lives || (lostOf(order[0]) < 1e9 && lostOf(&lookJ) >= lostOf(order[0]) + imax(1, rankSave)));
   clockWork = w; ncache = nc;
   if (!ok) return n;
   lookJ.carried = 1;
