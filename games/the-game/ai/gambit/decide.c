@@ -414,6 +414,15 @@ static const Board *lookEndOf(const Judge *J, Question *q2, int32_t *dt) {
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > *dt) { q2->arr[q2->narr] = decQ.arr[a]; q2->arr[q2->narr++].at -= *dt; }
   return e;
 }
+// (THE LINE CHOSEN: once the decision has answered, the board its line ends on is the one the next decisions carry it to -- asked
+// first, on top of the stack, ahead of the options it weighed)
+static void lookChosen(const Judge *J) {
+  if (!J || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
+  Question q2; int32_t dt; const Board *e = lookEndOf(J, &q2, &dt);
+  if (!e) return;
+  uint32_t h = lookHash(e, &q2); double d;
+  if (!lookFind(h, &d)) lookAsk(e, &q2, h, dt, J->o.j.spent);
+}
 static void lookPonder(int n) {
   if (!__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
   for (int i = 0, k = 0; i < n && k < LOOK_TOP; i++) {
