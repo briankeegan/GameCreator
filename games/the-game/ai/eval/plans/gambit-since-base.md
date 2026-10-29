@@ -41,6 +41,9 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `14799c22` B, every walk as cheap as the walls allow (bb44c817, HOLDTIGHT 76) -- 18 (1554) [dropped: factory 7/8, combo_storm 5/8]
 - tsan red in 1553 and 1554 was main's: the search beside the decisions ran on while the C checks wrote the next question's board (gb_question_bytes); it now lets it go first
 - main (`7959dfdb`): 23 (1555), 21 (1556), every check green -- pressure left at 22 for build
+- build on main: 19 (1557)
+- `db6a28a7` the owner's mode rule, of two lines that live the first entry, then building, then the fallbacks (63b466be) -- build 16 (1558) [dropped: combo_storm 5/8; the first aim met 4.9% of attacks]
+- `5c29d91a` the same below the rules' floor only -- build 17 (1559) [dropped: combo_storm 5/8; the first aim 4.6%. Ranking the fallbacks lower does not make 5-chains: the planner does not find their set-ups]
 
 ## The shortlist for pressure, in the order to try
 
