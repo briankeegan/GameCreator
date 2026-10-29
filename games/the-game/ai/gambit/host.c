@@ -7,10 +7,6 @@
 #include <sched.h>
 #include <string.h>
 #include <sys/resource.h>
-#include <signal.h>
-#include <unistd.h>
-#include <execinfo.h>
-#include <dlfcn.h>
 
 void *paHeap(unsigned long n) { return calloc(1, (n + 15) & ~15ul); }
 // The calling thread's own account: its CPU time (ms), the times it was taken off its core and gave it up, its page faults.
@@ -28,14 +24,6 @@ void hostLock(void) { pthread_mutex_lock(&mu); }
 void hostUnlock(void) { pthread_mutex_unlock(&mu); }
 void hostWait(void) { pthread_cond_wait(&cv, &mu); }
 void hostSignal(void) { pthread_cond_signal(&cv); }
-// (and the frame loop's own wait, in lockstep: for Gambit's thread to be done with every question asked -- native.c gn_frame)
-static pthread_cond_t cvDone = PTHREAD_COND_INITIALIZER;
-void hostWaitDone(void) { pthread_cond_wait(&cvDone, &mu); }
-void hostSignalDone(void) { pthread_cond_signal(&cvDone); }
-int hostLockstep(void) { const char *l = getenv("GC_GAMBIT_LOCKSTEP"); return l && *l == '1'; }
-// (A REPLAY'S FORCED OPTION: GC_GAMBIT_FORCE=F:K -- the first decision at or after frame F plays the order's option K, 0 its first;
-// -1 none)
-int hostForce(int *at, int *k) { const char *f = getenv("GC_GAMBIT_FORCE"); *at = -1; *k = 0; return f && sscanf(f, "%d:%d", at, k) == 2 && *at >= 0; }
 // GAMBIT'S THREAD: the room the main thread has for its stack (the searches keep their scratch there), and the cores GC_GAMBIT_CPUS
 // names ("1-3", "2,3"), so it thinks beside the game rather than on the game's own core; the workers on GC_GAMBIT_WORKER_CPUS's
 // (else Gambit's), so they take a core of their own rather than Gambit's.
@@ -84,28 +72,6 @@ static void *workerStart(void *arg) {
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
   return workerFn(arg);
 }
-// A THREAD AT THE IDLE CLASS, named `name`: on GC_GAMBIT_SPARE_CPU where `spare` and it is set -- the game's own CPU, eval/training.sh:
-// at the idle class a thread there takes only the cycles the game leaves, about seven tenths of it -- else where the workers are. 0 started
-typedef struct { void *(*fn)(void *); const char *name; int spare; } IdleArg;
-static void *idleStart(void *p) {
-  const IdleArg *a = (const IdleArg *)p;
-  const char *w = a->spare ? getenv("GC_GAMBIT_SPARE_CPU") : 0;
-  if (!w || !*w) w = getenv("GC_GAMBIT_WORKER_CPUS");
-  if (w && *w) pinnedTo(w); else pinned();
-  pthread_setname_np(pthread_self(), a->name);
-  struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
-  return a->fn(0);
-}
-int hostIdleThread(void *(*fn)(void *), const char *name, int spare) {
-  static IdleArg args[4]; static int nargs;
-  if (nargs >= 4) return -1;
-  IdleArg *a = &args[nargs++]; a->fn = fn; a->name = name; a->spare = spare;
-  pthread_t t; pthread_attr_t at;
-  pthread_attr_init(&at); pthread_attr_setstacksize(&at, 64ul << 20);
-  int r = pthread_create(&t, &at, idleStart, a);
-  pthread_attr_destroy(&at);
-  return r;
-}
 int hostWorkers(void *(*fn)(void *), int most) {
   const char *e = getenv("GC_GAMBIT_WORKERS");
   int n = e && *e ? atoi(e) : 0;
@@ -124,34 +90,6 @@ int hostWorkers(void *(*fn)(void *), int most) {
 static FILE *logFile;
 static pthread_mutex_t logMu = PTHREAD_MUTEX_INITIALIZER;
 int hostOpenLog(const char *path) { if (!logFile) logFile = fopen(path, "a"); return logFile ? 0 : -1; }
-// A CRASH, SAID WHERE IT HAPPENED: on a fault in any thread of the game's process, the faulting thread's stack -- each frame its file
-// and its offset in it -- to stderr (the client's log) and the run's log, then the fault let through as the process would take it.
-// training.sh resolves the frames in libgambit.so (built with -g) with addr2line.
-static void crashFrames(int fd, int sig) {
-  void *f[64]; int n = backtrace(f, 64);
-  dprintf(fd, "GAMBIT CRASH signal %d, %d frames\n", sig, n);
-  for (int i = 0; i < n; i++) {
-    Dl_info d;
-    if (dladdr(f[i], &d) && d.dli_fname) dprintf(fd, "GAMBIT FRAME %d %s 0x%lx\n", i, d.dli_fname, (unsigned long)((char *)f[i] - (char *)d.dli_fbase));
-    else dprintf(fd, "GAMBIT FRAME %d ? %p\n", i, f[i]);
-  }
-}
-static void crashOut(int sig) {
-  crashFrames(2, sig);
-  if (logFile) crashFrames(fileno(logFile), sig);
-  signal(sig, SIG_DFL);
-  raise(sig);
-}
-void hostCrashHandler(void) {
-  static char alt[1 << 16];
-  stack_t ss = { .ss_sp = alt, .ss_size = sizeof alt, .ss_flags = 0 };
-  sigaltstack(&ss, 0);   // (the handler's own stack: a fault from a stack run out still says where)
-  { void *f[1]; backtrace(f, 1); }   // (its library loaded now, not inside a handler)
-  struct sigaction sa; memset(&sa, 0, sizeof sa);
-  sa.sa_handler = crashOut; sa.sa_flags = SA_ONSTACK | SA_RESETHAND;
-  int sigs[] = { SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT };
-  for (int i = 0; i < 5; i++) sigaction(sigs[i], &sa, 0);
-}
 void hostLog(const char *s) {
   if (!logFile) return;
   pthread_mutex_lock(&logMu);

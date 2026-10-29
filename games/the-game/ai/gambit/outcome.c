@@ -4,6 +4,7 @@
 //
 // What the decision knows of the board (Facts) comes from its reading of it.
 
+static double leftMsOf(void);   // (propose.c leftMs: the time the decision's searches have left)
 #define HORIZON 240   // a board stands when it is alive this long after now
 #define REST 120      // and this long after the line's last swap
 
@@ -11,10 +12,10 @@ typedef struct {
   int32_t land;        // frames until the last block shown lands (NOT_ASKED: none coming) -- JUDGE.lastLanding
   int32_t topped;      // the board is topped out
   int32_t timeLeft;    // the decision's searches still have time (c.left() > 0): readiness is asked only then
+  int32_t belowFloor;  // below the rule's material floor: a line that clears panels and breaks nothing is no candidate
   int32_t under;       // garbage on the board, as the decision reads it (decide.c read: R->under) -- the one under-garbage test
   int32_t next;        // frames until the next block shown lands (NOT_ASKED: none coming)
 } Facts;
-#define PLANBREAKS 16   // (storage: the breaks of a plan the ledger reads)
 typedef struct {
   int32_t dead, lostAt, lives, fits, ready, late;
   int32_t spent;   // under the material floor (outcomeOf)
@@ -23,15 +24,7 @@ typedef struct {
   int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
   int32_t floorKept;   // the board the line leaves keeps the rule's floor, as the floor is tested (floorOf), the line's breaks aside; -1 not asked
   int32_t matLeft;     // the material the board the line leaves has: its panels under the lowest garbage, the next break's (materialOn); -1 not asked
-  int32_t topLeft;     // that board's top row (topOn); -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
-  int32_t endNear;     // on any whole line: the same, 0 with no garbage on that board (ready: plans/gambit-next.md 1, rank.c playReady); -1 not read
-  int32_t nBreakAt, breakAt[PLANBREAKS];   // a plan's breaks: the frame each is pressed from (readyNextOf), for the ledger (plans/gambit-next.md)
-  int32_t planBroke;   // the garbage the plan converts beyond the board left alone (readyNextOf)
-  int32_t planTop, planMat, planContact, planUnder, planEndAt;   // the margin the plan leaves (planLanded); planTop -1 not read
-  int32_t endReady;    // the board the line (or its plan) ends on is ready for the next block (endReadyOf): 1, 0, NOT_ASKED
-  int32_t planFullN, planFullLine[MAXLINE], planFullAt[MAXLINE];   // the whole plan after the line: its breaks and the survival line on from its end, each swap with the frame it is pressed from (0: as the board lets) -- readyNextOf
-  uint32_t endHb;     // the board the line ends on, its cells and its clock as one number (endCellsHash): 0 not read
   Judged j;
 } Outcome;
 
@@ -66,13 +59,8 @@ static uint32_t lineHash(const int32_t *seq, int n, int settled, int kind) {
 static int readyFresh;   // (the readiness asked now: an outcome kept without it is judged again, and replaced)
 static int endWanted;    // (lineEnd: the line is judged again and the board it ends on kept)
 static int endNoKeep;    // (and that judging not kept in the cache: asked once the rank has the line's whole outcome -- rank.c ideasOf)
-// (each thread's cache is the decision's: begun again when a decision begins -- decGen -- whichever thread it is)
-static int32_t decGen; static LOCAL int32_t cacheGen;
-static void cacheFresh(void) { int32_t g = __atomic_load_n(&decGen, __ATOMIC_RELAXED); if (cacheGen != g) { ncache = 0; cacheGen = g; } }
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
-  cacheFresh();
   if ((readyFresh || endWanted) && kind == 0) return 0;
-  if (lineAt0 > 0 || lineWaitTo > 0) return 0;   // (the line in progress is judged from its own frame: kept apart from the same swaps pressed now)
   uint32_t h = lineHash(seq, n, settled, kind);
   for (int i = 0; i < ncache; i++) {
     Cached *c = &cache[i];
@@ -84,9 +72,8 @@ static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
   return 0;
 }
 static Outcome *keep(const int32_t *seq, int n, int settled, int kind, const Outcome *o) {
-  cacheFresh();
   if (!cache) cache = (Cached *)grab(sizeof(Cached) * CACHEN);
-  if (!cache || n > MAXLINE || lineAt0 > 0 || lineWaitTo > 0) return 0;
+  if (!cache || n > MAXLINE) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
   Cached *c = 0;
   for (int i = 0; i < ncache && !c; i++) {
@@ -114,15 +101,12 @@ static int32_t lifePeakOf(void) { static int32_t peak = -1; if (peak < 0) { peak
 // or it dies when the stop runs out. A line that lives only by being ready lives as its readiness break does, played where the
 // readiness found it and judged as any break is (waitTo): a break kept for later is worth no more than the break played.
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo);
-static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo, int nmore, const int32_t *moreAt, const int32_t *moreTo);
 static int breakBuildable(const Board *b);   // (search/break.c: a break the panels touching garbage can be walked into)
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on the board)
 static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
 // (THE BOARD LEFT ALONE, settled as a line is: whether it still has a break to build -- or no garbage to break. Asked once a decision:
 // what a line is measured against when it spends the next break's material)
-// (THE NEXT BREAK TO BUILD on a board, the one test: a break its panels touching garbage can be walked into, or no garbage to break)
-static int buildsNext(const Board *b) { return !garbageOn(b) || breakBuildable(b); }
 static int32_t rootBuildable = NOT_ASKED;
 static int32_t aloneBuildable(void) {
   if (rootBuildable != NOT_ASKED) return rootBuildable;
@@ -131,81 +115,22 @@ static int32_t aloneBuildable(void) {
   judge(&decQ, 0, 0, &jo, &a);
   const Board *eb = a.dead || a.late ? 0 : ensureBoard(judgeCtx, a.endNode);
   if (!eb) return 0;   // (no answer: nothing measured, nothing spent -- asked again)
-  return rootBuildable = buildsNext(eb);
+  return rootBuildable = !garbageOn(eb) || breakBuildable(eb);
 }
 static Board *endBoard;                      // (lineEnd's board)
-// (THE BOARD A LINE ENDS ON AS ONE NUMBER: each cell's panel and colour, garbage or not, its state, and the board's clock and cursor --
-// the look-ahead beside keeps its lines on by it, decide.c lookLineOf: read as the line is judged, so asked of it with no judging again)
-static uint32_t endCellsHash(const Board *b) {
-  uint32_t h = 2166136261u;
-  #define EH(v) do { h ^= (uint32_t)(v); h *= 16777619u; } while (0)
-  EH(b->clock); EH(b->curRow); EH(b->curCol); EH(b->nrows);
-  for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; EH(f[ID]); EH(f[COLOR]); EH(f[ISGARBAGE]); EH(f[STATE]); }
-  #undef EH
-  return h ? h : 1;
-}
-// (AND THE BOARD ITSELF, kept as it is judged on whichever thread judges it: the look-ahead beside is handed the boards the best
-// options end on from here, never judged again for it -- decide.c lookPonder. Its boards are made on the decision's thread first:
-// endKeepOn)
-#define ENDKEEP 256
-static Board *endKeepB[ENDKEEP]; static uint32_t endKeepH[ENDKEEP]; static int32_t endKeepOn, endKeepLock;
-static void endKeepPut(uint32_t hb, const Board *eb) {
-  if (!__atomic_load_n(&endKeepOn, __ATOMIC_ACQUIRE) || !hb) return;
-  int k = (int)(hb % ENDKEEP);
-  while (__atomic_exchange_n(&endKeepLock, 1, __ATOMIC_ACQUIRE)) {}
-  if (endKeepH[k] != hb) { cloneBoard(endKeepB[k], eb); endKeepH[k] = hb; }
-  __atomic_store_n(&endKeepLock, 0, __ATOMIC_RELEASE);
-}
-// (the board kept for hb copied into `into`: 1 found)
-static int endKeepGet(uint32_t hb, Board *into) {
-  if (!__atomic_load_n(&endKeepOn, __ATOMIC_ACQUIRE) || !hb) return 0;
-  int k = (int)(hb % ENDKEEP), got = 0;
-  while (__atomic_exchange_n(&endKeepLock, 1, __ATOMIC_ACQUIRE)) {}
-  if (endKeepH[k] == hb) { cloneBoard(into, endKeepB[k]); got = 1; }
-  __atomic_store_n(&endKeepLock, 0, __ATOMIC_RELEASE);
-  return got;
-}
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
-// THE FLOOR SPENT, the one test every reader asks (the shared line check, the rank's keep): a line that nets material away -- the
-// panels its clears take beyond what its breaks convert, beyond the board left alone (judge.c netPanels) -- leaving a board the rules'
-// keep does not hold (floorKept: floorOf on the board the line leaves -- facts.c keepsFloor). A break that clears more than it converts
-// spends the floor as a clear that breaks nothing does: the board's material is what the next break is made of, and every loss of
-// combo_storm ends below the keep with no break to find (plans/gambit-next.md, 1319 to 1322)
-// (measured as net material, a break that clears more than it converts included, with the keep as the order's key after the proof: 14/24,
-// run 1323 -- the shared line check then kept no net-negative break below the keep, and the searches found fewer breaks. The test is
-// the clear that breaks nothing, as before)
-static int spendsFloor(Made m, int32_t floorKept, int32_t netPanels) { (void)netPanels; return floorKept == 0 && (m.combo > 0 || m.chain > 0) && !(m.broke > 0); }
-// THE RESERVE SPENT, beside it: with garbage on the board or on its way, a line that breaks nothing and walks the window below a break's
-// walk (LAND_RESERVE, core/nodes.h) at the next landing has spent what that break is pressed out of -- attacks and walks are free while
-// the next break stays in hand
-static int spendsReserve(Made m, const Judged *j) {
-  if (!(decF.under || decF.land != NOT_ASKED) || m.broke > 0 || j->spent <= 0 || j->leftEnd < 0) return 0;
-  return !windowKeepsBreak(j->endAt, j->spent);   // (core/nodes.h, the window plan)
-}
-// (what the one line check asks of the list, a last resort too with last, and of the floor and the reserve -- lineOk below, the order's
-// outcome and rank.c judgeCand asking the same)
-static int lineInList(const Judged *j, int last) { return fitsList(&theList, j->made, j, last) && imax(j->made.chain, j->chainAll) <= MAXCHAIN; }
-static int lineSpends(const Judged *j, int32_t floorKept) { return spendsFloor(j->made, floorKept, j->netPanels) || spendsReserve(j->made, j); }
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
-static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) { return outcomeOfW(seq, n, settled, waitAt, waitTo, 0, 0, 0); }
-// (A PROMISED BREAK JUDGED: the line and the break a readiness found, played where it found it -- the promise's own judging, which
-// asks no promise of its own and reads no end board. Any other judging is a line's whole, a wait before it (waitTo) or not)
-static LOCAL int promiseDepth;
-static Outcome promised(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo, int nmore, const int32_t *moreAt, const int32_t *moreTo) {
-  promiseDepth++; Outcome e = outcomeOfW(seq, n, settled, waitAt, waitTo, nmore, moreAt, moreTo); promiseDepth--; return e;
-}
-static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo, int nmore, const int32_t *moreAt, const int32_t *moreTo) {
+static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
   if (hit) return *hit;
-  int whole = !promiseDepth;
   // (the board left alone asked first: its judging is the judge's own nodes, which the line's end board is read from below)
-  int32_t alone = n > 0 && whole && decF.under ? aloneBuildable() : 0;
+  int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
-  int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : timeLeftMs() > 0;
-  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, whole, waitAt, waitTo, 1, nmore, moreAt, moreTo };
+  int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
+  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
   Outcome o;
-  memset(&o, 0, sizeof o); o.topLeft = -1; o.endNear = -1;
+  memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
   o.late = o.j.late;
   o.dead = 1; o.lostAt = o.j.lostAt; o.lives = 0; o.ready = NOT_ASKED;
@@ -213,41 +138,33 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
     int32_t ready = o.j.ready;
     int breaks = o.j.made.broke > 0, stands = o.j.lostAt == FOREVER;
     o.dead = 0; o.ready = ready;
-    // (READY IS LIFE ONLY IF THE BOARD LASTS TO IT: the break readiness found is pressed on the board to come, so a line lives by it only
-    // when its board, left alone, stands until that break is pressed and done -- the readiness frame and a break's time. Under a queue of
-    // blocks the board to come is always one landing on: a hold whose board dies first, ready again every decision, waited itself out)
-    int readyLasts = ready == 1 && (stands || o.j.lostAt == NOT_ASKED || o.j.lostAt > o.j.readyWait + imax(1, rankSave));
-    o.lives = breaks || !coming ? (stands || readyLasts) : (readyLasts || (ready == NOT_ASKED && stands));
-    o.fits = lineInList(&o.j, 1);
+    o.lives = breaks || !coming ? (stands || ready == 1) : (ready == 1 || (ready == NOT_ASKED && stands));
+    o.fits = fitsList(&theList, o.j.made, &o.j, 1) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1; o.endNear = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.topLeft = -1;
-    if (whole) {
+    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
+    if (!waitTo) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
-      if (eb) { o.endHb = endCellsHash(eb); endKeepPut(o.endHb, eb); o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.topLeft = topOn(eb); }
+      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
-      // (READY, plans/gambit-next.md 1: real play in reach on the board the line leaves -- garbage on it, and a break within the shape
-      // math's reach (nearOf, NEAR_MISS none); none on it, nothing to be ready for. Read on every whole line; the proof reads it, rank.c
-      // playReady -- nearAfter stays the under-garbage tier key it was)
-      if (eb) o.endNear = decF.under ? o.nearAfter : garbageOn(eb) ? nearOf(eb) : 0;
-      if (breaks) o.nextBuild = eb ? buildsNext(eb) : -1;
+      if (breaks) o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1;
     }
-    // (THE NEXT BREAK SPENT: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board left
+    // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board left
     // alone keeps one has spent what the next break needs -- it is lost the frame it is done)
-    if (n > 0 && !breaks && !stands && whole && decF.under) {
+    if (n > 0 && !breaks && !stands && !waitTo && decF.under) {
       const Board *eb = alone ? ensureBoard(judgeCtx, o.j.endNode) : 0;
-      if (eb && !buildsNext(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
+      if (eb && !breakBuildable(eb)) { o.lives = 0; o.spent = 1; o.lostAt = o.j.lostAt = imax(1, o.j.done); }
     }
     // (A PROMISED BREAK IS A REAL ONE: a line that lives only by being ready lives only when its readiness break, played where the
     // readiness found it, lives too -- one that cannot be played out (no line kept, too long, the clock) promises nothing)
-    if (o.lives && !breaks && ready == 1 && !(stands && !coming) && whole) {
+    if (o.lives && !breaks && ready == 1 && !(stands && !coming) && !waitTo) {
       if (o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
         int32_t ext[MAXLINE];
         for (int k = 0; k < n; k++) ext[k] = seq[k];
         for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
-        Outcome e = promised(ext, n + o.j.readyN, settled, n, o.j.readyWait, 0, 0, 0);
+        Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
         if (e.late) o.late = 1;
         if (e.late || !e.lives) o.lives = 0;
       } else o.lives = 0;
@@ -271,244 +188,64 @@ static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o =
 // for everything (the queue outlasts it) can still be ready for. 1, 0, or NOT_ASKED (nothing coming, or out of time). A line that
 // presses something and is ready is worth what its readiness break leads to: the line and the break played on the engine, where the
 // readiness found it (extLost: the frame that board is lost, FOREVER, or NOT_ASKED)
-// (extSpent: the actions the plan presses -- the line and its breaks -- where its loss is the plan's; NOT_ASKED otherwise)
-// (land: the frame it is asked from -- the next block's landing, or with none on its way and garbage on the board, the frame the window
-// has given the line back a break's walk: a hold that lets the window fill is ready for the break it then presses)
-// (and the break it found: pLine, *pN its swaps, pRow1 the bottom row of the board it was found on, *pWait the frame it is pressed from)
-static void readyPlanOut(const Judged *j, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait) {
-  *pN = j->ready == 1 ? imin(j->readyN, MAXLINE) : 0; *pWait = j->readyWait;
-  for (int k = 0; k < *pN; k++) pLine[k] = j->readyLine[k];
-  for (int c = 0; c <= W; c++) pRow1[c] = j->readyRow1[c];
-}
-static double contBoardLost(const Board *e, double give, int32_t spent);   // (decide.c)
-static double readyShareMs;   // (search/break.c)
-static LOCAL int32_t planBreakN, planBreakAt[PLANBREAKS], planBroke;   // (the last readyNextOf's plan: the frame each break is pressed from, and what it converts)
-static LOCAL int32_t planEndReady;   // (and whether the board it ends on is ready for the next block: endReadyOf)
-static double contBoardLostLine(const Board *e, double give, int32_t spent, int32_t *seq, int32_t *nseq);   // (decide.c: and the line that lives on from it)
-// READY FOR THE NEXT BLOCK (plans/gambit-next.md 1): the board a line or its plan ends on, with the biggest block shown this game landed
-// on it, has a break -- the break search's own answer on that board (judge.c breaksAfterLanding). 1 ready, 0 not (none found, or the board
-// is lost when it lands), NOT_ASKED the clock cut it. With no block shown yet this game, 1: nothing to be ready for
-// (the block is landed on the end board at once: the question is whether that board has a break for it, not whether it stands the lead
-// again -- the lead was stood by the line. Read by the shape math, the swaps to the nearest break on the landed board (search/break.c
-// nearOf, the touch beam's own key), within END_READY_NEAR: a reading every line can be asked in the clock, where a break search of
-// each could not be. The decision that plays the line searches that board for the break itself; a proof lost with nothing new shown
-// is the reading's miss, counted by the summary. endReadyWhy, the log's: 1 no end board, 2 the clock before asking, 3 no root, 5 the
-// board is lost when it lands, 6 no break near, 0 ready)
-#define END_READY_LEAD 60
-#define END_READY_NEAR 2
-static LOCAL Ctx *endReadyCtx;
-static LOCAL int32_t endReadyWhy;
-static int32_t endReadyOf(const Board *eb) {
-  if (nextBlk.height <= 0) return 1;
-  endReadyWhy = !eb ? 1 : 2;
-  if (!eb || clockOut()) return NOT_ASKED;
-  Ctx *x = endReadyCtx = ctxOf(endReadyCtx);
-  Question q2 = decQ; q2.b = (Board *)eb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 1;
-  q2.arr[0] = nextBlk; q2.arr[0].at = 1;
-  int root = rootOf(x, &q2);
-  endReadyWhy = 3;
-  if (root < 0) return NOT_ASKED;
-  int land = step(x, root, MK_LONG, 0, 0, q2.arr[0].at + 2);
-  endReadyWhy = 5;
-  if (!liveNode(x, land)) return 0;
-  int calm = settleOf(x, land); if (liveNode(x, calm)) land = calm;
-  const Board *lb = ensureBoard(x, land);
-  endReadyWhy = 3;
-  if (!lb) return NOT_ASKED;
-  int near = garbageOn(lb) ? nearOf(lb) : 0;
-  endReadyWhy = near <= END_READY_NEAR ? 0 : 6;
-  return near <= END_READY_NEAR;
-}
-static LOCAL int32_t planMargin[5];   // (and the margin it leaves: top, material, contact, under, the frame its last swap is pressed by; top -1 not read)
-// THE MARGIN A PLAN LEAVES (plans/gambit-next.md 2): the board its last break leaves, run on until everything shown has landed and
-// settled -- its top, its material and its contact, read as a line's own landed board is (judge.c readyTop): a break is credited with
-// what it converts, not charged for what it spends before it lands
-static LOCAL Ctx *planLandCtx; static LOCAL Board *planCopy;
-static int planLanded(const Board *e, int32_t *m) {
-  planLandCtx = ctxOf(planLandCtx);
-  if (!planCopy) planCopy = nb_new();
-  if (!planLandCtx || !planCopy || !e) return 0;
-  cloneBoard(planCopy, e);
-  int32_t dt = imax(0, planCopy->clock - decQ.b->clock), last = 0;
-  Question q2 = decQ; q2.b = planCopy; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
-  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr].at -= dt; last = imax(last, q2.arr[q2.narr].at); q2.narr++; }
-  int root = rootOf(planLandCtx, &q2);
-  if (root < 0) return 0;
-  int n = last > 0 ? step(planLandCtx, root, MK_LONG, 0, 0, last) : root;
-  if (!liveNode(planLandCtx, n)) return 0;
-  int calm = settleOf(planLandCtx, n); if (liveNode(planLandCtx, calm)) n = calm;
-  const Board *lb = ensureBoard(planLandCtx, n);
-  if (!lb) return 0;
-  m[0] = topOn(lb); m[1] = materialOn(lb); contactOn(lb, &m[2], &m[3]);
-  return 1;
-}
-// (read as each break of the plan is taken, while the clock still has the step: the plan grows until the clock is out, and a margin
-// asked after it would never be read -- a plan whose last break was not read keeps none)
-static void planMark(Outcome *o, const Board *e) {
-  int32_t m[4];
-  if (planLanded(e, m)) { o->planTop = m[0]; o->planMat = m[1]; o->planContact = m[2]; o->planUnder = m[3]; }
-  else o->planTop = -1;
-}
-// (the cache's kind for a plan asked from a landing: 2 the next block's, READY_KIND_LAND + k the k-th later one -- rank.c readyNextFor)
-#define READY_KIND_LAND 10
-#define PLAN_LANDINGS 4   // (the landings a plan's next break is asked from, the last first)
-static int32_t planEarlier;   // (this decision's plan breaks found from a landing before the last: the log's lands=)
-static LOCAL int32_t readyKind = 2;
-// (pAt: each swap of the plan handed out (pLine) with the frame it is pressed from -- the first break's its wait, each later break's the
-// landing its readiness found it from, the survival line on from the plan's end board that board's frame; 0 as the board lets.
-// THE WHOLE PLAN IS HANDED OUT, plans/gambit-next.md 6: a proof kept is the plan carried, not its first break alone)
-static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t land, int32_t *extLost, int32_t *extSpent, int32_t *pLine, int32_t *pN, int32_t *pRow1, int32_t *pWait, int32_t *pAt) {
-  *extLost = NOT_ASKED; *extSpent = NOT_ASKED; *pN = 0; planBreakN = 0; planBroke = 0; planMargin[0] = -1; planEndReady = NOT_ASKED;
-  if (land == NOT_ASKED) return NOT_ASKED;
-  Outcome *hit = cached(seq, n, settled, readyKind);
-  if (hit) { *extLost = hit->lostAt; *extSpent = hit->lostAt != NOT_ASKED ? hit->j.spent : NOT_ASKED; if (hit->ready == 1) { readyPlanOut(&hit->j, pLine, pN, pRow1, pWait); if (hit->planFullN > 0) { *pN = hit->planFullN; for (int k = 0; k < hit->planFullN; k++) { pLine[k] = hit->planFullLine[k]; pAt[k] = hit->planFullAt[k]; } } else for (int k = 0; k < *pN; k++) pAt[k] = k ? 0 : *pWait; } planBreakN = hit->nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = hit->breakAt[k]; planBroke = hit->planBroke; planMargin[0] = hit->planTop; planMargin[1] = hit->planMat; planMargin[2] = hit->planContact; planMargin[3] = hit->planUnder; planMargin[4] = hit->planEndAt; planEndReady = hit->endReady; return hit->ready; }
+static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extLost) {
+  *extLost = NOT_ASKED;
+  if (decF.next == NOT_ASKED) return NOT_ASKED;
+  Outcome *hit = cached(seq, n, settled, 2);
+  if (hit) { *extLost = hit->lostAt; return hit->ready; }
   if (clockOut()) return NOT_ASKED;
-  JudgeOpts jo = { settled, decQ.tight, land, 1, 1, -1, 0, 1 };
+  JudgeOpts jo = { settled, decQ.tight, decF.next, 1, 1, -1, 0, 1 };
   Outcome o;
-  memset(&o, 0, sizeof o); o.topLeft = -1; o.planTop = -1;
+  memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
   if (o.j.late) return NOT_ASKED;
   o.ready = !o.j.dead && o.j.ready == 1;
-  if (o.ready) { readyPlanOut(&o.j, pLine, pN, pRow1, pWait); for (int k = 0; k < *pN; k++) pAt[k] = k ? 0 : *pWait; }
   o.lostAt = NOT_ASKED;
-  o.planFullN = 0;
-  // (the board the line itself ends on, kept before the next judging resets the nodes: the plan's end board replaces it where a plan is found)
-  static LOCAL Board *lineEndB, *planEnd; if (!lineEndB) lineEndB = nb_new(); if (!planEnd) planEnd = nb_new();
-  int haveLineEnd = 0;
-  if (lineEndB && !o.j.dead) { const Board *eb = ensureBoard(judgeCtx, o.j.endNode); if (eb) { cloneBoard(lineEndB, eb); haveLineEnd = 1; } }
-  int haveEnd = 0; int32_t endSpent = 0;   // (and the actions the plan spent to its end: its continuation presses in what is left)
   if (o.ready && n > 0 && o.j.readyN > 0 && n + o.j.readyN <= MAXLINE) {
-    int32_t ext[MAXLINE], en = n + o.j.readyN, w0To = o.j.readyWait, mAt[MAXLINE], mTo[MAXLINE], nm = 0;
+    int32_t ext[MAXLINE];
     for (int k = 0; k < n; k++) ext[k] = seq[k];
     for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
-    Outcome e = promised(ext, en, settled, n, w0To, 0, 0, 0);
-    int enOk = en, nmOk = 0;   // (the plan as accepted: a later break the loop tries and rejects stays in ext past enOk)
-    if (!e.late) { o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt; *extSpent = e.j.spent; o.nBreakAt = 0; o.breakAt[o.nBreakAt++] = w0To; o.planBroke = e.j.made.broke; o.planEndAt = e.j.endAt;
-      if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; endSpent = e.j.spent; planMark(&o, planEnd); } } }
-    // (A PLAN OF SEVERAL STEPS: the board the break leaves, once it has settled, asked again for a break in reach -- played where its
-    // readiness finds it, and so on while each break puts the loss off -- as far as the board, the line's length and the clock allow: the
-    // line is lost where the plan is, the owner's ready with a plan)
-    while (!e.late && !e.dead && !e.lives && o.lostAt != NOT_ASKED && nm < MAXLINE && !clockOut()) {
-      // (CONVERT MORE PER BREAK, plans/gambit-next.md 5: the next break asked from the last landing shown, and where the board does not
-      // reach it, from each landing before it in turn -- the latest landing a break is in reach from converts the most while the board
-      // still stands; a plan that only asked the last stopped short wherever the board died before it)
-      int32_t lands[MAXARR + 1], nl = 0, prevTo = nm ? mTo[nm - 1] : w0To;
-      if (decF.land != NOT_ASKED) lands[nl++] = decF.land;
-      for (int a = 0; a < decQ.narr && nl < MAXARR + 1; a++) {
-        int32_t at = decQ.arr[a].at; int dup = at <= prevTo;
-        for (int k = 0; k < nl && !dup; k++) dup = lands[k] == at;
-        if (dup) continue;
-        int k = nl++; while (k > 0 && lands[k - 1] < at) { lands[k] = lands[k - 1]; k--; } lands[k] = at;
-      }
-      if (!nl) lands[nl++] = 0;
-      Judged q; int got = 0, li = 0;
-      for (; li < nl && li < PLAN_LANDINGS && !clockOut(); li++) {
-        JudgeOpts jn = { settled, decQ.tight, lands[li], 1, 1, -1, 0, 1, n, w0To, 0, nm, mAt, mTo };
-        judge(&decQ, ext, en, &jn, &q);
-        got = !q.late && !q.dead && q.ready == 1 && q.readyN > 0 && en + q.readyN <= MAXLINE;
-        if (got) break;
-      }
-      if (!got) break;
-      planEarlier += li > 0;
-      mAt[nm] = en; mTo[nm] = q.readyWait; nm++;
-      for (int k = 0; k < q.readyN; k++) ext[en + k] = q.readyLine[k];
-      en += q.readyN;
-      e = promised(ext, en, settled, n, w0To, nm, mAt, mTo);
-      if (e.late) break;
-      int32_t lost = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
-      if (lost == NOT_ASKED || (lost != FOREVER && o.lostAt != FOREVER && lost <= o.lostAt)) break;
-      o.lostAt = lost; *extSpent = e.j.spent; o.planBroke = e.j.made.broke; o.planEndAt = e.j.endAt;
-      enOk = en; nmOk = nm;
-      if (o.nBreakAt < PLANBREAKS) o.breakAt[o.nBreakAt++] = mTo[nm - 1];
-      haveEnd = 0; if (planEnd && !e.dead && !e.lives) { const Board *eb = ensureBoard(judgeCtx, e.j.endNode); if (eb) { cloneBoard(planEnd, eb); haveEnd = 1; endSpent = e.j.spent; planMark(&o, planEnd); } }
-    }
-    // (AND ON: past its last break the plan goes on as the survival search plays on from the board it leaves -- every plan ends the
-    // same way, so a plan of breaks is never judged left alone where a line that only survives is judged played on)
-    int32_t cseq[MAXLINE], cn = 0; double c = -1;
-    if (haveEnd && o.lostAt != NOT_ASKED && o.lostAt != FOREVER && readyShareMs > 0 && !clockOut()) {
-      c = contBoardLostLine(planEnd, readyShareMs, endSpent, cseq, &cn);
-      if (c >= 1e9) o.lostAt = FOREVER; else if (c > o.lostAt) o.lostAt = (int32_t)c; else cn = 0;
-    }
-    // (the whole plan after the line: its breaks, each from the frame its readiness found it, and the survival line on from the end
-    // board, from that board's frame -- what the next decision carries, pressed as judged here)
-    { int m = 0;
-      for (int k = n; k < enOk && m < MAXLINE; k++, m++) {
-        int32_t at = k == n ? w0To : 0;
-        for (int q = 0; q < nmOk; q++) if (mAt[q] == k) at = mTo[q];
-        o.planFullLine[m] = ext[k]; o.planFullAt[m] = at;
-      }
-      for (int k = 0; k < cn && m < MAXLINE; k++, m++) { o.planFullLine[m] = cseq[k]; o.planFullAt[m] = k ? 0 : o.planEndAt; }
-      o.planFullN = m;
-      *pN = m; for (int k = 0; k < m; k++) { pLine[k] = o.planFullLine[k]; pAt[k] = o.planFullAt[k]; } }
+    Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
+    if (!e.late) o.lostAt = e.dead ? (e.j.deadAt > 0 ? e.j.deadAt : NOT_ASKED) : e.lostAt;
   }
-  // (READY FOR THE NEXT BLOCK, plans/gambit-next.md 1: asked of the board the plan ends on, else the line's own)
-  o.endReady = endReadyOf(haveEnd ? planEnd : haveLineEnd ? lineEndB : 0);
-  planEndReady = o.endReady;
   *extLost = o.lostAt;
-  if (o.lostAt == NOT_ASKED) *extSpent = NOT_ASKED;
-  o.j.spent = *extSpent;   // (kept with the plan's loss: the cache's own reading)
-  planBreakN = o.nBreakAt; for (int k = 0; k < planBreakN; k++) planBreakAt[k] = o.breakAt[k]; planBroke = o.planBroke;
-  planMargin[0] = o.planTop; planMargin[1] = o.planMat; planMargin[2] = o.planContact; planMargin[3] = o.planUnder; planMargin[4] = o.planEndAt;
-  keep(seq, n, settled, readyKind, &o);
+  keep(seq, n, settled, 2, &o);
   return o.ready;
 }
-// THE ONE LINE CHECK, every search's and the order's: of a line judged (judge.c), what the caller holds it to. Always: not dead, its
-// chain within MAXCHAIN, pressed whole (judgedCut). With CHECK_WASTE, no three wasted (judgedWastes); with CHECK_LIST and a list held,
-// within the list (lineInList, a last resort too) spending neither the rules' floor nor the reserve (lineSpends). The order drops what
-// fails the first two and ranks outside what fails the list (rank.c judgeCand), so a search held to them looks on past a line the order
-// would drop. Each line judged once a decision (the cache), whatever it is held to; a check not begun by the deadline keeps no line.
-#define CHECK_LIST 1
-#define CHECK_WASTE 2
-static int lineOk(const Outcome *o, int flags) {
-  const Judged *j = &o->j;
-  if (j->dead || j->late || imax(j->made.chain, j->chainAll) > MAXCHAIN || judgedCut(j)) return 0;
-  if ((flags & CHECK_WASTE) && judgedWastes(j)) return 0;
-  if ((flags & CHECK_LIST) && listOn && !(lineInList(j, 1) && !lineSpends(j, o->floorKept))) return 0;
-  return 1;
-}
-// (judged on the question the asking search is rooted at -- the decision's, kept in its cache, or a readiness search's landed board)
-static int lineCheckOn(const Question *q, const int32_t *seq, int n, int settled, int flags) {
-  int own = q == &decQ;
-  Outcome *hit = own ? cached(seq, n, settled, 1) : 0;
-  if (hit) return lineOk(hit, flags);
+// THE SHARED LINE CHECK: what the line makes and sets off fits the list, the chain is within MAXCHAIN, and below the rule's material
+// floor it does not clear panels and break nothing. A check not begun by the decision's deadline keeps no line.
+static int lineFits(const int32_t *seq, int n, int settled) {
+  Outcome *hit = cached(seq, n, settled, 1);
+  if (hit) return hit->fits;
   if (clockOut()) return 0;
-  JudgeOpts jo = { settled, q->tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
   Outcome o;
-  memset(&o, 0, sizeof o); o.topLeft = -1;
-  judge(q, seq, n, &jo, &o.j);
+  memset(&o, 0, sizeof o);
+  judge(&decQ, seq, n, &jo, &o.j);
+  Made m = o.j.made;
+  o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN &&
+           !(decF.belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0));
+  // (a list ended by "default": a line outside it is the default's own, kept while the board lives through it)
+  if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN;   // (the host's own check, a line held to no list)
   if (o.j.late) return 0;
-  const Board *eb = o.j.dead || !floorOf ? 0 : ensureBoard(judgeCtx, o.j.endNode);
-  o.floorKept = eb ? floorOf(eb) : -1;
-  if (own) keep(seq, n, settled, 1, &o);
-  return lineOk(&o, flags);
+  keep(seq, n, settled, 1, &o);
+  return o.fits;
 }
-static int lineCheck(const int32_t *seq, int n, int settled, int flags) { return lineCheckOn(&decQ, seq, n, settled, flags); }
-// (the searches' check: the list, no three wasted; the survival search's: no three wasted where its pool holds such a line, else none --
-// a line that lives is taken whatever list it is outside, and a three the board needs comes from it)
-static int lineFits(const int32_t *seq, int n, int settled) { return lineCheck(seq, n, settled, CHECK_LIST | CHECK_WASTE); }
-static int lineKeptOn(const Question *q, const int32_t *seq, int n, int settled) { return lineCheckOn(q, seq, n, settled, 0); }
 
 // ---- a decision begun: the question (from a node of a host search, until the decision reads its own) and the facts; every line is
 // judged again
-EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft);
-EXPORT(gb_decision_start) int gb_decision_start(Ctx *hx, int i, int tight, int land, int topped, int timeLeft) {
+EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, int belowFloor);
+EXPORT(gb_decision_start) int gb_decision_start(Ctx *hx, int i, int tight, int land, int topped, int timeLeft, int belowFloor) {
   if (gb_question(hx, i, tight) < 0) return -1;
-  return gb_decision_on(land, topped, timeLeft);
+  return gb_decision_on(land, topped, timeLeft, belowFloor);
 }
 // the same, on the question already set (gb_question_bytes)
-EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft) {
+EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, int belowFloor) {
   decQ = hostQ; decQ.b = hostBoard; backBoard = hostBoard;
-  Facts f = { land, topped, timeLeft };
-  floorOf = 0;   // (a host's question holds no rules' keep: decide.c sets the decision's)
+  Facts f = { land, topped, timeLeft, belowFloor };
   decF = f;
-  ncache = 0; cacheGen = __atomic_add_fetch(&decGen, 1, __ATOMIC_RELAXED); rootBuildable = NOT_ASKED;
+  ncache = 0; rootBuildable = NOT_ASKED;
   return 0;
-}
-// (and the decision's press, for a search asked of a logged board: the allowance left, and the pace's gap -- native.c dumpBoard's a, g)
-static void lookPause(void);   // (decide.c: the look-ahead beside reads the press -- held before it is set)
-EXPORT(gb_press) void gb_press(int allow, int gap) {
-  lookPause();
-  pressAllowance = allow; decQ.tight = pressTight = allow >= 0 && tightAt(allow); __atomic_store_n(&decGap, gap, __ATOMIC_RELAXED);
 }
 // The line in the io body (nseq words); back: dead, lostAt, lives, fits, ready, late, then the judge's answer as gb_judge writes it.
 EXPORT(gb_outcome) int gb_outcome(int nseq, int settled) {

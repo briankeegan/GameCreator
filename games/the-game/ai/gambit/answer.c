@@ -2,7 +2,7 @@
 // decision, the move. What carries from one decision to the next lives here: the break search's lines, the boards this dig has stood
 // on, the line toward a break begun, the line in progress, the pair the last swap swapped.
 
-#define BREAK_SHARE 0.4    // of the searches' time (core/clock.h timeLeftMs, while their share holds), for the break search
+#define BREAK_SHARE 0.4    // of the searches' time (propose.c leftMs), for the break search
 #define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
 // (the profile's own, in percent, where it gives one: gb_share)
 static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
@@ -10,6 +10,17 @@ static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
 #define BREAK_MAX_MS 400
 #define ROW_STEPS 16
 
+
+// ---- the garbage the search digs toward: the id of the lowest block on the board
+static int lowestGarbageRowOf(const Board *b) {
+  for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) if (b->p[r][c].f[ISGARBAGE]) return r;
+  return 0;
+}
+static int32_t digTargetOf(const Board *b) {
+  int r = lowestGarbageRowOf(b);
+  if (r) for (int k = 1; k <= W; k++) if (b->p[r][k].f[ISGARBAGE]) return b->p[r][k].f[GARBAGEID];
+  return NUL;
+}
 
 // ---- THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest:
 // each row's colours, garbage as G
@@ -45,111 +56,103 @@ static int seenDigHas(const Board *b, int32_t mv) {
   return digHas(key);
 }
 
-// ---- THE BREAK SEARCH CARRIED ON: its frontier, and the planner's, in the one store (search/frontier.c)
-#define theKept theFront[FR_BREAK]
-#define thePlanKept theFront[FR_PLAN]
+// ---- THE BREAK SEARCH CARRIED ON: this beam's lines, on this board, the garbage they dig toward, the move played and the line handed
+// on after it, a bottom-row panel none of them touches, and the line toward a break played
+typedef struct { int32_t set, gid, anchorRow, anchorCol, anchorId, id, playedHold, played, nhanded, handed[MAXLINE], ntoward, toward[MAXPATH]; Paths paths; } Kept;
+static Kept theKept;
 // (a life not kept: the last decision's verdict under garbage, its next landing frame and queue -- answerTurn's log)
 #define LIFEDUMPS 20
 static int32_t lifeLived, lifeLand, lifeQk, lifeDumps;
 static int32_t towardPlayedN, towardPlayed[MAXPATH];
-// (the break search's frontier and the planner's, out of and into the one store: search/frontier.c)
+static int32_t riseSince(const Board *b, int row, int col, int32_t id) {
+  for (int r = 1; r < b->nrows; r++) if (b->p[r][col].f[ID] == id) return r - row;
+  return NOT_ASKED;
+}
+static int playedSince(const Kept *K, int32_t lineFrom, int32_t linePressed, int32_t *pre) {
+  int n = lineFrom == K->id && K->nhanded ? imin(linePressed, K->nhanded) : 0, k = 0;
+  if (!K->playedHold) pre[k++] = K->played;
+  for (int i = 0; i < n; i++) pre[k++] = K->handed[i];
+  return k;
+}
+static int startsWith(const int32_t *p, int np, const int32_t *pre, int npre) { if (np <= npre) return 0; for (int i = 0; i < npre; i++) if (p[i] != pre[i]) return 0; return 1; }
 static int carriedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, Paths *out) {
-  return frontierResume(FR_BREAK, b, lineFrom, linePressed, 1, out, towardRest, &towardRestLen);
+  out->n = 0;
+  Kept *K = &theKept;
+  if (!K->set || !K->paths.n || digTargetOf(b) != K->gid) return 0;
+  int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId);
+  if (dr == NOT_ASKED) return 0;
+  int32_t pre[MAXLINE + 1];
+  int npre = playedSince(K, lineFrom, linePressed, pre);
+  // (THE LINE TOWARD A BREAK BEGUN: the rest of the one played last, the same moves taken off)
+  if (K->ntoward && startsWith(K->toward, K->ntoward, pre, npre)) {
+    towardRestLen = K->ntoward - npre;
+    for (int i = 0; i < towardRestLen; i++) towardRest[i] = (CR(K->toward[npre + i]) + dr) * 8 + CC(K->toward[npre + i]);
+  }
+  for (int i = 0; i < K->paths.n; i++) {
+    if (!startsWith(K->paths.path[i], K->paths.len[i], pre, npre)) continue;
+    int t = out->n++;
+    out->len[t] = K->paths.len[i] - npre;
+    for (int k = 0; k < out->len[t]; k++) out->path[t][k] = (CR(K->paths.path[i][npre + k]) + dr) * 8 + CC(K->paths.path[i][npre + k]);
+  }
+  return 1;
+}
+// (a frontier kept: K anchored to a bottom-row panel the move played and the swaps handed on do not touch, with what was played)
+static int anchorKept(Kept *K, const Paths *paths, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
+  const Board *b = decQ.b;
+  for (int col = 1; col <= W; col++) {
+    int32_t id = b->p[1][col].f[ID];
+    if (id == NUL) continue;
+    int touched = 0;
+    if (kind == 1 && CR(move) == 1 && (CC(move) == col || CC(move) + 1 == col)) touched = 1;
+    for (int i = 0; i < nhanded; i++) if (CR(handed[i]) == 1 && (CC(handed[i]) == col || CC(handed[i]) + 1 == col)) touched = 1;
+    if (touched) continue;
+    K->set = 1; K->paths = *paths; K->gid = digTargetOf(b); K->anchorRow = 1; K->anchorCol = col; K->anchorId = id; K->id = qid;
+    K->playedHold = kind == 0; K->played = move; K->nhanded = nhanded; for (int i = 0; i < nhanded; i++) K->handed[i] = handed[i];
+    return 1;
+  }
+  return 0;
+}
+// THE PLAN KEPT (search/plan.c planOut): the planner's lines, anchored as the break search's are, and re-rooted at the next decision --
+// the swaps played since taken off, the rows risen since added (plannedPaths: the next plan's seeds)
+static Kept thePlanKept;
+static void keepPlan(int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
+  memset(&thePlanKept, 0, sizeof thePlanKept);
+  if (!planOut.n || !(kind == 0 || kind == 1)) return;
+  anchorKept(&thePlanKept, &planOut, kind, move, handed, nhanded, qid);
 }
 static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, Paths *out) {
-  return frontierResume(FR_PLAN, b, lineFrom, linePressed, 0, out, 0, 0) && out->n > 0;
-}
-static void keepPlan(int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
-  frontierKeep(FR_PLAN, &planOut, kind, move, handed, nhanded, qid, 0, 0);
-}
-// THE BREAK SEARCH GOING ON BETWEEN DECISIONS (plans/gambit-machinery.md): a decision that found no break keeps its frontier; on the
-// frames no question is out -- Gambit's thread waiting, the machine its decisions do not need -- a worker grows that frontier on, on
-// the decision's own board, a frame's work a frame (onGrant, native.c gn_frame), and what it reaches is kept in its place for the next
-// decision to resume (onStop). A break it finds is kept as the frontier's first line, played again first.
-#define ON_SLICE_MS (1000.0 / 60)
-static Broke onBr; static Paths onSeeds;
-static int32_t onKind, onMove, onHand[MAXLINE], onNhand, onQid, onToward[MAXPATH], onNtoward, onWanted;
-static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound;   // (the slices searched and a break found; the log's: the last let go, onStop)
-static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
-  onWanted = 0;
-  if (!br || br->depth) { memset(&theFront[FR_BREAK], 0, sizeof theFront[FR_BREAK]); return; }
-  frontierKeep(FR_BREAK, &br->keepOut, kind, move, handed, nhanded, qid, towardPlayed, towardPlayedN);
-  if (!theFront[FR_BREAK].set || !br->keepOut.n) return;
-  onWanted = 1; onSeeds = br->keepOut; onKind = kind; onMove = move; onNhand = nhanded; onQid = qid;
-  for (int i = 0; i < nhanded && i < MAXLINE; i++) onHand[i] = handed[i];
-  onNtoward = towardPlayedN; for (int i = 0; i < towardPlayedN && i < MAXPATH; i++) onToward[i] = towardPlayed[i];
-}
-// (its own thread, beside the pool -- the pool may be the readiness's past the decision: native.c onThreadMain at the idle class on the
-// workers' CPUs. onState: 0 idle, 1 asked to run, 2 running)
-static int32_t onState, onThreadOn;
-static void onThread(void) {
-  inJob = 2;
-  for (;;) {
-    int32_t st;
-    while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 1) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
-    __atomic_store_n(&onState, 2, __ATOMIC_RELEASE);
-    pressTight = decQ.tight; pressTap = decTap; pressFrom = pressSpent = 0; ncache = 0;
-    int32_t pop = popLeft(decQ.b);
-    for (;;) {
-      int32_t g;
-      while ((g = __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE)) == __atomic_load_n(&onDone, __ATOMIC_ACQUIRE) && !__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE))
-        __builtin_wasm_memory_atomic_wait32(&onGranted, g, -1);
-      if (__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE)) break;
-      if (!onFound) {
-        clockWork = 0; clockAborted = 0; clockPoll = 0; clockShare = nowMs() + ON_SLICE_MS;
-        listDefault = 1;
-        breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, &onSeeds, &onBr);
-        listDefault = 0;
-        clockShare = 0;
-        // (a slice the stop cut short is not counted: its frontier is the one before it)
-        if (!__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE)) {
-          if (onBr.depth) onFound = 1;
-          else if (onBr.keepOut.n) onSeeds = onBr.keepOut;
-          onSlices++;
-        }
-      }
-      __atomic_add_fetch(&onDone, 1, __ATOMIC_RELEASE);
-      __builtin_wasm_memory_atomic_notify(&onDone, 1);
-    }
-    __atomic_store_n(&onState, 0, __ATOMIC_RELEASE);
-    __builtin_wasm_memory_atomic_notify(&onState, 1);
+  out->n = 0;
+  Kept *K = &thePlanKept;
+  if (!K->set || !K->paths.n) return 0;
+  int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId);
+  if (dr == NOT_ASKED) return 0;
+  int32_t pre[MAXLINE + 1];
+  int npre = playedSince(K, lineFrom, linePressed, pre);
+  for (int i = 0; i < K->paths.n; i++) {
+    if (!startsWith(K->paths.path[i], K->paths.len[i], pre, npre)) continue;
+    int t = out->n++;
+    out->len[t] = K->paths.len[i] - npre;
+    for (int k = 0; k < out->len[t]; k++) out->path[t][k] = (CR(K->paths.path[i][npre + k]) + dr) * 8 + CC(K->paths.path[i][npre + k]);
   }
+  return out->n > 0;
 }
-// (begun once the answer is out, on the thread that answered; let go before the next question is answered, on the same thread)
-static void onStart(void) {
-  onSlices = 0; onFound = 0;
-  if (!onWanted || !onThreadOn) return;
-  __atomic_store_n(&onStopReq, 0, __ATOMIC_SEQ_CST);
-  __atomic_store_n(&onDone, __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE), __ATOMIC_RELEASE);
-  __atomic_store_n(&onActive, 1, __ATOMIC_RELEASE);
-  __atomic_store_n(&onState, 1, __ATOMIC_RELEASE);
-  __builtin_wasm_memory_atomic_notify(&onState, 1);
-}
-// (a frame with no question out: a frame's work handed to it; the frame loop in lockstep waits for it, so it has the frame the live
-// game would give it)
-static void onGrant(int wait) {
-  if (!__atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) return;
-  int32_t g = __atomic_add_fetch(&onGranted, 1, __ATOMIC_RELEASE);
-  __builtin_wasm_memory_atomic_notify(&onGranted, 1);
-  if (wait) { int32_t d; while ((d = __atomic_load_n(&onDone, __ATOMIC_ACQUIRE)) < g && __atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) __builtin_wasm_memory_atomic_wait32(&onDone, d, -1); }
-}
-static void onStop(void) {
-  if (!__atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) return;
-  __atomic_store_n(&onStopReq, 1, __ATOMIC_SEQ_CST);
-  __builtin_wasm_memory_atomic_notify(&onGranted, 1);
-  int32_t st;
-  while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 0) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
-  __atomic_store_n(&onActive, 0, __ATOMIC_RELEASE);
-  __builtin_wasm_memory_atomic_notify(&onDone, 1);
-  onLogSlices = onSlices; onLogFound = onFound;
-  if (!onSlices) return;
-  // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
-  static Paths kept;
-  kept.n = 0;
-  if (onFound && onBr.pathLen > 0) { kept.len[0] = onBr.pathLen; for (int k = 0; k < onBr.pathLen && k < MAXPATH; k++) kept.path[0][k] = onBr.path[k]; kept.n = 1; }
-  const Paths *from = onFound ? &onBr.keepOut : &onSeeds;
-  for (int i = 0; i < from->n && kept.n < KEEPN; i++, kept.n++) { kept.len[kept.n] = from->len[i]; for (int k = 0; k < from->len[i]; k++) kept.path[kept.n][k] = from->path[i][k]; }
-  if (kept.n) frontierKeep(FR_BREAK, &kept, onKind, onMove, onHand, onNhand, onQid, onToward, onNtoward);
+static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
+  memset(&theKept, 0, sizeof theKept);
+  if (!br || !br->keepOut.n || br->depth || !(kind == 0 || kind == 1)) return;
+  const Board *b = decQ.b;
+  for (int col = 1; col <= W; col++) {
+    int32_t id = b->p[1][col].f[ID];
+    if (id == NUL) continue;
+    int touched = 0;
+    if (kind == 1 && CR(move) == 1 && (CC(move) == col || CC(move) + 1 == col)) touched = 1;
+    for (int i = 0; i < nhanded; i++) if (CR(handed[i]) == 1 && (CC(handed[i]) == col || CC(handed[i]) + 1 == col)) touched = 1;
+    if (touched) continue;
+    Kept *K = &theKept;
+    K->set = 1; K->paths = br->keepOut; K->gid = digTargetOf(b); K->anchorRow = 1; K->anchorCol = col; K->anchorId = id; K->id = qid;
+    K->playedHold = kind == 0; K->played = move; K->nhanded = nhanded; for (int i = 0; i < nhanded; i++) K->handed[i] = handed[i];
+    K->ntoward = towardPlayedN; for (int i = 0; i < towardPlayedN; i++) K->toward[i] = towardPlayed[i];
+    return;
+  }
 }
 
 // THE BREAK SEARCH, in its share of the decision's time -- or, with workers, on one of them beside the other searches, in all of theirs
@@ -162,16 +165,14 @@ static void breakRun(const Read *R, double by) { breakRunTo(R, by, &theBr); }
 static void breakRunTo(const Read *R, double by, Broke *into) {
   int32_t pop = popLeft(decQ.b);
   double old = clockShareBegin(by);
-  // (a list ended by "default" -- every list under garbage -- or any list where nothing played was proven (breakOpen), plays off it only when no break within it is found: the break off the list
+  // (a list ended by "default" -- every list under garbage -- plays off it only when no break within it is found: the break off the list
   // is searched first, quick to find, so a break to play is in hand however long the list's own takes; the rest of the share then goes
-  // to a break within the list, which is played instead if found). Both carry on the frontier the last decision kept: under garbage
-  // with no break found, the off-list search is the only one asked, and a search begun again from the first swap every decision never
-  // grows past a few swaps)
+  // to a break within the list, which is played instead if found)
   listDefault = 0;
-  if (R->end == 1 || breakOpen) {
+  if (R->end == 1) {
     static LOCAL Broke off;
     listDefault = 1;
-    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, into);
+    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, 0, into);
     listDefault = 0;
     off = *into;
     if (off.depth && !clockOut()) {
@@ -187,11 +188,11 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
   // (no break search on a question due sooner than it could take: the answer would come late -- the searches' time is what it takes
   // first, and short of that, the judging's quarter: a board this near its end has a break one swap away or none (run 447, combo_storm-2
   // at 13038: a one-swap break, found in 3 ms, not searched for))
-  double t = nowMs(), room = timeLeftMs();
+  double t = nowMs(), room = C2.due ? C2.due - C2.margin - t : 1e9;
   if (C2.due && room < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
-  // (its share of what the searches have, core/clock.h timeLeftMs: the other searches the rest, the judging its quarter)
-  double by = C2.due ? t + (BREAK_MIN_MS > timeLeftMs() * share ? BREAK_MIN_MS : timeLeftMs() * share) : t + BREAK_MAX_MS;
+  // (its share of what the searches have, propose.c leftMs: the other searches the rest, the judging its quarter)
+  double by = C2.due ? t + (BREAK_MIN_MS > leftMs() * share ? BREAK_MIN_MS : leftMs() * share) : t + BREAK_MAX_MS;
   breakRun(R, by);
   brCut = nowMs() >= by; brResumed = brHave ? brResume.n : 0;
   *ms = nowMs() - t;
@@ -207,28 +208,22 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // worker that finishes one takes the next)
 // (and under garbage, the break search's wider touch beam on a worker of its own from the start, beside the narrower: the break it finds
 // is played when the narrower finds none -- theBrWide)
-enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE, JOB_LANDED, JOB_FLAT };
-static int32_t proofSought;   // (the last decision played no proven line: rank.c proofOf -- the next one's searches go to the break)
-static int32_t lastProven, lastNarr;   // (the last decision's: a proven line played, and the blocks shown -- the log's proofLost=)
-static int32_t wideFirstNow;   // (this decision's: the wider beam took a worker first -- the log's seek=)
-static int32_t touchDepthNext = TOUCH_DEPTH;   // (the touch beam's depth the next decision takes up: search/break.c touchDepth)
-static int32_t jobKinds[8], njobKinds;
+enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE };
+static int32_t jobKinds[5], njobKinds;
 static Broke theBrWide; static int32_t wideDone;
 // (where the break search ran, for the log: 0 not run, 1 a worker beside the searches, 2 the decision after a worker had not finished it,
 // 3 the decision with no worker free; and the ms it was given)
 static int32_t brWhere; static double brGiven;
-// (decTap, decide.c: the decision's pressTap, for its jobs' threads)
+static int32_t decTap;   // (the decision's pressTap, for its jobs' threads)
 static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as the answer says: the native one, native.c gn_setup)
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
   clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
-  inJob = 1; pressTight = decQ.tight; pressTap = decTap; pressFrom = pressSpent = 0; ncache = 0;
+  inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
   int kind = jobKinds[i];
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
   else if (kind == JOB_PLAN) planJob();
   else if (kind == JOB_EXT) extJob(brJobR, brJobS);
-  else if (kind == JOB_LANDED) { landedJobRun(brJobBy); __atomic_store_n(&landedDone, 1, __ATOMIC_RELEASE); }
-  else if (kind == JOB_FLAT) { flatJobRun(brJobBy); __atomic_store_n(&flatDone, 1, __ATOMIC_RELEASE); }
   else if (kind == JOB_WIDE) { touchFrom = 1; breakRunTo(brJobR, brJobBy, &theBrWide); touchFrom = 0; __atomic_store_n(&wideDone, 1, __ATOMIC_RELEASE); }
   else {
     double old = clockShareBegin(brJobBy);
@@ -240,8 +235,8 @@ static void breakJob(int32_t i) {
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
-  brCut = 0; brResumed = 0; landedJobOn = 0; flatJobOn = 0; __atomic_store_n(&flatDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&landedDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
-  if (pool.nworkers <= 0 || poolBusy || !C2.due || timeLeftMs() < BREAK_MIN_MS) return 0;
+  brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
+  if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
   if (!brCtx) brCtx = ctxOf(0);
@@ -249,54 +244,20 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
-  // (A SLAB POPPING: the extension lines it up -- the colours it converts into met by the panels above, the next break made of them --
-  // and takes the worker second, before every other search: let go last, it was never begun while a slab popped)
-  int extFirst = extBeside && R->pop;
-  if (extFirst) jobKinds[njobKinds++] = JOB_EXT;
-  // (GARBAGE OVER A GAP, the flatten search next (search/solve.c flatWanted): a block resting on some columns with others short of it
-  // under it -- the board no match reaches until the towers come down)
-  if (flatWanted(decQ.b)) { jobKinds[njobKinds++] = JOB_FLAT; flatJobOn = 1; }
-  // (THE SEARCH FOR THE PROOF, plans/gambit-next.md 3: where the last decision had no proven line, the break search's wider beam takes a
-  // worker before the planner's half and the extension, which go back to this thread -- the decision's time to the break, not the set-up)
-  wideFirstNow = 0;
-  __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
-  int wideFirst = proofSought && R->under && pool.nworkers >= 4;
-  wideFirstNow = wideFirst;
-  if (wideFirst) jobKinds[njobKinds++] = JOB_WIDE;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
-  // (A BLOCK ON ITS WAY, the board to come next (search/ready.c landedBreak): its size and its frame are shown, and the break the board
-  // will need when it lands is lined up while there is time to press it -- a worker of its own after the survival search, never only
-  // what the others leave)
-  landedJobOn = 0;
-  if (decF.next != NOT_ASKED && decF.next > 0) { jobKinds[njobKinds++] = JOB_LANDED; landedJobOn = 1; }
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
-  if (extBeside && !extFirst) jobKinds[njobKinds++] = JOB_EXT;
-  // (the wider beam last: the worker the planner's half and the extension leave)
-  if (!wideFirst && R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
-  // (no more jobs than workers, so each begins at once and the decision waits for all (breakEnd): the last let go, and a search let go
-  // is this thread's whole)
-  while (njobKinds > pool.nworkers) { int k = jobKinds[--njobKinds]; if (k == JOB_PLAN) planSplit = 0; if (k == JOB_EXT) extBeside = 0; if (k == JOB_FLAT) flatJobOn = 0; if (k == JOB_LANDED) landedJobOn = 0; }
-  // (with too few workers for it, the board to come is queued behind them: the first worker whose search ends before the searches do
-  // takes it, in the time they have left -- it ends with them, so the decision waits no longer for it)
-  if (!landedJobOn && decF.next != NOT_ASKED && decF.next > 0) { jobKinds[njobKinds++] = JOB_LANDED; landedJobOn = 1; }
+  if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
+  __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
+  if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
 // 120 boards searched again, run 415, where 1 to 3 had been)
-// (THE WIDER BEAM'S BREAK, taken where the narrower found none, only where the window keeps the next break's walk once it is pressed --
-// core/nodes.h windowKeepsBreak, its whole walk counted: the wider beam's are the deep breaks, and a break that spends the next one's walk
-// leaves the board none to press)
-static int wideKeepsWindow(const Broke *w) {
-  if (pressAllowance < 0 || w->pathLen <= 0) return 1;
-  const Board *b = decQ.b; int r = b->curRow, c = b->curCol, acts = 0;
-  for (int k = 0; k < w->pathLen; k++) { acts += actionsFor(r, c, CR(w->path[k]), CC(w->path[k]), pressAllowance - acts); r = CR(w->path[k]); c = CC(w->path[k]); }
-  return windowKeepsBreak(0, acts);
-}
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  jobsAll(brCtx);
-  if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = timeLeftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
+  jobsDone(brCtx);
+  if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = leftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;
-  if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth && wideKeepsWindow(&theBrWide)) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
+  if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
   *ms = brJobMs; brCut = brJobT0 + brJobMs >= brJobBy; brResumed = brHave ? brResume.n : 0;
   return 1;
 }
@@ -326,12 +287,8 @@ typedef struct {
   Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled, tap;
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
-  int32_t sooner;   // the line played is less proven than one offered, or dead before it could press anything while one is not
+  int32_t sooner;   // the line played is lost sooner than one offered, and not alike (rank.c lostAlike): survival was not first
   int32_t wastes;   // the line played makes a three for nothing as the judge saw it, and the survival search found the board needed it (decide.c saveOk)
-  int32_t proven;   // the line played is proven (rank.c proofOf): the frame loop presses it as judged (plans/gambit-next.md 6)
-  int32_t backBreaks;   // its first swap puts the last pair back and begins the break the board is lost without (rank.c backBreaks)
-  int32_t leftNext, nextAt;   // the actions the judge read the window holding when the line played's second swap's walk begins, and that
-                              // frame from `at` (judge.c leftNext, nextAt; -1 none) -- the frame loop holds the window to it (front.c)
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
   int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
   int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
@@ -339,7 +296,7 @@ typedef struct {
   double idleMs, brMs;
 } Answer;
 static Answer theAnswer;
-static int32_t emptyAt = NUL;
+static int32_t lastA, lastB, pairRuns, blockA, blockB, blockUntil, emptyAt = NUL;
 
 // SWITCHING (plans/gambit-goal.md 5): the profile's `switch` -- the mode changed mid-game as a rule's `when` changes it, after a random
 // stretch of `min` to `max` frames each time. A game's switches walk a circuit through every ordered pair of the attack rules (each
@@ -348,72 +305,25 @@ static int32_t emptyAt = NUL;
 #define MAXSWITCH 256
 static int32_t switchMin, switchMax, nswitch, switchAt[MAXSWITCH], switchMode[MAXSWITCH], switchedNow;
 static double readMs;   // (the board's reading, for the log)
-// THE STATE CARRIED (plans/gambit-state.md): what a decision PRESSED follows the answer the frame loop played -- the line in progress,
-// the break search's and the planner's lines past the move, the pair kept from being swapped back, the hold -- kept per answer, and the
-// next decision starts from the state the answer last played left (gb_played; -1, a host that does not say: the last decision's).
-// What a decision FOUND is the board's whatever was played: the intentions are one pool every decision adds to, and a line chosen by
-// an answer never played joins them (decide.c intentOfCarry).
-#define CARRIEDN 64
-typedef struct {
-  int32_t id, mode, carryLost, idle;
-  Kept front[NFRONT]; Carry carry, carryNext;
-} Carried;
-static Carried carriedRing[CARRIEDN];
-static int32_t carriedN, carriedHead;
-static int32_t carriedOf = -1;      // the answer whose state the decision's variables hold (-1: a decision's own, not finished)
-static int32_t carriedPlayed = -1;  // the answer the frame loop last played, for the next decision (gb_played)
-static int32_t carriedResumed = -1, carriedLost = -1, carriedIdeas;   // (the log's: the answer resumed from, or the one the ring no longer held; the lines not pressed made ideas)
-static int sameCarry(const Carry *a, const Carry *b) { return a->set == b->set && a->id == b->id && a->move == b->move && a->nrest == b->nrest && !memcmp(a->rest, b->rest, sizeof a->rest[0] * (unsigned long)a->nrest); }
-static void modeLeft(void);
-static void carriedKeep(int32_t id) {
-  Carried *c = &carriedRing[carriedHead];
-  carriedHead = (carriedHead + 1) % CARRIEDN; if (carriedN < CARRIEDN) carriedN++;
-  c->id = id; c->mode = modeRule; c->carryLost = carryLost;
-  c->idle = C2.idle;
-  memcpy(c->front, theFront, sizeof theFront); c->carry = theCarry; c->carryNext = theCarryNext;
-  carriedOf = id;
-}
-static void carriedResume(void) {
-  int32_t played = carriedPlayed;
-  carriedPlayed = -1; carriedResumed = -1; carriedLost = -1; carriedIdeas = 0;
-  if (played >= 0 && played != carriedOf) {
-    const Carried *c = 0;
-    for (int k = 1; k <= carriedN && !c; k++) { const Carried *e = &carriedRing[(carriedHead - k + CARRIEDN) % CARRIEDN]; if (e->id == played) c = e; }
-    if (!c) carriedLost = played;
-    else {
-      carryLost = c->carryLost;
-      C2.idle = c->idle;
-      // (the lines the answers not played chose: ideas still, the next decision's to judge)
-      if (theCarryNext.set && !sameCarry(&theCarryNext, &c->carryNext)) carriedIdeas += intentOfCarry(&theCarryNext);
-      if (theCarry.set && !sameCarry(&theCarry, &c->carry)) carriedIdeas += intentOfCarry(&theCarry);
-      memcpy(theFront, c->front, sizeof theFront); theCarry = c->carry; theCarryNext = c->carryNext;
-      if (c->mode != modeRule) modeLeft();   // (kept under another mode: let go, as a switch lets it go)
-      carriedResumed = played;
-    }
-  }
-  carriedOf = -1;
-}
-// A new game's state: nothing carried, the answer before the first (0: the frame loop has played none yet)
-static void carriedClear(void) { carriedN = carriedHead = 0; carriedPlayed = -1; carriedOf = -1; carriedKeep(0); }
-EXPORT(gb_played) void gb_played(int id) { carriedPlayed = id; }
 static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t allowance, int32_t lineFrom, int32_t linePressed) {
   Answer *A = &theAnswer;
   memset(A, 0, sizeof *A);
-  logN = 0; logBuf[0] = 0; flatAsked = 0;
-  decAt = at;
+  logN = 0; logBuf[0] = 0;
   double tStart = nowMs();
-  pressTap = decTap = 0; decQ.tight = pressTight = 0;   // (decided once the board is read, below)
+  // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks)
+  { const Board *b = decQ.b; double dies = (hostTopped ? b->stopTime + b->preStopTime : framesToTop(b)) + b->health;
+    pressTap = decTap = hostTaps && allowanceKnown && dies <= TAP_DIES; }
+  decQ.tight = allowanceKnown && tightAt(allowance);
+  A->tap = pressTap;
+  pressTight = decQ.tight;
   pressAllowance = allowanceKnown ? allowance : -1;
   if (!hostWin) nWinAges = -1;   // (the window: a native host's, said with the question -- native.c answerOne)
   hostWin = 0;
   towardRestLen = 0;
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
-  touchDepth = touchDepthNext; breakOpen = proofSought; wideFirstNow = 0;
   carryFrom = lineFrom; carryPressed = linePressed;
-  memset(frontLinesHeld, 0, sizeof frontLinesHeld); memset(frontLinesIn, 0, sizeof frontLinesIn); memset(frontLetGo, 0, sizeof frontLetGo);
   planSeedsHave = plannedPaths(decQ.b, lineFrom, linePressed, &planSeeds); planOut.n = 0; planSeeded = 0;
-  outSeedsHave = frontierResume(FR_SURVIVE, decQ.b, lineFrom, linePressed, 0, &outSeeds, 0, 0) && outSeeds.n > 0; outKeep.n = 0; outSeedIn = outSeedPlayed = 0;
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)
   int32_t gid = digTargetOf(decQ.b);
   if (gid == NUL) { digOn = 0; digN = 0; digGid = NUL; }
@@ -421,17 +331,11 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the rules read first -- the list, the floor -- so the break search finds only breaks the judge will take)
   Read R;
   backBoard = decQ.b;
+  theBack.at = at;
   aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
-  readyAsked = readyHit = 0; readyStop(); readyBeamIn = readyBeamOut = 0; readyBeamGen++; readyPendClear();
+  readyAsked = readyHit = 0; readyStop(); readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
-  // (a board near its end, by the frames the decision reads it is lost in left alone -- the dies fact, the garbage on its way landing)
-  pressTap = decTap = hostTaps && allowanceKnown && R.F.v[FACT_US_DIES] <= TAP_DIES;
-  A->tap = pressTap;
-  // (the input budget tight: the frame loop walks held from two cells, so every line is judged pressed as it walks)
-  decQ.tight = allowanceKnown && tightAt(allowance);
-  pressTight = decQ.tight;
   readMs = nowMs() - tStart;
-  if (!lookLockstep) lookResume();   // (live: the look-ahead searches beside the decision; in lockstep, between decisions: decide.c lookPause)
   double brMs;
   // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
   double searchShare = clockShareBegin(searchesEnd());
@@ -441,7 +345,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!beside) searchUnsplit();
   searchBeside = beside;
   brWhere = 0; brGiven = 0;
-  if (!beside) { brWhere = 3; brGiven = timeLeftMs(); }
+  if (!beside) { brWhere = 3; brGiven = leftMs(); }
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   double ts = nowMs();
   searchAll(&R, &S);
@@ -452,7 +356,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
   int n = ranked(&R, &S);
-  n = lookAdmit(&R, n);   // (the look-ahead's line on, only where it saves the board: decide.c lookAdmit)
   // (the floor's raise gives way to nothing: a low stack is raised, and the break it holds ready is made once it has risen (the owner)
   // -- the rows raised are the ones that leave a break once everything lands, decide.c read)
   // (and the opening's to a break, where nothing lives: a raise is no answer to garbage landing on a board that dies)
@@ -462,7 +365,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (order[0]->apBroke > 0 || (H && !order[0]->hold && lostOf(order[0]) >= lostOf(H) + rankSave)) R.up = R.low = 0;
   }
   Played P = playOf(&R, n);
-  if (P.line && P.line->k.tapOf) A->tap = P.line->k.tapOf - 1;   // (the line in progress handed on walked as it was chosen)
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
@@ -480,17 +382,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     }
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
-  // (the next decision's searches, plans/gambit-next.md 3 and 7: under garbage with no proven line played, the wider beam first; and
-  // where this one's break search found no break and the clock did not cut it, a swap deeper -- back to its depth once one is found)
-  // (the depth taken up by the next decision once the readiness left searching is taken back: the searches read it on every thread)
-  proofSought = R.under && top && !proofOf(top);
-  if (!R.under || (ran && theBr.depth)) touchDepthNext = TOUCH_DEPTH;
-  else if (ran && !brCut && !theBr.depth) touchDepthNext = imin(touchDepth + 1, TOUCH_DEPTH_MAX);
-  A->proven = top ? proofOf(top) > 0 : 0;
-  A->leftNext = P.line && !P.line->hold ? P.line->o.j.leftNext : -1; A->nextAt = P.line && !P.line->hold ? P.line->o.j.nextAt : -1;
   A->holdLives = d.kind == 0 && top && top->o.lives;
-  A->backBreaks = P.line && !R.up && P.line->backBreaks;
-  A->wastes = P.line && !R.up && wastesThree(P.line) && P.line->threeNeeded;   // (the line's own verdict: its three the board's save)   // (a three the survival search found the board needed not to die)
+  A->wastes = P.line && !R.up && wastesThree(P.line) && saveOk;   // (a three the survival search found the board needed not to die)
   // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
   // settled line's after the board settles -- so the frame loop presses the line that was judged)
   A->nhand = 0; A->handSettled = P.line && P.line->settled;
@@ -504,16 +397,23 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (d.kind == 1 && P.line && P.line->k.play == PLAY_TOWARD) { towardPlayedN = P.line->k.nseq; for (int i = 0; i < P.line->k.nseq; i++) towardPlayed[i] = P.line->k.seq[i]; }
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
-  lookChosen(P.line);   // (the look-ahead beside: the chosen line's board first)
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
-  frontierKeep(FR_SURVIVE, &outKeep, d.kind, d.move, A->hand, A->nhand, qid, 0, 0);   // (and the survival search's: search/outlive.c)
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
   carryNextOf(P.line);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
   keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
-  carryKept = 0;
   if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
   else if (d.kind == 1 && P.line && P.line->k.nseq == 1 && !theCarry.set) carryReady(P.line, qid);
+  // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
+  int32_t pa = NUL, pb = NUL;
+  if (d.kind == 1) { pa = decQ.b->p[CR(d.move)][CC(d.move)].f[ID]; pb = decQ.b->p[CR(d.move)][CC(d.move) + 1].f[ID]; }
+  int pairKnown = d.kind == 1 ? (pa != NUL && pb != NUL) : !!lastA;
+  int32_t na = d.kind == 1 ? pa : lastA, nb = d.kind == 1 ? pb : lastB;
+  int same = pairKnown && lastA && samePair(na, nb, lastA, lastB);
+  pairRuns = same ? pairRuns + 1 : 0;
+  if (pairRuns >= 2) { blockA = na; blockB = nb; blockUntil = at + 60; }
+  if (pairKnown) { lastA = na; lastB = nb; } else { lastA = lastB = 0; }
+  gb_back(lastA, lastB, pairRuns, blockA, blockB, blockUntil, at);
   C2.idle = d.kind == 0 || (!R.up && !P.wait && !n);   // (held, or nothing was wanted)
   // what the answer and the audit read
   if (P.line) {
@@ -567,36 +467,19 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
   if (routeOffered) { L_s(" route="); L_i(routeOffered); if (routePlayed) L_s("/played"); }
   if (planSeeded) { L_s(" seed="); L_i(planSeeded); }
+  if (readyPre) { L_s(" pre="); L_i(readyPre); L_s("/"); L_i(readyPendN); }
   if (wayOffered) { L_s(" way="); L_i(wayOffered); if (wayPlayed) L_s("/played"); }
   // (the floor's raise: the rows asked, how many leave a break once everything lands, how many the board lives through -- or, asked
   // while the board is busy, -1 a cascade, -2 the game's raise not allowed)
   L_s(" sv="); L_i(__atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? 1 : 0); if (surviveAsked) L_s("/asked");   // (the survival job finished this decision; the backup asked of it)
-  if (landedOneBroke != -2) { L_s(" landedOne="); L_i(landedOneBroke); landedOneBroke = -2; }   // (a one-swap break on the board to come, judged pressed at the landing: the cells it broke)
-  if (landedWhy >= 0) { L_s(" landed="); L_i(landedWhy); if (landedWhy == 0 || landedWhy == 4) { L_s("/d"); L_i(landedDeep); L_s("/r"); L_i(landedRes); L_s("/"); L_i(landedIn); } landedWhy = -1; }   // (the break on the board to come: 0 found, 1 no root, 2 lost before it lands, 3 no garbage then, 4 none found)
-  // (THE FRONTIERS CARRIED ON, search/frontier.c: each one's lines kept last decision / carried in this one, and what changed under it
-  // -- g the garbage dug at changed, a the anchor gone, k its key no longer held; and the survival search's played again of carried in)
-  { L_s(" front="); for (int f = 0; f < NFRONT; f++) { if (f) L_s(","); L_s(frontName[f]); L_s(":"); L_i(frontLinesHeld[f]); L_s("/"); L_i(frontLinesIn[f]);
-      if (frontLetGo[f]) L_s(frontLetGo[f] == 1 ? "g" : frontLetGo[f] == 2 ? "a" : "k"); }
-    L_s(" frontId="); for (int f = 0; f < NFRONT; f++) { if (f) L_s(","); L_i(frontById[f]); }
-    L_s(" svSeed="); L_i(outSeedPlayed); L_s("/"); L_i(outSeedIn); }
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1");
-  for (int i = 0; i < wasteDropN; i++) { const int32_t *w = wasteDrop[i]; L_s(i ? "," : " wdrop="); L_play(w[0]); L_s(":"); L_i(w[1]); L_s(":"); L_i(w[2]); L_s("/"); L_i(w[3]); L_s(":t"); L_i(w[4]); L_s(":"); for (int k = 0; k < w[5] && k < MAXLINE; k++) { if (k) L_s(";"); L_i(CR(w[6 + k])); L_s("."); L_i(CC(w[6 + k])); } } if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); onLogSlices = 0; }
-  L_s(" back="); L_i(decQ.b->lastSwapA); L_s(","); L_i(decQ.b->lastSwapB);   // (the pair the last swap swapped, on the decision's board: rules.c putBackFor)
-  if (flatAsked) { L_s(" fs="); L_i(flatFound); L_s("/"); L_i(flatLen); L_s("/"); L_i(flatSteps); L_s("/"); L_i((int64_t)flatMsUsed); }   // (the flatten search: found, its length, the swaps it pressed, its ms -- search/solve.c)
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }
   else L_s("none");
-  // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
-  if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); L_s(" brRes="); L_i(theBr.resPlayed); L_s("/"); L_i(theBr.resIn); L_s("/"); L_i(frontLinesHeld[FR_BREAK]); L_s("/"); L_i(theBr.resLeft); if (frontLetGo[FR_BREAK]) { L_s(frontLetGo[FR_BREAK] == 1 ? "/gid" : "/anchor"); }
-    if (theBr.doomed) { L_s(" brDoomed="); L_i(theBr.doomed); }   // (lines the touch beam let go: less than a break's time before the board dies)
-    if (theBr.resIn > theBr.resPlayed) { L_s(" brResWhy="); for (int k = 0; k < 4; k++) { if (k) L_s("/"); L_i(theBr.resWhy[k]); } } }   // (the carried lines not played again whole: a swap not there / a pair put back / the board lost / outside the rules)
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
-  // (THE SEARCH FOR THE PROOF, plans/gambit-next.md 3 and 7: seek=1 the wider beam took a worker first this decision; depth= the touch
-  // beam's depth it searched to)
-  L_s(" seek="); L_i(wideFirstNow); L_s(" depth="); L_i(touchDepth);
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
   int any = 0;
@@ -610,105 +493,42 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!any) L_s("-");
   L_s(" live="); L_i(P.nlive); L_s("/"); L_i(P.ncands);
   if (cutWhy[1] + cutWhy[2] + cutWhy[3]) { L_s(" cutWhy="); for (int w = 1; w <= 3; w++) { if (w > 1) L_s("/"); L_i(cutWhy[w]); } L_s(":"); for (int w = 1; w <= 3; w++) { if (w > 1) L_s("/"); L_i(cutWhyBreak[w]); } }
-  if (cutWhy[2]) { L_s(" cutSub="); for (int w = 0; w < 3; w++) { if (w) L_s("/"); L_i(cutSub[w]); } }   // (the lines cut for no swap there: the engine refused, a pair put back, a moved pair swapped back -- judge.c cutSub)
   if (unbroken.set) { L_s(" unbroken="); L_play(unbroken.play); L_s(":"); for (int i = 0; i < unbroken.nseq; i++) { if (i) L_s(";"); L_mv(unbroken.seq[i]); } L_s(":"); L_i(unbroken.said); L_s("/"); L_i(unbroken.judged); }
-  // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it
-  // breaks, :e the later frame the order reads it lost at, where its readiness break leads)
+  // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it breaks)
   if (carryDrop) {
     L_s(" carryDrop="); L_i(carryDrop);
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
-    if (carryDrop >= 2) { L_s(" carryAt="); L_i(carryDropPlan); L_s("/"); L_i(carryDropAt); L_s(":t"); L_i(carryDropTap); }   // (its next swap: judged pressed at when chosen / now)
     if (carryDrop >= 2) { L_s(" carryRest="); for (int i = 0; i < carryDropN; i++) { if (i) L_s(";"); L_mv(carryDropRest[i]); } }
   }
-  // (each line's category, the judge's: plans/gambit-next.md -- cat=, in the order's own order, beside opts=)
-  { const Judge *H = 0; for (int i = 0; i < P.ncands; i++) if (order[i]->hold) { H = order[i]; break; }
-    L_s(" cat="); for (int i = 0; i < P.ncands && i < 8; i++) { if (i) L_s(","); L_s(catName[catOf(order[i], H)]); } }
-  // (each line's ledger, the scenario it leaves: sol=paid/due:short@frame -- @- never short -- in the order's own order)
-  L_s(" sol="); for (int i = 0; i < P.ncands && i < 8; i++) { Ledger g = ledgerOf(order[i]); if (i) L_s(",");
-    L_i(g.paid); L_s("/"); L_i(g.due); L_s(":"); L_i(g.shortBy); L_s("@"); if (g.at == FOREVER) L_s("-"); else L_i(g.at); }
-  L_s(" lands="); L_i(landsTaken); L_s("/"); L_i(landsAsked); L_s("/"); L_i(planEarlier); landsAsked = landsTaken = 0; planEarlier = 0;   // (later landings: plans taken of those asked)
-  // (READY FOR THE NEXT BLOCK, plans/gambit-next.md 1: the block a proof must be ready for (cells), the line played's readiness for it
-  // (1, 0, - not asked) and the lines offered ready / not / not asked -- er=WxH:top:ready/not/unasked; and heldFor=1 where the first line
-  // was unproven and the hold played in its place, plans/gambit-next.md 3)
-  { int32_t er1 = 0, er0 = 0, erN = 0; for (int i = 0; i < P.ncands; i++) { int32_t e = order[i]->endReady; if (e == 1) er1++; else if (e == 0) er0++; else erN++; }
-    L_s(" er="); L_i(nextBlk.width); L_s("x"); L_i(nextBlk.height); L_s(":"); if (top && top->endReady != NOT_ASKED) L_i(top->endReady); else L_s("-");
-    L_s("/"); L_i(top ? top->endReadyWhy : -1); L_s(":"); L_i(er1); L_s("/"); L_i(er0); L_s("/"); L_i(erN); }
-  if (P.heldFor) L_s(" heldFor=1");
-  if (carryKept) { L_s(" carryKept="); L_i(carryKept); }   // (a hold's or a one-swap line's readiness break carried: 1 kept, 2 none to keep, 3 no panel to anchor it)
-  // (THE PLAN HANDED OUT, plans/gambit-next.md 6: the line played's plan, its swaps beyond the line / its first break's; and the promise
-  // carried on from this decision: the line in progress's swaps left, and the plan's break behind it -- plan=N/first carry=rest/next)
-  if (top && !top->hold) { L_s(" plan="); L_i(top->planN); L_s("/"); L_i(top->o.ready == 1 ? top->o.j.readyN : 0); }
-  L_s(" carry="); L_i(theCarry.set ? theCarry.nrest : 0); L_s("/"); L_i(theCarryNext.set ? theCarryNext.nrest : 0); if (theCarry.set && theCarry.ready) L_s("r");
-  // (each line's margin as the order reads it, its two scarcest shares in rows (rank.c marginKey), p where read on the board its plan
-  // leaves: mg=)
-  L_s(" mg="); for (int i = 0; i < P.ncands && i < 8; i++) { int32_t k = marginKey(order[i]); if (i) L_s(",");
-    L_i(k / 13); L_s("."); L_i(k % 13); if (order[i]->planMargin[0] >= 0 && order[i]->extSpent != NOT_ASKED) L_s("p"); }
-  // (and each line's four shares by name, in rows, unsorted and uncapped: room, material, window, contact -- mgs=, which one decides)
-  L_s(" mgs="); for (int i = 0; i < P.ncands && i < 8; i++) { if (i) L_s(","); marginKey(order[i]);
-    for (int k = 0; k < 4; k++) { if (k) L_s("."); double lo = k == 0 ? -1 : 0; double v = marginShares[k] < lo ? lo : marginShares[k] > 1 ? 1 : marginShares[k]; L_i((int64_t)(v * 12)); } }
   L_s(" opts=");
   for (int i = 0; i < P.ncands && i < 8; i++) {
     const Judge *j = order[i];
     if (i) L_s(",");
     L_play(j->hold ? PLAY_HOLD : j->k.play); if (j == carriedJ) L_s("*"); if (j->outside) L_s("~");
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
-    L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n"); else if (j->k.play == PLAY_READY) L_s(j->readyNext == 0 ? ":n0" : ":n?");   // (ready for the next block; a ready line not: none found :n0, not answered in its time :n?)
-    if (!j->o.lives && lostOf(j) > lostAtOf(j->o.lostAt, j->hold)) { L_s(":e"); if (lostOf(j) >= 1e299) L_s("inf"); else L_i((int64_t)lostOf(j)); }   // (lost where its readiness break leads)
+    L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
-  // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey and cmpWhy: sooner=play:lost:kRULE.CLAUSE)
-  // (THE ANSWERS, the checks' (test/main.c): the line played is no less proven than a line offered, and is not dead before it could press
-  // anything while a line offered is not -- plans/gambit-next.md 1 and 2)
+  // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey: sooner=play:lost:kLINE)
   A->sooner = 0;
-  if (top) for (int i = 0; i < P.ncands && !A->sooner; i++) { const Judge *j = order[i];
-    A->sooner = j != top && (proofOf(j) > proofOf(top) || (diesNow(top) && !diesNow(j))); }
-  if (A->sooner) L_s(" lessProven=1");   // (the gate, plans/gambit-next.md: a proven line passed over, or dead at once while one offered is not)
-  if (P.line == &lookJ) lookPlayedN++;
-  // (the rollouts done since the last decision: the frame of the decision that asked, and where the rollout lost the board -- -1 lived)
-  if (lookGrown) { L_s(" grow="); L_i(lookGrown); L_s("/"); L_i(__atomic_exchange_n(&lookGrowFound, 0, __ATOMIC_RELAXED)); lookGrown = 0; }   // (the look-ahead beside, decide.c lookGrowOf: checks handed it since the last line, breaks they found)
-  if (lookAsked || lookHit || lookOffered) { L_s(" look="); L_i(lookAsked); L_s("/"); L_i(lookHit); L_s("/"); L_i(lookUsed); L_s("/"); L_i(lookOffered); L_s("/"); L_i(lookPlayedN); lookAsked = lookHit = lookUsed = lookOffered = lookPlayedN = 0; }   // (the look-ahead beside, decide.c: boards asked of it, found answered, read as longer)
-  if (vetoAsked) { L_s(" veto="); L_i(vetoed); L_s("/"); L_i(vetoAsked); L_s("/"); L_i(vetoCut); }   // (the reserve veto, decide.c: the place of the line played for its reserve, the boards asked, those the clock cut)
-  // (THE PROOF LOST, plans/gambit-next.md the gates: the last decision played a proven line and this one has none -- new: a block shown
-  // since; cut: the clock cut the first line's readiness; none: nothing new shown and nothing cut, the proof should have held)
-  if (lastProven && !(top && proofOf(top) > 0) && !R.up) { L_s(" proofLost="); L_s(decQ.narr > lastNarr ? "new" : top && top->endReady == NOT_ASKED ? "cut" : "none"); }
-  lastProven = top && proofOf(top) > 0; lastNarr = decQ.narr;
   if (top && !top->o.lives) {
     const Judge *late = 0;
     for (int i = 0; i < P.ncands; i++) { const Judge *j = order[i]; if (j != top && (j->o.lives || lostOf(j) > lostOf(top)) && (!late || (j->o.lives && !late->o.lives) || (j->o.lives == late->o.lives && lostOf(j) > lostOf(late)))) late = j; }
+    A->sooner = late && !late->o.lives && !lostAlike(top, late);
     if (late && compareJudged(top, late) < 0) {
-      L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey); L_s("."); L_s(cmpWhy);
+      L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey);
     }
   }
-  // (THE LINE IN PROGRESS PUT DOWN: what was played over it and the order's key that did it -- carryBy=play:kKEY, or play:f when the
-  // order's own filter took it out before the ranking)
-  if (carriedJ && top && top != carriedJ) {
-    int ranked = 0; for (int i = 0; i < P.ncands && !ranked; i++) ranked = order[i] == carriedJ;
-    L_s(" carryBy="); L_play(top->hold ? PLAY_HOLD : top->k.play);
-    if (ranked) { compareJudged(top, carriedJ); L_s(":k"); L_i(cmpKey); L_s("."); L_s(cmpWhy); } else L_s(":f");
-  }
-  // (THE ORDER NOT ONE ORDER: a line ranked under the line played that beats it head to head -- its play and the key it wins on,
-  // beaten=play:kKEY; the order's keys must make one order, or its first is not the best of the lines)
-  // (read as the sort read them: the lines ranked together again first -- another ranking since, the walking order's pair, sets its own)
-  { int ti = -1; for (int i = 0; top && i < P.ncands && ti < 0; i++) if (order[i] == top) ti = i;
-    if (ti >= 0) rankTogether(order, P.ncands);
-    for (int i = ti + 1; ti >= 0 && i < P.ncands; i++) if (compareJudged(order[i], top) < 0) {
-      L_s(" beaten="); L_play(order[i]->hold ? PLAY_HOLD : order[i]->k.play); L_s(":k"); L_i(cmpKey); L_s("."); L_s(cmpWhy); break;
-    } }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
-  // (the played line's readiness and the window's check of it: ready, its frame, its swaps, the actions left then and those it needs (-1:
-  // not checked), and the loss its plan leads to -- where a line was ranked on a break the window could not press)
-  if (top) { L_s(" rdyTop="); L_i(top->o.ready); L_s("/"); L_i(top->o.j.readyWait); L_s("/"); L_i(top->o.j.readyN); L_s("/"); L_i(top->o.j.readyLeft); L_s("/"); L_i(top->o.j.readyActs); L_s("/"); L_i(top->extLost == NOT_ASKED ? -1 : top->extLost); }
   if (P.deferred) L_s(" deferred=1");
-  if (forcedNow != -1) { L_s(" forced="); L_i(forcedNow); }   // (a replay's forced option: K played, 0 none to swap, -2 fewer options than K)
-  if (savingPanels) L_s(" saving=1");
+  if (R.saving) L_s(" saving=1");
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
   L_s(" lifePeak="); L_i(lifePeakOf());
+  if (R.full) L_s(" full=1");
   if (switchedNow) L_s(" switched=1");
-  if (carriedResumed >= 0) { L_s(" resumed="); L_i(carriedResumed); L_s("/"); L_i(carriedIdeas); }
-  if (carriedLost >= 0) { L_s(" stateLost="); L_i(carriedLost); }
   // (the enemy as the rules read it: its height, topped out, the frames of its stop -- what picked the rule)
   if (theOpp.has) { L_s(" enemy="); L_i(theOpp.top); L_s("/"); L_i(theOpp.out); L_s("/"); L_i(theOpp.stopKnown ? theOpp.stop : -1); }
   if (P.line && P.line->k.grown) L_s(" grown=1");
@@ -729,7 +549,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   A->raiseWait = d.kind == 2 ? raiseWait : 0;
   if (d.kind == 2) { const Board *rb = A->raiseWait ? raiseWaitBoard : decQ.b;
                      A->raiseNow = imax(1, (rb->displacement ? rb->displacement : ROW_STEPS) - 1); A->raiseAfter = imax(0, R.to - fullTop(rb) - 1) * ROW_STEPS; }
-  carriedKeep(qid);
 }
 
 // ---- THE HOST'S SIDE: the rules, the profile, a question, the log
@@ -778,20 +597,17 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 // for the old mode's list), the dig, the line toward a break.
 static void modeLeft(void) {
   lifeLived = 0;
-  memset(theFront, 0, sizeof theFront); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
+  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  lookPause();   // (a new game's state written: the look-ahead beside held, let go by the next decision)
-  breakWalk = LAND_RESERVE;   // (a new game measures its own)
-  proofSought = 0; breakOpen = 0; touchDepthNext = TOUCH_DEPTH;
-  memset(&nextBlk, 0, sizeof nextBlk); nextBlkAt = 0; lastProven = 0; lastNarr = 0;
-  modeLeft(); lifeDumps = 0; forceDone = 0; openerOver = 0;
-  emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
+  modeLeft(); lifeDumps = 0;
+  lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; C2.idle = 0; savingPanels = 0;
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
   memset(theIntents, 0, sizeof theIntents);
-  carriedClear();
+  memset(&thePlanKept, 0, sizeof thePlanKept);
+  gb_back(0, 0, 0, 0, 0, 0, 0);
 }
 EXPORT(gb_switch) void gb_switch(int min, int max) { switchMin = min > 0 ? min : 0; switchMax = max > switchMin ? max : switchMin; nswitch = 0; }
 // (the circuit: Hierholzer's walk of the complete directed graph on n rules -- n(n-1) steps, each ordered pair once)
@@ -835,10 +651,8 @@ static int32_t modeAt(int32_t at) {
 // A QUESTION ON THE BOARD IN hostQ (hostBoard, its hold and garbage on its way): the answer into theAnswer, the log line at logBuf
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
-  lookPause();   // (the look-ahead beside held while the decision reads its board and writes what it reads: let go in answerTurn)
   decQ = hostQ; decQ.b = hostBoard;
-  ncache = 0; cacheGen = __atomic_add_fetch(&decGen, 1, __ATOMIC_RELAXED); rootBuildable = NOT_ASKED;
-  carriedResume();
+  ncache = 0; rootBuildable = NOT_ASKED;
   // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
   switchedNow = 0;
   if (nswitch) { int32_t m = modeAt(at); if (m != modeRule) { if (modeRule >= 0) { modeLeft(); switchedNow = 1; } modeRule = m; } }
@@ -848,9 +662,7 @@ static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, 
   C2.due = due; C2.t0 = t0; C2.margin = margin;
   clockStart(due ? due - margin : 0);
   decF.timeLeft = -1;   // (readiness is asked while the searches have time left, as each outcome finds it)
-  lookGen++;
   answerTurn(qid, at, allowanceKnown, allowance, lineFrom, linePressed);
-  if (lookLockstep) lookResume();
 }
 // A QUESTION: its board, hold and garbage on its way are node i of the host's search (the root it made); then its own facts. The answer
 // into the io body (gb_answer's words below); the log line at gb_log.

@@ -21,6 +21,15 @@ Before lockstep (`32fb0ff4`, Oct 24) every run was real time:
 - `062bd73a`, the standard input budget (456 a minute, the game's): 21 of 96.
 - `92272757`, runs 1019-1022, the best on the standard budget: 70 of 96 (finish 18, big chain 19, pressure 17, build 16).
 
+Replayed on Oct 29, pressure, real time:
+
+| build | its own harness (Oct 23) | today's harness (`gambit_from`) |
+| --- | --- | --- |
+| `92272757` | 20/24 (1526) | 0/24 (1523) |
+| `gambit-900` | 20/24 (1527) | 3/24 (1524) |
+
+The builds play as they did; the harness since breaks real-time play. Main is the base again (`gambit-since-base.md`).
+
 ## The plan
 
 1. Find the build that plays best in real time on today's runner: `92272757` and `adb566a6` replayed real time (runs 1523, 1524).

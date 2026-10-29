@@ -49,11 +49,10 @@ function keepWords(keep) {
   Object.keys(keep).forEach(function (k) { if (KEEPS.indexOf(k.replace(/^us\./, '')) < 0) throw new Error('gambit: a floor asks ' + k + ', which facts.c does not keep'); });
   return w;
 }
-// the words of a table set ({ defend, attack, opener, keep, raise, underGarbage }), its rules' names numbered in `names` (the opener: the
-// rule played from a game's start until either board tops out, whatever the mode -- decide.c read)
+// the words of a table set ({ defend, attack, keep, raise, underGarbage }), its rules' names numbered in `names`
 function rulesWords(tables, names) {
   var w = [], n = 0;
-  [['defend', 0], ['attack', 1], ['opener', 2]].forEach(function (tb) {
+  [['defend', 0], ['attack', 1]].forEach(function (tb) {
     (tables[tb[0]] || []).forEach(function (r) {
       if (names.indexOf(r.name) < 0) names.push(r.name);
       var when = Object.keys(r.when || {}), list = aimsOf(r), end = 0, aims = [];
@@ -73,12 +72,12 @@ function rulesWords(tables, names) {
 // ---- THE RULES FILE, read again whenever it changes (its mtime): it may be rewritten between matches or while one runs, and the next
 // decision plays by it. An opponent with tables of its own is played by those. A file that fails to read or parse leaves the last good
 // tables in force; the rules it drops (a `when` on the wrong side's board, no aim) are listed in `errors`.
-var SIDE = { defend: 'us.', attack: 'enemy.', opener: 'us.' };
+var SIDE = { defend: 'us.', attack: 'enemy.' };
 function aimsOf(rule) { if (Array.isArray(rule.aims)) return rule.aims; var l = []; if (rule.aim) l.push(rule.aim); if (rule.else) l.push(rule.else); return l; }
 // a table's rules, each `when` led by its own side's board: a rule that tests only the other side is dropped, and the reason kept
 function checked(tables) {
-  var out = { defend: [], attack: [], opener: [] }, errors = [];
-  ['defend', 'attack', 'opener'].forEach(function (t) {
+  var out = { defend: [], attack: [] }, errors = [];
+  ['defend', 'attack'].forEach(function (t) {
     ((tables && tables[t]) || []).forEach(function (r, i) {
       var keys = Object.keys(r.when || {}), own = keys.filter(function (k) { return k.indexOf(SIDE[t]) === 0; });
       if (keys.length && !own.length) errors.push(t + ' rule ' + i + ' (' + (r.name || '') + ') tests only ' + keys.join(', ') + ': a ' + t + ' rule tests ' + SIDE[t] + '* first');
@@ -195,29 +194,25 @@ Gambit.prototype.breakOn = function (board, arrivals, aims, ms, listOn) {
   this.S.reset();
   var r = this.S.root(board.copy(), { left: 0, started: false }, arrivals || [], false), X = this.X;
   this.G.list(aims); X.gb_list_on(listOn === 0 ? 0 : 1);
-  X.gb_decision_start(this.S.ctx, r._i, 0, -1, 0, 1);
+  X.gb_decision_start(this.S.ctx, r._i, 0, -1, 0, 1, 0);
   return this.breakPath(ms);
 };
 // The same from a board as a native host logs it (GAMBITB C<size>:<base64>) and its arrivals ([at, width, height], frames from it).
 // listOn 0: no line held to the list (a list ended by "default", as every list is under garbage)
-// (press: the decision's own -- { allow, gap } as native.c dumpBoard logs them, and work: true for ms on the work clock, the work the
-// live search had -- core/clock.h WORK_PER_MS)
-Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms, listOn, press) {
+Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms, listOn) {
   var bytes = Buffer.from(b64, 'base64'), X = this.X, io = new Uint8Array(X.memory.buffer, X.gb_io() >>> 0, bytes.length);
   io.set(bytes);
   var w = this.G.body(Math.ceil(bytes.length / 4) + 3 * arrivals.length), k = Math.ceil(bytes.length / 4);
   arrivals.forEach(function (a) { w[k++] = a[0]; w[k++] = a[1]; w[k++] = a[2]; });
   if (X.gb_question_bytes(bytes.length, arrivals.length) < 0) throw new Error('gambit: the board bytes were refused');
   this.G.list(aims); X.gb_list_on(listOn === 0 ? 0 : 1);
-  X.gb_decision_on(-1, 0, 1);
-  if (press) X.gb_press(press.allow, press.gap);
-  X.gb_clock_on_work(press && press.work ? 1 : 0);
-  try { return this.breakPath(ms, press && press.work); } finally { X.gb_clock_on_work(0); if (press) X.gb_press(-1, 0); }
+  X.gb_decision_on(-1, 0, 1, 0);
+  return this.breakPath(ms);
 };
-Gambit.prototype.breakPath = function (ms, work) {
+Gambit.prototype.breakPath = function (ms) {
   var X = this.X;
   var t0 = Date.now();
-  X.gb_clock_start(work ? ms : t0 + ms);
+  X.gb_clock_start(t0 + ms);
   var w = this.G.body(X.gb_break(0, 0)), depth = w[0], k = 7, nm = w[k++], took = Date.now() - t0;
   if (!depth) return null;
   var first = nm ? [w[k] >> 3, w[k] & 7] : null; k += 3 * nm;
@@ -226,7 +221,6 @@ Gambit.prototype.breakPath = function (ms, work) {
   // (how it was found -- the first swap, the break built, the touch beam, its wider beam, a slab's line-up -- and the ms it took)
   var line = pl ? path : [first];
   line.how = w[5] ? 'lineup' : w[4] ? 'wide' : w[2] ? 'touch' : pl ? 'built' : 'first'; line.ms = took;
-  line.work = X.gb_clock_work();   // (the engine's frames it stepped to find it: core/clock.h WORK_PER_MS a work ms)
   return line;
 };
 

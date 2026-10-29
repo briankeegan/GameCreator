@@ -15,10 +15,7 @@ static LOCAL int64_t clockWork;
 static LOCAL int32_t clockAborted;
 // (the time a decision reads: the host's, or a replay's, which runs on the work done -- test/decide_check.c)
 static double (*clockNowOf)(void);
-static LOCAL int inJob;
-static double workNowMs(void);
-// (the look-ahead's thread, inJob 3, on the work clock alone: the host's clock is the decision's to set -- decide.c lookThread)
-static double nowMs(void) { return inJob == 3 ? workNowMs() : clockNowOf ? clockNowOf() : clock_ms(); }
+static double nowMs(void) { return clockNowOf ? clockNowOf() : clock_ms(); }
 // A decision begun: its deadline (0: none).
 static LOCAL double clockWentOut;   // when the decision first ran out of time (0: not yet), for the host to time its closing work
 static void clockStart(double due) { clockDue = due; clockShare = 0; clockWork = 0; clockAborted = 0; clockWentOut = 0; }
@@ -31,21 +28,10 @@ static LOCAL int64_t clockPoll;
 static int (*clockFrameOut)(void);
 // A JOB BESIDE THE DECISION (decide.c readySpread): no deadline of the decision's -- its searches end in their own share, or when the
 // next decision takes the pool back (jobStop)
+static LOCAL int inJob;
 static int32_t jobStop;
-// (A SEARCH ON ITS OWN BUDGET on the decision's thread -- a pend searched here as a job would search it, search/break.c readySearchOf:
-// its share alone, so its answer and its work are the same whichever thread searched it)
-static LOCAL int ownBudget;
-// (THE SEARCH BETWEEN DECISIONS, answer.c onThread: inJob 2 -- its slice and its own stop, never the decision's jobs' stop)
-static int32_t onStopReq;
-// (THE LOOK-AHEAD BESIDE, decide.c lookThread: inJob 3 -- its own budget, and held while the decision writes what it reads)
-static int32_t lookHold;
-// (and in lockstep its searches are never cut by the hold: each is the board's alone -- decide.c lookPause drains it instead)
-static int32_t lookLockstep;
 static int clockOut(void) {
-  if (inJob == 3) return (!lookLockstep && __atomic_load_n(&lookHold, __ATOMIC_RELAXED)) || (clockShare && nowMs() >= clockShare);
-  if (inJob == 2) return __atomic_load_n(&onStopReq, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
-  if (ownBudget) return clockShare && nowMs() >= clockShare;
   if (clockAborted) return 1;
 #ifdef __wasm__
   if (clockWork >= clockPoll) { clockPoll = clockWork + 400; if (abort_poll() == 1) { clockAborted = 1; return 1; } }
@@ -60,22 +46,7 @@ static int clockOut(void) {
   if (clockDue && t >= clockDue && !clockWentOut) clockWentOut = t;
   return (clockShare && t >= clockShare) || (clockDue && t >= clockDue);
 }
-// THE TIME LEFT, the one reading every caller asks: to the share in force, else the decision's deadline (1e9: neither) -- the searches'
-// time while their share holds (propose.c searchesEnd), the judging's once it ends, a job's within its own
-static double timeLeftMs(void) {
-  double by = clockShare && (!clockDue || clockShare < clockDue) ? clockShare : clockDue;
-  return by ? by - nowMs() : 1e9;
-}
 static void clockCharge(int64_t units) { clockWork += units > 0 ? units : 1; }
-// THE WORK CLOCK: the engine's frames stepped, WORK_PER_MS a millisecond -- a decision's time the same on any machine. A native host
-// plays every decision on it (native.c); a tool that searches a logged board again does too (gb_clock_on_work), so it is given the work
-// the live search had. Measured on a 4-core runner with the game on it: 354 frames a wall ms at the 5th percentile of decisions, 603
-// the median (run 1055) -- WORK_PER_MS the median: a decision searches what the runner does in its time, and the wall guard cuts the
-// slower ones (wallCut=, the report's answers taken past their frame).
-#define WORK_PER_MS 600.0
-static double workNowMs(void) { return (double)clockWork / WORK_PER_MS; }
-EXPORT(gb_clock_on_work) void gb_clock_on_work(int on) { clockNowOf = on ? workNowMs : 0; }
-EXPORT(gb_work_per_ms) double gb_work_per_ms(void) { return WORK_PER_MS; }
 EXPORT(gb_clock_start) void gb_clock_start(double due) { clockStart(due); }
 EXPORT(gb_clock_work) int gb_clock_work(void) { return (int)clockWork; }
 #endif

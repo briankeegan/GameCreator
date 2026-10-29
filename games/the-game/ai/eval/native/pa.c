@@ -535,10 +535,6 @@ static int tryQueueSwapPanels(Board *b, Panel *p1, Panel *p2) {
 static void doSwap(Board *b, int row, int col) {
   b->quiet = 0; b->cdLeft = 0;
   b->hi = imax(b->hi, row + 1);
-  { int32_t a = P(b, row, col)->f[ID], c2 = P(b, row, col + 1)->f[ID];
-    int same = b->lastSwapA && ((a == b->lastSwapA && c2 == b->lastSwapB) || (a == b->lastSwapB && c2 == b->lastSwapA));
-    b->lastSwapRuns = same ? b->lastSwapRuns + 1 : 1; b->lastSwapAt = b->clock;
-    b->lastSwapA = a; b->lastSwapB = c2; }
   startSwap(P(b, row, col), 1);
   startSwap(P(b, row, col + 1), 0);
   switchPanels(b, P(b, row, col), P(b, row, col + 1));
@@ -1148,7 +1144,6 @@ EXPORT(nb_load) int nb_load(Board *b) {
   int k = 0, i, r, c, f;
   const int32_t *x = ioBody;
   b->nRowFeed = b->rowFeedAt = b->nBrkFeed = b->brkFeedAt = 0;
-  b->lastSwapA = b->lastSwapB = b->lastSwapRuns = b->lastSwapAt = 0;   // (the game's board carries no record of its last swap: the host's to set, front.c)
   b->riseTimer = ioHead[k++];
 #define LOAD1(fl, n) b->fl = fromD(ioHead[k++]);
   HEAD(LOAD1)

@@ -1,0 +1,526 @@
+# Gambit since the base
+
+The base is `92272757` (Oct 24, before lockstep): 70 of 96 on the standard input budget then, pressure 20/24 replayed in real time on
+its own harness (run 1526). Main plays it: Gambit (`gambit/`), its engine (`eval/native/`), `training.sh` and `gambit-24.yml` as they
+were, the games on panel-game `17ecc69`.
+
+Every change made since is below, oldest first: the commits that touched Gambit, its engine, `training.sh` or `gambit-24.yml`, up to
+`8e590fbb` (main before the base came back; kept as the version `gambit-lockstep`). An idea comes back one at a time, on the base,
+measured in real time (`gambit-24.yml`, 24 games), and is kept only if the score holds. Mark each line as it is decided:
+`[kept run N]`, `[dropped run N]`, `[not an idea]` (a revert, a measurement, a log line).
+
+Real-time infra found on Oct 29, after the base (each worth bringing first -- see gambit-realtime.md):
+
+- the countdown publishes its frame (the opening's guard read frame 0)
+- the look-ahead on the workers' CPUs, not the CPU drawing the game
+- a decision out on its frame stops its jobs (its move waited 100-400 ms on them)
+- the countdown opener, offered no raise
+
+## The commits
+
+- `954eefa1` 2026-10-24 Gambit: a board is ready only for a break the input window pays for
+- `2caaeb86` 2026-10-24 Gambit: of two lines that break nothing under garbage, the later loss first
+- `da00840b` 2026-10-24 Gambit: below the floor, a raise lost no sooner than none is raised
+- `98ad30e6` 2026-10-24 Gambit: the order as nine rules, each decision naming the rule that made it
+- `4eb228cd` 2026-10-24 Gambit: rule 3 reads the rules' keep verdict
+- `9791a6e2` 2026-10-24 Gambit: under garbage, of two breaks lost alike, the next break's material
+- `7ec4a2f1` 2026-10-24 Gambit: one test for a swap that spoils the board's own chain
+- `33543f0a` 2026-10-24 Gambit: under garbage, of two lines lost alike that break nothing, the nearer next break
+- `f9763835` 2026-10-24 gambit-24: seed 1-24 plays seeds 1 to 24, a game each
+- `d7b76f1b` 2026-10-24 Gambit: the rules' floor is one test, on the board a line leaves
+- `76484d26` 2026-10-24 Gambit: every line in progress not kept says why
+- `26eecda6` 2026-10-24 Gambit: no answer is never a loss; a line the clock cut is not dropped
+- `8ef85c54` 2026-10-24 Gambit: a break is counted against one baseline, the board alone settled
+- `9d36d225` 2026-10-24 Gambit: the swap back asks one question of a first swap, judge.c madeBy
+- `42a915a0` 2026-10-24 Gambit: garbage on the board is one reading, the board's shape
+- `4794ff7a` 2026-10-24 Gambit: the panel-saving band is gone; it decided nothing
+- `09fc3d64` 2026-10-24 Gambit: the owner's saving band is part of the one floor test
+- `62a98c94` 2026-10-24 Gambit: a move against the hold, and a dig that waits, read the order's loss
+- `df02824c` 2026-10-24 Gambit: one raise-open test, one anchor finder and one anchor search
+- `497f4128` 2026-10-24 Gambit: one test of a line that clears, rank.c clears
+- `fb8e3032` 2026-10-24 Gambit: a break is counted against the board alone by the same frame, one function
+- `9813e377` 2026-10-24 Gambit: a board near its end is read off the decision's dies fact
+- `303f3aaa` 2026-10-24 Gambit: one reading of the time left, the clock's own (timeLeftMs)
+- `493ed932` 2026-10-24 Gambit: one test of a board still moving, core/nodes.h boardMoving
+- `3c591947` 2026-10-24 Gambit: one count of a garbage group's pop, core/nodes.h popFrames
+- `083bf2bf` 2026-10-24 Gambit: one reaction, the configured one, for the judge and the frame loop
+- `d15657eb` 2026-10-24 Gambit: one test of a next break to build, outcome.c buildsNext
+- `4501c052` 2026-10-24 Gambit: a readiness search its time ran out on is no answer
+- `0b65d78e` 2026-10-24 Gambit: the order's own searching runs in the searches' share
+- `ef6aff8b` 2026-10-24 Gambit: a crash says where it happened; the frame loop roots on one board
+- `256bee1c` 2026-10-24 Gambit: the survival search keeps a line that lives as the order does
+- `27ddee63` 2026-10-24 Gambit: no wait after a swap
+- `601268cd` 2026-10-24 Gambit: a swap step ends when the swap shows, not a reaction later
+- `5f504829` 2026-10-24 WIP: Gambit on the engine's work clock (not verified; not on main)
+- `9b2d53c0` 2026-10-24 Gambit: the decision's clock is the engine's work, so a seed is one game
+- `2e96f75a` 2026-10-24 Gambit: a line that breaks nothing leaves the window a reserve for the next break
+- `d74b335f` 2026-10-24 gambit-24: the C checks run as jobs of their own, beside the games
+- `171152a7` 2026-10-24 gambit-24: libgambit built once in its own job, every game plays that build
+- `32fb0ff4` 2026-10-24 Gambit lockstep: in training the game waits on every answer and plays unpaced
+- `0b496eda` 2026-10-24 gambit-24: the report's three write-ups run side by side; the replay takes the readiness jobs back before its clock
+- `6775a551` 2026-10-24 gambit-24: each game's job writes up its own game; the report adds them up
+- `41e9bc3d` 2026-10-24 Gambit's hands slow as the input window empties
+- `e54c60ef` 2026-10-24 Gambit: the swaps that came to nothing counted by the kind of line that pressed them
+- `51728549` 2026-10-24 Gambit: a swap that came to nothing counted by what became of its line
+- `9c7c8948` 2026-10-24 Gambit's order: the line in progress that still clears is finished before a line begun now
+- `a37f94e3` 2026-10-24 Gambit: the line-in-progress rule taken out; what puts the line in progress down is logged
+- `c63d971c` 2026-10-24 Gambit's frame loop: a board on its way out with no break found is asked three reactions ahead
+- `240f17b3` 2026-10-24 Gambit's frame loop: the board on its way out asked a reaction ahead again
+- `231055de` 2026-10-24 The reach report searches a board again as the live search did: its press and its work
+- `a50f7f99` 2026-10-24 The reach report: the work a missed break took, over the work its live search had
+- `46c75600` 2026-10-24 Gambit's log: the deepest line the break search's frontier carries on (brDeep), and the summary's touch beam depth
+- `9e16f1c1` 2026-10-24 The break search carried on: half of every level's touch beam is the lines grown from the last decision's frontier
+- `367b9140` 2026-10-24 The break search under garbage carries on the last decision's frontier
+- `fc723ddc` 2026-10-24 The shared line check turns away a line that wastes a three, as the order does
+- `5c441a92` 2026-10-24 The shared line check turns away a line the judge cut short, as the order does
+- `090096b9` 2026-10-24 One line check: lineCheck, what a line is held to as flags, every search and the order asking it
+- `c290c6b8` 2026-10-24 The line check judges a line on the board its search is rooted at; a readiness break is pressed in the window as it will be
+- `44097003` 2026-10-24 The survival search and the toward line take a line only through the one line check
+- `5fd65bfd` 2026-10-24 The survival search ranks its lines first and checks them after, on its own question
+- `8ada53c7` 2026-10-24 The toward line offered as the break search ranks it, judged by the order as every line
+- `905544f3` 2026-10-24 The order's candidates judged on every thread
+- `edf56676` 2026-10-24 The board's material in the match's stats: garbage cells a break turned to panels, panels a clear took off
+- `0d577bd8` 2026-10-24 The board's material: garbage cells landed a minute, beside those turned to panels and the panels cleared
+- `f99c8afb` 2026-10-24 With nothing new told, the line in progress is kept
+- `a8fb900e` 2026-10-24 The readiness board searched in its own window whichever thread lands it; every run plays a game twice and holds the two alike
+- `54a2359b` 2026-10-24 The line in progress no longer kept for nothing new told
+- `e012a494` 2026-10-24 A readiness pend searched on its own budget on any thread; which thread searched it logged with the wall's fields
+- `b27c2dc3` 2026-10-24 Gambit's log: pre= with the wall's fields (native.c), gambit.wasm rebuilt
+- `c5b65ba8` 2026-10-24 Of two breaks under garbage lost alike, the one that breaks more garbage for each action first
+- `3ede3927` 2026-10-24 A readiness pend carries the decision's tapped walks to the worker that searches it
+- `3f971e00` 2026-10-24 The garbage-per-action key taken out
+- `b40d3ac8` 2026-10-24 Readiness answers the same whichever thread searched the board
+- `c53c4340` 2026-10-24 The kept plan's lines asked readiness as every line is
+- `5847d22f` 2026-10-24 gambit-24: the twin held alike up to the frames a game counts
+- `eacd7230` 2026-10-24 Readiness asks only that a break is there once everything lands
+- `fadd3de9` 2026-10-24 Of two lines that break nothing, the fewer swaps to the next break, the line's own counted
+- `66b31d7b` 2026-10-24 Of two lines that break nothing, the swaps the board leaves to the next break again
+- `5836931c` 2026-10-24 Readiness asks that its break can be pressed whole in the window as it will be
+- `3960f72d` 2026-10-24 Readiness asks only that a break is there again
+- `3ec36fda` 2026-10-24 The order's options log the frame the order reads each lost at, where its readiness break leads
+- `4bb4d1b7` 2026-10-25 Of two breaks lost alike, the list, the line in progress, the more thrown and the later loss
+- `a6c5feb0` 2026-10-25 Of two breaks each lost a break's time or more away, the board's next break before the later loss
+- `cde13053` 2026-10-25 The order of 1090 again: the material only between two breaks lost alike
+- `dd8f3788` 2026-10-25 The break search takes two breaks as the order does: the material before the actions
+- `2e3b41e2` 2026-10-25 The break search's key of 1090 again: the actions before the material
+- `746cd764` 2026-10-25 A floor of its own while more than 8 rows of garbage are on their way
+- `ba537af3` 2026-10-25 No floor of its own under heavy garbage: the one floor, 30 panels
+- `47d55079` 2026-10-25 The break search carries a break on while its chain runs, for rows more
+- `a0764589` 2026-10-25 The break search of 1090 again: a break is not grown while its chain runs
+- `132033b2` 2026-10-25 gambit-24: bot gambit-paced plays Gambit on the wall clock, the game paced
+- `847f17ee` 2026-10-25 The work clock charges a batch's steps as the threads spent them
+- `70a2e191` 2026-10-25 The work clock at the runner's median, 600 frames a ms
+- `f74e676e` 2026-10-25 No reserve of actions: the pace keeps the window
+- `22caa313` 2026-10-25 Gambit replayed: one game again with one decision forced
+- `cc040a35` 2026-10-25 Of two lines that do not live, the one ready for the next block first
+- `8d5d076c` 2026-10-25 Of two lines that do not live, the later loss before readiness again
+- `5ad14bdf` 2026-10-25 The pace of a swap is the window's at its frame, for the judge and the frame loop alike
+- `9dc002df` 2026-10-25 With nothing new told, the line in progress before a line lost alike
+- `37405e29` 2026-10-25 The line in progress ranked as any other again, nothing new told or not
+- `48a0b25b` 2026-10-25 A line that does not live is lost where its plan of several breaks is
+- `bb44c817` 2026-10-25 Every walk walked as cheaply as the walls allow, whatever the window
+- `3f180d63` 2026-10-25 A walk's cost read as the frame loop will walk it, by every reader
+- `0528ba5e` 2026-10-25 The line in progress judged again on the rows it was judged on
+- `9944620c` 2026-10-25 Gambit's log: the frame a line in progress put down was to press its next swap, and the frame judged again
+- `2a1ab92b` 2026-10-25 Gambit's log: the walk a line in progress put down was judged with, and is judged with again
+- `0c8ca653` 2026-10-25 decTap declared before the line in progress reads it
+- `9c7e17f4` 2026-10-25 The line in progress judged again from the frame its next swap was judged pressed at
+- `475680fa` 2026-10-25 A line lost later than the hold beats it, its own death or not
+- `2b2d1c14` 2026-10-25 Of two lines that break nothing lost alike, the later loss before the nearer next break
+- `c7d8fe9a` 2026-10-25 Of two lines that break nothing lost alike, the nearer next break first again
+- `d207ca98` 2026-10-25 Two lines lost alike: as many breaks' time left, or three and more -- not merely less than a break's time apart
+- `0de552de` 2026-10-25 Two lines lost less than a break's time apart are lost alike again
+- `fd0ca6e5` 2026-10-25 Under garbage, a line that breaks nothing lost later than the hold before it, lost alike or not
+- `01596ee1` 2026-10-25 The hold ranked by the order's keys as any line again
+- `2ec1c235` 2026-10-25 Under garbage, a line that breaks nothing meets no entry of the list
+- `dc9f8917` 2026-10-25 The order's survival rule as one relation: lines lost alike in classes headed by the latest loss
+- `e0adc6b5` 2026-10-25 Gambit's log: a line ranked under the line played that beats it head to head (beaten=), counted in the summary
+- `8e6d1eea` 2026-10-25 Survival classes chained: a line lost alike with the one lost next later is of its class
+- `3a1a2820` 2026-10-25 The line in progress judged from its planned frame by every reader: the rank, its readiness, its plan, its end board
+- `75eff719` 2026-10-25 The line in progress waiting for the board pressed no sooner than its planned frame too, once the board has settled
+- `3cb10066` 2026-10-25 The order's first is the best: a line under it that beats it head to head is put first, each line once at most
+- `63a94a1c` 2026-10-25 A line judged with a wait before it is judged whole: its promised break played, its end board read
+- `09c2ad80` 2026-10-25 The line in progress judged as it was chosen: its walks tapped or held as then, a readiness break pressed where its promise found it
+- `ce0da41d` 2026-10-25 Of two lines lost alike, the fewer actions before the later loss
+- `0397101d` 2026-10-25 Of two lines lost alike that meet the same entry, the fewer actions before the more thrown
+- `f3449c82` 2026-10-25 The more thrown before the fewer actions again, as in ce0da41d
+- `238d8da5` 2026-10-25 Two lines lost alike: as many breaks' time left, or three and more each -- not merely less than a break's time apart
+- `52dafa56` 2026-10-25 The continuation: where nothing lives, the order's first lines played on from their end by the survival search, lost where that leads
+- `4a95586a` 2026-10-25 The continuation asked of the lines, not the hold
+- `a3b2e009` 2026-10-25 The continuation gone: the code as ce0da41d (1132)
+- `baf4bf59` 2026-10-25 Under garbage, the blocks thrown rank a line that breaks; an attack that breaks nothing throws nothing the order counts
+- `89dd57e2` 2026-10-25 The blocks thrown rank every line again: the code as ce0da41d (1132)
+- `4d751981` 2026-10-25 The continuation again, hold and lines alike, each played on with what the input window leaves at its end
+- `de14d13a` 2026-10-25 The fewer actions rank line against line, not the hold against a line lost later
+- `9fdfddfa` 2026-10-25 Of two lines lost alike, the line in progress first, before the next break's material
+- `a94fc4d1` 2026-10-25 The line in progress ranked within an entry again: the code as ce0da41d (1132)
+- `ddb423b8` 2026-10-25 Toward a break: the first three of the break search's lines offered, each begun with a swap of its own
+- `1792347c` 2026-10-25 One line toward a break offered again: the code as ce0da41d (1132)
+- `23bd32e2` 2026-10-25 Two lines lost alike when each leaves two breaks' time or more
+- `85975657` 2026-10-25 Lost alike at three breaks' time again: the code as ce0da41d (1132)
+- `8818b250` 2026-10-25 A board near its end walked held as the walls allow, never tapped: the window kept
+- `8b618fd9` 2026-10-25 A board near its end tapped again: the code as ce0da41d (1132)
+- `fdbc7b04` 2026-10-25 Gambit's report: the window spent, the actions keyed a minute by the kind of line, games survived and lost apart
+- `3b945d4d` 2026-10-25 With garbage on its way, a line that breaks nothing meets no entry of the list, as under garbage
+- `76bdf904` 2026-10-25 Attack and be ready to break: under garbage or with it on its way, a line that breaks nothing meets its entry when it lives or leaves a break in reach once the garbage lands
+- `0dbaade9` 2026-10-25 Under garbage a line that breaks nothing meets no entry again; attack and be ready only with garbage on its way
+- `d9310324` 2026-10-25 The opener: from a game's start until garbage first touches the board, the rules' opener -- big chains -- whatever the mode
+- `f0ac2613` 2026-10-25 The opener lasts until either board tops out
+- `a7c796f7` 2026-10-25 Under garbage a settled line judged too with each swap pressed once its own blocks are still, not the whole board
+- `9c105194` 2026-10-25 Revert "Under garbage a settled line judged too with each swap pressed once its own blocks are still, not the whole board"
+- `3ba7b3c6` 2026-10-25 A settled line's swap pressed once its own blocks have settled, not the whole board
+- `7ee4a36a` 2026-10-25 Revert "A settled line's swap pressed once its own blocks have settled, not the whole board"
+- `3f5ef967` 2026-10-25 Reapply "A settled line's swap pressed once its own blocks have settled, not the whole board"
+- `21207e31` 2026-10-25 A settled line's swap pressed once its own blocks have settled, its first swap's making read on the board settled from it
+- `6434b077` 2026-10-25 A settle after a swap ends when the swap's own blocks rest, for every search and the judge alike
+- `94d34688` 2026-10-25 Every reader of a swap's settle reads its blocks: the board's own chain spoiled, a settled line's end, the line in progress waiting
+- `4bc02117` 2026-10-25 A swap's settle the whole board's again: Gambit and the engine as 24a46a0e (1153)
+- `dc006c16` 2026-10-25 The line in progress judged with its move while its answer is not yet the frame loop's
+- `502b3de2` 2026-10-25 Every decision starts from the state the answer the frame loop played left
+- `081c4db1` 2026-10-25 What a decision found is kept, played or not: only what it pressed follows the answer played
+- `3eea03fb` 2026-10-25 The state lost is logged stateLost=, not the line's own lost=
+- `13514bef` 2026-10-25 No search grows a line by swapping its last two panels back
+- `b44fe169` 2026-10-25 No line swaps back a pair of panels its own swap moved
+- `7c4610a9` 2026-10-25 Nearer a break is counted in the actions to it
+- `359a030b` 2026-10-25 A line toward a break or to the lowest stack is offered without its last swap too
+- `33152168` 2026-10-25 A line is offered as its search found it, never without its last swap (1165, 11)
+- `cb346b2c` 2026-10-25 The window is kept for the next landing's break
+- `41b593b8` 2026-10-25 Where nothing lives, the survival search's line is judged before any readiness
+- `1b17c749` 2026-10-25 The survival search's line is ranked on its own word when the clock leaves it unjudged
+- `53e6fb36` 2026-10-25 A line the judge has not judged is no line, the survival search's too (1168, 17, the checks red)
+- `e1b8f895` 2026-10-25 The survival line is asked first and judged in the judging's own time
+- `76cda3f8` 2026-10-25 The searches offer only lines the order keeps
+- `e4a465ce` 2026-10-25 Gambit as 41b593b8 (1167, 20): the pre-offer checks (1170, 5) and the survival line in the judging's time (1169, 16) gone
+- `27463e0f` 2026-10-25 The survival search returns a line that wastes no three when it has one
+- `8a15a247` 2026-10-25 Gambit as 41b593b8 (1167, 20): the survival search's clean-first pool gone (1171, 13)
+- `589bba2d` 2026-10-25 The survival line is asked and judged first of the order's searching, in the searches' share
+- `94949a3f` 2026-10-25 The order's searching as 41b593b8 (1172, 16); the state's ring stays at 64
+- `6918e92a` 2026-10-25 The order's own searching has its own share: half of what the decision has left
+- `0e97d1cd` 2026-10-25 Gambit as 94949a3f (1167's, 20): the order's own share gone (1173, 17)
+- `34603111` 2026-10-25 The survival line is judged in the order's own share and keeps a break's walk in the window
+- `ca3ab3ae` 2026-10-25 A three is a save only where the board lives with it and is lost without it
+- `268fcd7a` 2026-10-25 The save confirms a three that outlasts the board without it by a break's time
+- `9bcbe2e5` 2026-10-25 The material ledger: under its floor, a line that converts what its clears take comes first
+- `039f90d0` 2026-10-25 Low on panels is the panels alone: the keep's material test or the saving band (decide.c lowOnPanels)
+- `915f29a8` 2026-10-25 The ledger decides only between lines that live or are lost within a break's time of each other
+- `dbcd9b11` 2026-10-25 The save is asked wherever every line without a three is lost, not only within a break's time
+- `a32c4bb6` 2026-10-25 The game the same twice compares the decisions, not the time they took
+- `f232e95d` 2026-10-25 The press guard lets an unplanned three through where the board is lost without it and not with it
+- `702ab916` 2026-10-25 The order keeps the next break's walk as the survival search does
+- `8f154f7b` 2026-10-25 The reserve rule binds only where the line keeping the walk lives OUT_LATER frames itself
+- `99a504b8` 2026-10-25 One window plan, its values the decision's own: breaks first, never dying on the way
+- `4b7229b8` 2026-10-25 The reserve rule on every pair of moves: the walk kept unless spending it buys the window's regain time
+- `d52d964c` 2026-10-25 The hold under the one reserve rule, bounded by the window's own regain time
+- `509e3cb3` 2026-10-25 Regain per line: the frames until the window gives back what that line leaves it short of
+- `24dbe2ae` 2026-10-25 The spend that pays: a line spending the walk comes first where it lives until the window gives it back
+- `e418e4ed` 2026-10-25 The keeper must live to press the walk it keeps
+- `ae1f2a50` 2026-10-25 Every decision says which clause decided it; a hold lost sooner is never nearer by it
+- `a1be3f32` 2026-10-25 A hold lost sooner never wins after survival
+- `2cb2c55f` 2026-10-25 Death is never a choice: within three breaks' time the later loss decides
+- `906e1007` 2026-10-25 Survival is the time to make the next move
+- `aae74fad` 2026-10-25 A line lives where its plan lives; the order is 1190's again
+- `aa11b0e6` 2026-10-25 The reserve's keeper must live the walk's frames, not its count of actions
+- `04bfbafb` 2026-10-25 The reserve's keeper back to 1193's test
+- `6bcb73bd` 2026-10-25 The later loss decides unless both are three breaks' time away
+- `cc136b80` 2026-10-25 The order asked again with the save's question where it puts a sooner loss first
+- `9f977401` 2026-10-25 Gambit back to 1193's code (17); the recheck as often wrong as right
+- `7114babb` 2026-10-25 Of two lines lost alike, the one whose board keeps the rules' floor
+- `46f81ed7` 2026-10-25 Gambit the 17's code again: the floor first measured 9
+- `1461c644` 2026-10-25 A save confirmed is played
+- `441dcc32` 2026-10-25 Margin: of two lines lost alike, the one that leaves the board more room once the garbage shown has landed
+- `c1bbc7ae` 2026-10-25 Margin in the survival search: within a break's time of loss, the line that keeps the board's room
+- `6a791de9` 2026-10-25 The break beam carried past swaps played elsewhere
+- `c66af130` 2026-10-25 The input window as the third margin, in the order and the survival search
+- `283717ec` 2026-10-25 The reserve without its keeper test: the spender must live until the window gives the walk back
+- `37af0407` 2026-10-25 A keeper keeps only the walk its own window holds
+- `e3524ddb` 2026-10-25 Log where the carried break beam is lost
+- `fe8e28f4` 2026-10-25 The break on the board to come: the break search asked of the board the next block lands on
+- `0edd5ea7` 2026-10-25 The board-to-come search carried to the landing
+- `ef41da2b` 2026-10-26 Log the board-to-come search's depth and carry
+- `be062a85` 2026-10-26 The board-to-come search in the break search's own time
+- `e9465dd4` 2026-10-26 The board-to-come answer read once the break job is taken back
+- `61353a6b` 2026-10-26 Gambit back to 1209's arrangement: the board-to-come search in the proposers' time
+- `7cd69e44` 2026-10-26 The board-to-come break offered as its setup, in the rows of the board as it is
+- `8d96ce22` 2026-10-26 Log whether a ready line's readiness was found none or not answered in its time
+- `58991f3d` 2026-10-26 Ready lines asked their readiness first
+- `0c28768c` 2026-10-26 One store for every search's frontier, carried and re-rooted one way
+- `a7d356b4` 2026-10-26 The frontier store's counters named apart from the C checks' own
+- `cd67a774` 2026-10-26 The landed frontier keyed to its block: its shape, landing within 120 frames of where it was to
+- `fc8f72ad` 2026-10-26 The board-to-come search as a job of its own beside the other searches
+- `829887c7` 2026-10-26 The board-to-come job ahead of the wider beam, and the proposers' leftover where no worker has it
+- `155299e1` 2026-10-26 Readiness checks out of time keep their frontier for the next check of the board; the board to come queued behind the searches
+- `44baa515` 2026-10-26 The unfinished readiness frontier kept by the decision that reads it, seen by the decisions after
+- `47d6cbf2` 2026-10-26 Readiness frontiers counted where the answer is read, whichever thread searched it
+- `93c5192a` 2026-10-26 Lost alike by bands alone, the survival search's: the order one order
+- `ffd0542d` 2026-10-26 Lost alike counted back from the latest loss of the lines ranked together
+- `3d3cdd60` 2026-10-26 The margin one key for every pair: the end board where the landed one was not read, unknown the least
+- `3ef7ede0` 2026-10-26 The reserve's keeper test in frames: a walk kept by a board dead before it is pressed keeps nothing
+- `c080250e` 2026-10-26 The keeper's test only where the spender outlives the keeper by a break's time
+- `c20727b3` 2026-10-26 The frontiers re-rooted by the panels their swaps move, not the cells
+- `0cc5e597` 2026-10-26 The hold's place one place: under every line lost alike once one that keeps the chain is lost later
+- `a573f79c` 2026-10-26 Under garbage the break search's wider beam third among the jobs, before the planner's half and the extension
+- `fd0795a9` 2026-10-26 The wider beam's break only where the window keeps the next break's walk once it is pressed
+- `c9c8e876` 2026-10-26 The wider beam last among the jobs again, its break still priced by the window
+- `a9be1ae4` 2026-10-26 The touch beam's key: nearest break, then the fewer empty cells under garbage, then evenness
+- `08b1fa0a` 2026-10-26 The margin reads contact: the share of columns under garbage whose panels touch it once everything shown has landed
+- `3503764c` 2026-10-26 The board to come's break handed to every readiness search: its last swap tried first, as a carried line
+- `367bd82f` 2026-10-26 Take out the board to come's break handed to the readiness searches
+- `d1f38d25` 2026-10-26 Where none lives, the first lines and the hold played on by the survival search; the one living longest by a break's time first
+- `2ff47369` 2026-10-26 Take out the lines played on where none lives
+- `a0ec1607` 2026-10-26 Survival in one unit: a line's loss net of the frames the window takes to give back what it spends
+- `3dda4315` 2026-10-26 The net loss only between lines lost alike: survival first, the bands and the later loss the loss itself
+- `a236872e` 2026-10-26 The net loss after the margin: what the margin leaves
+- `3d4479f5` 2026-10-26 The break search's carried lines replayed a line at a time: the clock out leaves every line played so far whole
+- `78008582` 2026-10-26 The break frontier is what the search held when its time ended: never let go whole, the unplayed handed on
+- `f0b3e89f` 2026-10-26 The reserve for every block on its way: at each landing the window holds its break walk beside the ones before it
+- `168bb64a` 2026-10-26 The reserve a count: of the blocks on their way, how many the window keeps a break walk for
+- `fc26f10a` 2026-10-26 A plan's spend with its loss: a line lost where its plan is spends what the plan presses
+- `af3a29da` 2026-10-26 Low on panels, the ledger before the margin: spend only what the breaks give back
+- `4132551b` 2026-10-26 A lineup's break its own: the extension's broke net of the board alone, its beam ranked by it first
+- `e7bf7e75` 2026-10-26 A pop's line-up first: during a slab pop the line-up search runs first in half the clock, then the touch beam elsewhere
+- `269771a7` 2026-10-26 The window holds a walk for every row a block brings: each row a break, due a break's time after the one before
+- `6ec368dc` 2026-10-26 Garbage kept touched, and room kept to live: the order's touch before the ledger, the window's survival walk beside each break's
+- `67d23c19` 2026-10-26 Ready at the landing, the rule: of two lines lost alike the one with a break in reach once the next block lands; every block shown searched for its break
+- `02ce9f0a` 2026-10-26 The save's walk kept when the survival search finds none: a break's walk; touch out of the order
+- `94c9470f` 2026-10-26 A full-width slab let down: each support walked into the nearest hollow under it; a break keeps the save's walk
+- `48a6d761` 2026-10-26 The save each line leaves, measured on its own board: the nearest break's walk on the board it leaves, pressed before that board is lost -- one walk for the window plan and the save
+- `a4b6a4dd` 2026-10-26 The order's readiness clause named landing, apart from the material's ready
+- `1114e996` 2026-10-26 The survival search keeps garbage held up: its margin counts the columns under garbage whose panels touch it
+- `a821e43a` 2026-10-26 The survival search keeps the panels under its garbage first among lines lost alike; the contact share out of its margin
+- `44e6c906` 2026-10-26 A loss named by the piece that failed; a full-width slab walked down row after row
+- `d8eb852e` 2026-10-26 Every line judged by its plan: readiness asked, with nothing on its way, from the frame the window gives the line a break's walk back
+- `5442d367` 2026-10-26 A break's walk measured: the cursor's actions over the nearest break's line, on the board as it is and on each line's landed board
+- `763589d5` 2026-10-26 A line lost where its plan is: with no break found to lead on to, the survival search's best played on from the board it leaves
+- `7c9fe890` 2026-10-26 A plan goes on while each break puts its loss off: no fixed count of breaks, the board, the line's length and the clock its limits
+- `70974bd4` 2026-10-26 The hold has a plan; the save is the plan's next break; the reserve among lines lost alike; a loss's order counted by breaks lost no sooner
+- `e0243a36` 2026-10-26 A break in hand ready at the landing; a line played for its plan carries the plan's break as the line in progress
+- `12ec2d0a` 2026-10-26 The survival search ranks by the order's keys: its band, the margin, the loss net of its actions
+- `c023ecea` 2026-10-26 One judgement, one order: the judge's category, the order on survival, category, chain, the mode's list and value for moves
+- `08ff3ccf` 2026-10-26 The plan built: the break search's frontier kept and its beam survival-first, the pace, the checks
+- `f81be21f` 2026-10-26 The save's verdict a fact of the line: its three needed is no wasted three, and the order ranks it -- no line moved to the top by hand
+- `2ec2797a` 2026-10-26 Every plan ends the same way: past its last break, the survival search played on from the board it leaves
+- `7158e554` 2026-10-26 Value for moves counts the next break brought nearer: the actions taken off its walk against the hold's, measured on the landed boards
+- `9d382568` 2026-10-26 Solvency built: every line's ledger, the order on it, supply in value, losses read by it; the save one answer; walks measured
+- `6ba5e7dd` 2026-10-26 The ledger's death the plan's own loss frame; the waste key after the category; the plan rewritten with both fixes
+- `19d371c8` 2026-10-26 Solvency back in the order and supply in value, on the ledger that reads death from the plan's own loss frame
+- `f8c9be7a` 2026-10-26 The save the one gate for a wasted three; the survival search without a walk on every line; the ledger logged, not ranked; a loss not known alike with nothing
+- `07475dd0` 2026-10-26 Each due keeps its own break's walk: measured on the board its block lands on, the window's reserve for that row
+- `a11084bc` 2026-10-26 The loss the window allows: a line that leaves the window covering fewer rows due than holding is lost at the first it cannot pay
+- `dfbd1d57` 2026-10-26 plans: one plan -- proven first, then the most left to find a proof with, the search for the proof, the margin; the old plans deleted
+- `2dd02068` 2026-10-26 The plan built: proven first, the most left to find a proof with, the search for the proof, the margin, more per break, the proof kept, deeper, the mode among the proven
+- `f124feac` 2026-10-26 Step 2's margin read on the board a line's plan leaves: a break credited with what it converts
+- `33409535` 2026-10-26 The plan's landed board its own search context: planLandCtx, apart from the planner's planCtx
+- `8a562b05` 2026-10-26 A plan's margin read as each of its breaks is taken, while the clock still has the step; the margin and the later landings logged
+- `9ad381b7` 2026-10-26 Step 2's margin one key, never unknown: the scarcest share first, then the next; a line not read gets the board as it is
+- `9470b492` 2026-10-26 Unproven lines: the later loss first, the margin between lines lost alike -- the order's and the survival search's
+- `4d939250` 2026-10-26 Every piece of the plan in the log, and a plan's later landing kept as the order would: proven, later, then converts more
+- `7885f78d` 2026-10-26 The margin first again, its window read as the dues ask it: the share of the rows due covered, with the rows the line pays
+- `3c1413f3` 2026-10-26 The touch beam lets go of lines that leave less than a break's time before the board dies
+- `42f57deb` 2026-10-26 The margin compares the two scarcest shares only: a row more of what a board has plenty of does not outweigh a later loss
+- `35a65665` 2026-10-26 A plan's later breaks asked from the last landing back: the latest in reach kept, not the plan stopped where the board dies first
+- `a3a3a919` 2026-10-26 A margin read before everything shown has landed counts the rows still coming against its room
+- `4e88f142` 2026-10-26 A share of the margin counts to three rows: what a board has enough of does not decide, only scarcity does
+- `b9605ad8` 2026-10-26 The touch beam keeps a line only with a break's time and a reaction to spare; the four margin shares logged by name
+- `8029ab0b` 2026-10-26 The touch beam's doomed line a break's time short of the board's loss again, without the reaction of slack
+- `93c45b79` 2026-10-27 Where nothing played was proven, the break search is held to neither the mode's list nor the wasted three
+- `3b4a30e3` 2026-10-27 A proven line ends ready for the next block; an unproven first line is held for, the save aside; the gates: proven first, readiness right, every share a fact
+- `1145d404` 2026-10-27 Readiness lands the block on the end board at once, and is asked of every line; the log says why a line is not ready
+- `8ee0f49b` 2026-10-27 Readiness read by the shape math, asked of every line in the clock; the hold's on the board as it is; the readiness gate warns
+- `14390934` 2026-10-27 The room share reads below none; the hold is held for only while it lives, else the first line that outlasts it
+- `3359532a` 2026-10-27 The play the 1286 build's again: readiness read and logged, not yet in the proof; no hold for the proof; room floored; the gates and the readiness proposer kept
+- `b70e3f10` 2026-10-27 Lines are lost alike within a decision, not a break's time: a later loss leaves the carried search one more decision
+- `fc3bc446` 2026-10-27 A readiness break carried is anchored to the board as it is and pressed where it was found; the log says whether a promise was kept
+- `5fe15c98` 2026-10-27 A loss is banded at any distance: lines past three breaks' time are no longer read alike
+- `5f25c944` 2026-10-27 A loss a break's time later decides before the margin; the margin decides within a break's time; losses banded as before
+- `b14d8d6b` 2026-10-27 The loss in absolute bands of a break's time before the margin: one order
+- `96fd05b2` 2026-10-27 The margin first again; readiness in the proof measured alone, without the hold for the proof
+- `1cbf17d3` 2026-10-27 Readiness out of the proof again; where the plan stands after fourteen runs
+- `d46faa5f` 2026-10-27 The room share reads below none, measured alone
+- `1e592b58` 2026-10-27 Among lines proven against what is shown, a loss a break's time later decides before the mode's list
+- `07d54f6f` 2026-10-27 The horizon before the list taken back out; 1301 read
+- `acf2d588` 2026-10-27 The whole plan is carried: each later break from its landing and the survival line on from its end, pressed as judged
+- `4ece12ec` 2026-10-27 The plan handed out and the promise carried, logged
+- `9a509151` 2026-10-27 A break of one swap on the board to come is offered, pressed once the block has landed; a one-swap line's wait is judged
+- `becbdcb7` 2026-10-27 The one-swap landed break taken back out, with its finding; where this stands
+- `c27957c8` 2026-10-27 The one-swap break on the board to come judged at the landing and logged, not offered; the summary counts the ones that break nothing
+- `6b91999f` 2026-10-27 Under garbage, an unproven line that converts garbage before one that converts none, then the margin
+- `98fd8cba` 2026-10-27 A line judged dead with no plan board reads room below none, not the board as it is now
+- `fdaf25e6` 2026-10-27 A due is never moved to the line's end: a line still pressing past a due has not covered it
+- `68208ba3` 2026-10-27 1308: 19/24; a line that spends the next break reads room below none
+- `a3f30029` 2026-10-27 The window share is the lesser of the dues' cover and the next break's walk kept at the line's end
+- `a536a2bd` 2026-10-27 The margin for garbage not shown is material too: a plan ending scarce of material is not proven; the window share as before
+- `bbe3cfd3` 2026-10-27 The survival line a board lives on by is the line's plan, handed out and carried
+- `793584db` 2026-10-27 Material out of the proof: it cost four games
+- `969f9851` 2026-10-27 Step 2's later loss is net of what the line spends: the window is time, as the survival search reads it
+- `5dc5fc98` 2026-10-27 The survival line as the plan taken out: it cost six
+- `e5448661` 2026-10-27 The later loss net of what the line spends taken out: 14, and not one order
+- `dbdfa95d` 2026-10-27 The stall measured on the engine: a pair swapped every 4 frames takes no block of fifty queued
+- `050d84f0` 2026-10-27 The idle frame: no pair put back, ready is real play in reach, the proof asks for it
+- `25fcfc70` 2026-10-27 The idle frame, adjusted on 1315: readiness a tie-break, the pair as of the question's frame, idle frames by the engine's drop
+- `6f2fd7b3` 2026-10-27 Readiness read, not ranked on: as a tie-break it decided 306 plays of a line lost sooner (14)
+- `ca98271f` 2026-10-27 The put-back test asked of every swap of a line, with what the swap makes: a swap back that clears or breaks is play
+- `b05849b1` 2026-10-27 The put-back test reads the board the swap is pressed from
+- `c77e8cbf` 2026-10-27 The put-back cut before the swap is recorded as pressed: a cut line is never handed on whole
+- `f245441c` 2026-10-27 The pair the last swap swapped is the engine's record on the board: one input for the judge and the guard
+- `a11040dc` 2026-10-27 The last swap's record past the board's head, so dumped boards load; what a swap made is what the board alone did not; the guard settles the swap before reading it
+- `0e7fa14c` 2026-10-27 What a swap made is read off the nodes alone: a worker's context keeps no boards to fetch
+- `c3317c60` 2026-10-27 The rules' keep as the order's key after the proof: a line that nets material away below the floor is behind one that keeps it, ahead of the list
+- `a47e17b7` 2026-10-27 The keep back to the list's key and the floor spent to the clear that breaks nothing: 14
+- `999d96e4` 2026-10-27 The judge's loss read with the game going on at its measured pace after the line, not the board left idle under the whole queue
+- `4714eff3` 2026-10-27 Proven, at the game's pace: a line that stands to the whole horizon
+- `b7758a4c` 2026-10-27 The pace in the projections only: the board to come readiness asks of, and the plan's waits for a landing; the judge's loss exact with its bar
+- `9932bd1c` 2026-10-27 The 19 build's engine and judge again: the rest at a pace measured 16, 14 and 17 and is out
+- `3475ff56` 2026-10-27 The reserve veto: the break search asked of the board the line on top leaves, and a line alike that leaves a break played instead
+- `8cae36f1` 2026-10-27 The audit's fixes and the veto on finished answers only
+- `0dccef79` 2026-10-27 A capped piece past its frame reaches the decision: due at once, landed as the game lands it
+- `63598f5f` 2026-10-27 The veto measured for truth: the board it read as having no break is logged and searched again by the report with the full budget
+- `e311b0bf` 2026-10-27 One settled reading of what a swap that puts the last pair back makes, for the judge and the guard alike
+- `88da8c92` 2026-10-27 The window reserve as a filter: under garbage a line that spends the hands below a break's walk is out of the order, as a wasted three is
+- `e7b58543` 2026-10-27 The board to come is one block landed: one definition for readiness and the landed-break search, from the board itself
+- `105ec452` 2026-10-27 The readiness break's wait is the frame the board to come is settled on, not the drop's; the record thread-local
+- `082d7967` 2026-10-27 The board to come in three steps: settle, two frames, settle -- the walk cost the judge its readiness askings
+- `c20ab9e0` 2026-10-27 The board to come is the last live board, and every comparison sets its own bands: two introduced bugs the C check caught
+- `29abb103` 2026-10-27 The board readiness reads is the board at the frame the next decision can act: one function, the asker's own frame
+- `71649d2c` 2026-10-27 A three that lets a block down is real play, never a wasted three
+- `be25e1a1` 2026-10-27 The reach report keeps each break line it finds; the C check's trace carries each line's swaps and breaks
+- `0570a80a` 2026-10-27 Flatten and break: the flatten search, a job of its own; a three that lets a block down onto a break is real play
+- `9dad9942` 2026-10-27 Gambit's source back to the 18 build (63598f5f, run 1330)
+- `7f17b1c5` 2026-10-27 The C check's tools on the 18 build: the decisions' log, the order's trace, one question, the solvers, the break search on a board
+- `00c638ba` 2026-10-27 A dumped board carries the input window it was decided under; the C check's replay loads it
+- `5cfc0422` 2026-10-27 The conditions a board was decided under are one record, kept with the board: the last boards dumped with their own window
+- `26d9ccad` 2026-10-27 The C check's decision replay loads each dumped board's own conditions under GC_PRESS
+- `298c9b4d` 2026-10-27 The decision log says how the played line's readiness break passed the window: rdyTop=
+- `f2e7f674` 2026-10-27 Gambit: one way in for a search rooted later
+- `7b5ade31` 2026-10-27 Gambit: a line that breaks garbage wastes no three
+- `027814b6` 2026-10-27 Gambit: one settled reading of what a swap that puts the last pair back makes
+- `22c6acca` 2026-10-28 Gambit: an unproven line is ranked by its later loss before its margin; the bands each ranking's own
+- `e2a31928` 2026-10-28 Gambit: unproven lines by their margin before their loss again
+- `3b2fc17e` 2026-10-28 Gambit: while a slab pops, the extension takes the worker second
+- `9ba799d7` 2026-10-28 Gambit: a line dead or spending the next break reads the least room, below every board read
+- `0d9032c4` 2026-10-28 Gambit: a line lives by its readiness break only if its board lasts until that break is done
+- `1d596973` 2026-10-28 Gambit: under garbage, the line that converts more full rows first, unless lost a break's time sooner
+- `e8def20e` 2026-10-28 Gambit: every line's room read under every block shown, a plan's or not
+- `e3f9eb3a` 2026-10-28 Gambit: under garbage, of two lines that convert, the one that leaves the board more panels first
+- `f73f98e9` 2026-10-28 Gambit: the flatten search, where garbage rests over a gap
+- `84c02dda` 2026-10-28 Gambit: the order's next-break and material keys read off each line alone -- one order
+- `db2b5178` 2026-10-28 Gambit: the touch beam in nearness order alone, its time to its depth
+- `9215b818` 2026-10-28 Gambit: the order's keys had by every line -- one order
+- `f415cd71` 2026-10-28 Gambit: the order sorted once more when every stage has written its lines
+- `a5439b5d` 2026-10-28 The window held: the frame loop checks the input window the judge read for each line it presses
+- `b9477887` 2026-10-28 The window held at the line's second swap, the frame every line reaches; test DIR front FRAMES
+- `4fe5cf10` 2026-10-28 Gambit: of two lines proven by their plan alone, the one whose plan stands longer first
+- `ffd6a811` 2026-10-28 Gambit: of two unproven lines, the one lost a whole break's time later first
+- `d0d80e33` 2026-10-28 Gambit: a board on its way out with no break found is asked as far ahead as the profile looks
+- `c71c26b1` 2026-10-28 Gambit: a node's index held before NODE reads it; the longer loss after the material
+- `2352e91a` 2026-10-28 Gambit: a board lost before its next break could pop puts the later loss first
+- `86670953` 2026-10-28 Gambit: after a drop the next question is asked as soon as it can be
+- `e4808f70` 2026-10-28 Gambit: a block on its way gives the board to come a worker of its own
+- `f4c1e475` 2026-10-28 Gambit: the put-back test reads the pair the swap swapped as it was pressed
+- `d66aa920` 2026-10-28 Gambit: a put-back refused after a colour was shown is counted apart
+- `19dd9b96` 2026-10-28 Gambit: a hold with no break found is asked again when a slab shows a colour
+- `e9df5ae3` 2026-10-28 Gambit: garbage on its way is garbage to the material keys
+- `8b8a9618` 2026-10-28 Gambit: the touch beam grows only swaps the window can press
+- `09c3e3aa` 2026-10-28 Gambit: the next break and the material read garbage on the board only
+- `a958a5b2` 2026-10-28 Gambit: with a window to keep, a level's breaks rank by cells broken per action
+- `59ae84b3` 2026-10-28 Gambit: of unproven lines, the loss in breaks' time is the line's own
+- `f4fa04c4` 2026-10-28 Gambit: under garbage, a plan that converts nothing proves nothing
+- `de85e6c3` 2026-10-28 Gambit: under garbage, swaps that make nothing prove nothing
+- `f90940b7` 2026-10-28 Gambit: a break's time is the blocks' own; the unproven reading of nothing made is out
+- `10b3667a` 2026-10-28 Gambit: the order's unit of time is a full row's break; a block's dues are its own
+- `3ab7b315` 2026-10-28 Gambit: a line's later swap waits for the window instead of being cut
+- `cac71b5b` 2026-10-28 Gambit: a swap back's making is read against the board it is pressed on
+- `f8160f6f` 2026-10-28 Gambit: a line's last swap reads its put-back as it did through 1384
+- `4b263fca` 2026-10-28 Gambit: a put-back refused at the press dumps the question it was judged on
+- `9447af94` 2026-10-28 Gambit: cap window waiting per line, not per swap
+- `692784d4` 2026-10-28 Gambit: a grown line the judge did not finish is dropped
+- `3e88743c` 2026-10-28 Gambit: a later swap the window cannot pay for at its frame is cut
+- `4a790d65` 2026-10-28 Gambit: the window's projection reads the frame just pressed as its own keys
+- `fb638a60` 2026-10-28 Gambit check tools: the break test takes a popping slab's wait
+- `34056716` 2026-10-28 Gambit: the window's pace gives way to a break the board is lost without
+- `c73a727f` 2026-10-28 Revert the unpaced line: back to 1390's build
+- `00b62273` 2026-10-28 Gambit: the work clock at today's runner median, 800 frames a ms
+- `cd93a3ae` 2026-10-28 Revert the work clock to 600: back to 1390's build
+- `54ab0c6a` 2026-10-28 Gambit: every hold asks again at once for a colour shown since its question
+- `21522640` 2026-10-28 Gambit: under garbage, of unproven lines alike in material, the next break nearer first
+- `c96154f8` 2026-10-28 Revert the next break's nearness in rule 2: back to 1393's build
+- `a359de7a` 2026-10-28 Gambit: an answer taken past its frame is logged
+- `e6114187` 2026-10-28 Gambit: with the window short, of unproven lines alike in material, the next break nearer first
+- `3b9c12ea` 2026-10-28 Revert the short-window nearness key: back to 1393's play
+- `eff718dd` 2026-10-28 Gambit: under garbage, the next break nearer as rule 2's last key
+- `e4ab0102` 2026-10-28 Gambit: the next break nearer reads breaks only
+- `7d84215b` 2026-10-28 Gambit: the next break nearer reads the board left, not the line's walk
+- `7ae56331` 2026-10-28 Revert "Gambit: the next break nearer reads the board left, not the line's walk"
+- `2d5fb8d0` 2026-10-28 Revert "Gambit: the next break nearer reads breaks only"
+- `743a9d04` 2026-10-28 Revert "Gambit: under garbage, the next break nearer as rule 2's last key"
+- `eb7a529e` 2026-10-28 Gambit: of two breaks alike, the one leaving its next break the shorter walk
+- `97eb09c5` 2026-10-28 Revert "Gambit: of two breaks alike, the one leaving its next break the shorter walk"
+- `4d6a325c` 2026-10-28 Gambit: the break search goes on between decisions
+- `44fdd13f` 2026-10-28 Gambit: under garbage the wider beam runs on the thread beside the game's core
+- `7a2da733` 2026-10-28 Revert the wider beam on gbetween: back to 1401
+- `35354140` 2026-10-28 Revert "Revert the wider beam on gbetween: back to 1401"
+- `ada4fe6c` 2026-10-28 Gambit: the spares' list locked on the searching thread; the wider beam on gbetween again
+- `4256b17f` 2026-10-28 Revert the wider beam on gbetween; the spares' lock kept
+- `c4509b0f` 2026-10-28 Gambit: the open break search looks for a break with no wasted three first
+- `0bc6d0ce` 2026-10-28 Revert the open break search held to the wasted three first
+- `4a93a5a2` 2026-10-28 Gambit: a break taken out as a wasted three is logged with why
+- `c1eaae4a` 2026-10-28 Gambit: the flatten search takes a break only where the judge's pressing of it breaks
+- `38ac078b` 2026-10-28 Revert the flatten search's judged break
+- `e4a8bf35` 2026-10-28 Gambit: survival first -- a break that cuts the board's chain short stays where nothing keeping it lives
+- `0b702f14` 2026-10-28 Gambit checks: the board-on-its-way-out test removed
+- `e85ddeda` 2026-10-28 Revert keeping a break that cuts the board's chain short
+- `783c317b` 2026-10-28 Gambit: fallback entries only where the board dies without them
+- `63b466be` 2026-10-28 Gambit: survival first, then the list's first entry, then building, then fallbacks
+- `fa797300` 2026-10-28 Gambit: lines that live compared on margin, then the list; set-ups build toward the first entry
+- `175862a2` 2026-10-28 Gambit: the break search beside the decisions runs every frame, through the decision and past it
+- `75dff190` 2026-10-28 Gambit: the break search beside the decisions on the game's own CPU
+- `1ba504e3` 2026-10-28 Gambit: once a break is played, the search beside the decisions searches the board it leaves
+- `8811737d` 2026-10-28 Gambit: the search beside the decisions never searches what the decision does
+- `74e3fd05` 2026-10-28 Gambit: the veto's boards at once on the workers; readiness side by side at three times the share
+- `2519f5b8` 2026-10-28 Gambit: the veto and the readiness back to the decision's own shares
+- `0fb22bb9` 2026-10-28 Gambit: the veto's boards at once and the readiness side by side, again
+- `f98cfc39` 2026-10-28 Gambit: three threads search beside the decisions, the frontier split between them
+- `dc995956` 2026-10-28 Gambit: back to the build 1419 played (19/24)
+- `9210e368` 2026-10-28 Gambit: the readiness boards searched side by side at three times the share
+- `8bfe229e` 2026-10-28 Gambit: the panels a line leaves weighed with a block shown on its way, not only on the board
+- `2599d6b5` 2026-10-28 Gambit: the look-ahead per choice searched side by side on the workers
+- `4a80bfef` 2026-10-28 Gambit: the look-ahead per choice in one wave, charged the time the decision waits
+- `ad9af47a` 2026-10-28 Gambit: the look-ahead per choice runs as the readiness's first jobs, letting nothing go
+- `36df160f` 2026-10-28 Gambit: the look-ahead beside the decisions, on the game's CPU, waited on by nothing
+- `73adbc85` 2026-10-29 Gambit: the look-ahead beside searches 10 deep and 60 wide, 400 ms a board
+- `07f92cff` 2026-10-29 Gambit: the look-ahead beside asked the played line's board first; its own work clock
+- `4e3f0cad` 2026-10-29 Gambit: the look-ahead beside back to the decision's own depth (the build of run 1435)
+- `f5d26aed` 2026-10-29 Gambit: in the dig, the panels a line leaves before the time it buys
+- `cdffdd28` 2026-10-29 Gambit: the look-ahead held from the moment a question is answered
+- `863b458e` 2026-10-29 Gambit: the look-ahead beside runs only within a decision
+- `5c44c239` 2026-10-29 Gambit: the options pondered -- the look-ahead works ahead on the boards the best three lines leave
+- `38f3d33e` 2026-10-29 Gambit: the chosen line's board asked of the look-ahead the moment the answer is out
+- `154b53d4` 2026-10-29 Gambit: the boards the options end on known as they are judged, not judged again
+- `34c3e5a6` 2026-10-29 Gambit: the boards the options end on kept as they are judged, handed to the look-ahead as kept
+- `d7f9f340` 2026-10-29 Gambit: back to the build of run 1438 (20/24)
+- `94157b7d` 2026-10-29 Gambit: the options pondered, alone on the build of run 1438
+- `1ef39c5d` 2026-10-29 Gambit: back to the build of run 1438 (20/24): the options pondered played 18
+- `a0edeabf` 2026-10-29 Gambit: the look-ahead's line on played only where it saves the board, every other decision the order's own
+- `28afc682` 2026-10-29 Gambit: back to the build of run 1438
+- `d1e969c8` 2026-10-29 Gambit: the look-ahead beside in lockstep between decisions only, so a game is its seed's
+- `ca58c6ae` 2026-10-29 Gambit: the look-ahead's line on, played only where it saves the board, on the lockstep baseline
+- `384056fe` 2026-10-29 Gambit: the look-ahead's answers no part of the decision's own; its line played only where it saves the board
+- `0a8a30aa` 2026-10-29 Gambit: the look-ahead's line played where the order's first is lost and it outlasts that by a break's time
+- `55ccaca8` 2026-10-29 Gambit: back to the build of run 1450 -- the look-ahead's line played only where it lives
+- `d73b8f5f` 2026-10-29 Gambit: the rollout -- the game played on from the chosen line's board as the decisions play it, measured
+- `5056a0e0` 2026-10-29 Gambit: in the dig, the panels a line leaves before the time it buys
+- `36b15e93` 2026-10-29 Gambit: the look-ahead grows the cut readiness checks of the best lines and the chosen one
+- `c482500c` 2026-10-29 Gambit: a three the save confirmed ranks before every unproven line
+- `e7573de8` 2026-10-29 Gambit: the save gives each side half its time
+- `bffee8e3` 2026-10-29 Gambit: the dig's panels key reads after the time to a loss
+- `fc973fed` 2026-10-29 Gambit: the dig's panels key reads before the time to a loss again
+- `6ffd46ba` 2026-10-29 Gambit: under garbage the panels a line leaves read before its time to a loss
+- `baca4268` 2026-10-29 Gambit: under garbage the break a line leaves to build reads before its time to a loss
+- `9f2dd9cf` 2026-10-29 Gambit: the break left to build reads after the time to a loss again
+- `83655814` 2026-10-29 Gambit: the save reads the side without the three by what is known of it
+- `1479f155` 2026-10-29 Gambit: a three is needed where the best line without one dies within a break's time
+- `85fd4e43` 2026-10-29 Gambit: a line's last step is its settle, not a second put-back test
+- `a1e39c20` 2026-10-29 Gambit: under garbage a line lost before one break could pop reads after one that lasts a break
+- `df9f219f` 2026-10-29 Gambit: the golden re-recorded on this build
+- `18dbbafd` 2026-10-29 Gambit: a swap back that begins the break the board is lost without is play
+- `2c27fd76` 2026-10-29 gambit-24: fetch only the commit a Gambit is played from
+- `c4adb876` 2026-10-29 gambit-24: gambit_from takes a named version; apm900 is the 900-a-minute build of runs 927-930
