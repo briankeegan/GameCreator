@@ -143,6 +143,7 @@ static int readBoard_(Read *R) {
   // with -- the rows the next break is made of brought in)
   int32_t to = rule->raiseTo ? rule->raiseTo : theTables.raiseTo;
   int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped;
+  decOpening = opening;
   // (and A LOW STACK: under LOW_ROWS rows of panels, not topped, it is raised all the same -- the owner's rule: below six rows, raise high)
   int refill = !opening && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
   raiseRefill = refill;

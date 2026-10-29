@@ -30,7 +30,7 @@ typedef struct {
   int32_t planBroke;   // the garbage the plan converts beyond the board left alone (readyNextOf)
   int32_t planTop, planMat, planContact, planUnder, planEndAt;   // the margin the plan leaves (planLanded); planTop -1 not read
   int32_t endReady;    // the board the line (or its plan) ends on is ready for the next block (endReadyOf): 1, 0, NOT_ASKED
-  int32_t gReady;      // with no garbage on the board or on its way: the swaps to a break once a row of garbage lands on the board the line leaves (garbReadyOf; NEAR_MISS none), -1 not asked
+  int32_t gReady;      // in the opening: the board the line leaves breaks a row of garbage landed on it in time (rank.c garbReadyIn): 1, 0; -1 not asked
   int32_t planFullN, planFullLine[MAXLINE], planFullAt[MAXLINE];   // the whole plan after the line: its breaks and the survival line on from its end, each swap with the frame it is pressed from (0: as the board lets) -- readyNextOf
   uint32_t endHb;     // the board the line ends on, its cells and its clock as one number (endCellsHash): 0 not read
   Judged j;
@@ -145,22 +145,9 @@ static uint32_t endCellsHash(const Board *b) {
   #undef EH
   return h ? h : 1;
 }
-// THE BOARD READY FOR A BLOCK NOT YET SHOWN: a row of garbage the board's width received on it and let land as the engine lands it, then
-// how many swaps the nearest break of it is (nearOf, NEAR_MISS beyond reach; 1 << 20 the board lost in the landing, or nothing landed) -- what a board that leaves no
-// break near its top would face when the first block comes. The frames it runs are charged as any search's
-#define GREADY_FRAMES 240
-#define GREADY_FALL 30   // (the frames a row takes to fall before the board is read as still)
-static int32_t garbReadyOf(const Board *eb) {
-  static LOCAL Board *g; if (!g) g = nb_new();
-  if (!g) return -1;
-  cloneBoard(g, eb); g->input = 0; g->pressSwap = 0;
-  nb_receive(g, W, 1, 0, 0, g->stopWatch, 1);
-  int f = 0;
-  for (; f < GREADY_FRAMES && g->gameOverClock <= 0; f++) { run(g); if (f >= GREADY_FALL && !g->ninc && garbageOn(g) && !boardMoving(g)) break; }
-  clockCharge(f);
-  if (g->gameOverClock > 0 || !garbageOn(g)) return 1 << 20;   // (none)
-  return nearOf(g);
-}
+// (READY FOR THE FIRST BLOCK: rank.c garbReadyIn -- asked in the opening, decOpening, set by the decision: decide.c readOf)
+static int32_t garbReadyIn(const Board *eb);
+static int32_t decOpening;
 // (AND THE BOARD ITSELF, kept as it is judged on whichever thread judges it: the look-ahead beside is handed the boards the best
 // options end on from here, never judged again for it -- decide.c lookPonder. Its boards are made on the decision's thread first:
 // endKeepOn)
@@ -246,7 +233,7 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
       // (READY FOR THE FIRST BLOCK, none shown -- the owner: an opener with a break ready for garbage: garbReadyOf)
-      if (eb && !decF.under && decQ.narr == 0 && !garbageOn(eb)) o.gReady = garbReadyOf(eb);
+      if (eb && decOpening && !decF.under && decQ.narr == 0 && !garbageOn(eb)) o.gReady = garbReadyIn(eb);
       // (READY, plans/gambit-next.md 1: real play in reach on the board the line leaves -- garbage on it, and a break within the shape
       // math's reach (nearOf, NEAR_MISS none); none on it, nothing to be ready for. Read on every whole line; the proof reads it, rank.c
       // playReady -- nearAfter stays the under-garbage tier key it was)

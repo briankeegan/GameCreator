@@ -646,7 +646,6 @@ static int32_t ownBreaksTo(const Judge *J) {
   return l >= 1e8 ? 1 << 30 : l < 0 ? -1 : (int32_t)(l / imax(1, rankSave));
 }
 // (GARBAGE TO BREAK: on the board, or shown on its way -- a block shown lands and is broken as one on the board is)
-#define GREADY_SWAPS 1
 static int garbHere(void) { return decF.under || (decF.next != NOT_ASKED && decF.next >= 0); }
 // (THE LIST'S KEY with no garbage: 0 the first entry met, 1 a line building toward it, 2 nothing fired of the line's own, then each
 // fallback by its entry, a wasted three last)
@@ -665,9 +664,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (and of two proven alike, the one that leaves the board more of what it is scarcest in -- room, material, the window, contact
     // (marginKey) -- before the list: a share of MARGIN_ENOUGH rows or more is enough, so two lines that both leave enough of everything
     // are alike here and the list decides between them)
-    // (READY FOR THE FIRST BLOCK, the owner's: of two lines proven with no garbage on the board or on its way, the one whose board would have
-    // a break within GREADY_SWAPS once a row of garbage lands on it -- outcome.c garbReadyOf -- before the margin and the mode's list)
-    if (px && x->o.gReady >= 0 && y->o.gReady >= 0) { int rx = x->o.gReady <= GREADY_SWAPS, ry = y->o.gReady <= GREADY_SWAPS; if (rx != ry) K(1, "ready", rx ? -1 : 1); }
+    // (READY FOR THE FIRST BLOCK, the owner's: of two lines proven in the opening, the one whose board breaks a row of garbage landed on it
+    // in time -- garbReadyIn -- before the margin and the mode's list)
+    if (px && x->o.gReady >= 0 && y->o.gReady >= 0 && x->o.gReady != y->o.gReady) K(1, "ready", x->o.gReady ? -1 : 1);
     if (px) { int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(1, "margin", my > mx ? 1 : -1); }
     // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
     // resource, then of the next (marginKey: room, material, the window's cover of the rows due, contact, in rows); then the later loss,
@@ -830,4 +829,36 @@ static void sortJudged(Judge **a, int n) {
       while (j < hi) tmp[k++] = a[j++];
       for (k = lo; k < hi; k++) a[k] = tmp[k];
     }
+}
+
+// THE BOARD READY FOR THE FIRST BLOCK, the opening's (the owner: an opener with a break ready for garbage): a row of garbage the board's
+// width received on the board a line leaves and let land as the engine lands it, then the break search asked of that board in GREADY_MS --
+// the walks and the window as any break is pressed -- and the break it finds in time: before the board, left alone with the row on it, is
+// lost (outlive.c diesIn). 1 ready, 0 not; -1 not asked (inside a break search, whose context it would take). The frames the landing runs
+// are charged as any search's
+#define GREADY_FRAMES 240
+#define GREADY_FALL 30   // (the frames a row takes to fall before the board is read as still)
+#define GREADY_MS 3
+static int32_t garbReadyIn(const Board *eb) {
+  if (breakBusy) return -1;
+  static LOCAL Board *g; if (!g) g = nb_new();
+  if (!g) return -1;
+  cloneBoard(g, eb); g->input = 0; g->pressSwap = 0;
+  nb_receive(g, W, 1, 0, 0, g->stopWatch, 1);
+  int f = 0;
+  for (; f < GREADY_FRAMES && g->gameOverClock <= 0; f++) { run(g); if (f >= GREADY_FALL && !g->ninc && garbageOn(g) && !boardMoving(g)) break; }
+  clockCharge(f);
+  if (g->gameOverClock > 0 || !garbageOn(g)) return 0;
+  static LOCAL Question q;
+  memset(&q, 0, sizeof q); q.b = g; q.tight = decQ.tight;
+  int32_t lost = diesIn(&q, HORIZON + REST);
+  static LOCAL Broke rb;
+  double old = clockShareBegin(nowMs() + GREADY_MS);
+  int32_t pop = popLeft(g), saved = listDefault;
+  listDefault = 1;
+  breakMoves(&q, pop ? pop + LINEUP_AFTER : 0, 0, &rb);
+  listDefault = saved;
+  clockShareEnd(old);
+  if (!rb.depth) return 0;
+  return lost == FOREVER || lost < 0 || rb.at < lost;
 }

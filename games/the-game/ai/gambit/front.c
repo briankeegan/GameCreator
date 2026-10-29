@@ -908,7 +908,7 @@ static int threeSaves(const Board *t, int32_t bits, int planned) {
 // play begins and for CD_SLACK frames after -- its lead, and with it the decision's time, the countdown's -- and answered as any question
 // is: the first frame in play takes the answer, its keys from that frame.
 #define CD_SLACK 4
-#define CD_ASKS 2   // (the opening and the decision after it: the raise, then the board the raise leaves)
+#define CD_ASKS 1   // (the opening alone: the board the countdown shows -- the rows a raise brings in are colours no player has seen)
 static void take(void);
 static int frontCountdown(int32_t left) {
   if (left <= 0) return 0;
