@@ -51,6 +51,20 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    and each change is checked for a mode it set back, until all are at 24, twice.
    Finish them reached 22 in run 432; big chain in run 1464; pressure and build next.
 
+## The modes (the owner's plan)
+
+Which mode plays is picked from the enemy's board, read top to bottom (`survivor-profiles/gambit-rules.json` `attack`); training has
+no enemy, so there each mode is pinned by its profile. A mode plays its first entry, builds toward it otherwise, and takes a fallback
+only where the board dies without it. Survival comes first; under garbage, the break comes first.
+
+| mode | picked when | for | first | fallbacks, only where it dies without them |
+| --- | --- | --- | --- | --- |
+| time attack | no enemy | score alone | 8+ chain | chain 6+, 4+, 3+, 2+ |
+| finish them | the enemy topped out, its stop ends within 2 s (120 frames) | a fast hit it cannot absorb | 8+ combo | combo 5, combo 6, 2-chain, combo 4+, chain 3+ |
+| big chain | the enemy's stack under 5 rows | it has room: one huge block | 8+ chain | chain 2+, combo 4+ |
+| build | the enemy's stack under 9 rows | steady medium attacks | 5-chain | chain 2+, combo 4+ |
+| pressure | the enemy's stack 9 rows or more | keep it high with quick 4-chains | 4-chain | chain 2+, combo 4+ |
+
 ## Open questions for the owner
 
 - A material reserve before garbage lands, and how many panels.
