@@ -246,6 +246,10 @@ static int moreIdeas(const Judge *x, const Judge *y) { int a = ideasOf(x), b = i
 // THE BLOCKS A LINE THROWS (judge.c blocks: every attack its own)
 static int thrownOf(const Judge *J) { return J->hold || J->o.dead ? 0 : J->o.j.blocks; }
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
+// (A FALLBACK: a line that meets an entry of the mode's list after its first and breaks no garbage. The mode's goals in order: the first
+// entry 0, a line that fires no fallback 1 -- the hold, a set-up toward the first entry, a break -- then each fallback, 1 + its entry)
+static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
+static int goalKeyOf(const Judge *J) { return J->hold ? 1 : J->met == 0 ? 0 : fallbackOf(J) ? 1 + J->met : 1; }
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
 // and none broken
 static int cutsShort(const Judge *J);
@@ -356,6 +360,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int oBreaks = o->apBroke > 0 && lostOf(o) >= rankSave && !(c->apBroke > 0) && (decF.belowFloor || lostOf(c) - lostOf(o) < rankSave);
     int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : (lostOf(o) <= lostOf(c) || lostAlike(c, o)) && !oBreaks;
     if (keep) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
+  // 1b. THE MODE'S GOALS (the owner: a mode plays its first entry, builds toward it otherwise, and takes a fallback only where the board
+  // dies without it -- survival first): of two that survive alike -- both live, or both lost no sooner than a break's time and less than
+  // a break's time apart, where the later buys no break more -- and keep the board's own chain alike, the first entry, then a line that
+  // fires no fallback, then each fallback in the list's order (goalKeyOf)
+  if (cutsShort(x) == cutsShort(y)) {
+    double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+    if (lx || (lo >= rankSave && hi - lo < rankSave)) { int gx = goalKeyOf(x), gy = goalKeyOf(y); if (gx != gy) return (cmpKey = __LINE__, (gx - gy)); }
   }
   if (lx) {
     // 2. (both live) the board's own chain kept before cut short: a chain the board is making is never stopped by a line that need not
