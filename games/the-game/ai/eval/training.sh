@@ -59,9 +59,9 @@ elif [ "$BOT" = gambit ]; then
   # Gambit's library, built for this machine, and the profile as numbers (words.js); its log is the run's survivor.log
   "$EVAL/../gambit/build.sh" native || exit 1
   GC_SURVIVOR_PROFILE="$EVAL/${PROFILE:-survivor-profiles/gambit-finish.json}" node "$EVAL/../gambit/words.js" > "$OUT_DIR/gambit.words" || exit 1
-  # (the game drawn a frame in four: the software renderer took most of a CPU from Gambit, which a headless bot on the server never
-  # spends -- the game plays at its own pace either way; panel-game PA_DRAW_EVERY)
-  export PA_DRAW_EVERY="${PA_DRAW_EVERY:-4}"
+  # (the game drawn a frame in sixty, as unpaced training draws it -- enough for the game's last screenshot: the software renderer took
+  # most of a CPU from Gambit, which a headless bot on the server never spends; the game plays at its own pace either way)
+  export PA_DRAW_EVERY="${PA_DRAW_EVERY:-60}"
   export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS"
   echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS"
   : > "$OUT_DIR/survivor.log"
