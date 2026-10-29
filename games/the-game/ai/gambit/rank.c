@@ -667,6 +667,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // unless lost alike (lostAlike: the same band of a break's time). The categories fold into this: lives and plan are proven, breaks to dies unproven
     if (!px) {
       int nx = diesNow(x), ny = diesNow(y); if (nx != ny) K(2, "now", nx ? 1 : -1);
+      // (THE SAVE CONFIRMED: a three the save asked of found the board outlasting, with the best line on, every line that wastes none by a
+      // break's time at least (decide.c ranked) -- the one survival verdict the order has past each line's own, so it is read as one)
+      if (x->threeNeeded != y->threeNeeded) K(2, "save", x->threeNeeded ? -1 : 1);
       // (UNDER ATTACK, MATERIAL ONLY COMES FROM BREAKING, plans/gambit-next.md 5: of two unproven lines under garbage, one that converts
       // garbage before one that converts none -- the margin reads material as enough down to three rows, and a board spent from 51 to 22
       // panels on combos reads enough until the block that kills it is landing: 1304 combo_storm-6, 2703 to 3307)
