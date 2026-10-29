@@ -646,6 +646,7 @@ static int32_t ownBreaksTo(const Judge *J) {
   return l >= 1e8 ? 1 << 30 : l < 0 ? -1 : (int32_t)(l / imax(1, rankSave));
 }
 // (GARBAGE TO BREAK: on the board, or shown on its way -- a block shown lands and is broken as one on the board is)
+#define GREADY_SWAPS 1
 static int garbHere(void) { return decF.under || (decF.next != NOT_ASKED && decF.next >= 0); }
 // (THE LIST'S KEY with no garbage: 0 the first entry met, 1 a line building toward it, 2 nothing fired of the line's own, then each
 // fallback by its entry, a wasted three last)
@@ -664,6 +665,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (and of two proven alike, the one that leaves the board more of what it is scarcest in -- room, material, the window, contact
     // (marginKey) -- before the list: a share of MARGIN_ENOUGH rows or more is enough, so two lines that both leave enough of everything
     // are alike here and the list decides between them)
+    // (READY FOR THE FIRST BLOCK, the owner's: of two lines proven with no garbage on the board or on its way, the one whose board would have
+    // a break within GREADY_SWAPS once a row of garbage lands on it -- outcome.c garbReadyOf -- before the margin and the mode's list)
+    if (px && x->o.gReady >= 0 && y->o.gReady >= 0) { int rx = x->o.gReady <= GREADY_SWAPS, ry = y->o.gReady <= GREADY_SWAPS; if (rx != ry) K(1, "ready", rx ? -1 : 1); }
     if (px) { int32_t mx = marginKey(x), my = marginKey(y); if (mx != my) K(1, "margin", my > mx ? 1 : -1); }
     // 2. UNPROVEN: THE MOST LEFT TO FIND A PROOF WITH -- a line dead before it could press anything last; then the more of its scarcest
     // resource, then of the next (marginKey: room, material, the window's cover of the rows due, contact, in rows); then the later loss,
