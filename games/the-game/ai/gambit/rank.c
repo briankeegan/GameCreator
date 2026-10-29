@@ -642,8 +642,6 @@ static int32_t ownBreaksTo(const Judge *J) {
 }
 // (GARBAGE TO BREAK: on the board, or shown on its way -- a block shown lands and is broken as one on the board is)
 static int garbHere(void) { return decF.under || (decF.next != NOT_ASKED && decF.next >= 0); }
-// (THE DIG: garbage on the board and no line offered that breaks any of it -- set by the sort, sortJudged)
-static LOCAL int32_t digging;
 // (THE LIST'S KEY with no garbage: 0 the first entry met, 1 a line building toward it, 2 nothing fired of the line's own, then each
 // fallback by its entry, a wasted three last)
 static int listClass(const Judge *J) { return J->met == 0 ? 0 : J->fallback || wastesThree(J) ? 3 + (J->met >= 0 ? J->met : MAXAIMS) : J->builds ? 1 : 2; }
@@ -674,12 +672,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (A BOARD LOST BEFORE ITS NEXT BREAK COULD POP: the material is worth a break only to a board that lives to build and pop it --
       // its own break popping, the next one built, then popped: SOON_BREAKS breaks' time. Within it the line lost later first; past it
       // the material decides and the loss comes after it. One key, read off each line alone: the breaks' time to its loss, capped)
-      // (IN THE DIG, THE PANELS FIRST: with no break offered, a line that buys time spending panels buys it with the material the next
-      // break is to be made of -- factory-1, run 1435: 53 decisions with none found, 49 panels spent to 8 on combos lost later than the
-      // hold. Of two lines neither lost within a break's time (the key above), the one that leaves the board more panels; the time comes
-      // after)
-      if (digging) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
-        if (nx != ny) K(2, "dig", ny - nx); }
       { int32_t sx = imin(ownBreaksTo(x), SOON_BREAKS), sy = imin(ownBreaksTo(y), SOON_BREAKS); if (sx != sy) K(2, "soon", sy - sx); }
       // (THE NEXT BREAK LEFT TO BUILD: of two lines that convert, the one whose board still has a break to build and keeps the floor
       // (judgeCand material: outcome.c nextBuild, floorKept) -- a break that leaves none is the last the board makes. Each key of the
@@ -812,7 +804,6 @@ static void rankTogether(Judge **a, int n) {
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   rankTogether(a, n);
-  digging = decF.under; for (int i = 0; i < n && digging; i++) if (!a[i]->o.dead && a[i]->apBroke > 0) digging = 0;
   for (int i = 0; i < n; i++) {
     Judge *h = a[i]; h->holdSunk = 0;
     if (!h->hold || livesOf(h)) continue;
