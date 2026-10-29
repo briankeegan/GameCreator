@@ -317,8 +317,9 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
     while (__atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST) < n) {}
     // (and the break search between decisions, a thread of its own beside the pool, where there are workers' CPUs for it)
     if (n > 0 && hostIdleThread(onThreadMain, "gbetween", 0) == 0) onThreadOn = 1;
-    // (and the look-ahead beside the decisions, on the game's own CPU: decide.c lookThread)
-    if (n > 0 && hostIdleThread(lookMain, "glook", 1) == 0) __atomic_store_n(&lookOn, 1, __ATOMIC_RELEASE);
+    // (and the look-ahead beside the decisions: decide.c lookThread -- in lockstep on the game's own CPU, which waits on Gambit; in real
+    // time where the workers are, the game's CPU drawing the game)
+    if (n > 0 && hostIdleThread(lookMain, "glook", gnLockstep) == 0) __atomic_store_n(&lookOn, 1, __ATOMIC_RELEASE);
     static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
   }
   return 0;
