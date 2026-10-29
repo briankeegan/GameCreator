@@ -42,7 +42,7 @@ typedef struct {
   int32_t lvU, lvG;                       // a level swap (0: none)
   int32_t haveRl, rlN, rl[2], rlAt;
   int32_t nstart; XLine start[MAXSTARTS];  // chains begun: a swap that starts a clear, and the links its fall is continued by
-  int32_t tried; double idleMs, searchMs;
+  int32_t tried, wide; double idleMs, searchMs;   // (wide: the beams planned again wider with time over, and kept)
 } Found;
 #define READY_LINE_MS 120
 // whether a list asks for a chain at all
@@ -181,7 +181,18 @@ static void searchAll(const Read *R, Found *S) {
   if (ms >= 20) {
     S->tried++;
     PlanOpts po = planOptsOf(R, planSplit ? &planHalfA : &R->guides, ms);
+    double planEnd = nowMs() + ms;
     plan(&decQ, &po, &S->ap); S->haveAp = 1;
+    // (THE WHOLE TIME PLANNED: a beam done with time over is planned again twice as wide -- the narrower one's lines among its own --
+    // and kept only where it finished in its time; one that would not finish in what is left is not begun)
+    static LOCAL Plan wide;
+    while (po.width * 2 <= PLAN_WIDE_MAX && po.pool * 2 <= PLAN_POOL && planEnd - nowMs() > 2.5 * (S->ap.ms > 1 ? S->ap.ms : 1)) {
+      po.width *= 2; po.pool *= 2; po.ms = planEnd - nowMs();
+      double t = nowMs();
+      plan(&decQ, &po, &wide);
+      if (nowMs() - t >= po.ms - 1 || clockOut()) break;
+      wide.ms = nowMs() - t; S->ap = wide; S->wide++;
+    }
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
   }
   int32_t nl = R->F.known[FACT_US_NEXTLANDS] ? (int32_t)R->F.v[FACT_US_NEXTLANDS] : 0;

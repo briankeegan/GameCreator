@@ -111,6 +111,7 @@ static int readyAfter(Ctx *x, int n, int32_t readyAt) {
 
 #define PLAN_POOL 4096
 #define PLAN_KIDS 65536
+#define PLAN_WIDE_MAX 640   // (the widest beam planned again with time over: its kids within PLAN_KIDS, 60 swaps a line at most -- propose.c searchAll)
 static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   memset(P, 0, sizeof *P);
   double t0 = nowMs(), shareOld = clockShareBegin(t0 + o->ms);
