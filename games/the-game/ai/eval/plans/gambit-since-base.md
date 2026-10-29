@@ -31,6 +31,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `d269024d` of two lines lost alike, the one whose board keeps the floor (7114babb) -- 14 (1540) [dropped: factory 1/8, four losses with the window spent]
 - the game drawn a frame in four, then sixty (panel-game PA_DRAW_EVERY) -- 20 (1541), 20 (1542) [kept: infra, the renderer 0.86 of a CPU to 0.38]
 - `358fd544` A1, the break search goes on between decisions (4d6a325c, the spares' lock ada4fe6c) -- 22 (1547) [kept: it ran on 26 decisions and found no break, so the 22 is not its doing]
+- confirmed: main with A1 -- 20 (1548)
+- `8f136ce0` A1 every frame, beside the decision and past it (175862a2) -- 21 (1549) [kept: it ran beside 28,111 decisions and found a break 9,928 times]
 
 ## The shortlist for pressure, in the order to try
 
