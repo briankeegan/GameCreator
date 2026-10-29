@@ -8,15 +8,29 @@ typedef struct {
 typedef struct {
   Profile GP;
   double due, t0, margin;          // ms; due 0: no deadline
+  double keep;                     // ms kept for the judging, set as the decision begins (judgeKeep)
   int32_t idle;                    // the decision before held or had nothing to play (bot._gambitIdle)
   int32_t reaction;
   Broke *br;                       // the break search's answer (0: none)
   int32_t brMs;
 } Ctx2;
 static Ctx2 C2;
-// what the searches may take: the decision's time less the answer's margin and a quarter of it kept for judging what they found --
-// searchesEnd, the share every search runs in (answer.c answerTurn), so no search runs into the judging's quarter
-static double searchesEnd(void) { return C2.due ? C2.due - C2.margin - (C2.due - C2.t0) / 4 : 0; }
+// what the searches may take: the decision's time less the answer's margin and what is kept for judging what they found --
+// searchesEnd, the share every search runs in (answer.c answerTurn), so no search runs into the judging's time. The judging's time
+// is measured: twice the slowest of this game's last JUDGEN judgings, JUDGE_MIN_MS at least and a quarter of the decision at most
+// (a game's first decision, nothing measured yet, keeps the quarter)
+#define JUDGEN 64
+#define JUDGE_MIN_MS 30
+static double judgedMs[JUDGEN]; static int32_t njudged, judgedAt;
+static void judgedOf(double ms) { judgedMs[judgedAt] = ms; judgedAt = (judgedAt + 1) % JUDGEN; if (njudged < JUDGEN) njudged++; }
+static double judgeKeep(void) {
+  double quarter = (C2.due - C2.t0) / 4, worst = 0;
+  if (!njudged) return quarter;
+  for (int i = 0; i < njudged; i++) if (judgedMs[i] > worst) worst = judgedMs[i];
+  double keep = 2 * worst < JUDGE_MIN_MS ? JUDGE_MIN_MS : 2 * worst;
+  return keep < quarter ? keep : quarter;
+}
+static double searchesEnd(void) { return C2.due ? C2.due - C2.margin - C2.keep : 0; }
 static double leftMs(void) { return C2.due ? searchesEnd() - nowMs() : 1e9; }
 static double leftMsOf(void) { return leftMs(); }
 
