@@ -79,18 +79,6 @@ static int actionsFor(int row, int col, int r, int c, int left) {
 // THE ALLOWANCE A JUDGED LINE PRESSES UNDER: the decision's (NOT_ASKED: the host did not say), less what the line's own swaps spend --
 // a line long enough walks held from two cells once its own presses bring the budget to HOLDTIGHT, as the frame loop walks it
 static int32_t pressAllowance = -1;
-// THE INPUT WINDOW THE LINE IS PRESSED IN (a native host's frame loop says it, front.c ask): how many frames before the question's frame
-// each action still inside the window went down -- planned ones up to it too -- and the window's length. The actions left at frame t
-// from the question's: the limit less those still inside the window then, less what the line has spent. nWinAges -1: not said, the
-// decision's allowance less what is spent.
-#define WINMAX 512
-static int32_t winAges[WINMAX], nWinAges = -1, winLen = 600, hostWin;
-static int allowLeftAt(int32_t t, int spent) {
-  if (pressAllowance < 0) return -1;
-  if (nWinAges < 0) return pressAllowance - spent;
-  int in = 0; for (int i = 0; i < nWinAges; i++) in += winAges[i] + t < winLen;
-  return imax(0, pressAllowance + nWinAges - in - spent);
-}
 static LOCAL int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
 static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
 // A WALK'S LEG in a line's keys, from key i: a direction tapped a cell at a time, TAP_GAP frames apart (in[i] the direction with the

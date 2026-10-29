@@ -26,13 +26,12 @@ var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wal
 // latest)
 var cutShort = { boards: 0, cut: 0, cutKept: 0, cutAll: 0, cutNone: 0 };
 // EVERY MOVE ON THE WAY: the swaps pressed by what they came to, and the cells the cursor walked (front.c moveOn)
-var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0, wasted: 0, wastedAlone: 0, refusedWaste: 0, saved: 0, guardLet: 0, refusedSpoil: 0 };   // (wasted: clears of three that broke nothing and were no chain's link)
+var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0, wasted: 0, wastedAlone: 0, refusedWaste: 0, saved: 0 };   // (wasted: clears of three that broke nothing and were no chain's link)
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
 // the ideas left ready on the board a line played leaves, where the rank asked (ideas=)
 var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, behind: 0, behindGames: 0, behindWorst: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
-var kept = { n: 0, held: 0 };
-var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
+var kept = { n: 0, held: 0 };   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
   if (!fs.existsSync(rf)) return;
@@ -85,14 +84,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var ru = / rule=([etl])/.exec(l);
       if (ru) { rule[ru[1]] = (rule[ru[1]] || 0) + 1; rule.n = (rule.n || 0) + 1; }
       if (um) { t.dec++; if (+um[1] && mm) { t.under++; t.mat += +mm[1]; t.pan += pm ? +pm[1] : 0; } }
-      // (THE BREAK THE LINEUP MAKES: of the lines played under garbage that break it, the ones that make a chain on the way)
-      var bk = / broke=(\d+)/.exec(l), ch = / chain=(\d+)/.exec(l);
-      if (um && +um[1] && bk && +bk[1] > 0) { t.breaks = (t.breaks || 0) + 1; if (ch && +ch[1] >= 2) t.chainBreaks = (t.chainBreaks || 0) + 1; }
       if (wm) think.wall.push(+wm[1]);
-      // (THE LINE PLAYED OVER ONE LOST LATER: answer.c sooner=, by the order's key that decided it, rank.c cmpKey)
-      var so = / sooner=(\w+):(L|-?\d+):k(\d+)/.exec(l);
-      if (so) { sooner.n++; sooner.by[so[3]] = (sooner.by[so[3]] || 0) + 1; }
-      if (um) sooner.dec++;
       if (bm) (/ under=1/.test(l) ? think.brUnder : think.br).push(+bm[1]);
       var op = / opts=(\S+)/.exec(l);
       if (op) {
@@ -163,12 +155,8 @@ function meetsAim(aim, combo, chain) {
 function aimOf(mode, a) {
   var rule = RULES.filter(function (r) { return r.name === mode; })[0];
   if (!rule) return;
-  var t = aims[mode] || (aims[mode] = { met: 0, all: 0, first: 0, head: JSON.stringify((rule.aims || [])[0] || {}) });
-  var count = function (n, combo, chain) {
-    t.all += n;
-    if ((rule.aims || []).some(function (x) { return meetsAim(x, combo, chain); })) t.met += n;
-    if (rule.aims && rule.aims[0] && meetsAim(rule.aims[0], combo, chain)) t.first += n;
-  };
+  var t = aims[mode] || (aims[mode] = { met: 0, all: 0 });
+  var count = function (n, combo, chain) { t.all += n; if ((rule.aims || []).some(function (x) { return meetsAim(x, combo, chain); })) t.met += n; };
   Object.keys(a.combo || {}).forEach(function (z) { count(a.combo[z], +z, 1); });
   Object.keys(a.chain || {}).forEach(function (z) { count(a.chain[z], 0, +z); });
 }
@@ -178,19 +166,16 @@ Object.keys(modes).sort().forEach(function (k) {
   all += t.survived; games += t.games;
   console.log(k + ': survived ' + t.survived + '/' + t.games + '; lost at ' + (t.lost.sort(function (a, b) { return a - b; }).join(', ') || '-') +
               '; combos ' + fmt(t.combo) + '; chains ' + fmt(t.chain) +
-              (t.dec ? '; under garbage ' + Math.round(100 * t.under / t.dec) + '% of decisions, material there ' + (t.under ? (t.mat / t.under).toFixed(1) : '-') : '') +
-              (t.breaks ? '; breaks by a chain ' + (t.chainBreaks || 0) + ' of ' + t.breaks + ' (' + Math.round(100 * (t.chainBreaks || 0) / t.breaks) + '%)' : ''));
+              (t.dec ? '; under garbage ' + Math.round(100 * t.under / t.dec) + '% of decisions, material there ' + (t.under ? (t.mat / t.under).toFixed(1) : '-') : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
-Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') +
-  '; its first aim ' + t.head + ': ' + t.first + (t.all ? ' (' + (100 * t.first / t.all).toFixed(1) + '%)' : '')); });
+Object.keys(aims).sort().forEach(function (k) { var t = aims[k]; console.log('aim, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met it' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '')); });
 if (nturns) {
   console.log('switches: ' + nturns + ' in all, ' + Object.keys(turns).length + ' directions -- ' + Object.keys(turns).sort().map(function (k) { return k + ' x' + turns[k]; }).join(', '));
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
 }
 if (rule.n) console.log('the one rule: of ' + rule.n + ' lines played that met a part of it, ' + Math.round(100 * (rule.e || 0) / rule.n) + '% an entry of the list, ' + Math.round(100 * (rule.t || 0) / rule.n) + '% a three that breaks, ' + Math.round(100 * (rule.l || 0) / rule.n) + '% a last resort');
 if (rule.preKept) console.log('boards searched once: ' + rule.preHit + ' readiness checks answered by a board this decision had searched already (or a worker), of ' + rule.preKept + ' boards kept');
-if (sooner.dec) console.log('played a line lost sooner than one offered: ' + sooner.n + ' of ' + sooner.dec + ' decisions, by the key that put it first (rank.c line) -- ' + (Object.keys(sooner.by).sort(function (a, b) { return sooner.by[b] - sooner.by[a]; }).map(function (k) { return 'L' + k + ' x' + sooner.by[k]; }).join(', ') || '-'));
 if (kept.n) console.log('a life kept: ' + kept.held + ' of ' + kept.n + ' lines that lived, nothing new told, lived on at the next decision (' + Math.round(100 * kept.held / kept.n) + '%)');
 if (rule.rdyAsked) console.log('kept plan: ' + rule.rdyHit + ' of ' + rule.rdyAsked + ' readiness checks answered by a break already found (' + Math.round(100 * rule.rdyHit / rule.rdyAsked) + '%)');
 if (rule.keptOff || rule.routeOff || rule.wayOff) console.log('intentions: ' + (rule.keptOff || 0) + ' kept lines offered again, ' + (rule.keptPlayed || 0) + ' played; routes: ' + (rule.routeOff || 0) + ' judged, ' + (rule.routePlayed || 0) + ' played; on the way: ' + (rule.wayOff || 0) + ' offered, ' + (rule.wayPlayed || 0) + ' played');
@@ -210,7 +195,7 @@ var nmv = moves.clear + moves.setup + moves.break + moves.none + moves.open, sha
 if (nmv) console.log('every move on the way: the cursor walked ' + (aggr.frames ? (moves.cells * 3600 / aggr.frames).toFixed(0) : '-') + ' cells a minute; of ' + nmv +
                      ' swaps pressed ' + share(moves.clear) + ' cleared, ' + share(moves.setup) + ' set a clear up, ' + share(moves.break) + ' broke garbage, ' +
                      share(moves.none) + ' came to nothing (' + share(moves.open) + ' still open when the game ended)');
-console.log('wasted threes: ' + moves.wasted + ' clears of three that broke no garbage and were no link of a chain, made by a swap' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') + '; ' + moves.wastedAlone + ' more the stack made alone; ' + moves.refusedWaste + ' swaps refused at the press for one (' + moves.refusedSpoil + ' of them spoiling the board\'s own chain); ' + moves.saved + ' threes the board needed not to die (a save the survival search confirmed, not counted as wasted); ' + moves.guardLet + ' let through at the press as the board\'s save (lost without it in 120 frames, alive with it)');
+console.log('wasted threes: ' + moves.wasted + ' clears of three that broke no garbage and were no link of a chain, made by a swap' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') + '; ' + moves.wastedAlone + ' more the stack made alone; ' + moves.refusedWaste + ' swaps refused at the press for one; ' + moves.saved + ' threes the board needed not to die (a save the survival search confirmed, not counted as wasted)');
 console.log('several ideas at once: ' + moves.together + ' clears begun while another was still clearing; lines firing two ideas ' + several.pairOff +
             ' offered, ' + several.pairPlayed + ' played; of ' + several.thrownLines + ' lines played that threw, ' + several.thrown2 + ' threw two blocks or more (' +
             several.thrown + ' blocks); the board a line left held ' + (several.ideasN ? (several.ideas / several.ideasN).toFixed(2) : '-') + ' ideas ready on average, two or more ' +

@@ -18,8 +18,10 @@ local function budgetClass(name)
 end
 local ThinkBudget = budgetClass("ThinkBudget")
 local InputBudget = budgetClass("InputBudget")
--- THE INPUT BUDGET: the standard one every computer player plays under (InputBudget.standard), in training and live alike. A held key
--- stops only at the wall (core/nodes.h legHeld), so a walk that ends mid-board is tapped, an action a cell, out of the same allowance.
+-- GAMBIT'S INPUT BUDGET: a held key stops only at the wall (core/nodes.h legHeld), so a walk that ends mid-board is tapped, an action a
+-- cell, as a player taps it. The standard CPU budget (InputBudget.standard) prices a slide of many cells as one action and is too few
+-- for the taps; Gambit spends GAMBIT_APM a minute in the standard window instead.
+local GAMBIT_APM = 900
 local function counting(stack)
   if stack.do_countdown ~= nil then return stack.do_countdown end
   return stack.in_countdown
@@ -89,7 +91,7 @@ function GambitNative.new(opts)
   local self = setmetatable({}, GambitNative)
   self.thinking = opts.thinkBudget or ThinkBudget.standard()
   self.ownThinking = opts.thinkBudget == nil
-  self.inputs = opts.inputBudget or InputBudget.standard()
+  self.inputs = opts.inputBudget or InputBudget.forActionsPerMinute(GAMBIT_APM, InputBudget.STANDARD_WINDOW_FRAMES)
   self.ownInputs = opts.inputBudget == nil
   self.dropped, self.frames, self.ages, self.pv = 0, 0, {}, {}
   self.ts0, self.ts1 = ffi.new("double[4]"), ffi.new("double[4]")

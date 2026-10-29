@@ -40,7 +40,7 @@ function load(file) {
 
 // ---- THE RULES, as gambit.c reads them (gb_rules): every rule's `when` (facts by id), its list, its deadline, its floor and its raise
 var FACTS = ['us.topped', 'us.stop', 'us.height', 'us.material', 'us.contact', 'us.dies', 'us.evenness', 'us.coming', 'us.heavy', 'us.nextLands',
-             'us.breakWaits', 'us.queueKills', 'enemy.topped', 'enemy.height', 'enemy.stop', 'enemy.none'];   // facts.c FACT_*
+             'us.breakWaits', 'us.queueKills', 'enemy.topped', 'enemy.height', 'enemy.stop'];   // facts.c FACT_*
 var KEEPS = ['height', 'material', 'evenness'];   // facts.c KEEP_*
 function keepWords(keep) {
   if (!keep) return [0].concat(testOf(), testOf(), testOf());

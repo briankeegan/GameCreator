@@ -5,7 +5,7 @@
 // ---- the facts of a board. A fact the host does not know (the enemy's height, say) is unknown, and a test of it
 // is false.
 enum { FACT_US_TOPPED, FACT_US_STOP, FACT_US_HEIGHT, FACT_US_MATERIAL, FACT_US_CONTACT, FACT_US_DIES, FACT_US_EVENNESS, FACT_US_COMING,
-       FACT_US_HEAVY, FACT_US_NEXTLANDS, FACT_US_BREAKWAITS, FACT_US_QUEUEKILLS, FACT_ENEMY_TOPPED, FACT_ENEMY_HEIGHT, FACT_ENEMY_STOP, FACT_ENEMY_NONE, NFACTS };
+       FACT_US_HEAVY, FACT_US_NEXTLANDS, FACT_US_BREAKWAITS, FACT_US_QUEUEKILLS, FACT_ENEMY_TOPPED, FACT_ENEMY_HEIGHT, FACT_ENEMY_STOP, NFACTS };
 typedef struct { int32_t known[NFACTS]; double v[NFACTS]; } FactSet;   // (dies is fractional: the rise timer is)
 #define US(F, k) ((F)->v[FACT_US_##k])
 static void factSet(FactSet *F, int k, double v) { F->known[k] = 1; F->v[k] = v; }
@@ -110,8 +110,6 @@ typedef struct {
   Keep keep; int32_t raiseTo;
   int32_t name;             // the host's index of its name
 } Rule;
-// (a rule for nobody across -- its `when` asks enemy.none: time attack -- is no mode a match against someone switches into)
-static int asksNoEnemy(const Rule *r) { for (int i = 0; i < r->nwhen; i++) if (r->when[i].fact == FACT_ENEMY_NONE) return 1; return 0; }
 typedef struct { int32_t n; Rule r[MAXRULES]; Keep keep; int32_t raiseTo, underIgnore; } Tables;
 static Tables theTables;
 

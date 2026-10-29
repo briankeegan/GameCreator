@@ -287,7 +287,6 @@ typedef struct {
   Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled, tap;
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
-  int32_t sooner;   // the line played is lost sooner than one offered, and not alike (rank.c lostAlike): survival was not first
   int32_t wastes;   // the line played makes a three for nothing as the judge saw it, and the survival search found the board needed it (decide.c saveOk)
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
   int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
@@ -317,8 +316,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   A->tap = pressTap;
   pressTight = decQ.tight;
   pressAllowance = allowanceKnown ? allowance : -1;
-  if (!hostWin) nWinAges = -1;   // (the window: a native host's, said with the question -- native.c answerOne)
-  hostWin = 0;
   towardRestLen = 0;
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
@@ -510,17 +507,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
-  // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
-  // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey: sooner=play:lost:kLINE)
-  A->sooner = 0;
-  if (top && !top->o.lives) {
-    const Judge *late = 0;
-    for (int i = 0; i < P.ncands; i++) { const Judge *j = order[i]; if (j != top && (j->o.lives || lostOf(j) > lostOf(top)) && (!late || (j->o.lives && !late->o.lives) || (j->o.lives == late->o.lives && lostOf(j) > lostOf(late)))) late = j; }
-    A->sooner = late && !late->o.lives && !lostAlike(top, late);
-    if (late && compareJudged(top, late) < 0) {
-      L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey);
-    }
-  }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
@@ -626,7 +612,7 @@ static int lapOf(int n, int32_t *lap) {
 EXPORT(gb_switch_game) void gb_switch_game(uint32_t seed) {
   nswitch = 0; modeRule = C2.GP.mode;
   int32_t rules[MAXRULES], nr = 0;
-  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1 && !asksNoEnemy(&theTables.r[i])) rules[nr++] = theTables.r[i].name;
+  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1) rules[nr++] = theTables.r[i].name;
   if (!switchMin || nr < 2) return;
   static int32_t lap[MAXRULES * MAXRULES + 1];
   int nl = lapOf(nr, lap);
