@@ -213,6 +213,16 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (rd) { rule.rdyHit = (rule.rdyHit || 0) + +rd[1]; rule.rdyAsked = (rule.rdyAsked || 0) + +rd[2]; }
       var ru = / rule=([etl])/.exec(l);
       if (ru) { rule[ru[1]] = (rule[ru[1]] || 0) + 1; rule.n = (rule.n || 0) + 1; }
+      // (THE MODE'S LIST, of the lines begun -- not the line in progress carried on: answer.c mode=entry/fallback/lost/other/save. A fallback
+      // is unforced where a line offered that is no fallback leaves the next decision a break's time, rankSave, or lives)
+      var md = / mode=(\d+)\/([01])\/(\w+|-)\/(\w+|-)\/(\d+)/.exec(l), pl = / play=(\S+)/.exec(l);
+      if (md && !(pl && /^carry/.test(pl[1]))) {
+        rule.mLines = (rule.mLines || 0) + 1;
+        if (+md[1] === 0) rule.mFirst = (rule.mFirst || 0) + 1;
+        if (md[2] === '1') { rule.mFall = (rule.mFall || 0) + 1;
+          var oth = md[4], save = +md[5];
+          if (oth === 'L' || oth === 'inf' || (oth !== '-' && +oth >= save)) rule.mFree = (rule.mFree || 0) + 1; }
+      }
       if (um) { t.dec++; if (+um[1] && mm) { t.under++; t.mat += +mm[1]; t.pan += pm ? +pm[1] : 0; } }
       // (THE BREAK THE LINEUP MAKES: of the lines played under garbage that break it, the ones that make a chain on the way)
       var bk = / broke=(\d+)/.exec(l), ch = / chain=(\d+)/.exec(l);
@@ -364,6 +374,8 @@ if (nturns) {
   console.log('switches: ' + nturns + ' in all, ' + Object.keys(turns).length + ' directions -- ' + Object.keys(turns).sort().map(function (k) { return k + ' x' + turns[k]; }).join(', '));
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
 }
+if (rule.mLines) console.log("the mode's list: of " + rule.mLines + ' lines begun that meet it, ' + (rule.mFirst || 0) + ' its first entry, ' + (rule.mFall || 0) +
+  ' a fallback -- ' + (rule.mFree || 0) + ' of them unforced: a line offered with no fallback left the next decision a break\'s time');
 if (rule.n) console.log('the one rule: of ' + rule.n + ' lines played that met a part of it, ' + Math.round(100 * (rule.e || 0) / rule.n) + '% an entry of the list, ' + Math.round(100 * (rule.t || 0) / rule.n) + '% a three that breaks, ' + Math.round(100 * (rule.l || 0) / rule.n) + '% a last resort');
 if (rule.preKept) console.log('boards searched once: ' + rule.preHit + ' readiness checks answered by a board this decision had searched already (or a worker), of ' + rule.preKept + ' boards kept');
 if (sooner.dec) console.log('the order not one order: ' + beaten.n + ' of ' + sooner.dec + ' decisions played a line beaten head to head by one ranked under it (answer.c beaten=) -- ' + (Object.keys(beaten.by).sort(function (a, b) { return beaten.by[b] - beaten.by[a]; }).map(function (k) { return 'rule ' + k + ' x' + beaten.by[k]; }).join(', ') || '-'));

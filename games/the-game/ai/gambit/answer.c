@@ -602,6 +602,21 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
+  // (THE MODE'S LIST, for the report: the entry the line played meets, whether it is a fallback -- an entry after the first that breaks
+  // no garbage -- its loss, and of the lines offered that are no fallback the latest lost, L one that lives, - none; then a break's time,
+  // rankSave: mode=entry/fallback/lost/other/save)
+  if (top && !top->hold && top->met >= 0) {
+    const Judge *alt = 0;
+    for (int i = 0; i < P.ncands; i++) {
+      const Judge *j = order[i];
+      if (j == top || (!j->hold && j->met > 0 && !(j->apBroke > 0))) continue;
+      if (!alt || (j->o.lives && !alt->o.lives) || (j->o.lives == alt->o.lives && lostOf(j) > lostOf(alt))) alt = j;
+    }
+    L_s(" mode="); L_i(top->met); L_s("/"); L_i(top->met > 0 && !(top->apBroke > 0)); L_s("/");
+    if (top->o.lives) L_s("L"); else if (lostOf(top) > 1e9) L_s("inf"); else L_i((int64_t)lostOf(top)); L_s("/");
+    if (!alt) L_s("-"); else if (alt->o.lives) L_s("L"); else if (lostOf(alt) > 1e9) L_s("inf"); else L_i((int64_t)lostOf(alt));
+    L_s("/"); L_i(rankSave);
+  }
   // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
   // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey: sooner=play:lost:kLINE)
   A->sooner = 0;
