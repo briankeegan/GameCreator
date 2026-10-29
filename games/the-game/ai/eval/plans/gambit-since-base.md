@@ -33,6 +33,9 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `358fd544` A1, the break search goes on between decisions (4d6a325c, the spares' lock ada4fe6c) -- 22 (1547) [kept: it ran on 26 decisions and found no break, so the 22 is not its doing]
 - confirmed: main with A1 -- 20 (1548)
 - `8f136ce0` A1 every frame, beside the decision and past it (175862a2) -- 21 (1549) [kept: it ran beside 28,111 decisions and found a break 9,928 times]
+- A3, a board on its way out asked further ahead (c63d971c, d0d80e33) [skipped: three reactions ahead played 10/24 against 12 (240f17b3); the search beside now gives the break search its time]
+- B5, the window's reserve for the next break (2e96f75a, cb346b2c) [skipped for now: made for swapGap 0, which the base does not play; the base's rule 1' keeps BREAK_WALK]
+- `9042f200` C9, under garbage the break that converts more full rows (1d596973) -- 23 (1550), 20 (1551) [kept: 43 of 48 against 41 for main before it]
 
 ## The shortlist for pressure, in the order to try
 
