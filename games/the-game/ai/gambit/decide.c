@@ -727,7 +727,7 @@ static int ranked(const Read *R, const Found *S) {
         else if (cw >= 0) {
           double give2 = timeLeftMs() - SAVE_KEEP_MS; if (give2 > SAVE_MS) give2 = SAVE_MS;
           double c2 = give2 >= 1 ? contLostOf(bk, give2) : -1;
-          ck = c2 > kLow ? c2 : (c2 >= 0 ? kLow : -1);
+          ck = c2 > kLow ? c2 : kLow;   // (the side without unsearched, or searched to less: what is known of it)
         }
         saveAsked++;
         saveCw = cw; saveCk = ck;
