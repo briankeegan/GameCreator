@@ -677,12 +677,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (A BOARD LOST BEFORE ITS NEXT BREAK COULD POP: the material is worth a break only to a board that lives to build and pop it --
       // its own break popping, the next one built, then popped: SOON_BREAKS breaks' time. Within it the line lost later first; past it
       // the material decides and the loss comes after it. One key, read off each line alone: the breaks' time to its loss, capped)
-      { int32_t sx = imin(ownBreaksTo(x), SOON_BREAKS), sy = imin(ownBreaksTo(y), SOON_BREAKS); if (sx != sy) K(2, "soon", sy - sx); }
-      // (IN THE DIG, THE PANELS NEXT: with no break offered, a line that buys time spending panels buys it with the material the next
-      // break is to be made of. Of two lines alike by the key above -- each lost past the breaks' time it reads, or in the same band of
-      // it -- the one that leaves the board more panels; the later loss comes after)
+      // (IN THE DIG, THE PANELS FIRST: with no break offered, a line that buys time spending panels buys it with the material the next
+      // break is to be made of -- factory-1, run 1435: 53 decisions with none found, 49 panels spent to 8 on combos lost later than the
+      // hold. Of two lines neither lost within a break's time (the key above), the one that leaves the board more panels; the time comes
+      // after)
       if (digging) { int nx = x->o.dead ? -(1 << 20) : x->o.j.netPanels / 3, ny = y->o.dead ? -(1 << 20) : y->o.j.netPanels / 3;
         if (nx != ny) K(2, "dig", ny - nx); }
+      { int32_t sx = imin(ownBreaksTo(x), SOON_BREAKS), sy = imin(ownBreaksTo(y), SOON_BREAKS); if (sx != sy) K(2, "soon", sy - sx); }
       // (THE NEXT BREAK LEFT TO BUILD: of two lines that convert, the one whose board still has a break to build and keeps the floor
       // (judgeCand material: outcome.c nextBuild, floorKept) -- a break that leaves none is the last the board makes. Each key of the
       // order is read off each line alone and is had by every line -- a line with none reads last -- so the order is one order)
