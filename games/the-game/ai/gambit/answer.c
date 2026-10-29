@@ -430,7 +430,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   decQ.tight = allowanceKnown && tightAt(allowance);
   pressTight = decQ.tight;
   readMs = nowMs() - tStart;
-  lookResume();
+  if (!lookLockstep) lookResume();   // (live: the look-ahead searches beside the decision; in lockstep, between decisions: decide.c lookPause)
   double brMs;
   // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
   double searchShare = clockShareBegin(searchesEnd());
@@ -838,7 +838,9 @@ static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, 
   C2.due = due; C2.t0 = t0; C2.margin = margin;
   clockStart(due ? due - margin : 0);
   decF.timeLeft = -1;   // (readiness is asked while the searches have time left, as each outcome finds it)
+  lookGen++;
   answerTurn(qid, at, allowanceKnown, allowance, lineFrom, linePressed);
+  if (lookLockstep) lookResume();
 }
 // A QUESTION: its board, hold and garbage on its way are node i of the host's search (the root it made); then its own facts. The answer
 // into the io body (gb_answer's words below); the log line at gb_log.

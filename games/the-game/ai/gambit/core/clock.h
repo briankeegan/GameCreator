@@ -39,8 +39,10 @@ static LOCAL int ownBudget;
 static int32_t onStopReq;
 // (THE LOOK-AHEAD BESIDE, decide.c lookThread: inJob 3 -- its own budget, and held while the decision writes what it reads)
 static int32_t lookHold;
+// (and in lockstep its searches are never cut by the hold: each is the board's alone -- decide.c lookPause drains it instead)
+static int32_t lookLockstep;
 static int clockOut(void) {
-  if (inJob == 3) return __atomic_load_n(&lookHold, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
+  if (inJob == 3) return (!lookLockstep && __atomic_load_n(&lookHold, __ATOMIC_RELAXED)) || (clockShare && nowMs() >= clockShare);
   if (inJob == 2) return __atomic_load_n(&onStopReq, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (ownBudget) return clockShare && nowMs() >= clockShare;

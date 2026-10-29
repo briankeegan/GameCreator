@@ -277,13 +277,14 @@ static double contLostOf(const Judge *J, double give) { return contLostOfLine(J,
 // again LOOK_MS deep and keeps the answer by the board. A board asked again -- the line in progress ends where it was chosen to, and the
 // next decisions judge it -- reads that answer where it outlasts the decision's own. The decision waits on none of it and searches
 // exactly what it would without it; the thread is held only while the decision writes the window and the pace it reads (lookPause).
-#define LOOK_Q 16
+#define LOOK_Q 64
 #define LOOK_N 512
 #define LOOK_MS 120
-typedef struct { uint32_t h; int32_t dt, spent, tap, save; Question q; Board *b; } LookAsk;
-typedef struct { uint32_t h; int32_t set; double lost; } LookAns;   // (lost: frames from the board's own, 1e9 lives)
+typedef struct { uint32_t h; int32_t dt, spent, tap, save, gen; Question q; Board *b; } LookAsk;
+typedef struct { uint32_t h; int32_t set, gen; double lost; } LookAns;   // (gen: the decision that asked it, lookGen)   // (lost: frames from the board's own, 1e9 lives)
 static LookAsk lookQ[LOOK_Q]; static int32_t lookQN, lookQTop;   // (a stack: the newest asked first, the oldest let go when full)
 static LookAns lookA[LOOK_N];
+static int32_t lookGen;   // (the decisions begun)
 static int32_t lookLock, lookBusy, lookSig, lookOn, lookAsked, lookHit, lookUsed;   // (the log's: asked, found, read longer)
 static void lookLockOn(void) { while (__atomic_exchange_n(&lookLock, 1, __ATOMIC_ACQUIRE)) {} }
 static void lookLockOff(void) { __atomic_store_n(&lookLock, 0, __ATOMIC_RELEASE); }
@@ -300,7 +301,8 @@ static int lookFind(uint32_t h, double *lost) {
   int got = 0;
   lookLockOn();
   LookAns *a = &lookA[h % LOOK_N];
-  if (a->set && a->h == h) { *lost = a->lost; got = 1; }
+  // (in lockstep, only what a decision before this one asked: every one of those is searched before this one begins -- lookPause)
+  if (a->set && a->h == h && !(lookLockstep && a->gen >= lookGen)) { *lost = a->lost; got = 1; }
   lookLockOff();
   return got;
 }
@@ -311,15 +313,19 @@ static void lookAsk(const Board *e, const Question *q, uint32_t h, int32_t dt, i
   LookAsk *s = &lookQ[k];
   if (!s->b) s->b = nb_new();
   if (s->b) {
-    cloneBoard(s->b, e); s->q = *q; s->q.b = s->b; s->h = h; s->dt = dt; s->spent = spent; s->tap = pressTap; s->save = rankSave;
+    cloneBoard(s->b, e); s->q = *q; s->q.b = s->b; s->h = h; s->dt = dt; s->spent = spent; s->tap = pressTap; s->save = rankSave; s->gen = lookGen;
     lookAsked++;
   } else __atomic_sub_fetch(&lookQN, 1, __ATOMIC_RELEASE);
   lookLockOff();
   __atomic_add_fetch(&lookSig, 1, __ATOMIC_RELEASE);
   __builtin_wasm_memory_atomic_notify(&lookSig, 1);
 }
-// (held before the decision writes what the thread reads, and let go once it has read its board: answer.c, native.c answerOne)
+// (held before the decision writes what the thread reads, and let go once it has read its board: answer.c, native.c answerOne. In
+// LOCKSTEP the thread searches between decisions alone -- let go once the answer is out, every board asked searched before the next
+// decision begins (the hold waits for the stack to empty) -- so the answers a decision reads are the same every run: the game its seed's)
 static void lookPause(void) {
+  if (lookLockstep && __atomic_load_n(&lookOn, __ATOMIC_ACQUIRE) && !__atomic_load_n(&lookHold, __ATOMIC_ACQUIRE))
+    while (__atomic_load_n(&lookQN, __ATOMIC_ACQUIRE) || __atomic_load_n(&lookBusy, __ATOMIC_ACQUIRE)) {}
   __atomic_store_n(&lookHold, 1, __ATOMIC_SEQ_CST);
   while (__atomic_load_n(&lookBusy, __ATOMIC_ACQUIRE)) {}
 }
@@ -354,7 +360,7 @@ static void lookThread(void) {
     int held = __atomic_load_n(&lookHold, __ATOMIC_SEQ_CST);
     clockShare = 0; pressFrom = pressSpent = 0;
     // (a search the hold cut short is no answer)
-    if (!held && lost >= 0) { lookLockOn(); LookAns *a = &lookA[s.h % LOOK_N]; a->h = s.h; a->set = 1; a->lost = lost == FOREVER ? 1e9 : lost; lookLockOff(); }
+    if (!held && lost >= 0) { lookLockOn(); LookAns *a = &lookA[s.h % LOOK_N]; a->h = s.h; a->set = 1; a->gen = s.gen; a->lost = lost == FOREVER ? 1e9 : lost; lookLockOff(); }
     __atomic_store_n(&lookBusy, 0, __ATOMIC_RELEASE);
   }
 }

@@ -303,6 +303,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   // thread, its own board pool: thread 0 is Gambit's, the one the workers' phases hand boards out of)
   paThreadId(MAXTHREADS - 1);
   gnLockstep = hostLockstep();
+  lookLockstep = gnLockstep;
   { int fa, fk; if (hostForce(&fa, &fk)) gb_force(fa, fk); }
   gnReaction = reaction; gnAhead = ahead; gnGap = gap; gnJitter = jitter; gnPlanHealth = planHealth;
   gb_config(reaction, swapGap, cursor);
