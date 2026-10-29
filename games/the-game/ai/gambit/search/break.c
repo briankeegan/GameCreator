@@ -291,14 +291,25 @@ static void markStep(BS *s, int par, int kind, int mv, int o) {
   }
   s->outside[o] = (par >= 0 && par < (1 << 20) && s->outside[par]) || firstBad || !stepFitsAt(x, o);
 }
+// (A SWAP THAT PUTS THE LAST PAIR BACK FOR NOTHING, past a line's first: the judge cuts the line there (judge.c, the one test rules.c
+// putBackFor, what the swap makes read settled), so the search grows no line through it -- the node is no step)
+static int putsBackIn(BS *s, int par, int mv, int o) {
+  Ctx *x = s->x;
+  if (par == s->root || !liveNode(x, o)) return 0;
+  const Board *pb = ensureBoard(x, par), *ob = ensureBoard(x, o);
+  if (!pb || !ob || !ob->lastSwapA || !putBackFor(pb, ob->lastSwapA, ob->lastSwapB, 0)) return 0;
+  return putBackFor(pb, ob->lastSwapA, ob->lastSwapB, madeSettled(x, par, s->root, CR(mv), CC(mv)));
+}
 static int stepMarked(BS *s, int par, int kind, int mv, int32_t frames) {
   int o = step(s->x, par, kind, kind == MK_SWAP || kind == MK_SETTLE ? CR(mv) : 0, kind == MK_SWAP || kind == MK_SETTLE ? CC(mv) : 0, frames);
+  if (kind == MK_SWAP && putsBackIn(s, par, mv, o)) return STEP_NULL;
   markStep(s, par, kind, mv, o);
   return o;
 }
 // (the same, the swap taken from a batch the search stepped on every thread: core/nodes.h stepBatch)
 static int swapTaken(BS *s, int j, int par, int32_t mv) {
   int o = stepTake(s->x, j, par, MK_SWAP, mv);
+  if (putsBackIn(s, par, mv, o)) return STEP_NULL;
   markStep(s, par, MK_SWAP, mv, o);
   return o;
 }

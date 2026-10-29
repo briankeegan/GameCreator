@@ -67,6 +67,7 @@ typedef struct {
   int32_t aliveTo;              // and the frame from the root the board was judged alive to when it did (0: none)
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
   int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 a first walk not begun within a reaction
+  int32_t cutSub;               // and of 2: 0 the engine refuses it, 1 a pair put back, 2 a moved pair swapped back
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
 } Judged;
@@ -356,7 +357,7 @@ static int movedUndoes(const Board *b, int32_t mv, const Moved *m) {
 static LOCAL int32_t lineAt0, lineWaitTo;   // (and lineWaitTo: its board run to that frame and let settle before its first swap)
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->readyLeft = -1; j->readyActs = -1; j->leftNext = -1; j->nextAt = -1; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->readyLeft = -1; j->readyActs = -1; j->leftNext = -1; j->nextAt = -1; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->cutSub = 0; j->readyNear = -1; j->readyWalk = -1; j->readyMat = -1; j->readyTop = -1; j->readyContact = -1; j->readyUnder = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -409,11 +410,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     }
     int kind = last || o->settled ? MK_SETTLE : MK_SWAP, out;
     if (last) {
+      // (the settle after the last swap: that swap was held to the put-back test as it was pressed, against the pair pressed before it)
       out = step(x, n, kind, mr, mc, 0);
-      // (the last swap is held to the same put-back test: the pair as the engine recorded it pressed, against the one pressed before it)
-      { const Board *fb = ensureBoard(x, n), *ob = liveNode(x, out) ? ensureBoard(x, out) : 0;
-        if (fb && ob && ob->lastSwapA && putBackFor(fb, ob->lastSwapA, ob->lastSwapB, 0) &&
-            putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeBy(x, out, root))) { j->cut = k; j->cutWhy = 2; break; } }
     } else {
       // (pressed as the frame loop presses it, core/nodes.h pressWalk: a swap whose pair still moves is walked to from the first frame its
       // walk is taken on, found with the walk tapped as the frame loop's keys are, then pressed as the frame loop walks it -- held, when
@@ -427,7 +425,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       // not there; a later one is pressed from the frame its walk begins (ats), handed on with that frame, its keys made on the board
       // where the walk begins)
       if (k == 0 && NODE(x, from)->t - NODE(x, n)->t > cfgReaction) { j->cut = k; j->cutWhy = 3; break; }
-      { Board *fb = ensureBoard(x, from); if (movedUndoes(fb, seq[k], &moved)) { j->cut = k; j->cutWhy = 2; break; } movedAdd(fb, seq[k], &moved);
+      { Board *fb = ensureBoard(x, from); if (movedUndoes(fb, seq[k], &moved)) { j->cut = k; j->cutWhy = 2; j->cutSub = 2; break; } movedAdd(fb, seq[k], &moved);
         // (THE PAIR THE LAST SWAP PRESSED SWAPPED, put back for nothing by this swap -- the one test, rules.c putBackFor, with what the
         // swap makes read as the first swap's is (madeBy): the line is cut here, before the swap is recorded as pressed (ats), so it is
         // never handed on. A swap back that clears or breaks is play. The owner: never a pair swapped back and forth to hold garbage off.
@@ -437,7 +435,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         // never against the decision's, which would count the line's earlier swaps' clears to it)
         { const Board *ob = liveNode(x, out) ? ensureBoard(x, out) : 0;
           if (fb && ob && ob->lastSwapA && putBackFor(fb, ob->lastSwapA, ob->lastSwapB, 0) &&
-              putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeSettled(x, from, from, CR(seq[k]), CC(seq[k])))) { j->cut = k; j->cutWhy = 2; break; } } }
+              putBackFor(fb, ob->lastSwapA, ob->lastSwapB, madeSettled(x, from, from, CR(seq[k]), CC(seq[k])))) { j->cut = k; j->cutWhy = 2; j->cutSub = 1; break; } } }
       if (pressTight && liveNode(x, out)) out = step(x, from, kind, mr, mc, 0);
       n = from; KB(n);
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;

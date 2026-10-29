@@ -532,15 +532,15 @@ static int lookAdmit(const Read *R, int n) {
 // judging, stay the decision's own (rank.c besideJudge).
 static const Read *jbR; static int64_t jbWork0; static double jbShare; static int32_t jbTap;
 static Judge jbJ[MAXCANDS]; static int32_t jbOk[MAXCANDS]; static int64_t jbWork[MAXCANDS];
-static int32_t jbDrops[MAXCANDS][NPLAYS][NDROPS], jbCut[MAXCANDS][4], jbCutBr[MAXCANDS][4]; static Unbroken jbUnb[MAXCANDS];
+static int32_t jbDrops[MAXCANDS][NPLAYS][NDROPS], jbCut[MAXCANDS][4], jbCutBr[MAXCANDS][4], jbSub[MAXCANDS][3]; static Unbroken jbUnb[MAXCANDS];
 static Ctx *jbCtx;   // (the phase's own: the jobs make nodes only on their threads' contexts)
 static void judgeJob(int32_t i) {
   clockWork = jbWork0; clockShare = jbShare; clockAborted = 0; clockPoll = 0; clockWentOut = 0; inJob = 0;
   pressTight = decQ.tight; pressTap = jbTap; pressFrom = pressSpent = 0; besideJudge = 1;
   cacheFresh(); ncache = 0;   // (judged from nothing: its work the same on whichever thread, and so the decision's clock)
-  memset(dropped, 0, sizeof dropped); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak); unbroken.set = 0;
+  memset(dropped, 0, sizeof dropped); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak); memset(cutSub, 0, sizeof cutSub); unbroken.set = 0;
   jbOk[i] = judgeWalked(jbR, &theCands[i], &jbJ[i]);
-  memcpy(jbDrops[i], dropped, sizeof dropped); memcpy(jbCut[i], cutWhy, sizeof cutWhy); memcpy(jbCutBr[i], cutWhyBreak, sizeof cutWhyBreak);
+  memcpy(jbDrops[i], dropped, sizeof dropped); memcpy(jbCut[i], cutWhy, sizeof cutWhy); memcpy(jbCutBr[i], cutWhyBreak, sizeof cutWhyBreak); memcpy(jbSub[i], cutSub, sizeof cutSub);
   jbUnb[i] = unbroken; jbWork[i] = clockWork - jbWork0;
   besideJudge = 0;
 }
@@ -557,6 +557,7 @@ static int judgeAll(const Read *R, int nc, int n) {
         sum += jbWork[i];
         for (int p = 0; p < NPLAYS; p++) for (int w = 0; w < NDROPS; w++) dropped[p][w] += jbDrops[i][p][w];
         for (int w = 0; w < 4; w++) { cutWhy[w] += jbCut[i][w]; cutWhyBreak[w] += jbCutBr[i][w]; }
+        for (int w = 0; w < 3; w++) cutSub[w] += jbSub[i][w];
         if (!unbroken.set && jbUnb[i].set) unbroken = jbUnb[i];
         if (jbOk[i]) { theJudged[n] = jbJ[i]; order[n] = &theJudged[n]; n++; }
       }
@@ -574,7 +575,7 @@ static void gb_trace_ranked(const char *stage, Judge **o, int n);   // (test/dec
 #define TRACE(stage)
 #endif
 static int ranked(const Read *R, const Found *S) {
-  memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
+  memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak); memset(cutSub, 0, sizeof cutSub);
   carriedJ = 0; unbroken.set = 0; saveLine = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();

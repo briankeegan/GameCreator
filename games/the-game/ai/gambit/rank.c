@@ -62,7 +62,7 @@ static int32_t offered[NPLAYS];
 static void dropAs(int play, int why) { dropped[play][why]++; }
 // (the lines cut, by why the judge cut them: judge.c cutWhy -- 1 a first walk over the allowance, 2 no swap there, 3 a walk not begun
 // within a reaction -- and how many of them the break search found)
-static LOCAL int32_t cutWhy[4], cutWhyBreak[4];
+static LOCAL int32_t cutWhy[4], cutWhyBreak[4], cutSub[3];   // (cutSub: the lines cut for no swap there, judge.c cutSub)
 // THE FIRST LINE OF A DECISION THE BREAK SEARCH SAID BREAKS AND THE JUDGE SAYS DOES NOT: its play, swaps and both counts, for the log
 // and the board's dump (two measures of one fact)
 typedef struct { int32_t set, play, nseq, seq[MAXLINE], said, judged; } Unbroken;
@@ -117,7 +117,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   unLine();
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
-  if (judgedCut(&oc.j)) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
+  if (judgedCut(&oc.j)) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (w == 2 && oc.j.cutSub >= 0 && oc.j.cutSub < 3) cutSub[oc.j.cutSub]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
   // (ONE THE CLOCK STOPPED THE JUDGE ON: its board past that frame unknown -- ranked as a line lost on the frame it was judged alive to,
   // what it makes on the search's word: never a board that lasts, and never dropped for a hold that dies sooner. A grown line has no
   // search's word, only the judge's, so one the judge did not finish is no line)
@@ -780,10 +780,10 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int ok = judgeCand(R, k, J);
   static LOCAL Cand w; static LOCAL Judge JW;
   if (clockOut() || !walkOrder(k, &w)) return ok;
-  int32_t keepDrops[NPLAYS][NDROPS], keepCut[4], keepCutBr[4]; memcpy(keepDrops, dropped, sizeof dropped); memcpy(keepCut, cutWhy, sizeof cutWhy); memcpy(keepCutBr, cutWhyBreak, sizeof cutWhyBreak);
+  int32_t keepDrops[NPLAYS][NDROPS], keepCut[4], keepCutBr[4], keepSub[3]; memcpy(keepSub, cutSub, sizeof cutSub); memcpy(keepDrops, dropped, sizeof dropped); memcpy(keepCut, cutWhy, sizeof cutWhy); memcpy(keepCutBr, cutWhyBreak, sizeof cutWhyBreak);
   int keepUnbroken = unbroken.set;
   int wok = judgeCand(R, &w, &JW);
-  memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
+  memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutSub, keepSub, sizeof cutSub); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
   if (wok && ok) { Judge *pair[2] = { J, &JW }; rankTogether(pair, 2); }   // (the pair ranked together: the bands from its own reference)
 #ifdef GB_TEST
   { int c = wok && ok ? compareJudged(&JW, J) : 99; gb_trace_walked(ok, wok, c, cmpKey, cmpWhy, J, &JW); }
