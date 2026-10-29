@@ -31,6 +31,7 @@ typedef struct {
   int32_t planTop, planMat, planContact, planUnder, planEndAt;   // the margin the plan leaves (planLanded); planTop -1 not read
   int32_t endReady;    // the board the line (or its plan) ends on is ready for the next block (endReadyOf): 1, 0, NOT_ASKED
   int32_t planFullN, planFullLine[MAXLINE], planFullAt[MAXLINE];   // the whole plan after the line: its breaks and the survival line on from its end, each swap with the frame it is pressed from (0: as the board lets) -- readyNextOf
+  uint32_t endHb;     // the board the line ends on, its cells and its clock as one number (endCellsHash): 0 not read
   Judged j;
 } Outcome;
 
@@ -133,6 +134,37 @@ static int32_t aloneBuildable(void) {
   return rootBuildable = buildsNext(eb);
 }
 static Board *endBoard;                      // (lineEnd's board)
+// (THE BOARD A LINE ENDS ON AS ONE NUMBER: each cell's panel and colour, garbage or not, its state, and the board's clock and cursor --
+// the look-ahead beside keeps its lines on by it, decide.c lookLineOf: read as the line is judged, so asked of it with no judging again)
+static uint32_t endCellsHash(const Board *b) {
+  uint32_t h = 2166136261u;
+  #define EH(v) do { h ^= (uint32_t)(v); h *= 16777619u; } while (0)
+  EH(b->clock); EH(b->curRow); EH(b->curCol); EH(b->nrows);
+  for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; EH(f[ID]); EH(f[COLOR]); EH(f[ISGARBAGE]); EH(f[STATE]); }
+  #undef EH
+  return h ? h : 1;
+}
+// (AND THE BOARD ITSELF, kept as it is judged on whichever thread judges it: the look-ahead beside is handed the boards the best
+// options end on from here, never judged again for it -- decide.c lookPonder. Its boards are made on the decision's thread first:
+// endKeepOn)
+#define ENDKEEP 256
+static Board *endKeepB[ENDKEEP]; static uint32_t endKeepH[ENDKEEP]; static int32_t endKeepOn, endKeepLock;
+static void endKeepPut(uint32_t hb, const Board *eb) {
+  if (!__atomic_load_n(&endKeepOn, __ATOMIC_ACQUIRE) || !hb) return;
+  int k = (int)(hb % ENDKEEP);
+  while (__atomic_exchange_n(&endKeepLock, 1, __ATOMIC_ACQUIRE)) {}
+  if (endKeepH[k] != hb) { cloneBoard(endKeepB[k], eb); endKeepH[k] = hb; }
+  __atomic_store_n(&endKeepLock, 0, __ATOMIC_RELEASE);
+}
+// (the board kept for hb copied into `into`: 1 found)
+static int endKeepGet(uint32_t hb, Board *into) {
+  if (!__atomic_load_n(&endKeepOn, __ATOMIC_ACQUIRE) || !hb) return 0;
+  int k = (int)(hb % ENDKEEP), got = 0;
+  while (__atomic_exchange_n(&endKeepLock, 1, __ATOMIC_ACQUIRE)) {}
+  if (endKeepH[k] == hb) { cloneBoard(into, endKeepB[k]); got = 1; }
+  __atomic_store_n(&endKeepLock, 0, __ATOMIC_RELEASE);
+  return got;
+}
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
 // THE FLOOR SPENT, the one test every reader asks (the shared line check, the rank's keep): a line that nets material away -- the
@@ -192,7 +224,7 @@ static Outcome outcomeOfW(const int32_t *seq, int n, int settled, int waitAt, in
     o.panelsLeft = -1; o.nearAfter = -1; o.endNear = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.topLeft = -1;
     if (whole) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
-      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.topLeft = topOn(eb); }
+      if (eb) { o.endHb = endCellsHash(eb); endKeepPut(o.endHb, eb); o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.topLeft = topOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
@@ -476,7 +508,7 @@ EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft) {
 static void lookPause(void);   // (decide.c: the look-ahead beside reads the press -- held before it is set)
 EXPORT(gb_press) void gb_press(int allow, int gap) {
   lookPause();
-  pressAllowance = allow; decQ.tight = pressTight = allow >= 0 && tightAt(allow); decGap = gap;
+  pressAllowance = allow; decQ.tight = pressTight = allow >= 0 && tightAt(allow); __atomic_store_n(&decGap, gap, __ATOMIC_RELAXED);
 }
 // The line in the io body (nseq words); back: dead, lostAt, lives, fits, ready, late, then the judge's answer as gb_judge writes it.
 EXPORT(gb_outcome) int gb_outcome(int nseq, int settled) {
