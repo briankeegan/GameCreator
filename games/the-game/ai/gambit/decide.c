@@ -277,10 +277,11 @@ static double contLostOf(const Judge *J, double give) { return contLostOfLine(J,
 // again LOOK_MS deep and keeps the answer by the board. A board asked again -- the line in progress ends where it was chosen to, and the
 // next decisions judge it -- reads that answer where it outlasts the decision's own. The decision waits on none of it and searches
 // exactly what it would without it; the thread is held only while the decision writes the window and the pace it reads (lookPause).
+static int32_t decAt;   // (the decision's frame: set below, read by the look-ahead's asks)
 #define LOOK_Q 64
 #define LOOK_N 512
 #define LOOK_MS 120
-typedef struct { uint32_t h, hb; int32_t dt, spent, tap, save, gen; Question q; Board *b; } LookAsk;
+typedef struct { uint32_t h, hb; int32_t dt, spent, tap, save, gen, roll, rollAt; Question q; Board *b; } LookAsk;   // (roll: a rollout asked, rollAt the frame of the decision that asked it)
 typedef struct { uint32_t h; int32_t set, gen; double lost; } LookAns;   // (gen: the decision that asked it, lookGen; lost: frames from the board's own, 1e9 lives)
 // (THE LINE ON FROM A BOARD: the survival search's best line from it, by the board alone -- the garbage shown since may differ, and
 // the line is judged on the engine as any is before it is played: lookAdmit)
@@ -327,7 +328,9 @@ static int lookFind(uint32_t h, double *lost) {
   lookLockOff();
   return got;
 }
-static void lookAsk(const Board *e, const Question *q, uint32_t h, int32_t dt, int32_t spent) {
+static void lookAskAs(const Board *e, const Question *q, uint32_t h, int32_t dt, int32_t spent, int roll);
+static void lookAsk(const Board *e, const Question *q, uint32_t h, int32_t dt, int32_t spent) { lookAskAs(e, q, h, dt, spent, 0); }
+static void lookAskAs(const Board *e, const Question *q, uint32_t h, int32_t dt, int32_t spent, int roll) {
   uint32_t hb = endCellsHash(e);
   if (!__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
   lookLockOn();
@@ -335,7 +338,7 @@ static void lookAsk(const Board *e, const Question *q, uint32_t h, int32_t dt, i
   LookAsk *s = &lookQ[k];
   if (!s->b) s->b = nb_new();
   if (s->b) {
-    cloneBoard(s->b, e); s->q = *q; s->q.b = s->b; s->h = h; s->hb = hb; s->dt = dt; s->spent = spent; s->tap = pressTap; s->save = rankSave; s->gen = lookGen;
+    cloneBoard(s->b, e); s->q = *q; s->q.b = s->b; s->h = h; s->hb = hb; s->dt = dt; s->spent = spent; s->tap = pressTap; s->save = rankSave; s->gen = lookGen; s->roll = roll; s->rollAt = decAt;
     lookAsked++;
   } else __atomic_sub_fetch(&lookQN, 1, __ATOMIC_RELEASE);
   lookLockOff();
@@ -356,6 +359,52 @@ static void lookResume(void) {
   __atomic_add_fetch(&lookSig, 1, __ATOMIC_RELEASE);
   __builtin_wasm_memory_atomic_notify(&lookSig, 1);
 }
+// THE ROLLOUT (plans/gambit-machinery.md): from a board, the game played on as the decisions play it -- the survival search asked at a
+// decision's own share (SAVE_MS) and ROLL_SWAPS of its line pressed, then asked again from where they leave the board, a reaction's
+// frames at least between -- with the garbage shown and nothing more, to the first board it cannot outlive or ROLL_FRAMES on. Its
+// answer is where the decisions themselves would lose that board, not where its best line would. Measured against the game first
+// (the log's roll=): it decides nothing yet
+#define ROLL_FRAMES 600
+#define ROLL_SWAPS 2
+#define ROLL_ASKS 40
+static LOCAL Ctx *rollCtx;
+static int32_t rollOut(const Question *q0) {
+  static LOCAL Board *rb; if (!rb) rb = nb_new();
+  if (!rb) return -1;
+  Question q = *q0; cloneBoard(rb, q0->b); q.b = rb;
+  int32_t elapsed = 0;
+  for (int it = 0; it < ROLL_ASKS && elapsed < ROLL_FRAMES; it++) {
+    clockShare = nowMs() + SAVE_MS;
+    Outlived c = outlive(&q, HORIZON + REST, REST, SAVE_MS, 6, 30);
+    int32_t lost = c.set ? c.lostAt : diesIn(&q, HORIZON + REST);
+    clockShare = nowMs() + 1000;   // (the line's swaps pressed on the engine: no share of the search's own to cut them)
+    if (lost == FOREVER && (!c.set || c.nseq == 0)) { clockShare = 0; return FOREVER; }
+    if (!c.set || c.nseq == 0) { clockShare = 0; return lost < 0 ? elapsed : elapsed + lost; }
+    Ctx *x = rollCtx = ctxOf(rollCtx);
+    int n = rootOf(x, &q);
+    if (n < 0) { clockShare = 0; return elapsed; }
+    for (int k = 0; k < c.nseq && k < ROLL_SWAPS; k++) {
+      int o = step(x, n, MK_SWAP, CR(c.seq[k]), CC(c.seq[k]), 0);
+      if (!liveNode(x, o)) { clockShare = 0; return elapsed + (o == STEP_DEAD ? imax(0, deadAt) : NODE(x, n)->t); }
+      n = o;
+    }
+    int32_t react = C2.reaction + 1;
+    if (NODE(x, n)->t < react) { int o = step(x, n, MK_LONG, 0, 0, react - NODE(x, n)->t); if (!liveNode(x, o)) { clockShare = 0; return elapsed + react; } n = o; }
+    int32_t dt = NODE(x, n)->t;
+    const Board *b = ensureBoard(x, n);
+    if (!b) { clockShare = 0; return elapsed; }
+    static LOCAL Board *nb; if (!nb) nb = nb_new();
+    if (!nb) { clockShare = 0; return elapsed; }
+    cloneBoard(nb, b); cloneBoard(rb, nb);
+    int na = 0; for (int a = 0; a < q.narr; a++) if (q.arr[a].at > dt) { q.arr[na] = q.arr[a]; q.arr[na++].at -= dt; }
+    q.narr = na; q.holdLeft = NODE(x, n)->holdLeft; q.holdStarted = NODE(x, n)->holdStarted;
+    elapsed += dt;
+  }
+  clockShare = 0;
+  return elapsed >= ROLL_FRAMES ? FOREVER : elapsed;
+}
+#define ROLL_LOG 8
+static int32_t rollLog[ROLL_LOG][2], rollLogN;   // (the rollouts done since the last decision logged them: the asking decision's frame, the frame lost or -1 none)
 static void lookThread(void) {
   inJob = 3;
   static LOCAL Board *b; if (!b) b = nb_new();
@@ -377,6 +426,14 @@ static void lookThread(void) {
     pressTight = s.q.tight; pressTap = s.tap; ncache = 0; lookSaveOwn = s.save;
     clockWork = 0; clockAborted = 0; clockPoll = 0; clockShare = nowMs() + LOOK_MS;
     pressFrom = s.dt; pressSpent = s.spent;
+    if (s.roll) {
+      int32_t r = rollOut(&s.q);
+      int heldR = __atomic_load_n(&lookHold, __ATOMIC_SEQ_CST);
+      clockShare = 0; pressFrom = pressSpent = 0;
+      if (!heldR && r >= 0) { lookLockOn(); if (rollLogN < ROLL_LOG) { rollLog[rollLogN][0] = s.rollAt; rollLog[rollLogN][1] = r == FOREVER ? -1 : s.rollAt + s.dt + r; rollLogN++; } lookLockOff(); }
+      __atomic_store_n(&lookBusy, 0, __ATOMIC_RELEASE);
+      continue;
+    }
     Outlived c = outlive(&s.q, HORIZON + REST, REST, LOOK_MS, 6, 30);
     int32_t lost = c.set ? c.lostAt : diesIn(&s.q, HORIZON + REST);
     int held = __atomic_load_n(&lookHold, __ATOMIC_SEQ_CST);
@@ -434,11 +491,14 @@ static const Board *lookEndOf(const Judge *J, Question *q2, int32_t *dt) {
 // (THE LINE CHOSEN: once the decision has answered, the board its line ends on is the one the next decisions carry it to -- asked
 // first, on top of the stack, ahead of the options it weighed)
 static void lookChosen(const Judge *J) {
-  if (!J || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE) || lookKnown(J->o.endHb)) return;
-  lookRecentAdd(J->o.endHb);
+  if (!J || !__atomic_load_n(&lookOn, __ATOMIC_ACQUIRE)) return;
   Question q2; int32_t dt; const Board *e = lookEndOf(J, &q2, &dt);
   if (!e) return;
   uint32_t h = lookHash(e, &q2); double d;
+  // (the rollout from it every time, measured against the game: rollOut; the line on, where it was not asked already)
+  lookAskAs(e, &q2, h, dt, J->o.j.spent, 1);
+  if (lookKnown(J->o.endHb)) return;
+  lookRecentAdd(J->o.endHb);
   if (!lookFind(h, &d)) lookAsk(e, &q2, h, dt, J->o.j.spent);
 }
 static void lookPonder(int n) {
