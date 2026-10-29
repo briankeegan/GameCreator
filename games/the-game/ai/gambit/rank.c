@@ -385,6 +385,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // break must make, and the board dies when the rows on it and coming outrun the rows broken (1d596973)
     if (decF.under && bx && by) { int rx = imax(0, x->apBroke) / W, ry = imax(0, y->apBroke) / W;
       if (rx != ry && (lostAlike(x, y) || (rx > ry) == (lostOf(x) > lostOf(y)))) return (cmpKey = __LINE__, (ry - rx)); }
+    // 2''. (neither lives, under garbage) THE PANELS LEFT: of two that break as many rows, the one whose board keeps more panels (outcome.c
+    // panelsLeft, in threes: a match's worth) -- every later break is made of the board's panels, a combo spends the stack's own --
+    // unless it is lost a break's time sooner (e3f9eb3a)
+    if (decF.under && bx && by && x->o.panelsLeft >= 0 && y->o.panelsLeft >= 0) { int nx = x->o.panelsLeft / 3, ny = y->o.panelsLeft / 3;
+      if (nx != ny && (lostAlike(x, y) || (nx > ny) == (lostOf(x) > lostOf(y)))) return (cmpKey = __LINE__, (ny - nx)); }
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.
