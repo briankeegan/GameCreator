@@ -52,6 +52,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `f2cf4fc4` B6 again, on B7 (a5efe28f) -- build 21 (1565) [kept: factory 8/8; no loss to the window or the reach, three to the board]
 - C10, of two breaks lost alike the next break's material (9791a6e2, c5b65ba8) [skipped: the base has it, rank.c 1'' and 6, 7a]
 - `6e66d9f6` A4, the break on the board to come (fe8e28f4) -- build 21 (1566) [dropped: as main, three losses to the reach; it found a break 2,057 times and took up to 40 ms of the searches' time]
+- main with the depths logged (31295ac1): build 21 (1567) -- under garbage with no break found, the search between decisions reached deeper than the decision's frontier 7,102 times of 14,955 and was handed on 1,273
+- `a27030f6` the search between decisions handed on where it reached deeper -- build 22 (1568) [kept: handed on 8,090 times; its depth median 3 to 4, p90 7 to 8]
 
 ## The shortlist for pressure, in the order to try
 
