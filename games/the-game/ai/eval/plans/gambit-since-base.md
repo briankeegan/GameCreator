@@ -118,6 +118,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `e6ec5c9a` the closest moves with no garbage on the board only (under garbage the garbage broken for each action) -- pressure 20 (1676; large_garbage 8, combo_storm 6, factory 6): three tries at the closest continuation 18, 20, 20 against 22 without [dropped]
 - opener on combo_storm (1667): 4 of 8 (big chains only, no break between: the board runs dry); big chain on combo_storm (1666): 6 of 8 [a measurement]
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
+- opener on ffd5b8cf (the chain cap, BREAK_LOW): 21 (1690; combo_storm 7, factory 7, large_garbage 7) [a measurement]
+- `92d2e23f` a break in reach once the next block lands, before the reserve (the owner: always a break ready) -- opener 16 (1691, against 21) [dropped]
 
 ## The shortlist for pressure, in the order to try
 
