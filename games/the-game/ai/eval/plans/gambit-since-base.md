@@ -87,6 +87,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `31b0575a` the break search replays as many carried lines as its beam holds (30 of 60) -- build 21 on seed 7 (1637) [dropped]
 - fights on the fork's server, main (d4ca4b12) against Gambit 100: 4-1 (panel-game 529/530), then 6-3 on the opponent read without its falling garbage (534/535); every decision's mode the one its logged enemy board calls for (gambit_modes.js, 0 of 10,742), and each side's topped-out reading matched the other's own board (1,112 of 1,120) [a measurement]
 - `b9eb6971` under garbage, of two lines that break nothing and survive alike, a fallback after a line that fires none -- finish 23 on seed 8 (1641, against main's 21 of 23) [kept: of the fallbacks played, 4,193 put first by the later loss, 392 by the window's reserve, about 35 by any other key -- the summary's 1,728 "unforced" counts a fallback whose other line merely lasts a break's time]
+- main (c732a770) big chain on seed 7: 22 (1642; factory 6/8, both drought losses -- one the window spent on lines the board lived by, one no break in reach) [against 20 in 1616]
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 
 ## The shortlist for pressure, in the order to try
