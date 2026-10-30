@@ -96,7 +96,7 @@ static int raisePresses(const FQuestion *q, Board *b) {
 }
 // (THE LAST BOARDS, ringKeep below)
 #define RINGN 32
-static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
+static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN], ringAllow[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
 // The board as base64 of its bytes (the head, the queue, the rows), for the reach report (GAMBITB)
 static int b64(const unsigned char *p, int n, char *out) {
   static const char A[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -147,7 +147,7 @@ static int frameOut(void) {
   if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) return 1;
   return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
 }
-static void ringKeep(int32_t at);
+static void ringKeep(int32_t at, int32_t allow);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
@@ -190,7 +190,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0);
   flog(line);
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
-  if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last], -1); hostUnlock(); }
+  if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last], ringAllow[last]); hostUnlock(); }
   if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : A->dumpBoard == 3 ? "GAMBITK" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance);
   // (A SAMPLE OF EVERY DECISION: one question in SAMPLEQ, whatever it is, its board -- GAMBITQ, what test/decisions.txt.gz is drawn from,
   // so the replay holds the decisions a game makes and not only the ones some search came up empty on)
@@ -203,11 +203,11 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   // fails any such answer)
   static int32_t lastS = NUL;
   if (A->sooner && (lastS == NUL || q->at - lastS >= 60 || q->at < lastS)) { lastS = q->at; dumpBoard("GAMBITS", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance); }
-  ringKeep(q->at);
+  ringKeep(q->at, q->allowance);
 }
 // THE LAST BOARDS: every question's board and garbage on its way, the last RINGN decisions kept, written out when the match ends (GAMBITL lines,
 // oldest first) -- what a loss is replayed from.
-static void ringKeep(int32_t at) {
+static void ringKeep(int32_t at, int32_t allow) {
   hostLock();
   // (a question asked again for a frame no later than ones kept takes their place: the plans made past it were dropped -- the ring holds
   // one board a frame, in order, the last RINGN decisions forward)
@@ -215,7 +215,7 @@ static void ringKeep(int32_t at) {
   int k = ringHead;
   if (!ring[k]) ring[k] = nb_new();
   if (ring[k]) {
-    cloneBoard(ring[k], hostBoard); ringAt[k] = at; ringNarr[k] = hostQ.narr;
+    cloneBoard(ring[k], hostBoard); ringAt[k] = at; ringNarr[k] = hostQ.narr; ringAllow[k] = allow;
     for (int i = 0; i < hostQ.narr; i++) ringArr[k][i] = hostQ.arr[i];
     ringHead = (ringHead + 1) % RINGN; if (ringCount < RINGN) ringCount++;
   }
@@ -223,7 +223,7 @@ static void ringKeep(int32_t at) {
 }
 static void ringOut(void) {
   hostLock();
-  for (int i = 0; i < ringCount; i++) { int k = (ringHead - ringCount + i + RINGN) % RINGN; dumpBoard("GAMBITL", ringAt[k], ring[k], ringArr[k], ringNarr[k], -1); }
+  for (int i = 0; i < ringCount; i++) { int k = (ringHead - ringCount + i + RINGN) % RINGN; dumpBoard("GAMBITL", ringAt[k], ring[k], ringArr[k], ringNarr[k], ringAllow[k]); }
   ringCount = 0;
   hostUnlock();
 }
