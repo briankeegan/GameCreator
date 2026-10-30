@@ -246,10 +246,16 @@ static int moreIdeas(const Judge *x, const Judge *y) { int a = ideasOf(x), b = i
 // THE BLOCKS A LINE THROWS (judge.c blocks: every attack its own)
 static int thrownOf(const Judge *J) { return J->hold || J->o.dead ? 0 : J->o.j.blocks; }
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
-// (A FALLBACK: a line that meets an entry of the mode's list after its first and breaks no garbage. The mode's goals in order: the first
-// entry 0, a line that fires no fallback 1 -- the hold, a set-up toward the first entry, a break -- then each fallback, 1 + its entry)
+// (A FALLBACK: a line that meets an entry of the mode's list after its first and breaks no garbage. The mode's goals in order (the
+// owner: a mode plays its first entry, builds toward it otherwise): the first entry 0, a set-up toward it or a break 1, the hold and
+// any other line that fires no fallback 2, then each fallback, 2 + its entry)
 static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
-static int goalKeyOf(const Judge *J) { return J->hold ? 1 : J->met == 0 ? 0 : fallbackOf(J) ? 1 + J->met : 1; }
+static int goalKeyOf(const Judge *J) {
+  if (J->hold) return 2;
+  if (J->met == 0) return 0;
+  if (fallbackOf(J)) return 2 + J->met;
+  return J->apBroke > 0 || setupPlay(J->k.play) ? 1 : 2;
+}
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
 // and none broken
 static int cutsShort(const Judge *J);
