@@ -85,6 +85,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `33ca15f5` under garbage the break in progress over a dearer break -- build 22 on seed 8 (1631, as main) [kept: a 10-swap break given up twice for longer ones had spent factory-7's window, run 1622]
 - main (e286a103): build 23 on seed 7 (1636) -- build done at 23
 - `31b0575a` the break search replays as many carried lines as its beam holds (30 of 60) -- build 21 on seed 7 (1637) [dropped]
+- fights on the fork's server, main (d4ca4b12) against Gambit 100: 4-1 (panel-game 529/530), then 6-3 on the opponent read without its falling garbage (534/535); every decision's mode the one its logged enemy board calls for (gambit_modes.js, 0 of 10,742), and each side's topped-out reading matched the other's own board (1,112 of 1,120) [a measurement]
+- `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 
 ## The shortlist for pressure, in the order to try
 
