@@ -56,6 +56,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `a27030f6` the search between decisions handed on where it reached deeper -- build 22 (1568) [kept: handed on 8,090 times; its depth median 3 to 4, p90 7 to 8]
 - `4081eefe` the search between decisions in slices of 1, 2, then 4 frames -- build 19 (1569) [dropped: large_garbage 4/8, four losses to the reach; a slice the next decision cuts is lost whole]
 - main with the mode's list logged (9872cbab): build 21 (1570) -- of 5,321 lines begun that meet the list, 177 its first entry, 2,080 a fallback, 1,681 of them unforced (a line with none left the next decision a break's time); 1,418 of those lost later than that line, 1,489 under garbage
+- main with the planner's first entry logged (21d4d047): build 21 (1571) -- the planner found a line meeting the first entry in 141 of 27,795 decisions; its first pass takes its whole share (~170 ms) under garbage
+- `40c39574` the mode's goals of two lines that survive alike: the first entry, then no fallback, then the fallbacks -- build 22 (1572) [kept: the first entry begun 296 times against 222]
 
 ## The shortlist for pressure, in the order to try
 
