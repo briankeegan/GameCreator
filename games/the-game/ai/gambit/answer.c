@@ -711,7 +711,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); lifeDumps = 0;
+  modeLeft(); lifeDumps = 0; openerOver = 0;
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
   readyStop(); readyKeptClear();   // (a new game's boards are its own)

@@ -55,8 +55,9 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 
 ## The modes (the owner's plan)
 
-Which mode plays is picked from the enemy's board, read top to bottom (`survivor-profiles/gambit-rules.json` `attack`); training has
-no enemy, so there each mode is pinned by its profile. A mode plays its first entry, builds toward it otherwise, and takes a fallback
+A fight opens with the opener (`survivor-profiles/gambit-rules.json` `opener`); after it, the mode is picked from the enemy's board,
+read top to bottom (`attack`), its height counting panels and garbage alike. A line begun is carried to its end; the next line is the
+new mode's. Training has no enemy, so there each mode is pinned by its profile. A mode plays its first entry, builds toward it otherwise, and takes a fallback
 only where the board dies without it. Survival comes first; under garbage, the break comes first.
 
 In a fight every decision's mode is the one the enemy's board calls for: `gambit_modes.js` re-picks it from each decision's logged
@@ -64,6 +65,7 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
 
 | mode | picked when | for | first | fallbacks, only where it dies without them |
 | --- | --- | --- | --- | --- |
+| opener | a fight's start, until either board tops out (garbage landed above the top row, not garbage sent) | pressure from the start | 8+ chain | chain 6+, 4+ |
 | time attack | no enemy | score alone | 8+ chain | chain 6+, 4+, 3+, 2+ |
 | finish them | the enemy topped out, its stop ends within 2 s (120 frames) | a fast hit it cannot absorb | 8+ combo | combo 5, combo 6, 2-chain, combo 4+, chain 3+ |
 | big chain | the enemy's stack under 5 rows | it has room: one huge block | 8+ chain | chain 2+, combo 4+ |

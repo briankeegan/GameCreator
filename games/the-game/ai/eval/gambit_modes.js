@@ -5,6 +5,9 @@
 //
 //   node gambit_modes.js [--rules FILE] LOG...      (FILE default survivor-profiles/gambit-rules.json; a LOG of - is stdin)
 //
+// A fight with no mode named opens with the opener (tables.opener) until either board tops out; our own board's topping out is not
+// logged, so the opener is over at the first decision that reads the enemy topped out or plays another mode, and agrees until then.
+//
 // Prints one JSON object: decisions read, how many disagree, each (played -> called-for) pair's count and the first few disagreeing
 // lines. Exits 1 on any disagreement, 2 when nothing was read. A profile that names its mode (gambit.mode) plays that mode whatever the
 // enemy does, so its logs are not this check's.
@@ -34,18 +37,24 @@ function called(facts) {
   return facts['enemy.none'] && all.length ? all[0].name : null;
 }
 
+var OPENER = (tables.opener || [])[0] ? tables.opener[0].name : null;
 var LINE = /GAMBITD (\d+) (.*?) play=/, ENEMY = / enemy=(-?\d+)\/(-?\d+)\/(-?\d+)/;
 var out = { rules: path.relative(process.cwd(), rulesFile), decisions: 0, withEnemy: 0, disagree: 0, pairs: {}, first: [] };
 args.forEach(function (f) {
+  var last = Infinity, opening = !!OPENER;
   var text = fs.readFileSync(f === '-' ? 0 : f, 'utf8');
   text.split('\n').forEach(function (l) {
     var m = LINE.exec(l);
     if (!m) return;
+    // (a game's frames start again from the countdown: a new game opens again)
+    if (+m[1] < last - 100) opening = !!OPENER;
+    last = +m[1];
     var e = ENEMY.exec(l), facts = { 'enemy.none': e ? 0 : 1 };
     // (us.* facts are not logged: a defend rule cannot be re-picked, and the tables in use have none)
     if (e) { out.withEnemy++; facts['enemy.height'] = +e[1]; facts['enemy.topped'] = +e[2] ? 1 : 0; if (+e[3] >= 0) facts['enemy.stop'] = +e[3]; }
     out.decisions++;
-    var want = called(facts);
+    if (opening && (facts['enemy.topped'] || (m[2] !== OPENER && e))) opening = false;
+    var want = opening && e ? OPENER : called(facts);
     if (want === m[2]) return;
     out.disagree++;
     var key = m[2] + ' -> ' + want;
