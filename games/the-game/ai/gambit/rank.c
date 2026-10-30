@@ -251,15 +251,6 @@ static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 // entry 0, a line that fires no fallback 1 -- the hold, a set-up toward the first entry, a break -- then each fallback, 1 + its entry)
 static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
 static int goalKeyOf(const Judge *J) { return J->hold ? 1 : J->met == 0 ? 0 : fallbackOf(J) ? 1 + J->met : 1; }
-// (two that survive alike as the goals ask it: both live, or both lost no sooner than a break's time and less than one apart -- the
-// later buys no break more)
-static double lostOf(const Judge *x);
-static int goalAlike(const Judge *x, const Judge *y) {
-  if (x->o.lives && y->o.lives) return 1;
-  if (x->o.lives || y->o.lives) return 0;
-  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
-  return lo >= rankSave && hi - lo < rankSave;
-}
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
 // and none broken
 static int cutsShort(const Judge *J);
@@ -357,9 +348,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int bx = x->apBroke > 0, by = y->apBroke > 0;
     if (bx != by) return (cmpKey = __LINE__, (bx ? -1 : 1));
     if (!bx) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
-    // (of two that break and meet the mode's goals alike -- the goals decide between them first, 1b: the one that breaks more garbage
-    // for each action it walks -- the window pays for every cell walked)
-    else if (goalKeyOf(x) == goalKeyOf(y)) { int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x)); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1)); }
+    // (of two that break: the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
+    else { int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x)); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1)); }
   }
   // 1a. THE LINE IN PROGRESS KEPT: of two that both live or both do not, the line the last decision was playing, judged again on the
   // board as it is, before another -- unless the other is lost later and not alike (neither lives: lostAlike, as 3 counts them) or meets
@@ -370,15 +360,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
     int oBreaks = o->apBroke > 0 && lostOf(o) >= rankSave && !(c->apBroke > 0) && (decF.belowFloor || lostOf(c) - lostOf(o) < rankSave);
     int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : (lostOf(o) <= lostOf(c) || lostAlike(c, o)) && !oBreaks;
-    // (nor over a line nearer the mode's goals that survives alike: 1b)
-    if (keep && cutsShort(c) == cutsShort(o) && goalKeyOf(o) < goalKeyOf(c) && goalAlike(c, o)) keep = 0;
     if (keep) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1b. THE MODE'S GOALS (the owner: a mode plays its first entry, builds toward it otherwise, and takes a fallback only where the board
   // dies without it -- survival first): of two that survive alike -- both live, or both lost no sooner than a break's time and less than
   // a break's time apart, where the later buys no break more -- and keep the board's own chain alike, the first entry, then a line that
   // fires no fallback, then each fallback in the list's order (goalKeyOf)
-  if (cutsShort(x) == cutsShort(y) && goalAlike(x, y)) { int gx = goalKeyOf(x), gy = goalKeyOf(y); if (gx != gy) return (cmpKey = __LINE__, (gx - gy)); }
+  if (cutsShort(x) == cutsShort(y)) {
+    double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+    if (lx || (lo >= rankSave && hi - lo < rankSave)) { int gx = goalKeyOf(x), gy = goalKeyOf(y); if (gx != gy) return (cmpKey = __LINE__, (gx - gy)); }
+  }
   if (lx) {
     // 2. (both live) the board's own chain kept before cut short: a chain the board is making is never stopped by a line that need not
     if (cutsShort(x) != cutsShort(y)) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1));
