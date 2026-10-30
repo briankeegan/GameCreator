@@ -60,6 +60,10 @@ read top to bottom (`attack`), its height counting panels and garbage alike. A l
 new mode's. Training has no enemy, so there each mode is pinned by its profile. A mode plays its first entry, builds toward it otherwise, and takes a fallback
 only where the board dies without it. Survival comes first; under garbage, the break comes first.
 
+A chain going is carried on to the mode's target whenever the board survives it, by the closest moves, its next links set up while
+the first clear still pops; a chain that has ended counts the size it ended at. The ideal line, always, breaks garbage between the
+links it adds -- both at once before either alone. A four that breaks ranks after a three that breaks as much (the owner).
+
 In a fight every decision's mode is the one the enemy's board calls for: `gambit_modes.js` re-picks it from each decision's logged
 `enemy=` and counts the decisions that disagree; a fight with any is red.
 
