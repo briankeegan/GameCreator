@@ -124,6 +124,7 @@ static void keepPlan(int kind, int32_t move, const int32_t *handed, int nhanded,
 // class plans the decision's board on past its answer, as deep as its time takes it, until the next question takes it back (plStop).
 // What it ends with is the plan the next decision resumes (thePlanKept's lines) where it planned longer than the decision did: the
 // same board, the same rules, more of the time between decisions searched.
+static int32_t decTap;   // (the decision's pressTap, for its jobs' threads and the search between decisions)
 static int32_t plState, plThreadOn, plActive;
 static List plAims; static Keep plKeepF; static PlanOpts plOpts; static Paths plSeedsIn, plOutShared; static double plDecMs, plMs;
 static int32_t plLogMs = -1, plLogN, plLogKept;   // (the log's: the last let go -- its time, its lines, whether they were handed on)
@@ -197,7 +198,6 @@ static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
 #define ON_SLICE_MS (1000.0 / 60)
 static Broke onBr; static Paths onSeeds;
 static int32_t onWanted; static double onDecMs;   // (the decision kept a frontier, and the time its own break search took)
-static int32_t decTap;   // (the decision's pressTap, for its jobs' threads and the search between decisions)
 static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound, onLogDeep, onLogKept;   // (the slices searched and a break found; the log's: the last let go, onStop -- and its deepest line, and whether it was handed on)
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
   memset(&theKept, 0, sizeof theKept); onWanted = 0;
