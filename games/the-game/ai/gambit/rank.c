@@ -381,6 +381,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!bx) {
       int fx = fallbackOf(x), fy = fallbackOf(y);
       if (fx != fy) return (cmpKey = __LINE__, (fx ? 1 : -1));
+      // (a break ready once the next block lands before the fewer actions: the window is kept for a break, and this one has it)
+      if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
