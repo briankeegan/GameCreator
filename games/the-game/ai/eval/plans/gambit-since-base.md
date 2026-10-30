@@ -98,6 +98,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `8c17c2ee` the time bought with the panels survives alike in the first key too (the rule key 3 had, key 1 decided before it) -- pressure 18 on seed 7 (1651, against 17 in 1646): combo_storm 8 of 8 against 4, factory 4 against 6 (its losses under garbage, where the change does not reach) [kept]
 - `dbe73392` the mode builds toward its first entry before it holds (the goal key: first entry, a set-up toward it or a break, the hold, the fallbacks) -- pressure 23 on seed 7 (1652, against 18 in 1651; the first entry begun 535 times against about 170) [kept]
 - the opener in fights (536, 537): it opened every game but held in half its decisions (211 of 410) and began an 8-chain twice -- a set-up toward the first entry ranked alike with the hold; over by our own board topping out about 10 s in [a measurement; the fix above]
+- every mode on main (d2e2ea64), seed 7: pressure 23 (1652), build 23 (1653), finish 21 (1654), big chain 21 (1655), switching 22 (1656) -- 110 of 120, against 102 on 69201d3d (1645-1649) [a measurement]
+- `110143e3` the owner's lists: big chains only in the opener, no combos in the chain modes, no combo of 4 in finish [the owner's]
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 
 ## The shortlist for pressure, in the order to try
