@@ -91,6 +91,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - main (ee09c8b7) big chain on seed 8: 21 (1643; one loss in each pattern) -- the reach report searching inside each board's window: 0 of 68 boards had a break the live search missed; two losses had none on the board, the third (large_garbage-3) had 5-12 swap breaks the window could not pay for, spent on the row-by-row breaks before it [a measurement]
 - the lines a search said break and the judge says do not (20% of decisions in 1643): replayed on their boards the judge agrees with itself; most are the break search's variants with a swap pair added (the plain line is the one played), and the chain search's lineups count the garbage the pop breaks anyway, which the judge leaves out [a measurement: no board the game makes and the judge does not]
 - `21cfa45e` under garbage, of two breaks lost alike, one that leaves a break in reach once the next block lands first -- big chain 23 on seed 8 (1644, against main's 21 in 1643) [kept]
+- main (1fff721d) switching on seed 7: 23 (1645, against 20 in 1617; the loss large_garbage-2, the window: 0 of 21 boards with a break missed) -- every mode at 23 once; run together next [a measurement]
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 
 ## The shortlist for pressure, in the order to try
