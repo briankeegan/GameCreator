@@ -326,13 +326,20 @@ static int lostAlike(const Judge *x, const Judge *y) {
 }
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
 static int32_t cmpKey;
+// (BOUGHT WITH THE PANELS: with no garbage on the board, the later loss of a line that clears panels below the floor and breaks nothing
+// is stop time, and stop time holds the stack from rising -- the rows the next panels come in by. Beside one that spends none and
+// leaves the next decision a break's time (rankSave), the two survive alike, and the list puts the one that keeps its panels first)
+static int boughtWithPanels(const Judge *x, const Judge *y) {
+  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
+  return !decF.under && lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends;
+}
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
   if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
-  if (!lx && !lostAlike(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
   // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
   // spent comes back only a window later, the garbage it is needed for may be told of by then or not
@@ -417,13 +424,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.
-    double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
     int alike = lostAlike(x, y);
-    // (BOUGHT WITH THE PANELS: with no garbage on the board, the later loss of a line that clears panels below the floor and breaks
-    // nothing (spends) is stop time, and stop time holds the stack from rising -- the rows the next panels come in by. Beside one that
-    // spends none and leaves the next decision a try, they survive alike: the list (5) puts the one that keeps its panels first. Under
-    // garbage the rising stack brings no panels in -- the garbage tops it -- and the list's own exceptions (5) decide)
-    if (!alike && !decF.under && lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends) alike = 1;
+    // (bought with the panels: alike -- boughtWithPanels; under garbage the rising stack brings no panels in, the garbage tops it)
+    if (!alike && boughtWithPanels(x, y)) alike = 1;
     if (!alike && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1));
