@@ -285,7 +285,8 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   static LOCAL int32_t idx[LINEPOOL], tmp[LINEPOOL], keyS[LINEPOOL], ms[MAXROWS * W];
   // (the search carried on: the lines the last decision's beam was growing, played again swap by swap within the rules)
   int nseeds = 0, nact = 0;
-  for (int i = 0; s->resume && i < s->resume->n; i++) {
+  // (as many as the beam holds, best first: the carried lines past its width are grown by no level)
+  for (int i = 0; s->resume && i < s->resume->n && nact < TOUCH_BEAM; i++) {
     if (!(s->resume->len[i] > 0 && s->resume->len[i] < LONGEST)) continue;
     Line *a = lineNew(); if (!a) break;
     a->len = s->resume->len[i]; for (int k = 0; k < a->len; k++) a->path[k] = s->resume->path[i][k];
