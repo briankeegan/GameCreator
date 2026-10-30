@@ -74,6 +74,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - main with the touch beam 30 on seed 7: big chain 20 (1607, against 17), switching 22 (1608, against 18) -- combo_storm 7/8 in each
 - `278c268b` the touch beam 40 -- build 18, 14, 18 on seeds 7, 8, 9 (1609-1611) [dropped: 50 of 72, below 30's 63 and 60's 57 -- a seed's games are not the same twice in real time, so three seeds are several games apart run to run]
 - main with the touch beam 30 on seed 7: pressure 21 (1612, against 18), finish 19 (1613; factory 4/8, four board losses)
+- finish on seed 7 without the goal before the floor (0b366e1b): 21 (1614, against 19), no loss to the board [asked of the owner]
 
 ## The shortlist for pressure, in the order to try
 
