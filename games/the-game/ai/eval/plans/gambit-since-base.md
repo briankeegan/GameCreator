@@ -66,6 +66,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `d2107042` the goal first, the shortest way to it (fewer presses), the set-up included (the owner) -- build 20 (1582); on seed 7 beside main: 21 against main's 20 (1584, 1583) [kept]
 - `59d94ee2` B8, DAS always: a board near its end walked held as the walls allow too, never tapped (8818b250) -- build 19 on seed 7 (1585), against 21 and 20 for main on it [kept: the owner's requirement; no loss to the window]
 - main (fb2752a4) on seeds 7, 8, 9: build 19, 18, 20 (1585, 1586, 1587); without the goal before the floor (15da0590): 20, 23, 21 (1588, 1589, 1590) -- 64 of 72 against 57, the first entry begun ~274 a run against ~308 [asked of the owner]
+- pressure on seed 7: main 18 (1591), without the goal before the floor 22 (1592); big chain on main 17 (1593), switching 18 (1594) -- combo_storm the weakest in each
 
 ## The shortlist for pressure, in the order to try
 
