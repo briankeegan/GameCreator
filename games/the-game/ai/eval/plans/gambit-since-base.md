@@ -76,6 +76,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - main with the touch beam 30 on seed 7: pressure 21 (1612, against 18), finish 19 (1613; factory 4/8, four board losses)
 - finish on seed 7 without the goal before the floor (0b366e1b): 21 (1614, against 19), no loss to the board
 - the goal before the floor taken back out (the owner): it cost build 63 against 68 of 72, pressure 18 against 22, finish 19 against 21 -- the goal is played within the floor
+- main (43fc0a55: the touch beam 30, the goal within the floor) on seed 7: pressure 19 of 23 (1615; one game's upload failed), big chain 20 (1616), switching 20 (1617) -- combo_storm the weakest in each
 
 ## The shortlist for pressure, in the order to try
 
