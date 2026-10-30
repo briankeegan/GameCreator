@@ -224,7 +224,7 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   judge(&decQ, seq, n, &jo, &o.j);
   Made m = o.j.made;
   o.fits = !o.j.dead && fitsList(&theList, m, &o.j, 1) && imax(m.chain, o.j.chainAll) <= MAXCHAIN &&
-           !(decF.belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0) && !(theList.n && meets(&theList.aim[0], m)));   // (the goal before the floor)
+           !(decF.belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0));
   // (a list ended by "default": a line outside it is the default's own, kept while the board lives through it)
   if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN;   // (the host's own check, a line held to no list)
   if (o.j.late) return 0;

@@ -88,6 +88,8 @@ only where the board dies without it. Survival comes first; under garbage, the b
 - Topped out, there is always some stop.
 - Ready when everything lands, with a plan -- several steps if it takes them.
 - Raise in the opening.
+- **The goal within the floor**: a line that makes the mode's first entry keeps the material floor like any other (a break excepted);
+  spending below it cost every mode games (`gambit-since-base.md`).
 - **DAS, always**: a walk is held to the wall and tapped otherwise, on every board -- a dying one too (`core/nodes.h` `TAP_DIES` -1,
   `legCost`). Core behaviour like this changes only after asking the owner.
 - Every answer arrives in time for its move; a decision may think across frames.
