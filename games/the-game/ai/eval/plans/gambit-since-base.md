@@ -69,6 +69,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - pressure on seed 7: main 18 (1591), without the goal before the floor 22 (1592); big chain on main 17 (1593), switching 18 (1594) -- combo_storm the weakest in each
 - `132c917b` the touch beam 30 wide (60), the lines carried on still 60 -- build 21, 20, 22 on seeds 7, 8, 9 (1595-1597) against main's 19, 18, 20 [kept: 63 of 72 against 57; combo_storm 20 of 24 against 16 -- under garbage it had grown a median 3 swaps deep, cut by the clock in 60% of decisions]
 - `a1e73658` the touch beam 20 wide -- build 20, 18, 18 on seeds 7, 8, 9 (1598-1600) [dropped: 56 of 72 against 30's 63]
+- `a499e029` the wider touch beam 50 (100) -- build 20, 22, 20 on seeds 7, 8, 9 (1601-1603) [dropped: 62 of 72 against 63]
 
 ## The shortlist for pressure, in the order to try
 
