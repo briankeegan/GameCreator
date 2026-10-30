@@ -42,7 +42,7 @@ typedef struct {
   int32_t lvU, lvG;                       // a level swap (0: none)
   int32_t haveRl, rlN, rl[2], rlAt;
   int32_t nstart; XLine start[MAXSTARTS];  // chains begun: a swap that starts a clear, and the links its fall is continued by
-  int32_t tried, wide; double idleMs, searchMs, planShare, planFirst;   // (wide: the passes planned again with time over, and kept; the planner's share, and what its first pass took)
+  int32_t tried, wide, planWidth; double idleMs, searchMs, planShare, planFirst;   // (wide: the passes planned again with time over, and kept; the planner's share, and what its first pass took)
 } Found;
 #define READY_LINE_MS 120
 // whether a list asks for a chain at all
@@ -181,8 +181,14 @@ static void searchAll(const Read *R, Found *S) {
   if (ms >= 20) {
     S->tried++;
     PlanOpts po = planOptsOf(R, planSplit ? &planHalfA : &R->guides, ms);
+    // (THE FIRST PASS SIZED BY THE TIME TOO: no wider than its whole depth fits the share at the rate the passes before it measured --
+    // ms a level a beam slot, planCost -- so the beam reaches the depth it is asked to, a set-up the swaps it takes; never wider than
+    // the profile's beam, which the passes below widen with time over)
+    static LOCAL double planCost;
+    if (planCost > 0) { int32_t w = (int32_t)(ms / (1.3 * po.depth * planCost)); po.width = imax(PLAN_NARROW, imin(po.width, w)); }
     double planEnd = nowMs() + ms;
-    plan(&decQ, &po, &S->ap); S->haveAp = 1; S->planShare = ms; S->planFirst = S->ap.ms;
+    plan(&decQ, &po, &S->ap); S->haveAp = 1; S->planShare = ms; S->planFirst = S->ap.ms; S->planWidth = po.width;
+    if (S->ap.levels > 0 && S->ap.ms > 1) { double c = S->ap.ms / ((double)S->ap.levels * po.width); planCost = planCost > 0 ? 0.7 * planCost + 0.3 * c : c; }
     // (THE BEAM SIZED BY THE TIME: the profile's beam is the first pass; a pass done with time over is planned again from its own best
     // lines (its seeds), deeper and as much wider as the time left pays for at the pass's own rate -- each pass holds the last one's
     // lines, so is never the worse -- and kept only where it finished in its time)

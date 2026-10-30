@@ -49,7 +49,7 @@ typedef struct {
   double ms;                 // the planner's share, ms
   const Paths *seeds;        // the lines the last decision's plan ended with, the swaps played since taken off (answer.c plannedPaths)
 } PlanOpts;
-typedef struct { PLine perAim[MAXAIMS], nearest, quick, lowest, stopBest, pair; int32_t setup, nsetupLine, setupLine[PLAN_SEQ]; double ms; int32_t base; } Plan;
+typedef struct { PLine perAim[MAXAIMS], nearest, quick, lowest, stopBest, pair; int32_t setup, nsetupLine, setupLine[PLAN_SEQ]; double ms; int32_t base, levels, full; } Plan;   // (levels: the beam's levels grown whole; full: all its depth, or the beam ran out, within the clock)
 
 static LOCAL Ctx *planCtx;   // (each thread its own, as every buffer here: two plans search at once -- answer.c searchJob)
 // THE PLAN KEPT (plans/gambit-infra.md F, as tree reuse keeps the subtree under the move played): the lines a plan ends with -- each
@@ -111,6 +111,7 @@ static int readyAfter(Ctx *x, int n, int32_t readyAt) {
 
 #define PLAN_POOL 4096
 #define PLAN_KIDS 65536
+#define PLAN_NARROW 8     // (the narrowest first pass: propose.c searchAll)
 #define PLAN_WIDE_MAX 640   // (the widest beam planned again with time over: its kids within PLAN_KIDS, 60 swaps a line at most -- propose.c searchAll)
 static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   memset(P, 0, sizeof *P);
@@ -156,6 +157,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     pool[npool++] = it; planSeeded++;
   }
   int na = o->aims ? o->aims->n : 0;
+  int levels = 0, cutMid = 0;
   for (int d = 1; d <= o->depth && npool && !clockOut(); d++) {
     int nk = 0, nj = 0;
     static LOCAL int32_t jobP[PLAN_KIDS], jobM[PLAN_KIDS], jobOut[PLAN_KIDS];
@@ -188,7 +190,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     // the level read in the order it was made: every board within the rules is a kid of its parent; one that clears is weighed
     for (int pi = 0; pi < npool; pi++) pool[pi].kid0 = -1;
     for (int j = 0; j < nj; j++) {
-      if ((j & 31) == 31 && clockOut()) break;
+      if ((j & 31) == 31 && clockOut()) { cutMid = 1; break; }
       PItem *it = &pool[jobP[j]];
       int32_t m = jobM[j];
       int out = jobOut[j];
@@ -304,7 +306,9 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
     for (int q2 = 0; q2 < keepN; q2++) sorted[q2] = pool[nidx[q2]];
     for (int q2 = 0; q2 < keepN; q2++) pool[q2] = sorted[q2];
     npool = keepN;
+    if (!cutMid) levels = d;
   }
+  P->levels = levels; P->full = !cutMid && (levels == o->depth || !npool);
   // READY: an entry's line and the nearest kept only if the board it leaves breaks the block on its way once it has landed
   if (o->readyAt != NOT_ASKED) {
     clockShareEnd(shareOld); shareOld = clockShareBegin(t0 + 2 * o->ms);
