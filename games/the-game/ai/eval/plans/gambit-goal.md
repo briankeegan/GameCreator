@@ -59,6 +59,9 @@ Which mode plays is picked from the enemy's board, read top to bottom (`survivor
 no enemy, so there each mode is pinned by its profile. A mode plays its first entry, builds toward it otherwise, and takes a fallback
 only where the board dies without it. Survival comes first; under garbage, the break comes first.
 
+In a fight every decision's mode is the one the enemy's board calls for: `gambit_modes.js` re-picks it from each decision's logged
+`enemy=` and counts the decisions that disagree; a fight with any is red.
+
 | mode | picked when | for | first | fallbacks, only where it dies without them |
 | --- | --- | --- | --- | --- |
 | time attack | no enemy | score alone | 8+ chain | chain 6+, 4+, 3+, 2+ |
