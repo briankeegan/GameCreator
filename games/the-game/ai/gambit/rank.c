@@ -332,13 +332,16 @@ static int lostAlike(const Judge *x, const Judge *y) {
 }
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
 static int32_t cmpKey;
-// (BOUGHT WITH THE PANELS: with no garbage on the board, the later loss of a line that clears panels below the floor and breaks nothing
-// is stop time, and stop time holds the stack from rising -- the rows the next panels come in by. Beside one that spends none and
-// leaves the next decision a break's time (rankSave), the two survive alike, and the list puts the one that keeps its panels first)
+// (BOUGHT WITH THE PANELS: the later loss of a line that clears panels below the floor and breaks nothing is stop time, bought with the
+// panels the next break is made from. Beside one that spends none and leaves the next decision a break's time (rankSave), the two
+// survive alike, and the list puts the one that keeps its panels first -- under garbage too: a chain fired for its stop leaves the
+// garbage where it is and fewer panels to break it with)
 static int boughtWithPanels(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
-  return !decF.under && lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends;
+  return lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends;
 }
+// (A COMBO OF FOUR OUTSIDE THE LIST: panels spent for a small piece the mode does not ask for -- the owner: a last resort)
+static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
 // (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" any length the game counts)
 static int32_t listChainCap(void) {
   int32_t cap = 0;
@@ -381,6 +384,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
     // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
+    // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
+    else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
     else { int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x)); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1)); }
   }
@@ -445,7 +450,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.
     int alike = lostAlike(x, y);
-    // (bought with the panels: alike -- boughtWithPanels; under garbage the rising stack brings no panels in, the garbage tops it)
+    // (bought with the panels: alike -- boughtWithPanels)
     if (!alike && boughtWithPanels(x, y)) alike = 1;
     if (!alike && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
