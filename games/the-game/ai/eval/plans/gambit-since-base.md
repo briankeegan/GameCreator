@@ -72,6 +72,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `a499e029` the wider touch beam 50 (100) -- build 20, 22, 20 on seeds 7, 8, 9 (1601-1603) [dropped: 62 of 72 against 63]
 - main with the touch beam 30, without the goal before the floor (0b366e1b) -- build 23, 22, 23 on seeds 7, 8, 9 (1604-1606) against main's 21, 20, 22 [68 of 72 against 63; asked of the owner]
 - main with the touch beam 30 on seed 7: big chain 20 (1607, against 17), switching 22 (1608, against 18) -- combo_storm 7/8 in each
+- `278c268b` the touch beam 40 -- build 18, 14, 18 on seeds 7, 8, 9 (1609-1611) [dropped: 50 of 72, below 30's 63 and 60's 57 -- a seed's games are not the same twice in real time, so three seeds are several games apart run to run]
 
 ## The shortlist for pressure, in the order to try
 
