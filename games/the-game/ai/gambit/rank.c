@@ -265,6 +265,9 @@ static int wastesThree(const Judge *J) {
   if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
+#define POP_SETUP 60   // the frames a slab still pops for a set-up to beat the hold (a second: a set-up's few swaps done before it lands)
+#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
+static int lineWalk(const Judge *J);
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
   // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
@@ -278,6 +281,11 @@ static int beatsHold(const Judge *L, const Judge *H) {
   // (A SET-UP: with no garbage on the board, a line that lives where the hold does and leaves more ideas ready than the hold -- an attack
   // made ready is something done)
   if (!decF.under && L->o.lives && H->o.lives && moreIdeas(L, H)) return 1;
+  // (SET UP WHILE A SLAB POPS: under garbage, with the board popping for a break's time or more, a set-up lost no sooner than the hold,
+  // its nearest break no further and a break's walk left in the window -- the board left alone does nothing with those frames)
+  if (decF.under && popLeft(decQ.b) >= POP_SETUP && setupPlay(L->k.play) && !L->o.dead && l != NOT_ASKED && h != NOT_ASKED
+      && (l == FOREVER || (h != FOREVER && l >= h)) && L->o.nearAfter >= 0 && (H->o.nearAfter < 0 || L->o.nearAfter <= H->o.nearAfter)
+      && (pressAllowance < 0 || pressAllowance - lineWalk(L) >= BREAK_WALK)) return 1;
   return 0;
 }
 static double lostOf(const Judge *x);
@@ -307,7 +315,6 @@ static int cutsShort(const Judge *J) {
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
-#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
