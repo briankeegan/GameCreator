@@ -92,6 +92,9 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - the lines a search said break and the judge says do not (20% of decisions in 1643): replayed on their boards the judge agrees with itself; most are the break search's variants with a swap pair added (the plain line is the one played), and the chain search's lineups count the garbage the pop breaks anyway, which the judge leaves out [a measurement: no board the game makes and the judge does not]
 - `21cfa45e` under garbage, of two breaks lost alike, one that leaves a break in reach once the next block lands first -- big chain 23 on seed 8 (1644, against main's 21 in 1643) [kept]
 - main (1fff721d) switching on seed 7: 23 (1645, against 20 in 1617; the loss large_garbage-2, the window: 0 of 21 boards with a break missed) -- every mode at 23 once; run together next [a measurement]
+- every mode on main (69201d3d), seed 7: pressure 17 (1646), build 23 (1647), finish 18 (1648), big chain 21 (1649), switching 23 (1645) -- combo_storm 4, 7, 4, 6, 8 of 8 [a measurement: the drought spiral -- with no garbage on the board, the chains that buy stop time spend the panels below the floor (combo_storm-8: 49 to 17), and the next block lands on a board with nothing to break]
+- finish on seed 7 without `21cfa45e` (ee09c8b7): 20 (1650, combo_storm 6) against 18 -- with the big chain pair (+2 on seed 8, -1 on seed 7) the change nets -1 in three paired runs, within a run's noise [kept, open]
+- fights on the fork's server: main on the opener (7feb9c03) against Gambit 100, 8-4 (panel-game 536); 0 of 13,311 decisions in a mode its enemy board does not call for [a measurement]
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 
 ## The shortlist for pressure, in the order to try
