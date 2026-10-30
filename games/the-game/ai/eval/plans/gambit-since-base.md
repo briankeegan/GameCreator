@@ -59,6 +59,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - main with the planner's first entry logged (21d4d047): build 21 (1571) -- the planner found a line meeting the first entry in 141 of 27,795 decisions; its first pass takes its whole share (~170 ms) under garbage
 - `40c39574` the mode's goals of two lines that survive alike: the first entry, then no fallback, then the fallbacks -- build 22 (1572) [kept: the first entry begun 296 times against 222]
 - `4ac2cfd0` the planner goes on between decisions (pbetween) -- build 22 (1574) [dropped: it had a median 8 ms before the next question (p90 15), handed on 58 times -- the decision's thread has no time between questions to give]
+- `7a762946` the planner's first pass sized by the time (ms a level a beam slot) -- build 22 (1575) [dropped: the beam went to its floor of 8 and still grew a median 5 levels; the first entry begun 310 times, as before -- the planner's time is not what keeps it from 5-chains: a chain that breaks no garbage counts only if the board keeps the floor (material >=30) after it, and under garbage the board has 45 panels in 6% of decisions]
 
 ## The shortlist for pressure, in the order to try
 
