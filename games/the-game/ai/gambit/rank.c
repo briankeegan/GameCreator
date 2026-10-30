@@ -332,13 +332,16 @@ static int lostAlike(const Judge *x, const Judge *y) {
 }
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
 static int32_t cmpKey;
-// (BOUGHT WITH THE PANELS: with no garbage on the board, the later loss of a line that clears panels below the floor and breaks nothing
-// is stop time, and stop time holds the stack from rising -- the rows the next panels come in by. Beside one that spends none and
-// leaves the next decision a break's time (rankSave), the two survive alike, and the list puts the one that keeps its panels first)
+// (BOUGHT WITH THE PANELS: the later loss of a line that clears panels below the floor and breaks nothing is stop time, bought with the
+// panels the next break is made from. Beside one that spends none and leaves the next decision a break's time (rankSave), the two
+// survive alike, and the list puts the one that keeps its panels first -- under garbage too: a chain fired for its stop leaves the
+// garbage where it is and fewer panels to break it with)
 static int boughtWithPanels(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
-  return !decF.under && lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends;
+  return lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends;
 }
+// (A COMBO OF FOUR OUTSIDE THE LIST: panels spent for a small piece the mode does not ask for -- the owner: a last resort)
+static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
 // (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" any length the game counts)
 static int32_t listChainCap(void) {
   int32_t cap = 0;
@@ -353,19 +356,19 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
-  // 1-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
-  // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- before the
-  // window, before a break, before the line in progress: a chain left to end short of the target is the attack thrown away
-  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
-    int32_t cap = listChainCap();
-    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
-  }
   // 1'. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
   // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
   // spent comes back only a window later, the garbage it is needed for may be told of by then or not
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+  }
+  // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
+  // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the
+  // window's reserve, before a break, before the line in progress: a chain left to end short of the target is the attack thrown away
+  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
+    int32_t cap = listChainCap();
+    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
@@ -381,6 +384,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
     // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
+    // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
+    else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
     else { int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x)); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1)); }
   }
@@ -445,7 +450,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // the material, the saving and the list decide between them before the later loss does (10). Not alike: one that leaves the board
     // only that one break's time, beside one that leaves it a break's time more -- the next decision has one try where it had two.
     int alike = lostAlike(x, y);
-    // (bought with the panels: alike -- boughtWithPanels; under garbage the rising stack brings no panels in, the garbage tops it)
+    // (bought with the panels: alike -- boughtWithPanels)
     if (!alike && boughtWithPanels(x, y)) alike = 1;
     if (!alike && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
