@@ -125,7 +125,7 @@ static int chooseRule(const FactSet *F) {
   for (int t = 0; t < 2; t++) for (int i = 0; i < theTables.n; i++) if (theTables.r[i].table == t && holds(F, &theTables.r[i])) return i;
   return -1;
 }
-static int namedRule(int32_t name) { for (int t = 0; t < 2; t++) for (int i = 0; i < theTables.n; i++) if (theTables.r[i].table == t && theTables.r[i].name == name) return i; return -1; }
+static int namedRule(int32_t name) { for (int t = 0; t < 3; t++) for (int i = 0; i < theTables.n; i++) if (theTables.r[i].table == t && theTables.r[i].name == name) return i; return -1; }
 // A deadline: frames, or a fact; an unknown one is no deadline (NOT_ASKED)
 static int32_t deadlineOf(const FactSet *F, const Rule *r) {
   if (r->byFact >= 0) return r->byFact < NFACTS && F->known[r->byFact] ? F->v[r->byFact] : NOT_ASKED;

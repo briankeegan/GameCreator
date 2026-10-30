@@ -51,7 +51,7 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    and each change is checked for a mode it set back, until all are at 24, twice.
    Finish them reached 22 in run 432; big chain in run 1464 (lockstep). In real time, on the base (plans/gambit-since-base.md):
    pressure 23 in run 1555 and 21 in 1556 (factory 5 to 8 of 8, the other two 7 and 8); build 23 in run 1636 (combo_storm and
-   large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). Every mode run together next, on one commit.
+   large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). On the owner's lists (110143e3): pressure 22 in run 1669; each mode to 22 again, one at a time.
 
 ## The modes (the owner's plan)
 

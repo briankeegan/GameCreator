@@ -101,6 +101,9 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - every mode on main (d2e2ea64), seed 7: pressure 23 (1652), build 23 (1653), finish 21 (1654), big chain 21 (1655), switching 22 (1656) -- 110 of 120, against 102 on 69201d3d (1645-1649) [a measurement]
 - `110143e3` the owner's lists: big chains only in the opener, no combos in the chain modes, no combo of 4 in finish [the owner's]
 - the enemy's topped out read again (534 against 535): in 2,146 decisions GambitMain read Gambit 100 not topped out while its own board was (its top row reached, its stop all that held it) -- the read was garbage above the top row, stricter than the engine's; now the engine's own (Stack:isToppedOut, BotClient's `out`) [a fix]
+- `6e9ae7be` a chain falling carried on to the target before anything but survival, on a chain over the size it ended at (284f1739) -- pressure 19 (1664): 2-chains 145 against 243, 4-, 5- and 6-chains up, three games lost to an empty window [kept, then reordered]
+- `dc6e79f0` the chain after the window's reserve; stop time bought with the panels alike under garbage too; a break of four after a break of three (the owner) -- pressure 22 on seed 7 (1669; combo_storm 7, factory 7, large_garbage 8; 4-chains 276) [kept]
+- opener on combo_storm (1667): 4 of 8 (big chains only, no break between: the board runs dry); big chain on combo_storm (1666): 6 of 8 [a measurement]
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 
 ## The shortlist for pressure, in the order to try
