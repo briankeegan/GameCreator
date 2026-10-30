@@ -108,6 +108,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - main (1d405a32) finish on seed 7: 18 (1675; combo_storm 6, factory 5, large_garbage 7) -- under garbage the 8+ combo led the searches to set-ups and breaks of 6-8 swaps that spent the window [a measurement]
 - `2c8e91f0` a swap pressed twice in a row taken out where the line does as well without it -- build 21 (1673, against 22); lines with one 609 of 6,857 against 634 of 7,217: the judge finds most of them change what the line makes [dropped]
 - `2d3d492e` the closest moves, and from a clear still popping with no garbage on the board only -- pressure 20 (1674): large_garbage 5 of 8 again, so the closest-moves key under garbage, ahead of the garbage broken for each action [dropped]
+- `e6ec5c9a` the closest moves with no garbage on the board only (under garbage the garbage broken for each action) -- pressure 20 (1676; large_garbage 8, combo_storm 6, factory 6): three tries at the closest continuation 18, 20, 20 against 22 without [dropped]
 - opener on combo_storm (1667): 4 of 8 (big chains only, no break between: the board runs dry); big chain on combo_storm (1666): 6 of 8 [a measurement]
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 
