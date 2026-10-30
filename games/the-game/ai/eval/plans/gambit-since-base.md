@@ -120,6 +120,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 - opener on ffd5b8cf (the chain cap, BREAK_LOW): 21 (1690; combo_storm 7, factory 7, large_garbage 7) [a measurement]
 - `92d2e23f` a break in reach once the next block lands, before the reserve (the owner: always a break ready) -- opener 16 (1691, against 21) [dropped]
+- ffb3f5b5 (the base again) on seed 7: finish 22 (1692; combo_storm 8, factory 6, large_garbage 8), big chain 16 (1693; large_garbage 4 of 8) [a measurement]
+- `5f581700` the both-below reserve (cc8b2cb0) on ffb3f5b5 -- pressure 15 (1694, against 22), build 20 (1695, against 22) [dropped]
 
 ## The shortlist for pressure, in the order to try
 
