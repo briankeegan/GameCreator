@@ -123,7 +123,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - ffb3f5b5 (the base again) on seed 7: finish 22 (1692; combo_storm 8, factory 6, large_garbage 8), big chain 16 (1693; large_garbage 4 of 8) [a measurement]
 - `5f581700` the both-below reserve (cc8b2cb0) on ffb3f5b5 -- pressure 15 (1694, against 22), build 20 (1695, against 22) [dropped]
 - `9296433c` the chain cap (de28fcf1) on ffb3f5b5 -- big chain 21 (1698, against 16); pressure 21 (1699), build 23 (1700), finish 19 (1701): those three lists ask no "or more" chain, so they play as the base does -- the same play on the same seeds reads 19 to 23 [kept: main b2fcbbc4]
-- `b1f892d8` under garbage, while a slab pops a second or more, a set-up no worse than the hold played over it (large_garbage-7 in 1698 held 22 decisions through a 347-frame pop, no break ready, and was lost) -- 1702-1706 [open]
+- `b1f892d8` under garbage, while a slab pops a second or more, a set-up no worse than the hold played over it (large_garbage-7 in 1698 held 22 decisions through a 347-frame pop, no break ready, and was lost) -- big chain 18 (1702), finish 17 (1703), pressure 19 (1704), build 20 (1705), opener 14 (1706): 88 against about 107, games lost before frame 2600 [dropped]
 
 ## The shortlist for pressure, in the order to try
 
