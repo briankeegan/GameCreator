@@ -308,6 +308,7 @@ static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : action
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
+#define BREAK_LOW 6     // the window a break may leave, low, and the next break still be pressed out of it (an estimate: a swap and its walk)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
@@ -342,10 +343,11 @@ static int boughtWithPanels(const Judge *x, const Judge *y) {
 }
 // (A COMBO OF FOUR OUTSIDE THE LIST: panels spent for a small piece the mode does not ask for -- the owner: a last resort)
 static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
-// (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" any length the game counts)
+// (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" its target, the length it asks at least: a
+// link past the target is presses and panels the list does not ask for)
 static int32_t listChainCap(void) {
   int32_t cap = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_GT ? MAXCHAIN : t->op == OP_EQ || t->op == OP_LE ? t->n : 0; if (c > cap) cap = c; }
+  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
   return cap;
 }
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
@@ -356,15 +358,23 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // 1+. A BREAK READY (the owner: it should always have a break ready): of two that neither lives and survive alike, the one that leaves
+  // a break in reach once the next block lands -- before the window, the chain, a break now, the mode's goals
+  if (!lx && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
   // 1'. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
   // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
   // spent comes back only a window later, the garbage it is needed for may be told of by then or not
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
-    // (the window already below it: the one that leaves more of it, a break as much as any line -- the reserve first when it runs low
-    // (the owner); a break that buys no more than the other line is the next break's presses spent)
-    if (pressAllowance < BREAK_WALK || (rx && ry)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+    // (both below it -- the window already low: the one that leaves more of it, the reserve first when it runs low (the owner); and a
+    // break that leaves the window too low for the one after (BREAK_LOW) after a line that keeps it: a break that buys no more than the
+    // other line is the next break's presses spent)
+    if (rx && ry) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+    else if (pressAllowance < BREAK_WALK && (x->apBroke > 0) != (y->apBroke > 0)) {
+      const Judge *b = x->apBroke > 0 ? x : y, *o = b == x ? y : x;
+      if (pressAllowance - lineWalk(b) < BREAK_LOW && lineWalk(o) < lineWalk(b)) return (cmpKey = __LINE__, (b == x ? 1 : -1));
+    }
   }
   // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
   // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the
