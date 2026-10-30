@@ -301,8 +301,9 @@ enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE };
 static int32_t jobKinds[5], njobKinds;
 static Broke theBrWide; static int32_t wideDone;
 // (where the break search ran, for the log: 0 not run, 1 a worker beside the searches, 2 the decision after a worker had not finished it,
-// 3 the decision with no worker free; and the ms it was given)
+// 3 the decision with no worker free, 4 the decision's own thread under garbage, the workers beside it; and the ms it was given)
 static int32_t brWhere; static double brGiven;
+static int32_t brOnMain;   // (under garbage the break search is the decision's own thread's, the planner's half and the rest the workers': breakBegin)
 static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as the answer says: the native one, native.c gn_setup)
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
@@ -331,7 +332,10 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
   // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
-  njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
+  // (UNDER GARBAGE THE BREAK COMES FIRST: the break search on the decision's own thread, a whole CPU, before the planner -- the workers,
+  // at the idle class on what the game's and this thread's cores leave, take the rest)
+  brOnMain = R->under && pool.nworkers >= 2;
+  njobKinds = 0; if (!brOnMain) jobKinds[njobKinds++] = JOB_BREAK;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
@@ -343,6 +347,7 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 // 120 boards searched again, run 415, where 1 to 3 had been)
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
   jobsDone(brCtx);
+  if (brOnMain) { if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; } return 1; }
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = leftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;
   if (__atomic_load_n(&wideDone, __ATOMIC_ACQUIRE) && !theBr.depth && theBrWide.depth) { theBr = theBrWide; theBr.wide = theBr.wide ? theBr.wide : 1; }
@@ -435,10 +440,11 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   brWhere = 0; brGiven = 0;
   if (!beside) { brWhere = 3; brGiven = leftMs(); }
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
+  if (beside && brOnMain) { brWhere = 4; brGiven = leftMs(); ran = breakSearch(&R, lineFrom, linePressed, &brMs); }
   if (R.under) onStart(brHave ? &brResume : 0);   // (the search beside the decision, from the frontier this one resumes)
   double ts = nowMs();
   searchAll(&R, &S);
-  if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
+  if (beside) { int r2 = breakEnd(&R, lineFrom, linePressed, &brMs); if (!brOnMain) ran = r2; }
   searchMerge(&R, &S);
   S.searchMs = nowMs() - ts;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
