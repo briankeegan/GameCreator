@@ -81,6 +81,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `242f08d9` under garbage with no break in hand, the planner kept to the decision's thread -- build 21, 19, 21 on seeds 7, 8, 9 (1621-1623) [dropped: 61 of 72 against 68; eight of eleven losses to the board -- the planner's second half finds breaks too]
 - `9d14e9f8` no wider touch beam job under garbage -- build 21 on seed 7 (1627, against 23) [dropped]
 - `9f0b8601` under garbage the break search on the decision's own thread -- build 22 on seed 7 (1628, against 23) [dropped: a break found in 45% of decisions under garbage in a median 155 ms, main 44% in 212 -- faster, and no more breaks: about 55% of them have none in reach]
+- the drought boards searched again (gambit_reach, run 1622's losses): 140, of them 26 with a break the live search missed (most of them small, the window spent), 114 with none -- the board's shape, not the search
+- `33ca15f5` under garbage the break in progress over a dearer break -- build 22 on seed 8 (1631, as main) [kept: a 10-swap break given up twice for longer ones had spent factory-7's window, run 1622]
 
 ## The shortlist for pressure, in the order to try
 
