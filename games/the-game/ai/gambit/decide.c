@@ -174,6 +174,8 @@ static int fairShare(Cand *c, int n, int cap) {
 #define NSTRIP 12   // the lines judged again with one swap left out (THE THREE TAKEN OUT)
 #define STRIP_LINES 3   // the best lines that waste a three, each judged again so
 static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
+#define NUNDO 6   // the best lines judged again without a swap pressed twice in a row (THE SWAP UNDONE)
+static Judge undone[NUNDO];
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
@@ -318,6 +320,33 @@ static int ranked(const Read *R, const Found *S) {
       }
     }
     if (ns) sortJudged(order, n);
+  }
+  // THE SWAP UNDONE: a line that presses one swap twice in a row puts the two panels back where they were -- two presses for nothing,
+  // unless a panel fell between them. Each of the best lines with one is judged again with every such pair left out; where that line
+  // does as well (lives as long, makes and breaks as much), it takes the other's place
+  { int nu = 0;
+    for (int i = 0; i < n && nu < NUNDO && leftMs() > 0; i++) {
+      const Judge *J = order[i];
+      if (J->hold || J->k.nseq < 2) continue;
+      int32_t seq[MAXLINE]; int m = 0, cut = 0;
+      for (int q = 0; q < J->k.nseq; q++) {
+        if (q + 1 < J->k.nseq && J->k.seq[q] == J->k.seq[q + 1]) { q++; cut = 1; continue; }
+        seq[m++] = J->k.seq[q];
+      }
+      if (!cut || !m) continue;
+      Cand k;
+      if (!candOf(&k, J->k.play, seq, m, J->k.aim, J->k.extend)) continue;
+      k.settled = J->k.settled; k.way = J->k.way;
+      Judge *U = &undone[nu];
+      if (!judgeCand(R, &k, U)) continue;
+      int asWell = U->o.lives >= J->o.lives && (U->o.lives || lostOf(U) >= lostOf(J)) && U->apBroke >= J->apBroke &&
+                   (J->o.dead || (!U->o.dead && U->o.j.made.chain >= J->o.j.made.chain && U->o.j.made.combo >= J->o.j.made.combo));
+      if (!asWell) continue;
+      U->carried = J->carried; U->outside = U->outside && J->outside;
+      if (J == carriedJ) carriedJ = U;
+      order[i] = U; nu++;
+    }
+    if (nu) sortJudged(order, n);
   }
   // NO WASTED THREE (the owner: only when not doing it would kill it): a line whose clears break nothing and throw nothing is taken out
   // of the order -- unless every other line is lost within a break's time (rankSave) and a three lives, or is lost later: only there is
