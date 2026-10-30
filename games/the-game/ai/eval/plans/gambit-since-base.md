@@ -80,6 +80,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `b0aa0054` the touch beam grown 16 levels (12) -- build 21, 24, 19 on seeds 7, 8, 9 (1618-1620) [dropped: 64 of 72 against main's 68 -- seed 8 the first 24 of 24, but one run on one seed swings 2-3 games]
 - `242f08d9` under garbage with no break in hand, the planner kept to the decision's thread -- build 21, 19, 21 on seeds 7, 8, 9 (1621-1623) [dropped: 61 of 72 against 68; eight of eleven losses to the board -- the planner's second half finds breaks too]
 - `9d14e9f8` no wider touch beam job under garbage -- build 21 on seed 7 (1627, against 23) [dropped]
+- `9f0b8601` under garbage the break search on the decision's own thread -- build 22 on seed 7 (1628, against 23) [dropped: a break found in 45% of decisions under garbage in a median 155 ms, main 44% in 212 -- faster, and no more breaks: about 55% of them have none in reach]
 
 ## The shortlist for pressure, in the order to try
 
