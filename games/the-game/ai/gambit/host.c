@@ -72,20 +72,24 @@ static void *workerStart(void *arg) {
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
   return workerFn(arg);
 }
-// A THREAD AT THE IDLE CLASS beside the workers, on their CPUs, named `name`: 0 started
-static void *(*idleFn)(void *); static const char *idleName;
+// A THREAD AT THE IDLE CLASS beside the workers, on their CPUs, named `name`: 0 started (each its own slot, so one started right after
+// another reads its own function and name)
+typedef struct { void *(*fn)(void *); const char *name; } IdleSlot;
+static IdleSlot idleSlots[4]; static int nIdleSlots;
 static void *idleStart(void *arg) {
+  const IdleSlot *s = (const IdleSlot *)arg;
   const char *w = getenv("GC_GAMBIT_WORKER_CPUS");
   if (w && *w) pinnedTo(w); else pinned();
-  pthread_setname_np(pthread_self(), idleName);
+  pthread_setname_np(pthread_self(), s->name);
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
-  return idleFn(arg);
+  return s->fn(0);
 }
 int hostIdleThread(void *(*fn)(void *), const char *name) {
+  if (nIdleSlots >= (int)(sizeof idleSlots / sizeof idleSlots[0])) return -1;
+  IdleSlot *s = &idleSlots[nIdleSlots++]; s->fn = fn; s->name = name;
   pthread_t t; pthread_attr_t at;
-  idleFn = fn; idleName = name;
   pthread_attr_init(&at); pthread_attr_setstacksize(&at, 64ul << 20);
-  int r = pthread_create(&t, &at, idleStart, 0);
+  int r = pthread_create(&t, &at, idleStart, s);
   pthread_attr_destroy(&at);
   return r;
 }

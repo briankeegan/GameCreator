@@ -162,6 +162,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
                  !q->noRaise && canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
+  plGo();   // (the planner between decisions, from the plan this one kept: answer.c plThread)
   // (the closing work: from the moment it ran out of time to its answer)
   if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
   Answer *A = &theAnswer;
@@ -259,6 +260,7 @@ static int32_t ages[512];
 // engine's pool's (search.h workerLoop) -- every batch of steps a search hands the pool (core/nodes.h stepMany) is played on them all.
 static void *gnWorker(void *arg) { paThreadId((int)(long)arg); workerLoop(); return 0; }
 static void *onThreadMain(void *arg) { (void)arg; paThreadId(MAXTHREADS - 2); onThread(); return 0; }
+static void *plThreadMain(void *arg) { (void)arg; paThreadId(MAXTHREADS - 3); plThread(); return 0; }
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {
   hostTaps = 1;
   // (THE GAME'S THREAD, which calls this and plays the frame loop -- its keys are engine steps (front.c keyCtx) -- is the engine's last
@@ -270,10 +272,12 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   static int started;
   if (!started) {
     started = 1;
-    int n = hostWorkers(gnWorker, MAXTHREADS - 3);
+    int n = hostWorkers(gnWorker, MAXTHREADS - 4);
     while (__atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST) < n) {}
     // (and the break search between decisions, a thread of its own beside the pool, where there are workers' CPUs for it)
     if (n > 0 && hostIdleThread(onThreadMain, "gbetween") == 0) onThreadOn = 1;
+    // (and the planner between decisions, a thread of its own beside it)
+    if (n > 0 && hostIdleThread(plThreadMain, "pbetween") == 0) plThreadOn = 1;
     static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
   }
   return 0;

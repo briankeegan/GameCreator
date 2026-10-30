@@ -120,6 +120,59 @@ static void keepPlan(int kind, int32_t move, const int32_t *handed, int nhanded,
   if (!planOut.n || !(kind == 0 || kind == 1)) return;
   anchorKept(&thePlanKept, &planOut, kind, move, handed, nhanded, qid);
 }
+// THE PLANNER GOING ON BESIDE THE DECISIONS: from the lines the decision's plan ended with (planOut), a thread of its own at the idle
+// class plans the decision's board on past its answer, as deep as its time takes it, until the next question takes it back (plStop).
+// What it ends with is the plan the next decision resumes (thePlanKept's lines) where it planned longer than the decision did: the
+// same board, the same rules, more of the time between decisions searched.
+static int32_t plState, plThreadOn, plActive;
+static List plAims; static Keep plKeepF; static PlanOpts plOpts; static Paths plSeedsIn, plOutShared; static double plDecMs, plMs;
+static int32_t plLogMs = -1, plLogN, plLogKept;   // (the log's: the last let go -- its time, its lines, whether they were handed on)
+static void plThread(void) {
+  inJob = 3;
+  for (;;) {
+    int32_t st;
+    while ((st = __atomic_load_n(&plState, __ATOMIC_ACQUIRE)) != 1) __builtin_wasm_memory_atomic_wait32(&plState, st, -1);
+    __atomic_store_n(&plState, 2, __ATOMIC_RELEASE);
+    pressTight = decQ.tight; pressTap = decTap; ncache = 0;
+    clockWork = 0; clockAborted = 0; clockPoll = 0; clockShare = 0;
+    static LOCAL Plan pp;
+    double t0 = nowMs();
+    plan(&decQ, &plOpts, &pp);
+    plMs = nowMs() - t0;
+    plOutShared = planOut;   // (this thread's own: search/plan.c planOut is each thread's)
+    __atomic_store_n(&plState, 0, __ATOMIC_RELEASE);
+    __builtin_wasm_memory_atomic_notify(&plState, 1);
+  }
+}
+// (made ready once the decision has answered and kept its plan, on the decision's thread -- decMs, the decision's own planner's time --
+// and begun by the frame host once the answer is out: native.c answerOne, plGo)
+static int32_t plReady;
+static void plPrepare(const Read *R, double decMs) {
+  plReady = 0;
+  if (!plThreadOn || !planOut.n || !thePlanKept.set || !R->guides.n) return;
+  plAims = R->guides; plKeepF = R->keep;
+  plOpts = planOptsOf(R, &plAims, 1e7);
+  plOpts.keep = R->keepOn ? &plKeepF : 0; plOpts.depth = PLAN_SEQ - 1; plOpts.seeds = &plSeedsIn;
+  plSeedsIn = planOut; plDecMs = decMs; plMs = 0; plOutShared.n = 0;
+  plReady = 1;
+}
+static void plGo(void) {
+  if (!plReady) return;
+  plReady = 0;
+  __atomic_store_n(&plStopReq, 0, __ATOMIC_SEQ_CST);
+  __atomic_store_n(&plActive, 1, __ATOMIC_RELEASE);
+  __atomic_store_n(&plState, 1, __ATOMIC_RELEASE);
+  __builtin_wasm_memory_atomic_notify(&plState, 1);
+}
+static void plStop(void) {
+  if (!__atomic_load_n(&plActive, __ATOMIC_ACQUIRE)) return;
+  __atomic_store_n(&plStopReq, 1, __ATOMIC_SEQ_CST);
+  int32_t st;
+  while ((st = __atomic_load_n(&plState, __ATOMIC_ACQUIRE)) != 0) __builtin_wasm_memory_atomic_wait32(&plState, st, -1);
+  __atomic_store_n(&plActive, 0, __ATOMIC_RELEASE);
+  plLogMs = (int32_t)plMs; plLogN = plOutShared.n; plLogKept = 0;
+  if (plOutShared.n && thePlanKept.set && plMs > plDecMs) { thePlanKept.paths = plOutShared; plLogKept = 1; }
+}
 static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, Paths *out) {
   out->n = 0;
   Kept *K = &thePlanKept;
@@ -221,7 +274,9 @@ static void onGrant(int wait) {
   __builtin_wasm_memory_atomic_notify(&onGranted, 1);
   if (wait) { int32_t d; while ((d = __atomic_load_n(&onDone, __ATOMIC_ACQUIRE)) < g && __atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) __builtin_wasm_memory_atomic_wait32(&onDone, d, -1); }
 }
+static void plStop(void);
 static void onStop(void) {
+  plStop();   // (and the planner between decisions: plThread)
   if (!__atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) return;
   __atomic_store_n(&onStopReq, 1, __ATOMIC_SEQ_CST);
   __builtin_wasm_memory_atomic_notify(&onGranted, 1);
@@ -487,6 +542,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
+  plReady = 0; if (S.haveAp) plPrepare(&R, S.ap.ms);   // (and planned on between decisions: plThread, begun by plGo)
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
   carryNextOf(P.line);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
@@ -573,6 +629,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" plan="); L_i((int64_t)S.planShare); L_s("/"); L_i((int64_t)S.planFirst); L_s("/"); L_i(S.wide); L_s("/"); L_i((int64_t)S.ap.ms);
   // (the planner and the list's first entry: a line that meets it found, and how near its nearest line comes, the first entry's percent)
+  if (plLogMs >= 0) { L_s(" pl="); L_i(plLogMs); L_s("/"); L_i(plLogN); if (plLogKept) L_s("/kept"); plLogMs = -1; }   // (the planner between decisions, the last let go)
   if (S.haveAp) { L_s(" p0="); L_i(S.ap.perAim[0].set ? 1 : 0); L_s("/"); L_i(S.ap.nearest.set ? (int64_t)S.ap.nearest.near : -1); }
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");

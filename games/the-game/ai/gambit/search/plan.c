@@ -253,7 +253,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         #undef OKE
         #undef LESS
       }
-      if (nk < PLAN_KIDS) {
+      if (nk < PLAN_KIDS && it->nseq < PLAN_SEQ - 1) {   // (a line is at most PLAN_SEQ swaps: one longer has no room for its next)
         PItem *k = &kids[nk]; memset(k, 0, sizeof *k); k->n = out; k->nseq = imin(it->nseq + 1, PLAN_SEQ);
         for (int q2 = 0; q2 < it->nseq && q2 < PLAN_SEQ; q2++) { k->seq[q2] = it->seq[q2]; k->ats[q2] = it->ats[q2]; }
         if (it->nseq < PLAN_SEQ) { k->seq[it->nseq] = m; k->ats[it->nseq] = NODE(x, it->n)->t; }
