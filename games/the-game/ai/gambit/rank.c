@@ -362,9 +362,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
-    // (the window already below it: the one that leaves more of it, a break as much as any line -- the reserve first when it runs low
-    // (the owner); a break that buys no more than the other line is the next break's presses spent)
-    if (pressAllowance < BREAK_WALK || (rx && ry)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
   }
   // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
   // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the
@@ -463,7 +460,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (pressAllowance >= 0) {
       int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
       if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
-      if (rx && ry) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
     }
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return (cmpKey = __LINE__, (x->readyNext ? -1 : 1));
