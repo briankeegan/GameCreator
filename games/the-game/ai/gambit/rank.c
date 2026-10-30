@@ -342,10 +342,11 @@ static int boughtWithPanels(const Judge *x, const Judge *y) {
 }
 // (A COMBO OF FOUR OUTSIDE THE LIST: panels spent for a small piece the mode does not ask for -- the owner: a last resort)
 static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
-// (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" any length the game counts)
+// (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" its target, the length it asks at least: a
+// link past the target is presses and panels the list does not ask for)
 static int32_t listChainCap(void) {
   int32_t cap = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_GT ? MAXCHAIN : t->op == OP_EQ || t->op == OP_LE ? t->n : 0; if (c > cap) cap = c; }
+  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
   return cap;
 }
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
