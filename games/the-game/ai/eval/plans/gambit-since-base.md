@@ -125,6 +125,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `9296433c` the chain cap (de28fcf1) on ffb3f5b5 -- big chain 21 (1698, against 16); pressure 21 (1699), build 23 (1700), finish 19 (1701): those three lists ask no "or more" chain, so they play as the base does -- the same play on the same seeds reads 19 to 23 [kept: main b2fcbbc4]
 - `b1f892d8` under garbage, while a slab pops a second or more, a set-up no worse than the hold played over it (large_garbage-7 in 1698 held 22 decisions through a 347-frame pop, no break ready, and was lost) -- big chain 18 (1702), finish 17 (1703), pressure 19 (1704), build 20 (1705), opener 14 (1706): 88 against about 107, games lost before frame 2600 [dropped]
 - `43ca1eaa` the material floor 36 (the rules' 30) on main b2fcbbc4 -- big chain 20 (1707), finish 20 (1708), pressure 22 (1709), build 17 (1710), opener 18 (1711): 97 against 105 [dropped]
+- `3cb7da0d` under garbage, of two lines lost alike that break nothing, the later loss before the fewer actions (finish factory-3 in 1701 held 15 decisions over a line lost 55 frames later) -- big chain 19 (1712), finish 24 then 19 (1713, 1717), pressure 20 (1714), build 19 (1715), opener 17 (1716): 94 against 105 [dropped]
+- finish on one build, seed 7: 22, 19, 24, 19 -- a mode's single run is read across all five, 120 games, against the bar (105) [a measurement]
 
 ## The shortlist for pressure, in the order to try
 
