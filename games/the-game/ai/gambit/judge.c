@@ -484,6 +484,8 @@ EXPORT(gb_cells) int gb_cells(void) {
   return k;
 }
 EXPORT(gb_list_on) void gb_list_on(int on) { listOn = on; }
+// the input window's allowance a search is held to (-1: none), as a decision is asked under it
+EXPORT(gb_press_allowance) void gb_press_allowance(int allow) { pressAllowance = allow; }
 // The line in the io body (nseq words, r * 8 + c); the answer back into it: dead, deadAt, combo, chain, broke, chainAll, dropAt, done,
 // fire, lostAt, ready, late, nats, ats..., nsingles, singles..., readyN, readyLine...
 EXPORT(gb_judge) int gb_judge(int nseq, int settled, int tight, int readyAt, int readyIfLost, int readyIfBreak, int lifeTo, int lifeRest, int why) {

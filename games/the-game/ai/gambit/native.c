@@ -109,7 +109,7 @@ static int b64(const unsigned char *p, int n, char *out) {
   return k;
 }
 #define SAMPLEQ 32   // (a board is about 20 KB of log: one in 32 decisions keeps a game's log under a megabyte of them)
-static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr) {
+static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr, int32_t allow) {
   static unsigned char bytes[sizeof(Board)];
   static char line[sizeof(Board) * 2];
   unsigned long n = BOARD_HEAD;
@@ -120,7 +120,9 @@ static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *ar
   k += b64(bytes, (int)n, line + k);
   k += snprintf(line + k, sizeof line - (unsigned long)k, " [");
   for (int i = 0; i < narr; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, "%s[%d,%d,%d]", i ? "," : "", arr[i].at, arr[i].width, arr[i].height);
-  snprintf(line + k, sizeof line - (unsigned long)k, "]");
+  k += snprintf(line + k, sizeof line - (unsigned long)k, "]");
+  // (the input window's allowance the decision was asked under, so a replay searches inside it)
+  if (allow >= 0) snprintf(line + k, sizeof line - (unsigned long)k, " a%d", allow);
   flog(line);
 }
 // A question answered: the board judged at level 10's health. It stops in time for its move, on
@@ -188,19 +190,19 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0);
   flog(line);
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
-  if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last]); hostUnlock(); }
-  if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : A->dumpBoard == 3 ? "GAMBITK" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr);
+  if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last], -1); hostUnlock(); }
+  if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : A->dumpBoard == 3 ? "GAMBITK" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance);
   // (A SAMPLE OF EVERY DECISION: one question in SAMPLEQ, whatever it is, its board -- GAMBITQ, what test/decisions.txt.gz is drawn from,
   // so the replay holds the decisions a game makes and not only the ones some search came up empty on)
   static uint32_t asked;
-  if (++asked % SAMPLEQ == 0) dumpBoard("GAMBITQ", q->at, hostBoard, hostQ.arr, hostQ.narr);
+  if (++asked % SAMPLEQ == 0) dumpBoard("GAMBITQ", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance);
   // (a line the break search said breaks and the judge says does not: its board, rate-limited, for replaying both on it -- GAMBITU)
   static int32_t lastU = NUL;
-  if (unbroken.set && (lastU == NUL || q->at - lastU >= 120 || q->at < lastU)) { lastU = q->at; dumpBoard("GAMBITU", q->at, hostBoard, hostQ.arr, hostQ.narr); }
+  if (unbroken.set && (lastU == NUL || q->at - lastU >= 120 || q->at < lastU)) { lastU = q->at; dumpBoard("GAMBITU", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance); }
   // (a line played lost a break's time sooner than one offered: its board, rate-limited, for the checks' questions -- GAMBITS; test/main.c
   // fails any such answer)
   static int32_t lastS = NUL;
-  if (A->sooner && (lastS == NUL || q->at - lastS >= 60 || q->at < lastS)) { lastS = q->at; dumpBoard("GAMBITS", q->at, hostBoard, hostQ.arr, hostQ.narr); }
+  if (A->sooner && (lastS == NUL || q->at - lastS >= 60 || q->at < lastS)) { lastS = q->at; dumpBoard("GAMBITS", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance); }
   ringKeep(q->at);
 }
 // THE LAST BOARDS: every question's board and garbage on its way, the last RINGN decisions kept, written out when the match ends (GAMBITL lines,
@@ -221,7 +223,7 @@ static void ringKeep(int32_t at) {
 }
 static void ringOut(void) {
   hostLock();
-  for (int i = 0; i < ringCount; i++) { int k = (ringHead - ringCount + i + RINGN) % RINGN; dumpBoard("GAMBITL", ringAt[k], ring[k], ringArr[k], ringNarr[k]); }
+  for (int i = 0; i < ringCount; i++) { int k = (ringHead - ringCount + i + RINGN) % RINGN; dumpBoard("GAMBITL", ringAt[k], ring[k], ringArr[k], ringNarr[k], -1); }
   ringCount = 0;
   hostUnlock();
 }

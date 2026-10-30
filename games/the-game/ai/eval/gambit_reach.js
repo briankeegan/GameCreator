@@ -53,7 +53,7 @@ function reachGame(gdir, g) {
   // (each board with its decision's press, where the log gives it: the allowance left and the pace -- native.c dumpBoard's a, g)
   var bs = lines.map(function (l) {
     var p = l.split(' '), a = /^a(-?\d+)$/.exec(p[4] || ''), gp = /^g(\d+)$/.exec(p[5] || '');
-    return { at: +p[1], b64: p[2], arr: JSON.parse(p[3] || '[]'), press: a && gp ? { allow: +a[1], gap: +gp[1] } : null };
+    return { at: +p[1], b64: p[2], arr: JSON.parse(p[3] || '[]'), press: a ? { allow: +a[1], gap: gp ? +gp[1] : 0 } : null };
   }).filter(function (x) { return x.at <= lostAt && x.at >= lostAt - LAST; });
   var out = [];
   bs.forEach(function (x) {
@@ -124,7 +124,7 @@ function vetoGame(gdir) {
   ls.forEach(function (l) {
     var p = l.split(' '), a = /^a(-?\d+)$/.exec(p[4] || ''), gp = /^g(\d+)$/.exec(p[5] || '');
     if (!/^C\d+:/.test(p[2] || '')) return;
-    var line = G.breakOnBytes(p[2].slice(p[2].indexOf(':') + 1), JSON.parse(p[3] || '[]'), list, MS, 0, a && gp ? { allow: +a[1], gap: +gp[1] } : null);
+    var line = G.breakOnBytes(p[2].slice(p[2].indexOf(':') + 1), JSON.parse(p[3] || '[]'), list, MS, 0, a ? { allow: +a[1], gap: gp ? +gp[1] : 0 } : null);
     V.n++; if (line) V.wrong++;
   });
   return V;
