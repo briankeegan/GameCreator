@@ -381,6 +381,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!bx) {
       int fx = fallbackOf(x), fy = fallbackOf(y);
       if (fx != fy) return (cmpKey = __LINE__, (fx ? 1 : -1));
+      // (neither lives: the later loss before the fewer actions -- a window kept for a break is no use to a board lost first)
+      if (!lx && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
