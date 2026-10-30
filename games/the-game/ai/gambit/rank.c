@@ -339,6 +339,13 @@ static int boughtWithPanels(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
   return !decF.under && lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends;
 }
+// (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" any length the game counts)
+static int32_t listChainCap(void) {
+  int32_t cap = 0;
+  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_GT ? MAXCHAIN : t->op == OP_EQ || t->op == OP_LE ? t->n : 0; if (c > cap) cap = c; }
+  return cap;
+}
+static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
@@ -346,6 +353,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // 1-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
+  // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- before the
+  // window, before a break, before the line in progress: a chain left to end short of the target is the attack thrown away
+  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
+    int32_t cap = listChainCap();
+    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
+  }
   // 1'. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
   // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
   // spent comes back only a window later, the garbage it is needed for may be told of by then or not

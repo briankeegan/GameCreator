@@ -31,6 +31,7 @@ typedef struct {
                                 // broken still counted beyond the board left alone): a line that cuts a chain short makes the shorter one
   int32_t aloneChain;           // the chain the board left alone makes
   int32_t chainAll;             // the chain the line reaches as the game counts it (the chain already falling and every link after it)
+  int32_t chainOpen;            // that chain still falling as the line ends: a link the decisions after can add to it
   int32_t singles[MAXCOMBOS], nsingles;   // sizes of 4 or more the line clears as a clear of its own, no link of a chain
   int32_t threes;               // WASTED THREES: the line's clears of three that break nothing and begin no chain, beyond the board left alone's
   int32_t blocks;               // THE BLOCKS THE LINE THROWS, every attack its own (rules.c blocksOf): each clear of four or more a combo's
@@ -81,9 +82,9 @@ static int listWantsLonger(const List *L, int32_t chain) {
 // order's, after the entries; a last resort is outside the list (rank.c), ranked after every line within it.
 static int breakingThree(Made m, int32_t chainAll) { return m.broke > 0 && m.combo <= 3 && chainOf(m) <= 1 && chainAll <= 1; }
 static int lastResort(Made m, int32_t chainAll) { return m.combo >= 4 || imax(chainOf(m), chainAll) >= 2; }
-// A CHAIN BEGUN TOWARD THE LIST: a chain the list wants longer than (within MAXCHAIN) is a beginning of one it asks for -- a chain is
-// carried on by the decisions after (extend), so one short of the ask is on its way to it, not outside it. A step's (stepFitsAt) and a
-// whole line's (outcome.c fitsList) the same.
+// A CHAIN BEGUN TOWARD THE LIST: a chain the list wants longer than (within MAXCHAIN) is a beginning of one it asks for while it is
+// still falling -- the decisions after add its links (extend), so one short of the ask is on its way to it. A step's (stepFitsAt) mid
+// line; a whole line's (outcome.c fitsList) only where its chain is still falling as it ends: a chain over is the size it ended at.
 static int chainBegins(const List *L, int32_t chain) { return chain >= 2 && chain <= MAXCHAIN && listWantsLonger(L, chain); }
 // A STEP WITHIN THE RULE: an entry, a three that breaks, a last resort -- or a plain three on a board still falling, a chain's first
 // link; the whole line is held to the rule as it ends (lineFits).
@@ -401,6 +402,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->made.combo = combo > baseCombo ? combo : 0; j->made.chain = chain > baseChain ? chain : 0; j->made.broke = imax(0, broke - baseBroke);
   j->whole = (Made){ combo, chain, j->made.broke, 0 }; j->aloneChain = baseChain;
   j->chainAll = imax(chain, q->b->chainCounter);
+  { Board *eb = liveNode(x, n) ? ensureBoard(x, n) : 0; j->chainOpen = eb && eb->chainCounter > 0; }
   if (!o->settled) links = imax(links, imax(0, chain - 1));
   j->blocks = imax(0, pieces + links - blocksOf(baseCombo, baseChain));
   j->threes = imax(0, threes - baseThrees);
