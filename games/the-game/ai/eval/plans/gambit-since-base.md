@@ -78,6 +78,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - the goal before the floor taken back out (the owner): it cost build 63 against 68 of 72, pressure 18 against 22, finish 19 against 21 -- the goal is played within the floor
 - main (43fc0a55: the touch beam 30, the goal within the floor) on seed 7: pressure 19 of 23 (1615; one game's upload failed), big chain 20 (1616), switching 20 (1617) -- combo_storm the weakest in each
 - `b0aa0054` the touch beam grown 16 levels (12) -- build 21, 24, 19 on seeds 7, 8, 9 (1618-1620) [dropped: 64 of 72 against main's 68 -- seed 8 the first 24 of 24, but one run on one seed swings 2-3 games]
+- `242f08d9` under garbage with no break in hand, the planner kept to the decision's thread -- build 21, 19, 21 on seeds 7, 8, 9 (1621-1623) [dropped: 61 of 72 against 68; eight of eleven losses to the board -- the planner's second half finds breaks too]
 
 ## The shortlist for pressure, in the order to try
 
