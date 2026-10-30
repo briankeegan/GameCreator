@@ -1,11 +1,27 @@
 {
  "keep": {
-  "material": ">=30"
+  "material": ">=36"
  },
  "raise": {
   "to": 11
  },
  "underGarbage": "break",
+ "opener": [
+  {
+   "name": "opener",
+   "aims": [
+    {
+     "chain": ">=8"
+    },
+    {
+     "chain": ">=6"
+    },
+    {
+     "chain": ">=4"
+    }
+   ]
+  }
+ ],
  "attack": [
   {
    "name": "time attack",
@@ -18,15 +34,6 @@
     },
     {
      "chain": ">=6"
-    },
-    {
-     "chain": ">=4"
-    },
-    {
-     "chain": ">=3"
-    },
-    {
-     "chain": ">=2"
     }
    ]
   },
@@ -47,13 +54,7 @@
      "combo": "==6"
     },
     {
-     "chain": "==2"
-    },
-    {
-     "combo": ">=4"
-    },
-    {
-     "chain": ">=3"
+     "chain": "==3"
     }
    ],
    "by": "enemy.stop"
@@ -68,10 +69,7 @@
      "chain": ">=8"
     },
     {
-     "chain": ">=2"
-    },
-    {
-     "combo": ">=4"
+     "chain": ">=4"
     }
    ],
    "by": 600
@@ -86,10 +84,7 @@
      "chain": "==4"
     },
     {
-     "chain": ">=2"
-    },
-    {
-     "combo": ">=4"
+     "chain": "==3"
     }
    ],
    "by": 240
@@ -104,10 +99,10 @@
      "chain": "==5"
     },
     {
-     "chain": ">=2"
+     "chain": "==3"
     },
     {
-     "combo": ">=4"
+     "chain": "==4"
     }
    ],
    "by": 600

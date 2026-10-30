@@ -14,10 +14,10 @@
 
 #define TOUCH_DEPTH 12
 #define CHEAP_BREAK 6    // the actions a break may walk for before the level after it is searched for a cheaper one
-#define TOUCH_BEAM 60
+#define TOUCH_BEAM 30
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
-#define KEEPN TOUCH_BEAM            // the lines carried on
+#define KEEPN 60                    // the lines carried on
 #define LINEUP_BUDGET 400
 // (the touch beam from its wider beam on, its narrower left to another thread searching the same board: answer.c's wide job)
 static LOCAL int32_t touchFrom;
@@ -200,6 +200,14 @@ static int32_t stillAt(BS *s, int32_t t) {
   if (s->nIdle < 256) { s->idleT[s->nIdle] = t; s->idleB[s->nIdle++] = b; }
   return b;
 }
+// (the actions a line's swaps spend, walked from the root's cursor as the judge walks them: core/nodes.h actionsFor)
+static int spentOn(const BS *s, const int32_t *path, int len) {
+  const Board *rb = ensureBoard(s->x, s->root);
+  if (!rb) return 0;
+  int r = rb->curRow, c = rb->curCol, acts = 0;
+  for (int k = 0; k < len; k++) { acts += actionsFor(r, c, CR(path[k]), CC(path[k]), pressAllowance - acts); r = CR(path[k]); c = CC(path[k]); }
+  return acts;
+}
 static int within(BS *s, int i) { return !(BREAK_LIST && i >= 0 && i < (1 << 20) && s->outside[i]); }
 // (every node a step makes is marked as the rules see it: off them when its parent was, when it is a first swap that is a swap back,
 // or when its own clears are outside the list)
@@ -306,7 +314,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     }
   int n0 = 0;
   for (int i = 0; i < nseeds; i++) tl0[n0++] = seeds[i];
-  for (int i = 0; i < nfirsts; i++) if (liveNode(x, firsts[i]->n) && within(s, firsts[i]->n)) tl0[n0++] = firsts[i];
+  for (int i = 0; i < nfirsts; i++) if (liveNode(x, firsts[i]->n) && within(s, firsts[i]->n) && (pressAllowance < 0 || spentOn(s, firsts[i]->path, 1) <= allowLeftAt(0, 0))) tl0[n0++] = firsts[i];
   int tpath = 0;
   for (int tb = touchFrom; tb < 2 && !tpath && !SEARCH_OUT(); tb++) {
     int beam = tb ? TOUCH_WIDE : TOUCH_BEAM, ntl = n0;
@@ -360,7 +368,14 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       for (int i = 0; i < ntl; i++) {
         bAt[i] = nb;
         int nm = swapsOfNode(x, tl[i]->n, ms);
-        for (int j = 0; j < nm && nb < (int)(sizeof bPar / sizeof bPar[0]); j++) { bPar[nb] = tl[i]->n; bMv[nb++] = ms[j]; }
+        // (THE WINDOW AS THE JUDGE PRESSES IN IT: a swap whose walk is over what the window leaves at its frame is never pressed -- the
+        // judge cuts the line there -- so the beam does not grow it: its width goes to lines the window pays for (8b8a9618))
+        int left = -1; const Board *lb = 0;
+        if (pressAllowance >= 0) { lb = ensureBoard(x, tl[i]->n); left = allowLeftAt(NODE(x, tl[i]->n)->t - NODE(x, s->root)->t, spentOn(s, tl[i]->path, tl[i]->len)); }
+        for (int j = 0; j < nm && nb < (int)(sizeof bPar / sizeof bPar[0]); j++) {
+          if (lb && actionsFor(lb->curRow, lb->curCol, CR(ms[j]), CC(ms[j]), left) > left) continue;
+          bPar[nb] = tl[i]->n; bMv[nb++] = ms[j];
+        }
       }
       bAt[ntl] = nb;
       stepBatch(x, bPar, bMv, MK_SWAP, nb);

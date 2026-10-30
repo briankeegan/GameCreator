@@ -7,3 +7,5 @@ gambit-480 fa3ff80fc23ed7dac1bdd6f016b8e4919ed20e38  gambit-900 at 480 actions a
 gambit-w150 adb566a6804f03761d511742840c2753325a513c  gambit-900 by its window: 150 actions in 10 seconds
 gambit-w100 c0b585f897aa5fbb6afc369e62467b09e5c8cac1  gambit-600 by its window: 100 actions in 10 seconds
 gambit-w80 fa3ff80fc23ed7dac1bdd6f016b8e4919ed20e38  gambit-480 by its window: 80 actions in 10 seconds
+gambit-540 c6eb313e91ec1b2e8a593e4d35eb1a2ed56d8a9d  gambit-900 at 540 actions a minute, 90 in the standard window
+gambit-w90 c6eb313e91ec1b2e8a593e4d35eb1a2ed56d8a9d  gambit-540 by its window: 90 actions in 10 seconds

@@ -31,6 +31,99 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `d269024d` of two lines lost alike, the one whose board keeps the floor (7114babb) -- 14 (1540) [dropped: factory 1/8, four losses with the window spent]
 - the game drawn a frame in four, then sixty (panel-game PA_DRAW_EVERY) -- 20 (1541), 20 (1542) [kept: infra, the renderer 0.86 of a CPU to 0.38]
 - `358fd544` A1, the break search goes on between decisions (4d6a325c, the spares' lock ada4fe6c) -- 22 (1547) [kept: it ran on 26 decisions and found no break, so the 22 is not its doing]
+- confirmed: main with A1 -- 20 (1548)
+- `8f136ce0` A1 every frame, beside the decision and past it (175862a2) -- 21 (1549) [kept: it ran beside 28,111 decisions and found a break 9,928 times]
+- A3, a board on its way out asked further ahead (c63d971c, d0d80e33) [skipped: three reactions ahead played 10/24 against 12 (240f17b3); the search beside now gives the break search its time]
+- B5, the window's reserve for the next break (2e96f75a, cb346b2c) [skipped for now: made for swapGap 0, which the base does not play; the base's rule 1' keeps BREAK_WALK]
+- `9042f200` C9, under garbage the break that converts more full rows (1d596973) -- 23 (1550), 20 (1551) [kept: 43 of 48 against 41 for main before it]
+- `1d98225c` C9 again, of two breaks alike in rows the one that leaves more panels (e3f9eb3a, read off panelsLeft) -- 19 (1552) [dropped]
+- `a5efe28f` B6, the touch beam grows only swaps the window can press (8b8a9618) -- 20 (1553) [dropped: factory 5/8 as before]
+- `14799c22` B, every walk as cheap as the walls allow (bb44c817, HOLDTIGHT 76) -- 18 (1554) [dropped: factory 7/8, combo_storm 5/8]
+- tsan red in 1553 and 1554 was main's: the search beside the decisions ran on while the C checks wrote the next question's board (gb_question_bytes); it now lets it go first
+- main (`7959dfdb`): 23 (1555), 21 (1556), every check green -- pressure left at 22 for build
+- build on main: 19 (1557)
+- `db6a28a7` the owner's mode rule, of two lines that live the first entry, then building, then the fallbacks (63b466be) -- build 16 (1558) [dropped: combo_storm 5/8; the first aim met 4.9% of attacks]
+- `5c29d91a` the same below the rules' floor only -- build 17 (1559) [dropped: combo_storm 5/8; the first aim 4.6%. Ranking the fallbacks lower does not make 5-chains: the planner does not find their set-ups]
+- `13985d39` D11, the save where the best line without a three dies within a break's time (1479f155) -- build 17 (1560) [dropped: factory 3/8, four of its losses the window spent]
+- build on main again: 19 (1561) -- combo_storm 6/8, factory 5/8, large_garbage 8/8; three losses the window spent
+- `2a73b501` B7, ready only for a break the window pays for (954eefa1) -- build 23 (1562) [kept: combo_storm 8/8, factory 7/8, large_garbage 8/8; one loss, the window spent]
+- main with B7: build 18 (1563) -- combo_storm 6/8, factory 6/8, large_garbage 6/8; the window 1, reach 3, board 2 (main before it: the window 3)
+- `f80a6dac` A2, the off-list break search carries the frontier on (367b9140) -- build 17 (1564) [dropped: factory 4/8, reach 3 as before. factory-4's last 1,200 frames: breaks found 9-12 swaps deep, each cut by the window]
+- `f2cf4fc4` B6 again, on B7 (a5efe28f) -- build 21 (1565) [kept: factory 8/8; no loss to the window or the reach, three to the board]
+- C10, of two breaks lost alike the next break's material (9791a6e2, c5b65ba8) [skipped: the base has it, rank.c 1'' and 6, 7a]
+- `6e66d9f6` A4, the break on the board to come (fe8e28f4) -- build 21 (1566) [dropped: as main, three losses to the reach; it found a break 2,057 times and took up to 40 ms of the searches' time]
+- main with the depths logged (31295ac1): build 21 (1567) -- under garbage with no break found, the search between decisions reached deeper than the decision's frontier 7,102 times of 14,955 and was handed on 1,273
+- `a27030f6` the search between decisions handed on where it reached deeper -- build 22 (1568) [kept: handed on 8,090 times; its depth median 3 to 4, p90 7 to 8]
+- `4081eefe` the search between decisions in slices of 1, 2, then 4 frames -- build 19 (1569) [dropped: large_garbage 4/8, four losses to the reach; a slice the next decision cuts is lost whole]
+- main with the mode's list logged (9872cbab): build 21 (1570) -- of 5,321 lines begun that meet the list, 177 its first entry, 2,080 a fallback, 1,681 of them unforced (a line with none left the next decision a break's time); 1,418 of those lost later than that line, 1,489 under garbage
+- main with the planner's first entry logged (21d4d047): build 21 (1571) -- the planner found a line meeting the first entry in 141 of 27,795 decisions; its first pass takes its whole share (~170 ms) under garbage
+- `40c39574` the mode's goals of two lines that survive alike: the first entry, then no fallback, then the fallbacks -- build 22 (1572) [kept: the first entry begun 296 times against 222]
+- `4ac2cfd0` the planner goes on between decisions (pbetween) -- build 22 (1574) [dropped: it had a median 8 ms before the next question (p90 15), handed on 58 times -- the decision's thread has no time between questions to give]
+- `7a762946` the planner's first pass sized by the time (ms a level a beam slot) -- build 22 (1575) [dropped: the beam went to its floor of 8 and still grew a median 5 levels; the first entry begun 310 times, as before -- the planner's time is not what keeps it from 5-chains: a chain that breaks no garbage counts only if the board keeps the floor (material >=30) after it, and under garbage the board has 45 panels in 6% of decisions]
+- `dc42da3b` the goal before the floor (the owner): a line that makes the first entry may spend below the material floor -- build 23 (1577) [kept: the planner found the first entry 147 times, begun 311]
+- finish on main (20cc8952): 22 (1576) -- combo_storm 7/8, factory 7/8, large_garbage 8/8; the first entry (8+ combo) begun 15 times of 5,691 lines
+- `b45f0223` the mode's goals before a break's rate (1'') and before the line in progress (1a) -- finish 22 (1578) [kept: the first entry begun 90 times against 15; 8+ combos 39 against 10] -- then build 20 (1579), 17 (1580) on main with it: taken back out [the break that breaks more for each action walked is what keeps the board under garbage; the goal before it cost build reach and board losses]
+- `d2107042` the goal first, the shortest way to it (fewer presses), the set-up included (the owner) -- build 20 (1582); on seed 7 beside main: 21 against main's 20 (1584, 1583) [kept]
+- `59d94ee2` B8, DAS always: a board near its end walked held as the walls allow too, never tapped (8818b250) -- build 19 on seed 7 (1585), against 21 and 20 for main on it [kept: the owner's requirement; no loss to the window]
+- main (fb2752a4) on seeds 7, 8, 9: build 19, 18, 20 (1585, 1586, 1587); without the goal before the floor (15da0590): 20, 23, 21 (1588, 1589, 1590) -- 64 of 72 against 57, the first entry begun ~274 a run against ~308 [asked of the owner]
+- pressure on seed 7: main 18 (1591), without the goal before the floor 22 (1592); big chain on main 17 (1593), switching 18 (1594) -- combo_storm the weakest in each
+- `132c917b` the touch beam 30 wide (60), the lines carried on still 60 -- build 21, 20, 22 on seeds 7, 8, 9 (1595-1597) against main's 19, 18, 20 [kept: 63 of 72 against 57; combo_storm 20 of 24 against 16 -- under garbage it had grown a median 3 swaps deep, cut by the clock in 60% of decisions]
+- `a1e73658` the touch beam 20 wide -- build 20, 18, 18 on seeds 7, 8, 9 (1598-1600) [dropped: 56 of 72 against 30's 63]
+- `a499e029` the wider touch beam 50 (100) -- build 20, 22, 20 on seeds 7, 8, 9 (1601-1603) [dropped: 62 of 72 against 63]
+- main with the touch beam 30, without the goal before the floor (0b366e1b) -- build 23, 22, 23 on seeds 7, 8, 9 (1604-1606) against main's 21, 20, 22 [68 of 72 against 63; asked of the owner]
+- main with the touch beam 30 on seed 7: big chain 20 (1607, against 17), switching 22 (1608, against 18) -- combo_storm 7/8 in each
+- `278c268b` the touch beam 40 -- build 18, 14, 18 on seeds 7, 8, 9 (1609-1611) [dropped: 50 of 72, below 30's 63 and 60's 57 -- a seed's games are not the same twice in real time, so three seeds are several games apart run to run]
+- main with the touch beam 30 on seed 7: pressure 21 (1612, against 18), finish 19 (1613; factory 4/8, four board losses)
+- finish on seed 7 without the goal before the floor (0b366e1b): 21 (1614, against 19), no loss to the board
+- the goal before the floor taken back out (the owner): it cost build 63 against 68 of 72, pressure 18 against 22, finish 19 against 21 -- the goal is played within the floor
+- main (43fc0a55: the touch beam 30, the goal within the floor) on seed 7: pressure 19 of 23 (1615; one game's upload failed), big chain 20 (1616), switching 20 (1617) -- combo_storm the weakest in each
+- `b0aa0054` the touch beam grown 16 levels (12) -- build 21, 24, 19 on seeds 7, 8, 9 (1618-1620) [dropped: 64 of 72 against main's 68 -- seed 8 the first 24 of 24, but one run on one seed swings 2-3 games]
+- `242f08d9` under garbage with no break in hand, the planner kept to the decision's thread -- build 21, 19, 21 on seeds 7, 8, 9 (1621-1623) [dropped: 61 of 72 against 68; eight of eleven losses to the board -- the planner's second half finds breaks too]
+- `9d14e9f8` no wider touch beam job under garbage -- build 21 on seed 7 (1627, against 23) [dropped]
+- `9f0b8601` under garbage the break search on the decision's own thread -- build 22 on seed 7 (1628, against 23) [dropped: a break found in 45% of decisions under garbage in a median 155 ms, main 44% in 212 -- faster, and no more breaks: about 55% of them have none in reach]
+- the drought boards searched again (gambit_reach, run 1622's losses): 140, of them 26 with a break the live search missed (most of them small, the window spent), 114 with none -- the board's shape, not the search
+- `33ca15f5` under garbage the break in progress over a dearer break -- build 22 on seed 8 (1631, as main) [kept: a 10-swap break given up twice for longer ones had spent factory-7's window, run 1622]
+- main (e286a103): build 23 on seed 7 (1636) -- build done at 23
+- `31b0575a` the break search replays as many carried lines as its beam holds (30 of 60) -- build 21 on seed 7 (1637) [dropped]
+- fights on the fork's server, main (d4ca4b12) against Gambit 100: 4-1 (panel-game 529/530), then 6-3 on the opponent read without its falling garbage (534/535); every decision's mode the one its logged enemy board calls for (gambit_modes.js, 0 of 10,742), and each side's topped-out reading matched the other's own board (1,112 of 1,120) [a measurement]
+- `b9eb6971` under garbage, of two lines that break nothing and survive alike, a fallback after a line that fires none -- finish 23 on seed 8 (1641, against main's 21 of 23) [kept: of the fallbacks played, 4,193 put first by the later loss, 392 by the window's reserve, about 35 by any other key -- the summary's 1,728 "unforced" counts a fallback whose other line merely lasts a break's time]
+- main (c732a770) big chain on seed 7: 22 (1642; factory 6/8, both drought losses -- one the window spent on lines the board lived by, one no break in reach) [against 20 in 1616]
+- main (ee09c8b7) big chain on seed 8: 21 (1643; one loss in each pattern) -- the reach report searching inside each board's window: 0 of 68 boards had a break the live search missed; two losses had none on the board, the third (large_garbage-3) had 5-12 swap breaks the window could not pay for, spent on the row-by-row breaks before it [a measurement]
+- the lines a search said break and the judge says do not (20% of decisions in 1643): replayed on their boards the judge agrees with itself; most are the break search's variants with a swap pair added (the plain line is the one played), and the chain search's lineups count the garbage the pop breaks anyway, which the judge leaves out [a measurement: no board the game makes and the judge does not]
+- `21cfa45e` under garbage, of two breaks lost alike, one that leaves a break in reach once the next block lands first -- big chain 23 on seed 8 (1644, against main's 21 in 1643) [kept]
+- main (1fff721d) switching on seed 7: 23 (1645, against 20 in 1617; the loss large_garbage-2, the window: 0 of 21 boards with a break missed) -- every mode at 23 once; run together next [a measurement]
+- every mode on main (69201d3d), seed 7: pressure 17 (1646), build 23 (1647), finish 18 (1648), big chain 21 (1649), switching 23 (1645) -- combo_storm 4, 7, 4, 6, 8 of 8 [a measurement: the drought spiral -- with no garbage on the board, the chains that buy stop time spend the panels below the floor (combo_storm-8: 49 to 17), and the next block lands on a board with nothing to break]
+- finish on seed 7 without `21cfa45e` (ee09c8b7): 20 (1650, combo_storm 6) against 18 -- with the big chain pair (+2 on seed 8, -1 on seed 7) the change nets -1 in three paired runs, within a run's noise [kept, open]
+- fights on the fork's server: main on the opener (7feb9c03) against Gambit 100, 8-4 (panel-game 536); 0 of 13,311 decisions in a mode its enemy board does not call for [a measurement]
+- `8c17c2ee` the time bought with the panels survives alike in the first key too (the rule key 3 had, key 1 decided before it) -- pressure 18 on seed 7 (1651, against 17 in 1646): combo_storm 8 of 8 against 4, factory 4 against 6 (its losses under garbage, where the change does not reach) [kept]
+- `dbe73392` the mode builds toward its first entry before it holds (the goal key: first entry, a set-up toward it or a break, the hold, the fallbacks) -- pressure 23 on seed 7 (1652, against 18 in 1651; the first entry begun 535 times against about 170) [kept]
+- the opener in fights (536, 537): it opened every game but held in half its decisions (211 of 410) and began an 8-chain twice -- a set-up toward the first entry ranked alike with the hold; over by our own board topping out about 10 s in [a measurement; the fix above]
+- every mode on main (d2e2ea64), seed 7: pressure 23 (1652), build 23 (1653), finish 21 (1654), big chain 21 (1655), switching 22 (1656) -- 110 of 120, against 102 on 69201d3d (1645-1649) [a measurement]
+- `110143e3` the owner's lists: big chains only in the opener, no combos in the chain modes, no combo of 4 in finish [the owner's]
+- the enemy's topped out read again (534 against 535): in 2,146 decisions GambitMain read Gambit 100 not topped out while its own board was (its top row reached, its stop all that held it) -- the read was garbage above the top row, stricter than the engine's; now the engine's own (Stack:isToppedOut, BotClient's `out`) [a fix]
+- `6e9ae7be` a chain falling carried on to the target before anything but survival, on a chain over the size it ended at (284f1739) -- pressure 19 (1664): 2-chains 145 against 243, 4-, 5- and 6-chains up, three games lost to an empty window [kept, then reordered]
+- `dc6e79f0` the chain after the window's reserve; stop time bought with the panels alike under garbage too; a break of four after a break of three (the owner) -- pressure 22 on seed 7 (1669; combo_storm 7, factory 7, large_garbage 8; 4-chains 276) [kept]
+- main (1d405a32) build on seed 7: 22 (1672; combo_storm 8, factory 7, large_garbage 7; 5-chains 195) [a measurement]
+- `64b24801` the chain carried on by the closest moves, and read from a clear still popping -- pressure 18 (1670, against 22): large_garbage 5 of 8 [dropped]
+- main (1d405a32) finish on seed 7: 18 (1675; combo_storm 6, factory 5, large_garbage 7) -- under garbage the 8+ combo led the searches to set-ups and breaks of 6-8 swaps that spent the window [a measurement]
+- `384a86a9` under garbage the searches led toward a combo of five at most, as toward a chain of five -- finish 20 on seed 7 (1677, against 18 in 1675; factory 7 against 5) [kept: only lists asking a combo over six]
+- `cc8b2cb0` with the window already below a break's walk, of two lines that break nothing the one that leaves more of it (the owner: the reserve first when it runs low) -- finish 21 on seed 7 (1678, against 20) [kept]
+- `f393a9b2` with the window below a break's walk, of two lines that survive alike the one that leaves more of it, a break included (the owner: the reserve first when it runs low) -- finish 22 on seed 7 (1679, against 21; factory and large_garbage 8 of 8, no game lost to the window) [kept]
+- main (e6764416) on seed 7: big chain 19 (1680), pressure 23 (1681), build 17 (1682; breaks passed over with the window low) [a measurement]
+- `de28fcf1` a chain carried on to the list's target, an entry of "or more" its own length -- big chain 21 (1683, against 19 on e6764416) [kept, in ffd5b8cf]
+- `62826eb7` a break after a line that keeps the window only where it leaves it below BREAK_LOW -- build 20 (1684, against 17), finish 20 (1685, against 22): within a run's noise of the broad rule [open]
+- back to 1d405a32 with the combo guide (384a86a9), the two reserve keys (cc8b2cb0, f393a9b2) out: pressure 22 and build 22 were measured on 1d405a32 and the guide reaches only lists asking a combo over six; each change after it put back one at a time, every mode run on it [the owner]
+- `2c8e91f0` a swap pressed twice in a row taken out where the line does as well without it -- build 21 (1673, against 22); lines with one 609 of 6,857 against 634 of 7,217: the judge finds most of them change what the line makes [dropped]
+- `2d3d492e` the closest moves, and from a clear still popping with no garbage on the board only -- pressure 20 (1674): large_garbage 5 of 8 again, so the closest-moves key under garbage, ahead of the garbage broken for each action [dropped]
+- `e6ec5c9a` the closest moves with no garbage on the board only (under garbage the garbage broken for each action) -- pressure 20 (1676; large_garbage 8, combo_storm 6, factory 6): three tries at the closest continuation 18, 20, 20 against 22 without [dropped]
+- opener on combo_storm (1667): 4 of 8 (big chains only, no break between: the board runs dry); big chain on combo_storm (1666): 6 of 8 [a measurement]
+- `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
+- opener on ffd5b8cf (the chain cap, BREAK_LOW): 21 (1690; combo_storm 7, factory 7, large_garbage 7) [a measurement]
+- `92d2e23f` a break in reach once the next block lands, before the reserve (the owner: always a break ready) -- opener 16 (1691, against 21) [dropped]
+- ffb3f5b5 (the base again) on seed 7: finish 22 (1692; combo_storm 8, factory 6, large_garbage 8), big chain 16 (1693; large_garbage 4 of 8) [a measurement]
+- `5f581700` the both-below reserve (cc8b2cb0) on ffb3f5b5 -- pressure 15 (1694, against 22), build 20 (1695, against 22) [dropped]
+- `9296433c` the chain cap (de28fcf1) on ffb3f5b5 -- big chain 21 (1698, against 16); pressure 21 (1699), build 23 (1700), finish 19 (1701): those three lists ask no "or more" chain, so they play as the base does -- the same play on the same seeds reads 19 to 23 [kept: main b2fcbbc4]
+- `b1f892d8` under garbage, while a slab pops a second or more, a set-up no worse than the hold played over it (large_garbage-7 in 1698 held 22 decisions through a 347-frame pop, no break ready, and was lost) -- big chain 18 (1702), finish 17 (1703), pressure 19 (1704), build 20 (1705), opener 14 (1706): 88 against about 107, games lost before frame 2600 [dropped]
 
 ## The shortlist for pressure, in the order to try
 

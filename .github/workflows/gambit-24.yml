@@ -59,14 +59,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          fetch-depth: ${{ inputs.gambit_from != '' && '0' || '1' }}
+          fetch-depth: 1
       - name: The Gambit of another commit
         if: ${{ inputs.gambit_from != '' }}
         env:
           GAMBIT_FROM: ${{ inputs.gambit_from }}
         run: |
           from=$(awk -v n="$GAMBIT_FROM" '$1 == n { print $2 }' games/the-game/ai/eval/gambit-versions.txt); from=${from:-$GAMBIT_FROM}
-          rm -rf games/the-game/ai/gambit && git checkout "$from" -- games/the-game/ai/gambit
+          # (that one commit fetched alone, not the history)
+          for i in 1 2 3; do timeout 120 git fetch --depth 1 --quiet origin "$from" && break; sleep 5; done
+          rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
           echo "::notice title=gambit::the Gambit of ${{ inputs.gambit_from }}"
       - uses: actions/checkout@v4
         with:
@@ -122,9 +124,32 @@ jobs:
             out/survivor.log
           if-no-files-found: warn
           retention-days: 14
-      # (after the games, so a check that fails turns the run red without stopping a game)
+
+  # (the code's checks, once a run beside the games: a check that fails turns the run red without stopping a game)
+  checks:
+    if: ${{ inputs.report_run == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - name: The Gambit of another commit
+        if: ${{ inputs.gambit_from != '' }}
+        env:
+          GAMBIT_FROM: ${{ inputs.gambit_from }}
+        run: |
+          from=$(awk -v n="$GAMBIT_FROM" '$1 == n { print $2 }' games/the-game/ai/eval/gambit-versions.txt); from=${from:-$GAMBIT_FROM}
+          # (that one commit fetched alone, not the history)
+          for i in 1 2 3; do timeout 120 git fetch --depth 1 --quiet origin "$from" && break; sleep 5; done
+          rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
+      - name: clang
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y clang luajit zlib1g-dev && break; sleep 10; done
       - name: Gambit's C checks (the bits, perched blocks, the decisions replayed against the golden)
-        if: always()
         timeout-minutes: 15
         # (and again on two workers: the readiness searched on every thread -- every check but the golden, which their search may move)
         run: cd games/the-game/ai/gambit && ./build.sh test && GC_GAMBIT_WORKERS=2 ./build.sh test && ./build.sh tsan > /dev/null

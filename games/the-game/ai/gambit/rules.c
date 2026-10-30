@@ -52,11 +52,15 @@ static int fits(const List *L, Made m) {
 }
 // THE ONE RULE'S THREE (judge.c breakingThree): after whatever entries a list has, under garbage, a three that breaks it -- the searches
 // look for it in every mode, and the order puts it after every entry
-// A LONG CHAIN UNDER GARBAGE (decide.c read): the searches are led toward a chain of five at most -- a chain the list asks longer is one
-// no buried board makes, and leading toward it leads toward none of the chains that dig (each link that touches the garbage breaks it
-// again); the list itself, what fits and what meets, stays the mode's
+// A LONG CHAIN OR A BIG COMBO UNDER GARBAGE (decide.c read): the searches are led toward a chain of five at most, and a combo of five at
+// most -- a chain or a combo the list asks bigger is one no buried board makes, and leading toward it leads toward none of the clears
+// that dig (each link that touches the garbage breaks it again; a combo of five is set up in the presses a buried board has); the list
+// itself, what fits and what meets, stays the mode's
 static void guideShort(List *L) {
-  for (int i = 0; i < L->n; i++) { Test *t = &L->aim[i].chain; if (t->op && t->n + (t->op == OP_GT) > 5 && (t->op == OP_GE || t->op == OP_GT || t->op == OP_EQ)) { t->op = OP_GE; t->n = 5; } }
+  for (int i = 0; i < L->n; i++) {
+    Test *t = &L->aim[i].chain; if (t->op && t->n + (t->op == OP_GT) > 5 && (t->op == OP_GE || t->op == OP_GT || t->op == OP_EQ)) { t->op = OP_GE; t->n = 5; }
+    Test *c = &L->aim[i].combo; if (c->op && c->n + (c->op == OP_GT) > 6 && (c->op == OP_GE || c->op == OP_GT)) { c->op = OP_GE; c->n = 5; }
+  }
 }
 static void withRule(List *L) {
   Aim t; memset(&t, 0, sizeof t);

@@ -44,7 +44,7 @@ static int takeAnswer(FAnswer *a);        // native.c: 1 when one was waiting
 static int answerWaiting(int32_t id);     // native.c
 static void abortTo(int32_t id);          // native.c: every question up to id is no longer wanted
 static void flog(const char *s);          // native.c: a line into the run's log
-static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr);   // native.c: a board into the log
+static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr, int32_t allow);   // native.c: a board into the log
 // (the boards the last swaps were pressed on, a ring: the one a wasted three came of is logged with it)
 #define SWAPRING 4
 static Board *swapRing[SWAPRING]; static int32_t swapRingAt[SWAPRING], swapRingN;
@@ -656,7 +656,7 @@ static void countAttacks(const Board *b) {
     if (F.pendLog[0] && F.loggedWasted < 400) {
       flog(F.pendLog);
       // (the first few with the board their swap was pressed on: GAMBITX <frame pressed>)
-      if (F.loggedWasted < 24) for (int i = 0; i < SWAPRING; i++) if (swapRing[i] && swapRingAt[i] == F.pendSwapAt) dumpBoard("GAMBITX", swapRingAt[i], swapRing[i], 0, 0);
+      if (F.loggedWasted < 24) for (int i = 0; i < SWAPRING; i++) if (swapRing[i] && swapRingAt[i] == F.pendSwapAt) dumpBoard("GAMBITX", swapRingAt[i], swapRing[i], 0, 0, -1);
       F.loggedWasted++;
     }
     F.pendLog[0] = 0;
@@ -898,7 +898,7 @@ static int frontFrame(void) {
       // on them: GAMBITR board, GAMBITRK f:bits..., GAMBITRA at,w,h,chain,metal,capped...)
       if (F.loggedRefusedBoards < 12) {
         F.loggedRefusedBoards++;
-        dumpBoard("GAMBITR", now, t, 0, 0);
+        dumpBoard("GAMBITR", now, t, 0, 0, -1);
         static char l[8192]; int k = snprintf(l, sizeof l, "GAMBITRK %d spoil=%d bits=%d keys", now, F.guardSpoil, bits);
         for (int32_t f = 0; f < 430 && k < (int)sizeof l - 24; f++) { int32_t b = planKeyAt(f); if (b) k += snprintf(l + k, sizeof l - (unsigned long)k, " %d:%d", f, b); }
         flog(l);

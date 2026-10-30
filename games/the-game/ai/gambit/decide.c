@@ -4,6 +4,7 @@
 typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
+static int32_t openerOver;   // (the opener played out: a board has topped out this game)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
@@ -37,7 +38,12 @@ static int readBoard_(Read *R) {
   if (alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
   // (the rule: the mode in force, else the first whose `when` the facts hold -- with no opponent to read, the rule asking `enemy.none`;
   // else the first of the rules, so a board with nobody across still plays)
-  int ri = modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
+  // (THE OPENER: in a fight with no mode named, from the game's start until either board tops out -- garbage landed above its top row,
+  // not garbage sent -- the opener's rule, big chains; then the mode the enemy's board picks)
+  if (F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out)) openerOver = 1;
+  int oi = -1;
+  for (int i = 0; i < theTables.n && oi < 0 && !openerOver && theOpp.has && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
+  int ri = oi >= 0 ? oi : modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
   if (ri < 0 && !theOpp.has && theTables.n > 0) ri = 0;
   if (ri < 0) return 0;
   const Rule *rule = &theTables.r[ri];

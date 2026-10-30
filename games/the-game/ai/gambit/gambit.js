@@ -49,10 +49,11 @@ function keepWords(keep) {
   Object.keys(keep).forEach(function (k) { if (KEEPS.indexOf(k.replace(/^us\./, '')) < 0) throw new Error('gambit: a floor asks ' + k + ', which facts.c does not keep'); });
   return w;
 }
-// the words of a table set ({ defend, attack, keep, raise, underGarbage }), its rules' names numbered in `names`
+// the words of a table set ({ defend, attack, opener, keep, raise, underGarbage }), its rules' names numbered in `names` (the opener:
+// the rule a fight plays from its start until either board tops out -- decide.c read)
 function rulesWords(tables, names) {
   var w = [], n = 0;
-  [['defend', 0], ['attack', 1]].forEach(function (tb) {
+  [['defend', 0], ['attack', 1], ['opener', 2]].forEach(function (tb) {
     (tables[tb[0]] || []).forEach(function (r) {
       if (names.indexOf(r.name) < 0) names.push(r.name);
       var when = Object.keys(r.when || {}), list = aimsOf(r), end = 0, aims = [];
@@ -72,12 +73,12 @@ function rulesWords(tables, names) {
 // ---- THE RULES FILE, read again whenever it changes (its mtime): it may be rewritten between matches or while one runs, and the next
 // decision plays by it. An opponent with tables of its own is played by those. A file that fails to read or parse leaves the last good
 // tables in force; the rules it drops (a `when` on the wrong side's board, no aim) are listed in `errors`.
-var SIDE = { defend: 'us.', attack: 'enemy.' };
+var SIDE = { defend: 'us.', attack: 'enemy.', opener: 'us.' };
 function aimsOf(rule) { if (Array.isArray(rule.aims)) return rule.aims; var l = []; if (rule.aim) l.push(rule.aim); if (rule.else) l.push(rule.else); return l; }
 // a table's rules, each `when` led by its own side's board: a rule that tests only the other side is dropped, and the reason kept
 function checked(tables) {
-  var out = { defend: [], attack: [] }, errors = [];
-  ['defend', 'attack'].forEach(function (t) {
+  var out = { defend: [], attack: [], opener: [] }, errors = [];
+  ['defend', 'attack', 'opener'].forEach(function (t) {
     ((tables && tables[t]) || []).forEach(function (r, i) {
       var keys = Object.keys(r.when || {}), own = keys.filter(function (k) { return k.indexOf(SIDE[t]) === 0; });
       if (keys.length && !own.length) errors.push(t + ' rule ' + i + ' (' + (r.name || '') + ') tests only ' + keys.join(', ') + ': a ' + t + ' rule tests ' + SIDE[t] + '* first');
@@ -106,7 +107,7 @@ Rules.prototype.get = function (opponent) {
     if (st.mtimeMs !== this.mtime) {
       var P = parse(JSON.parse(fs.readFileSync(this.file, 'utf8')));
       this.all = P.all; this.own = P.own; this.errors = P.errors; this.mtime = st.mtimeMs; this.error = null;
-      console.error('GAMBIT rules ' + this.file + ': ' + this.all.defend.length + ' defend, ' + this.all.attack.length + ' attack, ' + Object.keys(P.own).length + ' opponents' + (P.errors.length ? '; dropped: ' + P.errors.join(' | ') : ''));
+      console.error('GAMBIT rules ' + this.file + ': ' + this.all.defend.length + ' defend, ' + this.all.attack.length + ' attack, ' + this.all.opener.length + ' opener, ' + Object.keys(P.own).length + ' opponents' + (P.errors.length ? '; dropped: ' + P.errors.join(' | ') : ''));
     }
   } catch (e) { this.error = String(e && e.message || e); }
   return (opponent && this.own[opponent]) || this.all;
@@ -198,14 +199,16 @@ Gambit.prototype.breakOn = function (board, arrivals, aims, ms, listOn) {
   return this.breakPath(ms);
 };
 // The same from a board as a native host logs it (GAMBITB C<size>:<base64>) and its arrivals ([at, width, height], frames from it).
-// listOn 0: no line held to the list (a list ended by "default", as every list is under garbage)
-Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms, listOn) {
+// listOn 0: no line held to the list (a list ended by "default", as every list is under garbage); press { allow }: the input window's
+// allowance the search is held to, as the decision was asked under it (none: no window)
+Gambit.prototype.breakOnBytes = function (b64, arrivals, aims, ms, listOn, press) {
   var bytes = Buffer.from(b64, 'base64'), X = this.X, io = new Uint8Array(X.memory.buffer, X.gb_io() >>> 0, bytes.length);
   io.set(bytes);
   var w = this.G.body(Math.ceil(bytes.length / 4) + 3 * arrivals.length), k = Math.ceil(bytes.length / 4);
   arrivals.forEach(function (a) { w[k++] = a[0]; w[k++] = a[1]; w[k++] = a[2]; });
   if (X.gb_question_bytes(bytes.length, arrivals.length) < 0) throw new Error('gambit: the board bytes were refused');
   this.G.list(aims); X.gb_list_on(listOn === 0 ? 0 : 1);
+  X.gb_press_allowance(press && press.allow >= 0 ? press.allow : -1);
   X.gb_decision_on(-1, 0, 1, 0);
   return this.breakPath(ms);
 };

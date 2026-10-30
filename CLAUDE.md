@@ -216,6 +216,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   is worth clearing it, deferred. Being buried and short widens the SEARCH (six
   beam slots ranked by closeness to a slab, added to the twelve price-ranked
   ones) so the option is visible; finding is not preferring.
+- **A question to the owner never stops the work.** Ask it, then go on to the next fix; one decision is never the only lever.
 - **An explicit instruction beats a measurement.** Say the number once, then
   do what was asked.
 - **Never parse a tool's prose — make it emit data**, and have the consumer

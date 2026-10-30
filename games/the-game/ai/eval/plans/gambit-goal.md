@@ -49,7 +49,32 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    **The order (the owner's):** the goal stays 24/24 in every mode; 22 of 24 is where a mode is left for the next -- a change made for
    one mode can undo another's, so the last two are won with every mode run together. Once every mode is at 22, they are run together
    and each change is checked for a mode it set back, until all are at 24, twice.
-   Finish them reached 22 in run 432; big chain in run 1464; pressure and build next.
+   Finish them reached 22 in run 432; big chain in run 1464 (lockstep). In real time, on the base (plans/gambit-since-base.md):
+   pressure 23 in run 1555 and 21 in 1556 (factory 5 to 8 of 8, the other two 7 and 8); build 23 in run 1636 (combo_storm and
+   large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). On the owner's lists (110143e3): pressure 22 in run 1669, build 22 in run 1672, finish 22 in run 1679; each mode to 22 again, one at a time.
+
+## The modes (the owner's plan)
+
+A fight opens with the opener (`survivor-profiles/gambit-rules.json` `opener`); after it, the mode is picked from the enemy's board,
+read top to bottom (`attack`), its height counting panels and garbage alike. A line begun is carried to its end; the next line is the
+new mode's. Training has no enemy, so there each mode is pinned by its profile. A mode plays its first entry, builds toward it otherwise, and takes a fallback
+only where the board dies without it. Survival comes first; under garbage, the break comes first.
+
+A chain going is carried on to the mode's target whenever the board survives it, by the closest moves, its next links set up while
+the first clear still pops; a chain that has ended counts the size it ended at. The ideal line, always, breaks garbage between the
+links it adds -- both at once before either alone. A four that breaks ranks after a three that breaks as much (the owner).
+
+In a fight every decision's mode is the one the enemy's board calls for: `gambit_modes.js` re-picks it from each decision's logged
+`enemy=` and counts the decisions that disagree; a fight with any is red.
+
+| mode | picked when | for | first | fallbacks, only where it dies without them |
+| --- | --- | --- | --- | --- |
+| opener | a fight's start, until either board tops out (its top row reached by panels or landed garbage, as the engine has it -- garbage queued or falling does not count) | pressure from the start: big chains only | 8+ chain | chain 6+, 4+ |
+| time attack | no enemy | score alone: set up the biggest chain there is | 8+ chain | chain 6+ |
+| finish them | the enemy topped out (its top row reached, as the engine has it), its stop ends within 2 s (120 frames) | a fast hit it cannot absorb | 8+ combo | combo 5, combo 6, 3-chain (a combo of 4 is wasted) |
+| big chain | the enemy's stack under 5 rows | it has room: one huge block, no combos | 8+ chain | chain 4+, carried on as far as it goes |
+| build | the enemy's stack under 9 rows | steady medium attacks, no combos | 5-chain | 3-chain, 4-chain |
+| pressure | the enemy's stack 9 rows or more | keep it high with quick 4-chains, no combos | 4-chain | 3-chain |
 
 ## Open questions for the owner
 
@@ -73,6 +98,10 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 - Topped out, there is always some stop.
 - Ready when everything lands, with a plan -- several steps if it takes them.
 - Raise in the opening.
+- **The goal within the floor**: a line that makes the mode's first entry keeps the material floor like any other (a break excepted);
+  spending below it cost every mode games (`gambit-since-base.md`).
+- **DAS, always**: a walk is held to the wall and tapped otherwise, on every board -- a dying one too (`core/nodes.h` `TAP_DIES` -1,
+  `legCost`). Core behaviour like this changes only after asking the owner.
 - Every answer arrives in time for its move; a decision may think across frames.
 - Every number comes from the engine -- no invented constants.
 - **Nothing is assumed about garbage not yet shown.** Training's patterns are exercises standing in for a real opponent, who throws anything at any time: Gambit plans on the garbage the game shows on its way and nothing else -- never the pattern's size, rhythm or next block.

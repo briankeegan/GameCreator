@@ -207,8 +207,9 @@ function GambitNative:telegraph(sources, me)
 end
 
 -- The stack this one fights, as the rules' `when` and `by` read it (gambit-rules.json enemy.*): whether there is one (an attack engine,
--- Training's, is no stack: none), whether it is topped out -- garbage above its top row, a board that can die (a stack that only
--- reaches the top row is tall, not topped out) -- the highest row it has a panel in, and the frames it is held up by. Read
+-- Training's, is no stack: none), whether it is topped out as the engine has it (Stack:isToppedOut: a panel, or garbage landed, in its
+-- top row -- what drains its health once its stop runs out; garbage queued or still falling is not on its board) -- the highest row it
+-- has a panel in, and the frames it is held up by. Read
 -- off the opponent's own board as its client shipped it (view: BotClient's oppView, from the snapshots it paints from) when one came
 -- within VIEW_FRESH frames -- its stop counted down since; else off the copy of its stack played here from its relayed keys: its stop
 -- and pre-stop, or its shake when longer, as the judge reads a board's (judge.c dropAt).
@@ -222,7 +223,7 @@ local function opponentOf(sources, view, clock)
   local anyWired = false
   for _, src in ipairs(sources or EMPTY) do if src.panels and wired(src) then anyWired = true end end
   if view and clock and view.seen and (anyWired or clock - view.seen <= VIEW_FRESH) then
-    return 1, view.over and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
+    return 1, view.out and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
   end
   if anyWired then return 1, 0, 0, 0 end
   local has, out, top, stop = 0, 0, 0, 0
@@ -231,8 +232,7 @@ local function opponentOf(sources, view, clock)
     if type(src.isToppedOut) == "function" and src.panels then
       has = 1
       stop = math.max(stop, (src.stop_time or 0) + (src.pre_stop_time or 0), src.shake_time or 0)
-      local above = src.panels[(src.height or 12) + 1]
-      for col = 1, src.width or 6 do local p = above and above[col]; if p and p.isGarbage and p.state ~= "falling" then out = 1 end end
+      if src:isToppedOut() then out = 1 end
       for row = src.height or 12, 1, -1 do
         local found = false
         for col = 1, src.width or 6 do if counts(src.panels[row] and src.panels[row][col]) then found = true break end end

@@ -145,7 +145,7 @@ static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
 static Broke onBr; static Paths onSeeds;
 static int32_t onWanted; static double onDecMs;   // (the decision kept a frontier, and the time its own break search took)
 static int32_t decTap;   // (the decision's pressTap, for its jobs' threads and the search between decisions)
-static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound;   // (the slices searched and a break found; the log's: the last let go, onStop)
+static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound, onLogDeep, onLogKept;   // (the slices searched and a break found; the log's: the last let go, onStop -- and its deepest line, and whether it was handed on)
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
   memset(&theKept, 0, sizeof theKept); onWanted = 0;
   if (!br || !br->keepOut.n || br->depth || !(kind == 0 || kind == 1)) return;
@@ -229,16 +229,19 @@ static void onStop(void) {
   while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 0) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
   __atomic_store_n(&onActive, 0, __ATOMIC_RELEASE);
   __builtin_wasm_memory_atomic_notify(&onDone, 1);
-  onLogSlices = onSlices; onLogFound = onFound;
-  // (handed on only where the decision kept a frontier, found no break, and the thread searched longer than it did -- or found one)
-  if (!onSlices || !onWanted || (!onFound && onSlices * ON_SLICE_MS <= onDecMs)) return;
+  onLogSlices = onSlices; onLogFound = onFound; onLogKept = 0;
+  onLogDeep = 0; for (int i = 0; i < onSeeds.n; i++) onLogDeep = imax(onLogDeep, onSeeds.len[i]);
+  // (handed on only where the decision kept a frontier, found no break, and the thread searched longer than it did, reached deeper than
+  // the frontier it kept, or found one)
+  int keptDeep = 0; for (int i = 0; theKept.set && i < theKept.paths.n; i++) keptDeep = imax(keptDeep, theKept.paths.len[i]);
+  if (!onSlices || !onWanted || (!onFound && onLogDeep <= keptDeep && onSlices * ON_SLICE_MS <= onDecMs)) return;
   // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
   static Paths kept;
   kept.n = 0;
   if (onFound && onBr.pathLen > 0) { kept.len[0] = onBr.pathLen; for (int k = 0; k < onBr.pathLen && k < MAXPATH; k++) kept.path[0][k] = onBr.path[k]; kept.n = 1; }
   const Paths *from = onFound ? &onBr.keepOut : &onSeeds;
   for (int i = 0; i < from->n && kept.n < KEEPN; i++, kept.n++) { kept.len[kept.n] = from->len[i]; for (int k = 0; k < from->len[i]; k++) kept.path[kept.n][k] = from->path[i][k]; }
-  if (kept.n && theKept.set) theKept.paths = kept;
+  if (kept.n && theKept.set) { theKept.paths = kept; onLogKept = 1; }
 }
 
 // THE BREAK SEARCH, in its share of the decision's time -- or, with workers, on one of them beside the other searches, in all of theirs
@@ -560,13 +563,17 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" sv="); L_i(__atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? 1 : 0); if (surviveAsked) L_s("/asked");   // (the survival job finished this decision; the backup asked of it)
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
-  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1"); if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); }
+  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1"); if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); L_s(" onDeep="); L_i(onLogDeep); if (onLogKept) L_s("/kept"); }
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }
   else L_s("none");
+  // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
+  if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); }
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" plan="); L_i((int64_t)S.planShare); L_s("/"); L_i((int64_t)S.planFirst); L_s("/"); L_i(S.wide); L_s("/"); L_i((int64_t)S.ap.ms);
+  // (the planner and the list's first entry: a line that meets it found, and how near its nearest line comes, the first entry's percent)
+  if (S.haveAp) { L_s(" p0="); L_i(S.ap.perAim[0].set ? 1 : 0); L_s("/"); L_i(S.ap.nearest.set ? (int64_t)S.ap.nearest.near : -1); }
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
   int any = 0;
@@ -597,6 +604,23 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
+  // (THE MODE'S LIST, for the report: the entry the line played meets, whether it is a fallback -- an entry after the first that breaks
+  // no garbage -- its loss, and of the lines offered that are no fallback the latest lost, L one that lives, - none; then a break's time,
+  // rankSave: mode=entry/fallback/lost/other/save)
+  if (top && !top->hold && top->met >= 0) {
+    const Judge *alt = 0;
+    for (int i = 0; i < P.ncands; i++) {
+      const Judge *j = order[i];
+      if (j == top || (!j->hold && j->met > 0 && !(j->apBroke > 0))) continue;
+      if (!alt || (j->o.lives && !alt->o.lives) || (j->o.lives == alt->o.lives && lostOf(j) > lostOf(alt))) alt = j;
+    }
+    L_s(" mode="); L_i(top->met); L_s("/"); L_i(top->met > 0 && !(top->apBroke > 0)); L_s("/");
+    if (top->o.lives) L_s("L"); else if (lostOf(top) > 1e9) L_s("inf"); else L_i((int64_t)lostOf(top)); L_s("/");
+    if (!alt) L_s("-"); else if (alt->o.lives) L_s("L"); else if (lostOf(alt) > 1e9) L_s("inf"); else L_i((int64_t)lostOf(alt));
+    L_s("/"); L_i(rankSave);
+    // (and the order's key that put the line played before that other: rank.c cmpKey, /kLINE)
+    if (alt && top->met > 0 && !(top->apBroke > 0) && compareJudged(top, alt) < 0) { L_s("/k"); L_i(cmpKey); }
+  }
   // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
   // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey: sooner=play:lost:kLINE)
   A->sooner = 0;
@@ -689,7 +713,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); lifeDumps = 0;
+  modeLeft(); lifeDumps = 0; openerOver = 0;
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
   readyStop(); readyKeptClear();   // (a new game's boards are its own)

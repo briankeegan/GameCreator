@@ -39,7 +39,7 @@ static int fitsWithin(const List *L, Made m, const Judged *j) {
   // (a chain shorter than the list asks is begun toward it (judge.c chainBegins): within the list, its own clears held to it as ever;
   // ranked after every line that meets an entry, as it meets none)
   int32_t chain = imax(chainOf(m), j->chainAll);
-  int begun = chainBegins(L, chain);
+  int begun = j->chainOpen && chainBegins(L, chain);
   if (!begun && !fits(L, m)) return 0;
   if (!begun && j->chainAll >= 2) { Made c = { 0, j->chainAll, 0, 0 }; if (!fits(L, c)) return 0; }
   for (int i = 0; i < j->nsingles; i++) { Made s = { j->singles[i], 1, 0, 0 }; if (!fits(L, s)) return 0; }
