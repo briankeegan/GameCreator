@@ -83,6 +83,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `9f0b8601` under garbage the break search on the decision's own thread -- build 22 on seed 7 (1628, against 23) [dropped: a break found in 45% of decisions under garbage in a median 155 ms, main 44% in 212 -- faster, and no more breaks: about 55% of them have none in reach]
 - the drought boards searched again (gambit_reach, run 1622's losses): 140, of them 26 with a break the live search missed (most of them small, the window spent), 114 with none -- the board's shape, not the search
 - `33ca15f5` under garbage the break in progress over a dearer break -- build 22 on seed 8 (1631, as main) [kept: a 10-swap break given up twice for longer ones had spent factory-7's window, run 1622]
+- main (e286a103): build 23 on seed 7 (1636) -- build done at 23
+- `31b0575a` the break search replays as many carried lines as its beam holds (30 of 60) -- build 21 on seed 7 (1637) [dropped]
 
 ## The shortlist for pressure, in the order to try
 
