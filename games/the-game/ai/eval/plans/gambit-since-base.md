@@ -58,6 +58,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - main with the mode's list logged (9872cbab): build 21 (1570) -- of 5,321 lines begun that meet the list, 177 its first entry, 2,080 a fallback, 1,681 of them unforced (a line with none left the next decision a break's time); 1,418 of those lost later than that line, 1,489 under garbage
 - main with the planner's first entry logged (21d4d047): build 21 (1571) -- the planner found a line meeting the first entry in 141 of 27,795 decisions; its first pass takes its whole share (~170 ms) under garbage
 - `40c39574` the mode's goals of two lines that survive alike: the first entry, then no fallback, then the fallbacks -- build 22 (1572) [kept: the first entry begun 296 times against 222]
+- `4ac2cfd0` the planner goes on between decisions (pbetween) -- build 22 (1574) [dropped: it had a median 8 ms before the next question (p90 15), handed on 58 times -- the decision's thread has no time between questions to give]
 
 ## The shortlist for pressure, in the order to try
 
