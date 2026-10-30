@@ -100,6 +100,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - the opener in fights (536, 537): it opened every game but held in half its decisions (211 of 410) and began an 8-chain twice -- a set-up toward the first entry ranked alike with the hold; over by our own board topping out about 10 s in [a measurement; the fix above]
 - every mode on main (d2e2ea64), seed 7: pressure 23 (1652), build 23 (1653), finish 21 (1654), big chain 21 (1655), switching 22 (1656) -- 110 of 120, against 102 on 69201d3d (1645-1649) [a measurement]
 - `110143e3` the owner's lists: big chains only in the opener, no combos in the chain modes, no combo of 4 in finish [the owner's]
+- the enemy's topped out read again (534 against 535): in 2,146 decisions GambitMain read Gambit 100 not topped out while its own board was (its top row reached, its stop all that held it) -- the read was garbage above the top row, stricter than the engine's; now the engine's own (Stack:isToppedOut, BotClient's `out`) [a fix]
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 
 ## The shortlist for pressure, in the order to try

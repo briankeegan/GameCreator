@@ -65,9 +65,9 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
 
 | mode | picked when | for | first | fallbacks, only where it dies without them |
 | --- | --- | --- | --- | --- |
-| opener | a fight's start, until either board tops out (garbage landed above the top row, not garbage sent) | pressure from the start: big chains only | 8+ chain | chain 6+, 4+ |
+| opener | a fight's start, until either board tops out (its top row reached by panels or landed garbage, as the engine has it -- garbage queued or falling does not count) | pressure from the start: big chains only | 8+ chain | chain 6+, 4+ |
 | time attack | no enemy | score alone: set up the biggest chain there is | 8+ chain | chain 6+ |
-| finish them | the enemy topped out, its stop ends within 2 s (120 frames) | a fast hit it cannot absorb | 8+ combo | combo 5, combo 6, 3-chain (a combo of 4 is wasted) |
+| finish them | the enemy topped out (its top row reached, as the engine has it), its stop ends within 2 s (120 frames) | a fast hit it cannot absorb | 8+ combo | combo 5, combo 6, 3-chain (a combo of 4 is wasted) |
 | big chain | the enemy's stack under 5 rows | it has room: one huge block, no combos | 8+ chain | chain 4+, carried on as far as it goes |
 | build | the enemy's stack under 9 rows | steady medium attacks, no combos | 5-chain | 3-chain, 4-chain |
 | pressure | the enemy's stack 9 rows or more | keep it high with quick 4-chains, no combos | 4-chain | 3-chain |
