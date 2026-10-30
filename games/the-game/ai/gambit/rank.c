@@ -378,7 +378,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // dies without it -- survival first): of two that survive alike -- both live, or both lost no sooner than a break's time and less than
   // a break's time apart, where the later buys no break more -- and keep the board's own chain alike, the first entry, then a line that
   // fires no fallback, then each fallback in the list's order (goalKeyOf)
-  if (cutsShort(x) == cutsShort(y) && goalAlike(x, y)) { int gx = goalKeyOf(x), gy = goalKeyOf(y); if (gx != gy) return (cmpKey = __LINE__, (gx - gy)); }
+  // -- and of two that make the first entry, or two set-ups toward it, the shorter walk (the owner: the goal first, the shortest way to
+  // it, the set-up included)
+  if (cutsShort(x) == cutsShort(y) && goalAlike(x, y)) {
+    int gx = goalKeyOf(x), gy = goalKeyOf(y);
+    if (gx != gy) return (cmpKey = __LINE__, (gx - gy));
+    int sx = !x->hold && setupPlay(x->k.play), sy = !y->hold && setupPlay(y->k.play);
+    if (gx == 0 || (sx && sy)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+  }
   if (lx) {
     // 2. (both live) the board's own chain kept before cut short: a chain the board is making is never stopped by a line that need not
     if (cutsShort(x) != cutsShort(y)) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1));
