@@ -1,0 +1,6 @@
+{
+ "base": "gambit.json",
+ "gambit": {
+  "mode": "opener"
+ }
+}
