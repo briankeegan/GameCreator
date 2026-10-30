@@ -352,7 +352,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (fx != fy) return (cmpKey = __LINE__, (fx ? 1 : -1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
-    // (of two that break: the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
+    // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
+    // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
+    else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
     else { int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x)); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1)); }
   }
   // 1a. THE LINE IN PROGRESS KEPT: of two that both live or both do not, the line the last decision was playing, judged again on the
