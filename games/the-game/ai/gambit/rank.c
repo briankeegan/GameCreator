@@ -346,7 +346,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (decF.under && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int bx = x->apBroke > 0, by = y->apBroke > 0;
     if (bx != by) return (cmpKey = __LINE__, (bx ? -1 : 1));
-    if (!bx) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+    // (of two that break nothing: a fallback after a line that fires none -- the mode's list before the walk; then the fewer actions)
+    if (!bx) {
+      int fx = fallbackOf(x), fy = fallbackOf(y);
+      if (fx != fy) return (cmpKey = __LINE__, (fx ? 1 : -1));
+      int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
+    }
     // (of two that break: the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
     else { int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x)); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1)); }
   }

@@ -618,6 +618,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (top->o.lives) L_s("L"); else if (lostOf(top) > 1e9) L_s("inf"); else L_i((int64_t)lostOf(top)); L_s("/");
     if (!alt) L_s("-"); else if (alt->o.lives) L_s("L"); else if (lostOf(alt) > 1e9) L_s("inf"); else L_i((int64_t)lostOf(alt));
     L_s("/"); L_i(rankSave);
+    // (and the order's key that put the line played before that other: rank.c cmpKey, /kLINE)
+    if (alt && top->met > 0 && !(top->apBroke > 0) && compareJudged(top, alt) < 0) { L_s("/k"); L_i(cmpKey); }
   }
   // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
   // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey: sooner=play:lost:kLINE)
