@@ -348,6 +348,11 @@ static int32_t listChainCap(void) {
   for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_GT ? MAXCHAIN : t->op == OP_EQ || t->op == OP_LE ? t->n : 0; if (c > cap) cap = c; }
   return cap;
 }
+static int32_t listChainMin(void) {
+  int32_t lo = 0;
+  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c >= 2 && (!lo || c < lo)) lo = c; }
+  return lo;
+}
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
@@ -363,12 +368,19 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
   }
-  // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
-  // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the
-  // window's reserve, before a break, before the line in progress: a chain left to end short of the target is the attack thrown away
-  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
-    int32_t cap = listChainCap();
-    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
+  // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target, by the
+  // closest moves; its links can be set up while the first clear still pops): while the board chains -- or, with no garbage on it, a
+  // clear pops, the chain's first link -- of two that survive alike, the one that takes the chain further, up to the longest the list
+  // asks (from a clear still popping, only a chain the list asks at all: a 2-chain it does not ask is no continuation), then of two that
+  // take it as far, the one pressed in fewer actions -- after the window's reserve, before a break, before the line in progress. (Under
+  // garbage a clear still popping is the slab's, and the break comes first)
+  if (decQ.b && (decQ.b->chainCounter >= 2 || (!decF.under && decQ.b->nActive > decQ.b->swappingCount)) && (lx || lostAlike(x, y))) {
+    int32_t cap = listChainCap(), lo = decQ.b->chainCounter >= 2 ? 2 : listChainMin();
+    if (cap >= 2 && lo >= 2) {
+      int32_t rx = chainReach(x), ry = chainReach(y), cx = rx >= lo ? imin(rx, cap) : 0, cy = ry >= lo ? imin(ry, cap) : 0;
+      if (cx != cy) return (cmpKey = __LINE__, (cy - cx));
+      if (cx >= 2) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+    }
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
