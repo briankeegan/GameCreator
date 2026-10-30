@@ -218,10 +218,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         #define OKE() (endOk < 0 ? (endOk = allowedAt(x, out) && lineFits(seqTmp, ns, 1)) : endOk)
         Made made = { bigC, chain, BROKE_OF(it, st), imax(0, sentCells(&st) - base) };
         Board *ob = ensureBoard(x, out);
-        // (THE GOAL BEFORE THE FLOOR (the owner): a line that makes the list's first entry may spend the board below the floor -- the
-        // panels are for the attack; under garbage the first entry is a break, which keeps it anyway)
-        int goal = na && meets(&o->aims->aim[0], made);
-        int inTime = !(o->by != NOT_ASKED && fire > o->by), kept = goal || keepsFloor(o->keep, ob, made.broke), floor = keepsFloor(o->keep, ob, 0);
+        int inTime = !(o->by != NOT_ASKED && fire > o->by), kept = keepsFloor(o->keep, ob, made.broke), floor = keepsFloor(o->keep, ob, 0);
         #define FILL(L, ai) do { memset(&(L), 0, sizeof (L)); lineFrom(&(L), it, m, out, fire); (L).cells = made.cells; (L).chain = chain; (L).combo = bigC; \
                                  (L).broke = made.broke; (L).earned = st.earned; (L).done = done; (L).floor = floor; (L).aimIndex = (ai); (L).brk = made.broke > 0; (L).acts = acts; } while (0)
         if (!(o->dies > 0 && done > o->dies)) {
@@ -251,11 +248,6 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
             PLine *pa = &P->perAim[ai];
             if ((!pa->set || made.cells > pa->cells || (made.cells == pa->cells && LESS(*pa))) && OKE()) FILL(*pa, ai);
           }
-        } else if (inTime && na) {
-          // (a clear the floor keeps from being played still says how near the first entry its board is: the beam is led toward it,
-          // the floor aside, as the first entry is played)
-          double n0 = (double)(int64_t)(nearAim(&o->aims->aim[0], made) * 100 + 0.5);
-          if (n0 > it->reach) it->reach = n0;
         }
         #undef FILL
         #undef OKE

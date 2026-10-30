@@ -106,8 +106,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // board needs: outside too)
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
-  // (but the list's first entry may spend below it: the goal before the floor, the owner)
-  if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0) && !(R->asked.n && meets(&R->asked.aim[0], m))) J->outside = J->spends = 1;
+  if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = J->spends = 1;
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
   // entries, then the one rule's three that breaks)
   // (read off what the board ends up making, the chain already under way included: a swap that cuts it short meets what is left of it,
