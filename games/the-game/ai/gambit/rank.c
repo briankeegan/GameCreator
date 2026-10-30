@@ -368,7 +368,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // fires no fallback, then each fallback in the list's order (goalKeyOf)
   if (cutsShort(x) == cutsShort(y)) {
     double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
-    if (lx || (lo >= rankSave && hi - lo < rankSave)) { int gx = goalKeyOf(x), gy = goalKeyOf(y); if (gx != gy) return (cmpKey = __LINE__, (gx - gy)); }
+    if (lx || (lo >= rankSave && hi - lo < rankSave)) {
+      int gx = goalKeyOf(x), gy = goalKeyOf(y);
+      if (gx != gy) return (cmpKey = __LINE__, (gx - gy));
+      // (and of two that make the first entry, or two set-ups toward it, the fewer presses: the owner, the goal first and the shortest
+      // way to it, the set-up included -- a press is a press, a cursor step or a swap)
+      int sx = !x->hold && setupPlay(x->k.play), sy = !y->hold && setupPlay(y->k.play);
+      if (gx == 0 || (sx && sy)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+    }
   }
   if (lx) {
     // 2. (both live) the board's own chain kept before cut short: a chain the board is making is never stopped by a line that need not
