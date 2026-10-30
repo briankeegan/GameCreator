@@ -88,6 +88,8 @@ only where the board dies without it. Survival comes first; under garbage, the b
 - Topped out, there is always some stop.
 - Ready when everything lands, with a plan -- several steps if it takes them.
 - Raise in the opening.
+- **DAS, always**: a walk is held to the wall and tapped otherwise, on every board -- a dying one too (`core/nodes.h` `TAP_DIES` -1,
+  `legCost`). Core behaviour like this changes only after asking the owner.
 - Every answer arrives in time for its move; a decision may think across frames.
 - Every number comes from the engine -- no invented constants.
 - **Nothing is assumed about garbage not yet shown.** Training's patterns are exercises standing in for a real opponent, who throws anything at any time: Gambit plans on the garbage the game shows on its way and nothing else -- never the pattern's size, rhythm or next block.
