@@ -68,6 +68,8 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
       #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) (L).seq[s_] = k->seq[s_]; \
         (L).cells = g.cells; (L).chain = g.chain; (L).combo = g.combo; (L).broke = g.broke; (L).done = g.done; (L).fire = fire; (L).floor = g.floor; \
         (L).base = baseCells; (L).aimIndex = (ai); } while (0)
+      // (the goal before the floor (the owner): a link that makes the list's first entry may spend the board below it -- search/plan.c)
+      if (!g.kept && na && meets(&o->aims->aim[0], made) && !(o->by != NOT_ASKED && fire > o->by)) g.kept = 1;
       if (g.kept) {
         double xn = nearList(o->aims, made);
         if (xn > 0 && (!E->nearest.set || xn > E->nearest.near || (xn == E->nearest.near && g.cells > E->nearest.cells)) && lineFits(k->seq, k->nseq, 0)) { XFILL(E->nearest, -1); E->nearest.near = xn; }
