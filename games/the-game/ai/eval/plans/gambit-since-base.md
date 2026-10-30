@@ -105,6 +105,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `dc6e79f0` the chain after the window's reserve; stop time bought with the panels alike under garbage too; a break of four after a break of three (the owner) -- pressure 22 on seed 7 (1669; combo_storm 7, factory 7, large_garbage 8; 4-chains 276) [kept]
 - main (1d405a32) build on seed 7: 22 (1672; combo_storm 8, factory 7, large_garbage 7; 5-chains 195) [a measurement]
 - `64b24801` the chain carried on by the closest moves, and read from a clear still popping -- pressure 18 (1670, against 22): large_garbage 5 of 8 [dropped]
+- main (1d405a32) finish on seed 7: 18 (1675; combo_storm 6, factory 5, large_garbage 7) -- under garbage the 8+ combo led the searches to set-ups and breaks of 6-8 swaps that spent the window [a measurement]
 - `2c8e91f0` a swap pressed twice in a row taken out where the line does as well without it -- build 21 (1673, against 22); lines with one 609 of 6,857 against 634 of 7,217: the judge finds most of them change what the line makes [dropped]
 - `2d3d492e` the closest moves, and from a clear still popping with no garbage on the board only -- pressure 20 (1674): large_garbage 5 of 8 again, so the closest-moves key under garbage, ahead of the garbage broken for each action [dropped]
 - opener on combo_storm (1667): 4 of 8 (big chains only, no break between: the board runs dry); big chain on combo_storm (1666): 6 of 8 [a measurement]
