@@ -64,7 +64,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - finish on main (20cc8952): 22 (1576) -- combo_storm 7/8, factory 7/8, large_garbage 8/8; the first entry (8+ combo) begun 15 times of 5,691 lines
 - `b45f0223` the mode's goals before a break's rate (1'') and before the line in progress (1a) -- finish 22 (1578) [kept: the first entry begun 90 times against 15; 8+ combos 39 against 10] -- then build 20 (1579), 17 (1580) on main with it: taken back out [the break that breaks more for each action walked is what keeps the board under garbage; the goal before it cost build reach and board losses]
 - `d2107042` the goal first, the shortest way to it (fewer presses), the set-up included (the owner) -- build 20 (1582); on seed 7 beside main: 21 against main's 20 (1584, 1583) [kept]
-- `59d94ee2` B8, DAS always: a board near its end walked held as the walls allow too, never tapped (8818b250) [kept: the owner's requirement]
+- `59d94ee2` B8, DAS always: a board near its end walked held as the walls allow too, never tapped (8818b250) -- build 19 on seed 7 (1585), against 21 and 20 for main on it [kept: the owner's requirement; no loss to the window]
 
 ## The shortlist for pressure, in the order to try
 
