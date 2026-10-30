@@ -95,6 +95,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - every mode on main (69201d3d), seed 7: pressure 17 (1646), build 23 (1647), finish 18 (1648), big chain 21 (1649), switching 23 (1645) -- combo_storm 4, 7, 4, 6, 8 of 8 [a measurement: the drought spiral -- with no garbage on the board, the chains that buy stop time spend the panels below the floor (combo_storm-8: 49 to 17), and the next block lands on a board with nothing to break]
 - finish on seed 7 without `21cfa45e` (ee09c8b7): 20 (1650, combo_storm 6) against 18 -- with the big chain pair (+2 on seed 8, -1 on seed 7) the change nets -1 in three paired runs, within a run's noise [kept, open]
 - fights on the fork's server: main on the opener (7feb9c03) against Gambit 100, 8-4 (panel-game 536); 0 of 13,311 decisions in a mode its enemy board does not call for [a measurement]
+- `8c17c2ee` the time bought with the panels survives alike in the first key too (the rule key 3 had, key 1 decided before it) -- pressure 18 on seed 7 (1651, against 17 in 1646): combo_storm 8 of 8 against 4, factory 4 against 6 (its losses under garbage, where the change does not reach) [kept]
 - `7feb9c03` a fight opens with the opener -- big chains until either board tops out -- then the enemy's board picks the mode (the owner) [kept: fights only]
 
 ## The shortlist for pressure, in the order to try
