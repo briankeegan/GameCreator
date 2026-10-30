@@ -12,7 +12,7 @@
 // back) and a break is taken only through the shared line check (lineFits). Every step is the clock's: past its share the search
 // ends with what it has.
 
-#define TOUCH_DEPTH 12
+#define TOUCH_DEPTH 16
 #define CHEAP_BREAK 6    // the actions a break may walk for before the level after it is searched for a cheaper one
 #define TOUCH_BEAM 30
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
