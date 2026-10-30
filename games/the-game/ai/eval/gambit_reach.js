@@ -19,7 +19,7 @@ var rules = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles',
 var list = rules.attack.filter(function (r) { return r.name === 'finish them'; })[0].aims.filter(function (a) { return typeof a !== 'string'; });
 // (a log's lines up to the game over: after it the frame loop asks on a board that no longer plays)
 function played(lines) { var i = -1; lines.forEach(function (l, k) { if (l.indexOf('GAMEOVER ') === 0) i = k; }); return i < 0 ? lines : lines.slice(0, i); }
-var WORK_PER_MS = G.X.gb_work_per_ms();
+var WORK_PER_MS = G.X.gb_work_per_ms ? G.X.gb_work_per_ms() : 0;   // (0: a build that does not say it -- the time a missed break needed is not counted)
 var WINDOW_MS = Math.min(MS, 1000);   // (a board searched again with no allowance: a third of MS at most -- a break the window took is near)   // (core/clock.h's: the work a live ms is)
 var needs = [];
 var totals = { missed: 0, impossible: 0, boards: 0, inTime: 0, notInTime: 0, window: 0, shown: 0 }, turns = {}, how = {}, took = {};
@@ -84,7 +84,7 @@ function reachGame(gdir, g) {
       if (again) totals.inTime++; else totals.notInTime++;
     }
     // (the work it took, against the work the live search had: what a budget would need to find it)
-    if (found && brMsAt[x.at] !== undefined) { R.needs.push(Math.round(line.work / (brMsAt[x.at] * WORK_PER_MS) * 100) / 100); }
+    if (found && WORK_PER_MS > 0 && brMsAt[x.at] !== undefined) { R.needs.push(Math.round(line.work / (brMsAt[x.at] * WORK_PER_MS) * 100) / 100); }
     // (UNDER A FULL WINDOW: a board with no break under its decision's press searched again with no allowance -- found, the input window
     // took the break, not the panels)
     var win = '';
