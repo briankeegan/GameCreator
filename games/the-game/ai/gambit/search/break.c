@@ -14,7 +14,7 @@
 
 #define TOUCH_DEPTH 12
 #define CHEAP_BREAK 6    // the actions a break may walk for before the level after it is searched for a cheaper one
-#define TOUCH_BEAM 30
+#define TOUCH_BEAM 40
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
 #define KEEPN 60                    // the lines carried on
