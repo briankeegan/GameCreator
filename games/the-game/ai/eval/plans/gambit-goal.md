@@ -59,6 +59,11 @@ them, big chain, pressure and build on the same 8 seeds per pattern, never time 
 `["finish_them","big_chain","pressure","build"]`, `profile` gambit-opener.json, `frames` 5400 (a game not switched by 90 s is
 reported, not failed); gambit_summary.js prints HANDOVER.
 
+EVERY MODE IS MEASURED AS A LIVE FIGHT PLAYS IT (the owner): gambit-24.yml `fight` 1 with `profile` gambit.json (no mode pinned),
+so the opener is found from the countdown as a fight finds it, and `then` the mode measured -- `["finish_them"]`, `["big_chain"]`,
+`["pressure"]`, `["build"]` -- taken at the top-out for the rest of the game. A pinned profile never runs the path a live fight
+does (the countdown's question, the opener by the table). Time attack is set aside for now (the owner).
+
 ## The modes (the owner's plan)
 
 A fight opens with the opener (`survivor-profiles/gambit-rules.json` `opener`); after it, the mode is picked from the enemy's board,
