@@ -308,6 +308,7 @@ static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : action
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
+#define BREAK_LOW 6     // the window a break may leave, low, and the next break still be pressed out of it (an estimate: a swap and its walk)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
@@ -363,6 +364,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+    // (the window already low: a break that leaves it too low for the one after (BREAK_LOW) after a line that keeps it -- a break that
+    // buys no more than the other line is the next break's presses spent)
+    if (pressAllowance < BREAK_WALK && (x->apBroke > 0) != (y->apBroke > 0)) {
+      const Judge *b = x->apBroke > 0 ? x : y, *o = b == x ? y : x;
+      if (pressAllowance - lineWalk(b) < BREAK_LOW && lineWalk(o) < lineWalk(b)) return (cmpKey = __LINE__, (b == x ? 1 : -1));
+    }
   }
   // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
   // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the
