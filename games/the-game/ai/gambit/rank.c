@@ -372,6 +372,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
+  // 1. (neither lives) THE WINDOW IS SURVIVAL TOO: the judge plays no garbage it has not been told of, and the next block is broken
+  // out of what the input window holds -- of two lost no sooner than two breaks' time, the one that keeps a break's walk (BREAK_WALK)
+  // in the window before one that spends below it, whichever is lost later -- of two lines that both break or both do not
+  if (!lx && pressAllowance >= BREAK_WALK && !x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0) &&
+      lostOf(x) >= 2 * rankSave && lostOf(y) >= 2 * rankSave) {
+    int kx = pressAllowance - lineWalk(x) >= BREAK_WALK, ky = pressAllowance - lineWalk(y) >= BREAK_WALK;
+    if (kx != ky) return (cmpKey = __LINE__, (kx ? -1 : 1));
+  }
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'. THE CHAIN FALLING, CARRIED ON (the owner: a chain going is continued unless continuing kills the board): while the board chains,
   // of two that survive alike, the one that takes the chain further, up to the longest the list asks -- before every key but survival,
