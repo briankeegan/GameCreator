@@ -77,7 +77,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_IDS 32
 #define MOVE_FOR 600
 #define MOVE_FALL 60
-typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx; } MoveOpen;   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
+typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx, row, col, acts; } MoveOpen;   // row, col: where it was pressed; acts: the actions pressed since the swap before, its own included   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 // (the lines whose swaps are followed: each answer's swaps in all and how many of them were pressed, by the answer's id)
 #define LINE_RECS 64
 typedef struct { int32_t id, total, pressed, why, next, acts; } LineRec;   // why: what ended the line (END_*, or the order's key that put it down); next: the answer's line it was carried on as (END_ON)
@@ -108,6 +108,7 @@ static struct {
   // the line after the move, pressed as it was decided: its swaps, each from the frame it was judged pressed from (lineAt, 0: as soon as
   // the one before is done)
   int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
+  int32_t actsAtSwap;   // (the action count at the last swap pressed: moveBegin)
   int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
@@ -728,7 +729,17 @@ static void countAttacks(const Board *b) {
 // A swap pressed is followed by the ids of the panels it moves -- the two swapped, and those above them that fall in the MOVE_FALL
 // frames after it -- until one of them is matched or MOVE_FOR frames pass: matched before the next swap is pressed, the swap cleared;
 // after it, the swap set the clear up; a clear that breaks garbage, a break; none matched, a swap that did nothing.
+// EVERY SWAP, ONE LINE (GAMBITM): the frame it was pressed, where, the kind of line, what it came to (c a clear, s a set-up, b a break,
+// n nothing), its place in its line, the actions pressed for it since the swap before, and what ended its line (front.c lineEnds; 0
+// not yet)
+static void moveLog(const MoveOpen *m, char outcome) {
+  const LineRec *r = lineRec(m->lid);
+  char l[128]; snprintf(l, sizeof l, "GAMBITM %d %d,%d %s %c %d/%d %d %d", m->at, m->row, m->col, m->play > 0 && m->play <= NPLAYS ? PLAY_NAME[m->play - 1] : "-",
+                        outcome, m->idx + 1, r ? r->total : 0, m->acts, r ? r->why : -1);
+  flog(l);
+}
 static void noneOf(const MoveOpen *m) {
+  moveLog(m, 'n');
   F.st.moveNone++; if (m->play > 0 && m->play <= NPLAYS) F.st.noneBy[m->play - 1]++;
   const LineRec *r = lineRec(m->lid);
   // (a line carried on is the same line: what became of it is what became of the last answer it was carried on as)
@@ -745,6 +756,7 @@ static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play,
   for (int i = 0; i < F.nmoves; i++) F.moves[i].swapsAfter++;
   if (F.nmoves == MOVE_OPEN) { noneOf(&F.moves[0]); memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
   MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock; m->save = save; m->guard = guard; m->play = play; m->lid = lid; m->idx = idx;
+  m->row = b->curRow; m->col = b->curCol; m->acts = F.st.actions + 1 - F.actsAtSwap; F.actsAtSwap = F.st.actions + 1;
   { LineRec *r = lineRec(lid); if (r && r->pressed < idx + 1) r->pressed = idx + 1; }
   int r0 = b->curRow;
   for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
@@ -774,7 +786,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
       if (!m->moved[j] && b->clock - m->at <= MOVE_FALL && (st == HOVERING || st == FALLING)) m->moved[j] = 1;
       if (m->moved[j]) for (int q = 0; q < nfresh && !done; q++) done = fresh[q] == m->ids[j];
     }
-    if (done) { bySwap = 1; F.matchAt = m->at; F.matchAfter = m->swapsAfter; F.matchSave = m->save; F.matchGuard = m->guard; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; continue; }
+    if (done) { bySwap = 1; F.matchAt = m->at; F.matchAfter = m->swapsAfter; F.matchSave = m->save; F.matchGuard = m->guard; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; moveLog(m, broke ? 'b' : !m->swapsAfter ? 'c' : 's'); continue; }
     if (!alive || b->clock - m->at > MOVE_FOR) { noneOf(m); continue; }
     if (k != i) F.moves[k] = *m;
     k++;
