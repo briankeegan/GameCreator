@@ -274,11 +274,14 @@ static int wastesThree(const Judge *J) {
   if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
+#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
   // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
   if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
-  if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
+  // (nearer a break than the hold -- not while under garbage with the window short of two breaks' walks: a step toward a break spends
+  // what the break itself is pressed with, and the hold gives it back)
+  if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter && !(decF.under && pressAllowance >= 0 && pressAllowance < 2 * BREAK_WALK)) return 1;
   // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
   // breaks lost at 44 put after a hold lost at 44)
   if (L->apBroke > 0 && l != NOT_ASKED && h != NOT_ASKED && (l == FOREVER || (h != FOREVER && l >= h))) return 1;
@@ -316,7 +319,6 @@ static int cutsShort(const Judge *J) {
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
-#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int32_t carriedSunk = -1;   // (the actions the line in progress was judged to walk in all when played: decide.c carryOf; -1 not known)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
