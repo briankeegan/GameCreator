@@ -129,6 +129,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - finish on one build, seed 7: 22, 19, 24, 19 -- a mode's single run is read across all five, 120 games, against the bar (105) [a measurement]
 - `e5e422bb` under garbage, of two lines lost alike that break nothing, a break ready once the next block lands before the fewer actions ("ready at the landing 0" in most lost games) -- big chain 15 (1718), finish 19 (1719), pressure 20 (1720), build 23 (1721), opener 21 (1722): 98 against 105 [dropped]
 - `65f4b740` the BREAK_LOW break reserve (62826eb7) alone on main -- big chain 21 (1723), finish 22 (1724), pressure 19 (1725), build 20 (1726), opener 15 (1727): 97 against 105 [dropped]
+- main (b2fcbbc4, the chain cap) on seed 7 again: big chain 20 (1728), finish 20 (1729), pressure 20 (1730), opener 20 (1732) -- the bar is about 100, not 105: the changes dropped at 94-99 were within a run's noise of it [a measurement]
+- `55d7c559` a chain carried on only by a line that leaves the window a break's walk (opener combo_storm-5 in 1722: the window 48 to 4 carrying a 7-chain) -- opener 20 (1733, against 20), big chain 15 (1734, against 20) [dropped]
 
 ## The shortlist for pressure, in the order to try
 
