@@ -308,6 +308,7 @@ static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : action
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
+static int32_t carriedSunk = -1;   // (the actions the line in progress was judged to walk in all when played: decide.c carryOf; -1 not known)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
@@ -367,7 +368,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
   // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the
   // window's reserve, before a break, before the line in progress: a chain left to end short of the target is the attack thrown away
-  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
+  // (under garbage, between two that both break or both do not: a break is never put after a line that only carries the chain on --
+  // the owner: garbage broken first, the chain continued where it can be both)
+  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y)) && (!decF.under || (x->apBroke > 0) == (y->apBroke > 0))) {
     int32_t cap = listChainCap();
     if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
   }
@@ -388,7 +391,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
     else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
-    else { int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x)); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1)); }
+    // (a line put down for another throws away the actions pressed of it: the other is charged them -- the walk the line in progress was
+    // played for, less what is left of it)
+    else {
+      int sx = lineWalk(x), sy = lineWalk(y);
+      if (carriedSunk >= 0 && x->carried != y->carried) { const Judge *c = x->carried ? x : y; int sunk = imax(0, carriedSunk - lineWalk(c)); if (c == x) sy += sunk; else sx += sunk; }
+      int64_t px = (int64_t)x->apBroke * imax(1, sy), py = (int64_t)y->apBroke * imax(1, sx); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
+    }
   }
   // 1a. THE LINE IN PROGRESS KEPT: of two that both live or both do not, the line the last decision was playing, judged again on the
   // board as it is, before another -- unless the other is lost later and not alike (neither lives: lostAlike, as 3 counts them) or meets
