@@ -368,6 +368,20 @@ Object.keys(modes).sort().forEach(function (k) {
                 Math.round(100 * (t.popLineupPlayed || 0) / t.pop) + '%, a full row broken ' + Math.round(100 * (t.popFull || 0) / t.pop) + '%' : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
+// (HELD UNJUDGED: a decision whose lines the clock stopped the judge on, every one -- cands= `-jN` -- and the hold played for want of
+// a look at them; decide.c judges them again to the move's frame, rescued=1)
+(function () {
+  var n = 0, held = 0, rescued = 0;
+  fs.readdirSync(DIR).forEach(function (g) {
+    var lf = path.join(DIR, g, 'survivor.log'); if (!fs.existsSync(lf)) return;
+    fs.readFileSync(lf, 'utf8').split('\n').forEach(function (l) {
+      if (l.indexOf('GAMBITD ') !== 0) return; n++;
+      if (/ rescued=1/.test(l)) rescued++;
+      if (/ opts=hold:[^, ]*( |$)/.test(l) && /-j\d/.test(l)) held++;
+    });
+  });
+  if (n) console.log('held unjudged: ' + held + ' of ' + n + ' decisions played the hold with every line unjudged in time; ' + rescued + ' judged again to the move\'s frame');
+})();
 // (THE OPENER'S HANDOVER, a run with `then` -- gambit-24.yml: each game from its start to the top-out, where the opener gives way to the
 // mode the run named; the garbage there broken -- the first decision after with none on the board -- then HANDOVER_HOLD frames more in
 // that mode. Passed: alive at the end of that; a loss after it is the new mode's, not the opener's. Never switched: the game ran out first)

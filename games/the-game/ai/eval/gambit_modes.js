@@ -6,7 +6,8 @@
 //   node gambit_modes.js [--rules FILE] LOG...      (FILE default survivor-profiles/gambit-rules.json; a LOG of - is stdin)
 //
 // A fight with no mode named opens with the opener (tables.opener) until either board tops out; our own board's topping out is not
-// logged, so the opener is over at the first decision that reads the enemy topped out or plays another mode, and agrees until then.
+// logged, so the opener is over at the first decision that reads the enemy topped out or plays another mode with the enemy read, and
+// agrees until then. In a fight (a log that reads an enemy anywhere) the decisions before the enemy is first read are the opener's too.
 //
 // Prints one JSON object: decisions read, how many disagree, each (played -> called-for) pair's count and the first few disagreeing
 // lines. Exits 1 on any disagreement, 2 when nothing was read. A profile that names its mode (gambit.mode) plays that mode whatever the
@@ -43,6 +44,9 @@ var out = { rules: path.relative(process.cwd(), rulesFile), decisions: 0, withEn
 args.forEach(function (f) {
   var last = Infinity, opening = !!OPENER;
   var text = fs.readFileSync(f === '-' ? 0 : f, 'utf8');
+  // (A FIGHT: a log that reads an enemy anywhere. Its opening is the opener's from the first decision, the ones before the enemy's board
+  // is first read too -- the countdown's plan is the opener's, never the no-enemy mode's)
+  var fight = ENEMY.test(text);
   text.split('\n').forEach(function (l) {
     var m = LINE.exec(l);
     if (!m) return;
@@ -54,7 +58,7 @@ args.forEach(function (f) {
     if (e) { out.withEnemy++; facts['enemy.height'] = +e[1]; facts['enemy.topped'] = +e[2] ? 1 : 0; if (+e[3] >= 0) facts['enemy.stop'] = +e[3]; }
     out.decisions++;
     if (opening && (facts['enemy.topped'] || (m[2] !== OPENER && e))) opening = false;
-    var want = opening && e ? OPENER : called(facts);
+    var want = opening && (e || fight) ? OPENER : called(facts);
     if (want === m[2]) return;
     out.disagree++;
     var key = m[2] + ' -> ' + want;
