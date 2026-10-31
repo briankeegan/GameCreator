@@ -441,7 +441,7 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anc
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
-  theCarry.waits = waits;
+  theCarry.waits = waits; carriedSunk = -1;
   // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
   // tier, and its swaps after the first are the break it was chosen for)
   if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1 || (k->t.tier > 4 && !(k->apBroke > 0))) return;
@@ -451,6 +451,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
   for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
+  carriedSunk = lineWalk(k);
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
@@ -606,7 +607,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   int skip = C->id == carryFrom ? carryPressed : 0;
   if (C->set && C->nrest <= skip && theCarryNext.set) {
     // (the line's own swaps all pressed: the break it lived by is the line in progress now, popping or not as the board is now)
-    *C = theCarryNext; memset(&theCarryNext, 0, sizeof theCarryNext); C->popping = popLeft(decQ.b) > 0; skip = 0;
+    *C = theCarryNext; memset(&theCarryNext, 0, sizeof theCarryNext); carriedSunk = -1; C->popping = popLeft(decQ.b) > 0; skip = 0;
   }
   if (!C->set || C->nrest <= skip) return 0;
   int dr = NOT_ASKED;
