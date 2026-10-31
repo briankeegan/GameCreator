@@ -313,8 +313,8 @@ static int cutsShort(const Judge *J) {
   if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
   return aloneChain > 1 && J->apWhole < aloneChain;
 }
-#define FOCUS_NEAR 3
-#define FOCUS_FAR 6
+#define FOCUS_NEAR 2
+#define FOCUS_FAR 5
 static int focusBand(const Judge *J) {
   int d = iabs(CR(J->k.seq[0]) - decQ.b->curRow) + iabs(CC(J->k.seq[0]) - decQ.b->curCol);
   return d <= FOCUS_NEAR ? 0 : d >= FOCUS_FAR ? 2 : 1;
@@ -395,11 +395,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
   }
   // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
-  // both do not, the one begun near the cursor (FOCUS_NEAR cells) before one begun across the board (FOCUS_FAR or more): the board is
+  // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
   // worked where the cursor is, and left only for what survives better or breaks where the near one does not
   if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0) && x->k.nseq && y->k.nseq) {
     int bx = focusBand(x), by = focusBand(y);
-    if (bx != by && (bx == 0 || by == 0) && (bx == 2 || by == 2)) return (cmpKey = __LINE__, (bx - by));
+    if (bx != by) return (cmpKey = __LINE__, (bx - by));
   }
   // 1'0. THE LINE IN PROGRESS OVER ONE IT OUTLASTS AND OUTBREAKS (the owner: a move is wasted only where survival asks it): of two that
   // survive alike, the line the last decision was playing before another lost no later that breaks no more garbage -- every swap

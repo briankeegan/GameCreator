@@ -14,6 +14,15 @@ static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(
 // pressed out of what is left)
 #define OUT_RESERVE 20
 #define OUT_LATER 120
+// (THE SAVE NEAREST THE CURSOR: of two lines lost at frames finite, the later loss less what its actions cost -- an action comes back a
+// window later, OUT_ACT frames each (76 in 600) -- so a save across the board must buy that much more time than one at hand; one that
+// lasts beats one that does not)
+#define OUT_ACT 8
+static int outBetter(int32_t l, int32_t a, int32_t ol, int32_t oa) {
+  if (l == FOREVER || ol == FOREVER) return l == FOREVER && (ol != FOREVER || a < oa);
+  double v = l - (double)OUT_ACT * a, ov = ol - (double)OUT_ACT * oa;
+  return v > ov || (v == ov && a < oa);
+}
 static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best, over; memset(&best, 0, sizeof best); memset(&over, 0, sizeof over);
   double t0 = nowMs(), perStep = 0;
@@ -73,7 +82,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
       if (top[i].lost == FOREVER && !lineFits(top[i].seq, top[i].nseq, 0)) { top[i].lost = -1; continue; }
       Outlived *o = top[i].acts <= keep ? &best : &over;
-      if (!o->set || top[i].lost > o->lostAt || (top[i].lost == o->lostAt && top[i].acts < o->acts)) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
+      if (!o->set || outBetter(top[i].lost, top[i].acts, o->lostAt, o->acts)) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
       if (top[i].lost == FOREVER && o == &best) return best;
     }
     for (int i = 0; i < nkeep; i++) { idx[i] = i; kl[i] = top[i].lost; }
