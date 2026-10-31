@@ -7,7 +7,6 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 static int32_t openerOver;   // (the opener played out: a board has topped out this game)
 static int32_t thenRule = -1;
 static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
-static int unjudgedCount(void) { int s = 0; for (int p = 0; p < NPLAYS; p++) s += dropped[p][DROP_UNJUDGED]; return s; }
 static int32_t rescues;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
@@ -230,19 +229,14 @@ static int ranked(const Read *R, const Found *S) {
   readyStop(); readyPendClear(); readyCollect = 1;   // (and keeps each landed board: searched once, its nearest break measured)
   rankReact = C2.reaction + 1;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
-  static int32_t unjudged[MAXCANDS]; int nunj = 0;
-  for (int i = 0; i < nc; i++) {
-    int u0 = unjudgedCount();
-    if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
-    else if (unjudgedCount() > u0 && nunj < MAXCANDS) unjudged[nunj++] = i;
-  }
-  // (A LINE THE CLOCK STOPPED THE JUDGE ON: the searches and the proposing took the decision's time -- every such line is judged again up
-  // to the move's own frame, the host's hard stop (clockFrameOut), however many others were judged in time: a line is never left out of
-  // the order for want of a look at it. The line in progress and the hold are judged in that time too.)
+  for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+  // (NOTHING JUDGED IN TIME: the searches and the proposing took the decision's time and the clock stopped the judge on every line --
+  // every line is judged again up to the move's own frame, the host's hard stop (clockFrameOut): a board is never held for want of a
+  // look at its lines. The line in progress and the hold are judged in that time too.)
   double rescueDue = clockDue, rescueShare = clockShare; int rescue = 0;
-  if (nunj && clockFrameOut && clockOut()) {
+  if (!n && nc && clockFrameOut && clockOut()) {
     rescue = 1; clockDue = 0; clockShare = 0;
-    for (int k = 0; k < nunj; k++) if (judgeWalked(R, &theCands[unjudged[k]], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+    for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   }
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
