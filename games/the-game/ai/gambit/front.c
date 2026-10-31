@@ -15,7 +15,7 @@
 #define FTHINK 8           // the answers' times kept, for how soon the next comes
 
 typedef struct { int32_t at, capped; Incoming g; } Arrival;   // at: the stopWatch it is received on; capped: held back (search.h CAPPED_AT)
-typedef struct { int32_t bits, holdLeft, holdStarted, swap, save, asked, play; } Planned;   // save: a key of a line the survival search found the board needed; asked: the frame the question it came of was posted on; play: the kind of line it is a key of, plus one (0: none)
+typedef struct { int32_t bits, holdLeft, holdStarted, swap, save, asked, play, lid, idx; } Planned;   // save: a key of a line the survival search found the board needed; asked: the frame the question it came of was posted on; play: the kind of line it is a key of, plus one (0: none); lid, idx: the answer whose line it is, plus one, and the swap's place in it
 typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys;
 
 // what the worker is asked, and what it answers (native.c carries them across)
@@ -63,6 +63,7 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t noneBy[NPLAYS];   // (the swaps that came to nothing, by the kind of line that pressed them)
+  int32_t noneDropped, noneOn, noneLast;   // (and by what became of their line: dropped before its later swaps, those pressed, its last swap)
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
   int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
 } FStats;
@@ -73,7 +74,12 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_IDS 32
 #define MOVE_FOR 600
 #define MOVE_FALL 60
-typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play; } MoveOpen;   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
+typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx; } MoveOpen;   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
+// (the lines whose swaps are followed: each answer's swaps in all and how many of them were pressed, by the answer's id)
+#define LINE_RECS 64
+typedef struct { int32_t id, total, pressed; } LineRec;
+static LineRec lineRecs[LINE_RECS];
+static LineRec *lineRec(int32_t lid) { LineRec *r = lid > 0 ? &lineRecs[(lid - 1) % LINE_RECS] : 0; return r && r->id == lid ? r : 0; }
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
@@ -576,7 +582,8 @@ static void take(void) {
     F.st.heldWalks += k.held;
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
-    for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play >= 0 ? a.play + 1 : 0 });
+    for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play >= 0 ? a.play + 1 : 0, a.kind == 1 ? a.id + 1 : 0, 0 });
+    if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->total = a.nhand + 1; r->pressed = 0; }
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
@@ -617,7 +624,7 @@ static int follow(void) {
   int left = allowanceAt(due);
   if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance");
   F.st.heldWalks += k.held;
-  for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay });
+  for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay, F.lineOfId + 1, F.lineOfPressed + 1 });
   F.nextAt = due + k.n;
   F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1;
   memmove(F.line, F.line + 1, sizeof(int32_t) * (unsigned long)(F.lineN - 1)); memmove(F.lineAt, F.lineAt + 1, sizeof(int32_t) * (unsigned long)(F.lineN - 1)); F.lineN--;
@@ -699,12 +706,17 @@ static void countAttacks(const Board *b) {
 // A swap pressed is followed by the ids of the panels it moves -- the two swapped, and those above them that fall in the MOVE_FALL
 // frames after it -- until one of them is matched or MOVE_FOR frames pass: matched before the next swap is pressed, the swap cleared;
 // after it, the swap set the clear up; a clear that breaks garbage, a break; none matched, a swap that did nothing.
-static void noneOf(const MoveOpen *m) { F.st.moveNone++; if (m->play > 0 && m->play <= NPLAYS) F.st.noneBy[m->play - 1]++; }
-static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play) {
+static void noneOf(const MoveOpen *m) {
+  F.st.moveNone++; if (m->play > 0 && m->play <= NPLAYS) F.st.noneBy[m->play - 1]++;
+  const LineRec *r = lineRec(m->lid);
+  if (r) { if (m->idx >= r->total - 1) F.st.noneLast++; else if (r->pressed > m->idx + 1) F.st.noneOn++; else F.st.noneDropped++; }
+}
+static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play, int32_t lid, int32_t idx) {
   { int i = swapRingN++ % SWAPRING; if (!swapRing[i]) swapRing[i] = nb_new(); if (swapRing[i]) { cloneBoard(swapRing[i], b); swapRingAt[i] = b->clock; } }
   for (int i = 0; i < F.nmoves; i++) F.moves[i].swapsAfter++;
   if (F.nmoves == MOVE_OPEN) { noneOf(&F.moves[0]); memmove(F.moves, F.moves + 1, sizeof(MoveOpen) * (MOVE_OPEN - 1)); F.nmoves--; }
-  MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock; m->save = save; m->guard = guard; m->play = play;
+  MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock; m->save = save; m->guard = guard; m->play = play; m->lid = lid; m->idx = idx;
+  { LineRec *r = lineRec(lid); if (r && r->pressed < idx + 1) r->pressed = idx + 1; }
   int r0 = b->curRow;
   for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
     for (int r = r0; r < b->nrows && m->n < MOVE_IDS; r++) {
@@ -877,9 +889,9 @@ static int frontFrame(void) {
   if (F.nextAt > now) { int32_t u = unforeseenFirst(F.knew, F.nknew, F.arr, F.narr); if (u <= F.nextAt - off) { dropFrom(u + off - 1); F.st.unforeseen++; } }
   if (F.pending && unforeseenBy(F.pKnew, F.pNknew, F.arr, F.narr, F.pAt - off)) { abortTo(F.pId); F.pending = 0; F.st.reasked++; }
   take();
-  int32_t bits, save = 0, asked = 0, play = 0;
+  int32_t bits, save = 0, asked = 0, play = 0, lid = 0, idx = 0;
   Planned *p = planOf(now);
-  if (p) { bits = p->bits; save = p->save; asked = p->asked; play = p->play; F.holdLeft = p->holdLeft; F.holdStarted = p->holdStarted; planDrop(now); }
+  if (p) { bits = p->bits; save = p->save; asked = p->asked; play = p->play; lid = p->lid; idx = p->idx; F.holdLeft = p->holdLeft; F.holdStarted = p->holdStarted; planDrop(now); }
   else {
     bits = 0;
     if (F.holdLeft > 0) holdRaise(t, &F.holdLeft, &F.holdStarted, &bits);
@@ -917,7 +929,7 @@ static int frontFrame(void) {
       }
     } else { guard = 2; F.st.guardLet++; }
   }
-  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save, guard, play);
+  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save, guard, play, lid, idx);
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
   countActions(bits, now);
   if (bits & IN_SWAP) F.swapSince = 1;
@@ -1015,14 +1027,14 @@ static void statsLine(char *out, int cap) {
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"noneBy\":{");
   first = 1;
   for (int z = 0; z < NPLAYS && k < cap; z++) if (F.st.noneBy[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":%d", first ? "" : ",", PLAY_NAME[z], F.st.noneBy[z]); first = 0; }
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), "}}");
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), "},\"noneHow\":{\"dropped\":%d,\"on\":%d,\"last\":%d}}", F.st.noneDropped, F.st.noneOn, F.st.noneLast);
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {
   if (F.pending) abortTo(F.pId);
   Board *keep[5] = { F.truth, F.expect, F.pr, F.pBoard, F.cdBoard };
   int32_t nextId = F.nextId;
-  memset(&F, 0, sizeof F);
+  memset(&F, 0, sizeof F); memset(lineRecs, 0, sizeof lineRecs);
   F.truth = keep[0] ? keep[0] : nb_new(); F.expect = keep[1] ? keep[1] : nb_new(); F.pr = keep[2] ? keep[2] : nb_new(); F.pBoard = keep[3]; F.cdBoard = keep[4];
   for (int i = 0; i < PLANN; i++) F.planAt[i] = NUL;
   F.nextId = nextId ? nextId : 1;
