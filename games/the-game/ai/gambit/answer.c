@@ -589,6 +589,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (cutWhy[1] + cutWhy[2] + cutWhy[3]) { L_s(" cutWhy="); for (int w = 1; w <= 3; w++) { if (w > 1) L_s("/"); L_i(cutWhy[w]); } L_s(":"); for (int w = 1; w <= 3; w++) { if (w > 1) L_s("/"); L_i(cutWhyBreak[w]); } }
   if (unbroken.set) { L_s(" unbroken="); L_play(unbroken.play); L_s(":"); for (int i = 0; i < unbroken.nseq; i++) { if (i) L_s(";"); L_mv(unbroken.seq[i]); } L_s(":"); L_i(unbroken.said); L_s("/"); L_i(unbroken.judged); }
   // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it breaks)
+  // (the line in progress offered and put down for another: the line played and the order's key that put it first, rank.c cmpKey)
+  if (carriedJ && top && top != carriedJ && compareJudged(top, carriedJ) < 0) { L_s(" putDown="); L_play(top->hold ? PLAY_HOLD : top->k.play); L_s(":k"); L_i(cmpKey); }
   if (carryDrop) {
     L_s(" carryDrop="); L_i(carryDrop);
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
