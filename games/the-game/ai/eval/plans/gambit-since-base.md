@@ -128,7 +128,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `3cb7da0d` under garbage, of two lines lost alike that break nothing, the later loss before the fewer actions (finish factory-3 in 1701 held 15 decisions over a line lost 55 frames later) -- big chain 19 (1712), finish 24 then 19 (1713, 1717), pressure 20 (1714), build 19 (1715), opener 17 (1716): 94 against 105 [dropped]
 - finish on one build, seed 7: 22, 19, 24, 19 -- a mode's single run is read across all five, 120 games, against the bar (105) [a measurement]
 - `e5e422bb` under garbage, of two lines lost alike that break nothing, a break ready once the next block lands before the fewer actions ("ready at the landing 0" in most lost games) -- big chain 15 (1718), finish 19 (1719), pressure 20 (1720), build 23 (1721), opener 21 (1722): 98 against 105 [dropped]
-- `65f4b740` the BREAK_LOW break reserve (62826eb7) alone on main -- 1723-1727 [open]
+- `65f4b740` the BREAK_LOW break reserve (62826eb7) alone on main -- big chain 21 (1723), finish 22 (1724), pressure 19 (1725), build 20 (1726), opener 15 (1727): 97 against 105 [dropped]
 
 ## The shortlist for pressure, in the order to try
 
