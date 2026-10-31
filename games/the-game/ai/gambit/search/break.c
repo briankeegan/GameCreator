@@ -19,6 +19,7 @@
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
 #define KEEPN 60                    // the lines carried on
 #define LINEUP_BUDGET 400
+#define TRIM_MS 5        // the ms a found line is trimmed in, past the search's share (trimPath)
 // (the touch beam from its wider beam on, its narrower left to another thread searching the same board: answer.c's wide job)
 static LOCAL int32_t touchFrom;
 #define LINEUP_DEPTH 8
@@ -516,6 +517,39 @@ static int lineups(BS *s, Line **firsts, int nfirsts) {
   return 0;
 }
 
+// THE LINE TRIMMED (trimPath): the touch beam's line played again with each swap left out in turn, and kept without it whenever it still
+// breaks as much, keeps the board's own chain as it did, and spends fewer of the cursor's actions -- a line grown a swap a level, and
+// carried on from decision to decision, walks panels it need not (run 1875, factory-1 at 5094: 12 swaps where 10 break the same). Each
+// trial is the line's steps once more, within the search's clock; a trial the clock cuts changes nothing.
+static void trimPath(BS *s) {
+  Ctx *x = s->x; Broke *o = s->out;
+  if (o->pathLen < 3) return;
+  int32_t path[MAXPATH], len = o->pathLen; for (int k = 0; k < len; k++) path[k] = o->path[k];
+  int32_t mat0, br0; int node = s->root, keep0;
+  for (int k = 0; k < len && liveNode(x, node); k++) node = stepMarked(s, node, MK_SWAP, path[k], 0);
+  if (!liveNode(x, node)) return;
+  br0 = brokeSettled(x, node, &mat0); keep0 = keepsOwnChain(x, node);
+  int acts0 = spentOn(s, path, len);
+  // (in TRIM_MS of its own past the search's share, the clock allowing it that much: a trial is the line's steps once more)
+  double share = clockShare, by = nowMs() + TRIM_MS; if (!clockDue || by < clockDue) clockShare = by;
+  for (int i = 0; i < len && len > 1 && !SEARCH_OUT(); ) {
+    int32_t q[MAXPATH]; int m = 0;
+    for (int k = 0; k < len; k++) if (k != i) q[m++] = path[k];
+    // (pressed as the judge presses a line, core/nodes.h pressWalk: a swap whose pair still moves is walked to again from the frame after,
+    // so a swap left out does not refuse the one after it for the frames it changes)
+    int n = s->root;
+    for (int k = 0; k < m && liveNode(x, n); k++) { int from, o2 = pressWalk(x, n, MK_SWAP, CR(q[k]), CC(q[k]), step, &from); if (o2 >= 0) markStep(s, n, MK_SWAP, q[k], o2); n = o2; }
+    // (judged once its board has settled: a break the fall after the last swap makes is the line's)
+    if (liveNode(x, n)) { int z = settleOf(x, n); if (liveNode(x, z)) n = z; }
+    int32_t mat, br = liveNode(x, n) ? brokeSettled(x, n, &mat) : 0, acts = spentOn(s, q, m);
+    if (liveNode(x, n) && !SEARCH_OUT() && acts < acts0 && breaksAt(s, n, q, m) && br >= br0 && keepsOwnChain(x, n) >= keep0) {
+      for (int k = 0; k < m; k++) path[k] = q[k];
+      len = m; acts0 = acts; o->at = NODE(x, n)->t;
+      setPath(o, path, len); o->moves[0] = path[0];
+    } else i++;
+  }
+  clockShare = share;
+}
 // THE BREAK SEARCH from the decision's question: wait, the frames a popping slab has left (0: none); resume, the lines the last
 // decision's beam was growing, on this board. Answers into out.
 static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, Broke *out);
@@ -560,7 +594,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
       if (liveNode(x, node) && breaksAt(&s, node, nl, nn)) { found(out, nl[0]); setPath(out, nl, nn); out->depth = 1; out->at = NODE(x, node)->t; out->built = 1; return; }
     }
   }
-  if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; return; }
+  if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; trimPath(&s); return; }
   if (wait > 0) {
     // (a slab popping: the touch beam on the garbage elsewhere first, in half what is left -- a line-up's tries can take the whole of
     // it, and the touch beam had none (run 487, factory-1: a break of 7 swaps under a pop of 99 frames, found in 95 ms of 257 searched
@@ -568,6 +602,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
     if (clockShare > 0) {
       double half = nowMs() + (clockShare - nowMs()) / 2, old = clockShareBegin(half);
       int hit = touchBeam(&s, firsts, nfirsts);
+      if (hit) trimPath(&s);
       clockShareEnd(old);
       if (hit) { out->depth = 1; return; }
     }
@@ -575,7 +610,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
     if (w0 >= 0 && w0 < (1 << 20)) outsideBuf[w0] = 0;   // (made from the root: within the rules so far)
     if (!breaksAt(&s, w0, 0, 0) && lineups(&s, firsts, nfirsts)) { out->depth = 1; return; }
     // (no line-up of the popping slab breaks again: a break of the garbage elsewhere while it pops, the cursor being free)
-    if (touchBeam(&s, firsts, nfirsts)) { out->depth = 1; return; }
+    if (touchBeam(&s, firsts, nfirsts)) { out->depth = 1; trimPath(&s); return; }
   }
   // none found: the line nearest a break, and the lines to choose among -- the frontier the beam has grown furthest, then that line
   out->depth = 0;

@@ -217,6 +217,23 @@ static double contLostOf(const Judge *J, double give) {
   if (lost < 0) return -1;
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
+static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
+static void dropCombo(const Read *R, Judge *J) {
+  static Judge t;
+  // (in the time to the move's own frame, the host's hard stop, where there is one)
+  double due = clockDue, share = clockShare;
+  if (clockFrameOut) { clockDue = 0; clockShare = 0; }
+  for (int i = 0; i < J->k.nseq && J->k.nseq >= 2 && !clockOut(); i++) {
+    Cand c = J->k; c.nseq = J->k.nseq - 1;
+    for (int q = i; q < c.nseq; q++) c.seq[q] = J->k.seq[q + 1];
+    if (!judgeCand(R, &c, &t) || t.o.dead || J->o.dead || comboOutside(&t)) continue;
+    if (!!t.o.lives < !!J->o.lives || lostOf(&t) < lostOf(J) || imax(0, t.apBroke) < imax(0, J->apBroke) || goalKeyOf(&t) > goalKeyOf(J)) continue;
+    if ((wastesThree(&t) && !wastesThree(J)) || (cutsShort(&t) && !cutsShort(J))) continue;
+    t.carried = J->carried; t.first = J->first; t.wait = J->wait; t.waitMax = J->waitMax; t.saving = J->saving; t.material = J->material;
+    *J = t; combosDropped++; break;
+  }
+  clockDue = due; clockShare = share;
+}
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
@@ -386,6 +403,10 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+  // (NO COMBO THE MODE DOES NOT ASK FOR, where a three does as well: the line ranked first making one is played with each of its swaps
+  // left out in turn, and one that makes none, lives as long, breaks as much and makes as much of the list is the line -- a fourth panel
+  // walked in by a swap the break did not need is a panel and a walk for nothing (the owner: no mode asks a combo of four))
+  if (n && order[0] && !order[0]->hold && comboOutside(order[0])) dropCombo(R, order[0]);
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
 }
