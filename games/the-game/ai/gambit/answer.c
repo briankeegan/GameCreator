@@ -644,6 +644,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
+  { static int32_t shortSeen; if (shortened != shortSeen) { L_s(" shortened="); L_i(shortened - shortSeen); shortSeen = shortened; } }
   { static int32_t rescueSeen; if (rescues != rescueSeen) { L_s(" rescued=1"); rescueSeen = rescues; } }
   if (R.saving) L_s(" saving=1");
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)

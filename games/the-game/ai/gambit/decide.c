@@ -217,6 +217,32 @@ static double contLostOf(const Judge *J, double give) {
   if (lost < 0) return -1;
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
+static int32_t shortened;   // (swaps left out of the lines played, for the log)
+static int noWorse(const Judge *s, const Judge *J) {
+  if (s->o.dead || J->o.dead) return 0;
+  if (!!s->o.lives < !!J->o.lives || lostOf(s) < lostOf(J)) return 0;
+  if (imax(0, s->apBroke) < imax(0, J->apBroke) || s->apChainAll < J->apChainAll || thrownOf(s) < thrownOf(J)) return 0;
+  if (goalKeyOf(s) > goalKeyOf(J)) return 0;
+  if ((wastesThree(s) && !wastesThree(J)) || (cutsShort(s) && !cutsShort(J))) return 0;
+  return 1;
+}
+static void shortenLine(const Read *R, Judge *J) {
+  static Judge t;
+  // (in the time to the move's own frame, the host's hard stop, where there is one: the decision's own deadline is spent by now)
+  double due = clockDue, share = clockShare;
+  if (clockFrameOut) { clockDue = 0; clockShare = 0; }
+  for (int again = 1; again && J->k.nseq >= 2 && !clockOut(); ) {
+    again = 0;
+    for (int i = 0; i < J->k.nseq && !clockOut(); i++) {
+      Cand c = J->k; c.nseq = J->k.nseq - 1;
+      for (int q = i; q < c.nseq; q++) c.seq[q] = J->k.seq[q + 1];
+      if (!judgeCand(R, &c, &t) || !noWorse(&t, J)) continue;
+      t.carried = J->carried; t.first = J->first; t.wait = J->wait; t.waitMax = J->waitMax; t.saving = J->saving; t.material = J->material;
+      *J = t; shortened++; again = 1; break;
+    }
+  }
+  clockDue = due; clockShare = share;
+}
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
@@ -386,6 +412,10 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+  // (PRECISE: the line ranked first played with no swap it does not need -- each swap left out in turn and the line judged again; one that
+  // lives as long, breaks as much, makes as much of the mode's list, keeps the board's chain and wastes no three it did not is the line,
+  // and it is looked at again, while there is time to the move's frame. The owner: the goal met with the least cursor movement.)
+  if (n && order[0] && !order[0]->hold) shortenLine(R, order[0]);
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
 }
