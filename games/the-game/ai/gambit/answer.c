@@ -260,8 +260,10 @@ static void breakRunTo(const Read *R, double by, Broke *into) {
   listDefault = 0;
   if (R->end == 1) {
     static LOCAL Broke off;
+    // (resumed from the frontier kept: the last decision's and the search between decisions', both off the list -- what they reached is
+    // this pass's start, not the list's)
     listDefault = 1;
-    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, 0, into);
+    breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, brHave ? &brResume : 0, into);
     listDefault = 0;
     off = *into;
     if (off.depth && !clockOut()) {
