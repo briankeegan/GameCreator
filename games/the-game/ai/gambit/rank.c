@@ -448,7 +448,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 1b. (neither lives) THE BOARD'S OWN CHAIN KEPT: a line that cuts the chain the board is making short ranks after one that keeps it
     // -- unless keeping it loses the board within a break's time (rankSave): a chain begun is the attack the board already has, and the
     // three that began it is wasted once it is cut (the owner: never spoil the board's own chain)
-    if (cutsShort(x) != cutsShort(y)) { const Judge *keep = cutsShort(x) ? y : x; if (lostOf(keep) >= rankSave) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1)); }
+    // -- or the board is short of panels (below the floor) and the cut breaks garbage the keeping does not, lost a break's time later: the
+    // chain spends the panels a break is made from, and a board short of them finds none after it
+    if (cutsShort(x) != cutsShort(y)) { const Judge *keep = cutsShort(x) ? y : x, *cut = cutsShort(x) ? x : y;
+      int spends = decF.belowFloor && cut->apBroke > 0 && !(keep->apBroke > 0) && lostOf(cut) - lostOf(keep) >= rankSave;
+      if (lostOf(keep) >= rankSave && !spends) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1)); }
     // 2. (neither lives) one that breaks garbage, while it leaves the next decision the time a break takes (rankSave): the panels a
     // break converts are what the next is made from -- a break lost before the next could be made converts them for nothing
     // -- on a board short of panels (below the floor) always; on one with panels to spare, not over a line lost a break's time later (run
