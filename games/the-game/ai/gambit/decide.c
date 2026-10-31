@@ -638,7 +638,9 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // the settle after it reads as no break -- so, as the rank reads a line the judge could not play out on the search's word (rank.c
   // judgeCand), the rest is read on what the line was played as making. The judge and the rank then say of this line what they said
   // when it was begun; the next judging ranks it by its loss, as any line lost)
-  Made x = j.dead ? C->made : (Made){ j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
+  // (but not for a line that has waited out (carryWaitsOut): nothing of it is pressed while it waits, and read on the search's word it
+  // would be the break first every decision it waits)
+  Made x = j.dead && !(moving && carryWaitsOut()) ? C->made : (Made){ j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
   int32_t done = j.done, fire = j.fire, nats = j.nats, ats[MAXLINE];
   for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
   // (a line begun for a break whose swaps pressed so far made it -- the slab popping now, none when it was begun -- is carried on for
