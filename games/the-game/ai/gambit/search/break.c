@@ -3,8 +3,8 @@
 // popping slab goes on converting whatever is pressed). In order, the first that finds one answers:
 //   1. a first swap that breaks;
 //   2. resting garbage, nothing popping: THE TOUCH BEAM -- lines kept by how near a break they are (breakNear, then how even the stack
-//      under the garbage is), grown a swap a level for TOUCH_DEPTH levels, TOUCH_BEAM wide and then TOUCH_WIDER; the lines the last
-//      decision was growing (resume) are played again first and carried on;
+//      under the garbage is), grown a swap a level for TOUCH_DEPTH levels, TOUCH_NARROW wide, then TOUCH_BEAM, then TOUCH_WIDE; the
+//      lines the last decision was growing (resume) are played again first and carried on;
 //   3. a slab popping (wait: the frames of pop left): a first swap after which the pop's end breaks; then the first of a pair; then the
 //      aimed lineup (the colours the converting row turns into, met by pairs on top of their columns); then a first swap leaving a
 //      break one swap away once the board has settled; then, the cursor being free, the touch beam on the garbage elsewhere.
@@ -14,13 +14,22 @@
 
 #define TOUCH_DEPTH 12
 #define CHEAP_BREAK 6    // the actions a break may walk for before the level after it is searched for a cheaper one
+// THE BEAM'S PASSES, narrow first. A level costs the beam times the board's swaps in engine steps (30 x ~30 = 900, each the walk and the
+// swap played frame by frame, a settle besides for every line that cleared), so in the search's share a 30-wide beam reaches depth 2-4,
+// while the breaks under resting garbage lie 3-11 swaps deep and breakNear sees none of them (they come from a panel dropped into the
+// hollow under a perched slab, or from the cascade), so the beam has no guide toward them and width buys nothing a narrow pass run
+// deeper does not. TOUCH_NARROW first, a level a third the cost, the frontier carried on where the clock ends it; then TOUCH_BEAM, then
+// TOUCH_WIDE. With the clock off the passes find what the last one alone finds.
+#define TOUCH_NARROW 12
 #define TOUCH_BEAM 30
 #define TOUCH_WIDE 100     // TOUCH_WIDER, the one wider beam
+#define TOUCH_WIDER 2      // (the wide pass's index: the wide job begins there)
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
 #define KEEPN 60                    // the lines carried on
 #define LINEUP_BUDGET 400
 // (the touch beam from its wider beam on, its narrower left to another thread searching the same board: answer.c's wide job)
 static LOCAL int32_t touchFrom;
+static const int32_t TOUCH_WIDTHS[] = { TOUCH_NARROW, TOUCH_BEAM, TOUCH_WIDE };
 #define LINEUP_DEPTH 8
 #define LINEUP_BEAM 12
 #define PAIR 5
@@ -316,8 +325,8 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   for (int i = 0; i < nseeds; i++) tl0[n0++] = seeds[i];
   for (int i = 0; i < nfirsts; i++) if (liveNode(x, firsts[i]->n) && within(s, firsts[i]->n) && (pressAllowance < 0 || spentOn(s, firsts[i]->path, 1) <= allowLeftAt(0, 0))) tl0[n0++] = firsts[i];
   int tpath = 0;
-  for (int tb = touchFrom; tb < 2 && !tpath && !SEARCH_OUT(); tb++) {
-    int beam = tb ? TOUCH_WIDE : TOUCH_BEAM, ntl = n0;
+  for (int tb = touchFrom; tb <= TOUCH_WIDER && !tpath && !SEARCH_OUT(); tb++) {
+    int beam = TOUCH_WIDTHS[tb], ntl = n0;
     // (A CHEAPER BREAK ONE SWAP ON: a break found that the cursor walks more than CHEAP_BREAK actions for is kept, and the level after
     // searched too -- one more swap near the cursor can cost fewer actions than one far from it; the better of the two by the level's
     // own key, actions before the material)
