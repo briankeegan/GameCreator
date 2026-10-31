@@ -313,6 +313,12 @@ static int cutsShort(const Judge *J) {
   if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
   return aloneChain > 1 && J->apWhole < aloneChain;
 }
+#define FOCUS_NEAR 3
+#define FOCUS_FAR 6
+static int focusBand(const Judge *J) {
+  int d = iabs(CR(J->k.seq[0]) - decQ.b->curRow) + iabs(CC(J->k.seq[0]) - decQ.b->curCol);
+  return d <= FOCUS_NEAR ? 0 : d >= FOCUS_FAR ? 2 : 1;
+}
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
@@ -387,6 +393,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+  }
+  // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
+  // both do not, the one begun near the cursor (FOCUS_NEAR cells) before one begun across the board (FOCUS_FAR or more): the board is
+  // worked where the cursor is, and left only for what survives better or breaks where the near one does not
+  if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0) && x->k.nseq && y->k.nseq) {
+    int bx = focusBand(x), by = focusBand(y);
+    if (bx != by && (bx == 0 || by == 0) && (bx == 2 || by == 2)) return (cmpKey = __LINE__, (bx - by));
   }
   // 1'0. THE LINE IN PROGRESS OVER ONE IT OUTLASTS AND OUTBREAKS (the owner: a move is wasted only where survival asks it): of two that
   // survive alike, the line the last decision was playing before another lost no later that breaks no more garbage -- every swap
