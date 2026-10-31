@@ -40,6 +40,7 @@ void gn_rule_name(int i, const char *name);
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff);
 void gn_switch(int min, int max);
 void gn_share(int under, int otherwise);
+void gn_then(int rule);
 int32_t *gn_tele(void);
 int32_t *gn_ages(void);
 void gn_match(void);
@@ -60,6 +61,10 @@ do
   local file = os.getenv("GC_GAMBIT_WORDS") or (DIR .. "/gambit.words")
   local f = assert(io.open(file), "GambitNative: no " .. file .. " (words.js writes it)")
   local setup, profile, rules, switch, share
+  -- (GC_GAMBIT_THEN: the mode a named opener gives way to at the top-out, `_` for a space -- answer.c gb_then)
+  local thenName, thenRule = os.getenv("GC_GAMBIT_THEN"), -1
+  if thenName == "" then thenName = nil end
+  if thenName then thenName = thenName:gsub("_", " ") end
   for line in f:lines() do
     local kind, rest = line:match("^(%S+) (.*)$")
     if kind == "setup" or kind == "profile" or kind == "rules" or kind == "switch" or kind == "share" then
@@ -69,6 +74,7 @@ do
     elseif kind == "name" then
       local i, name = rest:match("^(%d+) (.*)$")
       C.gn_rule_name(tonumber(i), name)
+      if name == thenName then thenRule = tonumber(i) end
     end
   end
   f:close()
@@ -80,6 +86,8 @@ do
   C.gn_profile(profile[1], profile[2], profile[3], profile[4], profile[5], profile[6], profile[7], profile[8])
   C.gn_switch(switch and switch[1] or 0, switch and switch[2] or 0)
   C.gn_share(share and share[1] or 0, share and share[2] or 0)
+  assert(not thenName or thenRule >= 0, "GambitNative: GC_GAMBIT_THEN names no rule: " .. tostring(thenName))
+  C.gn_then(thenRule)
 end
 
 local GambitNative = {}

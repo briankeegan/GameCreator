@@ -5,6 +5,7 @@ typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 static int32_t openerOver;   // (the opener played out: a board has topped out this game)
+static int32_t thenRule = -1;   // (the mode a named opener gives way to at the top-out; -1: none)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
@@ -40,7 +41,13 @@ static int readBoard_(Read *R) {
   // else the first of the rules, so a board with nobody across still plays)
   // (THE OPENER: in a fight with no mode named, from the game's start until either board tops out -- garbage landed above its top row,
   // not garbage sent -- the opener's rule, big chains; then the mode the enemy's board picks)
-  if (F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out)) openerOver = 1;
+  // (the opener named and a mode to follow it -- the profile's `then`, answer.c gb_then: at the top-out the named mode becomes that one,
+  // nothing carried let go, as the opener gives way to the enemy's mode in a fight)
+  if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out)) && !openerOver) {
+    openerOver = 1;
+    int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
+    if (ni >= 0 && theTables.r[ni].table == 2) modeRule = thenRule;
+  }
   int oi = -1;
   for (int i = 0; i < theTables.n && oi < 0 && !openerOver && theOpp.has && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
   int ri = oi >= 0 ? oi : modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);

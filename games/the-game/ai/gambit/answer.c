@@ -719,6 +719,7 @@ static void modeLeft(void) {
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
   modeLeft(); lifeDumps = 0; openerOver = 0;
+  if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
@@ -726,6 +727,8 @@ EXPORT(gb_new_game) void gb_new_game(void) {
   memset(&thePlanKept, 0, sizeof thePlanKept);
   gb_back(0, 0, 0, 0, 0, 0, 0);
 }
+// THE MODE AFTER THE OPENER (the profile's `then`; -1 none): a game whose named mode is the opener plays it to the top-out, then this
+EXPORT(gb_then) void gb_then(int rule) { thenRule = rule; }
 EXPORT(gb_switch) void gb_switch(int min, int max) { switchMin = min > 0 ? min : 0; switchMax = max > switchMin ? max : switchMin; nswitch = 0; }
 // (the circuit: Hierholzer's walk of the complete directed graph on n rules -- n(n-1) steps, each ordered pair once)
 static int lapOf(int n, int32_t *lap) {

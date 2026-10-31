@@ -291,6 +291,8 @@ void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, 
 void gn_switch(int min, int max) { gb_switch(min, max); }
 // The break search's share in percent, under garbage and otherwise (answer.c gb_share; 0 the default)
 void gn_share(int under, int otherwise) { gb_share(under, otherwise); }
+// The mode a named opener gives way to at the top-out (answer.c gb_then; -1 none)
+void gn_then(int rule) { gb_then(rule); }
 void gn_thread_stats(double *out) { hostThreadStats(out); }
 int32_t *gn_tele(void) { return tele; }
 int32_t *gn_ages(void) { return ages; }

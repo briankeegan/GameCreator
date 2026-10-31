@@ -366,6 +366,35 @@ Object.keys(modes).sort().forEach(function (k) {
                 Math.round(100 * (t.popLineupPlayed || 0) / t.pop) + '%, a full row broken ' + Math.round(100 * (t.popFull || 0) / t.pop) + '%' : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
+// (THE OPENER'S HANDOVER, a run with `then` -- gambit-24.yml: each game from its start to the top-out, where the opener gives way to the
+// mode the run named; the garbage there broken -- the first decision after with none on the board -- then HANDOVER_HOLD frames more in
+// that mode. Passed: alive at the end of that; a loss after it is the new mode's, not the opener's. Never switched: the game ran out first)
+var HANDOVER_HOLD = 900;
+(function () {
+  var by = {}, n = 0, passed = 0, fails = [];
+  fs.readdirSync(DIR).sort().forEach(function (g) {
+    var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
+    if (!fs.existsSync(rf) || !fs.existsSync(lf)) return;
+    var r = /(\w+) training (lost|survived) frames=(\d+)/.exec(fs.readFileSync(rf, 'utf8')); if (!r) return;
+    var ds = fs.readFileSync(lf, 'utf8').split('\n').filter(function (l) { return l.indexOf('GAMBITD ') === 0; }).map(function (l) {
+      var f = l.split(' '); return { at: +f[1], mode: f[2], under: / under=1 /.test(l) }; });
+    if (!ds.length || ds[0].mode !== 'opener') return;
+    var hi = -1; for (var i = 0; i < ds.length && hi < 0; i++) if (ds[i].mode !== 'opener') hi = i;
+    var lostAt = r[2] === 'lost' ? +r[3] : null, to = hi >= 0 ? ds[hi].mode : 'never switched', o = by[to] || (by[to] = { n: 0, passed: 0, lost: [] });
+    var bi = -1; for (var j = Math.max(hi, 0); hi >= 0 && j < ds.length && bi < 0; j++) if (!ds[j].under) bi = j;
+    var end = bi >= 0 ? ds[bi].at + HANDOVER_HOLD : null, ok;
+    if (hi < 0) ok = lostAt === null;
+    else ok = lostAt === null || (end !== null && lostAt >= end);
+    n++; o.n++; if (ok) { passed++; o.passed++; } else {
+      var why = hi < 0 ? 'lost in the opener' : bi < 0 ? 'lost before the garbage was broken' : 'lost within ' + HANDOVER_HOLD + ' of the break';
+      o.lost.push(lostAt); fails.push(g + ' at ' + lostAt + ': ' + why + (hi >= 0 ? ' (switched at ' + ds[hi].at + (bi >= 0 ? ', broken at ' + ds[bi].at : '') + ')' : ''));
+    }
+  });
+  if (!n || Object.keys(by).every(function (k) { return k === 'never switched'; }) && !process.env.GC_HANDOVER) return;
+  console.log('HANDOVER ' + passed + '/' + n + ' (the opener to the top-out, its garbage broken, then ' + HANDOVER_HOLD + ' frames in the mode after)');
+  Object.keys(by).sort().forEach(function (k) { var o = by[k]; console.log('  to ' + k + ': ' + o.passed + '/' + o.n + (o.lost.length ? '; lost at ' + o.lost.join(', ') : '')); });
+  fails.forEach(function (f) { console.log('  failed ' + f); });
+})();
 // (WHY EACH GAME WAS LOST: causeOf, a tag a loss, the first that holds; the losses counted by tag, then each loss with its numbers)
 { var tags = Object.keys(causes.by).sort(function (a, b) { return causes.by[b] - causes.by[a]; });
   console.log('losses by the piece that failed: ' + (tags.map(function (k) { return k + ' x' + causes.by[k]; }).join(', ') || '-') +
