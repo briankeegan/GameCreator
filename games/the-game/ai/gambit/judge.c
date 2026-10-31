@@ -309,6 +309,14 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       int calm = settleOf(x, w);
       n = liveNode(x, calm) ? calm : w;
       KB(n);
+      // (what the board makes while the line waits is counted as the line's steps are: the board left alone (base) is taken off below,
+      // and it makes the same clears in the same frames -- uncounted here, a break the board makes on its own came off the rest's)
+      Stats sc;
+      if (liveNode(x, calm) && statsOf(x, calm, &sc)) {
+        for (int i = 0; i < sc.n; i++) if (sc.size[i] > combo) combo = sc.size[i];
+        if (chainOfStats(&sc) > chain) chain = chainOfStats(&sc);
+        broke += sc.broke;
+      }
     }
     // (the allowance this swap is pressed under: the input window at the frame its walk begins, less what the line's swaps before it
     // spent -- core/nodes.h allowLeftAt, actionsFor)
@@ -346,14 +354,18 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     if (!last && out == STEP_NULL) { j->cut = k; j->cutWhy = 2; break; }
     if (!liveNode(x, out)) {
       j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t;
-      // (a settle the board is lost in: what it made up to the frame before -- the board's own chain is made before it is lost, and a
-      // hold judged dead must still say so: rank.c aloneChain)
-      if (last && out == STEP_DEAD && j->deadAt - 1 > NODE(x, n)->t) {
-        int w = step(x, n, MK_SETTLE, 0, 0, j->deadAt - 1 - NODE(x, n)->t);
+      // (a step the board is lost in -- a swap's settle or the last: what it made up to the frame before. The board's own chain is made
+      // before it is lost, and a hold judged dead must still say so (rank.c aloneChain); a break made and the board lost in the settle
+      // after it is a break made -- the line in progress is read on this count once it has waited out, decide.c carriedCand)
+      // (tight, the swap is pressed its held walk's delay later (core/nodes.h pressDelay): the frames to the loss are counted from there)
+      if (out == STEP_DEAD && j->deadAt - 1 > NODE(x, n)->t) {
+        int32_t late = pressTight && mr ? pressDelay(x, n, mr, mc) : 0, fr = j->deadAt - 1 - NODE(x, n)->t - late;
+        int w = fr > 0 ? step(x, n, MK_SETTLE, mr, mc, fr) : STEP_NULL;
         Stats sd;
         if (liveNode(x, w) && statsOf(x, w, &sd)) {
           for (int i = 0; i < sd.n; i++) if (sd.size[i] > combo) combo = sd.size[i];
           if (chainOfStats(&sd) > chain) chain = chainOfStats(&sd);
+          broke += sd.broke;
         }
       }
       break;
