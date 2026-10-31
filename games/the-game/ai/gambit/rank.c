@@ -369,7 +369,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // window's reserve, before a break, before the line in progress: a chain left to end short of the target is the attack thrown away
   if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
     int32_t cap = listChainCap();
-    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
+    // (a link pressed out of the window's reserve is no link: the break after the chain is pressed from what is left)
+    if (cap >= 2) {
+      int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap);
+      if (pressAllowance >= 0) { if (pressAllowance - lineWalk(x) < BREAK_WALK) cx = 0; if (pressAllowance - lineWalk(y) < BREAK_WALK) cy = 0; }
+      if (cx != cy) return (cmpKey = __LINE__, (cy - cx));
+    }
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
