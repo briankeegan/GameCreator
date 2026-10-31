@@ -53,6 +53,12 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    pressure 23 in run 1555 and 21 in 1556 (factory 5 to 8 of 8, the other two 7 and 8); build 23 in run 1636 (combo_storm and
    large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). On the owner's lists (110143e3): pressure 22 in run 1669, build 22 in run 1672, finish 22 in run 1679, switching 22 in run 1789; each mode to 22 again, one at a time.
 
+THE OPENER'S OWN TARGET (the owner): 100%. It has the countdown's three seconds to itself, so it never dies. It is measured as a
+handover: from the start to the top-out, that garbage broken, then 15 s (900 frames) in the mode it gives way to -- each of finish
+them, big chain, pressure and build on the same 8 seeds per pattern, never time attack (no garbage there). gambit-24.yml `then`
+`["finish_them","big_chain","pressure","build"]`, `profile` gambit-opener.json, `frames` 5400 (a game not switched by 90 s is
+reported, not failed); gambit_summary.js prints HANDOVER.
+
 ## The modes (the owner's plan)
 
 A fight opens with the opener (`survivor-profiles/gambit-rules.json` `opener`); after it, the mode is picked from the enemy's board,

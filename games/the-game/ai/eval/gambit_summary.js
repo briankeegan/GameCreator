@@ -377,7 +377,7 @@ var HANDOVER_HOLD = 900;
     if (!fs.existsSync(rf) || !fs.existsSync(lf)) return;
     var r = /(\w+) training (lost|survived) frames=(\d+)/.exec(fs.readFileSync(rf, 'utf8')); if (!r) return;
     var ds = fs.readFileSync(lf, 'utf8').split('\n').filter(function (l) { return l.indexOf('GAMBITD ') === 0; }).map(function (l) {
-      var f = l.split(' '); return { at: +f[1], mode: f[2], under: / under=1 /.test(l) }; });
+      var f = /^GAMBITD (\d+) (.*?) play=/.exec(l) || [0, 0, '']; return { at: +f[1], mode: f[2], under: / under=1 /.test(l) }; });
     if (!ds.length || ds[0].mode !== 'opener') return;
     var hi = -1; for (var i = 0; i < ds.length && hi < 0; i++) if (ds[i].mode !== 'opener') hi = i;
     var lostAt = r[2] === 'lost' ? +r[3] : null, to = hi >= 0 ? ds[hi].mode : 'never switched', o = by[to] || (by[to] = { n: 0, passed: 0, lost: [] });
