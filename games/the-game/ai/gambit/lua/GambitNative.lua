@@ -45,7 +45,7 @@ int32_t *gn_tele(void);
 int32_t *gn_ages(void);
 void gn_match(void);
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop);
-int gn_countdown(int left, int limit, int window);
+int gn_countdown(int left, int limit, int window, int oppHas, int oppOut, int oppTop, int oppStop);
 void gn_end(void);
 void gn_log(const char *s);
 void gn_thread_stats(double *out);
@@ -258,7 +258,8 @@ function GambitNative:think(stack, sources, view)
     local left = stack.countdown_timer
     if left and left > 1 and left <= COUNTDOWN_ASK then
       self:load(stack)
-      C.gn_countdown(left, self.inputs.limit or 0, self.inputs.window or 0)
+      local has, out, top, stop = opponentOf(sources, view, stack.clock)
+      C.gn_countdown(left, self.inputs.limit or 0, self.inputs.window or 0, has, out, top, stop)
     end
     return idle
   end

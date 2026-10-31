@@ -6,7 +6,8 @@ static Opp theOpp;
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 static int32_t openerOver;   // (the opener played out: a board has topped out this game)
 static int32_t thenRule = -1;
-static int32_t carryNone;   // (why no line in progress was offered: carriedCand)   // (the mode a named opener gives way to at the top-out; -1: none)
+static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
+static int32_t rescues;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
@@ -229,6 +230,14 @@ static int ranked(const Read *R, const Found *S) {
   rankReact = C2.reaction + 1;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+  // (NOTHING JUDGED IN TIME: the searches and the proposing took the decision's time and the clock stopped the judge on every line --
+  // every line is judged again up to the move's own frame, the host's hard stop (clockFrameOut): a board is never held for want of a
+  // look at its lines. The line in progress and the hold are judged in that time too.)
+  double rescueDue = clockDue, rescueShare = clockShare; int rescue = 0;
+  if (!n && nc && clockFrameOut && clockOut()) {
+    rescue = 1; clockDue = 0; clockShare = 0;
+    for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+  }
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
@@ -253,6 +262,7 @@ static int ranked(const Read *R, const Found *S) {
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
   holdCand(R, 0, H);
+  if (rescue) { clockDue = rescueDue; clockShare = rescueShare; rescues++; }
   order[n] = H; n++;
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);

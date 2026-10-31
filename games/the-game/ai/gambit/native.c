@@ -325,9 +325,11 @@ static void framePublish(int32_t clock) {
   __atomic_store_n(&gameBurst, worst, __ATOMIC_SEQ_CST);
   __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST);
 }
-// THE COUNTDOWN (lua/GambitNative.lua, the frames before play): the opening asked on the layers shown (front.c frontCountdown)
-int gn_countdown(int left, int limit, int window) {
+// THE COUNTDOWN (lua/GambitNative.lua, the frames before play): the opening asked on the layers shown (front.c frontCountdown), the
+// opponent as the host has it -- a fight's opening is the opener's, planned through the countdown
+int gn_countdown(int left, int limit, int window, int oppHas, int oppOut, int oppTop, int oppStop) {
   if (nb_load(F.truth)) return -1;
+  F.oppHas = oppHas; F.oppOut = oppOut; F.oppTop = oppTop; F.oppStop = oppStop;
   int32_t clock = F.truth->clock;
   if (lastClock != NUL && clock < lastClock) gn_match();
   lastClock = clock;
