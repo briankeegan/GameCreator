@@ -152,6 +152,9 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `465bf867` the switch charged alone, the break-before-chain key out -- pressure 22 (1798), build 20 (1799), big chain 18 (1800), finish 20 (1801): 80 against main's 78 on the same four, within a run's noise; main keeps the owner's rule (garbage broken first) [a measurement]
 - `5fe35d73` under the tight window a swap with no walk delay not played twice (step() played it in pressDelayOf, then again: 68% of tight swap steps; offline on 2,535 logged no-break boards the search finds 29-48% more breaks in the same time, every board byte-identical) -- big chain 18 (1802), finish 20 (1803), pressure 20 (1804), build 19 (1805), opener 19 (1806), switching 19 (1807): 115 against 119, within six runs' noise, no decision changed at equal work [kept]
 - `ecceffaa` under garbage the off-list break pass resumed from the frontier kept (the last decision's and the search between decisions', both off the list, were resumed only by the within-list pass, run only once a break was found) -- big chain 22 (1808), finish 21 (1809), pressure 19 (1810), build 20 (1811): 82 against 77; reach losses 2 of 14 [kept]
+- main `d49334a8`: opener 18 (1812), switching 19 (1813) [a measurement]
+- `e333ec54` the golden re-recorded on main (single-threaded 0 moves changed; with workers the replay is not exact, 133 moved) [infra]
+- `cd66cbdd` a line in progress whose board is lost during its rest read on what it was played as making (rank.c judgeCand reads such a line on the search's word, the carry on the judge's count, which is nothing for the step the board dies in: 964 of 1121 "no longer breaks" drops in 1812) -- big chain 24 (1815), build 22 (1818), pressure 20 (1817), finish 19 (1816), opener 17 (1814), switching 15 (1819): 117 against 119 [kept]
 
 ## The shortlist for pressure, in the order to try
 
