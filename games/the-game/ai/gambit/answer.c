@@ -640,6 +640,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
+  if (P.looked) L_s(" looked=1");
   if (R.saving) L_s(" saving=1");
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
   L_s(" lifePeak="); L_i(lifePeakOf());
@@ -718,7 +719,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); lifeDumps = 0; openerOver = 0;
+  modeLeft(); lifeDumps = 0; openerOver = 0; lookedLast = 0;
   if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)

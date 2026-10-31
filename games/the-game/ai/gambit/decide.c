@@ -378,7 +378,13 @@ static int ranked(const Read *R, const Found *S) {
 
 // 5. PLAY: the raise when the opening calls for it, a hold while the raise waits for a busy board, else the first candidate in the one
 // order -- a line's first swap, or the hold
-typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred; } Played;
+typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred, looked; } Played;
+// A SECOND LOOK: a line begun now -- not the line in progress -- on a board that is neither chaining nor short of time (the hold and the
+// line both lost no sooner than LOOK_SAVES breaks' time) waits one decision before its first swap. The searches go on between decisions
+// and as often as not find a better line by the next, and every swap pressed of a line put down is spent from the input window for
+// nothing. Never two decisions running: the next decision plays what it ranks first.
+#define LOOK_SAVES 2
+static int32_t lookedLast;
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -408,6 +414,10 @@ static Played playOf(const Read *R, int n) {
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
   }
+  if (P.line && !P.line->carried && P.line->k.play != PLAY_CARRY && !P.line->k.extend && !lookedLast && P.line->apNats > 0 && P.line->apAts[0] == 0 &&
+      holdLost >= LOOK_SAVES * rankSave && lostOf(P.line) >= LOOK_SAVES * rankSave && decQ.b->chainCounter < 2 && !popLeft(decQ.b) &&
+      !cascadeLive(decQ.b) && !(theOpp.has && theOpp.out) && !clockOut()) { P.line = 0; P.looked = 1; }
+  lookedLast = P.looked;
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
   P.ncands = n;
