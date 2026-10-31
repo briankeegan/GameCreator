@@ -39,6 +39,9 @@ on:
       rounds:
         description: "The rounds played, a JSON list: each round plays every pattern's 8 games again on seeds of its own (round r: seed base + r - 1), so a build is measured on more games than one run holds"
         default: '[1]'
+      fight:
+        description: "1: training played as a fight (GC_GAMBIT_FIGHT) -- an opponent there from the countdown on, low, never topped, so the opening is found as a live fight finds it; with a profile that names no mode (survivor-profiles/gambit.json)"
+        default: ''
       then:
         description: "The modes an opener gives way to at the top-out, a JSON list (`_` for a space: [\"finish_them\",\"big_chain\",\"pressure\",\"build\"]): every game is played once per mode on the same seed (GC_GAMBIT_THEN); [\"rotate\"]: each game one mode, in turn; none: the profile's mode all game"
         default: '[""]'
@@ -108,6 +111,7 @@ jobs:
           GC_GAMBIT_WORKERS: ${{ inputs.workers }}
           SEED_BASE: ${{ inputs.seed }}
           GC_GAMBIT_THEN: ${{ matrix.then }}
+          GC_GAMBIT_FIGHT: ${{ inputs.fight }}
         run: |
           # (rotate: game g gives way to the g-th of the four modes in turn, so 24 games try each mode six times)
           if [ "$GC_GAMBIT_THEN" = rotate ]; then M=(finish_them big_chain pressure build); export GC_GAMBIT_THEN=${M[$(( (${{ matrix.game }} - 1) % 4 ))]}; fi

@@ -47,7 +47,7 @@ static int readBoard_(Read *R) {
   if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out)) && !openerOver) {
     openerOver = 1;
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
-    if (ni >= 0 && theTables.r[ni].table == 2) modeRule = thenRule;
+    if (thenRule >= 0 && ((ni >= 0 && theTables.r[ni].table == 2) || (modeRule < 0 && theOpp.has))) modeRule = thenRule;
   }
   int oi = -1;
   for (int i = 0; i < theTables.n && oi < 0 && !openerOver && theOpp.has && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;

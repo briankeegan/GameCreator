@@ -226,6 +226,7 @@ end
 -- exactly is read off its own stack. (A panel counts as the engine's Panel:dangerous counts it: garbage still falling is not the
 -- stack's height, and does not top it out.)
 local VIEW_FRESH = 90   -- frames a shipped board of the opponent is read as its board
+local FIGHT = os.getenv("GC_GAMBIT_FIGHT") == "1"
 local function counts(p) if not p then return false end if p.isGarbage then return p.state ~= "falling" end return (p.color or 0) ~= 0 end
 local function opponentOf(sources, view, clock)
   local anyWired = false
@@ -248,6 +249,9 @@ local function opponentOf(sources, view, clock)
       end
     end
   end
+  -- (GC_GAMBIT_FIGHT: training played as a fight -- the attack engine stands in for a stack that is there, low, not topped, held up by
+  -- nothing, from the countdown on, so the opening is found the way a fight's is: the opener's table)
+  if has == 0 and FIGHT then return 1, 0, 0, 0 end
   return has, out, top, stop
 end
 
