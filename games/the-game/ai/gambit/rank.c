@@ -368,9 +368,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
   // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the
   // window's reserve, before a break, before the line in progress: a chain left to end short of the target is the attack thrown away
-  // (under garbage, between two that both break or both do not: a break is never put after a line that only carries the chain on --
-  // the owner: garbage broken first, the chain continued where it can be both)
-  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y)) && (!decF.under || (x->apBroke > 0) == (y->apBroke > 0))) {
+  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
     int32_t cap = listChainCap();
     if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
   }
