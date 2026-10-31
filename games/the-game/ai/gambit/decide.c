@@ -641,12 +641,12 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   if (!j.dead && j.nats < nrest) { carryDrop = 2; carryDropDead = -1; carryDropCut = j.cut; carryDropWhy = j.cutWhy; carryDropNats = j.nats; return 0; }
   *wait = moving;
   // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
-  // (A REST THE BOARD IS LOST DURING: the judge counts nothing of the step the board is lost in -- a break made and the board lost in
-  // the settle after it reads as no break -- so, as the rank reads a line the judge could not play out on the search's word (rank.c
-  // judgeCand), the rest is read on what the line was played as making. The judge and the rank then say of this line what they said
-  // when it was begun; the next judging ranks it by its loss, as any line lost)
+  // (A REST THE BOARD IS LOST DURING is read on what the line was played as making, as the rank reads a line the judge could not play
+  // out on the search's word (rank.c judgeCand). The judge and the rank then say of this line what they said when it was begun; the
+  // next judging ranks it by its loss, as any line lost)
   // (but not for a line that has waited out (carryWaitsOut): nothing of it is pressed while it waits, and read on the search's word it
-  // would be the break first every decision it waits)
+  // would be the break first every decision it waits. It is read on the judge's count, which counts the step the board is lost in up
+  // to the frame before (judge.c): a break made and the board lost in the settle after it is a break made, and the line is carried on)
   Made x = j.dead && !(moving && carryWaitsOut()) ? C->made : (Made){ j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
   int32_t done = j.done, fire = j.fire, nats = j.nats, ats[MAXLINE];
   for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
