@@ -12,7 +12,7 @@
   "rules": "survivor-profiles/gambit-rules.json",
   "ms": 80,
   "width": 40,
-  "depth": 7,
+  "depth": 9,
   "pool": 250
  },
  "pace": {

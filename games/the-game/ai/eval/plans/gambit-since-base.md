@@ -124,6 +124,22 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `5f581700` the both-below reserve (cc8b2cb0) on ffb3f5b5 -- pressure 15 (1694, against 22), build 20 (1695, against 22) [dropped]
 - `9296433c` the chain cap (de28fcf1) on ffb3f5b5 -- big chain 21 (1698, against 16); pressure 21 (1699), build 23 (1700), finish 19 (1701): those three lists ask no "or more" chain, so they play as the base does -- the same play on the same seeds reads 19 to 23 [kept: main b2fcbbc4]
 - `b1f892d8` under garbage, while a slab pops a second or more, a set-up no worse than the hold played over it (large_garbage-7 in 1698 held 22 decisions through a 347-frame pop, no break ready, and was lost) -- big chain 18 (1702), finish 17 (1703), pressure 19 (1704), build 20 (1705), opener 14 (1706): 88 against about 107, games lost before frame 2600 [dropped]
+- `43ca1eaa` the material floor 36 (the rules' 30) on main b2fcbbc4 -- big chain 20 (1707), finish 20 (1708), pressure 22 (1709), build 17 (1710), opener 18 (1711): 97 against 105 [dropped]
+- `3cb7da0d` under garbage, of two lines lost alike that break nothing, the later loss before the fewer actions (finish factory-3 in 1701 held 15 decisions over a line lost 55 frames later) -- big chain 19 (1712), finish 24 then 19 (1713, 1717), pressure 20 (1714), build 19 (1715), opener 17 (1716): 94 against 105 [dropped]
+- finish on one build, seed 7: 22, 19, 24, 19 -- a mode's single run is read across all five, 120 games, against the bar (105) [a measurement]
+- `e5e422bb` under garbage, of two lines lost alike that break nothing, a break ready once the next block lands before the fewer actions ("ready at the landing 0" in most lost games) -- big chain 15 (1718), finish 19 (1719), pressure 20 (1720), build 23 (1721), opener 21 (1722): 98 against 105 [dropped]
+- `65f4b740` the BREAK_LOW break reserve (62826eb7) alone on main -- big chain 21 (1723), finish 22 (1724), pressure 19 (1725), build 20 (1726), opener 15 (1727): 97 against 105 [dropped]
+- main (b2fcbbc4, the chain cap) on seed 7 again: big chain 20 (1728), finish 20 (1729), pressure 20 (1730), opener 20 (1732) -- the bar is about 100, not 105: the changes dropped at 94-99 were within a run's noise of it [a measurement]
+- `55d7c559` a chain carried on only by a line that leaves the window a break's walk (opener combo_storm-5 in 1722: the window 48 to 4 carrying a 7-chain) -- opener 20 (1733, against 20), big chain 15 (1734, against 20) [dropped]
+- d2e2ea64's Gambit on the owner's lists: big chain 24 (1738), finish 19 (1739), pressure 20 (1740), build 21 (1741) -- big chain 24 against 15-21 on every build since: the chain carried on (1'-) is the change between that reads chains [a measurement]
+- `4d3f1822` a chain falling carried on only between lines that live (the owner: continued "if it doesn't die") -- big chain 18 (1742), opener 19 (1743) [dropped]
+- `26ff8a88` a line that wastes a three dropped only where a line that wastes none survives as long (opener combo_storm-7 in 1732: a break six deep dropped for a three on its way, the hold played, the break gone a decision later) -- big chain 15 (1746; combo_storm 2 of 8), finish 16 (1747), pressure 19 (1748) [dropped]
+- `3e18764d` the same, a three kept only where it buys a break's time -- big chain 17 (1751); on combo_storm: finish 6 (1756), pressure 3 (1757) [dropped]
+- `cdef25de` a chain shorter than the list asks begun toward it whether or not it still falls (d2e2ea64's) -- big chain 21 (1760); on combo_storm: pressure 6 (1761), opener 4 (1762): within a run's noise, and it brings back the finished 2-chain as a beginning (the owner: no 2-chain goals) [dropped]
+- `8e1672cf` time attack: an 8+ chain only (the owner) [kept]
+- `eaf45f4c` of two that do not live, the window's reserve before the later loss (finish combo_storm-8 in 1729: the window 76 to 0 in 12 s on combos, garbage landing with 2 presses left) -- finish 16 (1763), big chain 19 (1764); on combo_storm: pressure 6 (1765), opener 6 (1766) [dropped]
+- `96d0bd44` ready for the garbage on its way under garbage too (readyAt: the judge, the planner and the readiness proposer) -- big chain 15 (1767; combo_storm 2 of 8), finish 20 (1768); on combo_storm: pressure 4 (1769), opener 5 (1770): a line under garbage lives only where it is ready, and few are [dropped]
+- `84ec110c` under garbage, the readiness proposer's swap offered only -- big chain 16 (1771) [dropped]
 
 ## The shortlist for pressure, in the order to try
 
