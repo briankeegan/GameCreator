@@ -264,10 +264,13 @@ static int goalKeyOf(const Judge *J) {
 // let down, the panels in the break's way cleared -- as the rules let a three break garbage (rules.c fits, judge.c breakingThree): not
 // wasted. The board's own chain cut short is, whatever the line breaks)
 static int cutsShort(const Judge *J);
+// A COMBO THE MODE DOES NOT ASK FOR (the owner: combos only where the enemy is topped out -- finish them -- or the board dies without
+// one): four or more panels at once, no chain, outside the mode's list
+static int comboOutside(const Judge *J) { return !J->hold && J->outside && J->apCombo >= 4 && J->apChain < 2; }
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
   if (J->o.j.threes > 0 && !(J->apBroke > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
-  if (J->apCombo == 4 && J->apChain < 2 && !(J->apBroke > 0)) return 1;   // (a combo of four that breaks nothing: the owner, only where the board dies without it)
+  if (comboOutside(J) && !(J->apBroke > 0)) return 1;   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
   if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
@@ -371,6 +374,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int32_t cap = listChainCap();
     if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
   }
+  // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
+  // none, a break or not -- it is the panels of an attack the mode does not want
+  if ((lx || lostAlike(x, y)) && comboOutside(x) != comboOutside(y)) return (cmpKey = __LINE__, (comboOutside(x) ? 1 : -1));
   // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
   // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
   // spent comes back only a window later, the garbage it is needed for may be told of by then or not
