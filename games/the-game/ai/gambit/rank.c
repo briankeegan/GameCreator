@@ -378,13 +378,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
-  // 1'. THE CHAIN FALLING, CARRIED ON (the owner: a chain going is continued unless continuing kills the board): while the board chains,
-  // of two that survive alike, the one that takes the chain further, up to the longest the list asks -- before every key but survival,
-  // under garbage too: a chain left to end short of the target is the attack thrown away
-  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
-    int32_t cap = listChainCap();
-    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
-  }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
   // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the
   // mode does not want
@@ -398,6 +391,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+  }
+  // 1'. THE CHAIN FALLING, CARRIED ON (the owner: a chain going is continued unless continuing kills the board): while the board chains,
+  // of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the window's reserve (the
+  // next break is pressed out of it), before every other key, under garbage too: a chain left to end short of the target is the attack
+  // thrown away. Not where the chain is lost a break's time sooner than the other: that time is survival.
+  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
+    int32_t cap = listChainCap();
+    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap);
+      if (cx != cy) { const Judge *c = cx > cy ? x : y, *o = cx > cy ? y : x;
+        if (lx || lostOf(c) >= lostOf(o) - rankSave) return (cmpKey = __LINE__, (cy - cx)); } }
   }
   // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
