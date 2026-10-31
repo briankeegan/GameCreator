@@ -40,7 +40,7 @@ on:
         description: "The rounds played, a JSON list: each round plays every pattern's 8 games again on seeds of its own (round r: seed base + r - 1), so a build is measured on more games than one run holds"
         default: '[1]'
       then:
-        description: "The modes an opener gives way to at the top-out, a JSON list (`_` for a space: [\"finish_them\",\"big_chain\",\"pressure\",\"build\"]): every game is played once per mode on the same seed (GC_GAMBIT_THEN); none: the profile's mode all game"
+        description: "The modes an opener gives way to at the top-out, a JSON list (`_` for a space: [\"finish_them\",\"big_chain\",\"pressure\",\"build\"]): every game is played once per mode on the same seed (GC_GAMBIT_THEN); [\"rotate\"]: each game one mode, in turn; none: the profile's mode all game"
         default: '[""]'
 
 permissions:
@@ -109,6 +109,8 @@ jobs:
           SEED_BASE: ${{ inputs.seed }}
           GC_GAMBIT_THEN: ${{ matrix.then }}
         run: |
+          # (rotate: game g gives way to the g-th of the four modes in turn, so 24 games try each mode six times)
+          if [ "$GC_GAMBIT_THEN" = rotate ]; then M=(finish_them big_chain pressure build); export GC_GAMBIT_THEN=${M[$(( (${{ matrix.game }} - 1) % 4 ))]}; fi
           if [ -n "$SEED_BASE" ]; then
             case "${{ matrix.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; *) P=9;; esac
             export PA_SEED=$(((SEED_BASE + ${{ matrix.round }} - 1) * 100 + P * 10 + ${{ matrix.game }}))
