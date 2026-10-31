@@ -267,6 +267,7 @@ static int cutsShort(const Judge *J);
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
   if (J->o.j.threes > 0 && !(J->apBroke > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
+  if (J->apCombo == 4 && J->apChain < 2 && !(J->apBroke > 0)) return 1;   // (a combo of four that breaks nothing: the owner, only where the board dies without it)
   if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
@@ -363,7 +364,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
-  // 1'. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
+  // 1'. THE CHAIN FALLING, CARRIED ON (the owner: a chain going is continued unless continuing kills the board): while the board chains,
+  // of two that survive alike, the one that takes the chain further, up to the longest the list asks -- before every key but survival,
+  // under garbage too: a chain left to end short of the target is the attack thrown away
+  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
+    int32_t cap = listChainCap();
+    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
+  }
+  // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
   // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
   // spent comes back only a window later, the garbage it is needed for may be told of by then or not
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
@@ -376,15 +384,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (x->carried != y->carried && !x->hold && !y->hold && (lx || lostAlike(x, y))) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
     if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
-  }
-  // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
-  // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the
-  // window's reserve, before a break, before the line in progress: a chain left to end short of the target is the attack thrown away
-  // (under garbage, between two that both break or both do not: a break is never put after a line that only carries the chain on --
-  // the owner: garbage broken first, the chain continued where it can be both)
-  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y)) && (!decF.under || (x->apBroke > 0) == (y->apBroke > 0))) {
-    int32_t cap = listChainCap();
-    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
