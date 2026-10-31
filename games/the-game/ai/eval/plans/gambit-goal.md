@@ -91,6 +91,7 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
 ## The rules set for it -- none changed without asking
 
 - Play within the mode's list.
+- **Attack under garbage too, breaking it first** (the owner): the mode's attacks are never switched off while garbage is on the board.
 - **Health is ignored completely**: every board is planned at `planHealth`, never with the health a game gives -- health spent never
   comes back.
 - Topped out, there is always some stop.
