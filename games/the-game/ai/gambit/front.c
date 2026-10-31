@@ -79,7 +79,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx; } MoveOpen;   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 // (the lines whose swaps are followed: each answer's swaps in all and how many of them were pressed, by the answer's id)
 #define LINE_RECS 64
-typedef struct { int32_t id, total, pressed, why; } LineRec;   // why: what ended the line (END_*, or the order's key that put it down)
+typedef struct { int32_t id, total, pressed, why, next; } LineRec;   // why: what ended the line (END_*, or the order's key that put it down); next: the answer's line it was carried on as (END_ON)
 static LineRec lineRecs[LINE_RECS];
 static LineRec *lineRec(int32_t lid) { LineRec *r = lid > 0 ? &lineRecs[(lid - 1) % LINE_RECS] : 0; return r && r->id == lid ? r : 0; }
 // WHAT ENDED A LINE, for the swaps of it that came to nothing (noneWhy): the answer's word (answer.c ended: carried on, held, not
@@ -589,8 +589,10 @@ static void take(void) {
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
     for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play >= 0 ? a.play + 1 : 0, a.kind == 1 ? a.id + 1 : 0, 0 });
-    lineEnds(a.ended);
-    if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->total = a.nhand + 1; r->pressed = 0; r->why = 0; }
+    { LineRec *o = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
+      lineEnds(a.ended);
+      if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->total = a.nhand + 1; r->pressed = 0; r->why = 0; r->next = 0;
+        if (o && o->why == END_ON && o != r) o->next = r->id; } }
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
@@ -721,7 +723,14 @@ static void countAttacks(const Board *b) {
 static void noneOf(const MoveOpen *m) {
   F.st.moveNone++; if (m->play > 0 && m->play <= NPLAYS) F.st.noneBy[m->play - 1]++;
   const LineRec *r = lineRec(m->lid);
-  if (r) { if (m->idx >= r->total - 1) F.st.noneLast++; else if (r->pressed > m->idx + 1) F.st.noneOn++; else { F.st.noneDropped++; F.st.noneWhy[r->why > 0 && r->why < NEND ? r->why : 0]++; } }
+  // (a line carried on is the same line: what became of it is what became of the last answer it was carried on as)
+  int on = 0;
+  for (int hop = 0; r && r->why == END_ON && r->next && hop < LINE_RECS; hop++) { const LineRec *n = lineRec(r->next); if (!n) break; r = n; on = 1; }
+  if (r) {
+    if (on ? r->pressed >= r->total || !r->why : m->idx >= r->total - 1) F.st.noneLast++;
+    else if (!on && r->pressed > m->idx + 1) F.st.noneOn++;
+    else { F.st.noneDropped++; F.st.noneWhy[r->why > 0 && r->why < NEND ? r->why : 0]++; }
+  }
 }
 static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play, int32_t lid, int32_t idx) {
   { int i = swapRingN++ % SWAPRING; if (!swapRing[i]) swapRing[i] = nb_new(); if (swapRing[i]) { cloneBoard(swapRing[i], b); swapRingAt[i] = b->clock; } }

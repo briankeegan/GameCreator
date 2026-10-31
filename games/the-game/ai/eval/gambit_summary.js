@@ -450,7 +450,7 @@ if (nmv) console.log('every move on the way: the cursor walked ' + (aggr.frames 
 Object.keys(actsBy).sort().forEach(function (w) { var ab = actsBy[w], min = ab.frames / 3600; if (!min) return; var tot = 0; Object.keys(ab.by).forEach(function (k) { tot += ab.by[k]; });
   console.log('the window spent, games ' + w + ': ' + Math.round(tot / min) + ' actions a minute -- ' + Object.keys(ab.by).sort(function (a, b) { return ab.by[b] - ab.by[a]; }).map(function (k) { return k + ' ' + Math.round(ab.by[k] / min); }).join(', ')); });
 if (moves.none) console.log('moves wasted: ' + moves.none + ' swaps that came to nothing, by the line that pressed them: ' + Object.keys(noneBy).sort(function (a, b) { return noneBy[b] - noneBy[a]; }).map(function (k) { return k + ' ' + noneBy[k]; }).join(', ') +
-                             '; by what became of their line: ' + (noneHow.dropped || 0) + ' dropped before its later swaps, ' + (noneHow.on || 0) + ' its later swaps pressed, ' + (noneHow.last || 0) + ' the line\'s last swap');
+                             '; by what became of their line: ' + (noneHow.dropped || 0) + ' of a line put down or dropped before its end, ' + (noneHow.on || 0) + ' its later swaps pressed, ' + (noneHow.last || 0) + ' of a line played out (carried on to its end, or its last swap)');
 // (THE DROPPED, BY WHAT ENDED THEIR LINE: front.c lineEnds -- a number of 10 or more past the frame loop's own is the line of the order's
 // key that put the line down, rank.c compareJudged)
 var END_NAME = { 0: 'unknown', 1: 'carried on', 2: 'held over it', 3: 'not carried', 4: 'carry: anchor gone', 5: 'carry: step not there', 6: 'carry: no longer breaks',
