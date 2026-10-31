@@ -140,6 +140,10 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `eaf45f4c` of two that do not live, the window's reserve before the later loss (finish combo_storm-8 in 1729: the window 76 to 0 in 12 s on combos, garbage landing with 2 presses left) -- finish 16 (1763), big chain 19 (1764); on combo_storm: pressure 6 (1765), opener 6 (1766) [dropped]
 - `96d0bd44` ready for the garbage on its way under garbage too (readyAt: the judge, the planner and the readiness proposer) -- big chain 15 (1767; combo_storm 2 of 8), finish 20 (1768); on combo_storm: pressure 4 (1769), opener 5 (1770): a line under garbage lives only where it is ready, and few are [dropped]
 - `84ec110c` under garbage, the readiness proposer's swap offered only -- big chain 16 (1771) [dropped]
+- the swaps that came to nothing, by line and by what became of it (front.c noneBy, noneHow; `e5983278`, `6d9ecea7`): main, finish on combo_storm (1781): 298 of them, 260 from a line dropped before its later swaps -- and what put the line down (answer.c putDown=, `2a3376fb`; 1784, 975 decisions): the later loss 259, the chain carried on 185, the garbage broken for each action 176, the walk 45; the line in progress offered with its aim gone (its rest judged alone) 768 times [a measurement]
+- `98b4affd` the planner 9 swaps deep -- big chain 15 (1774) [dropped]
+- `5ea342d0` under garbage the walk never puts the line in progress down -- big chain 20 (1783), finish on combo_storm 4 (1782) [dropped]
+- `6f856e76` nor the garbage broken for each action -- big chain 15 (1786), finish on combo_storm 6 (1785); lines dropped 1308 and 239, against 1257 and 260 [dropped]
 
 ## The shortlist for pressure, in the order to try
 
