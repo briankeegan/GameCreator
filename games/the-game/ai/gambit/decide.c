@@ -415,7 +415,9 @@ static Played playOf(const Read *R, int n) {
 // only when none was then)
 // (ready: a break found on the board once everything lands, carried from a swap played for it -- offered, not put first: it was found
 // on a board the stack is not yet)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits; Aim aim; } Carry;
+// (made: what the line was ranked as making when it was played -- the judge's count, or the search's word for a line whose board is lost
+// during it (rank.c judgeCand): the rest of such a line is read on it too, carriedCand)
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits; Aim aim; Made made; } Carry;
 static Carry theCarry;
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
@@ -451,6 +453,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
   for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
+  theCarry.made = (Made){ k->apCombo, k->apChain, k->apBroke, k->k.x.cells };
   carriedSunk = lineWalk(k);
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
 }
@@ -465,7 +468,7 @@ static void carryNextOf(const Judge *L) {
   if (!anchorInto(&theCarryNext, j->readyRow1, j->readyLine, j->readyN)) return;
   theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarryNext.rest[i] = j->readyLine[i];
-  theCarryNext.settled = 0; theCarryNext.broke = 1; theCarryNext.ready = 1;
+  theCarryNext.settled = 0; theCarryNext.broke = 1; theCarryNext.ready = 1; theCarryNext.made = (Made){ 0, 0, 1, 0 };
 }
 static void carryReady(const Judge *H, int32_t qid) {
   const Judged *j = &H->o.j;
@@ -474,7 +477,7 @@ static void carryReady(const Judge *H, int32_t qid) {
   if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
-  theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0; theCarry.ready = !H->hold;
+  theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0; theCarry.ready = !H->hold; theCarry.made = (Made){ 0, 0, 1, 0 };
 }
 // THE READINESS BESIDE THE DECISION (search/break.c readyJob): the boards the order will ask readiness of handed to the workers,
 // worst-ranked first -- the decision asks them best-ranked first -- each searched by whichever thread begins it first. They search on
@@ -631,7 +634,11 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   if (!j.dead && j.nats < nrest) { carryDrop = 2; carryDropDead = -1; carryDropCut = j.cut; carryDropWhy = j.cutWhy; carryDropNats = j.nats; return 0; }
   *wait = moving;
   // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
-  Made x = { j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
+  // (A REST THE BOARD IS LOST DURING: the judge counts nothing of the step the board is lost in -- a break made and the board lost in
+  // the settle after it reads as no break -- so, as the rank reads a line the judge could not play out on the search's word (rank.c
+  // judgeCand), the rest is read on what the line was played as making. The judge and the rank then say of this line what they said
+  // when it was begun; the next judging ranks it by its loss, as any line lost)
+  Made x = j.dead ? C->made : (Made){ j.made.combo, imax(j.made.chain, j.chainAll), j.made.broke, 0 };
   int32_t done = j.done, fire = j.fire, nats = j.nats, ats[MAXLINE];
   for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
   // (a line begun for a break whose swaps pressed so far made it -- the slab popping now, none when it was begun -- is carried on for
