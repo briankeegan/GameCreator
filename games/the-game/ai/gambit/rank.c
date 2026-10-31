@@ -354,6 +354,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
   if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
+  // 1-. THE RESERVE BEFORE THE LATER LOSS (the owner: when it runs low the reserve takes priority): of two that do not live, a line that
+  // breaks nothing and walks the input window below a break's walk after one that keeps it, unless that one is lost within a break's time
+  // -- a later loss judged with presses the window will not have is no later loss
+  if (!lx && pressAllowance >= 0) {
+    int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
+    if (rx != ry && lostOf(rx ? y : x) >= rankSave) return (cmpKey = __LINE__, (rx ? 1 : -1));
+  }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
