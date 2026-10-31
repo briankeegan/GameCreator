@@ -248,20 +248,25 @@ static int thrownOf(const Judge *J) { return J->hold || J->o.dead ? 0 : J->o.j.b
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 // (A FALLBACK: a line that meets an entry of the mode's list after its first and breaks no garbage. The mode's goals in order (the
 // owner: a mode plays its first entry, builds toward it otherwise): the first entry 0, a set-up toward it or a break 1, the hold and
-// any other line that fires no fallback 2, then each fallback, 2 + its entry)
+// any other line that fires no fallback 2, then each fallback, 2 + its entry, and last a clear outside the list that breaks nothing --
+// the owner: a combo or chain the list does not ask for is the last resort, after every fallback)
 static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
 static int goalKeyOf(const Judge *J) {
   if (J->hold) return 2;
   if (J->met == 0) return 0;
   if (fallbackOf(J)) return 2 + J->met;
+  if (J->outside && !(J->apBroke > 0) && (J->apCombo > 0 || J->apChain > 0)) return 3 + MAXAIMS;
   return J->apBroke > 0 || setupPlay(J->k.play) ? 1 : 2;
 }
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
 // and none broken
+// (a line that breaks garbage beyond the board left alone (apBroke, the judge's count) made its threes on the way to the break -- a block
+// let down, the panels in the break's way cleared -- as the rules let a three break garbage (rules.c fits, judge.c breakingThree): not
+// wasted. The board's own chain cut short is, whatever the line breaks)
 static int cutsShort(const Judge *J);
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
-  if (J->o.j.threes > 0) return 1;   // (any clear of three the line makes for nothing, whatever else it makes -- a line lost too)
+  if (J->o.j.threes > 0 && !(J->apBroke > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
   if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
