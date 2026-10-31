@@ -85,7 +85,7 @@ static LineRec lineRecs[LINE_RECS];
 static LineRec *lineRec(int32_t lid) { LineRec *r = lid > 0 ? &lineRecs[(lid - 1) % LINE_RECS] : 0; return r && r->id == lid ? r : 0; }
 // WHAT ENDED A LINE, for the swaps of it that came to nothing (noneWhy): the answer's word (answer.c ended: carried on, held, not
 // carried, dropped by the carry -- or the line number of the order's key that put it down, rank.c cmpKey), or the frame loop's own drop
-enum { END_ON = 1, END_HELD, END_NOTCARRIED, END_ANCHOR, END_STEP, END_NOBREAK, END_RAISE, END_MODE = 10, END_NOBOARD, END_NOKEYS, END_NOFIT, END_OVERWALK, NEND = 1024 };
+enum { END_ON = 1, END_HELD, END_NOTCARRIED, END_ANCHOR, END_STEP, END_NOBREAK, END_RAISE, END_MODE = 10, END_NOBOARD, END_NOKEYS, END_NOFIT, END_OVERWALK, NEND = 1024 };   // (16-21: answer.c ended, decide.c carryNone)
 static void lineEnds(int32_t why);
 
 static struct {

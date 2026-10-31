@@ -455,7 +455,7 @@ if (moves.none) console.log('moves wasted: ' + moves.none + ' swaps that came to
 // (THE DROPPED, BY WHAT ENDED THEIR LINE: front.c lineEnds -- a number of 10 or more past the frame loop's own is the line of the order's
 // key that put the line down, rank.c compareJudged)
 var END_NAME = { 0: 'unknown', 1: 'carried on', 2: 'held over it', 3: 'not carried', 4: 'carry: anchor gone', 5: 'carry: step not there', 6: 'carry: no longer breaks',
-  7: 'a raise', 10: 'loop: another mode', 11: 'loop: no board predicted', 12: 'loop: no keys', 13: 'loop: keys do not fit', 14: 'loop: walk over the allowance' };
+  7: 'a raise', 16: 'none carried by the last answer', 17: 'carried another line', 18: 'carried: all pressed', 19: 'carried: no judgement', 20: 'carried: a wasted three', 21: 'no list', 10: 'loop: another mode', 11: 'loop: no board predicted', 12: 'loop: no keys', 13: 'loop: keys do not fit', 14: 'loop: walk over the allowance' };
 if (Object.keys(actsLost).length) { var lostN = 0; Object.keys(actsLost).forEach(function (k) { lostN += actsLost[k]; });
   console.log('the window spent on lines not played out: ' + lostN + ' of ' + actsAll + ' actions (' + (actsAll ? (100 * lostN / actsAll).toFixed(1) : '-') + '%), by what ended them: ' +
     Object.keys(actsLost).sort(function (a, b) { return actsLost[b] - actsLost[a]; }).map(function (k) { return (END_NAME[k] || 'put down by rank.c:' + k) + ' ' + actsLost[k]; }).join(', ')); }

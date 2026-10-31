@@ -231,8 +231,11 @@ static int ranked(const Read *R, const Found *S) {
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
-  Cand ck; int cwait = 0;
-  if (R->guides.n && carriedCand(R, &ck, &cwait) && judgeCand(R, &ck, &theJudged[n])) {
+  Cand ck; int cwait = 0, cc = 0;
+  carryNone = 21;
+  if (R->guides.n && (cc = carriedCand(R, &ck, &cwait)) && !judgeCand(R, &ck, &theJudged[n])) carryNone = 19;
+  if (R->guides.n && cc && carryNone != 19) {
+    carryNone = 0;
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
@@ -371,7 +374,7 @@ static int ranked(const Read *R, const Found *S) {
     }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; } }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
 }
@@ -611,14 +614,20 @@ static int routeJudged(const Read *R, int n) {
 static int carryDrop;
 // (and for the log, the line dropped: the steps it had left, and for 2 how the judge ended it -- cut at, the steps it pressed)
 static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, carryDropWhy, carryDropNats;
+// (WHY NO LINE IN PROGRESS WAS OFFERED, for the frame loop's count of what ended its line -- answer.c ended: 0 one was; 16 none was
+// carried by the last answer; 17 the frame loop asked on another line than the one carried; 18 every swap of it pressed; 19 the judge
+// gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing)
+static int32_t carryNone;
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0;
+  carryNone = !C->set ? 16 : C->id != carryFrom ? 17 : 0;
   int skip = C->id == carryFrom ? carryPressed : 0;
   if (C->set && C->nrest <= skip && theCarryNext.set) {
     // (the line's own swaps all pressed: the break it lived by is the line in progress now, popping or not as the board is now)
     *C = theCarryNext; memset(&theCarryNext, 0, sizeof theCarryNext); carriedSunk = -1; C->popping = popLeft(decQ.b) > 0; skip = 0;
   }
+  if (C->set && C->nrest <= skip) carryNone = 18;
   if (!C->set || C->nrest <= skip) return 0;
   int dr = NOT_ASKED;
   // (from the row not yet risen: the board a waited-for break was found on may have risen past this one)
