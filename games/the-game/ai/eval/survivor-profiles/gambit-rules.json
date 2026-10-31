@@ -3,7 +3,7 @@
   "material": ">=30"
  },
  "raise": {
-  "to": 10
+  "to": 11
  },
  "underGarbage": "break",
  "opener": [
@@ -19,7 +19,8 @@
     {
      "chain": ">=4"
     }
-   ]
+   ],
+   "by": 600
   }
  ],
  "attack": [

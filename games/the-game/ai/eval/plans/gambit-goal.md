@@ -51,7 +51,7 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    and each change is checked for a mode it set back, until all are at 24, twice.
    Finish them reached 22 in run 432; big chain in run 1464 (lockstep). In real time, on the base (plans/gambit-since-base.md):
    pressure 23 in run 1555 and 21 in 1556 (factory 5 to 8 of 8, the other two 7 and 8); build 23 in run 1636 (combo_storm and
-   large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). On the owner's lists (110143e3): pressure 22 in run 1669, build 22 in run 1672, finish 22 in run 1679; each mode to 22 again, one at a time.
+   large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). On the owner's lists (110143e3): pressure 22 in run 1669, build 22 in run 1672, finish 22 in run 1679, switching 22 in run 1789; each mode to 22 again, one at a time.
 
 ## The modes (the owner's plan)
 
@@ -80,8 +80,6 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
 
 - A material reserve before garbage lands, and how many panels.
 - Whether the chain modes build their chains on their own stack only, or may fire the chains garbage colours make without breaking.
-- Whether the opening raise goes higher than 10 rows. After the opening the stack is raised again to keep the floor (the owner: there
-  should be a reserve), its 10 rows counting panels, garbage aside (`decide.c` refill, `facts.c panelTop`).
 
 ## Done, for each mode
 
@@ -93,11 +91,12 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
 ## The rules set for it -- none changed without asking
 
 - Play within the mode's list.
+- **Attack under garbage too, breaking it first** (the owner): the mode's attacks are never switched off while garbage is on the board.
 - **Health is ignored completely**: every board is planned at `planHealth`, never with the health a game gives -- health spent never
   comes back.
 - Topped out, there is always some stop.
 - Ready when everything lands, with a plan -- several steps if it takes them.
-- Raise in the opening.
+- Raise in the opening, to 11 rows (`gambit-rules.json` `raise.to`; the owner: not changed).
 - **The goal within the floor**: a line that makes the mode's first entry keeps the material floor like any other (a break excepted);
   spending below it cost every mode games (`gambit-since-base.md`).
 - **DAS, always**: a walk is held to the wall and tapped otherwise, on every board -- a dying one too (`core/nodes.h` `TAP_DIES` -1,
