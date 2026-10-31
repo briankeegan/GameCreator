@@ -165,7 +165,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     // same as the decision before's -- the next block landing on the same frame, as many queued -- so the engine's prediction was all
     // either had: the one trajectory judged two ways)
     for (var dj = 0; dj + 1 < ds.length; dj++) {
-      var pa = ds[dj], pb = ds[dj + 1], cb = / carryBy=(\S+?):(k\d+|f)/.exec(pb);
+      var pa = ds[dj], pb = ds[dj + 1], cb = / (?:carryBy|putDown)=(\S+?):(k\d+|f)/.exec(pb);
       if (!cb || num(pa, 'land') === null || num(pb, 'land') === null) continue;
       var same = +pa.split(' ')[1] + num(pa, 'land') === +pb.split(' ')[1] + num(pb, 'land') && num(pa, 'qk') === num(pb, 'qk');
       putDown[same ? 'same' : 'told']++; if (same) putDown.sameBy[cb[2]] = (putDown.sameBy[cb[2]] || 0) + 1;
@@ -195,7 +195,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         var bh = / brRes=\d+\/\d+\/(\d+)(?:\/\d+)?(\/(gid|anchor))?/.exec(l); if (bh) { beamDepth.held += +bh[1]; if (bh[3]) beamDepth[bh[3]]++; }
         var bw = / brResWhy=(\d+)\/(\d+)\/(\d+)\/(\d+)/.exec(l); if (bw) for (var q = 0; q < 4; q++) beamDepth.why[q] += +bw[q + 1]; }
       var cd = / carryDrop=(\d+)/.exec(l); if (cd) carryWhy[cd[1]] = (carryWhy[cd[1]] || 0) + 1;
-      var cb = / carryBy=(\S+?):(k\d+|f)/.exec(l); if (cb) { carryByKey[cb[2]] = (carryByKey[cb[2]] || 0) + 1; carryByPlay[cb[1]] = (carryByPlay[cb[1]] || 0) + 1; }
+      var cb = / (?:carryBy|putDown)=(\S+?):(k\d+|f)/.exec(l); if (cb) { carryByKey[cb[2]] = (carryByKey[cb[2]] || 0) + 1; carryByPlay[cb[1]] = (carryByPlay[cb[1]] || 0) + 1; }
       if (/ carryDrop=2/.test(l)) { allow.drop2++; if (/ carryDrop=2:d-1:c0/.test(l)) { allow.drop2cut0++; var cw = / carryDrop=2:d-1:c0([anw])/.exec(l); if (cw) allow.why[cw[1]]++; } }
       var w = / want=(\d+),(\d+)/.exec(l);
       if (w) { var r = +w[1], c = +w[2]; if (last) { var d = Math.abs(r - last[0]) + Math.abs(c - last[1]); walk.n++; walk.cells += d; if (d >= 6) walk.far++; } last = [r, c]; }
