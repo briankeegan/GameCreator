@@ -55,6 +55,7 @@ typedef struct {
   int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 a first walk not begun within a reaction
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
+  int32_t even;                 // the board it ends on: its tallest column less its lowest, in rows (evenOf; -1 not known)
 } Judged;
 
 static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -283,6 +284,16 @@ static void ownChainOf(const Question *q) {
   if (most >= 2) { ownChainBy = at; ownChainN = most; }
 }
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
+// HOW FLAT A BOARD IS: its tallest column less its lowest, in rows -- panels and garbage alike, the stack as it stands
+static int32_t evenOf(const Board *b) {
+  int hi = 0, lo = 1 << 20;
+  for (int c = 1; c <= W; c++) {
+    int h = 0;
+    for (int r = 1; r < b->nrows; r++) if (b->p[r][c].f[COLOR] > 0 || b->p[r][c].f[ISGARBAGE]) h = r;
+    if (h > hi) hi = h; if (h < lo) lo = h;
+  }
+  return hi - lo;
+}
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
   j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1;
@@ -424,6 +435,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
+  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));

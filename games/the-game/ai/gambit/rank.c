@@ -313,6 +313,12 @@ static int cutsShort(const Judge *J) {
   if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
   return aloneChain > 1 && J->apWhole < aloneChain;
 }
+#define FLAT_ROWS 2
+#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
+static int downtime(void) {
+  return !decF.under && (decF.next == NOT_ASKED || decF.next > 2 * rankSave) && decQ.b->chainCounter < 2 &&
+         (pressAllowance < 0 || pressAllowance >= 2 * BREAK_WALK);
+}
 #define FOCUS_NEAR 2
 #define FOCUS_FAR 5
 static int focusBand(const Judge *J) {
@@ -322,7 +328,6 @@ static int focusBand(const Judge *J) {
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
-#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int32_t carriedSunk = -1;   // (the actions the line in progress was judged to walk in all when played: decide.c carryOf; -1 not known)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
@@ -462,6 +467,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (gx == 0 || (sx && sy)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
     }
   }
+  // 1c. DOWNTIME, FLAT (the owner: flatter boards give more options): with no garbage on the board or due within two breaks' time,
+  // the board not chaining and the window holding two breaks' walks, of two that live and meet the mode's list alike, the one that
+  // leaves the board flatter by FLAT_ROWS or more -- the hold too
+  if (lx && downtime() && x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
+    return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
   if (lx) {
     // 2. (both live) the board's own chain kept before cut short: a chain the board is making is never stopped by a line that need not
     if (cutsShort(x) != cutsShort(y)) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1));
