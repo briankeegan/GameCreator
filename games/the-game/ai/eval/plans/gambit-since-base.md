@@ -144,6 +144,7 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `98b4affd` the planner 9 swaps deep -- big chain 15 (1774) [dropped]
 - `5ea342d0` under garbage the walk never puts the line in progress down -- big chain 20 (1783), finish on combo_storm 4 (1782) [dropped]
 - `6f856e76` nor the garbage broken for each action -- big chain 15 (1786), finish on combo_storm 6 (1785); lines dropped 1308 and 239, against 1257 and 260 [dropped]
+- `7691c360` the line in progress keeps the entry it was begun for -- big chain 16 (1787), finish on combo_storm 6 (1788); lines dropped 1321 and 272 [dropped]
 
 ## The shortlist for pressure, in the order to try
 
