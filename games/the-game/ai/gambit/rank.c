@@ -375,8 +375,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
   }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
-  // none, a break or not -- it is the panels of an attack the mode does not want
-  if ((lx || lostAlike(x, y)) && comboOutside(x) != comboOutside(y)) return (cmpKey = __LINE__, (comboOutside(x) ? 1 : -1));
+  // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the
+  // mode does not want
+  if ((lx || lostAlike(x, y)) && comboOutside(x) != comboOutside(y)) {
+    const Judge *cb = comboOutside(x) ? x : y, *o = comboOutside(x) ? y : x;
+    if (imax(0, o->apBroke) >= imax(0, cb->apBroke)) return (cmpKey = __LINE__, (comboOutside(x) ? 1 : -1));
+  }
   // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
   // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
   // spent comes back only a window later, the garbage it is needed for may be told of by then or not
