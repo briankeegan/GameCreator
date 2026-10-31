@@ -260,10 +260,13 @@ static int goalKeyOf(const Judge *J) {
 }
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
 // and none broken
+// (a line that breaks garbage beyond the board left alone (apBroke, the judge's count) made its threes on the way to the break -- a block
+// let down, the panels in the break's way cleared -- as the rules let a three break garbage (rules.c fits, judge.c breakingThree): not
+// wasted. The board's own chain cut short is, whatever the line breaks)
 static int cutsShort(const Judge *J);
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
-  if (J->o.j.threes > 0) return 1;   // (any clear of three the line makes for nothing, whatever else it makes -- a line lost too)
+  if (J->o.j.threes > 0 && !(J->apBroke > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
   if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
