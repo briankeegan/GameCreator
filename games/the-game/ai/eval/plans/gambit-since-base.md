@@ -131,6 +131,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `65f4b740` the BREAK_LOW break reserve (62826eb7) alone on main -- big chain 21 (1723), finish 22 (1724), pressure 19 (1725), build 20 (1726), opener 15 (1727): 97 against 105 [dropped]
 - main (b2fcbbc4, the chain cap) on seed 7 again: big chain 20 (1728), finish 20 (1729), pressure 20 (1730), opener 20 (1732) -- the bar is about 100, not 105: the changes dropped at 94-99 were within a run's noise of it [a measurement]
 - `55d7c559` a chain carried on only by a line that leaves the window a break's walk (opener combo_storm-5 in 1722: the window 48 to 4 carrying a 7-chain) -- opener 20 (1733, against 20), big chain 15 (1734, against 20) [dropped]
+- d2e2ea64's Gambit on the owner's lists: big chain 24 (1738), finish 19 (1739), pressure 20 (1740), build 21 (1741) -- big chain 24 against 15-21 on every build since: the chain carried on (1'-) is the change between that reads chains [a measurement]
+- `4d3f1822` a chain falling carried on only between lines that live (the owner: continued "if it doesn't die") -- [open]
 
 ## The shortlist for pressure, in the order to try
 
