@@ -1093,4 +1093,5 @@ static void frontNew(int reaction, int ahead, int gap, int jitter) {
   F.msPerFrame = 1000.0 / 60; F.limit = 76; F.window = 600;
   F.rnd = (uint32_t)fNow();
   memset(wasGarbage, 0, sizeof wasGarbage);
+  swapRingN = 0; for (int i = 0; i < SWAPRING; i++) swapRingAt[i] = NUL;
 }

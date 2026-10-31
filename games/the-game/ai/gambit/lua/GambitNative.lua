@@ -108,6 +108,11 @@ end
 -- (the stack loaded once before play, so the first frame does not pay for the first load: the library's functions bound, the tables made)
 function GambitNative:startMatch(stack, match)
   self.match, self.stack, self.frames = match, stack, 0
+  -- (a match's clock starts again at 0: budgets of its own, or the last match's presses, frames ahead of this one's clock, never leave
+  -- the window)
+  if self.ownThinking then self.thinking = ThinkBudget.standard() end
+  if self.ownInputs then self.inputs = InputBudget.standard() end
+  self.dropped, self.ages, self.pv, self.slowLogged = 0, {}, {}, nil
   C.gn_match()
   if stack and stack.panels then pcall(self.load, self, stack) end
 end

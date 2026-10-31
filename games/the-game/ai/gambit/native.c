@@ -302,6 +302,10 @@ void gn_match(void) {
   statsOut();
   frontNew(gnReaction, gnAhead, gnGap, gnJitter);
   gb_switch_game((uint32_t)clock_ms());
+  // (the frame clock and the closing times are this game's: the last game's slowest closings would cut this one's decisions short)
+  nclose = 0; frameCounter = 0;
+  __atomic_store_n(&gameFrame, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&gameBurst, 0, __ATOMIC_SEQ_CST); dueFrame = 0;
+  { double z = 0; __atomic_store(&gameFrameMs, &z, __ATOMIC_SEQ_CST); }
   gnFrames = 0;
   hostLock();
   qHas = 0; qReset = 1; ansN = 0;
