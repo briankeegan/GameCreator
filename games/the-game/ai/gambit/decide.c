@@ -363,8 +363,22 @@ static int ranked(const Read *R, const Found *S) {
       }
     }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
-    // what the order lets through, a walk spent for nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; } else order[m++] = order[i]; } n = m; } }
+    // what the order lets through, a walk spent for nothing; a line that wastes one stays as the last resort, where every line that
+    // wastes none is lost a break's time sooner -- death is never chosen to save a three)
+    if (!saveOk) {
+      int m = 0;
+      for (int i = 0; i < n; i++) {
+        const Judge *w = order[i];
+        int beaten = 0;
+        for (int k = 0; wastesThree(w) && k < n && !beaten; k++) {
+          const Judge *c = order[k];
+          if (c != w && !wastesThree(c) && (c->o.lives || (!w->o.lives && (lostOf(c) >= lostOf(w) || lostAlike(c, w))))) beaten = 1;
+        }
+        if (beaten) { dropAs(w->k.play, DROP_WASTE); if (order[i] == carriedJ) carriedJ = 0; }
+        else order[m++] = order[i];
+      }
+      n = m;
+    } }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
 }
