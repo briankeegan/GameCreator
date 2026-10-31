@@ -5,7 +5,8 @@ typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 static int32_t openerOver;   // (the opener played out: a board has topped out this game)
-static int32_t thenRule = -1;   // (the mode a named opener gives way to at the top-out; -1: none)
+static int32_t thenRule = -1;
+static int32_t carryNone;   // (why no line in progress was offered: carriedCand)   // (the mode a named opener gives way to at the top-out; -1: none)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
@@ -617,7 +618,6 @@ static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, 
 // (WHY NO LINE IN PROGRESS WAS OFFERED, for the frame loop's count of what ended its line -- answer.c ended: 0 one was; 16 none was
 // carried by the last answer; 17 the frame loop asked on another line than the one carried; 18 every swap of it pressed; 19 the judge
 // gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing)
-static int32_t carryNone;
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0;
