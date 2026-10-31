@@ -404,7 +404,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // pressed of a line put down is spent from the input window for nothing
   if (x->carried != y->carried && !x->hold && !y->hold && (lx || lostAlike(x, y))) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke) && lineWalk(c) <= lineWalk(o)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
