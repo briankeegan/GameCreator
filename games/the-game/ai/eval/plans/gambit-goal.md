@@ -80,8 +80,6 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
 
 - A material reserve before garbage lands, and how many panels.
 - Whether the chain modes build their chains on their own stack only, or may fire the chains garbage colours make without breaking.
-- Whether the opening raise goes higher than 10 rows. After the opening the stack is raised again to keep the floor (the owner: there
-  should be a reserve), its 10 rows counting panels, garbage aside (`decide.c` refill, `facts.c panelTop`).
 
 ## Done, for each mode
 
@@ -97,7 +95,7 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
   comes back.
 - Topped out, there is always some stop.
 - Ready when everything lands, with a plan -- several steps if it takes them.
-- Raise in the opening.
+- Raise in the opening, to 11 rows (`gambit-rules.json` `raise.to`; the owner: not changed).
 - **The goal within the floor**: a line that makes the mode's first entry keeps the material floor like any other (a break excepted);
   spending below it cost every mode games (`gambit-since-base.md`).
 - **DAS, always**: a walk is held to the wall and tapped otherwise, on every board -- a dying one too (`core/nodes.h` `TAP_DIES` -1,
