@@ -137,6 +137,9 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `3e18764d` the same, a three kept only where it buys a break's time -- big chain 17 (1751); on combo_storm: finish 6 (1756), pressure 3 (1757) [dropped]
 - `cdef25de` a chain shorter than the list asks begun toward it whether or not it still falls (d2e2ea64's) -- big chain 21 (1760); on combo_storm: pressure 6 (1761), opener 4 (1762): within a run's noise, and it brings back the finished 2-chain as a beginning (the owner: no 2-chain goals) [dropped]
 - `8e1672cf` time attack: an 8+ chain only (the owner) [kept]
+- `eaf45f4c` of two that do not live, the window's reserve before the later loss (finish combo_storm-8 in 1729: the window 76 to 0 in 12 s on combos, garbage landing with 2 presses left) -- finish 16 (1763), big chain 19 (1764); on combo_storm: pressure 6 (1765), opener 6 (1766) [dropped]
+- `96d0bd44` ready for the garbage on its way under garbage too (readyAt: the judge, the planner and the readiness proposer) -- big chain 15 (1767; combo_storm 2 of 8), finish 20 (1768); on combo_storm: pressure 4 (1769), opener 5 (1770): a line under garbage lives only where it is ready, and few are [dropped]
+- `84ec110c` under garbage, the readiness proposer's swap offered only -- big chain 16 (1771) [dropped]
 
 ## The shortlist for pressure, in the order to try
 
