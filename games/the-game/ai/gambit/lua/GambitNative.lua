@@ -227,11 +227,14 @@ end
 -- stack's height, and does not top it out.)
 local VIEW_FRESH = 90   -- frames a shipped board of the opponent is read as its board
 local FIGHT = os.getenv("GC_GAMBIT_FIGHT") == "1"
+local FOUGHT = false
 local function counts(p) if not p then return false end if p.isGarbage then return p.state ~= "falling" end return (p.color or 0) ~= 0 end
 local function opponentOf(sources, view, clock)
   local anyWired = false
   for _, src in ipairs(sources or EMPTY) do if src.panels and wired(src) then anyWired = true end end
-  if view and clock and view.seen and (anyWired or clock - view.seen <= VIEW_FRESH) then
+  -- (a board shipped in this game only: the game's clock starts again at its countdown, and the last game's last board -- the enemy
+  -- topped out, as a game ends -- is not this one's)
+  if view and clock and view.seen and view.seen <= clock and (anyWired or clock - view.seen <= VIEW_FRESH) then
     return 1, view.out and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
   end
   if anyWired then return 1, 0, 0, 0 end
@@ -251,7 +254,10 @@ local function opponentOf(sources, view, clock)
   end
   -- (GC_GAMBIT_FIGHT: training played as a fight -- the attack engine stands in for a stack that is there, low, not topped, held up by
   -- nothing, from the countdown on, so the opening is found the way a fight's is: the opener's table)
-  if has == 0 and FIGHT then return 1, 0, 0, 0 end
+  -- (and a host that has fought an opponent this session is in a fight from each game's countdown on, before the new game's stack is
+  -- wired: a match begins with the opponent not topped out, low, held up by nothing)
+  if has == 1 then FOUGHT = true end
+  if has == 0 and (FIGHT or FOUGHT) then return 1, 0, 0, 0 end
   return has, out, top, stop
 end
 

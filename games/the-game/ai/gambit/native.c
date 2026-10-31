@@ -318,10 +318,14 @@ static void framePublish(int32_t clock) {
   __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
   run = last && t - last < per / 2 ? run + 1 : 0;
   // (the longest burst within the input window just past, not the longest ever: a hiccup long gone takes no frames from a decision)
-  static int32_t burstAt[64], burstRun[64], nb;
+  static int32_t burstAt[64], burstRun[64], nb, lastAt = NUL;
+  // (a game's frames start again at its countdown: the last game's bursts are not this one's -- kept, they read as just past forever,
+  // and each game of a session left its decisions less time than the last)
+  if (lastAt != NUL && clock < lastAt) nb = 0;
+  lastAt = clock;
   if (run > 0) { int k = nb < 64 ? nb++ : 0; if (k == 0 && nb == 64) { for (int i = 1; i < 64; i++) { burstAt[i - 1] = burstAt[i]; burstRun[i - 1] = burstRun[i]; } k = 63; } burstAt[k] = clock; burstRun[k] = run; }
   int32_t worst = 0, win = F.window > 0 ? F.window : 600;
-  for (int i = 0; i < nb; i++) if (clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
+  for (int i = 0; i < nb; i++) if (burstAt[i] <= clock && clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
   __atomic_store_n(&gameBurst, worst, __ATOMIC_SEQ_CST);
   __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST);
 }
