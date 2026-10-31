@@ -785,7 +785,8 @@ static int wastedSwap(const Board *t, int32_t bits) {
 }
 // THE SAVE: the board played on for GUARD_DIE frames, the garbage on its way landing as the game lands it -- with the swap not pressed
 // and nothing after it (lostIn 0), or with it pressed and the plan's keys after it as they will be pressed (lostIn 1). A three the plan
-// made as the board's save (the survival search found it needed: Planned.save) is let through when the board is lost without it; any
+// made as the board's save (the survival search found it needed: Planned.save 1) is let through when the board is lost without it, and
+// one the judge saw on the line's way to the garbage it breaks (Planned.save 2, rank.c wastesThree) is let through as the judge let it; any
 // other -- one the judge did not see, a colour it could not know shown -- never: the swap is refused and the next decision asked, where
 // the survival search finds the save if the board needs one.
 static Board *dieBoard;
@@ -806,7 +807,7 @@ static int lostIn(const Board *t, int32_t bits, int press) {
 static int threeSaves(const Board *t, int32_t bits, int planned) {
   if (!dieBoard) dieBoard = nb_new();
   if (!dieBoard) return 0;
-  return planned && lostIn(t, bits, 0);
+  return planned == 2 || (planned && lostIn(t, bits, 0));
 }
 // ---------------------------------------------------------------- the countdown
 // THE OPENING THOUGHT THROUGH THE COUNTDOWN: the board does not move while the countdown runs, so the board of the first frame in play
@@ -929,7 +930,7 @@ static int frontFrame(void) {
       }
     } else { guard = 2; F.st.guardLet++; }
   }
-  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save, guard, play, lid, idx);
+  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save == 1, guard, play, lid, idx);   // (save: the survival search's three, for the count)
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
   countActions(bits, now);
   if (bits & IN_SWAP) F.swapSince = 1;
