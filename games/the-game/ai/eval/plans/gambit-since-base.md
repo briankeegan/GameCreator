@@ -146,6 +146,10 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `6f856e76` nor the garbage broken for each action -- big chain 15 (1786), finish on combo_storm 6 (1785); lines dropped 1308 and 239, against 1257 and 260 [dropped]
 - `7691c360` the line in progress keeps the entry it was begun for -- big chain 16 (1787), finish on combo_storm 6 (1788); lines dropped 1321 and 272 [dropped]
 - main (`220d6bb2`) switching on the owner's lists, seed 7: 22 (1789; combo_storm 8, factory 7, large_garbage 7), 465 switches over all 12 directions [a measurement]
+- `e6a6a9a9` under garbage a break never put after a line that only carries the chain on (5 of 6 losses that passed a break over, key 1'-) -- finish 18 (1790, no order loss), big chain 16 (1791) [kept with the next]
+- `7c18e8c6` and a switch charged the actions it throws away (the garbage broken for each action, 390 of the puts-down in 1790) -- finish 23 (1792), big chain 19 (1793) [kept: main ada900bb]
+- main `ada900bb`: pressure 18 (1794), build 18 (1795), opener 18 (1796), switching 23 (1797) [a measurement]
+- `465bf867` the switch charged alone, the break-before-chain key out -- pressure 22 (1798), build 20 (1799), big chain 18 (1800), finish 20 (1801): 80 against main's 78 on the same four, within a run's noise; main keeps the owner's rule (garbage broken first) [a measurement]
 
 ## The shortlist for pressure, in the order to try
 
