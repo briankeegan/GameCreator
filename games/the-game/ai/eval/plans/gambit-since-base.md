@@ -150,6 +150,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `7c18e8c6` and a switch charged the actions it throws away (the garbage broken for each action, 390 of the puts-down in 1790) -- finish 23 (1792), big chain 19 (1793) [kept: main ada900bb]
 - main `ada900bb`: pressure 18 (1794), build 18 (1795), opener 18 (1796), switching 23 (1797) [a measurement]
 - `465bf867` the switch charged alone, the break-before-chain key out -- pressure 22 (1798), build 20 (1799), big chain 18 (1800), finish 20 (1801): 80 against main's 78 on the same four, within a run's noise; main keeps the owner's rule (garbage broken first) [a measurement]
+- `5fe35d73` under the tight window a swap with no walk delay not played twice (step() played it in pressDelayOf, then again: 68% of tight swap steps; offline on 2,535 logged no-break boards the search finds 29-48% more breaks in the same time, every board byte-identical) -- big chain 18 (1802), finish 20 (1803), pressure 20 (1804), build 19 (1805), opener 19 (1806), switching 19 (1807): 115 against 119, within six runs' noise, no decision changed at equal work [kept]
+- `ecceffaa` under garbage the off-list break pass resumed from the frontier kept (the last decision's and the search between decisions', both off the list, were resumed only by the within-list pass, run only once a break was found) -- [open]
 
 ## The shortlist for pressure, in the order to try
 
