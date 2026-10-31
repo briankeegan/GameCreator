@@ -451,9 +451,9 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.waits = waits; carriedSunk = -1;
-  // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
-  // tier, and its swaps after the first are the break it was chosen for)
-  if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1 || (k->t.tier > 4 && !(k->apBroke > 0))) return;
+  // (every line of more than the swap played is carried, whatever its tier: the frame loop presses all of it, and a line the next
+  // decision does not know is its own is put down for whatever ranks first, its swaps pressed for nothing)
+  if (!k || (k->wait && k->k.play != PLAY_CARRYWAIT) || k->k.nseq < first + 1) return;
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) return;
