@@ -346,6 +346,18 @@ static int32_t cmpKey;
 // panels the next break is made from. Beside one that spends none and leaves the next decision a break's time (rankSave), the two
 // survive alike, and the list puts the one that keeps its panels first -- under garbage too: a chain fired for its stop leaves the
 // garbage where it is and fewer panels to break it with)
+// (BOUGHT WITH THE WINDOW: the later loss of a line that walks more, neither lost within a break's time -- an action spent comes back a
+// window later, ACT_FRAMES frames each (76 in 600), so a line whose later loss is less than the actions more it spends at that rate is
+// a jump across the board paid for with the next break's presses: alike. The owner: efficiency always)
+#define ACT_FRAMES 8
+static int lineWalk(const Judge *J);
+static int boughtWithWindow(const Judge *x, const Judge *y) {
+  if (x->hold || y->hold) return 0;
+  const Judge *hi = lostOf(x) > lostOf(y) ? x : y, *lo = hi == x ? y : x;
+  if (lostOf(lo) < rankSave) return 0;
+  int more = lineWalk(hi) - lineWalk(lo);
+  return more > 0 && lostOf(hi) - lostOf(lo) < (double)ACT_FRAMES * more;
+}
 static int boughtWithPanels(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
   return lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends;
@@ -366,7 +378,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
-  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !boughtWithWindow(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'. THE CHAIN FALLING, CARRIED ON (the owner: a chain going is continued unless continuing kills the board): while the board chains,
   // of two that survive alike, the one that takes the chain further, up to the longest the list asks -- before every key but survival,
   // under garbage too: a chain left to end short of the target is the attack thrown away
@@ -443,10 +455,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (lx || (lo >= rankSave && hi - lo < rankSave)) {
       int gx = goalKeyOf(x), gy = goalKeyOf(y);
       if (gx != gy) return (cmpKey = __LINE__, (gx - gy));
-      // (and of two that make the first entry, or two set-ups toward it, the fewer presses: the owner, the goal first and the shortest
-      // way to it, the set-up included -- a press is a press, a cursor step or a swap)
-      int sx = !x->hold && setupPlay(x->k.play), sy = !y->hold && setupPlay(y->k.play);
-      if (gx == 0 || (sx && sy)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+      // (and of two lines that meet the same part of the mode's list, the fewer presses: the owner, efficiency always -- the goal met with
+      // the least cursor movement, a press is a press, a cursor step or a swap)
+      if (!x->hold && !y->hold) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
     }
   }
   if (lx) {
