@@ -125,6 +125,9 @@ static int slowWalks(const int32_t *in, int n, int32_t *out, int cap, int row, i
   }
   return k;
 }
+// (the tapped walk's own step, played to read its keys: pressMade, kept for step() -- with no delay it IS the step, so the swap is not
+// played twice)
+static LOCAL int pressMade, pressHave;
 static int32_t pressDelayOf(Ctx *x, int pi, int mr, int mc) {
   const Board *b0 = ensureBoard(x, pi);
   if (!b0) return 0;
@@ -132,6 +135,7 @@ static int32_t pressDelayOf(Ctx *x, int pi, int mr, int mc) {
   tape = keyBuf; tapeN = 0; tapeCap = (int32_t)(sizeof keyBuf / sizeof keyBuf[0]) / 3;
   int r = advance(x, pi, MK_SWAP, mr, mc, 0);
   tape = 0;
+  pressMade = r; pressHave = 1;
   if (r == STEP_NULL || r == STEP_ERR) return 0;
   int n = tapeN;
   static LOCAL int32_t in[4096];
@@ -151,11 +155,19 @@ static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   if (clockOut()) return STEP_NULL;
   int32_t t0 = NODE(x, pi)->t;
   if (pressTight && mr && (kind == MK_SWAP || kind == MK_SETTLE)) {
+    pressHave = 0;
     int32_t late = pressDelay(x, pi, mr, mc);
     if (late > 0) {
       int w = advance(x, pi, MK_LONG, 0, 0, late);
       if (w < 0 || NODE(x, w)->dead) { clockCharge(late); return w == STEP_DEAD || (w >= 0 && NODE(x, w)->dead) ? STEP_DEAD : w; }
       pi = w;
+    }
+    // (no delay: the frame loop presses the swap as the tapped walk did, so the step pressDelay played is this step -- the same swap from
+    // the same node, with frames 0 -- and is not played again)
+    else if (kind == MK_SWAP && frames == 0 && pressHave) {
+      int r = pressMade;
+      clockCharge(r >= 0 ? NODE(x, r)->t - t0 : r == STEP_DEAD ? deadAt - t0 : 1);
+      return r;
     }
   }
   int r = advance(x, pi, kind, mr, mc, frames);
