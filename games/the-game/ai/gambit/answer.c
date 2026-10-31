@@ -378,6 +378,8 @@ typedef struct {
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
   int32_t sooner;   // the line played is lost sooner than one offered, and not alike (rank.c lostAlike): survival was not first
+  int32_t ended;   // what ended the line in progress (front.c lineEnds): 1 carried on, 2 held over it, 3 none carried, 4-6 the carry
+                    // dropped it (carryDrop 1-3), or the line number of the order's key that put it down (rank.c cmpKey)
   int32_t wastes;   // 1: the line played makes a three for nothing as the judge saw it, and the survival search found the board needed it (decide.c
                     // saveOk); 2: it makes one on its way to the garbage it breaks (rank.c wastesThree) -- the press guard lets either through
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
@@ -475,6 +477,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
   A->holdLives = d.kind == 0 && top && top->o.lives;
+  A->ended = carryDrop >= 1 && carryDrop <= 3 ? 3 + carryDrop : !carriedJ ? 3 : P.line == carriedJ ? 1
+           : top && top != carriedJ && compareJudged(top, carriedJ) < 0 && cmpKey >= 10 ? cmpKey : 2;
   A->wastes = !P.line || R.up ? 0 : wastesThree(P.line) && saveOk ? 1 : P.line->o.j.threes > 0 && P.line->apBroke > 0 ? 2 : 0;   // (a three the survival search found the board needed not to die, or one on the way to a break)
   // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
   // settled line's after the board settles -- so the frame loop presses the line that was judged)

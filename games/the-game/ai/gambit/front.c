@@ -37,6 +37,7 @@ typedef struct {
   int32_t empty;               // a hold the clock left no time to judge anything for
   int32_t wastes;              // the line makes a three for nothing, kept by the order as the board's save (answer.c)
   int32_t play;                // the kind of line played (facts.c PLAY_NAME; -2 the raise)
+  int32_t ended;               // what ended the line in progress before it (front.c lineEnds; answer.c)
   int32_t nalt, alt[MAXLINE];  // the move in hand: the best line that lives and is no hold, its swaps (0: none)
   double ms, idleMs, closeMs;
 } FAnswer;
@@ -63,7 +64,8 @@ typedef struct {
   // a break, or nothing -- and the cells the cursor walked
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t noneBy[NPLAYS];   // (the swaps that came to nothing, by the kind of line that pressed them)
-  int32_t noneDropped, noneOn, noneLast;   // (and by what became of their line: dropped before its later swaps, those pressed, its last swap)
+  int32_t noneDropped, noneOn, noneLast;
+  int32_t noneWhy[1024];   // (and dropped, by what ended the line: lineEnds)   // (and by what became of their line: dropped before its later swaps, those pressed, its last swap)
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
   int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
 } FStats;
@@ -77,9 +79,13 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx; } MoveOpen;   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 // (the lines whose swaps are followed: each answer's swaps in all and how many of them were pressed, by the answer's id)
 #define LINE_RECS 64
-typedef struct { int32_t id, total, pressed; } LineRec;
+typedef struct { int32_t id, total, pressed, why; } LineRec;   // why: what ended the line (END_*, or the order's key that put it down)
 static LineRec lineRecs[LINE_RECS];
 static LineRec *lineRec(int32_t lid) { LineRec *r = lid > 0 ? &lineRecs[(lid - 1) % LINE_RECS] : 0; return r && r->id == lid ? r : 0; }
+// WHAT ENDED A LINE, for the swaps of it that came to nothing (noneWhy): the answer's word (answer.c ended: carried on, held, not
+// carried, dropped by the carry -- or the line number of the order's key that put it down, rank.c cmpKey), or the frame loop's own drop
+enum { END_ON = 1, END_HELD, END_NOTCARRIED, END_ANCHOR, END_STEP, END_NOBREAK, END_RAISE, END_MODE = 10, END_NOBOARD, END_NOKEYS, END_NOFIT, END_OVERWALK, NEND = 1024 };
+static void lineEnds(int32_t why);
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
@@ -555,7 +561,7 @@ static void take(void) {
       for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 0, 0, F.pPosted });
       F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
       memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
-      F.lineN = 0; F.haveLineOf = 0;
+      lineEnds(END_RAISE); F.lineN = 0; F.haveLineOf = 0;
       continue;
     }
     if (!keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
@@ -583,7 +589,8 @@ static void take(void) {
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
     for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play >= 0 ? a.play + 1 : 0, a.kind == 1 ? a.id + 1 : 0, 0 });
-    if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->total = a.nhand + 1; r->pressed = 0; }
+    lineEnds(a.ended);
+    if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->total = a.nhand + 1; r->pressed = 0; r->why = 0; }
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
@@ -598,7 +605,12 @@ static void take(void) {
 static int32_t lineDue(void) { return imax(F.nextAt, F.lineAt[0]); }
 // The line behind the move, its next swap played from the frame it is due, on the board predicted for then.
 // (a line it cannot press on is dropped, and the run's log says why)
-static int lineDropped(int32_t due, const char *why) {
+static void lineEnds(int32_t why) {
+  LineRec *r = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
+  if (r && !r->why) r->why = why > 0 && why < NEND ? why : END_NOTCARRIED;
+}
+static int lineDropped(int32_t due, const char *why, int32_t code) {
+  lineEnds(code);
   if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "LINE dropped at %d (due %d, %d left): %s", F.now, due, F.lineN, why); flog(l); F.loggedRefused++; }
   F.lineN = 0; return 0;
 }
@@ -606,7 +618,7 @@ static int follow(void) {
   static Keys k;
   if (!F.lineN) return 0;
   int32_t due = imax(lineDue(), F.now + 1);
-  if (modeAt(due) != F.lineMode) return lineDropped(due, "another mode");
+  if (modeAt(due) != F.lineMode) return lineDropped(due, "another mode", END_MODE);
   // (THE LINE AS JUDGED: a swap keyed later than the judge pressed it from is pressed on a board the judge never judged -- counted, and
   // the first few logged; plans/gambit-goal.md, the truth)
   if (F.lineAt[0] > 0 && due > F.lineAt[0]) {
@@ -614,15 +626,15 @@ static int follow(void) {
     if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "LINE behind at %d: %d,%d keyed from %d, judged from %d", F.now, CR(F.line[0]), CC(F.line[0]), due, F.lineAt[0]); flog(l); F.loggedRefused++; }
   }
   int32_t mv = F.line[0], hl, hs;
-  if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) return lineDropped(due, "no board predicted");
-  if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) return lineDropped(due, "no keys press it");
+  if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) return lineDropped(due, "no board predicted", END_NOBOARD);
+  if (!keysOf(F.pr, hl, hs, F.prPend, F.nprPend, MK_SWAP, CR(mv), CC(mv), &k)) return lineDropped(due, "no keys press it", END_NOKEYS);
   if (F.pending) abortTo(F.pId);
   F.pending = 0;
   pressTap = F.lineTap;
   walkKeys(&k, due, F.pr);
-  if (!keysFit(due, &k)) { F.st.guarded++; return lineDropped(due, "its keys do not fit"); }
+  if (!keysFit(due, &k)) { F.st.guarded++; return lineDropped(due, "its keys do not fit", END_NOFIT); }
   int left = allowanceAt(due);
-  if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance");
+  if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance", END_OVERWALK);
   F.st.heldWalks += k.held;
   for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay, F.lineOfId + 1, F.lineOfPressed + 1 });
   F.nextAt = due + k.n;
@@ -709,7 +721,7 @@ static void countAttacks(const Board *b) {
 static void noneOf(const MoveOpen *m) {
   F.st.moveNone++; if (m->play > 0 && m->play <= NPLAYS) F.st.noneBy[m->play - 1]++;
   const LineRec *r = lineRec(m->lid);
-  if (r) { if (m->idx >= r->total - 1) F.st.noneLast++; else if (r->pressed > m->idx + 1) F.st.noneOn++; else F.st.noneDropped++; }
+  if (r) { if (m->idx >= r->total - 1) F.st.noneLast++; else if (r->pressed > m->idx + 1) F.st.noneOn++; else { F.st.noneDropped++; F.st.noneWhy[r->why > 0 && r->why < NEND ? r->why : 0]++; } }
 }
 static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play, int32_t lid, int32_t idx) {
   { int i = swapRingN++ % SWAPRING; if (!swapRing[i]) swapRing[i] = nb_new(); if (swapRing[i]) { cloneBoard(swapRing[i], b); swapRingAt[i] = b->clock; } }
@@ -1028,7 +1040,10 @@ static void statsLine(char *out, int cap) {
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"noneBy\":{");
   first = 1;
   for (int z = 0; z < NPLAYS && k < cap; z++) if (F.st.noneBy[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":%d", first ? "" : ",", PLAY_NAME[z], F.st.noneBy[z]); first = 0; }
-  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), "},\"noneHow\":{\"dropped\":%d,\"on\":%d,\"last\":%d}}", F.st.noneDropped, F.st.noneOn, F.st.noneLast);
+  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"noneHow\":{\"dropped\":%d,\"on\":%d,\"last\":%d},\"noneWhy\":{", F.st.noneDropped, F.st.noneOn, F.st.noneLast);
+  first = 1;
+  for (int z = 0; z < NEND && k < cap; z++) if (F.st.noneWhy[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.noneWhy[z]); first = 0; }
+  if (k < cap) snprintf(out + k, (unsigned long)(cap - k), "}}");
 }
 
 static void frontNew(int reaction, int ahead, int gap, int jitter) {

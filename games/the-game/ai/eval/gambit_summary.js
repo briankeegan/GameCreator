@@ -35,7 +35,7 @@ var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wal
 // latest)
 var cutShort = { boards: 0, cut: 0, cutKept: 0, cutAll: 0, cutNone: 0 };
 // EVERY MOVE ON THE WAY: the swaps pressed by what they came to, and the cells the cursor walked (front.c moveOn)
-var noneBy = {}, noneHow = {}, actsBy = {};
+var noneBy = {}, noneHow = {}, noneWhy = {}, actsBy = {};
 var balance = { lost: { converted: 0, spent: 0, landed: 0, frames: 0, games: 0 }, survived: { converted: 0, spent: 0, landed: 0, frames: 0, games: 0 } };   // (the board's material: front.c converted, spent)   // (the swaps that came to nothing, by the kind of line that pressed them)
 var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0, wasted: 0, wastedAlone: 0, refusedWaste: 0, saved: 0, guardLet: 0, refusedSpoil: 0 };   // (wasted: clears of three that broke nothing and were no chain's link)
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
@@ -321,6 +321,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       aggr.frames += o.frames || 0;
       Object.keys(moves).forEach(function (k) { moves[k] += (o.moves || {})[k] || 0; });
       Object.keys(o.noneHow || {}).forEach(function (k) { noneHow[k] = (noneHow[k] || 0) + o.noneHow[k]; });
+      Object.keys(o.noneWhy || {}).forEach(function (k) { noneWhy[k] = (noneWhy[k] || 0) + o.noneWhy[k]; });
       if (o.material) { var mb = balance[m[2]]; mb.converted += o.material.converted || 0; mb.spent += o.material.spent || 0; mb.landed += o.material.landed || 0; mb.frames += o.frames || 0; mb.games++; }
       Object.keys(o.noneBy || {}).forEach(function (k) { noneBy[k] = (noneBy[k] || 0) + o.noneBy[k]; });
       // (THE WINDOW SPENT: the actions keyed, by the kind of line, in games survived and lost apart -- a minute's worth each)
@@ -450,6 +451,12 @@ Object.keys(actsBy).sort().forEach(function (w) { var ab = actsBy[w], min = ab.f
   console.log('the window spent, games ' + w + ': ' + Math.round(tot / min) + ' actions a minute -- ' + Object.keys(ab.by).sort(function (a, b) { return ab.by[b] - ab.by[a]; }).map(function (k) { return k + ' ' + Math.round(ab.by[k] / min); }).join(', ')); });
 if (moves.none) console.log('moves wasted: ' + moves.none + ' swaps that came to nothing, by the line that pressed them: ' + Object.keys(noneBy).sort(function (a, b) { return noneBy[b] - noneBy[a]; }).map(function (k) { return k + ' ' + noneBy[k]; }).join(', ') +
                              '; by what became of their line: ' + (noneHow.dropped || 0) + ' dropped before its later swaps, ' + (noneHow.on || 0) + ' its later swaps pressed, ' + (noneHow.last || 0) + ' the line\'s last swap');
+// (THE DROPPED, BY WHAT ENDED THEIR LINE: front.c lineEnds -- a number of 10 or more past the frame loop's own is the line of the order's
+// key that put the line down, rank.c compareJudged)
+var END_NAME = { 0: 'unknown', 1: 'carried on', 2: 'held over it', 3: 'not carried', 4: 'carry: anchor gone', 5: 'carry: step not there', 6: 'carry: no longer breaks',
+  7: 'a raise', 10: 'loop: another mode', 11: 'loop: no board predicted', 12: 'loop: no keys', 13: 'loop: keys do not fit', 14: 'loop: walk over the allowance' };
+if (Object.keys(noneWhy).length) console.log('moves wasted, the dropped by what ended their line: ' + Object.keys(noneWhy).sort(function (a, b) { return noneWhy[b] - noneWhy[a]; })
+  .map(function (k) { return (END_NAME[k] || 'put down by rank.c:' + k) + ' ' + noneWhy[k]; }).join(', '));
 console.log('wasted threes: ' + moves.wasted + ' clears of three that broke no garbage and were no link of a chain, made by a swap' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') + '; ' + moves.wastedAlone + ' more the stack made alone; ' + moves.refusedWaste + ' swaps refused at the press for one (' + moves.refusedSpoil + ' of them spoiling the board\'s own chain); ' + moves.saved + ' threes the board needed not to die (a save the survival search confirmed, not counted as wasted); ' + moves.guardLet + ' let through at the press as the board\'s save (lost without it in 120 frames, alive with it)');
 console.log('several ideas at once: ' + moves.together + ' clears begun while another was still clearing; lines firing two ideas ' + several.pairOff +
             ' offered, ' + several.pairPlayed + ' played; of ' + several.thrownLines + ' lines played that threw, ' + several.thrown2 + ' threw two blocks or more (' +
