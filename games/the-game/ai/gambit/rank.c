@@ -313,12 +313,8 @@ static int cutsShort(const Judge *J) {
   if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
   return aloneChain > 1 && J->apWhole < aloneChain;
 }
-#define FLAT_ROWS 2
+#define FLAT_ROWS 1
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
-static int downtime(void) {
-  return !decF.under && (decF.next == NOT_ASKED || decF.next > 2 * rankSave) && decQ.b->chainCounter < 2 &&
-         (pressAllowance < 0 || pressAllowance >= 2 * BREAK_WALK);
-}
 #define FOCUS_NEAR 2
 #define FOCUS_FAR 5
 static int focusBand(const Judge *J) {
@@ -467,10 +463,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (gx == 0 || (sx && sy)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
     }
   }
-  // 1c. DOWNTIME, FLAT (the owner: flatter boards give more options): with no garbage on the board or due within two breaks' time,
-  // the board not chaining and the window holding two breaks' walks, of two that live and meet the mode's list alike, the one that
-  // leaves the board flatter by FLAT_ROWS or more -- the hold too
-  if (lx && downtime() && x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
+  // 1c. FLAT (the owner: flatter boards give more options, and less moving to do things): of two that survive alike -- both live, or
+  // lost alike -- and meet the mode's list alike, the one that leaves the board flatter by FLAT_ROWS or more, the hold too
+  if ((lx || lostAlike(x, y)) && x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
     return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
   if (lx) {
     // 2. (both live) the board's own chain kept before cut short: a chain the board is making is never stopped by a line that need not
