@@ -132,7 +132,11 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - main (b2fcbbc4, the chain cap) on seed 7 again: big chain 20 (1728), finish 20 (1729), pressure 20 (1730), opener 20 (1732) -- the bar is about 100, not 105: the changes dropped at 94-99 were within a run's noise of it [a measurement]
 - `55d7c559` a chain carried on only by a line that leaves the window a break's walk (opener combo_storm-5 in 1722: the window 48 to 4 carrying a 7-chain) -- opener 20 (1733, against 20), big chain 15 (1734, against 20) [dropped]
 - d2e2ea64's Gambit on the owner's lists: big chain 24 (1738), finish 19 (1739), pressure 20 (1740), build 21 (1741) -- big chain 24 against 15-21 on every build since: the chain carried on (1'-) is the change between that reads chains [a measurement]
-- `4d3f1822` a chain falling carried on only between lines that live (the owner: continued "if it doesn't die") -- [open]
+- `4d3f1822` a chain falling carried on only between lines that live (the owner: continued "if it doesn't die") -- big chain 18 (1742), opener 19 (1743) [dropped]
+- `26ff8a88` a line that wastes a three dropped only where a line that wastes none survives as long (opener combo_storm-7 in 1732: a break six deep dropped for a three on its way, the hold played, the break gone a decision later) -- big chain 15 (1746; combo_storm 2 of 8), finish 16 (1747), pressure 19 (1748) [dropped]
+- `3e18764d` the same, a three kept only where it buys a break's time -- big chain 17 (1751); on combo_storm: finish 6 (1756), pressure 3 (1757) [dropped]
+- `cdef25de` a chain shorter than the list asks begun toward it whether or not it still falls (d2e2ea64's) -- big chain 21 (1760); on combo_storm: pressure 6 (1761), opener 4 (1762): within a run's noise, and it brings back the finished 2-chain as a beginning (the owner: no 2-chain goals) [dropped]
+- `8e1672cf` time attack: an 8+ chain only (the owner) [kept]
 
 ## The shortlist for pressure, in the order to try
 
