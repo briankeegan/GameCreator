@@ -386,6 +386,8 @@ console.log('SURVIVED ' + all + '/' + games);
 // mode the run named; the garbage there broken -- the first decision after with none on the board -- then HANDOVER_HOLD frames more in
 // that mode. Passed: alive at the end of that; a loss after it is the new mode's, not the opener's. Never switched: the game ran out first)
 var HANDOVER_HOLD = 900;
+// (the handover is a 90 s game, the measure's own: a board whose garbage is never all gone -- large_garbage's -- is the mode's past it)
+var HANDOVER_CAP = 5400;
 (function () {
   var by = {}, n = 0, passed = 0, fails = [];
   fs.readdirSync(DIR).sort().forEach(function (g) {
@@ -400,7 +402,7 @@ var HANDOVER_HOLD = 900;
     var bi = -1; for (var j = Math.max(hi, 0); hi >= 0 && j < ds.length && bi < 0; j++) if (!ds[j].under) bi = j;
     var end = bi >= 0 ? ds[bi].at + HANDOVER_HOLD : null, ok;
     if (hi < 0) ok = lostAt === null;
-    else ok = lostAt === null || (end !== null && lostAt >= end);
+    else ok = lostAt === null || (end !== null && lostAt >= end) || lostAt >= HANDOVER_CAP;
     n++; o.n++; if (ok) { passed++; o.passed++; } else {
       var why = hi < 0 ? 'lost in the opener' : bi < 0 ? 'lost before the garbage was broken' : 'lost within ' + HANDOVER_HOLD + ' of the break';
       o.lost.push(lostAt); fails.push(g + ' at ' + lostAt + ': ' + why + (hi >= 0 ? ' (switched at ' + ds[hi].at + (bi >= 0 ? ', broken at ' + ds[bi].at : '') + ')' : ''));
