@@ -375,7 +375,7 @@ static int32_t listChainCap(void) {
   for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
   return cap;
 }
-#define BACK_CALM 3   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
+#define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
 static int shortChain(const Judge *J) { return !J->hold && J->apChain >= 2 && chainReach(J) == 2; }
 static int compareJudged(const Judge *x, const Judge *y) {
