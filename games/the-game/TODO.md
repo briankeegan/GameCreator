@@ -12,6 +12,10 @@ narrowed, not dropped.
 2. **No flipping back and forth.** A swap and its swap back is two inputs for nothing.
    - The swap refused as a swap back is the last one planned before the decision's frame: on main (5.9% of swaps to 3.2%).
    - The line played judged again without a swap and its swap back inside it: on main (8354a299; 2.8-3.2% of swaps). Open: the rest.
+   - A swap in progress holds the stack's rise (`eval/native/pa.c` updateRiseLock), so a swap and its swap back is a stall the
+     search finds on a board that is lost either way. Refused at the press: 0.1% of swaps, survival halved. Handed on as a wait: 2.1%,
+     finish them 17/24. Both not shipped. Next: the stall made of swaps that do something (no search grows a line by swapping
+     straight back), and no swap back among lines lost alike.
 3. **No lazy waits.** Never sit with the cursor still and then rush; play what can be swapped now.
    - Steady over a popping slab (a line not found to break pressed straight through): on main.
    - A swap whose pair stays locked over 20 frames is not there, so lines that use what can be swapped now are played: on main
