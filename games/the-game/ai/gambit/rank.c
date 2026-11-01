@@ -271,9 +271,12 @@ static int cutsShort(const Judge *J);
 // A COMBO THE MODE DOES NOT ASK FOR (the owner: combos only where the enemy is topped out -- finish them -- or the board dies without
 // one): four or more panels at once, no chain, outside the mode's list
 static int comboOutside(const Judge *J) { return !J->hold && J->outside && J->apCombo >= 4 && J->apChain < 2; }
+// (the garbage a line breaks as the judge played it: a line whose board is lost while it plays out is ranked on the search's word -- a
+// line in progress on what it was begun for -- and that word is no break the judge saw)
+static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke : J->apBroke; }
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
-  if (J->o.j.threes > 0 && !(J->apBroke > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
+  if (J->o.j.threes > 0 && !(brokeSeen(J) > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
   if (comboOutside(J) && !(J->apBroke > 0)) return 1;   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
   if (cutsShort(J) && !(J->apBroke > 0)) return 1;   // (the board's own chain cut short: the three that began it made for nothing -- unless the
   // line breaks more garbage than the board left alone, its chain and all: a break is never a three for nothing, the chain key weighs it)
