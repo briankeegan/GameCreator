@@ -396,7 +396,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // than that only where it breaks as much garbage as the other: passed over, a break is the board's life)
       const Judge *lc = cx > cy ? x : y, *sc = cx > cy ? y : x;
       if (!lx && imax(0, lc->apBroke) < imax(0, sc->apBroke)) { cx = imin(cx, 3); cy = imin(cy, 3); }
-      if (cx != cy) return (cmpKey = __LINE__, (cy - cx));
+      // (and a line that breaks more and is lost no sooner is never passed over for a chain past three, nor one that is lost later for a
+      // 2x taken to three: the break is the longer life)
+      int brokeMore = !lx && imax(0, sc->apBroke) > imax(0, lc->apBroke) && (imin(cx, cy) >= 3 ? lostOf(sc) >= lostOf(lc) : lostOf(sc) > lostOf(lc));
+      if (cx != cy && !brokeMore) return (cmpKey = __LINE__, (cy - cx));
     }
   }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
