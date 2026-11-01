@@ -191,7 +191,8 @@ static Outlived svJob; static int32_t svJobDone;   // (the survival search alrea
 static int carriedCand(const Read *R, Cand *k, int *wait);
 static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
-static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
+static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n), chainRouteJudged(const Read *R, int n);
+static int32_t chainRouted;   // (the log's: a 2x taken to three and a break made one line, offered)
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
@@ -264,7 +265,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; chainRouted = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -313,6 +314,11 @@ static int ranked(const Read *R, const Found *S) {
   sortJudged(order, n);
   // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)
   { int n0 = n; n = routeJudged(R, n); if (n > n0) sortJudged(order, n); }
+  // (A 2x TAKEN TO THREE AND THE BREAK BOTH -- the owner: a 2x going is continued: while the board chains, the best line that takes the
+  // chain to three, then the swaps of the best line that breaks garbage and leaves the chain at two, made one line and judged whole --
+  // pressed as the board lets each swap be: the third link while the chain falls, the break after -- so the board is never asked to
+  // choose between them where both can be had)
+  { int n0 = n; n = chainRouteJudged(R, n); if (n > n0) sortJudged(order, n); }
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
   // part of the time left each of those still to be asked -- and the order is made again)
@@ -713,6 +719,27 @@ static int routeJudged(const Read *R, int n) {
       k.settled = 0; k.pair = 1;
       if (!judgedHas(n, &k)) { routeOffered++; if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; } }
     }
+  return n;
+}
+static int chainRouteJudged(const Read *R, int n) {
+  if (!decQ.b || !(decQ.b->chainCounter >= 2 || aloneChain >= 2) || n >= MAXCANDS + 4 + NINTENT + NROUTE || clockOut()) return n;
+  const Judge *E = 0, *B = 0;
+  for (int i = 0; i < n; i++) {
+    const Judge *J = order[i];
+    if (J->hold || J->k.nseq < 1) continue;
+    int reach = imax(J->apChain, J->o.j.chainAll);
+    if (!E && reach >= 3) E = J;
+    if (!B && J->apBroke > 0 && reach <= 2) B = J;
+  }
+  if (!E || !B || E == B || E->k.nseq + B->k.nseq > MAXLINE) return n;
+  int32_t seq[MAXLINE], m = 0;
+  for (int q = 0; q < E->k.nseq; q++) seq[m++] = E->k.seq[q];
+  for (int q = 0; q < B->k.nseq; q++) seq[m++] = B->k.seq[q];
+  Cand k;
+  if (!candOf(&k, E->k.play, seq, m, -1, 0)) return n;
+  k.settled = 0; k.route = 1;
+  if (judgedHas(n, &k)) return n;
+  if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; chainRouted = 1; }
   return n;
 }
 // CARRIED ON: the rest of the line in progress, found again on this board by its bottom-row panel and
