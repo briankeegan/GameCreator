@@ -431,23 +431,28 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
-  // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
-  // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
-  // or is lost later: only there is a 2x a save
+  // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made, unless only it keeps the board): a
+  // line whose chain ends at two (rank.c shortChain) is taken out of the order
   // (each such line, the best ranked first, offered beside it as a plain break where it can be: twoMadeThree)
   { static Judge remade[4]; int n0 = n;
     for (int i = 0, tries = 0; i < n0 && tries < 4 && n < MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP && !clockOut(); i++)
       if (shortChain(order[i])) { if (twoMadeThree(R, order[i], &remade[tries])) { order[n++] = &remade[tries]; twoRemade++; } tries++; }
     if (twoRemade) sortJudged(order, n); }
-  { int keeps = 0, twoLives = 0; double twoLost = -1, keptLost = -1;
+  // (each 2x line goes only where another line, no 2x, breaks as much garbage and is lost no sooner by a break's time -- or lives where
+  // it lives: a break is the board's life, and one made a 2x is still made, rather than one that breaks less)
+  { int m = 0;
     for (int i = 0; i < n; i++) {
-      if (shortChain(order[i])) { if (order[i]->o.lives) twoLives = 1; else if (lostOf(order[i]) > twoLost) twoLost = lostOf(order[i]); }
-      else if (spendsReserve(order[i])) continue;   // (a line that spends the window the next break is pressed from keeps nothing)
-      else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
+      const Judge *J = order[i];
+      int goes = 0;
+      if (shortChain(J))
+        for (int k = 0; k < n && !goes; k++) {
+          const Judge *K = order[k];
+          if (K == J || shortChain(K) || spendsReserve(K) || imax(0, K->apBroke) < imax(0, J->apBroke)) continue;
+          goes = J->o.lives ? !!K->o.lives : (K->o.lives || lostOf(K) >= lostOf(J) - rankSave);
+        }
+      if (goes) { dropAs(J->k.play, DROP_TWO); twoDropped++; if (J == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i];
     }
-    if (!keeps && keptLost >= rankSave) keeps = 1;
-    if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1;
-    if (keeps) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i])) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    n = m; }
   // (NO COMBO THE MODE DOES NOT ASK FOR, where a three does as well: the line ranked first making one is played with each of its swaps
   // left out in turn, and one that makes none, lives as long, breaks as much and makes as much of the list is the line -- a fourth panel
   // walked in by a swap the break did not need is a panel and a walk for nothing (the owner: no mode asks a combo of four))
