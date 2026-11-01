@@ -463,6 +463,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!bx) {
       int fx = fallbackOf(x), fy = fallbackOf(y);
       if (fx != fy) return (cmpKey = __LINE__, (fx ? 1 : -1));
+      // (then the one that leaves the next break nearer -- the swaps to it on the board it ends on (outcome.c nearAfter) -- where neither
+      // spends the window the next break is pressed from: a person under garbage walks toward the break, not waits for it)
+      if (x->o.nearAfter >= 0 && y->o.nearAfter >= 0 && x->o.nearAfter != y->o.nearAfter && !spendsReserve(x) && !spendsReserve(y))
+        return (cmpKey = __LINE__, (x->o.nearAfter - y->o.nearAfter));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
