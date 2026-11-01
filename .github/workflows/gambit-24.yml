@@ -73,6 +73,8 @@ jobs:
           GAMBIT_FROM: ${{ inputs.gambit_from }}
         run: |
           from=$(awk -v n="$GAMBIT_FROM" '$1 == n { print $2 }' games/the-game/ai/eval/gambit-versions.txt); from=${from:-$GAMBIT_FROM}
+          # (a short commit hash cannot be fetched by itself: resolved first against the branches' history)
+          case "$from" in *[!0-9a-f]*) ;; *) if [ ${#from} -lt 40 ]; then git fetch -q --filter=blob:none $([ -f .git/shallow ] && echo --unshallow) origin '+refs/heads/*:refs/remotes/origin/*' && from=$(git rev-parse --verify "$from^{commit}"); fi;; esac
           # (that one commit fetched alone, not the history)
           for i in 1 2 3; do timeout 120 git fetch --depth 1 --quiet origin "$from" && break; sleep 5; done
           rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
@@ -152,6 +154,8 @@ jobs:
           GAMBIT_FROM: ${{ inputs.gambit_from }}
         run: |
           from=$(awk -v n="$GAMBIT_FROM" '$1 == n { print $2 }' games/the-game/ai/eval/gambit-versions.txt); from=${from:-$GAMBIT_FROM}
+          # (a short commit hash cannot be fetched by itself: resolved first against the branches' history)
+          case "$from" in *[!0-9a-f]*) ;; *) if [ ${#from} -lt 40 ]; then git fetch -q --filter=blob:none $([ -f .git/shallow ] && echo --unshallow) origin '+refs/heads/*:refs/remotes/origin/*' && from=$(git rev-parse --verify "$from^{commit}"); fi;; esac
           # (that one commit fetched alone, not the history)
           for i in 1 2 3; do timeout 120 git fetch --depth 1 --quiet origin "$from" && break; sleep 5; done
           rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
