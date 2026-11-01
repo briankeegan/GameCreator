@@ -732,14 +732,19 @@ static int chainRouteJudged(const Read *R, int n) {
     if (!B && J->apBroke > 0 && reach <= 2) B = J;
   }
   if (!E || !B || E == B || E->k.nseq + B->k.nseq > MAXLINE) return n;
-  int32_t seq[MAXLINE], m = 0;
-  for (int q = 0; q < E->k.nseq; q++) seq[m++] = E->k.seq[q];
-  for (int q = 0; q < B->k.nseq; q++) seq[m++] = B->k.seq[q];
-  Cand k;
-  if (!candOf(&k, E->k.play, seq, m, -1, 0)) return n;
-  k.settled = 0; k.route = 1;
-  if (judgedHas(n, &k)) return n;
-  if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; chainRouted = 1; }
+  // (both orders -- the third link first and the break after, and the break first while the chain falls, the third link after: there
+  // are frames between a link and the next -- each judged whole, both offered)
+  for (int o = 0; o < 2 && n < MAXCANDS + 4 + NINTENT + NROUTE && !clockOut(); o++) {
+    const Judge *P1 = o ? B : E, *P2 = o ? E : B;
+    int32_t seq[MAXLINE], m = 0;
+    for (int q = 0; q < P1->k.nseq; q++) seq[m++] = P1->k.seq[q];
+    for (int q = 0; q < P2->k.nseq; q++) seq[m++] = P2->k.seq[q];
+    Cand k;
+    if (!candOf(&k, E->k.play, seq, m, -1, 0)) continue;
+    k.settled = 0; k.route = 1;
+    if (judgedHas(n, &k)) continue;
+    if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; chainRouted = 1; }
+  }
   return n;
 }
 // CARRIED ON: the rest of the line in progress, found again on this board by its bottom-row panel and
