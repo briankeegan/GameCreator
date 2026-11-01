@@ -220,6 +220,7 @@ static double contLostOf(const Judge *J, double give) {
   if (lost < 0) return -1;
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
+static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
   static Judge t;
@@ -239,7 +240,7 @@ static void dropCombo(const Read *R, Judge *J) {
 }
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; noopTrimmed = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -410,6 +411,15 @@ static int ranked(const Read *R, const Found *S) {
   // left out in turn, and one that makes none, lives as long, breaks as much and makes as much of the list is the line -- a fourth panel
   // walked in by a swap the break did not need is a panel and a walk for nothing (the owner: no mode asks a combo of four))
   if (n && order[0] && !order[0]->hold && comboOutside(order[0])) dropCombo(R, order[0]);
+  // (NO SWAP AND SWAP BACK IN THE LINE PLAYED -- the owner: no flip and back: the line ranked first, a swap of it swapping straight back the
+  // pair the swap before it swapped (judge.c noopAt), is judged once more without the two and played so unless that is ranked after it)
+  for (int t = 0; t < 2 && n && order[0] && !order[0]->hold && order[0]->o.j.noopAt >= 1 && order[0]->k.nseq > 2 && !clockOut(); t++) {
+    static Cand w; static Judge JL; Judge *J = order[0]; int at = J->o.j.noopAt;
+    w = J->k; w.nseq = 0;
+    for (int i = 0; i < J->k.nseq; i++) if (i != at && i != at - 1) w.seq[w.nseq++] = J->k.seq[i];
+    if (!judgeCand(R, &w, &JL) || compareJudged(&JL, J) > 0) break;
+    JL.carried = J->carried; *J = JL; noopTrimmed++;
+  }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
 }

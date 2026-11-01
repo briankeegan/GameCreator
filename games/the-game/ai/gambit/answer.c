@@ -558,6 +558,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (pairOffered || (P.line && P.line->k.pair)) { L_s(" pair="); L_i(pairOffered); if (P.line && P.line->k.pair) L_s("/played"); }
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
+  if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
   L_s(" casc="); L_i(cascadeLive(decQ.b)); L_s(" pop="); L_i(popLeft(decQ.b)); L_s(" hp="); L_i(decQ.b->health); L_s(" stop="); L_d(R.F.v[FACT_US_STOP]);
   if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
