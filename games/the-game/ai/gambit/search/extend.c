@@ -46,11 +46,20 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
     int nn = 0;
     for (int pi = 0; pi < npool && !clockOut(); pi++) {
       int nm = swapsOfNode(x, pool[pi].n, ms);
+      // (THE WINDOW AS THE JUDGE PRESSES IN IT -- judge.c: a swap whose walk is over what the window leaves at its frame is never pressed,
+      // and one pressed with the window low is pressed held, as late as its walk waits -- so the extension presses as the judge will)
+      int left = -1; const Board *lb = 0;
+      if (pressAllowance >= 0) { lb = ensureBoard(x, pool[pi].n); left = allowLeftAt(NODE(x, pool[pi].n)->t - NODE(x, root)->t, pool[pi].acts); }
       for (int j = 0; j < nm && nn < PLAN_POOL; j++) {
+        int acts = lb ? actionsFor(lb->curRow, lb->curCol, CR(ms[j]), CC(ms[j]), left) : 0;
+        if (lb && acts > left) continue;
+        int32_t tight0 = pressTight;
+        if (lb) pressTight = tightAt(left);
         int out = step(x, pool[pi].n, MK_SWAP, CR(ms[j]), CC(ms[j]), 0);
+        pressTight = tight0;
         if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
         PItem *k = &next[nn]; memset(k, 0, sizeof *k);
-        k->n = out; k->nseq = imin(pool[pi].nseq + 1, PLAN_SEQ);
+        k->n = out; k->nseq = imin(pool[pi].nseq + 1, PLAN_SEQ); k->acts = pool[pi].acts + acts;
         for (int q2 = 0; q2 < pool[pi].nseq && q2 < PLAN_SEQ; q2++) k->seq[q2] = pool[pi].seq[q2];
         if (pool[pi].nseq < PLAN_SEQ) k->seq[pool[pi].nseq] = ms[j];
         nn++;
