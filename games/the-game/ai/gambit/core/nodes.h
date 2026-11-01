@@ -257,7 +257,8 @@ static int legalAt(Ctx *x, int i, int r, int c) {
 // the frame after, until one is taken or the board stands still: the swap goes in the first frame the walk can put it in, never a walk
 // later. walk: the step that walks (the frame loop's advance writing its keys; the judge's, unheld). Returns the walk taken (a node,
 // STEP_NULL none, STEP_DEAD lost on it, STEP_ERR) and in *from the node it began on -- -1 when the board was lost while it waited.
-#define PRESS_WAIT 240   // the frames a swap is waited for at most
+#define PRESS_WAIT 20    // the frames a swap is waited for at most: a swap whose pair stays locked longer is not there -- the line is cut, and
+                         // lines that work with what can be swapped now are played (the owner: play normally, never wait on panels that cannot move)
 static int pressWalk(Ctx *x, int n, int kind, int mr, int mc, int (*walk)(Ctx *, int, int, int, int, int32_t), int *from) {
   for (int k = 0;; k++) {
     int32_t mark = tapeN;
