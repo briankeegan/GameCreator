@@ -436,6 +436,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+    // (and with the window below that already, of two that break no garbage the one that spends less of it: what is left is the next
+    // break's -- a flattening or a setup waits until the window has it to spare)
+    if (rx && ry && lineWalk(x) != lineWalk(y)) return (cmpKey = __LINE__, (lineWalk(x) < lineWalk(y) ? -1 : 1));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
