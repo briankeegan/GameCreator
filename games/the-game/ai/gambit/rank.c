@@ -275,7 +275,8 @@ static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
   if (J->o.j.threes > 0 && !(J->apBroke > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
   if (comboOutside(J) && !(J->apBroke > 0)) return 1;   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
-  if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
+  if (cutsShort(J) && !(J->apBroke > 0)) return 1;   // (the board's own chain cut short: the three that began it made for nothing -- unless the
+  // line breaks more garbage than the board left alone, its chain and all: a break is never a three for nothing, the chain key weighs it)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
 static int beatsHold(const Judge *L, const Judge *H) {
