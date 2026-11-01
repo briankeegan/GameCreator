@@ -368,7 +368,7 @@ static void L_d(double v) {
 }
 static void L_mv(int32_t mv) { L_i(CR(mv)); L_s(","); L_i(CC(mv)); }
 static void L_play(int p) { const char *s = p == -2 ? "raise" : PLAY_NAME[p]; for (; *s; s++) { char c[2] = { *s == ' ' ? '_' : *s, 0 }; L_s(c); } }
-static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c', 'w', 'j' };
+static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c', 'w', 'j', '2' };
 
 // THE MOVE: the one order's choice -- the raise the opening called for, a line's first swap, or the hold
 typedef struct { int32_t kind, move; } Move;   // kind: 0 hold, 1 swap, 2 raise
@@ -565,6 +565,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
   if (backTrimmed) L_s(" backTrimmed=1");
+  if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); }
   if (noopWaits) { L_s(" noopWaits="); L_i(noopWaits); }
   // (a 2x the line played leaves at 2x, going or made: the key it was ranked first by, before the best that takes a chain to three -- or,
   // a 2x it makes, before the best that makes none -- and the two's losses)
