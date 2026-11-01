@@ -241,9 +241,30 @@ static void dropCombo(const Read *R, Judge *J) {
   }
   clockDue = due; clockShare = share;
 }
+// A 2x MADE A PLAIN BREAK, AS AN OPTION (the owner: a 2x that cannot go to three may be made a plain break instead): the line is
+// judged with each of its swaps left out in turn, and the first that makes no 2x not taken to three, lives as long, is lost no sooner
+// and breaks as much is offered beside it
+static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
+  Judge t;
+  double due = clockDue, share = clockShare;
+  if (clockFrameOut) { clockDue = 0; clockShare = 0; }
+  int done = 0;
+  for (int i = 0; i < J->k.nseq && J->k.nseq >= 2 && !clockOut() && !done; i++) {
+    Cand c = J->k; c.nseq = J->k.nseq - 1;
+    for (int q = i; q < c.nseq; q++) c.seq[q] = J->k.seq[q + 1];
+    if (!judgeCand(R, &c, &t) || shortChain(&t)) continue;
+    if (!!t.o.lives < !!J->o.lives || lostOf(&t) < lostOf(J) || imax(0, t.apBroke) < imax(0, J->apBroke)) continue;
+    if ((wastesThree(&t) && !wastesThree(J)) || (cutsShort(&t) && !cutsShort(J))) continue;
+    t.carried = 0; t.first = J->first; t.wait = J->wait; t.waitMax = J->waitMax; t.saving = J->saving; t.material = J->material;
+    *out = t; done = 1;
+  }
+  clockDue = due; clockShare = share;
+  return done;
+}
+static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -413,6 +434,11 @@ static int ranked(const Read *R, const Found *S) {
   // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
   // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
   // or is lost later: only there is a 2x a save
+  // (each such line, the best ranked first, offered beside it as a plain break where it can be: twoMadeThree)
+  { static Judge remade[4]; int n0 = n;
+    for (int i = 0, tries = 0; i < n0 && tries < 4 && n < MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP && !clockOut(); i++)
+      if (shortChain(order[i])) { if (twoMadeThree(R, order[i], &remade[tries])) { order[n++] = &remade[tries]; twoRemade++; } tries++; }
+    if (twoRemade) sortJudged(order, n); }
   { int keeps = 0, twoLives = 0; double twoLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
       if (shortChain(order[i])) { if (order[i]->o.lives) twoLives = 1; else if (lostOf(order[i]) > twoLost) twoLost = lostOf(order[i]); }

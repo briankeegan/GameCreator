@@ -566,6 +566,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
   if (backTrimmed) L_s(" backTrimmed=1");
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); }
+  if (twoRemade) { L_s(" twoRemade="); L_i(twoRemade); }
   if (noopWaits) { L_s(" noopWaits="); L_i(noopWaits); }
   // (a 2x the line played leaves at 2x, going or made: the key it was ranked first by, before the best that takes a chain to three -- or,
   // a 2x it makes, before the best that makes none -- and the two's losses)
