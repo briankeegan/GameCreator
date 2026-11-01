@@ -384,6 +384,7 @@ typedef struct {
                     // saveOk); 2: it makes one on its way to the garbage it breaks (rank.c wastesThree) -- the press guard lets either through
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
   int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
+  int32_t aim;                   // a hold's: the first swap of the best line that is no hold -- the frame loop walks the cursor there (0: none)
   int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
   int32_t whole;   // the chain the board ends up making with the line played (-1: held)
   double idleMs, brMs;
@@ -474,6 +475,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       if (J->hold || J->wait || !J->o.lives || J->k.nseq < 1 || (pass == 0 && J->o.ready != 1)) continue;
       A->nalt = imin(J->k.nseq, MAXLINE); for (int q = 0; q < A->nalt; q++) A->alt[q] = J->k.seq[q];
     }
+  // (THE CURSOR NOT LEFT IDLE -- the owner: a person moves toward the next move while waiting: a hold names where the best line that is no
+  // hold begins, and the frame loop walks the cursor there; a cursor walked changes nothing on the board)
+  A->aim = 0;
+  if (d.kind == 0) for (int i = 0; i < n && !A->aim; i++) if (!order[i]->hold && order[i]->k.nseq > 0) A->aim = order[i]->k.seq[0];
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
   A->holdLives = d.kind == 0 && top && top->o.lives;
