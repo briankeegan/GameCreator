@@ -9,6 +9,9 @@ narrowed, not dropped.
    - On main: a 2x going is taken to three among lines that survive alike, and at least to three in every mode; the extension offers
      the three that breaks the most; a line making a 2x not taken to three is taken out unless every other is lost within a break's
      time, a plain break offered beside it. 2x share 42% to 33%, switching 24/24 on 6-minute games (run 2010).
+   - On main: a 2x is read on the judge's count where the board is lost during the line, so the rule takes it out (c3413ac8).
+   - Not better, each costing survival: the 3x put before survival, or before it within a break's time; the extension's three kept
+     whatever material it leaves; the extension or the wider break search given the planner's half's thread.
    - Put before survival the 3x cost survival (19/24, 2x share 26%). Open: the 2x with no three found (465 of 1411 decisions with a
      2x going, run 2006).
 2. **No flipping back and forth.** A swap and its swap back is two inputs for nothing.
