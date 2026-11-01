@@ -25,6 +25,32 @@ static Sent sendsOf(Ctx *x, int n, const Keep *keep) {
   g.kept = keepsFloor(keep, b, st.broke); g.floor = keepsFloor(keep, b, 0); g.done = NODE(x, out)->t;
   return g;
 }
+// THE SWAPS A LINE CAN PRESS FROM NODE n, as the frame loop presses them (core/nodes.h pressWalk): those legal now, and while the board
+// moves, those that open within a press's wait (PRESS_WAIT) -- a pair under a panel hovering is refused (pa.c canSwapPanels) until it
+// falls, and the frame loop waits for it: the cell a link pops out of, filled as the column above comes down
+static int extSwaps(Ctx *x, int n, int32_t *ms) {
+  int m = swapsOfNode(x, n, ms);
+  Board *b = ensureBoard(x, n);
+  if (!b || !(hasActivePanels(b) || b->swappingCount > 0)) return m;
+  const Node *d = NODE(x, n);
+  int32_t back = d->mk == MK_SWAP || d->mk == MK_SETTLE ? d->mr * 8 + d->mc : -1;
+  static LOCAL int32_t more[MAXROWS * W];
+  int at = n;
+  for (int f = 0; f < 2 && !clockOut(); f++) {
+    int w = step(x, at, MK_LONG, 0, 0, PRESS_WAIT / 2);
+    if (!liveNode(x, w)) break;
+    Board *wb = ensureBoard(x, w);
+    if (!wb) break;
+    int k = legalSwaps(wb, more);
+    for (int i = 0; i < k && m < MAXROWS * W; i++) {
+      int have = more[i] == back;
+      for (int j = 0; j < m && !have; j++) have = ms[j] == more[i];
+      if (!have) ms[m++] = more[i];
+    }
+    at = w;
+  }
+  return m;
+}
 static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   memset(E, 0, sizeof *E);
   double t0 = nowMs(), shareOld = clockShareBegin(t0 + o->ms);
@@ -45,7 +71,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   for (int d = 1; d <= o->depth && npool && !clockOut(); d++) {
     int nn = 0;
     for (int pi = 0; pi < npool && !clockOut(); pi++) {
-      int nm = swapsOfNode(x, pool[pi].n, ms);
+      int nm = extSwaps(x, pool[pi].n, ms);
       // (THE WINDOW AS THE JUDGE PRESSES IN IT -- judge.c: a swap whose walk is over what the window leaves at its frame is never pressed,
       // and one pressed with the window low is pressed held, as late as its walk waits -- so the extension presses as the judge will)
       int left = -1; const Board *lb = 0;
@@ -53,9 +79,13 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
       for (int j = 0; j < nm && nn < PLAN_POOL; j++) {
         int acts = lb ? actionsFor(lb->curRow, lb->curCol, CR(ms[j]), CC(ms[j]), left) : 0;
         if (lb && acts > left) continue;
+        // (pressed as the judge presses it: the walk begun at once, waited on while its pair still moves, a first walk begun within a
+        // reaction)
         int32_t tight0 = pressTight;
         if (lb) pressTight = tightAt(left);
-        int out = step(x, pool[pi].n, MK_SWAP, CR(ms[j]), CC(ms[j]), 0);
+        int from, out = pressWalk(x, pool[pi].n, MK_SWAP, CR(ms[j]), CC(ms[j]), stepTapped, &from);
+        if (liveNode(x, out) && from >= 0 && d == 1 && NODE(x, from)->t - NODE(x, pool[pi].n)->t > cfgReaction) out = STEP_NULL;
+        if (liveNode(x, out) && from >= 0 && pressTight) out = step(x, from, MK_SWAP, CR(ms[j]), CC(ms[j]), 0);
         pressTight = tight0;
         if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
         PItem *k = &next[nn]; memset(k, 0, sizeof *k);
