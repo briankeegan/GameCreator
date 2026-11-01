@@ -262,9 +262,30 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
   return done;
 }
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
+// A BREAK WITHOUT ITS WASTED THREE, AS AN OPTION (the owner: material is the next break's): a line that breaks garbage and on its way
+// makes a clear of three that breaks nothing (judge.c threes) is judged with each of its swaps left out in turn, and the first that
+// wastes fewer, breaks as much, lives as long and is lost no sooner is offered beside it
+static int threesTrimmedOf(const Read *R, const Judge *J, Judge *out) {
+  Judge t;
+  double due = clockDue, share = clockShare;
+  if (clockFrameOut) { clockDue = 0; clockShare = 0; }
+  int done = 0;
+  for (int i = 0; i < J->k.nseq && J->k.nseq >= 2 && !clockOut() && !done; i++) {
+    Cand c = J->k; c.nseq = J->k.nseq - 1;
+    for (int q = i; q < c.nseq; q++) c.seq[q] = J->k.seq[q + 1];
+    if (!judgeCand(R, &c, &t) || t.o.dead || J->o.dead || t.o.j.threes >= J->o.j.threes) continue;
+    if (!!t.o.lives < !!J->o.lives || lostOf(&t) < lostOf(J) || imax(0, t.apBroke) < imax(0, J->apBroke)) continue;
+    if (shortChain(&t) || (cutsShort(&t) && !cutsShort(J)) || comboOutside(&t)) continue;
+    t.carried = 0; t.first = J->first; t.wait = J->wait; t.waitMax = J->waitMax; t.saving = J->saving; t.material = J->material;
+    *out = t; done = 1;
+  }
+  clockDue = due; clockShare = share;
+  return done;
+}
+static int32_t threesTrimmed;   // (the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; threesTrimmed = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -448,6 +469,10 @@ static int ranked(const Read *R, const Found *S) {
     if (!keeps && keptLost >= rankSave) keeps = 1;
     if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1;
     if (keeps) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i])) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+  { static Judge trimmed[3]; int n0 = n, k = 0;
+    for (int i = 0; i < n0 && k < 3 && i < 4 && n < MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP && !clockOut(); i++)
+      if (!order[i]->hold && order[i]->apBroke > 0 && order[i]->o.j.threes > 0 && threesTrimmedOf(R, order[i], &trimmed[k])) { order[n++] = &trimmed[k++]; threesTrimmed++; }
+    if (k) sortJudged(order, n); }
   // (NO COMBO THE MODE DOES NOT ASK FOR, where a three does as well: the line ranked first making one is played with each of its swaps
   // left out in turn, and one that makes none, lives as long, breaks as much and makes as much of the list is the line -- a fourth panel
   // walked in by a swap the break did not need is a panel and a walk for nothing (the owner: no mode asks a combo of four))
