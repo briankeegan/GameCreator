@@ -61,6 +61,9 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
       PItem *k = &next[i];
       Sent g = clockOut() ? (Sent){ 0 } : sendsOf(x, k->n, o->keep);
       if (!g.ok) continue;
+      // (the garbage it breaks beyond the board left alone -- as the judge counts it: a slab popping breaks what it breaks whatever the
+      // line does, and a line-up that only watches it is no break)
+      g.broke = imax(0, g.broke - (base.ok ? base.broke : 0));
       // (a link added to a falling chain is in time when its swap is: pressed before the link it joins lands, and by the deadline)
       int32_t fire = NODE(x, k->n)->t;
       if (o->by != NOT_ASKED && fire > o->by) g.kept = 0;
