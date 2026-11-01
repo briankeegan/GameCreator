@@ -68,14 +68,14 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
       #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) (L).seq[s_] = k->seq[s_]; \
         (L).cells = g.cells; (L).chain = g.chain; (L).combo = g.combo; (L).broke = g.broke; (L).done = g.done; (L).fire = fire; (L).floor = g.floor; \
         (L).base = baseCells; (L).aimIndex = (ai); } while (0)
+      // (A 2x GOING TAKEN TO THREE -- the owner: at least a 3x over a 2x: the line that makes the chain three or more and breaks the most
+      // garbage, whatever the list asks and whatever material it leaves, so long as it is in time)
+      if (g.chain >= 3 && !(o->by != NOT_ASKED && fire > o->by) && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineFits(k->seq, k->nseq, 0)) XFILL(E->three, -1);
       if (g.kept) {
         double xn = nearList(o->aims, made);
         if (xn > 0 && (!E->nearest.set || xn > E->nearest.near || (xn == E->nearest.near && g.cells > E->nearest.cells)) && lineFits(k->seq, k->nseq, 0)) { XFILL(E->nearest, -1); E->nearest.near = xn; }
         for (int ai = 0; ai < na; ai++)
           if (meets(&o->aims->aim[ai], made) && (!per[ai].set || g.cells > per[ai].cells) && lineFits(k->seq, k->nseq, 0)) XFILL(per[ai], ai);
-        // (A 2x GOING TAKEN TO THREE -- the owner: at least a 3x over a 2x: the line that makes the chain three or more and breaks the most
-        // garbage, whatever the list asks)
-        if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineFits(k->seq, k->nseq, 0)) XFILL(E->three, -1);
       }
       #undef XFILL
       k->h = connectedOf(ensureBoard(x, k->n)); k->set = g.cells;   // (set: its score, what it sends)
