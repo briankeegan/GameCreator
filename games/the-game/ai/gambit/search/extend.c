@@ -15,14 +15,28 @@ typedef struct { XLine best, nearest, three; double ms; } Ext;   // three: the c
 // the floor (kept: with what it broke, floor: as if it broke nothing)
 typedef struct { int32_t ok, cells, chain, combo, broke, kept, floor, done; } Sent;
 static LOCAL Ctx *extCtx;
-static Sent sendsOf(Ctx *x, int n, const Keep *keep) {
+// (WHAT A LINE'S STEPS MADE, every one from the root -- its walks, the frames it waited for a pair, its presses: a step's stats are its
+// own frames' (search.h advance), so a link or a break made while a swap is walked to is the line's as much as one made in its settle,
+// as the judge counts them)
+static void madeAdd(PItem *k, const Stats *s) {
+  for (int j = 0; j < s->n; j++) { k->xcc += comboCells(s->size[j]); if (s->size[j] > k->xcombo) k->xcombo = s->size[j]; }
+  if (chainOfStats(s) > k->xchain) k->xchain = chainOfStats(s);
+  k->xbroke += s->broke;
+}
+// (the steps from node `from` back to `to`, `to`'s own not counted)
+static void madeAlong(Ctx *x, int from, int to, PItem *k) {
+  for (int i = from; i >= 0 && i != to; i = NODE(x, i)->prev) { Stats s; if (statsOf(x, i, &s)) madeAdd(k, &s); }
+}
+// node n's cascade once it settles, with what the line's steps to n made (k)
+static Sent sendsOf(Ctx *x, int n, const Keep *keep, const PItem *k) {
   Sent g; memset(&g, 0, sizeof g);
   int out = settleOf(x, n);
   if (!liveNode(x, out)) return g;
-  Stats st; statsOf(x, out, &st);
+  PItem a = *k; Stats st;
+  if (statsOf(x, out, &st)) madeAdd(&a, &st);
   Board *b = ensureBoard(x, out);
-  g.ok = 1; g.cells = sentCells(&st); g.chain = chainOfStats(&st); g.combo = biggestOf(&st); g.broke = st.broke;
-  g.kept = keepsFloor(keep, b, st.broke); g.floor = keepsFloor(keep, b, 0); g.done = NODE(x, out)->t;
+  g.ok = 1; g.cells = a.xcc + (a.xchain > 1 ? W * (a.xchain - 1) : 0); g.chain = a.xchain; g.combo = a.xcombo; g.broke = a.xbroke;
+  g.kept = keepsFloor(keep, b, a.xbroke); g.floor = keepsFloor(keep, b, 0); g.done = NODE(x, out)->t;
   return g;
 }
 // THE SWAPS A LINE CAN PRESS FROM NODE n, as the frame loop presses them (core/nodes.h pressWalk): those legal now, and while the board
@@ -58,7 +72,8 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   Question q0 = *q; q0.narr = 0;   // (the cascade on its own: nothing lands while it is extended)
   int root = rootOf(x, &q0);
   if (root < 0) { clockShareEnd(shareOld); return; }
-  Sent base = sendsOf(x, root, o->keep);
+  PItem none; memset(&none, 0, sizeof none);
+  Sent base = sendsOf(x, root, o->keep, &none);
   E->best.cells = base.ok ? base.cells : 0; E->best.chain = base.ok ? base.chain : 0; E->best.base = E->best.cells; E->best.aimIndex = -1;
   int32_t baseCells = E->best.cells;
   int na = o->aims ? o->aims->n : 0;
@@ -90,6 +105,8 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
         if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
         PItem *k = &next[nn]; memset(k, 0, sizeof *k);
         k->n = out; k->nseq = imin(pool[pi].nseq + 1, PLAN_SEQ); k->acts = pool[pi].acts + acts;
+        k->xcc = pool[pi].xcc; k->xchain = pool[pi].xchain; k->xcombo = pool[pi].xcombo; k->xbroke = pool[pi].xbroke;
+        madeAlong(x, out, pool[pi].n, k);
         for (int q2 = 0; q2 < pool[pi].nseq && q2 < PLAN_SEQ; q2++) k->seq[q2] = pool[pi].seq[q2];
         if (pool[pi].nseq < PLAN_SEQ) k->seq[pool[pi].nseq] = ms[j];
         nn++;
@@ -98,7 +115,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
     int nk = 0;
     for (int i = 0; i < nn; i++) {
       PItem *k = &next[i];
-      Sent g = clockOut() ? (Sent){ 0 } : sendsOf(x, k->n, o->keep);
+      Sent g = clockOut() ? (Sent){ 0 } : sendsOf(x, k->n, o->keep, k);
       if (!g.ok) continue;
       // (the garbage it breaks beyond the board left alone -- as the judge counts it: a slab popping breaks what it breaks whatever the
       // line does, and a line-up that only watches it is no break)
