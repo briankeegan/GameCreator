@@ -5,6 +5,8 @@ typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 static int32_t openerOver;   // (the opener played out: a board has topped out this game)
+static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
+static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
 static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
 static int32_t rescues;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
@@ -46,7 +48,8 @@ static int readBoard_(Read *R) {
   // (the opener named and a mode to follow it -- the profile's `then`, answer.c gb_then: at the top-out the named mode becomes that one,
   // nothing carried let go, as the opener gives way to the enemy's mode in a fight)
   if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out)) && !openerOver) {
-    openerOver = 1;
+    openerOver = 1; openerAt = decQ.b->clock;
+    if (nswitch && theOpp.has && modeRule < 0) modeRule = modeAt(0);   // (switching in a fight: the schedule's first mode from the top-out on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
     if (thenRule >= 0 && ((ni >= 0 && theTables.r[ni].table == 2) || (modeRule < 0 && theOpp.has))) modeRule = thenRule;
   }
