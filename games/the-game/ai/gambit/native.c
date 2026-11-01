@@ -192,7 +192,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   flog(line);
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
   if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last], ringAllow[last]); hostUnlock(); }
-  if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : A->dumpBoard == 3 ? "GAMBITK" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance);
+  if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : A->dumpBoard == 3 ? "GAMBITK" : A->dumpBoard == 4 ? "GAMBITC" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance);
   // (A SAMPLE OF EVERY DECISION: one question in SAMPLEQ, whatever it is, its board -- GAMBITQ, what test/decisions.txt.gz is drawn from,
   // so the replay holds the decisions a game makes and not only the ones some search came up empty on)
   static uint32_t asked;

@@ -693,6 +693,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   { int32_t landAbs = R.F.known[FACT_US_NEXTLANDS] ? at + (int32_t)R.F.v[FACT_US_NEXTLANDS] : NUL, qk = R.F.v[FACT_US_QUEUEKILLS] ? 1 : 0;
     if (lifeLived && landAbs != NUL && landAbs == lifeLand && qk == lifeQk && !P.nlive && lifeDumps < LIFEDUMPS) { A->dumpBoard = 3; lifeDumps++; }
     lifeLived = A->verdict == 1 && R.under; lifeLand = landAbs; lifeQk = qk; }
+  // (A 2x THE BOARD MAKES, NOT TAKEN TO THREE: the board and what is on its way, for searching it again with the time to spare -- at most
+  // one every 60 frames)
+  { static int32_t lastTwo = NUL;
+    if (!A->dumpBoard && aloneChain >= 2 && (!P.line || chainReach(P.line) <= 2) && (lastTwo == NUL || at - lastTwo >= 60 || at < lastTwo)) { lastTwo = at; A->dumpBoard = 4; } }
   // THE RAISE HELD DOWN: the steps the row has left, and the rows on to the rule's `to`
   // (a raise put off to the frame the stack takes one is held from then, on the board it will be: decide.c raiseWait)
   A->raiseWait = d.kind == 2 ? raiseWait : 0;
