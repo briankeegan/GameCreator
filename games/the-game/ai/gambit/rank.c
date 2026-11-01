@@ -379,7 +379,9 @@ static int32_t listChainCap(void) {
 }
 #define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
-static int shortChain(const Judge *J) { return !J->hold && J->apChain >= 2 && chainReach(J) == 2; }
+// (A 2x ITS LINE DOES NOT CONTINUE: the chain the line makes ends at two -- read on the judge's count whether or not the board is lost
+// while the line plays out: a line on a board lost later makes its 2x all the same)
+static int shortChain(const Judge *J) { int32_t reach = J->o.dead ? imax(J->apChain, J->o.j.chainAll) : chainReach(J); return !J->hold && J->apChain >= 2 && reach == 2; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
