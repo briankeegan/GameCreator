@@ -376,6 +376,7 @@ static int32_t listChainCap(void) {
   return cap;
 }
 #define BACK_CALM 1
+#define CHAIN_DANGER 4   // (breaks' time: nearer than this, a break lost later is not passed over for a 3x)
 #define CHAIN_SAFE 2  // (breaks' time, rankSave: a line taking a 2x to three that is lost sooner than this is not put before survival)   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
 static int shortChain(const Judge *J) { return !J->hold && J->apChain >= 2 && chainReach(J) == 2; }
@@ -387,11 +388,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // after decides only between lines that survive alike
   // 1c. A 2x GOING IS TAKEN TO THREE (the owner: at least a 3x over a 2x; further only where the list asks): while the board chains, of
   // two that do not live, the one that takes the chain to three after one that leaves it short -- before the later loss, unless the
-  // line to three is lost within CHAIN_SAFE breaks' time, or the other breaks more garbage and is lost later: the break is the life
+  // line to three is lost within CHAIN_SAFE breaks' time, or, lost within CHAIN_DANGER, the other breaks more garbage and is lost later
   if (!lx && decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (chainReach(x) >= 3) != (chainReach(y) >= 3)) {
     const Judge *lc = chainReach(x) >= 3 ? x : y, *o = lc == x ? y : x;
     int passesBreak = imax(0, o->apBroke) > imax(0, lc->apBroke) && lostOf(o) > lostOf(lc);
-    if (lostOf(lc) >= CHAIN_SAFE * rankSave && !passesBreak) return (cmpKey = __LINE__, (lc == x ? -1 : 1));
+    if (lostOf(lc) >= CHAIN_SAFE * rankSave && !(passesBreak && lostOf(lc) < CHAIN_DANGER * rankSave)) return (cmpKey = __LINE__, (lc == x ? -1 : 1));
   }
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
