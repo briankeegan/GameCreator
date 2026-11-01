@@ -191,7 +191,7 @@ static Outlived svJob; static int32_t svJobDone;   // (the survival search alrea
 static int carriedCand(const Read *R, Cand *k, int *wait);
 static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
-static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
+static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n), judgedHas(int n, const Cand *k);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
@@ -222,6 +222,7 @@ static double contLostOf(const Judge *J, double give) {
 }
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
 static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
+static int32_t thruOffered;   // (breaks offered pressed straight through on a board that does not settle: the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
@@ -264,7 +265,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; thruOffered = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -313,6 +314,21 @@ static int ranked(const Read *R, const Found *S) {
   sortJudged(order, n);
   // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)
   { int n0 = n; n = routeJudged(R, n); if (n > n0) sortJudged(order, n); }
+  // (A BOARD THAT DOES NOT SETTLE -- slabs landing one on another, panels moving: the best breaks judged settled, each swap waiting for a
+  // board at rest, offered pressed straight through too -- each swap as soon as its pair is free -- judged whole: on a board that is
+  // never at rest a break timed to its rest is put off decision after decision)
+  if (decF.under && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0 || hasActivePanels(decQ.b))) {
+    int n0 = n, k = 0;
+    static Judge thruB[3];
+    for (int i = 0; i < n0 && k < 3 && n < MAXCANDS + 4 + NINTENT + NROUTE && !clockOut(); i++) {
+      const Judge *J = order[i];
+      if (J->hold || !J->settled || !(J->apBroke > 0) || J->k.nseq < 1) continue;
+      Cand c = J->k; c.settled = 0;
+      if (judgedHas(n, &c)) continue;
+      if (judgeCand(R, &c, &thruB[k])) { thruB[k].carried = J->carried; order[n++] = &thruB[k]; k++; thruOffered++; }
+    }
+    if (n > n0) sortJudged(order, n);
+  }
   // (READY, ASKED BEST FIRST: every option is ranked on what the judging alone says; then, in the time left and best-ranked first, each
   // that does not live yet is asked whether a break is there once everything lands -- the break search on the landed board, an equal
   // part of the time left each of those still to be asked -- and the order is made again)
