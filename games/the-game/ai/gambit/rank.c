@@ -319,7 +319,7 @@ static int cutsShort(const Judge *J) {
   return aloneChain > 1 && J->apWhole < aloneChain;
 }
 #define FLAT_ROWS 2
-#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
+#define BREAK_WALK 30   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int downtime(void) {
   return !decF.under && (decF.next == NOT_ASKED || decF.next > 2 * rankSave) && decQ.b->chainCounter < 2 &&
          (pressAllowance < 0 || pressAllowance >= 2 * BREAK_WALK);
