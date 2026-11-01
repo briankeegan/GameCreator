@@ -236,7 +236,7 @@ static void dropCombo(const Read *R, Judge *J) {
 }
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; restSpared = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -365,6 +365,9 @@ static int ranked(const Read *R, const Found *S) {
       if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
+    // (the rest of a line whose pressed swaps broke the slab is no three for nothing where it outlives every line that keeps its threes by
+    // a break's time, or lives where none does: the rest is what the line was judged to live by)
+    if (carriedJ && carriedJ->k.broken && !keeps && (carriedJ->o.lives || lostOf(carriedJ) >= keptLost + rankSave)) { restSpared = 1; if (carriedJ->o.lives) keeps = 1; }
     if (!keeps && keptLost >= rankSave) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
@@ -691,8 +694,10 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   int32_t done = j.done, fire = j.fire, nats = j.nats, ats[MAXLINE];
   for (int i = 0; i < nats; i++) ats[i] = j.ats[i];
   // (a line begun for a break whose swaps pressed so far made it -- the slab popping now, none when it was begun -- is carried on for
-  // what the rest of it makes: the rest is what the line was judged to live by)
+  // what the rest of it makes: the rest is what the line was judged to live by, and is read as the whole line was -- a line that breaks,
+  // its threes not wasted (Cand.broken, rank.c breaks))
   if (C->broke && !(x.broke > 0) && !(!C->popping && popLeft(decQ.b) > 0)) { carryDrop = 3; return 0; }
+  int broken = C->broke && !(x.broke > 0);
   // (the rest no longer meeting the entry it was begun for -- the swaps pressed so far made part of it -- it is carried on for no entry,
   // ranked as the line in progress is: rank.c 1a)
   int aimGone = C->hasAim && !meets(&C->aim, x);
@@ -703,5 +708,6 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   k->settled = C->settled;
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;
   k->xNats = nats; for (int i = 0; i < nats; i++) k->xAts[i] = ats[i];
+  k->broken = broken;
   return 1;
 }
