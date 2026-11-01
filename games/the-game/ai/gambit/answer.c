@@ -565,6 +565,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
   if (noopWaits) { L_s(" noopWaits="); L_i(noopWaits); }
+  // (a line played whose first swap swaps back the last swap's pair: the key it was ranked first by, before the best that does not, and
+  // the two's losses)
+  if (n && order[0] && order[0]->back && !order[0]->hold) for (int i = 1; i < n; i++) if (!order[i]->back && !order[i]->hold) {
+    int32_t keep = cmpKey; compareJudged(order[0], order[i]);
+    L_s(" backKey=k"); L_i(cmpKey); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i((int32_t)lostOf(order[i])); L_s(":"); L_i(order[i]->k.play);
+    cmpKey = keep; break;
+  }
   L_s(" casc="); L_i(cascadeLive(decQ.b)); L_s(" pop="); L_i(popLeft(decQ.b)); L_s(" hp="); L_i(decQ.b->health); L_s(" stop="); L_d(R.F.v[FACT_US_STOP]);
   if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
