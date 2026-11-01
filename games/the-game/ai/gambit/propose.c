@@ -169,13 +169,16 @@ static void searchMerge(const Read *R, Found *S) {
   // (a chain the workers did not begin: extended or begun here, in what is left)
   if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, leftMs() / 2);
 }
+#define PLAN_URGENT 240   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
 static void searchAll(const Read *R, Found *S) {
   if (!R->guides.n) return;
   // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
   if (!extBeside) { double xMs = leftMs() / 2; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
-  double usual = searchBeside ? leftMs() * 0.8 : leftMs() / 2;
+  // (garbage on the board, or the board lost soon: the lines found must be judged to be played -- the planner takes half, never the most)
+  int urgent = R->under || (R->F.v[FACT_US_DIES] > 0 && R->F.v[FACT_US_DIES] < PLAN_URGENT);
+  double usual = searchBeside && !urgent ? leftMs() * 0.8 : leftMs() / 2;
   int idle = C2.idle && leftAlone().lives;
   double ms = idle ? (usual > leftMs() ? usual : leftMs()) : usual, extra = ms - (usual > 0 ? usual : 0);
   if (ms >= 20) {
