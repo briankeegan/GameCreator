@@ -23,6 +23,7 @@ typedef struct {
   int32_t id, epoch, at, lead, allowance, topped, lineFrom, linePressed, holdLeft, holdStarted, narr;
   int32_t oppHas, oppOut, oppTop, oppStop;   // the opponent's stop: the frames it is held up by at the question's frame
   int32_t refA, refB, refUntil;              // a pair the press guard refused (a wasted three), its panels' ids, kept out until a frame
+  int32_t swapA, swapB;                      // the pair the last swap pressed swapped, its panels' ids (0: none): the swap back the judge refuses
   int32_t nages, ages[512], window;          // the input window at the question's frame: how long before it each action inside went down
   int32_t noRaise;                           // a raise not offered: the countdown's, asked before any garbage is shown (frontCountdown)
   double ms, posted;
@@ -128,7 +129,7 @@ static struct {
   uint32_t rnd;
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
-  int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil, guardSpoil, loggedRefusedBoards;
+  int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil, guardSpoil, loggedRefusedBoards, swapA, swapB;
   int32_t pPosted, lineAsked, altAsked, lastReveal;   // (the frames questions were posted on, and colours were last shown on)   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
 } F;
 
@@ -517,6 +518,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
     for (int i = 0; i < F.npress && q.nages < 512; i++) if (at - F.pressFrames[i] < F.window) q.ages[q.nages++] = at - F.pressFrames[i];
     for (int32_t t = F.now; t < at; t++) { Planned *p = planOf(t); int32_t bits = p ? p->bits : 0, down = bits & COUNTED & ~prev; prev = bits;
       for (int b = 1; b <= 16; b <<= 1) if ((down & b) && at - t < F.window && q.nages < 512) q.ages[q.nages++] = at - t; } }
+  q.swapA = F.swapA; q.swapB = F.swapB;
   q.refA = F.refUntil > at ? F.refA : 0; q.refB = F.refUntil > at ? F.refB : 0; q.refUntil = F.refUntil;
   q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop; q.oppStop = imax(0, F.oppStop - (at - F.now));
   q.b = F.pBoard;
@@ -975,7 +977,10 @@ static int frontFrame(void) {
       }
     } else { guard = 2; F.st.guardLet++; }
   }
-  if (bits & IN_SWAP & ~F.prevBits) moveBegin(t, save == 1, guard, play, lid, idx);   // (save: the survival search's three, for the count)
+  if (bits & IN_SWAP & ~F.prevBits) {
+    moveBegin(t, save == 1, guard, play, lid, idx);   // (save: the survival search's three, for the count)
+    if (t->curCol >= 1 && t->curCol + 1 <= W && t->curRow >= 0 && t->curRow < t->nrows) { F.swapA = t->p[t->curRow][t->curCol].f[ID]; F.swapB = t->p[t->curRow][t->curCol + 1].f[ID]; }
+  }
   F.curWalked = !!(bits & (IN_UP | IN_DOWN | IN_LEFT | IN_RIGHT));
   countActions(bits, now, play, lid);
   if (bits & IN_SWAP) F.swapSince = 1;

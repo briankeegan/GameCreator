@@ -18,7 +18,7 @@ typedef struct {
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
 typedef struct {
   Cand k;
-  int32_t settled, aim, wait, hold;
+  int32_t settled, aim, wait, hold, back;   // back: its first swap swaps back the pair the last swap pressed swapped (rules.c swappedBack)
   Tier t;
   Outcome o;
   int32_t apDone, apFire, apNats, apAts[MAXLINE], apChain, apChainAll, apCombo, apBroke, apPlayed;
@@ -154,7 +154,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
       if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, oc.nearAfter);
     }
   }
-  J->settled = st; J->aim = aim; J->o = oc;
+  J->settled = st; J->aim = aim; J->o = oc; J->back = k->nseq > 0 && swappedBack(CR(k->seq[0]), CC(k->seq[0]));
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;
   if (j) { J->apNats = j->nats; for (int i = 0; i < j->nats; i++) J->apAts[i] = j->ats[i]; }
   else { J->apNats = k->xNats; for (int i = 0; i < k->xNats; i++) J->apAts[i] = k->xAts[i]; }
@@ -398,6 +398,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+  }
+  // 1'u. NO SWAP BACK (the owner: no flip and back): of two that survive alike, a line whose first swap swaps back the pair the last swap
+  // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
+  if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && x->back != y->back) {
+    const Judge *b = x->back ? x : y, *o = x->back ? y : x;
+    if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
   }
   // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is

@@ -146,8 +146,19 @@ static int swapBack(int r, int c, int clears) {
   if (theBack.blockA && samePair(a, b, theBack.blockA, theBack.blockB) && theBack.at < theBack.blockUntil) return 1;
   return theBack.lastA && samePair(a, b, theBack.lastA, theBack.lastB) && (!clears || theBack.runs >= 2);
 }
+// (the swap back, whatever the line makes: the pair the last swap pressed swapped -- rank.c 1'u)
+static int swappedBack(int r, int c) {
+  if (!backBoard || r < 0 || r >= backBoard->nrows || c < 1 || c + 1 > W || !theBack.lastA) return 0;
+  int32_t a = backBoard->p[r][c].f[ID], b = backBoard->p[r][c + 1].f[ID];
+  return a != NUL && b != NUL && samePair(a, b, theBack.lastA, theBack.lastB);
+}
 // a line's first swap: not the swap back the judge refuses
 static int firstOk(int r, int c, int clears) { return !swapBack(r, c, clears); }
+// (THE SWAP PRESSED LAST, the host's: a line hands on several swaps and the frame loop presses them all, so the pair the next decision
+// must not swap back is the last one pressed, not the last decision's first)
+EXPORT(gb_pressed) void gb_pressed(int a, int b) {
+  if (a && b && a != NUL && b != NUL && !samePair(a, b, theBack.lastA, theBack.lastB)) { theBack.lastA = a; theBack.lastB = b; theBack.runs = 0; }
+}
 EXPORT(gb_back) void gb_back(int lastA, int lastB, int runs, int blockA, int blockB, int blockUntil, int at) {
   Back k = { lastA, lastB, runs, blockA, blockB, blockUntil, at };
   theBack = k;
