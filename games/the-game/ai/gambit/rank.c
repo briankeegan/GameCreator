@@ -381,7 +381,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'. THE CHAIN FALLING, CARRIED ON (the owner: a chain going is continued unless continuing kills the board): while the board chains,
   // of two that survive alike, the one that takes the chain further, up to the longest the list asks -- before every key but survival,
   // under garbage too: a chain left to end short of the target is the attack thrown away
-  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y))) {
+  // (and a chain the board is about to make on its own -- garbage converting into a match, panels falling -- is a chain going too: the
+  // line that takes it further is chosen while it can still be reached, not once its second link has popped)
+  if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y))) {
     int32_t cap = listChainCap();
     if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
   }
