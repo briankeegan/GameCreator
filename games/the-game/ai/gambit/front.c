@@ -70,7 +70,7 @@ typedef struct {
   int32_t noneWhy[1024];   // (and dropped, by what ended the line: lineEnds)
   int32_t actsBy[NPLAYS + 1], actsLost[1024];   // (THE WINDOW SPENT: the actions pressed, by the kind of line -- 0 none -- and those of a line put down or dropped before its end, by what ended it)   // (and by what became of their line: dropped before its later swaps, those pressed, its last swap)
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
-  int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
+  int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil, backRefused;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
 } FStats;
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 // (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
@@ -993,6 +993,12 @@ static int frontFrame(void) {
       }
     } else { guard = 2; F.st.guardLet++; }
   }
+  // (NO SWAP BACK PRESSED -- the owner: no flipping back and forth: a swap of the same two panels the last swap swapped, back where they
+  // were, is refused, its plan dropped and the next decision asked on the board as it is; the survival search's own key let through)
+  if ((bits & IN_SWAP & ~F.prevBits) && save != 1 && F.swapA && t->curCol >= 1 && t->curCol + 1 <= W && t->curRow >= 0 && t->curRow < t->nrows) {
+    int32_t a = t->p[t->curRow][t->curCol].f[ID], z = t->p[t->curRow][t->curCol + 1].f[ID];
+    if (a != NUL && z != NUL && ((a == F.swapA && z == F.swapB) || (a == F.swapB && z == F.swapA))) { bits &= ~IN_SWAP; dropAll(); F.st.backRefused++; }
+  }
   if (bits & IN_SWAP & ~F.prevBits) {
     moveBegin(t, save == 1, guard, play, lid, idx);   // (save: the survival search's three, for the count)
     if (t->curCol >= 1 && t->curCol + 1 <= W && t->curRow >= 0 && t->curRow < t->nrows) { F.swapA = t->p[t->curRow][t->curCol].f[ID]; F.swapB = t->p[t->curRow][t->curCol + 1].f[ID]; }
@@ -1070,10 +1076,10 @@ static void afterFrame(int32_t bits) {
 static void statsLine(char *out, int cap) {
   int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
-                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"aimed\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"attacks\":{\"combo\":{",
+                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"aimed\":%d,\"backRefused\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"attacks\":{\"combo\":{",
                    F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
-                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.aimed, F.st.behind, F.st.behindWorst, F.st.revealCleared);
+                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.aimed, F.st.backRefused, F.st.behind, F.st.behindWorst, F.st.revealCleared);
   int first = 1;
   for (int z = 0; z < 64 && k < cap; z++) if (F.st.combo[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.combo[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");
