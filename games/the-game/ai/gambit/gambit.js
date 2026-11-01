@@ -165,8 +165,8 @@ Gambit.prototype.answer = function (q) {
   var kind = r(), mr = r(), mc = r(), raiseNow = r(), raiseAfter = r(), verdict = r(), holdLives = r(), brk = r(), urgent = r();
   var offered = r(), lineup = r(), touch = r(), took = r(), clears = r(), dump = r();
   var play = r(), combo = r(), chain = r(), chainAll = r(), broke = r(), done = r(), fire = r(), idleMs = r(), brMs = r();
-  var hand = [], nh = r(); for (var i = 0; i < nh; i++) { var h = r(); hand.push([h >> 3, h & 7]); }
-  var seq = [], ns = r(); for (i = 0; i < ns; i++) { var s = r(); seq.push([s >> 3, s & 7]); }
+  var hand = [], nh = r(); for (var i = 0; i < nh; i++) { var h = r(); hand.push([(h >> 3) & 63, h & 7]); }
+  var seq = [], ns = r(); for (i = 0; i < ns; i++) { var s = r(); seq.push([(s >> 3) & 63, s & 7]); }
   var rule = r(), nlive = r(), ncands = r(), ruleName = rule >= 0 ? this.names[rule] : null;
   // (a JavaScript host presses a line handed on as soon as it can, so only a line the judge pressed so is handed to it: not a settled one,
   // nor one handed on behind a hold)
