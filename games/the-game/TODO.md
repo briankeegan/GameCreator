@@ -28,6 +28,10 @@ narrowed, not dropped.
    planner takes half when garbage is on the board or the loss is near, on main (8354a299).
 6. **Look further ahead, in general.** The next break in reach after the next landing ranked right after survival: not better yet
    (switching 18/24), not shipped.
+   - Deaths on main, 6-minute fights: of 183 boards a lost game found no break on, re-searched without a limit, 168 had none to find
+     (33 of them one past the input window) and 15 a break the live search missed -- 11 for want of work, not its order. A turn a
+     break was last there is most often a hold. Not better: the window's reserve 30 actions; below the reserve the line that spends the
+     least (both cost survival).
 7. **The weakest mode first.** Switching (21/24 on 8354a299; finish them 22, pressure 23), then the others; every mode 24/24 twice in a row
    (`ai/eval/plans/gambit-goal.md`).
 8. **Efficiency.** The fewest cursor moves to the goal: the break search's beam ranks by actions to a break, on main.
