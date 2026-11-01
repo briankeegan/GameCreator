@@ -353,8 +353,6 @@ static int lostAlike(const Judge *x, const Judge *y) {
 }
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
 static int32_t cmpKey;
-static int32_t leanTaken;     // (lines judged again without a swap and its swap back, and taken so: judgeLean, the log's)
-static int32_t steadyTaken;   // (the lines pressed straight through over a popping slab this decision: judgeSteady, the log's)
 // (BOUGHT WITH THE PANELS: the later loss of a line that clears panels below the floor and breaks nothing is stop time, bought with the
 // panels the next break is made from. Beside one that spends none and leaves the next decision a break's time (rankSave), the two
 // survive alike, and the list puts the one that keeps its panels first -- under garbage too: a chain fired for its stop leaves the
@@ -669,45 +667,9 @@ static int walkOrder(const Cand *k, Cand *out) {
 static int compareJudged(const Judge *x, const Judge *y);
 // A CANDIDATE JUDGED, and in walking order too when that walks less: the walking order is played when the one order puts it no lower --
 // what it makes is the engine's, as for every line; only the drops and the log's count are the line's own order's
-static int judgeWalked(const Read *R, const Cand *k, Judge *J);
 // STEADY, NOT IN BURSTS (the owner): a line judged settled -- each swap once the board has stopped moving -- waits out a popping slab and
 // then presses the rest at once. While a slab pops it is judged pressed straight through as well, each swap as soon as its pair is free,
 // and that one is the line unless the order puts it after the settled one: the same swaps spread over the pop
-// NO SWAP AND SWAP BACK IN ONE LINE (the owner: no flip and back): a line whose swap swaps straight back the pair the swap before it
-// swapped, nothing moved between (judge.c noopAt), is judged again without the two -- and that one is the line unless the order puts it
-// after the whole: two swaps' inputs for nothing
-static int judgeLean(const Read *R, const Cand *k, Judge *J) {
-  int ok = judgeWalked(R, k, J);
-  // (two swaps, the second the first's swap back: the hold, with two swaps' inputs spent -- the hold is judged as itself)
-  if (ok && !J->hold && J->k.nseq == 2 && J->o.j.noopAt == 1) { dropAs(J->k.play, DROP_BACK); leanTaken++; return 0; }
-  static Cand w; static Judge JL;
-  for (int t = 0; t < 2 && ok && !J->hold && J->o.j.noopAt >= 1 && J->k.nseq > 2 && !clockOut(); t++) {
-    int at = J->o.j.noopAt;
-    w = J->k; w.nseq = 0;
-    for (int i = 0; i < J->k.nseq; i++) if (i != at && i != at - 1) w.seq[w.nseq++] = J->k.seq[i];
-    int32_t keepDrops[NPLAYS][NDROPS], keepCut[4], keepCutBr[4]; memcpy(keepDrops, dropped, sizeof dropped); memcpy(keepCut, cutWhy, sizeof cutWhy); memcpy(keepCutBr, cutWhyBreak, sizeof cutWhyBreak);
-    int keepUnbroken = unbroken.set;
-    int lok = judgeCand(R, &w, &JL);
-    memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
-    if (!lok || compareJudged(&JL, J) > 0) break;
-    *J = JL; leanTaken++;
-  }
-  return ok;
-}
-static int judgeSteady(const Read *R, const Cand *k, Judge *J) {
-  int ok = judgeLean(R, k, J);
-  int p = k->play;
-  if (!ok || clockOut() || k->nseq < 2 || popLeft(decQ.b) <= 0 || !(p == PLAY_ENTRY || p == PLAY_NEAREST || p == PLAY_BREAKLINE || p == PLAY_CLEAR)) return ok;
-  if (!(k->settled >= 0 ? k->settled : settledPlay(p))) return ok;
-  static Cand w; static Judge JT;
-  w = *k; w.settled = 0;
-  int32_t keepDrops[NPLAYS][NDROPS], keepCut[4], keepCutBr[4]; memcpy(keepDrops, dropped, sizeof dropped); memcpy(keepCut, cutWhy, sizeof cutWhy); memcpy(keepCutBr, cutWhyBreak, sizeof cutWhyBreak);
-  int keepUnbroken = unbroken.set;
-  int tok = judgeCand(R, &w, &JT);
-  memcpy(dropped, keepDrops, sizeof dropped); memcpy(cutWhy, keepCut, sizeof cutWhy); memcpy(cutWhyBreak, keepCutBr, sizeof cutWhyBreak); unbroken.set = keepUnbroken;
-  if (tok && compareJudged(&JT, J) <= 0) { *J = JT; steadyTaken++; }
-  return 1;
-}
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int ok = judgeCand(R, k, J);
   static Cand w; static Judge JW;
