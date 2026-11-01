@@ -333,12 +333,14 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
   // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
+  // (the extension third -- a chain going is continued -- and under garbage the wider break search fourth, both before the planner's
+  // second half: a break is the board's life, and a job with no thread to take it is not begun)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
-  if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
+  if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
