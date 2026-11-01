@@ -129,7 +129,7 @@ static struct {
   uint32_t rnd;
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
-  int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil, guardSpoil, loggedRefusedBoards, swapA, swapB;
+  int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil, guardSpoil, loggedRefusedBoards, swapA, swapB, prSwapA, prSwapB;
   int32_t pPosted, lineAsked, altAsked, lastReveal;   // (the frames questions were posted on, and colours were last shown on)   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
 } F;
 
@@ -352,13 +352,21 @@ static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdSta
   copyBoard(out, b);
   memcpy(F.prPend, from, sizeof(Arrival) * (unsigned long)nfrom); F.nprPend = nfrom;
   int32_t hl = holdLeft, hs = holdStarted;
+  // (and the last swap planned before `at`, its pair's ids: the swap a question for `at` must not swap back -- pressed by then, not yet now)
+  F.prSwapA = F.prSwapB = 0;
   while (out->clock < at && out->gameOverClock <= 0) {
     Planned *p = planOf(out->clock);
     int32_t bits = 0;
     if (p) { bits = p->bits; hl = p->holdLeft; hs = p->holdStarted; }
     else if (hl > 0) holdRaise(out, &hl, &hs, &bits);
     out->input = bits & ~IN_SWAP;
-    if (bits & IN_SWAP) out->pressSwap = 1;
+    if (bits & IN_SWAP) {
+      out->pressSwap = 1;
+      if (out->curCol >= 1 && out->curCol + 1 <= W && out->curRow >= 0 && out->curRow < out->nrows) {
+        int32_t a = out->p[out->curRow][out->curCol].f[ID], z = out->p[out->curRow][out->curCol + 1].f[ID];
+        if (a != NUL && z != NUL) { F.prSwapA = a; F.prSwapB = z; }
+      }
+    }
     run(out);
     if (out->err) { predictErr = out->err; return 0; }
     landOn(out, F.prPend, &F.nprPend);
@@ -518,7 +526,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
     for (int i = 0; i < F.npress && q.nages < 512; i++) if (at - F.pressFrames[i] < F.window) q.ages[q.nages++] = at - F.pressFrames[i];
     for (int32_t t = F.now; t < at; t++) { Planned *p = planOf(t); int32_t bits = p ? p->bits : 0, down = bits & COUNTED & ~prev; prev = bits;
       for (int b = 1; b <= 16; b <<= 1) if ((down & b) && at - t < F.window && q.nages < 512) q.ages[q.nages++] = at - t; } }
-  q.swapA = F.swapA; q.swapB = F.swapB;
+  q.swapA = F.prSwapA ? F.prSwapA : F.swapA; q.swapB = F.prSwapA ? F.prSwapB : F.swapB;
   q.refA = F.refUntil > at ? F.refA : 0; q.refB = F.refUntil > at ? F.refB : 0; q.refUntil = F.refUntil;
   q.oppHas = F.oppHas; q.oppOut = F.oppOut; q.oppTop = F.oppTop; q.oppStop = imax(0, F.oppStop - (at - F.now));
   q.b = F.pBoard;

@@ -401,9 +401,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
   }
-  // 1'u. NO SWAP BACK (the owner: no flip and back): of two that survive alike, a line whose first swap swaps back the pair the last swap
+  // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
-  if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && x->back != y->back) {
+  if (lx && !x->hold && !y->hold && x->back != y->back) {
     const Judge *b = x->back ? x : y, *o = x->back ? y : x;
     if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
   }
