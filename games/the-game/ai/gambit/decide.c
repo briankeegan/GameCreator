@@ -295,9 +295,9 @@ static int ranked(const Read *R, const Found *S) {
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
     // (A WAIT THAT DOES NOT END: a line that has waited CARRY_WAITS decisions for a board that has not settled -- under garbage it may
-    // never -- is offered as any line is, no longer kept first as the line in progress (rank.c 1a): nothing of it has been pressed
-    // since, and its loss comes no later while it waits)
-    cj->carried = !(cwait && carryWaitsOut()); order[n] = cj; n++; carriedJ = cj;
+    // never -- waits no more: only the same line pressed straight through is offered, below -- the owner: no lazy waits)
+    if (cwait && carryWaitsOut()) carryNone = 22;
+    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; }
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
     static Judge thru;
