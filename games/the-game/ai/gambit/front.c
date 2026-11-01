@@ -486,7 +486,7 @@ static void countActions(int32_t bits, int32_t now, int32_t play, int32_t lid) {
   if (k > F.limit) F.st.overInput++;
 }
 // (b: the board the keys begin on)
-#define AIM_RESERVE 40   // (the actions a hold's walk to the next work leaves the window at least: two breaks' walks)
+#define AIM_RESERVE 20   // (the actions a hold's walk to the next work leaves the window at least: a break's walk)
 static void walkKeys(Keys *k, int32_t at, const Board *b) { if (tightAt(allowanceAt(at))) fSlowWalks(k, b->curRow, b->curCol); else fHoldWalks(k, b->curRow, b->curCol); }
 
 // ---------------------------------------------------------------- pacing
