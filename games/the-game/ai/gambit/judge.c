@@ -332,14 +332,6 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         broke += sc.broke;
       }
     }
-    // (A SWAP TIMED: the board run on DLY frames before the swap is walked to and pressed -- as the frame loop presses it, from the frame
-    // the judge did)
-    if (!last && DLY(seq[k]) > 0) {
-      int w = step(x, n, MK_LONG, 0, 0, DLY(seq[k]));
-      if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
-      if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
-      n = w; KB(n);
-    }
     // (the allowance this swap is pressed under: the input window at the frame its walk begins, less what the line's swaps before it
     // spent -- core/nodes.h allowLeftAt, actionsFor)
     if (!last && pressAllowance >= 0) {
