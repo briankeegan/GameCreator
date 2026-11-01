@@ -315,12 +315,13 @@ static void markIdle(Judge **a, int n) {
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
 // A LINE THAT CUTS THE BOARD'S OWN CHAIN SHORT: the board left alone makes a chain (the hold's judging, aloneChain) and with the line
-// played it makes one below three, or below the board's own where that is less -- the owner: it is the count, a chain cut to three is a
-// 3x all the same
+// played it makes one short of the longest the mode's list asks -- three at least -- or of the board's own where that is less (the owner:
+// it is the count -- a chain the list asks for is got to where it can be, never below a 3x, and one past it is the board's to spend)
+static int32_t listChainCap(void);
 static int cutsShort(const Judge *J) {
   if (J->hold || !J->apPlayed || aloneChain <= 1) return 0;
   if (ownChainBy > 0 && J->o.j.keepsChain == 1) return 0;   // (judge.c ownChainOf: the board's own reached by the frame its last link comes)
-  return J->apWhole < imin(aloneChain, 3);
+  return J->apWhole < imin(aloneChain, imax(3, listChainCap()));
 }
 #define FLAT_ROWS 2
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
