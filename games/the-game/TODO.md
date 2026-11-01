@@ -35,6 +35,10 @@ narrowed, not dropped.
      (33 of them one past the input window) and 15 a break the live search missed -- 11 for want of work, not its order. A turn a
      break was last there is most often a hold. Not better: the window's reserve 30 actions; below the reserve the line that spends the
      least (both cost survival).
+   - Where the losses are, main's runs 2011-2035: combo_storm 14 of 25, large_garbage 6, factory 5. combo_storm's stream of small
+     slabs keeps the board from settling: a manual raise is never open under garbage there (search/ready.c raiseOpenIn: 0 raises in
+     76,866 decisions under garbage), waits for a settle do not end, and a break timed to a landing is planned again each decision.
+     Next: combo_storm played as a board that never settles.
 7. **The weakest mode first.** Switching (21/24 on 8354a299; finish them 22, pressure 23), then the others; every mode 24/24 twice in a row
    (`ai/eval/plans/gambit-goal.md`).
 8. **Efficiency.** The fewest cursor moves to the goal: the break search's beam ranks by actions to a break, on main.
