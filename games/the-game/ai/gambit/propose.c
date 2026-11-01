@@ -461,6 +461,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
       int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, ex->seq, ex->nseq, xa, 1); if (n > m0) xFromExt(&out[m0], ex);
     }
     if (S->ex.nearest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.nearest.seq, S->ex.nearest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.nearest); }
+    if (S->ex.three.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.three.seq, S->ex.three.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.three); }
   }
   // A CHAIN BEGUN: a swap that starts a clear and the links that continue its fall into an entry of the list
   for (int i = 0; i < S->nstart; i++) { int m0 = n; ADD(PLAY_EXTEND, S->start[i].seq, S->start[i].nseq, S->start[i].aimIndex, 1); if (n > m0) xFromExt(&out[m0], &S->start[i]); }
