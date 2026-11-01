@@ -298,9 +298,12 @@ void gn_thread_stats(double *out) { hostThreadStats(out); }
 int32_t *gn_tele(void) { return tele; }
 int32_t *gn_ages(void) { return ages; }
 static void statsOut(void) { static char line[4096]; if (!F.st.frames) return; statsLine(line, sizeof line); flog(line); }
+// (the last frame a game was asked on: a clock behind it is a game begun again)
+static int32_t lastClock = NUL;
 // A match begins: nothing of the last is carried on.
 void gn_match(void) {
   statsOut();
+  lastClock = NUL;
   frontNew(gnReaction, gnAhead, gnGap, gnJitter);
   gb_switch_game((uint32_t)clock_ms());
   // (the frame clock and the closing times are this game's: the last game's slowest closings would cut this one's decisions short)
@@ -316,7 +319,6 @@ void gn_match(void) {
 }
 // THE FRAME PUBLISHED (the one a decision's guard reads, frameOut): the frame played, when it began, the ms a frame takes, the longest
 // burst -- every frame the game plays, the countdown's too
-static int32_t lastClock = NUL;
 static void framePublish(int32_t clock) {
   double t = clock_ms(), per = F.msPerFrame, last;
   static int32_t run;
@@ -338,10 +340,12 @@ static void framePublish(int32_t clock) {
 // opponent as the host has it -- a fight's opening is the opener's, planned through the countdown
 int gn_countdown(int left, int limit, int window, int oppHas, int oppOut, int oppTop, int oppStop) {
   if (nb_load(F.truth)) return -1;
-  F.oppHas = oppHas; F.oppOut = oppOut; F.oppTop = oppTop; F.oppStop = oppStop;
   int32_t clock = F.truth->clock;
   if (lastClock != NUL && clock < lastClock) gn_match();
   lastClock = clock;
+  // (the opponent set once the game is begun: gn_match clears the frame loop's state, and an opponent set before it is lost -- the
+  // opening asked as if nobody were across)
+  F.oppHas = oppHas; F.oppOut = oppOut; F.oppTop = oppTop; F.oppStop = oppStop;
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
   framePublish(clock);
