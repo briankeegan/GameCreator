@@ -264,7 +264,21 @@ static int keepsOwnChain(Ctx *x, int n) {
   Board *b = liveNode(x, w) ? ensureBoard(x, w) : 0;
   return b && b->chainCounter >= ownChainN;
 }
-static int swapsOfNode(Ctx *x, int n, int32_t *ms) { Board *b = ensureBoard(x, n); return b ? legalSwaps(b, ms) : 0; }
+// (NO SWAP STRAIGHT BACK IN A LINE -- the owner: no flip and back: a search never grows a line by the swap the step before it made, its
+// two cells still full: it swaps the same pair back)
+static int swapsOfNode(Ctx *x, int n, int32_t *ms) {
+  Board *b = ensureBoard(x, n);
+  if (!b) return 0;
+  int m = legalSwaps(b, ms);
+  const Node *d = NODE(x, n);
+  if ((d->mk == MK_SWAP || d->mk == MK_SETTLE) && d->mr >= 0 && d->mr < b->nrows && d->mc >= 1 && d->mc + 1 <= W &&
+      b->p[d->mr][d->mc].f[ID] != NUL && b->p[d->mr][d->mc + 1].f[ID] != NUL) {
+    int32_t back = d->mr * 8 + d->mc; int k = 0;
+    for (int i = 0; i < m; i++) if (ms[i] != back) ms[k++] = ms[i];
+    m = k;
+  }
+  return m;
+}
 static void keepPaths(Paths *p, Line **ls, int n) {
   p->n = 0;
   for (int i = 0; i < n && p->n < KEEPN; i++) {
