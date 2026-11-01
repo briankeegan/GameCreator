@@ -41,19 +41,31 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   static LOCAL int32_t idx[PLAN_POOL], tmpI[PLAN_POOL], keyH[PLAN_POOL], keyS[PLAN_POOL], ms[MAXROWS * W];
   PItem *pool = poolA, *next = poolB;
   int npool = 1;
+  // (A SECOND PASS, TIMED: where swaps pressed at once take the chain no further, the first swap is tried again after the board has run
+  // EXT_WAITS frames on -- the panels falling, a link landing: a link swapped in as they land -- and the rest pressed at once as before)
+  for (int pass = 0; pass < 2 && !clockOut(); pass++) {
+  if (pass == 1) { int any = E->three.set; for (int ai = 0; ai < na; ai++) any |= per[ai].set; if (any) break; }
+  npool = 1;
   memset(&pool[0], 0, sizeof pool[0]); pool[0].n = root;
   for (int d = 1; d <= o->depth && npool && !clockOut(); d++) {
     int nn = 0;
     for (int pi = 0; pi < npool && !clockOut(); pi++) {
-      int nm = swapsOfNode(x, pool[pi].n, ms);
-      for (int j = 0; j < nm && nn < PLAN_POOL; j++) {
-        int out = step(x, pool[pi].n, MK_SWAP, CR(ms[j]), CC(ms[j]), 0);
-        if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
-        PItem *k = &next[nn]; memset(k, 0, sizeof *k);
-        k->n = out; k->nseq = imin(pool[pi].nseq + 1, PLAN_SEQ);
-        for (int q2 = 0; q2 < pool[pi].nseq && q2 < PLAN_SEQ; q2++) k->seq[q2] = pool[pi].seq[q2];
-        if (pool[pi].nseq < PLAN_SEQ) k->seq[pool[pi].nseq] = ms[j];
-        nn++;
+      // (each swap pressed now, and after the board has run EXT_WAITS frames on -- the panels falling, a link landing: a chain is often
+      // continued by a swap timed to the fall, which a swap pressed at once cannot be)
+      static const int32_t EXT_WAITS[] = { 0, 8, 16 };
+      for (int wi = pass && d == 1 ? 1 : 0; wi < (pass && d == 1 ? 3 : 1) && !clockOut(); wi++) {
+        int from = pool[pi].n;
+        if (EXT_WAITS[wi]) { from = step(x, pool[pi].n, MK_LONG, 0, 0, EXT_WAITS[wi]); if (!liveNode(x, from)) break; }
+        int nm = swapsOfNode(x, from, ms);
+        for (int j = 0; j < nm && nn < PLAN_POOL; j++) {
+          int out = step(x, from, MK_SWAP, CR(ms[j]), CC(ms[j]), 0);
+          if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
+          PItem *k = &next[nn]; memset(k, 0, sizeof *k);
+          k->n = out; k->nseq = imin(pool[pi].nseq + 1, PLAN_SEQ);
+          for (int q2 = 0; q2 < pool[pi].nseq && q2 < PLAN_SEQ; q2++) k->seq[q2] = pool[pi].seq[q2];
+          if (pool[pi].nseq < PLAN_SEQ) k->seq[pool[pi].nseq] = MOVE_AFTER(ms[j], EXT_WAITS[wi]);
+          nn++;
+        }
       }
     }
     int nk = 0;
@@ -95,6 +107,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
     int keepN = imin(nd, o->width);
     for (int i = 0; i < keepN; i++) pool[i] = next[idx[i]];
     npool = keepN;
+  }
   }
   for (int ai = 0; ai < na; ai++) if (per[ai].set) { E->best = per[ai]; break; }
   E->ms = nowMs() - t0;
