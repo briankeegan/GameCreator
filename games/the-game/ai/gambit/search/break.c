@@ -279,7 +279,7 @@ static int found(Broke *o, int32_t key) { int i = foundAlready(o, key); if (i >=
 static void setPath(Broke *o, const int32_t *path, int len) { o->pathLen = len; for (int k = 0; k < len; k++) o->path[k] = path[k]; }
 
 // THE TOUCH BEAM (touchBeam): the carried lines first, then the first swaps, grown a level at a time
-#define BEAM_SWAP_ACTS 3   // (a swap's actions, the walk with it: 3.0 a swap measured over 26,000 swaps of finish them)
+#define BEAM_SWAP_ACTS 2   // (a swap's actions, the walk with it: 3.0 a swap measured over 26,000 swaps of finish them)
 static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   Ctx *x = s->x;
   Broke *o = s->out;
