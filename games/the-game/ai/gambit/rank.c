@@ -373,6 +373,7 @@ static int32_t listChainCap(void) {
   return cap;
 }
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
+static int shortChain(const Judge *J) { return !J->hold && J->apChain >= 2 && chainReach(J) == 2; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
   // 1. lives before does not
@@ -388,6 +389,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y))) {
     int32_t cap = listChainCap();
     if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
+  }
+  // 1'2. NO CHAIN LEFT AT TWO (the owner: a 2x is continued or not made): of two that survive alike, a line whose chain -- its own, the
+  // board making none alone -- ends at two after one that makes no such chain and breaks as much garbage: a 2x is two links' clears for
+  // one link's worth
+  if ((lx || lostAlike(x, y)) && aloneChain < 2 && shortChain(x) != shortChain(y)) {
+    const Judge *sc = shortChain(x) ? x : y, *o = shortChain(x) ? y : x;
+    if (imax(0, o->apBroke) >= imax(0, sc->apBroke)) return (cmpKey = __LINE__, (shortChain(x) ? 1 : -1));
   }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
   // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the
