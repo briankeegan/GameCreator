@@ -4,7 +4,7 @@
 typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
-static int32_t openerOver;   // (the opener played out: a board has topped out this game)
+static int32_t openerOver, openerChained;   // (the opener played out: a board has topped out this game -- or, nobody across, its chain thrown)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
@@ -47,14 +47,18 @@ static int readBoard_(Read *R) {
   // not garbage sent -- the opener's rule, big chains; then the mode the enemy's board picks)
   // (the opener named and a mode to follow it -- the profile's `then`, answer.c gb_then: at the top-out the named mode becomes that one,
   // nothing carried let go, as the opener gives way to the enemy's mode in a fight)
-  if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out)) && !openerOver) {
+  // (TIME ATTACK OPENS WITH THE OPENER too -- the owner: the same opening with nobody across; with no board across to top out, the opener
+  // is over once its chain is thrown: the board's chain counter at two or more, then ended)
+  if (!theOpp.has && decQ.b->chainCounter >= 2) openerChained = 1;
+  int thrown = !theOpp.has && openerChained && decQ.b->chainCounter == 0;
+  if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
-    if (nswitch && theOpp.has && modeRule < 0) modeRule = modeAt(0);   // (switching in a fight: the schedule's first mode from the top-out on)
+    if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
-    if (thenRule >= 0 && ((ni >= 0 && theTables.r[ni].table == 2) || (modeRule < 0 && theOpp.has))) modeRule = thenRule;
+    if (thenRule >= 0 && ((ni >= 0 && theTables.r[ni].table == 2) || modeRule < 0)) modeRule = thenRule;
   }
   int oi = -1;
-  for (int i = 0; i < theTables.n && oi < 0 && !openerOver && theOpp.has && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
+  for (int i = 0; i < theTables.n && oi < 0 && !openerOver && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
   int ri = oi >= 0 ? oi : modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
   if (ri < 0 && !theOpp.has && theTables.n > 0) ri = 0;
   if (ri < 0) return 0;

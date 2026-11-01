@@ -751,7 +751,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); lifeDumps = 0; openerOver = 0; openerAt = 0;
+  modeLeft(); lifeDumps = 0; openerOver = 0; openerChained = 0; openerAt = 0;
   if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
@@ -807,11 +807,11 @@ static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, 
   decQ = hostQ; decQ.b = hostBoard;
   ncache = 0; rootBuildable = NOT_ASKED;
   // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
-  // (in a fight the opener plays from the countdown to the top-out, and the schedule runs from there -- as a live game switching is played)
+  // (the opener plays from the countdown to its end -- the top-out, or nobody across its chain thrown -- and the schedule runs from there)
   switchedNow = 0;
   // (A SWITCH OF MODE clears nothing: the board is the same board, and every line kept is ranked again by the new mode's keys, which
   // say whether it fits)
-  if (nswitch && (!oppHas || openerOver)) { int32_t m = modeAt(oppHas ? at - openerAt : at); if (m != modeRule) { if (modeRule >= 0) switchedNow = 1;  modeRule = m; } }
+  if (nswitch && openerOver) { int32_t m = modeAt(at - openerAt); if (m != modeRule) { if (modeRule >= 0) switchedNow = 1;  modeRule = m; } }
   hostTopped = topped;
   Opp o = { oppHas, oppOut, oppTopKnown, oppTop, oppStopKnown, oppStop }; theOpp = o;
   canRaiseNow = canRaise;
