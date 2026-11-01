@@ -82,8 +82,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   int play = k->play, aim = k->aim;
   int st = k->settled >= 0 ? k->settled : settledPlay(play);
   // (STEADY, NOT IN BURSTS -- the owner: while a slab pops, a line that would wait for the board to stop before each swap is judged pressed
-  // straight through, each swap as soon as its pair is free: its swaps spread over the pop, not saved for its end)
-  if (k->settled < 0 && st && popLeft(decQ.b) > 0 && (play == PLAY_ENTRY || play == PLAY_NEAREST || play == PLAY_BREAKLINE || play == PLAY_CLEAR)) st = 0;
+  // straight through, each swap as soon as its pair is free: its swaps spread over the pop, not saved for its end -- unless it is found to
+  // break garbage, whose break is timed on the board settled)
+  if (k->settled < 0 && st && popLeft(decQ.b) > 0 && !(k->x.broke > 0) && (play == PLAY_ENTRY || play == PLAY_NEAREST || play == PLAY_BREAKLINE || play == PLAY_CLEAR)) st = 0;
   // (what it makes is the whole line on the engine, as the judge counts it -- not what the search that found it counted; a line the
   // judge could not play out is judged on the search's word)
   // (the line in progress waiting for the board to settle: judged on the board settled, as carriedCand found it)
