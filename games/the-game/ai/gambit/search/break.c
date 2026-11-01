@@ -385,9 +385,9 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       bAt[ntl] = nb;
       stepBatch(x, bPar, bMv, MK_SWAP, nb);
       // (the level a break is found on is taken whole: of its lines that break, one that keeps the board's own chain first -- a chain cut
-      // leaves the three that began it wasted -- then the one that leaves the most material once its board settles, then the one that
-      // has broken most: a break whose converted panels match again is rows more of the slab -- and, with an input allowance to keep (a
-      // host that says it), the one the cursor walks fewer actions for before the material: the window pays for every cell of it
+      // leaves the three that began it wasted -- with an input allowance to keep (a host that says it), the one the cursor walks fewer
+      // actions for: the window pays for every cell of it; then the one that has broken most, then the one that leaves the fewer panels
+      // once its board settles: of breaks at 6-23 panels 8% wait over 600 frames for the next, at 36-53 19-23% (finish them, 5 runs)
       const Board *rb = ensureBoard(x, s->root);
       int starved = pressAllowance >= 0 && rb;
       int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestPath[MAXPATH];
@@ -402,7 +402,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
             int32_t mat, br = brokeSettled(x, t3, &mat);
             int acts = 0;
             if (starved) { int r = rb->curRow, c = rb->curCol; for (int k = 0; k < nl->len; k++) { acts += actionsFor(r, c, CR(nl->path[k]), CC(nl->path[k]), pressAllowance - acts); r = CR(nl->path[k]); c = CC(nl->path[k]); } }
-            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
+            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(br, 255) << 12) + (4095 - imin(mat, 4095));
             if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
             continue;
           }
