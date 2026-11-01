@@ -282,3 +282,40 @@ EXPORT(gb_frames_kept_info) int gb_frames_kept_info(int32_t *out) {
   out[0] = b->clock; out[1] = b->stopTime + b->preStopTime; out[2] = b->shakeTime; out[3] = b->ninc; out[4] = b->garbageCreatedCount; out[5] = fullTop(b);
   return 6;
 }
+// THE REST OF A LINE CARRIED ON (gb_replay_rest): the question's board answered with a line in progress set -- its rest (nrest swaps,
+// in the io after the board and its arrivals), settled or not, begun breaking garbage (broke) or not -- anchored on this board as
+// carryOf anchors one, nothing of it pressed since. Out: whether the line played is the rest, the loss of the line played, the hold's,
+// why the rest was not offered (decide.c carryNone, carryDrop), its place in the order, its loss, late or dead. Test: the rest of a line
+// whose pressed swaps broke the slab popping now is played for what it makes (test/carry.txt).
+EXPORT(gb_replay_rest) int gb_replay_rest(int nbytes, int narr, int mode, int64_t work, int nrest, int settled, int broke, int32_t *out) {
+  int32_t rest[MAXLINE];
+  if (nrest < 1 || nrest > MAXLINE) return -1;
+  for (int i = 0; i < nrest; i++) rest[i] = gbIo[(nbytes + 3) / 4 + 3 * narr + i];
+  if (gb_question_bytes(nbytes, narr) != 0) return -1;
+  gb_new_game();
+  gb_switch(0, 0); nswitch = 0;   // (one mode: nothing lets the line go)
+  modeRule = mode;
+  curQid = abortId + 1;
+  replayWork = work; clockNowOf = work > 0 ? replayNow : 0; clockFrameOut = 0; clockWork = 0;
+  int topped = fullTop(hostBoard) >= hostBoard->height;
+  double t0 = work > 0 ? 0 : clock_ms(), due = t0 + REPLAY_MS;
+  int32_t taps = hostTaps; if (replayAllow >= 0) hostTaps = 1;
+  memset(&theCarry, 0, sizeof theCarry);
+  { int32_t row1[W + 1]; for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(hostBoard, c);
+    if (!anchorOf(row1, rest, nrest)) { hostTaps = taps; return -2; }
+    theCarry.set = 1; theCarry.id = curQid; theCarry.nrest = nrest; for (int i = 0; i < nrest; i++) theCarry.rest[i] = rest[i];
+    theCarry.settled = settled; theCarry.broke = broke; theCarry.popping = 0; theCarry.made = (Made){ 0, 0, broke ? W : 0, 0 }; }
+  answerQuestion(curQid, 0, topped, 0, 0, 0, 0, 0, 0, replayAllow >= 0, imax(0, replayAllow), curQid, 0, 0, due, t0, 0);
+  hostTaps = taps;
+  clockNowOf = 0;
+  const Answer *A = &theAnswer;
+  const Judge *top = A->ncands ? order[0] : 0, *hold = 0;
+  for (int i = 0; i < A->ncands; i++) if (order[i]->hold) hold = order[i];
+  out[0] = top && !top->hold && top->carried; out[1] = top ? top->o.lostAt : NOT_ASKED; out[2] = hold ? hold->o.lostAt : NOT_ASKED;
+  out[3] = carryNone; out[4] = carryDrop;
+  // (and for the check's report: the rest's place in the order and its loss, late or dead as judged)
+  const Judge *cj = 0; int at = -1;
+  for (int i = 0; i < A->ncands; i++) if (order[i]->carried) { cj = order[i]; at = i; break; }
+  out[5] = at; out[6] = cj ? cj->o.lostAt : NOT_ASKED; out[7] = cj ? cj->o.late * 2 + cj->o.dead : -1;
+  return 8;
+}

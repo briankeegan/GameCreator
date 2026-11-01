@@ -13,6 +13,7 @@ typedef struct {
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
+  int32_t broken;  // the rest of the line in progress, its swaps pressed so far having broken garbage (decide.c carriedCand): the line breaks
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -267,12 +268,15 @@ static int cutsShort(const Judge *J);
 // A COMBO THE MODE DOES NOT ASK FOR (the owner: combos only where the enemy is topped out -- finish them -- or the board dies without
 // one): four or more panels at once, no chain, outside the mode's list
 static int comboOutside(const Judge *J) { return !J->hold && J->outside && J->apCombo >= 4 && J->apChain < 2; }
+// (THE LINE BREAKS: garbage broken beyond the board left alone (apBroke, the judge's count) -- or, for the rest of the line in progress,
+// by the swaps of it pressed already (Cand.broken): the rest is what the line was judged to live by, and is read as the whole line was)
+static int breaks(const Judge *J) { return J->apBroke > 0 || J->k.broken; }
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
-  if (J->o.j.threes > 0 && !(J->apBroke > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
-  if (comboOutside(J) && !(J->apBroke > 0)) return 1;   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
+  if (J->o.j.threes > 0 && !breaks(J)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
+  if (comboOutside(J) && !breaks(J)) return 1;   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
   if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
-  return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
+  return (J->apCombo > 0 || J->apChain > 0) && !breaks(J) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;

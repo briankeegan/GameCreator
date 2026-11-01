@@ -22,6 +22,7 @@ int gb_replay(int nbytes, int narr, int mode, int64_t work, char *out, int cap);
 void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
 void gb_replay_allow(int allow);
+int gb_replay_rest(int nbytes, int narr, int mode, long long work, int nrest, int settled, int broke, int32_t *out);
 int gb_line_agree(int *n);
 int gb_held_off(int *held, int *offCell);
 const char *gb_line_shown(void);
@@ -128,6 +129,42 @@ int main(int argc, char **argv) {
   // ---- the decisions
   snprintf(path, sizeof path, "%s/rules.words", dir);
   if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+  // (THE REST OF A BREAK CARRIED ON: a line in progress whose swaps pressed so far broke the slab popping now is carried on for what the
+  // rest makes -- the rest is what the line was judged to live by -- and is read as the whole line was: its three is no wasted three.
+  // Each board of test/carry.txt: with the line begun breaking, the rest is the line played and outlives the hold; begun breaking
+  // nothing, the same rest is a three the save did not ask for, and is not played. Held single-threaded, as the decisions replayed are:
+  // on the work clock a worker's share is its own. Before the frame loop's checks: their thread keeps the decision's state after them)
+  snprintf(path, sizeof path, "%s/carry.txt", dir);
+  FILE *fc = fopen(path, "r");
+  int oneThread = !(getenv("GC_GAMBIT_WORKERS") && atoi(getenv("GC_GAMBIT_WORKERS")) > 0);
+  if (fc) {
+    int boards = 0, played = 0, refused = 0;
+    while (fgets(line, sizeof line, fc)) {
+      int mode, allow, settled; char seqs[256];
+      if (line[0] == '#' || sscanf(line, "%d %d %d %255s", &mode, &allow, &settled, seqs) != 4) continue;
+      const char *b = strstr(line, "GAMBIT");
+      if (!b) continue;
+      int32_t o[2][8]; int narr = 0, n = 0;
+      for (int broke = 1; broke >= 0; broke--) {
+        n = loadLine(b, &narr);
+        if (n < 0) break;
+        int32_t *seq = gb_io() + (n + 3) / 4 + 3 * narr, nrest = 0;
+        for (const char *q = seqs; *q && nrest < 16; ) { int r, c; if (sscanf(q, "%d,%d", &r, &c) != 2) break; seq[nrest++] = r * 8 + c; q = strchr(q, ';'); if (!q) break; q++; }
+        gb_replay_allow(allow);
+        if (gb_replay_rest(n, narr, mode, REPLAY_WORK, nrest, settled, broke, o[broke]) < 0) { n = -1; break; }
+      }
+      gb_replay_allow(-1);
+      if (n < 0) { fprintf(stderr, "test: a carry board that does not load\n"); return 1; }
+      boards++;
+      int ok1 = o[1][0] && o[1][1] > o[1][2] && o[1][2] >= 0, ok0 = !o[0][0];
+      played += ok1; refused += ok0;
+      if (!ok1 || !ok0) printf("  the rest of a break (mode %d): begun breaking -- played %d, lost %d, the hold %d, not offered %d/%d, the rest at %d lost %d late/dead %d; breaking nothing -- played %d (%d/%d)\n", mode, o[1][0], o[1][1], o[1][2], o[1][3], o[1][4], o[1][5], o[1][6], o[1][7], o[0][0], o[0][3], o[0][4]);
+    }
+    fclose(fc);
+    int bad = played < boards || refused < boards || !boards;
+    printf("%s: the rest of a break carried on -- %d boards, %d played the rest and outlived the hold, %d refused it begun breaking nothing%s\n", bad && oneThread ? "FAIL" : "ok", boards, played, refused, oneThread ? "" : " (workers: not held)");
+    fail |= bad && oneThread;
+  }
   snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
   gzFile z = gzopen(path, "r");
   if (!z) { fprintf(stderr, "test: no %s\n", path); return 2; }
