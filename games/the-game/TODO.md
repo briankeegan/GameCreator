@@ -5,15 +5,16 @@
 Each line: the ask, then where it stands. A fix ships to main only when it holds survival over two runs; one that costs survival is
 narrowed, not dropped.
 
-1. **No 2x chains it does not continue.** A 2x is continued, or not made, unless doing otherwise kills the board.
-   - Continuing a 2x the board is about to make on its own: on main. A 2x taken to three over a break that is lost no later: on main.
-   - No 2x where the board is safe (both lines live, no garbage on it): on main (8354a299). Barely moves the share in the CI patterns,
-     where garbage is on the board 99% of the time; still about 40% of chains end at 2x. Open: the 2x made under garbage.
+1. **No 2x chains it does not continue.** A 2x is taken to three, or not made, unless doing otherwise kills the board.
+   - On main: a 2x going is taken to three before the later loss; the extension offers the three that breaks the most; a line making a
+     2x not taken to three is taken out unless every other is lost within a break's time, a plain break offered beside it; none of it
+     on the window the next break is pressed from. 2x share 42% to 24% (runs 2001-2002, 3-minute switching games).
 2. **No flipping back and forth.** A swap and its swap back is two inputs for nothing.
    - On main: the swap back the last swap pressed refused; a swap and its swap back inside a line handed on as a wait; no search grows
      a line by swapping straight back; no swap back among lines lost alike. 3.1% of swaps to 1.2% (runs 1972-1979).
    - Open: the rest are a change of mind once garbage turns to panels -- the next line begins by undoing the swap just pressed.
-     Next: such a line judged again without the swap back (in test).
+     Such a line judged again without the swap back: on main. Next: a swap handed on asked again before it is pressed once garbage
+     turned to panels since the line was judged.
 3. **No lazy waits.** Never sit with the cursor still and then rush; play what can be swapped now.
    - Steady over a popping slab (a line not found to break pressed straight through): on main.
    - A swap whose pair stays locked over 20 frames is not there, so lines that use what can be swapped now are played: on main

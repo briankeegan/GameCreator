@@ -221,6 +221,8 @@ static double contLostOf(const Judge *J, double give) {
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
+static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
+static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -239,9 +241,30 @@ static void dropCombo(const Read *R, Judge *J) {
   }
   clockDue = due; clockShare = share;
 }
+// A 2x MADE A PLAIN BREAK, AS AN OPTION (the owner: a 2x that cannot go to three may be made a plain break instead): the line is
+// judged with each of its swaps left out in turn, and the first that makes no 2x not taken to three, lives as long, is lost no sooner
+// and breaks as much is offered beside it
+static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
+  Judge t;
+  double due = clockDue, share = clockShare;
+  if (clockFrameOut) { clockDue = 0; clockShare = 0; }
+  int done = 0;
+  for (int i = 0; i < J->k.nseq && J->k.nseq >= 2 && !clockOut() && !done; i++) {
+    Cand c = J->k; c.nseq = J->k.nseq - 1;
+    for (int q = i; q < c.nseq; q++) c.seq[q] = J->k.seq[q + 1];
+    if (!judgeCand(R, &c, &t) || shortChain(&t)) continue;
+    if (!!t.o.lives < !!J->o.lives || lostOf(&t) < lostOf(J) || imax(0, t.apBroke) < imax(0, J->apBroke)) continue;
+    if ((wastesThree(&t) && !wastesThree(J)) || (cutsShort(&t) && !cutsShort(J))) continue;
+    t.carried = 0; t.first = J->first; t.wait = J->wait; t.waitMax = J->waitMax; t.saving = J->saving; t.material = J->material;
+    *out = t; done = 1;
+  }
+  clockDue = due; clockShare = share;
+  return done;
+}
+static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -408,6 +431,23 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+  // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
+  // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
+  // or is lost later: only there is a 2x a save
+  // (each such line, the best ranked first, offered beside it as a plain break where it can be: twoMadeThree)
+  { static Judge remade[4]; int n0 = n;
+    for (int i = 0, tries = 0; i < n0 && tries < 4 && n < MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP && !clockOut(); i++)
+      if (shortChain(order[i])) { if (twoMadeThree(R, order[i], &remade[tries])) { order[n++] = &remade[tries]; twoRemade++; } tries++; }
+    if (twoRemade) sortJudged(order, n); }
+  { int keeps = 0, twoLives = 0; double twoLost = -1, keptLost = -1;
+    for (int i = 0; i < n; i++) {
+      if (shortChain(order[i])) { if (order[i]->o.lives) twoLives = 1; else if (lostOf(order[i]) > twoLost) twoLost = lostOf(order[i]); }
+      else if (spendsReserve(order[i])) continue;   // (a line that spends the window the next break is pressed from keeps nothing)
+      else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
+    }
+    if (!keeps && keptLost >= rankSave) keeps = 1;
+    if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1;
+    if (keeps) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i])) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // (NO COMBO THE MODE DOES NOT ASK FOR, where a three does as well: the line ranked first making one is played with each of its swaps
   // left out in turn, and one that makes none, lives as long, breaks as much and makes as much of the list is the line -- a fourth panel
   // walked in by a swap the break did not need is a panel and a walk for nothing (the owner: no mode asks a combo of four))
@@ -420,6 +460,14 @@ static int ranked(const Read *R, const Found *S) {
     for (int i = 0; i < J->k.nseq; i++) if (i != at && i != at - 1) w.seq[w.nseq++] = J->k.seq[i];
     if (!judgeCand(R, &w, &JL) || compareJudged(&JL, J) > 0) break;
     JL.carried = J->carried; *J = JL; noopTrimmed++;
+  }
+  // (A SWAP BACK THE LINE DOES NOT NEED -- the owner: no flip and back: the line ranked first, its first swap swapping back the pair the
+  // last swap pressed swapped (rank.c back), is judged once more without that swap and played so unless that is ranked after it)
+  if (n && order[0] && !order[0]->hold && order[0]->back && order[0]->k.nseq >= 2 && !clockOut()) {
+    static Cand w; static Judge JL; Judge *J = order[0];
+    w = J->k; w.nseq = 0;
+    for (int i = 1; i < J->k.nseq; i++) w.seq[w.nseq++] = J->k.seq[i];
+    if (judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; backTrimmed++; }
   }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;

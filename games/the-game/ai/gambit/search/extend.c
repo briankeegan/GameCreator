@@ -10,7 +10,7 @@ typedef struct {
   double near;
 } XLine;
 typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; } ExtOpts;
-typedef struct { XLine best, nearest; double ms; } Ext;
+typedef struct { XLine best, nearest, three; double ms; } Ext;   // three: the chain taken to three or more, breaking the most
 // a node's cascade once it settles: what it sends, its chain and largest match, the garbage it converted, and whether its board keeps
 // the floor (kept: with what it broke, floor: as if it broke nothing)
 typedef struct { int32_t ok, cells, chain, combo, broke, kept, floor, done; } Sent;
@@ -73,6 +73,9 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
         if (xn > 0 && (!E->nearest.set || xn > E->nearest.near || (xn == E->nearest.near && g.cells > E->nearest.cells)) && lineFits(k->seq, k->nseq, 0)) { XFILL(E->nearest, -1); E->nearest.near = xn; }
         for (int ai = 0; ai < na; ai++)
           if (meets(&o->aims->aim[ai], made) && (!per[ai].set || g.cells > per[ai].cells) && lineFits(k->seq, k->nseq, 0)) XFILL(per[ai], ai);
+        // (A 2x GOING TAKEN TO THREE -- the owner: at least a 3x over a 2x: the line that makes the chain three or more and breaks the most
+        // garbage, whatever the list asks)
+        if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineFits(k->seq, k->nseq, 0)) XFILL(E->three, -1);
       }
       #undef XFILL
       k->h = connectedOf(ensureBoard(x, k->n)); k->set = g.cells;   // (set: its score, what it sends)
