@@ -148,6 +148,11 @@ static int swapBack(int r, int c, int clears) {
 }
 // a line's first swap: not the swap back the judge refuses
 static int firstOk(int r, int c, int clears) { return !swapBack(r, c, clears); }
+// (THE SWAP PRESSED LAST, the host's: a line hands on several swaps and the frame loop presses them all, so the pair the next decision
+// must not swap back is the last one pressed, not the last decision's first)
+EXPORT(gb_pressed) void gb_pressed(int a, int b) {
+  if (a && b && a != NUL && b != NUL && !samePair(a, b, theBack.lastA, theBack.lastB)) { theBack.lastA = a; theBack.lastB = b; theBack.runs = 0; }
+}
 EXPORT(gb_back) void gb_back(int lastA, int lastB, int runs, int blockA, int blockB, int blockUntil, int at) {
   Back k = { lastA, lastB, runs, blockA, blockB, blockUntil, at };
   theBack = k;
