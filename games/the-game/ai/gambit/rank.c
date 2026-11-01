@@ -370,6 +370,7 @@ static int32_t listChainCap(void) {
   for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
   return cap;
 }
+#define BACK_CALM 3   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = !!x->o.lives, ly = !!y->o.lives;
@@ -401,9 +402,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
     if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
   }
-  // 1'u. NO SWAP BACK (the owner: no flip and back): of two that survive alike, a line whose first swap swaps back the pair the last swap
+  // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
-  if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && x->back != y->back) {
+  if ((lx || (lostAlike(x, y) && (lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y)) >= BACK_CALM * rankSave)) && !x->hold && !y->hold && x->back != y->back) {
     const Judge *b = x->back ? x : y, *o = x->back ? y : x;
     if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
   }
