@@ -173,6 +173,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   for (int i = 0; i < A->nhand; i++) { out->hand[i] = A->hand[i]; out->handAt[i] = A->handAt[i]; }
   out->wastes = A->wastes; out->play = A->play; out->ended = A->ended;
   out->holdLives = A->holdLives; out->brk = A->brk; out->urgent = A->urgent; out->idleMs = A->idleMs;
+  out->aim = A->aim;
   out->empty = A->empty; out->nalt = A->nalt; for (int i = 0; i < A->nalt; i++) out->alt[i] = A->alt[i];
   out->ms = clock_ms() - t0; out->closeMs = clockWentOut ? clock_ms() - clockWentOut : 0;
   // the log line, its rule named and its wall time added
