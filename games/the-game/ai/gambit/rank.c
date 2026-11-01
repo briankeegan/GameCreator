@@ -444,7 +444,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
   // worked where the cursor is, and left only for what survives better or breaks where the near one does not
-  if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0) && x->k.nseq && y->k.nseq) {
+  // (of two that break garbage, begun nearer is no saving where the nearer walks more for the break -- a swap put in front of the break the
+  // other already has: the fewer actions for as much garbage decides first, 1'' below)
+  if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0) && x->k.nseq && y->k.nseq &&
+      !(x->apBroke > 0 && imax(0, x->apBroke) == imax(0, y->apBroke) && lineWalk(x) != lineWalk(y))) {
     int bx = focusBand(x), by = focusBand(y);
     if (bx != by) return (cmpKey = __LINE__, (bx - by));
   }
