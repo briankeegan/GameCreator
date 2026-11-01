@@ -442,6 +442,7 @@ static int ranked(const Read *R, const Found *S) {
   { int keeps = 0, twoLives = 0; double twoLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
       if (shortChain(order[i])) { if (order[i]->o.lives) twoLives = 1; else if (lostOf(order[i]) > twoLost) twoLost = lostOf(order[i]); }
+      else if (spendsReserve(order[i])) continue;   // (a line that spends the window the next break is pressed from keeps nothing)
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
     if (!keeps && keptLost >= rankSave) keeps = 1;

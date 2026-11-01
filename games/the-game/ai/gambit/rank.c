@@ -339,6 +339,8 @@ static int lineWalk(const Judge *J) {
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
   return n;
 }
+// (a line that breaks nothing and walks the input allowance below a break's walk: the next break is pressed out of what is left)
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
 // break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
 static int holdsLine(const Judge *x, const Judge *y) {
@@ -389,8 +391,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // two that do not live, the one that takes the chain to three after one that leaves it short -- before the later loss, unless the
   // line to three is lost within CHAIN_SAFE breaks' time
   if (!lx && decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (chainReach(x) >= 3) != (chainReach(y) >= 3)) {
-    const Judge *lc = chainReach(x) >= 3 ? x : y;
-    if (lostOf(lc) >= CHAIN_SAFE * rankSave) return (cmpKey = __LINE__, (lc == x ? -1 : 1));
+    const Judge *lc = chainReach(x) >= 3 ? x : y, *o = lc == x ? y : x;
+    // (nor one that spends the window the next break is pressed from, where the other does not)
+    if (lostOf(lc) >= CHAIN_SAFE * rankSave && !(spendsReserve(lc) && !spendsReserve(o))) return (cmpKey = __LINE__, (lc == x ? -1 : 1));
   }
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
@@ -416,7 +419,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (and a line that breaks more and is lost no sooner is never passed over for a chain past three, nor one that is lost later for a
       // 2x taken to three: the break is the longer life)
       int brokeMore = !lx && imax(0, sc->apBroke) > imax(0, lc->apBroke) && (imin(cx, cy) >= 3 ? lostOf(sc) >= lostOf(lc) : lostOf(sc) > lostOf(lc));
-      if (cx != cy && !brokeMore) return (cmpKey = __LINE__, (cy - cx));
+      int spends = spendsReserve(lc) && !spendsReserve(sc);   // (a chain taken further on the window the next break is pressed from is not)
+      if (cx != cy && !brokeMore && !spends) return (cmpKey = __LINE__, (cy - cx));
     }
   }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
