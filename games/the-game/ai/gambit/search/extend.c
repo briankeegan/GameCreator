@@ -29,7 +29,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   memset(E, 0, sizeof *E);
   double t0 = nowMs(), shareOld = clockShareBegin(t0 + o->ms);
   Ctx *x = extCtx = ctxOf(extCtx);
-  Question q0 = *q; q0.narr = 0;   // (the cascade on its own: nothing lands while it is extended)
+  Question q0 = *q;   // (the garbage on its way lands as it will: a chain the board makes once it lands and converts is a chain to continue)
   int root = rootOf(x, &q0);
   if (root < 0) { clockShareEnd(shareOld); return; }
   Sent base = sendsOf(x, root, o->keep);
