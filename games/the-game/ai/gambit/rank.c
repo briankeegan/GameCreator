@@ -390,7 +390,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1c. A 2x GOING IS TAKEN TO THREE (the owner: at least a 3x over a 2x; further only where the list asks): while the board chains, of
   // two that do not live, the one that takes the chain to three after one that leaves it short -- before the later loss, unless the
   // line to three is lost within CHAIN_SAFE breaks' time
-  if (!lx && decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (chainReach(x) >= 3) != (chainReach(y) >= 3)) {
+  if (0 && !lx && decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (chainReach(x) >= 3) != (chainReach(y) >= 3)) {
     const Judge *lc = chainReach(x) >= 3 ? x : y, *o = lc == x ? y : x;
     // (nor one that spends the window the next break is pressed from, where the other does not)
     if (lostOf(lc) >= CHAIN_SAFE * rankSave && !(spendsReserve(lc) && !spendsReserve(o))) return (cmpKey = __LINE__, (lc == x ? -1 : 1));
