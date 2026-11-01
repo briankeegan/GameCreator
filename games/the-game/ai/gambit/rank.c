@@ -434,6 +434,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = x->back ? x : y, *o = x->back ? y : x;
     if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
   }
+  // 1'm. MATERIAL KEPT (the owner: the next break is made of the panels left): of two that survive alike, the one whose clears waste
+  // fewer threes -- a clear of three that breaks nothing on the way to the break -- where it breaks as much: each spends three panels
+  // the next break needs
+  if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && !x->o.dead && !y->o.dead && x->o.j.threes != y->o.j.threes) {
+    const Judge *f = x->o.j.threes < y->o.j.threes ? x : y, *o = f == x ? y : x;
+    if (imax(0, f->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (f == x ? -1 : 1));
+  }
   // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
   // worked where the cursor is, and left only for what survives better or breaks where the near one does not
