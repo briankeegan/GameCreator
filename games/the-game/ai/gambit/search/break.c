@@ -279,6 +279,7 @@ static int found(Broke *o, int32_t key) { int i = foundAlready(o, key); if (i >=
 static void setPath(Broke *o, const int32_t *path, int len) { o->pathLen = len; for (int k = 0; k < len; k++) o->path[k] = path[k]; }
 
 // THE TOUCH BEAM (touchBeam): the carried lines first, then the first swaps, grown a level at a time
+#define BEAM_SWAP_ACTS 3   // (a swap's actions, the walk with it: 3.0 a swap measured over 26,000 swaps of finish them)
 static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   Ctx *x = s->x;
   Broke *o = s->out;
@@ -336,6 +337,9 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
         Line *l = tl[i];
         int32_t sc = nearScore(ensureBoard(x, l->n));
         if (sAt[i] >= 0) { int w = stepTake(x, sAt[i], l->n, MK_SETTLE, 0); if (liveNode(x, w)) { int32_t s2 = nearScore(ensureBoard(x, w)); if (s2 > sc) sc = s2; } }
+        // (THE WALK SPENT: with an input allowance to keep, a line's place is its estimated actions to a break -- those walked so far
+        // and a swap's worth (BEAM_SWAP_ACTS) for each swap still to go -- so of two as near a break the one that walked less leads)
+        if (pressAllowance >= 0) sc -= (1000 / BEAM_SWAP_ACTS) * spentOn(s, l->path, l->len);
         l->s = sc; l->h = (int32_t)NODE(x, l->n)->hash;
         idx[i] = i; keyS[i] = sc;
       }
