@@ -220,6 +220,7 @@ static double contLostOf(const Judge *J, double give) {
   if (lost < 0) return -1;
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
+static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -240,7 +241,7 @@ static void dropCombo(const Read *R, Judge *J) {
 }
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; noopTrimmed = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -437,6 +438,21 @@ static Played playOf(const Read *R, int n) {
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
   // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
   P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
+  // (A SWAP AND ITS SWAP BACK ARE A WAIT -- the owner: no flip and back: two swaps of the line played that swap a pair and straight back
+  // (judge.c noops) leave the board as it stood, so the line is handed on without them, every swap left pressed from the frame the judge
+  // pressed it from; a line of nothing else is the hold)
+  if (P.line && !P.line->o.dead && P.line->o.j.noops) {
+    static Judge Wt; const Judge *L = P.line; int64_t m = L->o.j.noops; int q = 0, nq = 0;
+    Wt = *L;
+    for (int i = 0; i < L->k.nseq; i++) {
+      if (i + 1 < L->k.nseq && i + 1 < 64 && ((m >> (i + 1)) & 1)) { i++; noopWaits++; continue; }
+      Wt.k.seq[q] = L->k.seq[i];
+      if (i < L->apNats) Wt.apAts[nq++] = L->apAts[i];
+      q++;
+    }
+    Wt.k.nseq = q; Wt.apNats = nq;
+    P.line = q ? &Wt : 0;
+  }
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
   // does as well with that swap pressed later -- the next decision plans it again, so a first swap pressed early is undone by the next
   // plan's)
