@@ -239,13 +239,19 @@ local function opponentOf(sources, view, clock)
   for _, src in ipairs(sources or EMPTY) do if src.panels and wired(src) then anyWired = true end end
   -- (a board shipped in this game only: the game's clock starts again at its countdown, and the last game's last board -- the enemy
   -- topped out, as a game ends -- is not this one's)
+  -- (any opponent seen, by any of the three routes, makes this host a fighter for the session: FOUGHT)
   if view and clock and view.seen and view.seen <= clock and (anyWired or clock - view.seen <= VIEW_FRESH) then
+    FOUGHT = true
     return 1, view.out and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
   end
-  if anyWired then return 1, 0, 0, 0 end
+  if anyWired then FOUGHT = true return 1, 0, 0, 0 end
   local has, out, top, stop = 0, 0, 0, 0
   for _, src in ipairs(sources or EMPTY) do
-    if type(src.game_ended) == "function" and src:game_ended() then return 0, 0, 0, 0 end
+    -- (a stack whose game has ended is the last game's: in a fight the next one's opponent is coming, low and not topped out)
+    if type(src.game_ended) == "function" and src:game_ended() then
+      if FIGHT or FOUGHT then return 1, 0, 0, 0 end
+      return 0, 0, 0, 0
+    end
     if type(src.isToppedOut) == "function" and src.panels then
       has = 1
       stop = math.max(stop, (src.stop_time or 0) + (src.pre_stop_time or 0), src.shake_time or 0)
