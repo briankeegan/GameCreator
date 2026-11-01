@@ -384,6 +384,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // 1r. THE NEXT BREAK IN REACH (looking past the line: a board left with no break once the next block lands is the board lost, however long
+  // it lasts till then): of two lost alike, the one whose board keeps a break in reach after the next landing -- before the chain, the
+  // list and the window, as survival is
+  if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1))
+    return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
   // 1'. THE CHAIN FALLING, CARRIED ON (the owner: a chain going is continued unless continuing kills the board): while the board chains,
   // of two that survive alike, the one that takes the chain further, up to the longest the list asks -- before every key but survival,
   // under garbage too: a chain left to end short of the target is the attack thrown away
@@ -399,7 +404,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (!lx && imax(0, lc->apBroke) < imax(0, sc->apBroke)) { cx = imin(cx, 3); cy = imin(cy, 3); }
       // (and a line that breaks more and is lost no sooner is never passed over for a chain past three, nor one that is lost later for a
       // 2x taken to three: the break is the longer life)
-      int brokeMore = !lx && imax(0, sc->apBroke) > imax(0, lc->apBroke) && (imin(cx, cy) >= 3 ? lostOf(sc) >= lostOf(lc) : lostOf(sc) > lostOf(lc));
+      int sb = imax(0, sc->apBroke), lb = imax(0, lc->apBroke);
+      int brokeMore = !lx && ((sb > lb && (imin(cx, cy) >= 3 ? lostOf(sc) >= lostOf(lc) : lostOf(sc) > lostOf(lc))) ||
+                              (sb == lb && lostOf(sc) > lostOf(lc)));   // (as much broken and lost later: the chain is the shorter life)
       if (cx != cy && !brokeMore) return (cmpKey = __LINE__, (cy - cx));
     }
   }
