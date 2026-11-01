@@ -390,7 +390,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // line that takes it further is chosen while it can still be reached, not once its second link has popped)
   if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y))) {
     int32_t cap = listChainCap();
-    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
+    if (cap >= 2) {
+      int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap);
+      // (neither living: a 2x is still taken on to three -- the owner: a 2x is continued unless that kills the board -- but a chain longer
+      // than that only where it breaks as much garbage as the other: passed over, a break is the board's life)
+      const Judge *lc = cx > cy ? x : y, *sc = cx > cy ? y : x;
+      if (!lx && imax(0, lc->apBroke) < imax(0, sc->apBroke)) { cx = imin(cx, 3); cy = imin(cy, 3); }
+      if (cx != cy) return (cmpKey = __LINE__, (cy - cx));
+    }
   }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
   // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the
