@@ -747,6 +747,9 @@ static void modeLeft(void) {
   memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0; carriedSunk = -1;
 }
+// A SWITCH OF MODE: the board is the same board, so the line in progress, the break search's work and the garbage dug toward are
+// carried on into the new mode and ranked by its keys; only the walk toward the old mode's entry is let go
+static void modeSwitched(void) { towardPlayedN = 0; towardRestLen = 0; }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
   modeLeft(); lifeDumps = 0; openerOver = 0; openerAt = 0;
@@ -807,7 +810,7 @@ static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, 
   // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
   // (in a fight the opener plays from the countdown to the top-out, and the schedule runs from there -- as a live game switching is played)
   switchedNow = 0;
-  if (nswitch && (!oppHas || openerOver)) { int32_t m = modeAt(oppHas ? at - openerAt : at); if (m != modeRule) { if (modeRule >= 0) { modeLeft(); switchedNow = 1; } modeRule = m; } }
+  if (nswitch && (!oppHas || openerOver)) { int32_t m = modeAt(oppHas ? at - openerAt : at); if (m != modeRule) { if (modeRule >= 0) { modeSwitched(); switchedNow = 1; } modeRule = m; } }
   hostTopped = topped;
   Opp o = { oppHas, oppOut, oppTopKnown, oppTop, oppStopKnown, oppStop }; theOpp = o;
   canRaiseNow = canRaise;
