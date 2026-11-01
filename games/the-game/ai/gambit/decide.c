@@ -741,9 +741,11 @@ static int chainRouteJudged(const Read *R, int n) {
     for (int q = 0; q < P2->k.nseq; q++) seq[m++] = P2->k.seq[q];
     Cand k;
     if (!candOf(&k, E->k.play, seq, m, -1, 0)) continue;
-    k.settled = 0; k.route = 1;
+    // (the third link first: pressed while the chain falls, and the board let settle before the break's swaps, as the break was judged;
+    // the break first: both pressed straight through, the third link in the frames between links)
+    k.settled = 0; k.route = 1; k.settleAt = o ? 0 : E->k.nseq;
     if (judgedHas(n, &k)) continue;
-    if (judgeWalked(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; chainRouted = 1; }
+    if (judgeCand(R, &k, &theJudged[n])) { order[n] = &theJudged[n]; n++; chainRouted = 1; }
   }
   return n;
 }
