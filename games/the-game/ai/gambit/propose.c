@@ -257,6 +257,7 @@ static void xFromPlan(Cand *k, const PLine *l) {
 static void xFromExt(Cand *k, const XLine *l) {
   k->x.combo = l->combo; k->x.chain = l->chain; k->x.broke = l->broke; k->x.cells = l->cells; k->x.near = l->near; k->x.floor = l->floor;
   k->xFire = l->fire; k->xDone = l->done;
+  k->eNats = imin(l->nseq, MAXLINE); for (int i = 0; i < k->eNats; i++) k->eAts[i] = l->ats[i];
 }
 static int seenDigHas(const Board *b, int32_t mv);   // (answer.c: the boards this dig has stood on)
 static int32_t towardRest[MAXPATH], towardRestLen;   // (answer.c: the rest of the line toward a break played last)
@@ -286,7 +287,7 @@ static int growLines(Cand *out, int n, int cap) {
     for (int w = 0; w < F.n && w < 2 && n < cap; w++) {
       if (k->nseq + F.len[w] > MAXLINE) continue;
       Cand *g = &out[n];
-      *g = *k; g->grown = 1; g->nseq = 0;
+      *g = *k; g->grown = 1; g->nseq = 0; g->eNats = 0;
       for (int j = 0; j < k->nseq - 1; j++) g->seq[g->nseq++] = k->seq[j];
       for (int j = 0; j < F.len[w]; j++) g->seq[g->nseq++] = F.seq[w][j];
       g->seq[g->nseq++] = last;
