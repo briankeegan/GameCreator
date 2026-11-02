@@ -343,6 +343,9 @@ static int lineWalk(const Judge *J) {
   return n;
 }
 // (a line that breaks nothing and walks the input allowance below a break's walk: the next break is pressed out of what is left)
+// (how far below a break's walk a line that breaks nothing leaves the allowance: 0 when it keeps it, or breaks -- the window already
+// short, the line that spends less of what is left keeps more of the next break)
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 ? 0 : imax(0, BREAK_WALK - (pressAllowance - lineWalk(J))); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
 // break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
@@ -427,11 +430,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (imax(0, o->apBroke) >= imax(0, cb->apBroke)) return (cmpKey = __LINE__, (comboOutside(x) ? 1 : -1));
   }
   // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
-  // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
-  // spent comes back only a window later, the garbage it is needed for may be told of by then or not
+  // allowance below a break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter
+  // after -- the next break is pressed out of what is left, and what is spent comes back only a window later, the garbage it is needed
+  // for may be told of by then or not
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
-    int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
-    if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+    int rx = reserveShort(x), ry = reserveShort(y);
+    if (rx != ry) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
@@ -559,8 +563,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (neither lives, lost alike) THE ALLOWANCE'S RESERVE: a line that breaks nothing and walks the input allowance below a break's walk
     // (BREAK_WALK) after one that keeps it -- the break the next decisions find has to be pressed out of what is left
     if (pressAllowance >= 0) {
-      int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
-      if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+      int rx = reserveShort(x), ry = reserveShort(y);
+      if (rx != ry) return (cmpKey = __LINE__, (rx - ry));
     }
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return (cmpKey = __LINE__, (x->readyNext ? -1 : 1));
