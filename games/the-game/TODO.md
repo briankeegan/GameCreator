@@ -44,6 +44,10 @@ narrowed, not dropped.
    change is judged over two runs or more. Build's losses are mostly large_garbage: re-searched without a limit, every board before a
    loss had no break to find (107 of 107, run 2066); the panels left, the readiness asked and found (about 8%) and the clears breaking
    nothing do not tell a lost game from a survived one. Next: play that keeps a break in reach before the slab lands.
+   On main a703196d, seed 91, 48 games a run (rounds [1,2]): switching 43/48 (run 2103), build 43/48 (2105) -- the reference an idea
+   is measured against on the same games. Not better there: two lines lost far off alike only within half again the sooner (37/48
+   switching), or alike from two breaks' time off (39/48 switching, 42/48 build); a three taken out of a break line; a swap far off
+   its line's way judged out of it.
    Earlier:  Switching (21/24 on 8354a299; finish them 22, pressure 23), then the others; every mode 24/24 twice in a row
    (`ai/eval/plans/gambit-goal.md`).
 8. **Efficiency.** The fewest cursor moves to the goal: the break search's beam ranks by actions to a break, on main.
