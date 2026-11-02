@@ -122,6 +122,10 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
       g.broke = imax(0, g.broke - (base.ok ? base.broke : 0));
       // (a link added to a falling chain is in time when its swap is: pressed before the link it joins lands, and by the deadline)
       int32_t fire = NODE(x, k->n)->t;
+      // (A FLOOR THE BOARD LEFT ALONE DOES NOT KEEP decides nothing between lines: every line that breaks nothing fails it alike, the
+      // falling chain's and the hold's -- so it does not hide the chain's links from the judge, and the rank weighs the panels spent
+      // below it (rank.c: outside, spends) after the chain key and survival)
+      if (base.ok && !base.kept) g.kept = 1;
       if (o->by != NOT_ASKED && fire > o->by) g.kept = 0;
       Made made = { g.combo, g.chain, g.broke, g.cells - baseCells };
       #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) (L).seq[s_] = k->seq[s_]; \
