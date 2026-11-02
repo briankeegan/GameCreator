@@ -42,6 +42,7 @@ void gn_switch(int min, int max);
 void gn_share(int under, int otherwise);
 void gn_then(int rule);
 int32_t *gn_tele(void);
+void gn_receiver_timed(int32_t on);
 int32_t *gn_ages(void);
 void gn_match(void);
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop);
@@ -134,6 +135,8 @@ function GambitNative:startMatch(stack, match)
   if played then C.gn_quit(); open() end
   played = true
   C.gn_match()
+  -- (an engine without GarbageDelivery -- upstream's -- lands a transit due now before the frame runs: front.c receiverTimed)
+  C.gn_receiver_timed((pcall(require, "common.engine.GarbageDelivery")) and 0 or 1)
   if stack and stack.panels then pcall(self.load, self, stack) end
 end
 

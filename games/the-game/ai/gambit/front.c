@@ -145,12 +145,17 @@ static double fNow(void) { return clock_ms(); }
 // not yet delivered, the finished ones held back as well -- nstaged and pieces; a piece is width, height, isChain, isMetal,
 // frameEarned, finalized (NUL, 0, 1).
 static int32_t tele[1 << 15];
+// (THE RECEIVER'S OWN TIME, as upstream Panel Attack delivers it -- Match:pushGarbageTo before the frame runs, after the frame's keys
+// are asked: a transit due on this stack's stopWatch now is still on its way when the question is asked, and lands before the frame
+// runs. The host says so (lua/GambitNative.lua, no GarbageDelivery); elsewhere a transit due now has landed already.)
+static int32_t receiverTimed;
+EXPORT(gn_receiver_timed) void gn_receiver_timed(int32_t on) { receiverTimed = !!on; }
 static void arrivalsOf(const Board *b) {
   const int32_t *w = tele;
   int32_t mine = b->stopWatch, nsrc = *w++;
   F.narr = 0;
   for (int s = 0; s < nsrc; s++) {
-    int32_t sw = *w++, capped = *w++, offset = mine - sw, floor = mine + 1, nt = *w++, free = floor;
+    int32_t sw = *w++, capped = *w++, offset = mine - sw, floor = mine + (receiverTimed ? 0 : 1), nt = *w++, free = floor;
     for (int t = 0; t < nt; t++) {
       int32_t at = *w++ + offset, np = *w++;
       // (a held-back source delivers a transit a frame, in order: its transits are given frames one apart, none before the next free)
@@ -353,6 +358,7 @@ static int predict(const Board *b, int32_t at, int32_t holdLeft, int32_t holdSta
   copyBoard(out, b);
   memcpy(F.prPend, from, sizeof(Arrival) * (unsigned long)nfrom); F.nprPend = nfrom;
   int32_t hl = holdLeft, hs = holdStarted;
+  if (receiverTimed) landOn(out, F.prPend, &F.nprPend);   // (a transit due now lands before the frame runs)
   // (and the last swap planned before `at`, its pair's ids: the swap a question for `at` must not swap back -- pressed by then, not yet now)
   F.prSwapA = F.prSwapB = 0;
   while (out->clock < at && out->gameOverClock <= 0) {
@@ -859,6 +865,7 @@ static int lostIn(const Board *t, int32_t bits, int press) {
   static Arrival pend[MAXARRIVALS];
   int32_t np = F.narr;
   memcpy(pend, F.arr, sizeof(Arrival) * (unsigned long)np);
+  if (receiverTimed) landOn(g, pend, &np);
   g->input = bits & ~(IN_SWAP | IN_RAISE); g->pressSwap = press;
   for (int f = 0; f < GUARD_DIE && g->gameOverClock <= 0; f++) {
     run(g); landOn(g, pend, &np);
@@ -1017,10 +1024,11 @@ static void frontTraceOut(void) {
 static void afterFrame(int32_t bits) {
   int32_t now = F.now;
   copyBoard(F.expect, F.truth);
+  memcpy(F.nextPend, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.nnextPend = F.narr;
+  if (receiverTimed) landOn(F.expect, F.nextPend, &F.nnextPend);   // (a transit due now lands before the frame runs)
   F.expect->input = bits & ~IN_SWAP;
   if (bits & IN_SWAP) F.expect->pressSwap = 1;
   run(F.expect);
-  memcpy(F.nextPend, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.nnextPend = F.narr;
   landOn(F.expect, F.nextPend, &F.nnextPend);
   F.haveExpect = 1;
   Board *next = F.expect;
