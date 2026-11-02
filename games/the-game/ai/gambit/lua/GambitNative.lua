@@ -4,7 +4,7 @@
 --
 --   local G = dofile(<GameCreator>/games/the-game/ai/gambit/lua/GambitNative.lua)   -- once per process
 --   local bot = G.new({})
---   bot:startMatch(stack)                 -- once per match
+--   bot:startMatch(stack)                 -- once per match: a fresh Gambit, the last match's quit
 --   local char = bot:input(stack, sources, view)   -- every frame, before it is run (view: the opponent's shipped board, or nil)
 --
 -- Env: GC_GAMBIT_DIR (the gambit directory; default: this file's), GC_GAMBIT_WORDS (the profile as numbers, words.js; default
@@ -47,17 +47,17 @@ void gn_match(void);
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop);
 int gn_countdown(int left, int limit, int window, int oppHas, int oppOut, int oppTop, int oppStop);
 void gn_end(void);
+void gn_quit(void);
 void gn_log(const char *s);
 void gn_thread_stats(double *out);
 ]]
-local C = ffi.load(DIR .. "/libgambit.so")
 local B = dofile(DIR .. "/lua/board.lua")
 local NUL = B.NUL
-local HI, NH = {}, C.nb_nhead()
-for i = 0, NH - 1 do HI[ffi.string(C.nb_head_name(i))] = i end
+-- (the instance in play -- open: its library, its io's head names, and the io's head and body)
+local C, HI, NH, H, Bd
 
 -- the profile, as words.js wrote it
-do
+local function configure()
   local file = os.getenv("GC_GAMBIT_WORDS") or (DIR .. "/gambit.words")
   local f = assert(io.open(file), "GambitNative: no " .. file .. " (words.js writes it)")
   local setup, profile, rules, switch, share
@@ -90,6 +90,24 @@ do
   C.gn_then(thenRule)
 end
 
+-- A FRESH GAMBIT FOR EVERY MATCH (the owner: every game a fresh game, whoever it is against): a copy of the library loaded as an instance
+-- of its own -- every one of its statics new, its threads its own -- and set up as the first match's was. The last match's instance is
+-- quit before (native.c gn_quit: its threads joined, its memory freed) and let go. The process, its connection and its lobby stay.
+local function open()
+  local f = assert(io.open(DIR .. "/libgambit.so", "rb"), "GambitNative: no " .. DIR .. "/libgambit.so")
+  local bytes = f:read("*a"); f:close()
+  local path = os.tmpname()
+  local o = assert(io.open(path, "wb")); o:write(bytes); o:close()
+  C = ffi.load(path)
+  os.remove(path)   -- (loaded: the copy is mapped, its file no longer needed)
+  HI, NH = {}, C.nb_nhead()
+  for i = 0, NH - 1 do HI[ffi.string(C.nb_head_name(i))] = i end
+  H, Bd = C.nb_io_head(), C.nb_io_body()
+  configure()
+end
+open()
+local played = false   -- (the instance open has had a match)
+
 local GambitNative = {}
 GambitNative.__index = GambitNative
 
@@ -113,6 +131,8 @@ function GambitNative:startMatch(stack, match)
   if self.ownThinking then self.thinking = ThinkBudget.standard() end
   if self.ownInputs then self.inputs = InputBudget.standard() end
   self.dropped, self.ages, self.pv, self.slowLogged = 0, {}, {}, nil
+  if played then C.gn_quit(); open() end
+  played = true
   C.gn_match()
   if stack and stack.panels then pcall(self.load, self, stack) end
 end
@@ -122,8 +142,7 @@ end
 local KEEP_QUEUED = 192
 -- (the countdown frames left once its cursor has come to rest: Stack.runCountdown moves it for its first 40)
 local COUNTDOWN_ASK = 135
--- (the io's head and body, and the one writer of a head field: made once, so a frame's load makes nothing)
-local H, Bd = C.nb_io_head(), C.nb_io_body()
+-- (the one writer of a head field, into the io's head the instance made -- open: so a frame's load makes nothing)
 local function put(k, v)
   local i = HI[k]
   if i and v ~= nil then H[i] = v == true and 1 or v == false and 0 or v end
