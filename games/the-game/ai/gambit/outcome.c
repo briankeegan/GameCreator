@@ -15,7 +15,7 @@ typedef struct {
   int32_t belowFloor;  // below the rule's material floor: a line that clears panels and breaks nothing is no candidate
   int32_t under;       // garbage on the board, as the decision reads it (decide.c read: R->under) -- the one under-garbage test
   int32_t next;        // frames until the next block shown lands (NOT_ASKED: none coming)
-  int32_t high;        // the stack within HIGH_ROWS of the top: what lands next, told or not, tops it out
+  int32_t high;        // the stack within HIGH_ROWS of the top, the enemy topped out too: whoever tops out first loses, and what lands next, told or not, tops it out
 } Facts;
 typedef struct {
   int32_t dead, lostAt, lives, fits, ready, late;
