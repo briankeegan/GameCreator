@@ -231,6 +231,21 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   keep(seq, n, settled, 1, &o);
   return o.fits;
 }
+// THE LINE THAT TAKES A 2x ON (search/extend.c three -- the owner: at least a 3x over a 2x, whatever the list asks): played on the
+// engine, the board not lost on it and its chain within MAXCHAIN; the list and the floor are the rank's to weigh, after survival
+static int lineLives(const int32_t *seq, int n, int settled) {
+  Outcome *hit = cached(seq, n, settled, 3);
+  if (hit) return hit->fits;
+  if (clockOut()) return 0;
+  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  Outcome o;
+  memset(&o, 0, sizeof o);
+  judge(&decQ, seq, n, &jo, &o.j);
+  o.fits = !o.j.dead && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
+  if (o.j.late) return 0;
+  keep(seq, n, settled, 3, &o);
+  return o.fits;
+}
 
 // ---- a decision begun: the question (from a node of a host search, until the decision reads its own) and the facts; every line is
 // judged again
