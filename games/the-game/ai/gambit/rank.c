@@ -422,6 +422,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (cx != cy && !brokeMore && !spends) return (cmpKey = __LINE__, (cy - cx));
     }
   }
+  // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
+  // (readyNext) before one that does not and breaks no more garbage now -- a board that cannot break what lands next is the loss
+  // survival's horizon does not reach yet; a break now is never given up for it
+  if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) {
+    const Judge *r = x->readyNext == 1 ? x : y, *o = x->readyNext == 1 ? y : x;
+    if (imax(0, r->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
+  }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
   // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the
   // mode does not want
