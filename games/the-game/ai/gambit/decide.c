@@ -79,10 +79,11 @@ static int readBoard_(Read *R) {
   decF.under = R->under;
   // (and after its entries, the one rule's three that breaks (rules.c withRule): the list as the board asks it, the searches' and the
   // rank's alike)
-  if (R->under) guideShort(&R->guides);
-  if (R->under) withRule(&R->guides);
-  if (R->under) withAttacks(&R->guides, &R->list);
+  // (the rank's list is the mode's as written -- a combo of eight is ranked before one of six whatever the searches are led toward)
   R->asked = R->guides;
+  if (R->under) guideShort(&R->guides);
+  if (R->under) { withRule(&R->guides); withRule(&R->asked); }
+  if (R->under) { withAttacks(&R->guides, &R->list); withAttacks(&R->asked, &R->list); }
   // (A LIST ENDED BY "default" -- every list under garbage -- falls back to the default's own move when none of it can be made: the
   // break search looks off it when it finds no break within it (breakSearch), the searches that aim keep to it, and the order takes a
   // line off it only by living where nothing within it does)
@@ -269,7 +270,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
-  ideaAims = &R->asked; ideasAsks = 0;
+  ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
   double t1 = nowMs();

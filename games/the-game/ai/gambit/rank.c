@@ -490,6 +490,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
     else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
+    // (of two that break: the one that meets the earlier entry of the mode's list -- the attack the mode asks goes with the break)
+    else if ((x->met >= 0 ? x->met : MAXAIMS) != (y->met >= 0 ? y->met : MAXAIMS)) return (cmpKey = __LINE__, ((x->met >= 0 ? x->met : MAXAIMS) - (y->met >= 0 ? y->met : MAXAIMS)));
     // (a line put down for another throws away the actions pressed of it: the other is charged them -- the walk the line in progress was
     // played for, less what is left of it)
     else {
