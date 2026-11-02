@@ -39,7 +39,12 @@ narrowed, not dropped.
      slabs keeps the board from settling: a manual raise is never open under garbage there (search/ready.c raiseOpenIn: 0 raises in
      76,866 decisions under garbage), waits for a settle do not end, and a break timed to a landing is planned again each decision.
      Next: combo_storm played as a board that never settles.
-7. **The weakest mode first.** Switching (21/24 on 8354a299; finish them 22, pressure 23), then the others; every mode 24/24 twice in a row
+7. **The weakest mode first.** On main 9cee5ff5: big chain 24/24 (run 2061), switching 24 (2057), finish 22 (2063), pressure 21
+   (2064), build 19-23 over four runs (2058, 2062, 2065, 2066: 20.5 on average) -- the same code swings about 4 games in 24, so a
+   change is judged over two runs or more. Build's losses are mostly large_garbage: re-searched without a limit, every board before a
+   loss had no break to find (107 of 107, run 2066); the panels left, the readiness asked and found (about 8%) and the clears breaking
+   nothing do not tell a lost game from a survived one. Next: play that keeps a break in reach before the slab lands.
+   Earlier:  Switching (21/24 on 8354a299; finish them 22, pressure 23), then the others; every mode 24/24 twice in a row
    (`ai/eval/plans/gambit-goal.md`).
 8. **Efficiency.** The fewest cursor moves to the goal: the break search's beam ranks by actions to a break, on main.
    - **No long trips for nothing** (the owner: at the top about to break garbage, it walks to the very bottom, makes one swap and walks
