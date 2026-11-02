@@ -418,7 +418,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (and a line that breaks more and is lost no sooner is never passed over for a chain past three, nor one that is lost later for a
       // 2x taken to three: the break is the longer life)
       int brokeMore = !lx && imax(0, sc->apBroke) > imax(0, lc->apBroke) && (imin(cx, cy) >= 3 ? lostOf(sc) >= lostOf(lc) : lostOf(sc) > lostOf(lc));
-      int spends = spendsReserve(lc) && !spendsReserve(sc);   // (a chain taken further on the window the next break is pressed from is not)
+      // (a chain taken further on the window the next break is pressed from is not -- nor, the window already short, one that leaves it
+      // shorter: reserveShort)
+      int spends = (spendsReserve(lc) && !spendsReserve(sc)) || reserveShort(lc) > reserveShort(sc);
       if (cx != cy && !brokeMore && !spends) return (cmpKey = __LINE__, (cy - cx));
     }
   }
