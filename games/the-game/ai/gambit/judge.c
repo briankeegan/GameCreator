@@ -111,9 +111,9 @@ static int settleOf(Ctx *x, int i) { return step(x, i, MK_SETTLE, 0, 0, 0); }
 // (a step's wasted threes: its clears of three, no link of a chain, in a step that breaks nothing and makes no chain)
 // A WASTED THREE -- the one test, the judge's (firstThree) and the press guard's (front.c wastedSwap): g the board on the frame its swap
 // is pressed, a the same board with it not pressed, both played on FIRST_LOOK frames side by side -- the first clear g makes that a does
-// not (the panels matched on the first frame any are, as the game counts a clear), exactly three, none beside garbage -- and then on till
-// both are still (THREE_SETTLE at most): g's fall no longer a chain than
-// a's. g and a are played on (the caller's copies).
+// not (the panels matched on the first frame any are, as the game counts a clear), exactly three -- and then on till both are still
+// (THREE_SETTLE at most): g's fall no longer a chain than a's, and no garbage broken that a's left whole. g and a are played on (the
+// caller's copies).
 #define FIRST_LOOK 30
 static int garbageCells(const Board *b) { int n = 0; for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) n += !!b->p[r][c].f[ISGARBAGE]; return n; }
 #define THREE_SETTLE 400
@@ -141,13 +141,17 @@ static int wastedThree(Board *g, Board *a) {
   }
   // (a panel of the three the board alone matches later is the board's own, not the swap's)
   int n = 0; for (int q = 0; q < ng; q++) { int own = 0; for (int k = 0; k < nw && !own; k++) own = was[k] == got[q]; n += !own; }
-  if (n != 3 || touch) return 0;
+  if (n != 3) return 0;
   int32_t gc = g->chainCounter, ac = a->chainCounter;
   for (int k = 0; k < THREE_SETTLE && g->gameOverClock <= 0; k++) {
     run(g); if (a->gameOverClock <= 0) run(a);
     gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
     if (g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
   }
+  // (beside garbage, a three that breaks it is no waste -- but only one the engine lets break it: a block still falling, landing or
+  // off the screen is not broken by a clear beside it (pa.c getConnectedGarbagePanels: its panels at rest and on screen), so the three
+  // pressed against it too soon breaks nothing and is wasted like any other)
+  if (touch && garbageCells(g) < garbageCells(a)) return 0;
   return !(gc >= 2 && gc > ac);   // (its fall made a link the board's own did not)
 }
 // THE BOARD'S OWN CHAIN SPOILED (rank.c cutsShort, a line at a time): g the board with the swap pressed and every key after it the line
