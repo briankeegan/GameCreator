@@ -14,6 +14,7 @@ typedef struct {
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
+  int32_t eNats, eAts[MAXLINE];   // (an extension's line: the frame each swap's walk began there -- the log's, answer.c xcut)
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
 typedef struct {
@@ -42,6 +43,9 @@ typedef struct {
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, DROP_TWO, NDROPS };
 static int32_t dropped[NPLAYS][NDROPS], offered[NPLAYS];
 static void dropAs(int play, int why) { dropped[play][why]++; }
+// (THE FIRST EXTENSION LINE CUT this decision, for the log: where the judge cut it, why, and the frames each swap's walk began in the
+// judge and in the extension -- answer.c xcut)
+static struct { int32_t set, play, cut, why, nseq, nj, ne, ja[MAXLINE], ea[MAXLINE]; } xcut;
 // (the lines cut, by why the judge cut them: judge.c cutWhy -- 1 a first walk over the allowance, 2 no swap there, 3 a walk not begun
 // within a reaction -- and how many of them the break search found)
 static int32_t cutWhy[4], cutWhyBreak[4];
@@ -91,6 +95,11 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   Outcome oc = play == PLAY_CARRYWAIT ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
+  if (!oc.dead && oc.j.cut >= 0 && (play == PLAY_LINEUP || play == PLAY_EXTEND) && !xcut.set) {
+    xcut.set = 1; xcut.play = play; xcut.cut = oc.j.cut; xcut.why = oc.j.cutWhy; xcut.nseq = k->nseq; xcut.nj = oc.j.nats; xcut.ne = k->eNats;
+    for (int i = 0; i < oc.j.nats && i < MAXLINE; i++) xcut.ja[i] = oc.j.ats[i];
+    for (int i = 0; i < k->eNats && i < MAXLINE; i++) xcut.ea[i] = k->eAts[i];
+  }
   if (!oc.dead && oc.j.cut >= 0) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
   // (ONE THE CLOCK STOPPED THE JUDGE ON: its board past that frame unknown -- ranked as a line lost on the frame it was judged alive to,
   // what it makes on the search's word: never a board that lasts, and never dropped for a hold that dies sooner)

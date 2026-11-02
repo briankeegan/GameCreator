@@ -5,7 +5,7 @@
 // swap in time (by).
 
 typedef struct {
-  int32_t set, nseq, seq[PLAN_SEQ];
+  int32_t set, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ];   // ats: the frame each swap's walk began, from the root (the log's -- answer.c xcut)
   int32_t cells, chain, combo, broke, done, fire, floor, base, aimIndex;
   double near;
 } XLine;
@@ -107,8 +107,8 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
         k->n = out; k->nseq = imin(pool[pi].nseq + 1, PLAN_SEQ); k->acts = pool[pi].acts + acts;
         k->xcc = pool[pi].xcc; k->xchain = pool[pi].xchain; k->xcombo = pool[pi].xcombo; k->xbroke = pool[pi].xbroke;
         madeAlong(x, out, pool[pi].n, k);
-        for (int q2 = 0; q2 < pool[pi].nseq && q2 < PLAN_SEQ; q2++) k->seq[q2] = pool[pi].seq[q2];
-        if (pool[pi].nseq < PLAN_SEQ) k->seq[pool[pi].nseq] = ms[j];
+        for (int q2 = 0; q2 < pool[pi].nseq && q2 < PLAN_SEQ; q2++) { k->seq[q2] = pool[pi].seq[q2]; k->ats[q2] = pool[pi].ats[q2]; }
+        if (pool[pi].nseq < PLAN_SEQ) { k->seq[pool[pi].nseq] = ms[j]; k->ats[pool[pi].nseq] = NODE(x, from)->t; }
         nn++;
       }
     }
@@ -124,7 +124,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
       int32_t fire = NODE(x, k->n)->t;
       if (o->by != NOT_ASKED && fire > o->by) g.kept = 0;
       Made made = { g.combo, g.chain, g.broke, g.cells - baseCells };
-      #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) (L).seq[s_] = k->seq[s_]; \
+      #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) { (L).seq[s_] = k->seq[s_]; (L).ats[s_] = k->ats[s_]; } \
         (L).cells = g.cells; (L).chain = g.chain; (L).combo = g.combo; (L).broke = g.broke; (L).done = g.done; (L).fire = fire; (L).floor = g.floor; \
         (L).base = baseCells; (L).aimIndex = (ai); } while (0)
       if (g.kept) {
