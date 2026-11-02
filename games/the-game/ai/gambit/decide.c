@@ -188,6 +188,7 @@ static int fairShare(Cand *c, int n, int cap) {
   for (int i = 0; i < k; i++) c[i] = kept[i];
   return k;
 }
+#define FAR_TRIP 6   // the cursor steps a swap adds to its line's way before the line is judged without it
 #define NSTRIP 12   // the lines judged again with one swap left out (THE THREE TAKEN OUT)
 #define STRIP_LINES 3   // the best lines that waste a three, each judged again so
 static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
@@ -229,6 +230,7 @@ static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a 
 static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
+static int32_t farTrimmed;   // (the line played judged again without a swap far off its way: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
   static Judge t;
@@ -269,7 +271,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; farTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -473,6 +475,26 @@ static int ranked(const Read *R, const Found *S) {
     w = J->k; w.nseq = 0;
     for (int i = 1; i < J->k.nseq; i++) w.seq[w.nseq++] = J->k.seq[i];
     if (judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; backTrimmed++; }
+  }
+  // (A TRIP THE LINE DOES NOT NEED -- the owner: no walk to the bottom and back for one swap: the line ranked first, a swap of it FAR_TRIP
+  // cursor steps or more off the way from the swap before it to the one after, is judged again without it, and played so unless that is
+  // ranked after it)
+  for (int t = 0; t < 2 && n && order[0] && !order[0]->hold && order[0]->k.nseq >= 2 && !clockOut(); t++) {
+    static Cand w; static Judge JL; Judge *J = order[0]; int best = -1, bestOff = FAR_TRIP - 1;
+    for (int i = 0; i < J->k.nseq; i++) {
+      int pr = i ? CR(J->k.seq[i - 1]) : decQ.b->curRow, pc = i ? CC(J->k.seq[i - 1]) : decQ.b->curCol;
+      int r = CR(J->k.seq[i]), c = CC(J->k.seq[i]);
+      int off = iabs(r - pr) + iabs(c - pc);
+      if (i + 1 < J->k.nseq) { int nr = CR(J->k.seq[i + 1]), nc = CC(J->k.seq[i + 1]); off += iabs(nr - r) + iabs(nc - c) - iabs(nr - pr) - iabs(nc - pc); }
+      if (off > bestOff) { bestOff = off; best = i; }
+    }
+    if (best < 0) break;
+    w = J->k; w.nseq = 0;
+    for (int i = 0; i < J->k.nseq; i++) if (i != best) w.seq[w.nseq++] = J->k.seq[i];
+    if (!judgeCand(R, &w, &JL)) break;
+    JL.carried = J->carried;
+    if (compareJudged(&JL, J) > 0 || JL.apBroke < J->apBroke) break;
+    *J = JL; farTrimmed++;
   }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
