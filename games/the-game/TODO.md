@@ -25,8 +25,8 @@ narrowed, not dropped.
    - A swap whose pair stays locked over 20 frames is not there, so lines that use what can be swapped now are played: on main
      (8354a299).
    - Still 13% of gaps between swaps over a second: they are decisions that hold. Waits filled with setup and flattening: next.
-4. **Every round a new game, nothing carried over.** On main (19ce2cb5, d34a4867, 2d87febb); the live deploy (Ranmaru_TEST_CPU) is
-   the owner's to redeploy.
+4. **Every round a new game, nothing carried over.** Every match a fresh Gambit -- the library loaded anew, the last match's quit
+   (030c5f11); the live deploy (Ranmaru_TEST_CPU) is on it.
 5. **No early deaths in a live fight.** Every line unjudged at the first garbage, the planner having taken the decision's time: the
    planner takes half when garbage is on the board or the loss is near, on main (8354a299).
 6. **Look further ahead, in general.** The next break in reach after the next landing ranked right after survival: not better yet
@@ -42,3 +42,10 @@ narrowed, not dropped.
 7. **The weakest mode first.** Switching (21/24 on 8354a299; finish them 22, pressure 23), then the others; every mode 24/24 twice in a row
    (`ai/eval/plans/gambit-goal.md`).
 8. **Efficiency.** The fewest cursor moves to the goal: the break search's beam ranks by actions to a break, on main.
+   - **No long trips for nothing** (the owner: at the top about to break garbage, it walks to the very bottom, makes one swap and walks
+     all the way back -- wasted input). Open.
+9. **No wasted threes against garbage not ready to break.** A block still falling, landing or shaking is not broken by a clear beside
+   it; the three pressed against it then breaks nothing. The wasted-three test counted any three touching garbage as a break: in test
+   as a three that breaks no garbage (idea59).
+10. **Play slow and steady** -- walk to the next swap early and unhurried rather than in bursts, within the time the line has; only
+   where it does not change what is played. Open.
