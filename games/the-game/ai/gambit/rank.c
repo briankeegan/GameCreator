@@ -278,6 +278,7 @@ static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke 
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
+  if (decF.high && J->o.panelsLeft >= 0) return 0;   // (a stack near the top: a clear is the board's defense, not a waste -- 1'h)
   if (J->o.j.threes > 0 && !(brokeSeen(J) > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
   if (comboOutside(J) && !(J->apBroke > 0)) return 1;   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
   if (cutsShort(J) && !(J->apBroke > 0)) return 1;   // (the board's own chain cut short: the three that began it made for nothing -- unless the
@@ -397,6 +398,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // 1'h. A HIGH STACK BROUGHT DOWN (the owner: it just shouldn't die): the stack within HIGH_ROWS of the top, of two that survive
+  // alike, the one that leaves fewer panels by a clear's worth -- the next block, told or not, is what tops it out
+  if (decF.high && (lx || lostAlike(x, y)) && x->o.panelsLeft >= 0 && y->o.panelsLeft >= 0 && iabs(x->o.panelsLeft - y->o.panelsLeft) >= 3)
+    return (cmpKey = __LINE__, (x->o.panelsLeft - y->o.panelsLeft));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
   // none and breaks as much

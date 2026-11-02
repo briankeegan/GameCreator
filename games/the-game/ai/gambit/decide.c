@@ -1,4 +1,5 @@
 // GAMBIT'S DECISION (plans/decision.md): read the board, propose, judge, rank, play -- in that order, once a decision.
+#define HIGH_ROWS 3   // the rows under the top a stack is high within (decF.high)
 
 // THE QUESTION'S OWN FACTS from the host (answer.c gb_answer): the enemy as the host sends it, whether a raise may begin
 typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
@@ -29,6 +30,7 @@ static int readBoard_(Read *R) {
   factsOf(decQ.b, decQ.arr, decQ.narr, hostTopped, F);
   // (what every outcome reads of them: when the last block shown lands, and topped -- JUDGE.lastLanding, R.F.us.topped)
   decF.topped = !!F->v[FACT_US_TOPPED];
+  { int32_t h = decQ.b->height ? decQ.b->height : 12; decF.high = fullTop(decQ.b) >= h - HIGH_ROWS; }
   decF.land = NOT_ASKED;
   for (int i = 0; i < decQ.narr; i++) if (decF.land == NOT_ASKED || decQ.arr[i].at > decF.land) decF.land = decQ.arr[i].at;
   if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
