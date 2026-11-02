@@ -429,6 +429,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *r = x->readyNext == 1 ? x : y, *o = x->readyNext == 1 ? y : x;
     if (imax(0, r->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
   }
+  // 1'n. NEARER READY FOR THE NEXT BLOCK: of two lost alike, neither living nor ready at the landing, the one whose board, everything
+  // shown landed, is fewer swaps from a break by the shape math (judge.c readyNear) before the other -- unless the other breaks more
+  // garbage now: the slab that lands is broken from the board it lands on, so the board is kept near a break before it comes down
+  if (!lx && lostAlike(x, y) && x->o.ready != 1 && y->o.ready != 1 && x->o.j.readyNear >= 0 && y->o.j.readyNear >= 0 &&
+      x->o.j.readyNear != y->o.j.readyNear) {
+    const Judge *r = x->o.j.readyNear < y->o.j.readyNear ? x : y, *o = r == x ? y : x;
+    if (imax(0, r->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->o.j.readyNear - y->o.j.readyNear));
+  }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
   // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the
   // mode does not want
