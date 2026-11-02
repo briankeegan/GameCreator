@@ -75,5 +75,7 @@ narrowed, not dropped.
    - THE TRUTH FALTERS LIVE: every live game diverges about once in 1,500 frames, always garbageCreatedCount N vs N+1 -- the game lands
      a block the frame loop knew was due a frame before it does. Each comes the frame after the host logs a landing while the
      opponent's copy runs 7-9 frames behind (0-1 behind: none); 0 rollbacks. Three of the six losses had one within 70 frames of the
-     end (g04 7879, g12 8034, g28 1067: forecast lost at 298, dead 8 frames later). Where to look: front.c arrivalsOf on an upstream
-     engine (lua/GambitNative.lua caughtUp gives our own stopWatch), the staged pieces' ship time while the sender's copy lags.
+     end (g04 7879, g12 8034, g28 1067: forecast lost at 298, dead 8 frames later). Each follows a transit landing the frame it was due
+     (190 of 600 such landings; none of 1,474 others): upstream delivers before the frame runs, after its keys are asked, and the frame
+     loop landed it a frame late. On main (24c7c4d9): landed before the frame on an engine without GarbageDelivery. Next: the next live
+     run's DIVERGED count.
