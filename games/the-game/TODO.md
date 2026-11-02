@@ -60,4 +60,4 @@ narrowed, not dropped.
    up and plays 6s. The table and the causes: `ai/eval/plans/gambit-combos.md`.
    - On main: under garbage the rank and the searches keep the list as written (8 and up, not 5 and up), and of two breaks the
      earlier combo entry is first. Finish them on one seed: 8+ 9 to 40, cells sent by combos 2199 to 3324, survived 19 to 21
-     (runs 2083, 2088). Next: a combo grown by a panel or two into an 8.
+     (runs 2083, 2088). Two runs of a combo each grown a panel into an 8: 47 (run 2090). Next: why 6s are still the most played.

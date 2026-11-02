@@ -275,6 +275,8 @@ static const Board *boardBefore(Ctx *x, const int32_t *seq, int n) {
 static int growLines(Cand *out, int n, int cap) {
   Ctx *x = fillCtx = ctxOf(fillCtx);
   static Land L; static Fills F;
+  int bigAsked = 0;
+  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
   for (int i = 0, n0 = n; i < n0 && n < cap && !clockOut(); i++) {
     const Cand *k = &out[i];
     if (k->nseq < 1 || k->grown) continue;
@@ -291,6 +293,19 @@ static int growLines(Cand *out, int n, int cap) {
       for (int j = 0; j < F.len[w]; j++) g->seq[g->nseq++] = F.seq[w][j];
       g->seq[g->nseq++] = last;
       g->x.combo = 4; g->xFire = -1; g->xDone = -1; g->xNats = 0;
+      n++;
+    }
+    // (A COMBO GROWN TO EIGHT, where the list asks one -- the owner: eight and up throws two blocks: two of the runs the last swap makes
+    // each brought a panel more, the walks one after the other, before that swap)
+    if (bigAsked) for (int a = 0; a < F.n && a < 4 && n < cap; a++) for (int b = a + 1; b < F.n && b < 4 && n < cap; b++) {
+      if (k->nseq + F.len[a] + F.len[b] > MAXLINE) continue;
+      Cand *g = &out[n];
+      *g = *k; g->grown = 1; g->nseq = 0;
+      for (int j = 0; j < k->nseq - 1; j++) g->seq[g->nseq++] = k->seq[j];
+      for (int j = 0; j < F.len[a]; j++) g->seq[g->nseq++] = F.seq[a][j];
+      for (int j = 0; j < F.len[b]; j++) g->seq[g->nseq++] = F.seq[b][j];
+      g->seq[g->nseq++] = last;
+      g->x.combo = 8; g->xFire = -1; g->xDone = -1; g->xNats = 0;
       n++;
     }
   }
