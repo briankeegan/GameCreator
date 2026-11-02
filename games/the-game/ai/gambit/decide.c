@@ -228,6 +228,8 @@ static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a 
 static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
+#define FAR_WALK 6
+static int32_t farTrimmed;    // (the line played judged again without a far swap it did not need: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
   static Judge t;
@@ -268,7 +270,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; farTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->asked; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -472,6 +474,20 @@ static int ranked(const Read *R, const Found *S) {
     w = J->k; w.nseq = 0;
     for (int i = 1; i < J->k.nseq; i++) w.seq[w.nseq++] = J->k.seq[i];
     if (judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; backTrimmed++; }
+  }
+  // (A FAR SWAP THE LINE DOES NOT NEED -- the owner: no trip to the bottom and back for one swap that buys nothing: the line ranked first
+  // is judged once more without the swap of it walked farthest to, FAR_WALK actions or more from where the cursor stands for it, and
+  // played so unless that is ranked after it, is lost sooner or breaks less -- a line kept whole for its later swaps carries the far one
+  // for nothing)
+  for (int t = 0; t < 3 && n && order[0] && !order[0]->hold && order[0]->k.nseq >= 2 && !clockOut(); t++) {
+    static Cand w; static Judge JL; Judge *J = order[0];
+    int r = decQ.b->curRow, c = decQ.b->curCol, far = -1, fw = FAR_WALK - 1;
+    for (int i = 0; i < J->k.nseq; i++) { int wk = walkStep(r, c, J->k.seq[i]); if (wk > fw) { fw = wk; far = i; } r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
+    if (far < 0) break;
+    w = J->k; w.nseq = 0;
+    for (int i = 0; i < J->k.nseq; i++) if (i != far) w.seq[w.nseq++] = J->k.seq[i];
+    if (!judgeCand(R, &w, &JL) || compareJudged(&JL, J) > 0 || lostOf(&JL) < lostOf(J) || imax(0, JL.apBroke) < imax(0, J->apBroke)) break;
+    JL.carried = J->carried; *J = JL; farTrimmed++;
   }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
