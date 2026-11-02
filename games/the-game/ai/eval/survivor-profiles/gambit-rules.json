@@ -44,15 +44,6 @@
    "aims": [
     {
      "combo": ">=8"
-    },
-    {
-     "combo": "==5"
-    },
-    {
-     "combo": "==6"
-    },
-    {
-     "chain": "==3"
     }
    ],
    "by": "enemy.stop"
