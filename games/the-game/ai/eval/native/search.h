@@ -854,6 +854,13 @@ static void runTasks(void) {
 }
 // A worker's life: wait for a phase, take steps until there are none, say so. The wait and the wake are wasm's atomics, or a native
 // host's own (gambit/native.c: a futex).
+// (the pool told to end -- a native host's instance quitting, gambit/native.c gn_quit: each worker leaves its loop)
+static int32_t poolQuit;
+static void poolEnd(void) {
+  __atomic_store_n(&poolQuit, 1, __ATOMIC_SEQ_CST);
+  __atomic_add_fetch(&pool.gen, 1, __ATOMIC_SEQ_CST);
+  __builtin_wasm_memory_atomic_notify(&pool.gen, -1);
+}
 static void workerLoop(void) {
   int32_t last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
   __atomic_add_fetch(&pool.nworkers, 1, __ATOMIC_SEQ_CST);
@@ -863,6 +870,7 @@ static void workerLoop(void) {
     for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last; spin++) {}
     while (__atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last) __builtin_wasm_memory_atomic_wait32(&pool.gen, last, -1);
     last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
+    if (__atomic_load_n(&poolQuit, __ATOMIC_SEQ_CST)) return;
     runTasks();
     __atomic_add_fetch(&pool.ack, 1, __ATOMIC_SEQ_CST);
     __builtin_wasm_memory_atomic_notify(&pool.ack, 1);

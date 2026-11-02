@@ -40,7 +40,7 @@ static void flog(const char *s) { hostLog(s); }
 // ---------------------------------------------------------------- Gambit's thread
 // One question waits at most: a newer one takes its place. Answers wait in order for the frame loop to take them.
 #define ANSN 16
-static int workerOn, qHas, qReset;
+static int workerOn, qHas, qReset, gnQuit;
 static FQuestion qSlot;
 static Board *qSlotBoard;
 static FAnswer answers[ANSN];
@@ -235,7 +235,8 @@ static void *workerMain(void *arg) {
   Board *b = nb_new();
   for (;;) {
     hostLock();
-    while (!qHas && !qReset) hostWait();
+    while (!qHas && !qReset && !gnQuit) hostWait();
+    if (gnQuit) { hostUnlock(); return 0; }
     if (qReset) { qReset = 0; ringCount = 0; hostUnlock(); onStop(); gb_new_game(); continue; }
     q = qSlot; copyBoard(b, qSlotBoard); q.b = b; qHas = 0;
     __atomic_store_n(&curQid, q.id, __ATOMIC_SEQ_CST);
@@ -385,6 +386,18 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   return bits;
 }
 void gn_end(void) { statsOut(); frontTraceOut(); ringOut(); }
+// THE INSTANCE ENDS (lua/GambitNative.lua, a match's own instance let go): Gambit's thread told to stop and joined, the search between
+// decisions and the pool's workers likewise, then every block of its memory freed and its log closed -- the library can be unloaded
+void hostJoin(int kind); void hostQuit(void);
+void gn_quit(void) {
+  abortTo(0x7ffffff0);
+  __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
+  hostLock(); gnQuit = 1; qHas = 0; hostSignal(); hostUnlock();
+  hostJoin(0);
+  onStop(); onEnd(); hostJoin(1);
+  poolEnd(); hostJoin(2);
+  hostQuit();
+}
 // A line from the host into the run's log (a slow frame's parts, say)
 void gn_log(const char *s) { flog(s); }
 // (the C checks, built by ./build.sh test)

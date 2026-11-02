@@ -168,12 +168,13 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
 }
 // (its own thread, beside the pool -- the pool may be the readiness's past the decision: native.c onThreadMain at the idle class on the
 // workers' CPUs. onState: 0 idle, 1 asked to run, 2 running)
-static int32_t onState, onThreadOn;
+static int32_t onState, onThreadOn, onQuit;
 static void onThread(void) {
   inJob = 2;
   for (;;) {
     int32_t st;
     while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 1) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
+    if (__atomic_load_n(&onQuit, __ATOMIC_ACQUIRE)) { __atomic_store_n(&onState, 0, __ATOMIC_RELEASE); return; }
     __atomic_store_n(&onState, 2, __ATOMIC_RELEASE);
     pressTight = decQ.tight; pressTap = decTap; ncache = 0;
     int32_t pop = popLeft(decQ.b);
@@ -211,6 +212,13 @@ static void onStart(const Paths *seeds) {
   __atomic_store_n(&onStopReq, 0, __ATOMIC_SEQ_CST);
   __atomic_store_n(&onDone, __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE), __ATOMIC_RELEASE);
   __atomic_store_n(&onActive, 1, __ATOMIC_RELEASE);
+  __atomic_store_n(&onState, 1, __ATOMIC_RELEASE);
+  __builtin_wasm_memory_atomic_notify(&onState, 1);
+}
+// (the thread told to end -- the instance quitting, native.c gn_quit -- once nothing runs on it)
+static void onEnd(void) {
+  if (!onThreadOn) return;
+  __atomic_store_n(&onQuit, 1, __ATOMIC_SEQ_CST);
   __atomic_store_n(&onState, 1, __ATOMIC_RELEASE);
   __builtin_wasm_memory_atomic_notify(&onState, 1);
 }
