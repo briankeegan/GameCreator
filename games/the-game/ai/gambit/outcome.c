@@ -212,6 +212,21 @@ static int32_t readyNextOf(const int32_t *seq, int n, int settled, int32_t *extL
   keep(seq, n, settled, 2, &o);
   return o.ready;
 }
+// THE SECOND BREAK: a break in reach on the board the line leaves, the moment it ends -- the break search asked of that board, as
+// readiness asks it of a landed one (judge.c breaksAfterLanding, from the line's own end); NOT_ASKED where the clock has run out
+static int32_t secondBreakOf(const int32_t *seq, int n, int settled) {
+  Outcome *hit = cached(seq, n, settled, 4);
+  if (hit) return hit->ready;
+  if (clockOut()) return NOT_ASKED;
+  JudgeOpts jo = { settled, decQ.tight, 0, 1, 1, -1, 0, 1 };
+  Outcome o;
+  memset(&o, 0, sizeof o);
+  judge(&decQ, seq, n, &jo, &o.j);
+  if (o.j.late) return NOT_ASKED;
+  o.ready = !o.j.dead && o.j.ready == 1;
+  keep(seq, n, settled, 4, &o);
+  return o.ready;
+}
 // THE SHARED LINE CHECK: what the line makes and sets off fits the list, the chain is within MAXCHAIN, and below the rule's material
 // floor it does not clear panels and break nothing. A check not begun by the decision's deadline keeps no line.
 static int lineFits(const int32_t *seq, int n, int settled) {

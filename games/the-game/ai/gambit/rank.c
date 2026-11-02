@@ -24,6 +24,7 @@ typedef struct {
   int32_t apDone, apFire, apNats, apAts[MAXLINE], apChain, apChainAll, apCombo, apBroke, apPlayed;
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
+  int32_t second;      // a line that breaks: a break in reach on the board it leaves (secondBreakOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
@@ -76,7 +77,7 @@ static void tierInsert(Tier *t, int pos, double v) {
 }
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->second = NOT_ASKED;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -171,7 +172,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->second = NOT_ASKED;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -433,6 +434,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) {
     const Judge *r = x->readyNext == 1 ? x : y, *o = x->readyNext == 1 ? y : x;
     if (imax(0, r->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
+  }
+  // 1'n. THE SECOND BREAK (the board is lost by the breaks it has no next one after): of two that break, lost alike, neither living, the
+  // one that leaves a break in reach where it ends before one that leaves none and breaks no more
+  if (!lx && lostAlike(x, y) && x->apBroke > 0 && y->apBroke > 0 && x->second != NOT_ASKED && y->second != NOT_ASKED && (x->second == 1) != (y->second == 1)) {
+    const Judge *r = x->second == 1 ? x : y, *o = x->second == 1 ? y : x;
+    if (imax(0, r->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->second == 1 ? -1 : 1));
   }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
   // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the

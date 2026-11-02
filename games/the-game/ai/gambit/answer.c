@@ -573,6 +573,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
   if (backTrimmed) L_s(" backTrimmed=1");
+  if (secondAsked) { L_s(" second="); L_i(secondHit); L_s("/"); L_i(secondAsked); if (secondNone) { L_s("/n"); L_i(secondNone); } }
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); }
   if (twoRemade) { L_s(" twoRemade="); L_i(twoRemade); }
   if (noopWaits) { L_s(" noopWaits="); L_i(noopWaits); }

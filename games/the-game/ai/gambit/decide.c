@@ -188,6 +188,7 @@ static int fairShare(Cand *c, int n, int cap) {
   for (int i = 0; i < k; i++) c[i] = kept[i];
   return k;
 }
+#define SECOND_ASKS 6   // the breaks asked for a second break on the board they leave (rank.c 1'n)
 #define NSTRIP 12   // the lines judged again with one swap left out (THE THREE TAKEN OUT)
 #define STRIP_LINES 3   // the best lines that waste a three, each judged again so
 static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
@@ -228,6 +229,7 @@ static double contLostOf(const Judge *J, double give) {
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
 static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
+static int32_t secondAsked, secondHit, secondNone;   // (the second breaks asked, found, not answered: the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -269,7 +271,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; secondAsked = secondHit = secondNone = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -355,6 +357,17 @@ static int ranked(const Read *R, const Found *S) {
   if (!(n && order[0]->o.lives)) {
     int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
     for (int i = 0; i < n; i++) if (!EXTRA(order[i])) { readyShare(own--); readyNextFor(order[i]); }
+    // (and under garbage, the best breaks asked whether the board they leave has a break in reach: the second break, rank.c 1'n)
+    if (R->under) {
+      int asks = 0; for (int i = 0; i < n && asks < SECOND_ASKS; i++) if (!order[i]->hold && order[i]->apBroke > 0) asks++;
+      for (int i = 0, k = 0; i < n && k < SECOND_ASKS && !clockOut(); i++) {
+        Judge *J = order[i];
+        if (J->hold || !(J->apBroke > 0)) continue;
+        readyShare(asks - k); k++;
+        J->second = secondBreakOf(J->k.seq, J->k.nseq, J->settled);
+        secondAsked++; if (J->second == 1) secondHit++; else if (J->second == NOT_ASKED) secondNone++;
+      }
+    }
     readyShare(0); sortJudged(order, n);
   }
   double t2 = nowMs();
