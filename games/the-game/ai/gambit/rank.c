@@ -74,6 +74,7 @@ static void tierInsert(Tier *t, int pos, double v) {
   t->nsub = imin(t->nsub + 1, MAXSUB);
   if (pos <= t->nlist) t->nlist++;
 }
+static int32_t listChainCap(void);
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
@@ -111,6 +112,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   if (!(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = J->spends = 1;
+  // (and a chain fired past the longest the mode's list asks, breaking no garbage, at any material: its stop time is bought with the
+  // panels the next breaks are made of -- the later loss it buys is alike with one that keeps them, boughtWithPanels)
+  if (m.chain > imax(listChainCap(), 3) && !(m.broke > 0)) J->spends = 1;
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
   // entries, then the one rule's three that breaks)
   // (read off what the board ends up making, the chain already under way included: a swap that cuts it short meets what is left of it,
