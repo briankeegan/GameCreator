@@ -54,3 +54,7 @@ narrowed, not dropped.
    as a three that breaks no garbage (idea59).
 10. **Play slow and steady** -- walk to the next swap early and unhurried rather than in bursts, within the time the line has; only
    where it does not change what is played. Open.
+11. **Bigger combos, finish them above all.** A combo of 4 is close to useless; 5 is good; 8 and up are what matter -- what a combo
+   sends grows faster than the panels it spends, so a couple more moves for an 8 over a 6 (or a 5 over a 4) is far less wasteful.
+   The cost-per-gain arithmetic still rules a low stack. Finish them should go for the biggest combos only: it is allowed an 8 and
+   up and plays 6s. Open: the engine's combo-to-garbage table, why the search settles on 6 (`ai/eval/plans/gambit-combos.md`).
