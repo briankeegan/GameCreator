@@ -68,5 +68,12 @@ narrowed, not dropped.
 12. **Live deaths are stack-outs, not starvation** (Ranmaru_TEST_CPU run 41439012381, 6 losses of 30). The boards had 34-57 panels,
    9-12 rows high, when they died. Twice the opponent sat topped out with no stop time while Gambit held beside lines that threw 4-5
    blocks and lived as long (g28 at 19334-19365, g30 at 3972): those lines were outside the finish list, and Gambit has no model of
-   the opponent dying. A board fuller than it lives longest with is flagged (`full=1`) and nothing acts on it. Open: the owner's call
-   on throwing any attack that lands on a topped opponent with no stop time.
+   the opponent dying. A board fuller than it lives longest with is flagged (`full=1`) and nothing acts on it. The owner: no attack
+   outside the list -- it just should not die.
+   - Run 41467121001 (6 losses of 40): five stack-outs, 47-54 panels. A three let through on a stack near the top costs survival in
+     training badly (switching 43/48 to 18-37/48 on seed 91), so the stack is not cleared that way.
+   - THE TRUTH FALTERS LIVE: every live game diverges about once in 1,500 frames, always garbageCreatedCount N vs N+1 -- the game lands
+     a block the frame loop knew was due a frame before it does. Each comes the frame after the host logs a landing while the
+     opponent's copy runs 7-9 frames behind (0-1 behind: none); 0 rollbacks. Three of the six losses had one within 70 frames of the
+     end (g04 7879, g12 8034, g28 1067: forecast lost at 298, dead 8 frames later). Where to look: front.c arrivalsOf on an upstream
+     engine (lua/GambitNative.lua caughtUp gives our own stopWatch), the staged pieces' ship time while the sender's copy lags.
