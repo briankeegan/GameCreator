@@ -57,4 +57,7 @@ narrowed, not dropped.
 11. **Bigger combos, finish them above all.** A combo of 4 is close to useless; 5 is good; 8 and up are what matter -- what a combo
    sends grows faster than the panels it spends, so a couple more moves for an 8 over a 6 (or a 5 over a 4) is far less wasteful.
    The cost-per-gain arithmetic still rules a low stack. Finish them should go for the biggest combos only: it is allowed an 8 and
-   up and plays 6s. Open: the engine's combo-to-garbage table, why the search settles on 6 (`ai/eval/plans/gambit-combos.md`).
+   up and plays 6s. The table and the causes: `ai/eval/plans/gambit-combos.md`.
+   - On main: under garbage the rank and the searches keep the list as written (8 and up, not 5 and up), and of two breaks the
+     earlier combo entry is first. Finish them on one seed: 8+ 9 to 40, cells sent by combos 2199 to 3324, survived 19 to 21
+     (runs 2083, 2088). Next: a combo grown by a panel or two into an 8.
