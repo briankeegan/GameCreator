@@ -61,3 +61,8 @@ narrowed, not dropped.
    - On main: under garbage the rank and the searches keep the list as written (8 and up, not 5 and up), and of two breaks the
      earlier combo entry is first. Finish them on one seed: 8+ 9 to 40, cells sent by combos 2199 to 3324, survived 19 to 21
      (runs 2083, 2088). Two runs of a combo each grown a panel into an 8: 47 (run 2090). Next: why 6s are still the most played.
+12. **Live deaths are stack-outs, not starvation** (Ranmaru_TEST_CPU run 41439012381, 6 losses of 30). The boards had 34-57 panels,
+   9-12 rows high, when they died. Twice the opponent sat topped out with no stop time while Gambit held beside lines that threw 4-5
+   blocks and lived as long (g28 at 19334-19365, g30 at 3972): those lines were outside the finish list, and Gambit has no model of
+   the opponent dying. A board fuller than it lives longest with is flagged (`full=1`) and nothing acts on it. Open: the owner's call
+   on throwing any attack that lands on a topped opponent with no stop time.
