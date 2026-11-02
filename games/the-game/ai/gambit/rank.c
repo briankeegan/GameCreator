@@ -346,6 +346,15 @@ static int lineWalk(const Judge *J) {
 // (how far below a break's walk a line that breaks nothing leaves the allowance: 0 when it keeps it, or breaks -- the window already
 // short, the line that spends less of what is left keeps more of the next break)
 static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 ? 0 : imax(0, BREAK_WALK - (pressAllowance - lineWalk(J))); }
+#define WALK_FRAMES 8
+// (of two lost at frames finite, the later one walks further and outlasts the other by no more than its further walk costs)
+static int walkBought(const Judge *x, const Judge *y) {
+  int32_t lx = lostOf(x), ly = lostOf(y);
+  if (lx == FOREVER || ly == FOREVER || lx == NOT_ASKED || ly == NOT_ASKED) return 0;
+  const Judge *late = lx > ly ? x : y, *soon = lx > ly ? y : x;
+  int32_t more = lineWalk(late) - lineWalk(soon);
+  return more > 0 && imax(lx, ly) - imin(lx, ly) <= WALK_FRAMES * more;
+}
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
 // break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
@@ -394,7 +403,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
-  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // (and a later loss bought with a longer walk is later only by what it outlasts the walk by: the walk's actions come back a window
+  // later, WALK_FRAMES each, as the survival search counts them (search/outlive.c OUT_ACT) -- the owner: no trip across the board and
+  // back for a swap that buys nothing)
+  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y) && !walkBought(x, y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
   // none and breaks as much
