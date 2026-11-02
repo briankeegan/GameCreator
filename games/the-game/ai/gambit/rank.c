@@ -279,7 +279,7 @@ static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
   if (J->o.j.threes > 0 && !(brokeSeen(J) > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
-  if (comboOutside(J) && !(J->apBroke > 0)) return 1;   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
+  if (comboOutside(J) && !(J->apBroke > 0) && !decF.kill) return 1;   // (the enemy topped out, the combo is the attack that wins)   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
   if (cutsShort(J) && !(J->apBroke > 0)) return 1;   // (the board's own chain cut short: the three that began it made for nothing -- unless the
   // line breaks more garbage than the board left alone, its chain and all: a break is never a three for nothing, the chain key weighs it)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
@@ -397,6 +397,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // 1'k. THE KILL (the enemy topped out: garbage that lands on it is the game won, whatever the list asks): of two that survive alike, a
+  // line that throws garbage before one that throws none, then the one that fires it sooner
+  if (decF.kill && (lx || lostAlike(x, y))) {
+    int tx = thrownOf(x) > 0, ty = thrownOf(y) > 0;
+    if (tx != ty) return (cmpKey = __LINE__, (tx ? -1 : 1));
+    if (tx && x->o.j.fire >= 0 && y->o.j.fire >= 0 && x->o.j.fire != y->o.j.fire) return (cmpKey = __LINE__, (x->o.j.fire - y->o.j.fire));
+  }
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
   // none and breaks as much
