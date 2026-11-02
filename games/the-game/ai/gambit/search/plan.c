@@ -18,7 +18,7 @@
 #define PLAN_SEQ 16
 // (a board of the beam, or a kid of one; ideas: its swaps that fire an entry; fired, firedCells, firedAim: the entries its line fired on
 // the way, what they sent, the first's entry)
-typedef struct { int32_t n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ], h, set; double reach; int32_t kid0, nkids, ideas, fired, firedCells, firedAim, acts; } PItem;   // acts: the cursor's actions for its swaps
+typedef struct { int32_t n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ], h, set; double reach; int32_t kid0, nkids, ideas, fired, firedCells, firedAim, acts, xcc, xchain, xcombo, xbroke; } PItem;   // acts: the cursor's actions for its swaps; x*: what its steps made (search/extend.c)
 typedef struct {
   int32_t set, n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ];
   int32_t brk, cells, chain, combo, broke, earned, done, fire, floor, aimIndex, top;
