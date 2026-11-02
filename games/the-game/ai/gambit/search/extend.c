@@ -134,7 +134,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
           if (meets(&o->aims->aim[ai], made) && (!per[ai].set || g.cells > per[ai].cells) && lineFits(k->seq, k->nseq, 0)) XFILL(per[ai], ai);
         // (A 2x GOING TAKEN TO THREE -- the owner: at least a 3x over a 2x: the line that makes the chain three or more and breaks the most
         // garbage, whatever the list asks)
-        if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineFits(k->seq, k->nseq, 0)) XFILL(E->three, -1);
+        if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineLives(k->seq, k->nseq, 0)) XFILL(E->three, -1);
       }
       #undef XFILL
       k->h = connectedOf(ensureBoard(x, k->n)); k->set = g.cells;   // (set: its score, what it sends)
