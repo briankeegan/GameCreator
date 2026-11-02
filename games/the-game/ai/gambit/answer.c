@@ -573,6 +573,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
   if (backTrimmed) L_s(" backTrimmed=1");
+  // (the extension this decision: its ms, and the chain and swaps of its line taking a 2x to three -- 0 none found)
+  if (S.haveEx) { L_s(" xs="); L_i((int64_t)S.ex.ms); L_s("/"); L_i(S.ex.three.set ? S.ex.three.chain : 0); L_s("/"); L_i(S.ex.three.set ? S.ex.three.nseq : 0); }
   if (xcut.set) { L_s(" xcut="); L_s(xcut.play == PLAY_LINEUP ? "l" : "e"); L_s(":"); L_i(xcut.cut); L_s("/"); L_i(xcut.nseq); L_s(":w"); L_i(xcut.why); L_s(":j"); for (int i = 0; i < xcut.nj; i++) { if (i) L_s("."); L_i(xcut.ja[i]); } L_s(":e"); for (int i = 0; i < xcut.ne; i++) { if (i) L_s("."); L_i(xcut.ea[i]); } }
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); }
   if (twoRemade) { L_s(" twoRemade="); L_i(twoRemade); }
