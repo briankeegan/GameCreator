@@ -451,7 +451,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0) && x->k.nseq && y->k.nseq &&
       !(x->apBroke > 0 && imax(0, x->apBroke) == imax(0, y->apBroke) && lineWalk(x) != lineWalk(y))) {
     int bx = focusBand(x), by = focusBand(y);
-    if (bx != by) return (cmpKey = __LINE__, (bx - by));
+    // (and a far line that breaks more garbage than the near one is not left for it: the near one is worked only where it breaks as much
+    // -- the garbage broken for the walk decides, 1'' below)
+    const Judge *nr = bx < by ? x : y, *fr = bx < by ? y : x;
+    if (bx != by && !(nr->apBroke > 0 && imax(0, nr->apBroke) < imax(0, fr->apBroke))) return (cmpKey = __LINE__, (bx - by));
   }
   // 1'0. THE LINE IN PROGRESS OVER ONE IT OUTLASTS AND OUTBREAKS (the owner: a move is wasted only where survival asks it): of two that
   // survive alike, the line the last decision was playing before another lost no later that breaks no more garbage -- every swap
