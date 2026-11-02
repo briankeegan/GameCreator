@@ -364,7 +364,9 @@ static int holdsLine(const Judge *x, const Judge *y) {
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
-  return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
+  // (far off, alike only where the later is under half again the sooner: a forecast that far is uncertain by its distance, not by
+  // any length)
+  return lo >= rankSave && (tlo == thi || (tlo >= 3 && hi < 1.5 * lo) || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
 }
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
 static int32_t cmpKey;
