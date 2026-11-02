@@ -284,10 +284,12 @@ static int wastesThree(const Judge *J) {
   // line breaks more garbage than the board left alone, its chain and all: a break is never a three for nothing, the chain key weighs it)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
+static int lostAlike(const Judge *x, const Judge *y);
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
-  // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
-  if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
+  // (a known death beats holding only when the hold's is one too, and later by more than the two survive alike: a walk for a loss a few
+  // frames later is a walk for nothing -- the owner: no small adjustments and back)
+  if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h && !lostAlike(L, H))) return 1;
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
   // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
   // breaks lost at 44 put after a hold lost at 44)
