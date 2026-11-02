@@ -673,6 +673,8 @@ static int keptJudged(const Read *R, int n) {
   for (int i = 0; i < NINTENT && !clockOut(); i++) {
     const Intent *I = &theIntents[i];
     if (!I->set) continue;
+    // (a line taken from a chain falling or a slab popping is timed to it: the board a decision later is not the one it was found on)
+    if (I->play == PLAY_EXTEND || I->play == PLAY_LINEUP) continue;
     int dr = NOT_ASKED;
     for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][I->anchorCol].f[ID] == I->anchorId) dr = r - I->anchorRow;
     if (dr == NOT_ASKED) continue;
@@ -699,7 +701,7 @@ static int routeJudged(const Read *R, int n) {
   const Judge *top[ROUTE_TOP]; int nt = 0;
   for (int i = 0; i < n && nt < ROUTE_TOP; i++) {
     const Judge *J = order[i];
-    if (J->wait || J->o.dead || !clearsSomething(J) || !J->settled || J->k.route) continue;
+    if (J->wait || J->o.dead || !clearsSomething(J) || !J->settled || J->k.route || J->k.play == PLAY_EXTEND || J->k.play == PLAY_LINEUP) continue;
     top[nt++] = J;
   }
   for (int a = 0; a < nt && routeOffered < NROUTE && !clockOut(); a++)
