@@ -69,7 +69,8 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   memset(E, 0, sizeof *E);
   double t0 = nowMs(), shareOld = clockShareBegin(t0 + o->ms);
   Ctx *x = extCtx = ctxOf(extCtx);
-  Question q0 = *q; q0.narr = 0;   // (the cascade on its own: nothing lands while it is extended)
+  // (the garbage on its way lands as it lands, as the judge plays the line: a link set up where a block comes down is not there to press)
+  Question q0 = *q;
   int root = rootOf(x, &q0);
   if (root < 0) { clockShareEnd(shareOld); return; }
   PItem none; memset(&none, 0, sizeof none);

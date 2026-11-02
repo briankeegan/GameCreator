@@ -66,7 +66,8 @@ static void startChains(const Read *R, Found *S, double ms) {
   for (int j = 0; j < ns && S->nstart < MAXSTARTS && !clockOut(); j++) {
     int sw = step(x, root, MK_SWAP, CR(starts[j]), CC(starts[j]), 0);
     if (!liveNode(x, sw)) continue;
-    Question q = decQ; q.b = ensureBoard(x, sw); q.holdLeft = 0; q.holdStarted = 0;
+    // (from the board the swap leaves: the garbage's frames are the question's, not this board's -- nothing lands while it is begun)
+    Question q = decQ; q.b = ensureBoard(x, sw); q.holdLeft = 0; q.holdStarted = 0; q.narr = 0;
     if (!q.b) continue;
     double left = t0 + ms - nowMs();
     if (left < 2) break;
