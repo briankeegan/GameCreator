@@ -42,6 +42,9 @@ on:
       fight:
         description: "1: training played as a fight (GC_GAMBIT_FIGHT) -- an opponent there from the countdown on, low, never topped, so the opening is found as a live fight finds it; with a profile that names no mode (survivor-profiles/gambit.json)"
         default: ''
+      blind:
+        description: "1: the senders' telegraphs hidden (GC_GAMBIT_BLIND) -- garbage known only once it is in the bot's own queue, as the live server's loose sync delivers it"
+        default: ''
       then:
         description: "The modes an opener gives way to at the top-out, a JSON list (`_` for a space: [\"finish_them\",\"big_chain\",\"pressure\",\"build\"]): every game is played once per mode on the same seed (GC_GAMBIT_THEN); [\"rotate\"]: each game one mode, in turn; none: the profile's mode all game"
         default: '[""]'
@@ -114,6 +117,7 @@ jobs:
           SEED_BASE: ${{ inputs.seed }}
           GC_GAMBIT_THEN: ${{ matrix.then }}
           GC_GAMBIT_FIGHT: ${{ inputs.fight }}
+          GC_GAMBIT_BLIND: ${{ inputs.blind }}
         run: |
           # (rotate: game g gives way to the g-th of the four modes in turn, so 24 games try each mode six times)
           if [ "$GC_GAMBIT_THEN" = rotate ]; then M=(finish_them big_chain pressure build); export GC_GAMBIT_THEN=${M[$(( (${{ matrix.game }} - 1) % 4 ))]}; fi

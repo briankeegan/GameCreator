@@ -208,12 +208,15 @@ local function caughtUp(src, me)
   local lag = me and me.clock and src.clock and me.clock - src.clock or 0
   return src.stopWatch + (lag > 0 and lag or 0)
 end
+-- (GC_GAMBIT_BLIND: training played as the live server plays it -- every source as if wired, its garbage known only once it is in
+-- this stack's own queue, as loose sync delivers it)
+local BLIND = os.getenv("GC_GAMBIT_BLIND") == "1"
 function GambitNative:telegraph(sources, me)
   local T, x = C.gn_tele(), 1
   local n = 0
   for _, src in ipairs(sources or EMPTY) do
     local q = src.outgoingGarbage
-    if q and src.stopWatch ~= nil and not wired(src) then
+    if q and src.stopWatch ~= nil and not wired(src) and not BLIND then
       n = n + 1
       T[x], T[x + 1] = caughtUp(src, me), b01(q.illegalStuffIsAllowed); x = x + 2
       -- (every transit not yet delivered: one whose time has come waits while the stack has CAPPED_AT queued, GarbageDelivery; its count
