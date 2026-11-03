@@ -357,14 +357,10 @@ static int twinThree(int32_t g[][W + 2], int top) {
   }
   return 0;
 }
-static int twinLines(const Read *R, Cand *out, int n, int cap) {
-  int bigAsked = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
-  Board *b = decQ.b;
-  int setupOnly = !bigAsked && twinTime(R->under, R->topped);
-  twinLo = -2;
-  if ((!bigAsked && !setupOnly) || clockOut()) return n;
-  static int32_t g[MAXROWS + 2][W + 2];
+typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1; } Twin;
+// (every two-column eight the board can be sorted into within TWIN_MAXSWAPS, the cheapest TWIN_OFFER * 4 kept: the grid in g, its top
+// in *topOut, the rows it could sort in *rows)
+static int twinScan(Board *b, int32_t g[][W + 2], int *topOut, Twin *best, int *rows) {
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
   for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { g[r][c] = cellAt(b, r, c); if (g[r][c] != 0) top = r; }
@@ -372,9 +368,8 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   // (a row that can be sorted: six panels of colour at rest, on six at rest -- or the floor)
   uint32_t full[MAXROWS + 2];
   for (int r = 1; r <= top; r++) { full[r] = 1; for (int c = 1; c <= W; c++) if (!(g[r][c] > 0 && g[r][c] < 8) || b->p[r][c].f[STATE] != NORMAL || (r > 1 && (g[r - 1][c] == 0 || b->p[r - 1][c].f[STATE] != NORMAL))) full[r] = 0; }
-  if (setupOnly) { twinRows = 0; for (int r = 1; r <= top; r++) twinRows += full[r]; }
-  typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1; } Twin;
-  static Twin best[TWIN_OFFER * 4]; int nb = 0;
+  if (rows) { *rows = 0; for (int r = 1; r <= top; r++) *rows += full[r]; }
+  int nb = 0;
   for (int c = 1; c < W; c++) for (int r = 1; r <= top; r++) {
     if (!full[r]) continue;
     for (int32_t X = 1; X < 8; X++) for (int32_t Y = 1; Y < 8; Y++) {
@@ -403,6 +398,28 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
       }
     }
   }
+  *topOut = top;
+  return nb;
+}
+// THE SWAPS TO AN EIGHT: the fewest the board is sorted into a two-column eight in, its trigger pressed (0: one is loaded); 99 none
+// within TWIN_MAXSWAPS
+static int twinCostOn(Board *b) {
+  static int32_t g[MAXROWS + 2][W + 2]; static Twin best[TWIN_OFFER * 4]; int top;
+  int nb = twinScan(b, g, &top, best, 0), lo = 99;
+  for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost;
+  return lo;
+}
+static int twinLines(const Read *R, Cand *out, int n, int cap) {
+  int bigAsked = 0;
+  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
+  Board *b = decQ.b;
+  int setupOnly = !bigAsked && twinTime(R->under, R->topped);
+  twinLo = -2;
+  if ((!bigAsked && !setupOnly) || clockOut()) return n;
+  static int32_t g[MAXROWS + 2][W + 2];
+  static Twin best[TWIN_OFFER * 4];
+  int top, rows, nb = twinScan(b, g, &top, best, &rows);
+  if (setupOnly) twinRows = rows;
   // (the fewest swaps first; each line built and played out on a copy of the grid: none that makes a three before its trigger)
   // (a set-up only where none is loaded -- no trigger one swap away -- and short enough to be worth building ahead)
   { int lo = 99; for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost; twinLo = lo == 99 ? -1 : lo;

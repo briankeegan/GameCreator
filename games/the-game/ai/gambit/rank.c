@@ -208,6 +208,7 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 // window later, as the survival search counts it (search/outlive.c OUT_ACT) -- so a line across the board is the later loss only where
 // it buys that much more time than one at hand. At 16 the bot walks too little to live: switching 3/48)
 #define WALK_FRAMES 8
+#define TWIN_STEP 2   // (swaps nearer an eight that decide between two lines otherwise equal: 7d)
 static int lineWalk(const Judge *J);
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
@@ -646,6 +647,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // combo_storm-6: 1585 to 1816, a break of 24 to 28 cells in every line played, never made). After the material: put before it, the
   // sooner break spends the panels the next is made of
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apFire >= 0 && y->apFire >= 0 && x->apFire != y->apFire) return (cmpKey = __LINE__, (x->apFire - y->apFire));
+  // 7d. AN EIGHT NEARER (the owner: an eight is set up outside the mode that fires it, in the modes leading up to the top-out, and between
+  // moves -- the move that leaves a better set-up): of two lines every key above leaves equal, the one whose board is TWIN_STEP swaps or
+  // more nearer a two-column combo of eight (outcome.c twinAfter) -- survival, the chain, the breaks and their material all decide first
+  if (x->o.twinAfter >= 0 && y->o.twinAfter >= 0 && iabs(x->o.twinAfter - y->o.twinAfter) >= TWIN_STEP) return (cmpKey = __LINE__, (x->o.twinAfter - y->o.twinAfter));
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return (cmpKey = __LINE__, (ax - ay));
