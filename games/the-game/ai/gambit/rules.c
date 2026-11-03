@@ -171,6 +171,25 @@ EXPORT(gb_back) void gb_back(int lastA, int lastB, int runs, int blockA, int blo
   theBack = k;
   if (!lastA && !lastB && !at) recN = 0;   // (a match begun: nothing pressed lately)
 }
+// (THE PANELS A LINE MOVES, by id: each of its swaps' two, as its own swaps before it leave them -- lineIdsOf; and whether a line moves
+// any of a set -- lineMovesIds)
+static int lineIdsWalk(const int32_t *seq, int n, int32_t *out, int cap, const int32_t *ids, int nids) {
+  if (!backBoard) return 0;
+  static int32_t id[MAXROWS + 2][W + 2];
+  int R = imin(backBoard->nrows, MAXROWS + 2), k = 0;
+  for (int r = 0; r < R; r++) for (int c = 1; c <= W; c++) id[r][c] = backBoard->p[r][c].f[ID];
+  for (int i = 0; i < n; i++) {
+    int r = CR(seq[i]), c = CC(seq[i]);
+    if (r < 0 || r >= R || c < 1 || c + 1 > W) break;
+    int32_t a = id[r][c], b = id[r][c + 1];
+    if (ids) { for (int q = 0; q < nids; q++) if ((a != NUL && a == ids[q]) || (b != NUL && b == ids[q])) return 1; }
+    else { if (a != NUL && k < cap) out[k++] = a; if (b != NUL && k < cap) out[k++] = b; }
+    id[r][c] = b; id[r][c + 1] = a;
+  }
+  return ids ? 0 : k;
+}
+static int lineIdsOf(const int32_t *seq, int n, int32_t *out, int cap) { return lineIdsWalk(seq, n, out, cap, 0, 0); }
+static int lineMovesIds(const int32_t *seq, int n, const int32_t *ids, int nids) { return nids > 0 && lineIdsWalk(seq, n, 0, 0, ids, nids); }
 // (a line any of whose swaps puts back a pair pressed within RECENT_FRAMES: the panels' ids as the line's own swaps before it leave them)
 static int undoesRecent(const int32_t *seq, int n) {
   if (!backBoard || !recN) return 0;

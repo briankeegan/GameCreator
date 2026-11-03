@@ -16,6 +16,7 @@ typedef struct {
   int32_t twin;    // two columns sorted row by row, then one swap that clears both (propose.c twinLines): 1 the line, 2 the set-up alone
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
+static int spoilsPurpose(const Cand *k, int carried);   // (decide.c)
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
 typedef struct {
   Cand k;
@@ -31,6 +32,7 @@ typedef struct {
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
+  int32_t spoils;      // it moves the panels the line in progress or the purpose put down was played for (decide.c spoilsPurpose)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
   double idleLost;     // and, of two that do not live, lost as the hold is and a half frame sooner (an unknown is not shown better)
   int32_t waitMax;     // a line waiting, ranked with the hold at the hold's tier or its own when lower (the line in progress)
@@ -160,6 +162,8 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
     }
   }
   J->settled = st; J->aim = aim; J->o = oc; J->back = k->nseq > 0 && (swappedBack(CR(k->seq[0]), CC(k->seq[0])) || undoesRecent(k->seq, k->nseq));
+  // (and a line that moves the panels a line in progress, or the one put down, was played for: it unmakes their purpose -- 1'u)
+  J->spoils = !J->back && spoilsPurpose(k, k->play == PLAY_CARRY || k->play == PLAY_CARRYWAIT); J->back |= J->spoils;
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;
   if (j) { J->apNats = j->nats; for (int i = 0; i < j->nats; i++) J->apAts[i] = j->ats[i]; }
   else { J->apNats = k->xNats; for (int i = 0; i < k->xNats; i++) J->apAts[i] = k->xAts[i]; }

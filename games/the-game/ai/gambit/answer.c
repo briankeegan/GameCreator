@@ -569,6 +569,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" w3="); L_i(P.line ? P.line->o.j.threes : -1); if (P.line && wastesThree(P.line)) L_s("/w");   // (the line played: its wasted threes as the judge saw them)
   if (P.line && P.line->ideasAsked && P.line->ideas >= 0) { L_s(" ideas="); L_i(P.line->ideas); }
   if (pairOffered || (P.line && P.line->k.pair)) { L_s(" pair="); L_i(pairOffered); if (P.line && P.line->k.pair) L_s("/played"); }
+  { int sp = 0; for (int i = 0; i < n; i++) sp += order[i]->spoils; if (sp || (P.line && P.line->spoils)) { L_s(" spoils="); L_i(sp); if (P.line && P.line->spoils) L_s("/played"); } }
   if (twinLo > -2) { L_s(" twinLo="); L_i(twinLo); L_s("/"); L_i(twinRows); }
   if (twinOffered || (P.line && P.line->k.twin)) { L_s(" twin="); L_i(twinOffered); if (P.line && P.line->k.twin) L_s(P.line->k.twin == 2 ? "/setup" : "/played"); }
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
@@ -766,7 +767,7 @@ EXPORT(gb_new_game) void gb_new_game(void) {
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
-  memset(theIntents, 0, sizeof theIntents);
+  memset(theIntents, 0, sizeof theIntents); memset(&thePast, 0, sizeof thePast);
   memset(&thePlanKept, 0, sizeof thePlanKept);
   gb_back(0, 0, 0, 0, 0, 0, 0);
 }

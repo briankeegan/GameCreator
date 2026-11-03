@@ -544,8 +544,22 @@ static Played playOf(const Read *R, int n) {
 // on a board the stack is not yet)
 // (made: what the line was ranked as making when it was played -- the judge's count, or the search's word for a line whose board is lost
 // during it (rank.c judgeCand): the rest of such a line is read on it too, carriedCand)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits; Aim aim; Made made; } Carry;
+// (moved: the panels the line is played for, by id -- the ones its swaps move, those of the line it carries on included -- what a later
+// line spoils by moving them: thePast)
+#define PURPOSE_IDS 24
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, nmoved, moved[PURPOSE_IDS]; Aim aim; Made made; } Carry;
 static Carry theCarry;
+// THE PURPOSE PUT DOWN (the owner: the plans know about each other -- why a move was made): the panels the last line in progress was
+// played for, kept PAST_FRAMES once another line is played instead or it is played out -- a later line that moves them unmakes what
+// it was made for (rank.c spoils), and is put after one that does not where the two survive alike and break as much
+#define PAST_FRAMES 600
+typedef struct { int32_t set, at, nmoved, moved[PURPOSE_IDS]; } Past;
+static Past thePast;
+static int spoilsPurpose(const Cand *k, int carried) {
+  if (!k || k->nseq < 1) return 0;
+  if (thePast.set && theBack.at - thePast.at <= PAST_FRAMES && lineMovesIds(k->seq, k->nseq, thePast.moved, thePast.nmoved)) return 1;
+  return !carried && theCarry.set && lineMovesIds(k->seq, k->nseq, theCarry.moved, theCarry.nmoved);
+}
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
 static Carry theCarryNext;
@@ -569,6 +583,10 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anc
 // (waits: the decisions in a row the line has waited for the board to settle -- carryWaitsOut)
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
+  // (the line in progress put down or played out: what it was played for is kept as the purpose put down; carried on, its panels go on)
+  int on = k && k->carried && theCarry.set;
+  static Carry was; was = theCarry;
+  if (was.set && !on && was.nmoved) { thePast.set = 1; thePast.at = theBack.at; thePast.nmoved = was.nmoved; memcpy(thePast.moved, was.moved, sizeof was.moved); }
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.waits = waits; carriedSunk = -1;
   // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
@@ -583,6 +601,10 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.made = (Made){ k->apCombo, k->apChain, k->apBroke, k->k.x.cells };
   carriedSunk = lineWalk(k);
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
+  // (its panels: those of the line it carries on, then its own swaps')
+  if (on) { theCarry.nmoved = was.nmoved; memcpy(theCarry.moved, was.moved, sizeof was.moved); }
+  int32_t ids[2 * MAXLINE]; int ni = lineIdsOf(k->k.seq, k->k.nseq, ids, 2 * MAXLINE);
+  for (int i = 0; i < ni && theCarry.nmoved < PURPOSE_IDS; i++) { int dup = 0; for (int q = 0; q < theCarry.nmoved && !dup; q++) dup = theCarry.moved[q] == ids[i]; if (!dup) theCarry.moved[theCarry.nmoved++] = ids[i]; }
 }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
@@ -653,7 +675,11 @@ static void keepIntents(int n, const Judge *played) {
   memset(theIntents, 0, sizeof theIntents);
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
-  for (int i = 0, k = 0; i < n && k < NINTENT; i++) {
+  // (the line in progress put down, still making something, kept first: the plan it was is offered again, not forgotten)
+  int carriedAt = -1;
+  for (int i = 0; i < n; i++) if (order[i]->carried && order[i] != played) carriedAt = i;
+  for (int pass = 0, k = 0; pass < 2; pass++) for (int i = pass ? 0 : imax(0, carriedAt); i < (pass ? n : carriedAt + 1) && k < NINTENT; i++) {
+    if (pass && i == carriedAt) continue;
     const Judge *J = order[i];
     if (J == played || J->wait || J->o.dead || !clearsSomething(J) || J->k.nseq < 1) continue;
     Intent *I = &theIntents[k];
