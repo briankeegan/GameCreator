@@ -29,6 +29,7 @@ typedef struct {
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
+  int32_t modeFirst;   // it meets the mode's own first entry, its break or not (under garbage R->asked holds each entry twice: rules.c withAttacks)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
@@ -118,6 +119,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // and leaving it alone -- the hold -- meets what it makes)
   int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
   J->met = j ? entry : -1;
+  { int nl = R->list.n; J->modeFirst = J->met == 0 || (R->under && nl > 0 && J->met == nl + 1); }
   J->saving = R->saving && R->under && m.broke > 0;
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
   J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;
@@ -177,6 +179,7 @@ static void holdCand(const Read *R, int wait, Judge *J) {
   J->o = outcome(0, 0, 0);
   J->material = -1;
   J->met = J->o.dead ? -1 : metOf(&R->asked, (Made){ J->o.j.whole.combo, J->o.j.whole.chain, 0, 0 });
+  { int nl = R->list.n; J->modeFirst = J->met == 0 || (R->under && nl > 0 && J->met == nl + 1); }
   aloneChain = J->o.j.whole.chain;   // (made before the board is lost too: judge.c, a settle the board is lost in)
   J->k.play = PLAY_HOLD; J->k.aim = -1; J->hold = 1; J->wait = wait; J->aim = -1;
   J->t.tier = HOLD_TIER; J->t.nsub = 1; J->t.sub[0] = wait ? -1 : 0;
@@ -264,7 +267,7 @@ static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
 static int goalKeyOf(const Judge *J) {
   if (J->hold) return 2;
-  if (J->met == 0) return 0;
+  if (J->met == 0 || J->modeFirst) return 0;   // (the mode's first entry, under garbage too where it breaks nothing: the mode is played there)
   if (fallbackOf(J)) return 2 + J->met;
   if (J->outside && !(J->apBroke > 0) && (J->apCombo > 0 || J->apChain > 0)) return 3 + MAXAIMS;
   return J->apBroke > 0 || setupPlay(J->k.play) ? 1 : 2;
@@ -497,7 +500,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // and the rest wait for it to give some back
   if (decF.under && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int bx = x->apBroke > 0, by = y->apBroke > 0;
-    if (bx != by) return (cmpKey = __LINE__, (bx ? -1 : 1));
+    // (but not over the mode's first entry thrown where the break meets none of it: the mode is played under garbage too -- the goal
+    // decides between them, 1b)
+    if (bx != by && !((bx ? y : x)->modeFirst && !(bx ? x : y)->modeFirst)) return (cmpKey = __LINE__, (bx ? -1 : 1));
     // (of two that break nothing: a fallback after a line that fires none -- the mode's list before the walk; then the fewer actions)
     if (!bx) {
       int fx = fallbackOf(x), fy = fallbackOf(y);
