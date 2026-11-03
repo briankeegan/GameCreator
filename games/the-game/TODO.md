@@ -70,7 +70,14 @@ narrowed, not dropped.
      145, break line 139, break search 132 (scratchpad undo2.py on GAMBITM ids). Open.
    - **Plans go to completion** (the owner). 37% of actions are spent on lines put down before their end, a third of them with nothing
      new told (the same garbage as the decision before). Open.
-   - **The cursor near the top under garbage** (the owner: where the breaks are). Open.
+   - **The cursor near the top under garbage** (the owner: where the breaks are). Tried (idea104): under garbage a hold walks only
+     toward a line that breaks, else under the lowest garbage -- cursor 269-271 cells a minute against 272, survival level. Open.
+   - **Live is three times training here.** Live run 41565622573: 13.4% of swaps (27% of actions) made and unmade within 600 frames,
+     against 4.5% (8.6%) in training -- most of them of a line played out, then swapped back by a later one: the plans do not know about
+     each other. Tried in training, seeds 91 and 92 (about 40 games each, the rest lost to a fetch): a swap back of any pair pressed
+     within 600 frames (idea106) 4.3-4.6%; the panels the line in progress was played for kept, put down, as a purpose and an intention
+     (idea107) 4.0-4.2%; a line that is not the plan in progress charged the actions pressed for it (idea109) 4.2-4.4%, unfinished
+     lines 37% to 34-35%. None moves training much; live is where it shows. Open.
 9. **No wasted threes against garbage not ready to break.** A block still falling, landing or shaking is not broken by a clear beside
    it; the three pressed against it then breaks nothing. The wasted-three test counted any three touching garbage as a break: in test
    as a three that breaks no garbage (idea59).
