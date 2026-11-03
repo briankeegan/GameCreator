@@ -69,7 +69,10 @@ narrowed, not dropped.
      48 games: 4.5% of swaps (8.6% of actions) are a pair swapped again within 600 frames with other swaps between -- carry 272, entry
      145, break line 139, break search 132 (scratchpad undo2.py on GAMBITM ids). Open.
    - **Plans go to completion** (the owner). 37% of actions are spent on lines put down before their end, a third of them with nothing
-     new told (the same garbage as the decision before). Open.
+     new told (the same garbage as the decision before). Cause: a line lives where it stands the horizon and REST after its last swap,
+     so a line near that edge lives one decision and dies the next as the horizon moves on, and lives before does not. On main: the line
+     in progress lives while it stands the horizon from now (rank.c livesOn). Switching, seeds 92 and 91: 30% and 26% of actions on lines
+     not played out, survived 41/44 and 36/41 (main 37%, 42/48 and 42/48).
    - **The cursor near the top under garbage** (the owner: where the breaks are). Tried (idea104): under garbage a hold walks only
      toward a line that breaks, else under the lowest garbage -- cursor 269-271 cells a minute against 272, survival level. Open.
    - **Live is three times training here.** Live run 41565622573: 13.4% of swaps (27% of actions) made and unmade within 600 frames,
