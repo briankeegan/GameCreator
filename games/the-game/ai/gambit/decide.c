@@ -229,6 +229,7 @@ static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a 
 static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
+static int32_t spareTrimmed;   // (the line played judged again without a swap it does not need: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
   static Judge t;
@@ -269,7 +270,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; spareTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -473,6 +474,21 @@ static int ranked(const Read *R, const Found *S) {
     w = J->k; w.nseq = 0;
     for (int i = 1; i < J->k.nseq; i++) w.seq[w.nseq++] = J->k.seq[i];
     if (judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; backTrimmed++; }
+  }
+  // (A SWAP THE LINE DOES NOT NEED -- the owner: every move counts: the line ranked first, judged again with each of its swaps left out in
+  // turn; the shortest that breaks as much garbage and is ranked no after it is played, swap by swap until none can go)
+  for (int t = 0; t < 3 && n && order[0] && !order[0]->hold && order[0]->k.nseq >= 2 && !clockOut(); t++) {
+    static Cand w; static Judge JL, best; Judge *J = order[0]; int have = 0;
+    for (int s = 0; s < J->k.nseq && !clockOut(); s++) {
+      w = J->k; w.nseq = 0;
+      for (int i = 0; i < J->k.nseq; i++) if (i != s) w.seq[w.nseq++] = J->k.seq[i];
+      if (!judgeCand(R, &w, &JL)) continue;
+      JL.carried = J->carried;
+      if (JL.apBroke < J->apBroke || compareJudged(&JL, J) > 0) continue;
+      if (!have || lineWalk(&JL) < lineWalk(&best)) { best = JL; have = 1; }
+    }
+    if (!have) break;
+    *J = best; spareTrimmed++;
   }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
