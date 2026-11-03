@@ -159,7 +159,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
       if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, oc.nearAfter);
     }
   }
-  J->settled = st; J->aim = aim; J->o = oc; J->back = k->nseq > 0 && swappedBack(CR(k->seq[0]), CC(k->seq[0]));
+  J->settled = st; J->aim = aim; J->o = oc; J->back = k->nseq > 0 && (swappedBack(CR(k->seq[0]), CC(k->seq[0])) || undoesRecent(k->seq, k->nseq));
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;
   if (j) { J->apNats = j->nats; for (int i = 0; i < j->nats; i++) J->apAts[i] = j->ats[i]; }
   else { J->apNats = k->xNats; for (int i = 0; i < k->xNats; i++) J->apAts[i] = k->xAts[i]; }

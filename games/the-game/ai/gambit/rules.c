@@ -155,10 +155,35 @@ static int swappedBack(int r, int c) {
 static int firstOk(int r, int c, int clears) { return !swapBack(r, c, clears); }
 // (THE SWAP PRESSED LAST, the host's: a line hands on several swaps and the frame loop presses them all, so the pair the next decision
 // must not swap back is the last one pressed, not the last decision's first)
+// (THE PAIRS PRESSED LATELY: the last RECENT pairs the host reported pressed, each with the decision's frame -- a line that swaps one
+// back within RECENT_FRAMES unmakes what was made a moment ago: the owner, moved and moved back -- undoesRecent)
+#define RECENT 16
+#define RECENT_FRAMES 600
+static int32_t recA[RECENT], recB[RECENT], recAt[RECENT], recN;
 EXPORT(gb_pressed) void gb_pressed(int a, int b) {
-  if (a && b && a != NUL && b != NUL && !samePair(a, b, theBack.lastA, theBack.lastB)) { theBack.lastA = a; theBack.lastB = b; theBack.runs = 0; }
+  if (a && b && a != NUL && b != NUL && !samePair(a, b, theBack.lastA, theBack.lastB)) {
+    theBack.lastA = a; theBack.lastB = b; theBack.runs = 0;
+    int i = recN % RECENT; recA[i] = a; recB[i] = b; recAt[i] = theBack.at; recN++;
+  }
 }
 EXPORT(gb_back) void gb_back(int lastA, int lastB, int runs, int blockA, int blockB, int blockUntil, int at) {
   Back k = { lastA, lastB, runs, blockA, blockB, blockUntil, at };
   theBack = k;
+  if (!lastA && !lastB && !at) recN = 0;   // (a match begun: nothing pressed lately)
+}
+// (a line any of whose swaps puts back a pair pressed within RECENT_FRAMES: the panels' ids as the line's own swaps before it leave them)
+static int undoesRecent(const int32_t *seq, int n) {
+  if (!backBoard || !recN) return 0;
+  static int32_t id[MAXROWS + 2][W + 2];
+  int R = imin(backBoard->nrows, MAXROWS + 2);
+  for (int r = 0; r < R; r++) for (int c = 1; c <= W; c++) id[r][c] = backBoard->p[r][c].f[ID];
+  for (int i = 0; i < n; i++) {
+    int r = CR(seq[i]), c = CC(seq[i]);
+    if (r < 0 || r >= R || c < 1 || c + 1 > W) return 0;
+    int32_t a = id[r][c], b = id[r][c + 1];
+    if (a != NUL && b != NUL)
+      for (int k = 0; k < RECENT && k < recN; k++) if (samePair(a, b, recA[k], recB[k]) && theBack.at - recAt[k] <= RECENT_FRAMES) return 1;
+    id[r][c] = b; id[r][c + 1] = a;
+  }
+  return 0;
 }
