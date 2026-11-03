@@ -213,12 +213,15 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 #define WALK_FRAMES 8
 #define TWIN_STEP 2   // (swaps nearer an eight that decide between two lines otherwise equal: 7d)
 static int lineWalk(const Judge *J);
+static int32_t planSunk;   // (the actions already pressed for the plan in progress, this decision: decide.c -- its walk when played less what is left)
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
   if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
   if (x->hold || own >= 1e299 || own < 0) return own;
-  return own - (double)WALK_FRAMES * lineWalk(x);
+  // (and a line that is not the plan in progress throws away what was pressed for it: charged those actions too -- the plan is put
+  // down only for what is worth more than its own walk and the work it undoes: planSunk)
+  return own - (double)WALK_FRAMES * (lineWalk(x) + (x->carried ? 0 : planSunk));
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
 // is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding

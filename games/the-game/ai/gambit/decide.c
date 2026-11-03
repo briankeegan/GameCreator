@@ -295,7 +295,7 @@ static int ranked(const Read *R, const Found *S) {
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0, cc = 0;
-  carryNone = 21;
+  carryNone = 21; planSunk = 0;
   if (R->guides.n && (cc = carriedCand(R, &ck, &cwait)) && !judgeCand(R, &ck, &theJudged[n])) carryNone = 19;
   if (R->guides.n && cc && carryNone != 19) {
     carryNone = 0;
@@ -305,7 +305,7 @@ static int ranked(const Read *R, const Found *S) {
     // (A WAIT THAT DOES NOT END: a line that has waited CARRY_WAITS decisions for a board that has not settled -- under garbage it may
     // never -- waits no more: only the same line pressed straight through is offered, below -- the owner: no lazy waits)
     if (cwait && carryWaitsOut()) carryNone = 22;
-    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; }
+    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; if (carriedSunk >= 0) planSunk = imax(0, carriedSunk - lineWalk(cj)); }
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
     static Judge thru;
