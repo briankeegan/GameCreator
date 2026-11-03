@@ -61,6 +61,8 @@ narrowed, not dropped.
    Earlier:  Switching (21/24 on 8354a299; finish them 22, pressure 23), then the others; every mode 24/24 twice in a row
    (`ai/eval/plans/gambit-goal.md`).
 8. **Efficiency.** The fewest cursor moves to the goal: the break search's beam ranks by actions to a break, on main.
+   - On main: a line's loss less 8 frames for each action it walks (rank.c WALK_FRAMES). Seed 92, 48 games each: cursor 307 to 272
+     cells a minute in switching and 306 to 274 in build, survived 46+41 to 44+43. At 12 it is being measured; at 16, 3/48.
    - **No long trips for nothing** (the owner: at the top about to break garbage, it walks to the very bottom, makes one swap and walks
      all the way back -- wasted input). Open.
 9. **No wasted threes against garbage not ready to break.** A block still falling, landing or shaking is not broken by a clear beside

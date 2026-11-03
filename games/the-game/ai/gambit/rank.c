@@ -203,12 +203,17 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
 static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
+// (THE WALK COUNTED IN THE LOSS: a line's loss less WALK_FRAMES for each action the cursor walks for it -- an action spent comes back a
+// window later, as the survival search counts it (search/outlive.c OUT_ACT) -- so a line across the board is the later loss only where
+// it buys that much more time than one at hand. At 16 the bot walks too little to live: switching 3/48)
+#define WALK_FRAMES 8
+static int lineWalk(const Judge *J);
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
-  if (x->hold || x->extLost == NOT_ASKED) return own;
-  double ext = lostAtOf(x->extLost, 0);
-  return ext > own ? ext : own;
+  if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
+  if (x->hold || own >= 1e299 || own < 0) return own;
+  return own - (double)WALK_FRAMES * lineWalk(x);
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
 // is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding
