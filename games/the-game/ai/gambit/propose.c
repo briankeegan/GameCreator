@@ -267,6 +267,8 @@ static int32_t towardRest[MAXPATH], towardRestLen;   // (answer.c: the rest of t
 // play that found the three, so its place in the order is that play's; the engine judges whether the match is made.
 static Ctx *fillCtx;
 static int32_t twinOffered;   // (the two-column lines offered this decision: twinLines)
+static int32_t twinRows = -1;   // (and the rows it could sort: six panels at rest on six)
+static int32_t twinLo = -2;   // (the fewest swaps a set-up takes on this board: -1 none found, -2 not asked -- the log's)
 static const Board *boardBefore(Ctx *x, const int32_t *seq, int n) {
   if (n <= 0) return decQ.b;
   int node = rootOf(x, &decQ);
@@ -360,6 +362,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
   Board *b = decQ.b;
   int setupOnly = !bigAsked && twinTime(R->under, R->topped);
+  twinLo = -2;
   if ((!bigAsked && !setupOnly) || clockOut()) return n;
   static int32_t g[MAXROWS + 2][W + 2];
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
@@ -369,6 +372,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   // (a row that can be sorted: six panels of colour at rest, on six at rest -- or the floor)
   uint32_t full[MAXROWS + 2];
   for (int r = 1; r <= top; r++) { full[r] = 1; for (int c = 1; c <= W; c++) if (!(g[r][c] > 0 && g[r][c] < 8) || b->p[r][c].f[STATE] != NORMAL || (r > 1 && (g[r - 1][c] == 0 || b->p[r - 1][c].f[STATE] != NORMAL))) full[r] = 0; }
+  if (setupOnly) { twinRows = 0; for (int r = 1; r <= top; r++) twinRows += full[r]; }
   typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1; } Twin;
   static Twin best[TWIN_OFFER * 4]; int nb = 0;
   for (int c = 1; c < W; c++) for (int r = 1; r <= top; r++) {
@@ -401,7 +405,8 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   }
   // (the fewest swaps first; each line built and played out on a copy of the grid: none that makes a three before its trigger)
   // (a set-up only where none is loaded -- no trigger one swap away -- and short enough to be worth building ahead)
-  if (setupOnly) { int lo = 99; for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost; if (lo == 0 || lo > TWIN_SETUP_MAX) return n; }
+  { int lo = 99; for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost; twinLo = lo == 99 ? -1 : lo;
+    if (setupOnly && (lo == 0 || lo > TWIN_SETUP_MAX)) return n; }
   for (int i = 0; i < nb; i++) for (int j = i + 1; j < nb; j++) if (best[j].cost < best[i].cost) { Twin t = best[i]; best[i] = best[j]; best[j] = t; }
   int offered = 0;
   for (int i = 0; i < nb && offered < TWIN_OFFER && n < cap; i++) {
@@ -577,7 +582,7 @@ static int wayLines(Cand *out, int n, int cap) {
 }
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
-  pairOffered = 0; twinOffered = 0;
+  pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
   // AN ENTRY: the planner's line for each entry of the list it found one for
   if (S->haveAp) for (int i = 0; i < R->guides.n; i++) if (S->ap.perAim[i].set) { int m0 = n; ADD(PLAY_ENTRY, S->ap.perAim[i].seq, S->ap.perAim[i].nseq, i, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.perAim[i]); }
