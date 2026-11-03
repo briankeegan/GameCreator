@@ -13,6 +13,7 @@ typedef struct {
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
+  int32_t twin;    // two columns sorted row by row, then one swap that clears both (propose.c twinLines): 1 the line, 2 the set-up alone
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -207,6 +208,7 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 // window later, as the survival search counts it (search/outlive.c OUT_ACT) -- so a line across the board is the later loss only where
 // it buys that much more time than one at hand. At 16 the bot walks too little to live: switching 3/48)
 #define WALK_FRAMES 8
+#define TWIN_STEP 2   // (swaps nearer an eight that decide between two lines otherwise equal: 7d)
 static int lineWalk(const Judge *J);
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
@@ -312,12 +314,22 @@ static int levelsFree(const Judge *L, const Judge *H) {
   if (L->o.lives) return 1;
   return !H->o.lives && L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED && lostOf(L) >= lostOf(H);
 }
+// (TWO COLUMNS LOADED AHEAD: a set-up for an eight is not doing nothing where it lives, or is lost no sooner than the
+// hold -- the mode that fires it has no time to build it; propose.c twinLines)
+// (the time to build one: not topped, no chain going and no slab popping -- under garbage too, on the rows at rest below it: garbage
+// on its way lands on top of the rows sorted, and a break is put before it (1'') -- it is built where the bot would otherwise hold)
+static int twinTime(int under, int topped) { (void)under; return !topped && decQ.b->chainCounter < 2 && popLeft(decQ.b) <= 0; }
+static int loadsFree(const Judge *L, const Judge *H) {
+  if (L->k.twin != 2 || L->o.dead || !twinTime(decF.under, 0)) return 0;
+  if (L->o.lives) return 1;
+  return !H->o.lives && L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED && lostOf(L) >= lostOf(H);
+}
 static void markIdle(Judge **a, int n) {
   const Judge *H = 0;
   for (int i = 0; i < n && !H; i++) if (a[i]->hold) H = a[i];
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   double holdLost = H ? lostOf(H) : 0;
-  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
@@ -635,6 +647,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // combo_storm-6: 1585 to 1816, a break of 24 to 28 cells in every line played, never made). After the material: put before it, the
   // sooner break spends the panels the next is made of
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apFire >= 0 && y->apFire >= 0 && x->apFire != y->apFire) return (cmpKey = __LINE__, (x->apFire - y->apFire));
+  // 7d. AN EIGHT NEARER (the owner: an eight is set up outside the mode that fires it, in the modes leading up to the top-out, and between
+  // moves -- the move that leaves a better set-up): of two lines every key above leaves equal, the one whose board is TWIN_STEP swaps or
+  // more nearer a two-column combo of eight (outcome.c twinAfter) -- survival, the chain, the breaks and their material all decide first
+  if (x->o.twinAfter >= 0 && y->o.twinAfter >= 0 && iabs(x->o.twinAfter - y->o.twinAfter) >= TWIN_STEP) return (cmpKey = __LINE__, (x->o.twinAfter - y->o.twinAfter));
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return (cmpKey = __LINE__, (ax - ay));

@@ -24,6 +24,7 @@ typedef struct {
   int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
   int32_t floorKept;   // the board the line leaves keeps the rule's floor, as the floor is tested (floorOf), the line's breaks aside; -1 not asked
   int32_t matLeft;     // the material the board the line leaves has: its panels under the lowest garbage, the next break's (materialOn); -1 not asked
+  int32_t twinAfter;   // the swaps to a two-column eight on the board the line leaves (propose.c twinCostOn; 99 none), -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   Judged j;
 } Outcome;
@@ -105,6 +106,8 @@ static int breakBuildable(const Board *b);   // (search/break.c: a break the pan
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on the board)
 static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
+static int twinCostOn(Board *b);              // (propose.c: the swaps to a two-column eight, 99 none)
+static int32_t twinWanted;                    // (some mode of the rules asks a combo of eight or more: decide.c read)
 // (THE BOARD LEFT ALONE, settled as a line is: whether it still has a break to build -- or no garbage to break. Asked once a decision:
 // what a line is measured against when it spends the next break's material)
 static int32_t rootBuildable = NOT_ASKED;
@@ -142,13 +145,14 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.fits = fitsList(&theList, o.j.made, &o.j, 1) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
+    o.panelsLeft = -1; o.nearAfter = -1; o.twinAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
     if (!waitTo) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
       if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
+      if (eb && twinWanted && !clockOut()) o.twinAfter = twinCostOn((Board *)eb);
       if (breaks) o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1;
     }
     // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board left
