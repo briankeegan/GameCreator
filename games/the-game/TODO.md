@@ -53,7 +53,11 @@ narrowed, not dropped.
    seeds 91 and 92 against main's 89/96 and 84/96) -- a second break is found on 429 of 99,117 lines asked.
    Main's 19 losses on those games: 11 with no break to find, 3 the search cut by the clock, 5 the input window spent (walks held
    already). The next break is mostly made of the panels the one before converts, and their colours are not shown until the slab
-   pops: planning several breaks ahead means planning on colours the game has not shown. Open: whether that is in bounds.
+   pops: planning several breaks ahead means planning on colours the game has not shown -- the owner: out of bounds; efficiency
+   instead, every move counting. 12% of the cursor's actions are on swaps that come to nothing (seed 92, switching): carry 2,723,
+   break line 1,571, ready 1,374 (half its swaps), break search 1,090, survive 1,062. Not better on those games: the line in progress
+   kept, nothing new told, over one lost up to two breaks' time later (84/96 against 87/96, put-downs 16% fewer); no ready lines
+   (81/96).
    Earlier:  Switching (21/24 on 8354a299; finish them 22, pressure 23), then the others; every mode 24/24 twice in a row
    (`ai/eval/plans/gambit-goal.md`).
 8. **Efficiency.** The fewest cursor moves to the goal: the break search's beam ranks by actions to a break, on main.
