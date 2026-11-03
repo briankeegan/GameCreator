@@ -280,7 +280,7 @@ static int comboOutside(const Judge *J) { return !J->hold && J->outside && J->ap
 // line in progress on what it was begun for -- and that word is no break the judge saw)
 static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke : J->apBroke; }
 // (the entry of the mode's list a line meets where it asks a combo, MAXAIMS where it meets none that does)
-static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
+static int listEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n ? J->met : MAXAIMS; }   // (an entry of the mode's own list, chain or combo: under garbage the ones that break come first in R->asked)
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
   if (J->o.j.threes > 0 && !(brokeSeen(J) > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
@@ -497,8 +497,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
     else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
-    // (of two that break: the one that meets the earlier combo entry of the mode's list -- the combo the mode asks goes with the break)
-    else if (comboEntry(x) != comboEntry(y)) return (cmpKey = __LINE__, (comboEntry(x) - comboEntry(y)));
+    // (of two that break: the one that meets the earlier entry of the mode's list -- the chain or combo the mode asks goes with the break,
+    // before a three that breaks as the one rule's)
+    else if (listEntry(x) != listEntry(y)) return (cmpKey = __LINE__, (listEntry(x) - listEntry(y)));
     // (a line put down for another throws away the actions pressed of it: the other is charged them -- the walk the line in progress was
     // played for, less what is left of it)
     else {
