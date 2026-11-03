@@ -15,6 +15,7 @@ typedef struct {
   int32_t belowFloor;  // below the rule's material floor: a line that clears panels and breaks nothing is no candidate
   int32_t under;       // garbage on the board, as the decision reads it (decide.c read: R->under) -- the one under-garbage test
   int32_t next;        // frames until the next block shown lands (NOT_ASKED: none coming)
+  int32_t lifeTo;      // the frames a board must stand from now to live: the window's end (decide.c read), 0 not set
 } Facts;
 typedef struct {
   int32_t dead, lostAt, lives, fits, ready, late;
@@ -131,7 +132,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
-  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
+  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, decF.lifeTo > 0 ? decF.lifeTo : HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);

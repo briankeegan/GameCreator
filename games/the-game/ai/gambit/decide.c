@@ -33,6 +33,23 @@ static int readBoard_(Read *R) {
   for (int i = 0; i < decQ.narr; i++) if (decF.land == NOT_ASKED || decQ.arr[i].at > decF.land) decF.land = decQ.arr[i].at;
   if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
   decF.next = F->known[FACT_US_NEXTLANDS] ? (int32_t)F->v[FACT_US_NEXTLANDS] : NOT_ASKED;
+  // (THE WINDOW A BOARD MUST STAND TO LIVE ENDS ON A FRAME, not a distance from now: the later of HORIZON + REST and the last block shown
+  // landing + REST, set again only when garbage is told -- a block more, or more cells -- or the end comes within REST. The game is
+  // played out exactly but for the garbage it tells as it comes: a line's verdict changes where something is told, not where the window
+  // moves a frame on, and a plan is not put down on a verdict a frame of the window changed -- WIN_MAX at most)
+  {
+    #define WIN_MAX 720
+    static int32_t winEnd = -1, winSig = -1;
+    int32_t now = theBack.at, sig = decQ.narr * 4096;
+    for (int i = 0; i < decQ.narr; i++) sig += decQ.arr[i].width * decQ.arr[i].height;
+    if (winEnd < 0 || sig != winSig || winEnd - now < REST || winEnd - now > WIN_MAX) {
+      winEnd = now + HORIZON + REST;
+      if (decF.land != NOT_ASKED && now + decF.land + REST > winEnd) winEnd = now + decF.land + REST;
+      if (winEnd - now > WIN_MAX) winEnd = now + WIN_MAX;
+      winSig = sig;
+    }
+    decF.lifeTo = winEnd - now;
+  }
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
   // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
   factSet(F, FACT_ENEMY_NONE, !theOpp.has);
