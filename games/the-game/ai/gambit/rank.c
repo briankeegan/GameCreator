@@ -460,6 +460,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = x->back ? x : y, *o = x->back ? y : x;
     if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
   }
+  // 1'0. THE LINE IN PROGRESS OVER ONE IT OUTLASTS AND OUTBREAKS (the owner: a move is wasted only where survival asks it): of two that
+  // survive alike, the line the last decision was playing before another lost no later that breaks no more garbage -- every swap
+  // pressed of a line put down is spent from the input window for nothing
+  if (x->carried != y->carried && !x->hold && !y->hold && (lx || lostAlike(x, y))) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
   // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
   // worked where the cursor is, and left only for what survives better or breaks where the near one does not
@@ -472,13 +479,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // -- the garbage broken for the walk decides, 1'' below)
     const Judge *nr = bx < by ? x : y, *fr = bx < by ? y : x;
     if (bx != by && !(nr->apBroke > 0 && imax(0, nr->apBroke) < imax(0, fr->apBroke))) return (cmpKey = __LINE__, (bx - by));
-  }
-  // 1'0. THE LINE IN PROGRESS OVER ONE IT OUTLASTS AND OUTBREAKS (the owner: a move is wasted only where survival asks it): of two that
-  // survive alike, the line the last decision was playing before another lost no later that breaks no more garbage -- every swap
-  // pressed of a line put down is spent from the input window for nothing
-  if (x->carried != y->carried && !x->hold && !y->hold && (lx || lostAlike(x, y))) {
-    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
