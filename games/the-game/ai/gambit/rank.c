@@ -333,7 +333,8 @@ static int downtime(void) {
 #define FOCUS_FAR 5
 static int focusBand(const Judge *J) {
   int d = iabs(CR(J->k.seq[0]) - decQ.b->curRow) + iabs(CC(J->k.seq[0]) - decQ.b->curCol);
-  return d <= FOCUS_NEAR ? 0 : d >= FOCUS_FAR ? 2 : 1;
+  // (and past FOCUS_FAR, nearer by every two cells: a line across the board is not one a few cells off -- the owner: every move counts)
+  return d <= FOCUS_NEAR ? 0 : d < FOCUS_FAR ? 1 : 2 + (d - FOCUS_FAR) / 2;
 }
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
