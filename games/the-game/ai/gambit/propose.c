@@ -318,7 +318,7 @@ static int growLines(Cand *out, int n, int cap) {
 // of 3 to 5, 8 cells or more between them, split by the trigger row so neither clears before it.
 // - Where the list asks a combo of eight or more: the whole line, an entry; the judge plays each out on the engine, so a line that clears
 //   early or makes less is ranked on that.
-// - Elsewhere, on a calm board (rank.c downtime) with none loaded: the rows sorted and the trigger left unpressed, a set-up -- the eight
+// - Elsewhere, on a board with no garbage on it and none loaded (rank.c twinTime): the rows sorted and the trigger left unpressed, a set-up -- the eight
 //   is ready the moment a mode asks one (finish them is asked with the enemy topped, a stop's time to fire in: too short to build in).
 //   Any other mode leaves the trigger alone: a combo it does not ask for is wasted (rank.c wastesThree).
 #define TWIN_MAXSWAPS 12
@@ -359,7 +359,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
   Board *b = decQ.b;
-  int setupOnly = !bigAsked && downtime() && !R->topped;
+  int setupOnly = !bigAsked && twinTime(R->under, R->topped);
   if ((!bigAsked && !setupOnly) || clockOut()) return n;
   static int32_t g[MAXROWS + 2][W + 2];
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);

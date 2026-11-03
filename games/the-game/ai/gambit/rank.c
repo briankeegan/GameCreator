@@ -313,11 +313,13 @@ static int levelsFree(const Judge *L, const Judge *H) {
   if (L->o.lives) return 1;
   return !H->o.lives && L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED && lostOf(L) >= lostOf(H);
 }
-// (TWO COLUMNS LOADED AHEAD, on a calm board: a set-up for an eight is not doing nothing where it lives, or is lost no sooner than the
+// (TWO COLUMNS LOADED AHEAD, on a board with no garbage on it: a set-up for an eight is not doing nothing where it lives, or is lost no sooner than the
 // hold -- the mode that fires it has no time to build it; propose.c twinLines)
-static int downtime(void);
+// (the time to build one: no garbage on the board, not topped, no chain going and no slab popping -- garbage on its way lands on top
+// of the rows sorted)
+static int twinTime(int under, int topped) { return !under && !topped && decQ.b->chainCounter < 2 && popLeft(decQ.b) <= 0; }
 static int loadsFree(const Judge *L, const Judge *H) {
-  if (L->k.twin != 2 || L->o.dead || !downtime()) return 0;
+  if (L->k.twin != 2 || L->o.dead || !twinTime(decF.under, 0)) return 0;
   if (L->o.lives) return 1;
   return !H->o.lives && L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED && lostOf(L) >= lostOf(H);
 }
