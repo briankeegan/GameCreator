@@ -126,5 +126,9 @@ its column, the other into the next -- in 4 to 11 swaps over the 4 seconds befor
 trigger row splits each column so that no three of one colour stand together until it is swapped.
 
 Gambit has no search that builds toward this. The planner's beam ranks boards by the best clear one swap away and then by how
-connected they are, so a board halfway to two sorted columns looks like any other. `twinLines` (`propose.c`) offers it directly where
-the list asks a combo of 8 or more.
+connected they are, so a board halfway to two sorted columns looks like any other.
+
+Tried (idea93, branch `idea93`): a proposer that sorts the rows and offers the line as an entry where the list asks 8 or more. Finish
+them, seed 92, 48 games: 8+ 64 against main's 62, survived 44/48 both, cursor 305 against 304 cells a minute. It was offered in 2,124
+decisions and played in 134 -- 2,087 of the offers under garbage, where breaks rank first, and 37 on a board with none: finish them in
+training is 72-99% of its decisions under garbage, so the calm boards the players build on hardly come up there.
