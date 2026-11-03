@@ -320,7 +320,7 @@ static int growLines(Cand *out, int n, int cap) {
 // of 3 to 5, 8 cells or more between them, split by the trigger row so neither clears before it.
 // - Where the list asks a combo of eight or more: the whole line, an entry; the judge plays each out on the engine, so a line that clears
 //   early or makes less is ranked on that.
-// - Elsewhere, on a board with no garbage on it and none loaded (rank.c twinTime): the rows sorted and the trigger left unpressed, a set-up -- the eight
+// - Elsewhere, under garbage or not, with none loaded (rank.c twinTime): the rows sorted and the trigger left unpressed, a set-up -- the eight
 //   is ready the moment a mode asks one (finish them is asked with the enemy topped, a stop's time to fire in: too short to build in).
 //   Any other mode leaves the trigger alone: a combo it does not ask for is wasted (rank.c wastesThree).
 #define TWIN_MAXSWAPS 12
