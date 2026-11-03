@@ -410,8 +410,12 @@ static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainA
 // (A 2x ITS LINE DOES NOT CONTINUE: the chain the line makes ends at two -- read on the judge's count whether or not the board is lost
 // while the line plays out: a line on a board lost later makes its 2x all the same)
 static int shortChain(const Judge *J) { int32_t reach = J->o.dead ? imax(J->apChain, J->o.j.chainAll) : chainReach(J); return !J->hold && J->apChain >= 2 && reach == 2; }
+// (LIVES TO THE HORIZON: a line that stands HORIZON frames from now is one the order cannot tell from one that lives -- the REST after a
+// line's last swap asks a long line, a dig of five swaps, to stand later than a short one, and a promise of one swap and a break would be
+// put before a break under way lost past the horizon, its swaps spent for a promise the next decision's horizon outruns)
+static int livesOn(const Judge *J) { return J->o.lives || (!J->o.dead && !J->hold && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
 static int compareJudged(const Judge *x, const Judge *y) {
-  int lx = !!x->o.lives, ly = !!y->o.lives;
+  int lx = livesOn(x), ly = livesOn(y);
   // 1. lives before does not
   if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
