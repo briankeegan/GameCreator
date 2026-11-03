@@ -206,7 +206,7 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 // (THE WALK COUNTED IN THE LOSS -- the owner: nearer before farther, every move counts: a line's loss less WALK_FRAMES for each action
 // it walks -- an action spent comes back a window later, as the survival search counts it (search/outlive.c OUT_ACT) -- so a line across
 // the board is the later loss only where it buys that much more time than one at hand)
-#define WALK_FRAMES 8
+#define WALK_FRAMES 12
 static int lineWalk(const Judge *J);
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
