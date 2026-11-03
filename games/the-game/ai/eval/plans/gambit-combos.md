@@ -73,7 +73,7 @@ blocks and 120 cells a minute.
    - A 7 is outside the list. `comboOutside` (`rank.c:273`) counts it as wasted (`rank.c:280`), and `dropCombo` (`decide.c:458`)
      strips it, so a line one panel short of 8 is punished.
    - A 5 ranks above a 6, though a 6 sends more. This is the owner's order (`gambit-goal.md`, the modes table).
-6. **Live only.** `by` is `enemy.stop`, at most 120 frames, and lines that fire after it are dropped as late (`rank.c:128`). At
+6. **Live only.** Finish them has no deadline: a topped enemy dies of an attack that lands after its stop runs out as surely as one before. At
    reaction 12 / swapGap 12, an 8's extra swaps may miss it. Training has no enemy (`by=-`), so the 24 games never test this.
 
 ## Fixes, smallest first

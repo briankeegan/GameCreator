@@ -79,6 +79,9 @@ narrowed, not dropped.
      (runs 2083, 2088). Two runs of a combo each grown a panel into an 8: 47 (run 2090). Next: why 6s are still the most played.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
      0.89, Gambit 0.08 in the same games. Most are two vertical runs in adjacent columns, built by sorting the rows, then one swap.
+11b. **Finish them whenever the enemy is topped out**, its stop time or not (the owner: their stack above the board, so that they could
+   die). Live, a topped enemy with more than 120 frames of stop was played in pressure -- 40% of the topped time in runs 41502147856
+   and 41565622573 (6801 and 11060 decisions). The rule asks only `enemy.topped` and has no deadline.
 12. **Live deaths are stack-outs, not starvation** (Ranmaru_TEST_CPU run 41439012381, 6 losses of 30). The boards had 34-57 panels,
    9-12 rows high, when they died. Twice the opponent sat topped out with no stop time while Gambit held beside lines that threw 4-5
    blocks and lived as long (g28 at 19334-19365, g30 at 3972): those lines were outside the finish list, and Gambit has no model of
