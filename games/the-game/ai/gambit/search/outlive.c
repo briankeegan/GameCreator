@@ -17,7 +17,7 @@ static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(
 // (THE SAVE NEAREST THE CURSOR: of two lines lost at frames finite, the later loss less what its actions cost -- an action comes back a
 // window later, OUT_ACT frames each (76 in 600) -- so a save across the board must buy that much more time than one at hand; one that
 // lasts beats one that does not)
-#define OUT_ACT 8
+#define OUT_ACT 16
 static int outBetter(int32_t l, int32_t a, int32_t ol, int32_t oa) {
   if (l == FOREVER || ol == FOREVER) return l == FOREVER && (ol != FOREVER || a < oa);
   double v = l - (double)OUT_ACT * a, ov = ol - (double)OUT_ACT * oa;
