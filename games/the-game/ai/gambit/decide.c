@@ -599,7 +599,12 @@ static void carryNextOf(const Judge *L) {
 }
 static void carryReady(const Judge *H, int32_t qid) {
   const Judged *j = &H->o.j;
-  if ((!H->hold && H->k.nseq != 1) || H->o.ready != 1 || j->readyN < 1) return;
+  int ready = H->o.ready;
+  // (a line played for the break in reach once the next block lands -- the rank's readiness, outcome.c readyNextOf, not the judge's own:
+  // that break is what the swap was made for, and is carried as the line in progress; forgotten, the next decision searches afresh and
+  // the swap is a walk for nothing)
+  if ((ready != 1 || j->readyN < 1) && H->readyNext == 1) { const Outcome *rh = cached(H->k.seq, H->k.nseq, H->settled, 2); if (rh && rh->ready == 1 && rh->j.readyN > 0) { j = &rh->j; ready = 1; } }
+  if ((!H->hold && H->k.nseq != 1) || ready != 1 || j->readyN < 1) return;
   memset(&theCarry, 0, sizeof theCarry);
   if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
