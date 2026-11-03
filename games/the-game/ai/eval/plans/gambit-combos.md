@@ -103,3 +103,28 @@ a run), cells a minute stay at 120 or more, and "The truth held".
    one or two more panels in, and each result is offered as an entry candidate. *Measure:* 8+ offered and played, wasted swaps.
 7. **The list: the owner's call. Ask, don't change.** Finish them as `combo >=8, combo >=6 (6 and 7), combo ==5, chain ==3`.
 8. **Live.** Before changing anything, count the late drops of 8+ lines under `by = enemy.stop` in a fight log.
+
+## What the players who make them build
+
+Re-simulated from the live replays (`REPLAY` lines of `bot-prod-smoke.log`): `combo_replays.py split` writes each match against a
+player as a game, `lua/comboReplay.lua` re-runs it on the server's engine (in a panel-game checkout at the commit that was live) and
+writes every combo of 8 and up as data, `combo_replays.py shapes` counts them. Each run's own result (who topped out) came out as
+logged.
+
+| | games | minutes | 8+ a minute | 5-7 a minute |
+|---|---|---|---|---|
+| PDR_Lava (run 41239779004) | 11 | 14.6 | 0.89 | 4.23 |
+| Tanycanayt (runs 41364936530-41565622573) | 53 | 234.3 | 1.46 | 2.60 |
+| Gambit, in those 53 games | 53 | 234.3 | 0.08 | 1.45 |
+
+**The shape is two columns side by side.** Of Tanycanayt's 342 combos of 8+, 183 are two vertical runs in adjacent columns (v5+v4 72,
+v5+v3 67, v4+v4 44), and 101 more are a vertical run beside a cross or an L (x5+v4, x5+v3, x6+v3). Of Lava's 13, 11 are two vertical
+runs. Each is one swap: the two colours sit the wrong way round in one row, and the swap drops each panel into the other's column.
+
+**It is built by sorting rows.** Before the swap, each row of the two runs is put in order along itself -- the run's colour walked into
+its column, the other into the next -- in 4 to 11 swaps over the 4 seconds before, on rows at rest. Neither run can clear early: the
+trigger row splits each column so that no three of one colour stand together until it is swapped.
+
+Gambit has no search that builds toward this. The planner's beam ranks boards by the best clear one swap away and then by how
+connected they are, so a board halfway to two sorted columns looks like any other. `twinLines` (`propose.c`) offers it directly where
+the list asks a combo of 8 or more.
