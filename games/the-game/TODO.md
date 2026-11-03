@@ -65,6 +65,12 @@ narrowed, not dropped.
      cells a minute in switching and 306 to 274 in build, survived 46+41 to 44+43. At 12 it is being measured; at 16, 3/48.
    - **No long trips for nothing** (the owner: at the top about to break garbage, it walks to the very bottom, makes one swap and walks
      all the way back -- wasted input). Open.
+   - **No moving and moving back** (the owner: panels between garbage moved, moved back, moved again, often never broken). Seed 92,
+     48 games: 4.5% of swaps (8.6% of actions) are a pair swapped again within 600 frames with other swaps between -- carry 272, entry
+     145, break line 139, break search 132 (scratchpad undo2.py on GAMBITM ids). Open.
+   - **Plans go to completion** (the owner). 37% of actions are spent on lines put down before their end, a third of them with nothing
+     new told (the same garbage as the decision before). Open.
+   - **The cursor near the top under garbage** (the owner: where the breaks are). Open.
 9. **No wasted threes against garbage not ready to break.** A block still falling, landing or shaking is not broken by a clear beside
    it; the three pressed against it then breaks nothing. The wasted-three test counted any three touching garbage as a break: in test
    as a three that breaks no garbage (idea59).
