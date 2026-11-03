@@ -190,7 +190,7 @@ static void readyNextFor(Judge *J) {
 }
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
-         k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react;
+         k->o.lostAt - WALK_FRAMES * lineWalk(k) <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react;   // (its walk charged, as lostOf)
 }
 // THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own (a
 // list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one whose board is lost later,
@@ -291,8 +291,9 @@ static int wastesThree(const Judge *J) {
 }
 static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
-  // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
-  if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
+  // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames -- later by more than its walk
+  // costs, WALK_FRAMES an action, as lostOf counts it: a line across the board that buys a frame is a pointless move)
+  if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l - WALK_FRAMES * lineWalk(L) > h)) return 1;
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
   // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
   // breaks lost at 44 put after a hold lost at 44)
