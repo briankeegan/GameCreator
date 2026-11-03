@@ -617,7 +617,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // leave (6, 7a) do (run 441, big chain: a combo that breaks is outside a list of 8-chains, and was ranked below a plain three)
     // -- nor, under garbage, between two that both die where the one outside it spends no panels below the floor: dying, the list's
     // order is not what keeps the board (run 491, large_garbage-6: a hold lost at 194 over a line toward a break lost at 212)
-    if (x->outside != y->outside && !(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends)) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
+    // -- nor the hold over a line lost a break's time later: holding is no entry of the list, and lost alike past three breaks' time
+    // (lostAlike) the hold put first by the list is the board left to the frame it dies, the tower growing while a line that lives on waits
+    if (x->outside != y->outside && !(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends) &&
+        !((x->hold || y->hold) && (lostOf(x) > lostOf(y) ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) >= rankSave)) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
   }
   // 5a. TWO THAT LIVE: the list before the material -- a board that lives either way throws the attack the list asks, not the cheaper
   // break (the owner: twice as aggressive)
