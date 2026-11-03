@@ -739,7 +739,15 @@ static void countAttacks(const Board *b) {
   }
   if (fresh > 0 && nn > fresh && !(cc > F.chainMax)) F.st.together++;
   if (cc >= 2 && F.npendCombo) F.npendCombo = 0;
-  if (cc == 0 && F.npendCombo) { for (int i = 0; i < F.npendCombo; i++) F.st.combo[imin(F.pendCombo[i], 63)]++; F.npendCombo = 0; }
+  // (EVERY COMBO OF FIVE OR MORE, ONE LINE (GAMBITC): the frame it is counted on and its size -- the mode it was made in is the one the
+  // decision before it was asked in: gambit_eights.js)
+  if (cc == 0 && F.npendCombo) {
+    for (int i = 0; i < F.npendCombo; i++) {
+      F.st.combo[imin(F.pendCombo[i], 63)]++;
+      if (F.pendCombo[i] >= 5) { char l[48]; snprintf(l, sizeof l, "GAMBITC %d %d", F.now, F.pendCombo[i]); flog(l); }
+    }
+    F.npendCombo = 0;
+  }
   if (fresh >= 4 && cc < 2 && F.npendCombo < 16) F.pendCombo[F.npendCombo++] = fresh;
   if (cc > F.chainMax) {
     if (cc >= 3) F.st.linkBy[fromGarbage ? LINK_GARBAGE : F.swapSince ? LINK_SWAP : LINK_ALONE][imin(cc, 31)]++;
