@@ -588,6 +588,17 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       compareJudged(order[0], order[i]); L_s(" no2Key=k"); L_i(cmpKey); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i((int32_t)lostOf(order[i])); L_s(order[i]->hold ? ":h" : ":l"); break; }
     cmpKey = keep;
   }
+  // (A HOLD OVER A LATER LOSS: the hold played where a line that is no hold is lost a break's time later or lives -- the key the hold was
+  // ranked first by, the two's losses and the line's play)
+  if (n && order[0] && order[0]->hold) {
+    int bi = -1;
+    for (int i = 1; i < n; i++) if (!order[i]->hold && order[i]->k.nseq && (order[i]->o.lives || lostOf(order[i]) >= lostOf(order[0]) + rankSave) && (bi < 0 || lostOf(order[i]) > lostOf(order[bi]))) bi = i;
+    if (bi > 0) {
+      int32_t keep = cmpKey; compareJudged(order[0], order[bi]);
+      L_s(" holdKey=k"); L_i(cmpKey); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i(order[bi]->o.lives ? -1 : (int32_t)lostOf(order[bi])); L_s(":"); L_s(PLAY_NAME[order[bi]->k.play]);
+      cmpKey = keep;
+    }
+  }
   // (a line played whose first swap swaps back the last swap's pair: the key it was ranked first by, before the best that does not, and
   // the two's losses)
   if (n && order[0] && order[0]->back && !order[0]->hold) for (int i = 1; i < n; i++) if (!order[i]->back && !order[i]->hold) {
