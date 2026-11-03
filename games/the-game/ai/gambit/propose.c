@@ -312,13 +312,18 @@ static int growLines(Cand *out, int n, int cap) {
   }
   return n;
 }
-// TWO COLUMNS, ONE SWAP (where the list asks a combo of eight or more): two columns side by side, each a run of its colour but for the
-// trigger row, where the two colours sit the wrong way round -- the swap there drops each panel into the other's run, both runs at once.
-// Each row of the runs is sorted along itself first (its own panels walked within the row; a full row on a full one, so nothing falls),
-// then the trigger. Runs of 3 to 5, 8 cells or more between them, split by the trigger row so neither clears before it. Offered as
-// entries, the fewest swaps first; the judge plays each out on the engine, so a line that clears early or makes less is ranked on that.
+// TWO COLUMNS, ONE SWAP: two columns side by side, each a run of its colour but for the trigger row, where the two colours sit the wrong
+// way round -- the swap there drops each panel into the other's run, both runs at once, a combo of eight or more. Each row of the runs is
+// sorted along itself first (its own panels walked within the row; a full row on a full one, so nothing falls), then the trigger. Runs
+// of 3 to 5, 8 cells or more between them, split by the trigger row so neither clears before it.
+// - Where the list asks a combo of eight or more: the whole line, an entry; the judge plays each out on the engine, so a line that clears
+//   early or makes less is ranked on that.
+// - Elsewhere, on a calm board (rank.c downtime) with none loaded: the rows sorted and the trigger left unpressed, a set-up -- the eight
+//   is ready the moment a mode asks one (finish them is asked with the enemy topped, a stop's time to fire in: too short to build in).
+//   Any other mode leaves the trigger alone: a combo it does not ask for is wasted (rank.c wastesThree).
 #define TWIN_MAXSWAPS 12
 #define TWIN_OFFER 3
+#define TWIN_SETUP_MAX 8   // (the most swaps a set-up is built in outside the mode that fires it)
 typedef struct { int32_t n, at[8], ok; } RowFix;
 static int twinRowFix(const int32_t *row, int cx, int32_t X, int cy, int32_t Y, RowFix *f) {
   // the fewest swaps along the row that leave X at column cx (0: not asked) and Y at column cy (0: not asked): each panel asked, walked
@@ -354,7 +359,8 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
   Board *b = decQ.b;
-  if (!bigAsked || clockOut()) return n;
+  int setupOnly = !bigAsked && downtime() && !R->topped;
+  if ((!bigAsked && !setupOnly) || clockOut()) return n;
   static int32_t g[MAXROWS + 2][W + 2];
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
@@ -394,6 +400,8 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
     }
   }
   // (the fewest swaps first; each line built and played out on a copy of the grid: none that makes a three before its trigger)
+  // (a set-up only where none is loaded -- no trigger one swap away -- and short enough to be worth building ahead)
+  if (setupOnly) { int lo = 99; for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost; if (lo == 0 || lo > TWIN_SETUP_MAX) return n; }
   for (int i = 0; i < nb; i++) for (int j = i + 1; j < nb; j++) if (best[j].cost < best[i].cost) { Twin t = best[i]; best[i] = best[j]; best[j] = t; }
   int offered = 0;
   for (int i = 0; i < nb && offered < TWIN_OFFER && n < cap; i++) {
@@ -413,6 +421,11 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
     RowFix f; if (bad || twinRowFix(h[t->r], t->c, t->Y, t->c + 1, t->X, &f) < 0) continue;
     for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThree(h, top)) bad = 1; }
     if (bad) continue;
+    if (setupOnly) {
+      if (ns < 1 || ns > TWIN_SETUP_MAX) continue;
+      if (candOf(&out[n], PLAY_SETUP, seq, ns, -1, 0)) { out[n].settled = 1; out[n].twin = 2; n++; offered++; twinOffered++; }
+      continue;
+    }
     seq[ns++] = t->r * 8 + t->c;
     if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = (t->a1 - t->a0 + 1) + (t->b1 - t->b0 + 1); out[n].twin = 1; n++; offered++; twinOffered++; }
   }

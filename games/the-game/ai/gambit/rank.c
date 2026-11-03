@@ -13,7 +13,7 @@ typedef struct {
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
-  int32_t twin;    // two columns sorted row by row, then one swap that clears both (propose.c twinLines)
+  int32_t twin;    // two columns sorted row by row, then one swap that clears both (propose.c twinLines): 1 the line, 2 the set-up alone
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -313,12 +313,20 @@ static int levelsFree(const Judge *L, const Judge *H) {
   if (L->o.lives) return 1;
   return !H->o.lives && L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED && lostOf(L) >= lostOf(H);
 }
+// (TWO COLUMNS LOADED AHEAD, on a calm board: a set-up for an eight is not doing nothing where it lives, or is lost no sooner than the
+// hold -- the mode that fires it has no time to build it; propose.c twinLines)
+static int downtime(void);
+static int loadsFree(const Judge *L, const Judge *H) {
+  if (L->k.twin != 2 || L->o.dead || !downtime()) return 0;
+  if (L->o.lives) return 1;
+  return !H->o.lives && L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED && lostOf(L) >= lostOf(H);
+}
 static void markIdle(Judge **a, int n) {
   const Judge *H = 0;
   for (int i = 0; i < n && !H; i++) if (a[i]->hold) H = a[i];
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   double holdLost = H ? lostOf(H) : 0;
-  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
