@@ -279,6 +279,10 @@ static int ranked(const Read *R, const Found *S) {
   readyStop(); readyPendClear(); readyCollect = 1;   // (and keeps each landed board: searched once, its nearest break measured)
   rankReact = C2.reaction + 1;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
+  // (NOTHING NEW TOLD: the next block lands on the frame the decision before was told it would, as many queued -- rank.c lostAlike)
+  { static int32_t lastAbs = NUL, lastQk = -1;
+    int32_t abs = decF.next == NOT_ASKED ? NUL : decQ.b->clock + decF.next, qk = !!R->F.v[FACT_US_QUEUEKILLS];
+    rankCalm = abs != NUL && abs == lastAbs && qk == lastQk; lastAbs = abs; lastQk = qk; }
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   // (NOTHING JUDGED IN TIME: the searches and the proposing took the decision's time and the clock stopped the judge on every line --
   // every line is judged again up to the move's own frame, the host's hard stop (clockFrameOut): a board is never held for want of a

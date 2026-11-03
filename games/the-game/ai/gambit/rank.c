@@ -361,9 +361,13 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // leave as many, or three or more each: run 446, build, a line lost at 266 taken over one lost at 385 that broke more, two tries against
 // three. Past three the material decides: run 451, the later loss taken there too, spent the panels -- large_garbage's material under
 // garbage 19 where it was 23 -- finish 15 against 17)
+static int32_t rankCalm;   // (nothing new told since the decision before: decide.c ranked)
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
+  // (the line in progress, nothing new told: the same board judged again, a loss up to two breaks' time later is the judging's own
+  // noise, not news -- the owner: every move counts, and a line put down throws away the swaps pressed of it)
+  if (rankCalm && x->carried != y->carried && !x->hold && !y->hold && lo >= rankSave && hi - lo < 2 * rankSave) return 1;
   return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
 }
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
