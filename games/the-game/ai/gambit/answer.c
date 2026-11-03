@@ -485,8 +485,16 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     }
   // (THE CURSOR NOT LEFT IDLE -- the owner: a person moves toward the next move while waiting: a hold names where the best line that is no
   // hold begins, and the frame loop walks the cursor there; a cursor walked changes nothing on the board)
+  // (under garbage, near the top -- the owner: the breaks are there: only toward a line that breaks, else to the row under the lowest
+  // garbage, the cursor's own column)
   A->aim = 0;
-  if (d.kind == 0) for (int i = 0; i < n && !A->aim; i++) if (!order[i]->hold && order[i]->k.nseq > 0) A->aim = order[i]->k.seq[0];
+  if (d.kind == 0) for (int i = 0; i < n && !A->aim; i++) if (!order[i]->hold && order[i]->k.nseq > 0 && (!R.under || order[i]->apBroke > 0)) A->aim = order[i]->k.seq[0];
+  if (d.kind == 0 && !A->aim && R.under) {
+    int low = 0;
+    for (int r = 1; r <= decQ.b->height && !low; r++) for (int c = 1; c <= W; c++) if (cellAt(decQ.b, r, c) < 0) { low = r; break; }
+    int row = low > 1 ? low - 1 : 0, col = decQ.b->curCol < 1 ? 1 : decQ.b->curCol > W - 1 ? W - 1 : decQ.b->curCol;
+    if (row >= 1) A->aim = row * 8 + col;
+  }
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
   A->holdLives = d.kind == 0 && top && top->o.lives;
