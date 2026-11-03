@@ -586,6 +586,18 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       compareJudged(order[0], order[i]); L_s(" no2Key=k"); L_i(cmpKey); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i((int32_t)lostOf(order[i])); L_s(order[i]->hold ? ":h" : ":l"); break; }
     cmpKey = keep;
   }
+  // (A FAR LINE PLAYED: the line played walks four actions or more past the nearest that is no worse lost -- the key it was ranked first
+  // by, then the two walks and the two's losses)
+  if (n && order[0] && !order[0]->hold) {
+    int w0 = lineWalk(order[0]), bi = -1;
+    for (int i = 1; i < n; i++) if (!order[i]->hold && order[i]->k.nseq && lineWalk(order[i]) + 4 <= w0 && lostOf(order[i]) >= lostOf(order[0]) - rankSave && (bi < 0 || lineWalk(order[i]) < lineWalk(order[bi]))) bi = i;
+    if (bi > 0) {
+      int32_t keep = cmpKey; compareJudged(order[0], order[bi]);
+      L_s(" farKey=k"); L_i(cmpKey); L_s(":"); L_i(w0); L_s("/"); L_i(lineWalk(order[bi])); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i((int32_t)lostOf(order[bi]));
+      L_s(":"); L_s(PLAY_NAME[order[0]->k.play]); L_s("/"); L_s(PLAY_NAME[order[bi]->k.play]);
+      cmpKey = keep;
+    }
+  }
   // (a line played whose first swap swaps back the last swap's pair: the key it was ranked first by, before the best that does not, and
   // the two's losses)
   if (n && order[0] && order[0]->back && !order[0]->hold) for (int i = 1; i < n; i++) if (!order[i]->back && !order[i]->hold) {
