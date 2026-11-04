@@ -22,6 +22,7 @@ static int32_t savingPanels;   // (saving panels up, across decisions; a new gam
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
 // board every line ends on
 static Keep floorKeep; static int32_t floorKeepOn;
+#define MODE_DEBOUNCE 60   // the frames a mode the enemy's board calls must hold before it is played (a second): modes.js's too
 static int decisionFloor(const Board *b) { return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1; }
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
@@ -60,6 +61,15 @@ static int readBoard_(Read *R) {
   int oi = -1;
   for (int i = 0; i < theTables.n && oi < 0 && !openerOver && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
   int ri = oi >= 0 ? oi : modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
+  // (THE MODE DEBOUNCED -- the owner: a board flickering at a line does not switch the mode back and forth: the enemy topped out calls
+  // finish them at once; any other change of the mode the facts call is played once it has been called MODE_DEBOUNCE frames running)
+  if (oi < 0 && modeRule < 0 && ri >= 0) {
+    static int32_t steady = -1, cand = -1, candAt = 0, lastClk = -1; int32_t now = decQ.b->clock;
+    if (now < lastClk) steady = cand = -1;
+    lastClk = now;
+    if (steady < 0 || ri == steady || (theOpp.has && theOpp.out)) { steady = ri; cand = -1; }
+    else { if (cand != ri) { cand = ri; candAt = now; } if (now - candAt >= MODE_DEBOUNCE) { steady = ri; cand = -1; } else ri = steady; }
+  }
   if (ri < 0 && !theOpp.has && theTables.n > 0) ri = 0;
   if (ri < 0) return 0;
   const Rule *rule = &theTables.r[ri];

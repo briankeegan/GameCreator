@@ -75,8 +75,11 @@ A chain going is carried on to the mode's target whenever the board survives it,
 the first clear still pops; a chain that has ended counts the size it ended at. The ideal line, always, breaks garbage between the
 links it adds -- both at once before either alone. A four that breaks ranks after a three that breaks as much (the owner).
 
-In a fight every decision's mode is the one the enemy's board calls for: `gambit_modes.js` re-picks it from each decision's logged
-`enemy=` and counts the decisions that disagree; a fight with any is red.
+In a fight every decision's mode is the one the enemy's board calls for, debounced (the owner: a board flickering at a line does not
+switch the mode back and forth): the enemy topped out calls finish them at once; any other change is played once the facts have called
+it for a second (decide.c `MODE_DEBOUNCE`, 60 frames). `gambit_modes.js` re-picks it from each decision's logged `enemy=`, debounced
+the same way, and counts the decisions that disagree; a fight with any is red. Past a switch, the line in progress is carried on only
+where it meets the new mode's first entry or breaks garbage.
 
 | mode | picked when | for | first | fallbacks, only where it dies without them |
 | --- | --- | --- | --- | --- |

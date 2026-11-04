@@ -39,10 +39,11 @@ function called(facts) {
 }
 
 var OPENER = (tables.opener || [])[0] ? tables.opener[0].name : null;
+var MODE_DEBOUNCE = 60;   // (decide.c's: a mode the facts call is played once called this many frames running; topped out, at once)
 var LINE = /GAMBITD (\d+) (.*?) play=/, ENEMY = / enemy=(-?\d+)\/(-?\d+)\/(-?\d+)/;
 var out = { rules: path.relative(process.cwd(), rulesFile), decisions: 0, withEnemy: 0, disagree: 0, pairs: {}, first: [] };
 args.forEach(function (f) {
-  var last = Infinity, opening = !!OPENER;
+  var last = Infinity, opening = !!OPENER, steady = null, cand = null, candAt = 0;
   var text = fs.readFileSync(f === '-' ? 0 : f, 'utf8');
   // (A FIGHT: a log that reads an enemy anywhere. Its opening is the opener's from the first decision, the ones before the enemy's board
   // is first read too -- the countdown's plan is the opener's, never the no-enemy mode's)
@@ -51,7 +52,7 @@ args.forEach(function (f) {
     var m = LINE.exec(l);
     if (!m) return;
     // (a game's frames start again from the countdown: a new game opens again)
-    if (+m[1] < last - 100) opening = !!OPENER;
+    if (+m[1] < last - 100) { opening = !!OPENER; steady = cand = null; }
     last = +m[1];
     var e = ENEMY.exec(l), facts = { 'enemy.none': e ? 0 : 1 };
     // (us.* facts are not logged: a defend rule cannot be re-picked, and the tables in use have none)
@@ -59,6 +60,13 @@ args.forEach(function (f) {
     out.decisions++;
     if (opening && (facts['enemy.topped'] || (m[2] !== OPENER && e))) opening = false;
     var want = opening && (e || fight) ? OPENER : called(facts);
+    // (the mode debounced as decide.c plays it -- the owner: topped out calls finish them at once, any other change once called
+    // MODE_DEBOUNCE frames running)
+    if (!(opening && (e || fight)) && want) {
+      var fr = +m[1];
+      if (steady === null || want === steady || facts['enemy.topped']) { steady = want; cand = null; }
+      else { if (cand !== want) { cand = want; candAt = fr; } if (fr - candAt >= MODE_DEBOUNCE) { steady = want; cand = null; } else want = steady; }
+    }
     if (want === m[2]) return;
     out.disagree++;
     var key = m[2] + ' -> ' + want;
