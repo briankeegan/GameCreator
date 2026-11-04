@@ -13,13 +13,8 @@ on:
     paths:
       - 'games/the-game/ai/gambit/**'
       - 'games/the-game/ai/eval/survivor-profiles/**'
-  # a manual test of the token: a dry run by default -- the redeploy reports what it would do and starts nothing
+  # run it by hand: the same redeploy, without waiting for a merge
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'dry run: report what would be redeployed, start nothing'
-        type: boolean
-        default: true
 
 concurrency:
   group: redeploy-panel-attack-bots
@@ -37,7 +32,7 @@ jobs:
       - name: Ask for the redeploys
         env:
           TOKEN: ${{ secrets.PANEL_GAME_TOKEN }}
-          ADVANCED: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'only-if-running dry-run' || 'only-if-running' }}
+          ADVANCED: only-if-running
         run: |
           [ -n "$TOKEN" ] || { echo "::error::the secret PANEL_GAME_TOKEN is not set in this repo"; exit 1; }
           for server in panelattack.com:49569; do
