@@ -214,6 +214,14 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 #define TWIN_KEY_REACH 12   // (the farthest eight the set-up key 7d reads: an eight within a line's reach)
 #define TWIN_STEP 2   // (swaps nearer an eight that decide between two lines otherwise equal: 7d)
 static int lineWalk(const Judge *J);
+static double lostOf(const Judge *x);
+// THE FRAME THE BOARD IS LOST, as the engine has it -- the line's own loss or its readiness's, no walk charged (lostOf charges the walk:
+// the order's preference for the nearer, not a loss): what a set-up that must never cost the board's life is held to
+static double diesAt(const Judge *x) {
+  double own = lostAtOf(x->o.lostAt, x->hold);
+  if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
+  return own;
+}
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
@@ -375,7 +383,7 @@ static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->ap
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
 static int nearerEight(const Judge *a, const Judge *b) {
   if (a->o.twinAfter < 0 || b->o.twinAfter < 0 || a->o.twinAfter >= b->o.twinAfter || b->o.twinAfter >= 99 || spendsReserve(a)) return 0;
-  return a->o.lives || (!b->o.lives && lostOf(a) >= lostOf(b));
+  return a->o.lives || (!b->o.lives && diesAt(a) >= diesAt(b));
 }
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
 // break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
@@ -680,7 +688,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int t8x = x->o.twinAfter > TWIN_KEY_REACH ? 99 : x->o.twinAfter, t8y = y->o.twinAfter > TWIN_KEY_REACH ? 99 : y->o.twinAfter;
   if (t8x >= 0 && t8y >= 0 && iabs(t8x - t8y) >= TWIN_STEP) {
     const Judge *nr = t8x < t8y ? x : y, *fr = nr == x ? y : x;
-    if (nr->o.lives || (!fr->o.lives && lostOf(nr) >= lostOf(fr))) return (cmpKey = __LINE__, (t8x - t8y));
+    if (nr->o.lives || (!fr->o.lives && diesAt(nr) >= diesAt(fr))) return (cmpKey = __LINE__, (t8x - t8y));
   }
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
