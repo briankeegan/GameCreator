@@ -169,6 +169,13 @@ narrowed, not dropped.
      of a break's 20): the next lever is fewer actions spent on lines put down (31% of them).
      Any line before the hold while a slab pops took build to 17/24 (run 2268): survival lines pressed for nothing (817 swaps against
      139) spent the window. On main only a set-up, a lineup, a line toward the next break or nearest the list: build 23/24 (run 2270).
+   - **Every mode together** (run 2276, seed 80, 6e020486's play): 86/96 -- build 23, finish them 22, pressure 21, big chain 20. Of the
+     boards before the losses 207 of 226 had no break to find; the hold never passed over a break line lost later (holdLate) -- the holds
+     over longer lines are the window's reserve (k527) and the floor's spend rule (k455), over lines that break nothing. What is left is
+     the board starved under large and constant garbage: material under garbage 24 in large garbage, under 20 panels 14-18% of it.
+     Tried and not kept: wasted threes ranked against the line (idea157, 158: 2.00 to 1.75 a minute, the threes beside bigger breaks);
+     the panels kept a row below the floor (idea160: big chain 21, pressure 20, finish 21 -- material no higher). A change of a game a
+     mode is under one run's noise: the next measures are 48 games a mode.
    - **A 24-game run is noisy**: the same behaviour on the same seed gave 20/24 and 23/24 (runs 2247, 2248) -- the clock decides how
      far each search goes, and the runner's clock differs run to run. A gap of 3 games in 24 is not a measurement.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
