@@ -79,6 +79,8 @@ narrowed, not dropped.
      42/48 each); holds over a later loss 245 to 166.
      Tried: the hold and a line alike only less than a break's time apart, everywhere (idea117) -- 39/48 and 41/48; the alike past three
      breaks' time keeps more boards than it costs.
+     Tried: the line in progress kept past the horizon gives way to a line that lives standing it whole, not by a promise (idea118) --
+     42/48 on seed 92 against 44/48.
    - **The cursor near the top under garbage** (the owner: where the breaks are). Tried (idea104): under garbage a hold walks only
      toward a line that breaks, else under the lowest garbage -- cursor 269-271 cells a minute against 272, survival level. Open.
    - **Live is three times training here.** Live run 41565622573: 13.4% of swaps (27% of actions) made and unmade within 600 frames,
