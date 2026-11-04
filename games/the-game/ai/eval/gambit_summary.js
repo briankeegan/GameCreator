@@ -214,8 +214,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var ru = / rule=([etl])/.exec(l);
       if (ru) { rule[ru[1]] = (rule[ru[1]] || 0) + 1; rule.n = (rule.n || 0) + 1; }
       // (THE MODE'S LIST, of the lines begun -- not the line in progress carried on: answer.c mode=entry/fallback/lost/other/save. A fallback
-      // is unforced where a line offered that is no fallback leaves the next decision a break's time, rankSave, or lives)
-      var md = / mode=(\d+)\/([01])\/(\w+|-)\/(\w+|-)\/(\d+)/.exec(l), pl = / play=(\S+)/.exec(l);
+      // is unforced where no chain is going (a chain going is carried on: /c) and a line offered that is no fallback leaves the next decision
+      // a break's time, rankSave, or lives, and is lost no sooner than the fallback)
+      var md = / mode=(\d+)\/([01])\/(\w+|-)\/(\w+|-)\/(\d+)((?:\/k\d+)?)(\/c)?/.exec(l), pl = / play=(\S+)/.exec(l);
       // (THE PLANNER AND THE FIRST ENTRY: p0=found/near -- the decisions it found a line that meets it, and of those that began a line, the
       // ones that began that entry; near, the first entry's percent the nearest line came)
       var p0 = / p0=([01])\/(-?\d+)/.exec(l);
@@ -225,8 +226,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         rule.mLines = (rule.mLines || 0) + 1;
         if (+md[1] === 0) rule.mFirst = (rule.mFirst || 0) + 1;
         if (md[2] === '1') { rule.mFall = (rule.mFall || 0) + 1;
-          var oth = md[4], save = +md[5];
-          if (oth === 'L' || oth === 'inf' || (oth !== '-' && +oth >= save)) rule.mFree = (rule.mFree || 0) + 1; }
+          var oth = md[4], save = +md[5], own = md[3] === 'L' || md[3] === 'inf' ? Infinity : +md[3];
+          var othLost = oth === 'L' || oth === 'inf' ? Infinity : (oth === '-' ? -1 : +oth);
+          if (!md[7] && othLost >= save && othLost >= own) rule.mFree = (rule.mFree || 0) + 1; }
       }
       if (um) { t.dec++; if (+um[1] && mm) { t.under++; t.mat += +mm[1]; t.pan += pm ? +pm[1] : 0; } }
       // (THE BREAK THE LINEUP MAKES: of the lines played under garbage that break it, the ones that make a chain on the way)
@@ -427,7 +429,7 @@ if (nturns) {
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
 }
 if (rule.mLines) console.log("the mode's list: of " + rule.mLines + ' lines begun that meet it, ' + (rule.mFirst || 0) + ' its first entry, ' + (rule.mFall || 0) +
-  ' a fallback -- ' + (rule.mFree || 0) + ' of them unforced: a line offered with no fallback left the next decision a break\'s time');
+  ' a fallback -- ' + (rule.mFree || 0) + ' of them unforced: no chain going, and a line offered with no fallback left the next decision a break\'s time and was lost no sooner');
 if (rule.p0n) console.log("the planner and the first entry: of " + rule.p0n + ' decisions planned, ' + (rule.p0f || 0) + ' found a line that meets it; of those that began a line, ' +
   (rule.p0p || 0) + ' of ' + (rule.p0b || 0) + ' began it; the nearest line, by the first entry\'s percent: ' + JSON.stringify(rule.p0near || {}));
 if (rule.n) console.log('the one rule: of ' + rule.n + ' lines played that met a part of it, ' + Math.round(100 * (rule.e || 0) / rule.n) + '% an entry of the list, ' + Math.round(100 * (rule.t || 0) / rule.n) + '% a three that breaks, ' + Math.round(100 * (rule.l || 0) / rule.n) + '% a last resort');

@@ -663,7 +663,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   // (THE MODE'S LIST, for the report: the entry the line played meets, whether it is a fallback -- an entry after the first that breaks
   // no garbage -- its loss, and of the lines offered that are no fallback the latest lost, L one that lives, - none; then a break's time,
-  // rankSave: mode=entry/fallback/lost/other/save)
+  // rankSave: mode=entry/fallback/lost/other/save[/kKEY][/c])
   if (top && !top->hold && top->met >= 0) {
     const Judge *alt = 0;
     for (int i = 0; i < P.ncands; i++) {
@@ -677,6 +677,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s("/"); L_i(rankSave);
     // (and the order's key that put the line played before that other: rank.c cmpKey, /kLINE)
     if (alt && top->met > 0 && !(top->apBroke > 0) && compareJudged(top, alt) < 0) { L_s("/k"); L_i(cmpKey); }
+    // (and /c where the board is chaining, or about to: a chain going is carried on -- the fallback the chain reaches is the mode's rule)
+    if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2)) L_s("/c");
   }
   // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
   // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey: sooner=play:lost:kLINE)
