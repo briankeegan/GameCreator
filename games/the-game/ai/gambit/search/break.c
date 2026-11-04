@@ -36,7 +36,7 @@ typedef struct { int32_t n, len[KEEPN]; int32_t path[KEEPN][MAXPATH]; } Paths;
 // (lines, one per first swap found), or depth 0 with the line nearest a break (toward) and the lines to choose among (towards)
 typedef struct {
   int32_t depth, nmoves, moves[MAXROWS * W];
-  int32_t at, touch, carried, wide, lineup;        // lineup: 0 none, 1 the pop's end, 2 a pair, 3 aimed, 4 ready
+  int32_t at, touch, carried, wide, lineup, fresh;   // fresh: found by the beam from this board's own first swaps, before the carried lines; lineup: 0 none, 1 the pop's end, 2 a pair, 3 aimed, 4 ready
   int32_t built;                                    // the line breakNear builds (the nearest break walked to)
   int32_t pathLen, path[MAXPATH];
   int32_t pairs[MAXROWS * W][2];                    // lines, beside moves (lineup 2 and 4)
@@ -611,6 +611,16 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
       for (int i = 0; i < nn && liveNode(x, node); i++) node = stepMarked(&s, node, MK_SWAP, nl[i], 0);
       if (liveNode(x, node) && breaksAt(&s, node, nl, nn)) { found(out, nl[0]); setPath(out, nl, nn); out->depth = 1; out->at = NODE(x, node)->t; out->built = 1; return; }
     }
+  }
+  // (THE BOARD AS IT IS FIRST: with lines carried on from the last decision, the touch beam from this board's own first swaps is grown
+  // in the first half of the share, then the carried lines are played again and grown -- carried lines seed the beam deep and crowd
+  // out a break the board has now)
+  if (!(wait > 0) && resume && resume->n && clockShare > 0) {
+    double half = nowMs() + (clockShare - nowMs()) / 2, old = clockShareBegin(half);
+    s.resume = 0; int hit = touchBeam(&s, firsts, nfirsts); s.resume = resume;
+    if (hit) trimPath(&s);
+    clockShareEnd(old);
+    if (hit) { out->depth = 1; out->fresh = 1; return; }
   }
   if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; trimPath(&s); return; }
   if (wait > 0) {
