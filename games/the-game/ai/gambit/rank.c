@@ -446,9 +446,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. (neither lives, under garbage, below the material floor) THE BREAK'S MATERIAL KEPT (the owner: the board spent to three rows and
   // dying for want of panels): a clear that breaks nothing (spends) after a line that keeps the panels and is lost a break's time away or
   // more -- the panels it spends to stall are the next break's; it is played only where every line that keeps them is lost within one
+  // (and only where the line that keeps them leaves more of them: a board the garbage lands on loses its panels under the lowest garbage
+  // held or not, and a hold that leaves no more of them keeps nothing -- outcome.c matLeft)
   if (!lx && decF.under && x->spends != y->spends) {
-    const Judge *o = x->spends ? y : x;
-    if (diesAt(o) >= rankSave) return (cmpKey = __LINE__, (x->spends ? 1 : -1));
+    const Judge *o = x->spends ? y : x, *sp = x->spends ? x : y;
+    if (diesAt(o) >= rankSave && o->o.matLeft >= 0 && sp->o.matLeft >= 0 && o->o.matLeft > sp->o.matLeft)
+      return (cmpKey = __LINE__, (x->spends ? 1 : -1));
   }
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
   // order charges it -- the mode gives way to survival only)
