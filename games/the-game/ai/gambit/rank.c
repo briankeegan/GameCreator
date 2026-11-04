@@ -430,11 +430,17 @@ static int shortChain(const Judge *J) { int32_t reach = J->o.dead ? imax(J->apCh
 // its last swap -- and a line near it is judged on one side of it one decision and the other the next, as the horizon moves on and garbage
 // is told. The line in progress keeps its place while it stands HORIZON frames from now, so it is put down only where it fails, not where
 // the next decision's horizon reaches a frame further: every swap of a plan put down is a move for nothing)
+static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->modeFirst); }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOn(x), ly = livesOn(y);
-  // 1. lives before does not
-  if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
+  // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
+  // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
+  if (lx != ly) {
+    const Judge *l = lx ? x : y, *o = lx ? y : x;
+    if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
+    lx = ly = 1;
+  }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   // 1. (neither lives, under garbage, below the material floor) THE BREAK'S MATERIAL KEPT (the owner: the board spent to three rows and
@@ -444,7 +450,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *o = x->spends ? y : x;
     if (diesAt(o) >= rankSave) return (cmpKey = __LINE__, (x->spends ? 1 : -1));
   }
-  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
+  // order charges it -- the mode gives way to survival only)
+  int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
+  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
   // none and breaks as much
