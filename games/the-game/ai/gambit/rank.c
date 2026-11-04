@@ -267,10 +267,10 @@ static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
 // (THE SET-UP TOWARD AN EIGHT, where the mode's first entry is a combo of eight or more -- the owner: finish them goes for the eights
 // and their set-up: a line whose board is TWIN_STEP swaps or more nearer a two-column eight than the board left alone (outcome.c
-// twinAfter, the hold's in twinHold) is a set-up toward the first entry)
+// twinAfter, the hold's in twinHold) and lives is a set-up toward the first entry -- built where the board stays safe, survival first)
 static int32_t twinHold = -1;
 static int firstIsEight(void) { if (theList.n < 1) return 0; const Test *c = &theList.aim[0].combo; return (c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8; }
-static int towardEight(const Judge *J) { return !J->hold && twinHold >= 0 && J->o.twinAfter >= 0 && J->o.twinAfter <= twinHold - TWIN_STEP && firstIsEight(); }
+static int towardEight(const Judge *J) { return !J->hold && J->o.lives && twinHold >= 0 && J->o.twinAfter >= 0 && J->o.twinAfter <= twinHold - TWIN_STEP && firstIsEight(); }
 static int goalKeyOf(const Judge *J) {
   if (J->hold) return 2;
   if (J->met == 0 || J->modeFirst) return 0;   // (the mode's first entry, under garbage too where it breaks nothing: the mode is played there)
