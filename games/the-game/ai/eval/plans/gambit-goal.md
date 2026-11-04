@@ -141,7 +141,9 @@ where it meets the new mode's first entry or breaks garbage.
   run again only to set two builds side by side). Main is not run again: its measure is the one on record. Its log goes in the same
   run, and a run is never spent on a log alone.
 - **A run, as fast as it goes** (the owner): one change, one run -- of one mode, the weakest on record, until every mode is at 22; from
-  then on every mode together, each change checked for a mode it set back (the list's 6). Never a run that decides nothing. A run takes about ten minutes (seven of them the game, in real time: Gambit thinks on the clock). A run made
+  then on every mode together, each change checked for a mode it set back (the list's 6). Never a run that decides nothing.
+- **The worst first, always** (the owner): the next change is for the mode with the fewest survived in the latest run -- not the goal's
+  other measures, not a mode doing well. Only once it is at 24 is the next worst taken. A run takes about ten minutes (seven of them the game, in real time: Gambit thinks on the clock). A run made
   stale by a newer change is cancelled at once. Each run is reported with when it began and when it should end, in ET on the 24-hour
   clock.
 - **The measure, every run** (the owner): the run's own report on Actions prints it (`gambit_summary.js`, "the measure"): survived; the
