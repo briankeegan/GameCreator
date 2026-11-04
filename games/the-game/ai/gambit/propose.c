@@ -364,7 +364,7 @@ static int twinThree(int32_t g[][W + 2], int top) {
 typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1; } Twin;
 // (every two-column eight the board can be sorted into within TWIN_MAXSWAPS, the cheapest TWIN_OFFER * 4 kept: the grid in g, its top
 // in *topOut, the cells that can be sorted in ok, the full rows in *rows)
-static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topOut, Twin *best, int *rows, int cap) {
+static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topOut, Twin *best, int *rows, int cap, int fullRows) {
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
   for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { g[r][c] = cellAt(b, r, c); if (g[r][c] != 0) top = r; }
@@ -373,6 +373,8 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
   uint32_t any[MAXROWS + 2];
   for (int r = 1; r <= top; r++) { any[r] = 0; for (int c = 1; c <= W; c++) { ok[r][c] = g[r][c] > 0 && g[r][c] < 8 && b->p[r][c].f[STATE] == NORMAL && (r == 1 || (g[r - 1][c] != 0 && b->p[r - 1][c].f[STATE] == NORMAL)); any[r] += ok[r][c]; } }
   if (rows) { *rows = 0; for (int r = 1; r <= top; r++) *rows += any[r] == W; }
+  // (fullRows: a row is sorted only where all six of its cells can be)
+  if (fullRows) for (int r = 1; r <= top; r++) if (any[r] != W) { any[r] = 0; for (int c = 1; c <= W; c++) ok[r][c] = 0; }
   int nb = 0;
   for (int c = 1; c < W; c++) for (int r = 1; r <= top; r++) {
     if (!any[r]) continue;
@@ -405,11 +407,15 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
   *topOut = top;
   return nb;
 }
-// THE SWAPS TO AN EIGHT: the fewest the board is sorted into a two-column eight in, its trigger pressed (0: one is loaded); 99 none
-// within TWIN_REACH -- a distance every line's end board has, so a line that leaves the board nearer one is seen as nearer
+static int firstIsEight(void);   // (rank.c: the mode's first entry is a combo of eight or more)
+// THE SWAPS TO AN EIGHT: the fewest the board is sorted into a two-column eight in, its trigger pressed (0: one is loaded); 99 none.
+// Where the mode's first entry is the eight (rank.c towardEight), within TWIN_REACH through any cells of panels at rest -- a distance
+// every line's end board has, so a line that leaves the board nearer one is seen as nearer; elsewhere (rank.c 7d) within
+// TWIN_MAXSWAPS of full rows
 static int twinCostOn(Board *b) {
   static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2]; static Twin best[TWIN_OFFER * 4]; int top;
-  int nb = twinScan(b, g, ok, &top, best, 0, TWIN_REACH), lo = 99;
+  int fin = firstIsEight();
+  int nb = twinScan(b, g, ok, &top, best, 0, fin ? TWIN_REACH : TWIN_MAXSWAPS, !fin), lo = 99;
   for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost;
   return lo;
 }
@@ -423,7 +429,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   static int32_t g[MAXROWS + 2][W + 2];
   static uint8_t ok[MAXROWS + 2][W + 2];
   static Twin best[TWIN_OFFER * 4];
-  int top, rows, nb = twinScan(b, g, ok, &top, best, &rows, TWIN_MAXSWAPS);
+  int top, rows, nb = twinScan(b, g, ok, &top, best, &rows, TWIN_MAXSWAPS, !bigAsked);
   twinRows = rows;
   // (the fewest swaps first; each line built and played out on a copy of the grid: none that makes a three before its trigger)
   // (a set-up only where none is loaded -- no trigger one swap away -- and short enough to be worth building ahead)
