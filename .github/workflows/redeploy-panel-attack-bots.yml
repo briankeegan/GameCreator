@@ -13,6 +13,13 @@ on:
     paths:
       - 'games/the-game/ai/gambit/**'
       - 'games/the-game/ai/eval/survivor-profiles/**'
+  # a manual test of the token: by default only the beta server, where nothing numbered is deployed, so it does nothing there
+  workflow_dispatch:
+    inputs:
+      servers:
+        description: 'servers to ask for a redeploy (space separated)'
+        required: false
+        default: 'betaserver.panelattack.com:59569'
 
 concurrency:
   group: redeploy-panel-attack-bots
@@ -24,13 +31,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Wait for two quiet minutes
+        if: ${{ github.event_name == 'push' }}
         run: sleep 120
 
       - name: Ask for the redeploys
         env:
           TOKEN: ${{ secrets.PANEL_GAME_TOKEN }}
+          SERVERS: ${{ github.event_name == 'push' && 'panelattack.com:49569 betaserver.panelattack.com:59569' || inputs.servers }}
         run: |
-          for server in panelattack.com:49569 betaserver.panelattack.com:59569; do
+          [ -n "$TOKEN" ] || { echo "::error::the secret PANEL_GAME_TOKEN is not set in this repo"; exit 1; }
+          for server in $SERVERS; do
             curl -fsS -X POST \
               -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
               https://api.github.com/repos/briankeegan/panel-game/actions/workflows/bot-prod-smoke-test.yml/dispatches \
