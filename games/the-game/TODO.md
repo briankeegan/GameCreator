@@ -81,6 +81,9 @@ narrowed, not dropped.
      breaks' time keeps more boards than it costs.
      Tried: the line in progress kept past the horizon gives way to a line that lives standing it whole, not by a promise (idea118) --
      42/48 on seed 92 against 44/48.
+   - **A pair swapped and swapped back within one line** (0.16% of swaps did nothing either time, most of them one line's own). Tried:
+     the line judged without both swaps where they are the same two panels at the same columns (idea122) -- 59 lines trimmed, 365
+     kept (the pair did something), true undos 3.3% to 3.0% of swaps, survived 39/48 and 43/48 against 44/48 and 44/48.
    - **The cursor near the top under garbage** (the owner: where the breaks are). Tried (idea104): under garbage a hold walks only
      toward a line that breaks, else under the lowest garbage -- cursor 269-271 cells a minute against 272, survival level. Open.
    - **Live is three times training here.** Live run 41565622573: 13.4% of swaps (27% of actions) made and unmade within 600 frames,
@@ -108,6 +111,8 @@ narrowed, not dropped.
      played 4 times, 8+ 0.11 a minute against 0.16, survived 40/48 and 39/48 against 44/48. The eight after each of the first four
      break lines (idea121) -- offered in 1% of finish decisions, played 4 times, survived 40/48. Under garbage an eight costs the
      board more than it gives here; what is open is building it where the board is clear.
+     Tried: under garbage only an eight with a garbage cell beside a cell it clears, sorted through any cells at rest (idea123) --
+     offered in 186 of 13414 finish decisions, played once, 8+ 0.15 a minute, survived 38/48.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
      0.89, Gambit 0.08 in the same games. Most are two vertical runs in adjacent columns, built by sorting the rows, then one swap.
 11b. **Finish them whenever the enemy is topped out**, its stop time or not (the owner: their stack above the board, so that they could
