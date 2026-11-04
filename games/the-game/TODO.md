@@ -137,6 +137,11 @@ narrowed, not dropped.
      under garbage below the floor, a clear that breaks nothing goes after a line that keeps the panels and is lost a break's time away.
      96 games: boards under 20 panels 12.3% of decisions against 18.4%, large garbage 31/32 against 29/32, survived 88/96 against
      89/96; finish them 8+ 0.24 a minute against 0.32 -- the eights it gave up are open.
+   - **The mode passed over for survival only** (the owner). goalMiss logs each decision where a line of the mode's first entry was
+     offered, living as the line played or lost no sooner, and passed over, and the key. On main: the plan in progress living by the
+     horizon alone and the walk-charged survival key no longer do it; build 24/24 and 20/24, pressure 22/24. Still passing it over (a
+     run of build, about 27,000 decisions): the floor (k451, the owner's rule, ~250), the window's reserve (~100), garbage broken an
+     action between two breaks (~60), the line in progress kept (~35), the chain carried on (the owner's rule, ~50).
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
      0.89, Gambit 0.08 in the same games. Most are two vertical runs in adjacent columns, built by sorting the rows, then one swap.
 11b. **Finish them whenever the enemy is topped out**, its stop time or not (the owner: their stack above the board, so that they could
