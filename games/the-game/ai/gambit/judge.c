@@ -29,6 +29,8 @@ typedef struct {
   int32_t keepsChain;           // the board's own chain reached by the frame it reaches it left alone (ownChainBy): 1, 0, -1 not asked
   int32_t noopAt;               // the first swap that swaps straight back the pair the swap before it swapped, nothing moved between (-1 none)
   int64_t noops;                // every such swap, bit k for swap k
+  int32_t backAt, backFrom;     // the first swap that swaps back, at the same columns, the two panels an earlier swap of the line swapped
+                                // with other swaps between -- and that earlier swap (-1 none)
   Made whole;                   // what the board ends up making with the line played, the chain already under way included (garbage
                                 // broken still counted beyond the board left alone): a line that cuts a chain short makes the shorter one
   int32_t aloneChain;           // the chain the board left alone makes
@@ -302,7 +304,7 @@ static int32_t evenOf(const Board *b) {
 }
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->noops = 0;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->noops = 0; j->backAt = -1; j->backFrom = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -316,6 +318,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
   int kb = root;   // (the line's last node by ownChainBy)
   int32_t prevA = NUL, prevB = NUL;   // (the pair the swap before swapped, its ids as it was pressed: a swap back of it is a no-op)
+  int32_t pairA[MAXLINE], pairB[MAXLINE], pairC[MAXLINE];   // (each swap's pair, its ids as it was pressed, and its left column)
 #define KB(m) do { if (ownChainBy > 0 && liveNode(x, (m)) && NODE(x, (m))->t <= ownChainBy) kb = (m); } while (0)
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
@@ -369,8 +372,12 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         if (bf && mr >= 0 && mr < bf->nrows && mc >= 1 && mc + 1 <= W) {
           int32_t a = bf->p[mr][mc].f[ID], b = bf->p[mr][mc + 1].f[ID];
           if (k > 0 && seq[k] == seq[k - 1] && a != NUL && b != NUL && a == prevB && b == prevA) { if (j->noopAt < 0) j->noopAt = k; if (k < 64) j->noops |= (int64_t)1 << k; }
+          if (k < MAXLINE) {
+            pairA[k] = a; pairB[k] = b; pairC[k] = mc;
+            if (j->backAt < 0 && a != NUL && b != NUL) for (int i = k - 2; i >= 0; i--) if (pairC[i] == mc && pairA[i] == b && pairB[i] == a) { j->backAt = k; j->backFrom = i; break; }
+          }
           prevA = a; prevB = b;
-        } else prevA = prevB = NUL; }
+        } else { prevA = prevB = NUL; if (k < MAXLINE) pairA[k] = pairB[k] = NUL, pairC[k] = -1; } }
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
     }
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
