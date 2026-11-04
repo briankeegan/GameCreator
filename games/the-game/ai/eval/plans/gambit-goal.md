@@ -133,8 +133,10 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
   chains made; the budgets (frames over, keys dropped, late moves); the loss report (`gambit_losses.js`), the reach report and the turn
   (`gambit_reach.js`) -- written by the run on Actions; and the time it finishes, in ET on the 24-hour clock.
 - Commit and push every change. Never rerun code that has not changed.
-- **Small first** (the owner): a new change runs one round of 24 games on one seed (`rounds` `[1]`); both seeds, 92 and 91, two rounds
-  each, only for a change that beat main there. Its log goes in the same run, and a run is never spent on a log alone.
+- **Small first** (the owner): a change runs 24 games of one mode -- the weakest first -- the goal's measure (`fight` 1, `profile`
+  gambit.json, `then` that mode); the other modes only once it does well there. Every run new games: a seed not run before (a seed
+  run again only to set two builds side by side). Main is not run again: its measure is the one on record. Its log goes in the same
+  run, and a run is never spent on a log alone.
 
 ## How -- infra, not patches
 
