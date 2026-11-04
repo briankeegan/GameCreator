@@ -497,6 +497,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = x->apBroke > 0 ? x : y, *o = x->apBroke > 0 ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (x->apBroke > 0 ? -1 : 1));
   }
+  // 1'3. NO THREE FOR NOTHING (the owner: wasted threes are too many): of two that survive alike, a line that clears a three that breaks
+  // nothing and begins no chain -- beside a break or not -- after one that clears none, breaks as much, meets the mode as much and is
+  // lost no sooner: the three is panels thrown away, the window spent for them
+  if ((lx || lostAlike(x, y)) && (x->o.j.threes > 0) != (y->o.j.threes > 0)) {
+    const Judge *w = x->o.j.threes > 0 ? x : y, *o = x->o.j.threes > 0 ? y : x;
+    if (imax(0, brokeSeen(o)) >= imax(0, brokeSeen(w)) && !(goalLine(w) && !goalLine(o)) && (lx || diesAt(o) >= diesAt(w))) return (cmpKey = __LINE__, (x->o.j.threes > 0 ? 1 : -1));
+  }
   // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
   // (readyNext) before one that does not and breaks no more garbage now -- a board that cannot break what lands next is the loss
   // survival's horizon does not reach yet; a break now is never given up for it
