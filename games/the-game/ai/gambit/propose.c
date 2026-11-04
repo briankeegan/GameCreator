@@ -268,6 +268,7 @@ static int32_t towardRest[MAXPATH], towardRestLen;   // (answer.c: the rest of t
 static Ctx *fillCtx;
 static int32_t twinOffered;   // (the two-column lines offered this decision: twinLines)
 static int32_t twinRows = -1;   // (and the rows it could sort: six panels at rest on six)
+static int32_t twinFar = -1;   // (the log's: the fewest swaps to an eight within TWIN_FAR where none is within TWIN_MAXSWAPS, 99 none)
 static int32_t twinLo = -2;   // (the fewest swaps a set-up takes on this board: -1 none found, -2 not asked -- the log's)
 static const Board *boardBefore(Ctx *x, const int32_t *seq, int n) {
   if (n <= 0) return decQ.b;
@@ -325,6 +326,7 @@ static int growLines(Cand *out, int n, int cap) {
 //   Any other mode leaves the trigger alone: a combo it does not ask for is wasted (rank.c wastesThree).
 #define TWIN_MAXSWAPS 12
 #define TWIN_OFFER 3
+#define TWIN_FAR 24
 #define TWIN_SETUP_MAX 8   // (the most swaps a set-up is built in outside the mode that fires it)
 typedef struct { int32_t n, at[8], ok; } RowFix;
 static int twinRowFix(const int32_t *row, int cx, int32_t X, int cy, int32_t Y, RowFix *f) {
@@ -360,7 +362,7 @@ static int twinThree(int32_t g[][W + 2], int top) {
 typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1; } Twin;
 // (every two-column eight the board can be sorted into within TWIN_MAXSWAPS, the cheapest TWIN_OFFER * 4 kept: the grid in g, its top
 // in *topOut, the rows it could sort in *rows)
-static int twinScan(Board *b, int32_t g[][W + 2], int *topOut, Twin *best, int *rows) {
+static int twinScan(Board *b, int32_t g[][W + 2], int *topOut, Twin *best, int *rows, int cap) {
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
   for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { g[r][c] = cellAt(b, r, c); if (g[r][c] != 0) top = r; }
@@ -375,7 +377,7 @@ static int twinScan(Board *b, int32_t g[][W + 2], int *topOut, Twin *best, int *
     for (int32_t X = 1; X < 8; X++) for (int32_t Y = 1; Y < 8; Y++) {
       if (X == Y) continue;
       RowFix trig; int tc = twinRowFix(g[r], c, Y, c + 1, X, &trig);
-      if (tc < 0 || tc > TWIN_MAXSWAPS) continue;
+      if (tc < 0 || tc > cap) continue;
       // (the cheapest run of X through row r in column c, and of Y in column c+1: each row's cost alone, a row shared by both counted once)
       for (int la = 3; la <= 5; la++) for (int a0 = r - la + 1; a0 <= r; a0++) {
         int a1 = a0 + la - 1;
@@ -390,7 +392,7 @@ static int twinScan(Board *b, int32_t g[][W + 2], int *topOut, Twin *best, int *
             RowFix f; int k = full[q] ? twinRowFix(g[q], wx ? c : 0, X, wy ? c + 1 : 0, Y, &f) : -1;
             if (k < 0) okAll = 0; else cost += k;
           }
-          if (!okAll || cost > TWIN_MAXSWAPS) continue;
+          if (!okAll || cost > cap) continue;
           int at = nb < TWIN_OFFER * 4 ? nb++ : -1;
           if (at < 0) { int w = 0; for (int i = 1; i < nb; i++) if (best[i].cost > best[w].cost) w = i; if (best[w].cost <= cost) continue; at = w; }
           best[at] = (Twin){ cost, c, r, X, Y, a0, a1, b0, b1 };
@@ -405,7 +407,7 @@ static int twinScan(Board *b, int32_t g[][W + 2], int *topOut, Twin *best, int *
 // within TWIN_MAXSWAPS
 static int twinCostOn(Board *b) {
   static int32_t g[MAXROWS + 2][W + 2]; static Twin best[TWIN_OFFER * 4]; int top;
-  int nb = twinScan(b, g, &top, best, 0), lo = 99;
+  int nb = twinScan(b, g, &top, best, 0, TWIN_MAXSWAPS), lo = 99;
   for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost;
   return lo;
 }
@@ -418,8 +420,10 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   if ((!bigAsked && !setupOnly) || clockOut()) return n;
   static int32_t g[MAXROWS + 2][W + 2];
   static Twin best[TWIN_OFFER * 4];
-  int top, rows, nb = twinScan(b, g, &top, best, &rows);
-  if (setupOnly) twinRows = rows;
+  int top, rows, nb = twinScan(b, g, &top, best, &rows, TWIN_MAXSWAPS);
+  twinRows = rows;
+  // (the log's: where none is within TWIN_MAXSWAPS, the fewest swaps to one within TWIN_FAR)
+  if (bigAsked && nb == 0) { static Twin far[TWIN_OFFER * 4]; static int32_t gf[MAXROWS + 2][W + 2]; int tf, nf = twinScan(b, gf, &tf, far, 0, TWIN_FAR); twinFar = 99; for (int i = 0; i < nf; i++) if (far[i].cost < twinFar) twinFar = far[i].cost; }
   // (the fewest swaps first; each line built and played out on a copy of the grid: none that makes a three before its trigger)
   // (a set-up only where none is loaded -- no trigger one swap away -- and short enough to be worth building ahead)
   { int lo = 99; for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost; twinLo = lo == 99 ? -1 : lo;
@@ -599,7 +603,7 @@ static int wayLines(Cand *out, int n, int cap) {
 }
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
-  pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
+  pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1; twinFar = -1;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
   // AN ENTRY: the planner's line for each entry of the list it found one for
   if (S->haveAp) for (int i = 0; i < R->guides.n; i++) if (S->ap.perAim[i].set) { int m0 = n; ADD(PLAY_ENTRY, S->ap.perAim[i].seq, S->ap.perAim[i].nseq, i, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.perAim[i]); }
