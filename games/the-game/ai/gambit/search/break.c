@@ -389,7 +389,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       int ntn = 0, ar = td & 1;
       arenaN[ar] = 0;   // (the level before last: its lines are let go)
       // (the level's swaps stepped on every thread first, then taken in this order: core/nodes.h stepBatch)
-      static LOCAL int32_t bPar[LINEPOOL * MAXROWS * W / 4], bMv[LINEPOOL * MAXROWS * W / 4], bAt[LINEPOOL + 1];
+      static LOCAL int32_t bPar[LINEPOOL * MAXROWS * W / 4], bMv[LINEPOOL * MAXROWS * W / 4], bAt[LINEPOOL + 1], bTight[LINEPOOL];
       int nb = 0;
       for (int i = 0; i < ntl; i++) {
         bAt[i] = nb;
@@ -398,6 +398,10 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
         // judge cuts the line there -- so the beam does not grow it: its width goes to lines the window pays for (8b8a9618))
         int left = -1; const Board *lb = 0;
         if (pressAllowance >= 0) { lb = ensureBoard(x, tl[i]->n); left = allowLeftAt(NODE(x, tl[i]->n)->t - NODE(x, s->root)->t, spentOn(s, tl[i]->path, tl[i]->len)); }
+        // (THE PRESS AS THE JUDGE MAKES IT: each swap walked as tight as the window left at its frame makes it -- judge.c presses a line's
+        // swap under tightAt of what its swaps before it left, so a line grown at the decision's own pace is a line whose later swaps the
+        // judge finds no longer there)
+        bTight[i] = lb ? tightAt(left) : pressTight;
         for (int j = 0; j < nm && nb < (int)(sizeof bPar / sizeof bPar[0]); j++) {
           if (lb && actionsFor(lb->curRow, lb->curCol, CR(ms[j]), CC(ms[j]), left) > left) continue;
           bPar[nb] = tl[i]->n; bMv[nb++] = ms[j];
@@ -415,7 +419,9 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       for (int i = 0; i < ntl; i++) {
         for (int b = bAt[i]; b < bAt[i + 1]; b++) {
           int32_t mv = bMv[b];
-          int t3 = swapTaken(s, b, tl[i]->n, mv);
+          int t3;
+          if (bTight[i] != pressTight) { int32_t t0 = pressTight; pressTight = bTight[i]; t3 = stepMarked(s, tl[i]->n, MK_SWAP, mv, 0); pressTight = t0; }
+          else t3 = swapTaken(s, b, tl[i]->n, mv);
           if (!liveNode(x, t3)) continue;
           Line *nl = lineIn(ar); if (!nl) break;
           *nl = *tl[i]; nl->n = t3; if (nl->len < MAXPATH) nl->path[nl->len++] = mv;
