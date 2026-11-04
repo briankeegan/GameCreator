@@ -128,7 +128,11 @@ narrowed, not dropped.
      the first swaps of the cheapest eights offered as set-ups, ranked before the wait where lost no sooner and the reserve kept):
      survived 42/48 and 45/48 against 44/48 and 44/48, 329 set-up swaps pressed over the hold and 377 by the rank, 8+ 0.16 a minute
      against 0.16-0.19, an eight loaded at 2 of 477 switches into finish them. The set-ups are free and are played; on most boards no
-     two-column eight is within 20 swaps, so there is little to set up. Open: what the boards can make instead (crosses, Ls).
+     two-column eight is within 20 swaps, so there is little to set up.
+     On main: the eight's shapes widened -- each swapped panel may also complete a three along the trigger row (a column run and its
+     arm, a cross or an L; a side its arm alone). Switching, seeds 92 and 91: survived 43/48 and 46/48 (main 44/48 and 44/48), finish
+     them 8+ 0.32 a minute (0.35, 0.33, 0.29 a run) against 0.16-0.19, an eight within 20 swaps on 940 holds of a round against 675.
+     Next: the eight loaded before finish them (1 of 488 switches).
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
      0.89, Gambit 0.08 in the same games. Most are two vertical runs in adjacent columns, built by sorting the rows, then one swap.
 11b. **Finish them whenever the enemy is topped out**, its stop time or not (the owner: their stack above the board, so that they could

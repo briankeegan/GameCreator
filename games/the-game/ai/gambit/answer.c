@@ -574,6 +574,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
+  if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
   if (backTrimmed) L_s(" backTrimmed=1");
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); }
   if (twoRemade) { L_s(" twoRemade="); L_i(twoRemade); }
@@ -598,6 +599,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       L_s(" holdKey=k"); L_i(cmpKey); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i(order[bi]->o.lives ? -1 : (int32_t)lostOf(order[bi])); L_s(":"); L_s(PLAY_NAME[order[bi]->k.play]);
       cmpKey = keep;
     }
+  }
+  // (a two-column eight offered and not played: the key the line played was ranked first by, before the best of them, and the two's losses)
+  if (n && order[0] && !order[0]->k.twin) for (int i = 1; i < n; i++) if (order[i]->k.twin == 1) {
+    int32_t keep = cmpKey; compareJudged(order[0], order[i]);
+    L_s(" twinKey=k"); L_i(cmpKey); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)lostOf(order[0])); L_s("/"); L_i(order[i]->o.lives ? -1 : (int32_t)lostOf(order[i])); L_s(":"); L_i(order[i]->o.dead ? 1 : 0);
+    cmpKey = keep; break;
   }
   // (a line played whose first swap swaps back the last swap's pair: the key it was ranked first by, before the best that does not, and
   // the two's losses)

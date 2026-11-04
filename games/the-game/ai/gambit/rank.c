@@ -211,8 +211,17 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 // window later, as the survival search counts it (search/outlive.c OUT_ACT) -- so a line across the board is the later loss only where
 // it buys that much more time than one at hand. At 16 the bot walks too little to live: switching 3/48)
 #define WALK_FRAMES 8
+#define TWIN_KEY_REACH 12   // (the farthest eight the set-up key 7d reads: an eight within a line's reach)
 #define TWIN_STEP 2   // (swaps nearer an eight that decide between two lines otherwise equal: 7d)
 static int lineWalk(const Judge *J);
+static double lostOf(const Judge *x);
+// THE FRAME THE BOARD IS LOST, as the engine has it -- the line's own loss or its readiness's, no walk charged (lostOf charges the walk:
+// the order's preference for the nearer, not a loss): what a set-up that must never cost the board's life is held to
+static double diesAt(const Judge *x) {
+  double own = lostAtOf(x->o.lostAt, x->hold);
+  if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
+  return own;
+}
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
@@ -369,6 +378,13 @@ static int lineWalk(const Judge *J) {
 // short, the line that spends less of what is left keeps more of the next break)
 static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 ? 0 : imax(0, BREAK_WALK - (pressAllowance - lineWalk(J))); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
+// A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
+// the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
+// the set-up built between moves, of what is spare: a swap nearer is a swap nearer
+static int nearerEight(const Judge *a, const Judge *b) {
+  if (a->o.twinAfter < 0 || b->o.twinAfter < 0 || a->o.twinAfter >= b->o.twinAfter || b->o.twinAfter >= 99 || spendsReserve(a)) return 0;
+  return a->o.lives || (!b->o.lives && diesAt(a) >= diesAt(b));
+}
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
 // break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
 static int holdsLine(const Judge *x, const Judge *y) {
@@ -512,6 +528,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!bx) {
       int fx = fallbackOf(x), fy = fallbackOf(y);
       if (fx != fy) return (cmpKey = __LINE__, (fx ? 1 : -1));
+      // (and a swap toward an eight, lost no sooner and the reserve kept, before the wait -- set up between moves: rank.c nearerEight)
+      int ex = nearerEight(x, y), ey = nearerEight(y, x);
+      if (ex != ey) return (cmpKey = __LINE__, (ex ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
@@ -663,7 +682,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 7d. AN EIGHT NEARER (the owner: an eight is set up outside the mode that fires it, in the modes leading up to the top-out, and between
   // moves -- the move that leaves a better set-up): of two lines every key above leaves equal, the one whose board is TWIN_STEP swaps or
   // more nearer a two-column combo of eight (outcome.c twinAfter) -- survival, the chain, the breaks and their material all decide first
-  if (x->o.twinAfter >= 0 && y->o.twinAfter >= 0 && iabs(x->o.twinAfter - y->o.twinAfter) >= TWIN_STEP) return (cmpKey = __LINE__, (x->o.twinAfter - y->o.twinAfter));
+  // (only where the nearer is lost no sooner: a set-up is never paid for with the board's life)
+  // (and only within TWIN_KEY_REACH swaps: an eight farther off is set up of the moves that cost nothing -- 1'', nearerEight -- not by
+  // this key over every key after it)
+  int t8x = x->o.twinAfter > TWIN_KEY_REACH ? 99 : x->o.twinAfter, t8y = y->o.twinAfter > TWIN_KEY_REACH ? 99 : y->o.twinAfter;
+  if (t8x >= 0 && t8y >= 0 && iabs(t8x - t8y) >= TWIN_STEP) {
+    const Judge *nr = t8x < t8y ? x : y, *fr = nr == x ? y : x;
+    if (nr->o.lives || (!fr->o.lives && diesAt(nr) >= diesAt(fr))) return (cmpKey = __LINE__, (t8x - t8y));
+  }
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return (cmpKey = __LINE__, (ax - ay));
