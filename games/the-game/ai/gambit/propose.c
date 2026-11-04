@@ -417,9 +417,10 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
   Board *b = decQ.b;
-  int setupOnly = !bigAsked && twinTime(R->under, R->topped);
+  // (the set-up's first swaps on any board -- under garbage, a pop running -- but never while the board chains: its chain is never spoiled)
+  int prefixes = !R->topped && decQ.b->chainCounter < 2, setupOnly = !bigAsked && twinTime(R->under, R->topped);
   twinLo = -2;
-  if ((!bigAsked && !setupOnly) || clockOut()) return n;
+  if ((!bigAsked && !setupOnly && !prefixes) || clockOut()) return n;
   static int32_t g[MAXROWS + 2][W + 2];
   static uint8_t ok[MAXROWS + 2][W + 2];
   static Twin best[TWIN_OFFER * 4];
@@ -428,7 +429,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   // (the fewest swaps first; each line built and played out on a copy of the grid: none that makes a three before its trigger)
   // (a set-up only where none is loaded -- no trigger one swap away -- and short enough to be worth building ahead)
   { int lo = 99; for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost; twinLo = lo == 99 ? -1 : lo;
-    if (setupOnly && (lo == 0 || lo > TWIN_SETUP_MAX)) return n; }
+    if (!bigAsked && lo == 0) return n; }
   for (int i = 0; i < nb; i++) for (int j = i + 1; j < nb; j++) if (best[j].cost < best[i].cost) { Twin t = best[i]; best[i] = best[j]; best[j] = t; }
   int offered = 0;
   for (int i = 0; i < nb && offered < TWIN_OFFER && n < cap; i++) {
@@ -448,6 +449,12 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
     RowFix f; if (bad || twinRowFix(h[t->r], ok[t->r], t->c, t->Y, t->c + 1, t->X, &f) < 0) continue;
     for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThree(h, top)) bad = 1; }
     if (bad) continue;
+    // (SET UP BETWEEN MOVES -- the owner: the set-up built of moves that cost nothing, never of the board's life: the first one, two and
+    // three of its swaps, each a line of its own -- a swap pressed where the board waits, the rest left for the next wait; the rank takes
+    // one only where it is lost no sooner and keeps the window's reserve, rank.c nearerEight)
+    if (prefixes && i < 2 && ns > 0)
+      for (int p = 1; p <= 3 && p < ns && n < cap; p++)
+        if (candOf(&out[n], PLAY_SETUP, seq, p, -1, 0)) { out[n].settled = 1; out[n].twin = 2; n++; twinOffered++; }
     if (setupOnly) {
       if (ns < 1 || ns > TWIN_SETUP_MAX) continue;
       if (candOf(&out[n], PLAY_SETUP, seq, ns, -1, 0)) { out[n].settled = 1; out[n].twin = 2; n++; offered++; twinOffered++; }
