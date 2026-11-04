@@ -101,6 +101,13 @@ narrowed, not dropped.
    - On main: under garbage the rank and the searches keep the list as written (8 and up, not 5 and up), and of two breaks the
      earlier combo entry is first. Finish them on one seed: 8+ 9 to 40, cells sent by combos 2199 to 3324, survived 19 to 21
      (runs 2083, 2088). Two runs of a combo each grown a panel into an 8: 47 (run 2090). Next: why 6s are still the most played.
+   - Why the two-column eight is rare in finish them (run 2196, switching, seed 92): 89% of its decisions are under garbage; in 90%
+     the board has fewer than 4 rows of six panels at rest, and none is within 24 swaps where none is within 12. Offered, it lost to
+     survival 638 of 720 times (the line played lived where it did not, or it was lost sooner) and the reserve 104.
+     Tried: sorted through any cells of panels at rest, not only full rows (idea120) -- found in 21% of finish decisions against 9%,
+     played 4 times, 8+ 0.11 a minute against 0.16, survived 40/48 and 39/48 against 44/48. The eight after each of the first four
+     break lines (idea121) -- offered in 1% of finish decisions, played 4 times, survived 40/48. Under garbage an eight costs the
+     board more than it gives here; what is open is building it where the board is clear.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
      0.89, Gambit 0.08 in the same games. Most are two vertical runs in adjacent columns, built by sorting the rows, then one swap.
 11b. **Finish them whenever the enemy is topped out**, its stop time or not (the owner: their stack above the board, so that they could
