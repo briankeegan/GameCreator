@@ -447,7 +447,16 @@ static int twinNextSwap(Board *b, int32_t *swap) {
   if (best[w].cost == 0) return 0;
   int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, &best[w], seq);
   if (ns < 1) return 0;
-  *swap = seq[0];
+  // (of the rows still to sort, the next swap of the one nearest the cursor: each row is sorted along itself, apart from the others --
+  // the trigger row last)
+  int pick = 0, bd = 99;
+  for (int i = 0; i < ns; i++) {
+    if (i > 0 && CR(seq[i]) == CR(seq[i - 1])) continue;   // (a row's first swap only)
+    if (CR(seq[i]) == best[w].r && i > 0) break;           // (the trigger row once the others are sorted)
+    int d = iabs(CR(seq[i]) - b->curRow) + iabs(CC(seq[i]) - b->curCol);
+    if (d < bd) { bd = d; pick = i; }
+  }
+  *swap = seq[pick];
   return 1;
 }
 static int twinLines(const Read *R, Cand *out, int n, int cap) {

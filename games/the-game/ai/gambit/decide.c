@@ -541,10 +541,14 @@ static Played playOf(const Read *R, int n) {
       const Judge *H = P.top;
       if (candOf(&k, PLAY_SETUP, one, 1, -1, 0)) {
         k.settled = 0; k.twin = 2; freeSetup = -1;
-        if (judgeCand(R, &k, &FS) && !FS.o.dead && (H->o.lives ? FS.o.lives : (FS.o.lives || lostOf(&FS) >= lostOf(H))) && !cutsShort(&FS) &&
-            !wastesThree(&FS) && !spendsReserve(&FS) && FS.o.twinAfter >= 0 && H->o.twinAfter >= 0 && FS.o.twinAfter < H->o.twinAfter) {
-          P.line = &FS; freeSetup = 1;
-        }
+        // (turned down: -1 not played out, -2 lost sooner, -3 the chain cut short, -4 a wasted three, -5 the reserve, -6 no nearer)
+        if (!judgeCand(R, &k, &FS) || FS.o.dead) freeSetup = -1;
+        else if (!(H->o.lives ? FS.o.lives : (FS.o.lives || lostOf(&FS) >= lostOf(H)))) freeSetup = -2;
+        else if (cutsShort(&FS)) freeSetup = -3;
+        else if (wastesThree(&FS)) freeSetup = -4;
+        else if (spendsReserve(&FS)) freeSetup = -5;
+        else if (!(FS.o.twinAfter >= 0 && H->o.twinAfter >= 0 && FS.o.twinAfter < H->o.twinAfter)) freeSetup = -6;
+        else { P.line = &FS; freeSetup = 1; }
       }
     }
   }
