@@ -561,7 +561,7 @@ static Played playOf(const Read *R, int n) {
         else if (!(H->o.lives ? FS.o.lives : (FS.o.lives || (FS.o.lostAt != NOT_ASKED && diesAt(&FS) >= diesAt(H))))) freeSetup = -2;   // (an unknown loss is never no sooner)
         else if (cutsShort(&FS)) freeSetup = -3;
         else if (wastesThree(&FS)) freeSetup = -4;
-        else if (spendsReserve(&FS)) freeSetup = -5;
+        else if (setupSpendsReserve(&FS)) freeSetup = -5;
         else { P.line = &FS; freeSetup = 1; }
       }
     }

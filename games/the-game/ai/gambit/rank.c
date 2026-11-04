@@ -381,8 +381,16 @@ static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->ap
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
+// (THE MODE THAT ASKS AN EIGHT FIRST -- finish them -- and the reserve a set-up toward it keeps: half a break's walk. The eight is the
+// mode's goal, and its set-up is built of the window the mode is played with; the judge presses every line under the window as it is,
+// so a set-up the next break could not be pressed after reads as lost all the same)
+static int eightFirst(void) { if (!theList.n || !theList.aim[0].combo.op) return 0; const Test *t = &theList.aim[0].combo; return (t->op == OP_GT ? t->n + 1 : t->n) >= 8 && (t->op == OP_GE || t->op == OP_GT || t->op == OP_EQ); }
+static int setupSpendsReserve(const Judge *a) {
+  if (!eightFirst()) return spendsReserve(a);
+  return pressAllowance >= 0 && !(a->apBroke > 0) && pressAllowance - lineWalk(a) < BREAK_WALK / 2;
+}
 static int nearerEight(const Judge *a, const Judge *b) {
-  if (a->o.twinAfter < 0 || b->o.twinAfter < 0 || a->o.twinAfter >= b->o.twinAfter || b->o.twinAfter >= 99 || spendsReserve(a)) return 0;
+  if (a->o.twinAfter < 0 || b->o.twinAfter < 0 || a->o.twinAfter >= b->o.twinAfter || b->o.twinAfter >= 99 || setupSpendsReserve(a)) return 0;
   return a->o.lives || (!b->o.lives && diesAt(a) >= diesAt(b));
 }
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
@@ -517,7 +525,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // for may be told of by then or not
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = reserveShort(x), ry = reserveShort(y);
-    if (rx != ry) return (cmpKey = __LINE__, (rx - ry));
+    // (a swap toward the eight the mode asks first, the half reserve kept, is not held for the whole: nearerEight)
+    int ex = eightFirst() && rx > ry && nearerEight(x, y), ey = eightFirst() && ry > rx && nearerEight(y, x);
+    if (rx != ry && !ex && !ey) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
