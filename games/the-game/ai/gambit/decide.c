@@ -567,10 +567,10 @@ static Played playOf(const Read *R, int n) {
     }
   }
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
-  // hold, on a board with no garbage on it or on its way and not raising, the trigger of a chain the mode's first entry asks for is
+  // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
   chainUp = chainNow = chainAfter = 0;
-  if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && !R->under && decQ.narr == 0 && theTables.r[R->rule].table == 2 &&
+  if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
       theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
