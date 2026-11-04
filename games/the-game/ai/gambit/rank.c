@@ -543,7 +543,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // pressed of a line put down is spent from the input window for nothing
   if (x->carried != y->carried && !x->hold && !y->hold && (lx || lostAlike(x, y))) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke) && !(goalLine(o) && !goalLine(c))) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke) && !(goalLine(o) && !goalLine(c)) && !(c->o.j.threes > 0 && !(o->o.j.threes > 0)))
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
@@ -575,6 +576,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
     // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
     else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
+    // (of two that break: one that clears no three for nothing on the way -- a three that breaks nothing and begins no chain, beside the
+    // clear that breaks, is panels thrown away -- before one that does, where it breaks as much)
+    else if ((x->o.j.threes > 0) != (y->o.j.threes > 0) && (x->o.j.threes > 0 ? y : x)->apBroke >= (x->o.j.threes > 0 ? x : y)->apBroke) return (cmpKey = __LINE__, (x->o.j.threes > 0 ? 1 : -1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
     // (of two that break: the one that meets the earlier combo entry of the mode's list -- the combo the mode asks goes with the break)
     else if (comboEntry(x) != comboEntry(y)) return (cmpKey = __LINE__, (comboEntry(x) - comboEntry(y)));
