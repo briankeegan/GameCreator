@@ -42,7 +42,7 @@ typedef struct {
   int32_t lvU, lvG;                       // a level swap (0: none)
   int32_t haveRl, rlN, rl[2], rlAt;
   int32_t nstart; XLine start[MAXSTARTS];  // chains begun: a swap that starts a clear, and the links its fall is continued by
-  int32_t tried, wide; double idleMs, searchMs, planShare, planFirst;   // (wide: the passes planned again with time over, and kept; the planner's share, and what its first pass took)
+  int32_t tried, wide, planDepth, planLong; double idleMs, searchMs, planShare, planFirst;   // (wide: the passes planned again with time over, and kept; the planner's share, and what its first pass took)
 } Found;
 #define READY_LINE_MS 120
 // whether a list asks for a chain at all
@@ -74,7 +74,7 @@ static void startChains(const Read *R, Found *S, double ms) {
                    left / (ns - j) };
     Ext E;
     extend(&q, &eo, &E);
-    if (!E.best.set || E.best.aimIndex < 0 || E.best.nseq + 1 > PLAN_SEQ) continue;
+    if (!E.best.set || E.best.aimIndex < 0 || E.best.nseq + 1 > MAXLINE) continue;
     XLine *l = &S->start[S->nstart++];
     *l = E.best;
     l->nseq = E.best.nseq + 1; l->seq[0] = starts[j];
@@ -192,7 +192,7 @@ static void searchAll(const Read *R, Found *S) {
     static LOCAL Plan wide; static LOCAL Paths passSeeds, passOut;
     while (!clockOut()) {
       double left = planEnd - nowMs(), last = S->ap.ms > 1 ? S->ap.ms : 1;
-      int32_t depth = imin(po.depth + 1, PLAN_SEQ - 1);
+      int32_t depth = imin(po.depth + 1, MAXLINE - 1);
       int32_t width = (int32_t)(po.width * (left / (1.3 * last)) * po.depth / depth);
       if (width > PLAN_WIDE_MAX) width = PLAN_WIDE_MAX;
       if (width < po.width) break;
@@ -202,8 +202,13 @@ static void searchAll(const Read *R, Found *S) {
       plan(&decQ, &pw, &wide);
       if (nowMs() - t >= pw.ms - 1 || clockOut()) { planOut = passOut; break; }
       wide.ms = nowMs() - t; S->ap = wide; S->wide++; po = pw;
-      if (width == PLAN_WIDE_MAX && depth == PLAN_SEQ - 1) break;
+      if (width == PLAN_WIDE_MAX && depth == MAXLINE - 1) break;
     }
+    // (the log's: the depth the last pass kept was planned to, and the longest line it ended with)
+    S->planDepth = po.depth; S->planLong = S->ap.nsetupLine;
+    { const PLine *ls[] = { &S->ap.nearest, &S->ap.quick, &S->ap.lowest, &S->ap.stopBest, &S->ap.pair };
+      for (int i = 0; i < 5; i++) if (ls[i]->set && ls[i]->nseq > S->planLong) S->planLong = ls[i]->nseq;
+      for (int i = 0; i < MAXAIMS; i++) if (S->ap.perAim[i].set && S->ap.perAim[i].nseq > S->planLong) S->planLong = S->ap.perAim[i].nseq; }
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
   }
   int32_t nl = R->F.known[FACT_US_NEXTLANDS] ? (int32_t)R->F.v[FACT_US_NEXTLANDS] : 0;

@@ -5,7 +5,7 @@
 // swap in time (by).
 
 typedef struct {
-  int32_t set, nseq, seq[PLAN_SEQ];
+  int32_t set, nseq, seq[MAXLINE];
   int32_t cells, chain, combo, broke, done, fire, floor, base, aimIndex;
   double near;
 } XLine;
@@ -15,6 +15,7 @@ typedef struct { XLine best, nearest, three; double ms; } Ext;   // three: the c
 // the floor (kept: with what it broke, floor: as if it broke nothing)
 typedef struct { int32_t ok, cells, chain, combo, broke, kept, floor, done; } Sent;
 static LOCAL Ctx *extCtx;
+static LOCAL PathTree extTree;   // (its lines, as the planner's: search/plan.c PathTree)
 // (WHAT A LINE'S STEPS MADE, every one from the root -- its walks, the frames it waited for a pair, its presses: a step's stats are its
 // own frames' (search.h advance), so a link or a break made while a swap is walked to is the line's as much as one made in its settle,
 // as the judge counts them)
@@ -82,7 +83,8 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   static LOCAL int32_t idx[PLAN_POOL], tmpI[PLAN_POOL], keyH[PLAN_POOL], keyS[PLAN_POOL], ms[MAXROWS * W];
   PItem *pool = poolA, *next = poolB;
   int npool = 1;
-  memset(&pool[0], 0, sizeof pool[0]); pool[0].n = root;
+  memset(&pool[0], 0, sizeof pool[0]); pool[0].n = root; pool[0].path = -1;
+  pathReset(&extTree);
   for (int d = 1; d <= o->depth && npool && !clockOut(); d++) {
     int nn = 0;
     for (int pi = 0; pi < npool && !clockOut(); pi++) {
@@ -91,7 +93,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
       // and one pressed with the window low is pressed held, as late as its walk waits -- so the extension presses as the judge will)
       int left = -1; const Board *lb = 0;
       if (pressAllowance >= 0) { lb = ensureBoard(x, pool[pi].n); left = allowLeftAt(NODE(x, pool[pi].n)->t - NODE(x, root)->t, pool[pi].acts); }
-      for (int j = 0; j < nm && nn < PLAN_POOL; j++) {
+      for (int j = 0; j < nm && nn < PLAN_POOL && pool[pi].nseq < MAXLINE; j++) {
         int acts = lb ? actionsFor(lb->curRow, lb->curCol, CR(ms[j]), CC(ms[j]), left) : 0;
         if (lb && acts > left) continue;
         // (pressed as the judge presses it: the walk begun at once, waited on while its pair still moves, a first walk begun within a
@@ -103,12 +105,12 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
         if (liveNode(x, out) && from >= 0 && pressTight) out = step(x, from, MK_SWAP, CR(ms[j]), CC(ms[j]), 0);
         pressTight = tight0;
         if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
+        int32_t path = pathAdd(&extTree, pool[pi].path, ms[j], NODE(x, pool[pi].n)->t);
+        if (path == -2) continue;
         PItem *k = &next[nn]; memset(k, 0, sizeof *k);
-        k->n = out; k->nseq = imin(pool[pi].nseq + 1, PLAN_SEQ); k->acts = pool[pi].acts + acts;
+        k->n = out; k->nseq = pool[pi].nseq + 1; k->path = path; k->acts = pool[pi].acts + acts;
         k->xcc = pool[pi].xcc; k->xchain = pool[pi].xchain; k->xcombo = pool[pi].xcombo; k->xbroke = pool[pi].xbroke;
         madeAlong(x, out, pool[pi].n, k);
-        for (int q2 = 0; q2 < pool[pi].nseq && q2 < PLAN_SEQ; q2++) k->seq[q2] = pool[pi].seq[q2];
-        if (pool[pi].nseq < PLAN_SEQ) k->seq[pool[pi].nseq] = ms[j];
         nn++;
       }
     }
@@ -124,17 +126,18 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
       int32_t fire = NODE(x, k->n)->t;
       if (o->by != NOT_ASKED && fire > o->by) g.kept = 0;
       Made made = { g.combo, g.chain, g.broke, g.cells - baseCells };
-      #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) (L).seq[s_] = k->seq[s_]; \
+      int32_t kseq[MAXLINE]; pathRead(&extTree, k->path, k->nseq, kseq, 0);
+      #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) (L).seq[s_] = kseq[s_]; \
         (L).cells = g.cells; (L).chain = g.chain; (L).combo = g.combo; (L).broke = g.broke; (L).done = g.done; (L).fire = fire; (L).floor = g.floor; \
         (L).base = baseCells; (L).aimIndex = (ai); } while (0)
       if (g.kept) {
         double xn = nearList(o->aims, made);
-        if (xn > 0 && (!E->nearest.set || xn > E->nearest.near || (xn == E->nearest.near && g.cells > E->nearest.cells)) && lineFits(k->seq, k->nseq, 0)) { XFILL(E->nearest, -1); E->nearest.near = xn; }
+        if (xn > 0 && (!E->nearest.set || xn > E->nearest.near || (xn == E->nearest.near && g.cells > E->nearest.cells)) && lineFits(kseq, k->nseq, 0)) { XFILL(E->nearest, -1); E->nearest.near = xn; }
         for (int ai = 0; ai < na; ai++)
-          if (meets(&o->aims->aim[ai], made) && (!per[ai].set || g.cells > per[ai].cells) && lineFits(k->seq, k->nseq, 0)) XFILL(per[ai], ai);
+          if (meets(&o->aims->aim[ai], made) && (!per[ai].set || g.cells > per[ai].cells) && lineFits(kseq, k->nseq, 0)) XFILL(per[ai], ai);
         // (A 2x GOING TAKEN TO THREE -- the owner: at least a 3x over a 2x: the line that makes the chain three or more and breaks the most
         // garbage, whatever the list asks)
-        if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineLives(k->seq, k->nseq, 0)) XFILL(E->three, -1);
+        if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineLives(kseq, k->nseq, 0)) XFILL(E->three, -1);
       }
       #undef XFILL
       k->h = connectedOf(ensureBoard(x, k->n)); k->set = g.cells;   // (set: its score, what it sends)
