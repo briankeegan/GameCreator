@@ -533,7 +533,10 @@ static Played playOf(const Read *R, int n) {
   // swap toward the eight kept as the target (propose.c twinNextSwap), judged on the engine, is pressed instead -- only where it lives
   // as the hold does or is lost no sooner, breaks the board's chain no shorter, wastes no three and keeps the window's reserve)
   freeSetup = 0;
-  if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && twinWanted && !clockOut()) {
+  // (asked up to the move's own frame, as the rescue judges -- the host's hard stop, clockFrameOut: the decision's searches spend its
+  // share, and a second hand asked only with time left over was asked at a third of the holds)
+  if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && twinWanted && clockFrameOut && !clockFrameOut()) {
+    double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     int32_t sw;
     if (twinNextSwap(decQ.b, &sw)) {
       static Judge FS; Cand k; int32_t one[1] = { sw };
@@ -550,6 +553,7 @@ static Played playOf(const Read *R, int n) {
         else { P.line = &FS; freeSetup = 1; }
       }
     }
+    clockDue = keepDue; clockShare = keepShare;
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
