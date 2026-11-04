@@ -140,6 +140,17 @@ where it meets the new mode's first entry or breaks garbage.
   gambit.json, `then` that mode); the other modes only once it does well there. Every run new games: a seed not run before (a seed
   run again only to set two builds side by side). Main is not run again: its measure is the one on record. Its log goes in the same
   run, and a run is never spent on a log alone.
+- **A run, as fast as it goes** (the owner): one change, one run, one mode -- the weakest on record; never two modes at once, never a run
+  that decides nothing. A run takes about ten minutes (seven of them the game, in real time: Gambit thinks on the clock). A run made
+  stale by a newer change is cancelled at once. Each run is reported with when it began and when it should end, in ET on the 24-hour
+  clock.
+- **The measure, every run** (the owner): the run's own report on Actions prints it (`gambit_summary.js`, "the measure"): survived; the
+  attacks each mode made that met its aims and its first; the decisions that passed the mode over; the swaps that came to nothing; the
+  wasted threes a minute. A change is judged on all of them, not on survived alone.
+- **Main deploys the bots** (the owner): a change reaches main only once its run shows it works -- survived no worse, the measure no
+  worse. Each merge is reported with its commit, its time in ET and its numbers. A change that only logs or reports goes to main at
+  once: it plays nothing.
+- **Bot fights and deploys are the owner's**: not this work's.
 
 ## How -- infra, not patches
 
