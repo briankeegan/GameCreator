@@ -142,6 +142,18 @@ narrowed, not dropped.
      horizon alone and the walk-charged survival key no longer do it; build 24/24 and 20/24, pressure 22/24. Still passing it over (a
      run of build, about 27,000 decisions): the floor (k451, the owner's rule, ~250), the window's reserve (~100), garbage broken an
      action between two breaks (~60), the line in progress kept (~35), the chain carried on (the owner's rule, ~50).
+   - **The mode debounced** (the owner): the enemy topped out calls finish them at once; any other change of mode is taken once it has
+     been called for 60 frames, and a line begun in another mode is carried on only where it meets the new mode's first entry or
+     breaks. Build: 20/24 and 20/24 on seed 62.
+   - **The opener's second hand** (the owner: the opener has the time to set its chain up): where the opener holds with no garbage on
+     the board, the trigger of the first entry's chain, else the set-up swap the trigger chain is longest after -- judged as any line.
+     In the 24-game fights every such hold is on a board a block on its way kills whatever is pressed (20 offered, 0 lived), so it is
+     measured live.
+   - **No line is capped at a number of swaps**: the planner's and the extension's lines are kept as a tree, depth bounded by the
+     clock (plan= /d the depth planned, /l the longest line kept). Build seed 74 (run 2249): planned to 63 deep in 698 decisions, a
+     line over 16 swaps kept in 9 of about 33,000 -- the old cap was rarely what stopped a line. Survived 20/24.
+   - **A 24-game run is noisy**: the same behaviour on the same seed gave 20/24 and 23/24 (runs 2247, 2248) -- the clock decides how
+     far each search goes, and the runner's clock differs run to run. A gap of 3 games in 24 is not a measurement.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
      0.89, Gambit 0.08 in the same games. Most are two vertical runs in adjacent columns, built by sorting the rows, then one swap.
 11b. **Finish them whenever the enemy is topped out**, its stop time or not (the owner: their stack above the board, so that they could
