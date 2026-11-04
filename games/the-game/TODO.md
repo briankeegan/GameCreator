@@ -133,6 +133,10 @@ narrowed, not dropped.
      arm, a cross or an L; a side its arm alone). Switching, seeds 92 and 91: survived 43/48 and 46/48 (main 44/48 and 44/48), finish
      them 8+ 0.32 a minute (0.35, 0.33, 0.29 a run) against 0.16-0.19, an eight within 20 swaps on 940 holds of a round against 675.
      Next: the eight loaded before finish them (1 of 488 switches).
+   - **Starved boards** (the owner, live: three rows or less, dying for want of panels). The material floor is 40 (the owner). On main:
+     under garbage below the floor, a clear that breaks nothing goes after a line that keeps the panels and is lost a break's time away.
+     96 games: boards under 20 panels 12.3% of decisions against 18.4%, large garbage 31/32 against 29/32, survived 88/96 against
+     89/96; finish them 8+ 0.24 a minute against 0.32 -- the eights it gave up are open.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
      0.89, Gambit 0.08 in the same games. Most are two vertical runs in adjacent columns, built by sorting the rows, then one swap.
 11b. **Finish them whenever the enemy is topped out**, its stop time or not (the owner: their stack above the board, so that they could
