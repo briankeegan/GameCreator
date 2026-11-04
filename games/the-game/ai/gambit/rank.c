@@ -497,6 +497,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = x->apBroke > 0 ? x : y, *o = x->apBroke > 0 ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (x->apBroke > 0 ? -1 : 1));
   }
+  // 1'm. LOW, THE PANELS KEPT (the owner: low, spend less and break): garbage on the board, below the material floor -- of two that both
+  // live, or are lost alike with the keeper lost no sooner, and break as much, the one that leaves a row's worth more of the next break's
+  // panels (outcome.c matLeft), the mode's line or not: a board below the floor is lost for want of panels, a break's time later
+  if (decF.under && decF.belowFloor && (lx || lostAlike(x, y)) && x->o.matLeft >= 0 && y->o.matLeft >= 0 && iabs(x->o.matLeft - y->o.matLeft) >= W) {
+    const Judge *k = x->o.matLeft > y->o.matLeft ? x : y, *s = k == x ? y : x;
+    if (imax(0, brokeSeen(k)) >= imax(0, brokeSeen(s)) && (lx || diesAt(k) >= diesAt(s))) return (cmpKey = __LINE__, (k == x ? -1 : 1));
+  }
   // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
   // (readyNext) before one that does not and breaks no more garbage now -- a board that cannot break what lands next is the loss
   // survival's horizon does not reach yet; a break now is never given up for it
