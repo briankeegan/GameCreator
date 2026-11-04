@@ -488,6 +488,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (cx != cy && !brokeMore && !spends) return (cmpKey = __LINE__, (cy - cx));
     }
   }
+  // 1'L. LOW, BREAK (the owner: low, spend less and focus on breaking): neither living, garbage on the board, below the material floor --
+  // of two lost alike, a line that breaks garbage and is lost no sooner before one that breaks none, the list's or not: the break is the
+  // panels the board lacks, and a board waited on below the floor finds no break later
+  if (!lx && decF.under && decF.belowFloor && lostAlike(x, y) && (x->apBroke > 0) != (y->apBroke > 0)) {
+    const Judge *b = x->apBroke > 0 ? x : y, *o = x->apBroke > 0 ? y : x;
+    if (diesAt(b) >= diesAt(o)) return (cmpKey = __LINE__, (x->apBroke > 0 ? -1 : 1));
+  }
   // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
   // (readyNext) before one that does not and breaks no more garbage now -- a board that cannot break what lands next is the loss
   // survival's horizon does not reach yet; a break now is never given up for it
