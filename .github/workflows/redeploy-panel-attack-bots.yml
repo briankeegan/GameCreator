@@ -13,13 +13,13 @@ on:
     paths:
       - 'games/the-game/ai/gambit/**'
       - 'games/the-game/ai/eval/survivor-profiles/**'
-  # a manual test of the token: by default only the beta server, where nothing numbered is deployed, so it does nothing there
+  # a manual test of the token: a dry run by default -- the redeploy reports what it would do and starts nothing
   workflow_dispatch:
     inputs:
-      servers:
-        description: 'servers to ask for a redeploy (space separated)'
-        required: false
-        default: 'betaserver.panelattack.com:59569'
+      dry_run:
+        description: 'dry run: report what would be redeployed, start nothing'
+        type: boolean
+        default: true
 
 concurrency:
   group: redeploy-panel-attack-bots
@@ -37,12 +37,12 @@ jobs:
       - name: Ask for the redeploys
         env:
           TOKEN: ${{ secrets.PANEL_GAME_TOKEN }}
-          SERVERS: ${{ github.event_name == 'push' && 'panelattack.com:49569 betaserver.panelattack.com:59569' || inputs.servers }}
+          ADVANCED: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'only-if-running dry-run' || 'only-if-running' }}
         run: |
           [ -n "$TOKEN" ] || { echo "::error::the secret PANEL_GAME_TOKEN is not set in this repo"; exit 1; }
-          for server in $SERVERS; do
+          for server in panelattack.com:49569; do
             curl -fsS -X POST \
               -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
               https://api.github.com/repos/briankeegan/panel-game/actions/workflows/bot-prod-smoke-test.yml/dispatches \
-              -d "{\"ref\":\"bramp/multi-player\",\"inputs\":{\"mode\":\"ranmaru-deploy\",\"server\":\"$server\",\"bot\":\"gambit\",\"name\":\"Ranmaru_p#_CPU\",\"hours\":\"5\",\"advanced\":\"only-if-running\"}}"
+              -d "{\"ref\":\"bramp/multi-player\",\"inputs\":{\"mode\":\"ranmaru-deploy\",\"server\":\"$server\",\"bot\":\"gambit\",\"name\":\"Ranmaru_p#_CPU\",\"hours\":\"5\",\"advanced\":\"$ADVANCED\"}}"
           done
