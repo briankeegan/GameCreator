@@ -161,6 +161,12 @@ narrowed, not dropped.
    - **Low, spend less and break** (the owner): below the floor, a clear that breaks nothing goes after a line that keeps the panels
      with garbage on its way as well as on the board. Build seed 78: 22/24 against 19/24, large garbage 7/8 against 5/8 (runs 2260,
      2256). Main on seed 78 before it: finish them 22, big chain 21, pressure 19 (runs 2257-2259).
+   - **Under garbage, break; while it pops, set up** (the owner: it holds too much, it waits too long to break garbage, it can do
+     things while garbage is breaking). Under garbage a break goes before a line that breaks none and meets nothing the mode asks (both
+     living, or lost alike and the break no sooner; below the floor before any); while a slab pops a set-up goes before the hold, the
+     reserve kept. Seed 78: big chain 22/24 against 21, pressure 22/24 against 21 (runs 2266, 2267 against 2262, 2261); the hold
+     while a slab pops 50% of those decisions against 67%. What holds it now is the input window (holdOver=k520: 10-22 actions left
+     of a break's 20): the next lever is fewer actions spent on lines put down (31% of them).
    - **A 24-game run is noisy**: the same behaviour on the same seed gave 20/24 and 23/24 (runs 2247, 2248) -- the clock decides how
      far each search goes, and the runner's clock differs run to run. A gap of 3 games in 24 is not a measurement.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
