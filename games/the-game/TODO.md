@@ -120,7 +120,15 @@ narrowed, not dropped.
      and 38/48; living lines only (idea126) 0.15 and 0.18, 44/48 and 42/48; living or lost three breaks' time away (idea127) 0.32 --
      9 of the eights two-column lines played on boards set up in the modes before -- 40/48 and 26/32. The distance in finish them only
      (idea128): round 1 23/24, 8+ 0.19 (main's round 1 23/24, 0.18). The set-up key only where the nearer line is lost no sooner
-     (idea129): 22/24, 0.17. The set-ups that double the eights are the ones that spend a break's time: the owner's call.
+     (idea129): 22/24, 0.17. The owner: never at the cost of the board's life -- set up between moves, of what is free.
+   - **Set up between moves** (the owner: a partial set-up, finished later; the time the board waits). Half the decisions are the hold.
+     The set-ups lost to the hold at the same loss because lostOf charges the walk (8 frames an action): a set-up held to "lost no
+     sooner" read as lost sooner on the hold's own frame. diesAt is the frame the board is lost, no walk charged. With it (idea138: one
+     eight kept as the target across decisions, its next swap pressed where the decision is the hold and it costs nothing -- free8=;
+     the first swaps of the cheapest eights offered as set-ups, ranked before the wait where lost no sooner and the reserve kept):
+     survived 42/48 and 45/48 against 44/48 and 44/48, 329 set-up swaps pressed over the hold and 377 by the rank, 8+ 0.16 a minute
+     against 0.16-0.19, an eight loaded at 2 of 477 switches into finish them. The set-ups are free and are played; on most boards no
+     two-column eight is within 20 swaps, so there is little to set up. Open: what the boards can make instead (crosses, Ls).
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
      0.89, Gambit 0.08 in the same games. Most are two vertical runs in adjacent columns, built by sorting the rows, then one swap.
 11b. **Finish them whenever the enemy is topped out**, its stop time or not (the owner: their stack above the board, so that they could
