@@ -19,6 +19,7 @@ typedef struct {
 typedef struct {
   int32_t dead, lostAt, lives, fits, ready, late;
   int32_t spent;   // under the material floor (outcomeOf)
+  int32_t promised;  // it lives only by the break in reach once the next block lands (its readiness), not standing the horizon itself
   int32_t nextBuild; // a line that breaks: the board it leaves has a break to build, or no garbage left (outcomeOf); -1 not asked
   int32_t panelsLeft; // the panels on the board the line leaves (outcomeOf); -1 not asked
   int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
@@ -142,6 +143,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     int breaks = o.j.made.broke > 0, stands = o.j.lostAt == FOREVER;
     o.dead = 0; o.ready = ready;
     o.lives = breaks || !coming ? (stands || ready == 1) : (ready == 1 || (ready == NOT_ASKED && stands));
+    o.promised = o.lives && !stands;
     o.fits = fitsList(&theList, o.j.made, &o.j, 1) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;

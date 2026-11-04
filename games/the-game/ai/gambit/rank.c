@@ -419,6 +419,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOn(x), ly = livesOn(y);
   // 1. lives before does not
   if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
+  // (and the line in progress standing the horizon only, beside one that lives standing it whole -- not by a promise of a break: the
+  // one that lives first; the line in progress keeps its place against promises, not against a board that lives)
+  if (lx && ly && !!x->o.lives != !!y->o.lives) { const Judge *t = x->o.lives ? x : y; if (!t->o.promised) return (cmpKey = __LINE__, (t == x ? -1 : 1)); }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
