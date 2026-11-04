@@ -154,8 +154,10 @@ narrowed, not dropped.
      line over 16 swaps kept in 9 of about 33,000 -- the old cap was rarely what stopped a line. Survived 20/24.
    - **The break search's own board first**: lines carried from the last decision seeded the touch beam deep and crowded out a break
      the board had now -- in run 2249, 29 of 102 boards before the losses had a break the live search missed, 16 of them found again
-     fresh in the same work. On main the beam from the board's own first swaps runs first, in half the share: 0 of 52 missed (run
-     2250, same games), build survived 22/24 against 20/24.
+     fresh in the same work. The beam from the board's own first swaps first, in half the share: 0 of 52 missed (run 2250, same
+     games), build survived 22/24 against 20/24. Pressure still missed 21 of 86 (run 2251): many need more than half the share. On
+     main one beam over the whole share, lines carried on holding at most half of it: pressure 6 of 51 missed, survived 22/24 against
+     21/24 (run 2254, same games).
    - **A 24-game run is noisy**: the same behaviour on the same seed gave 20/24 and 23/24 (runs 2247, 2248) -- the clock decides how
      far each search goes, and the runner's clock differs run to run. A gap of 3 games in 24 is not a measurement.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
