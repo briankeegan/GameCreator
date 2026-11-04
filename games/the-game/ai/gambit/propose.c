@@ -314,7 +314,8 @@ static int growLines(Cand *out, int n, int cap) {
   }
   return n;
 }
-// TWO COLUMNS, ONE SWAP: two columns side by side, each a run of its colour but for the trigger row, where the two colours sit the wrong
+// TWO COLUMNS, ONE SWAP (and the arms beside them: each swapped panel may also complete a three along the trigger row -- X at c-2, c-1, Y
+// at c+2, c+3 -- the column run and its arm one combo, a cross or an L, as the players make them: plans/gambit-combos.md): two columns side by side, each a run of its colour but for the trigger row, where the two colours sit the wrong
 // way round -- the swap there drops each panel into the other's run, both runs at once, a combo of eight or more. Each row of the runs is
 // sorted along itself first (its own panels walked within the row, every cell walked through a panel at rest on one, so nothing falls),
 // then the trigger. Runs
@@ -361,7 +362,49 @@ static int twinThree(int32_t g[][W + 2], int top) {
   }
   return 0;
 }
-typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1; } Twin;
+typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1, hx, hy; } Twin;   // (hx, hy: the arms -- X at c-2, c-1 and Y at c+2, c+3 of the trigger row -- 2 or 0; a0 > a1, b0 > b1: no column run)
+// (the panels an eight clears: each side its column run and its arm, the trigger cell once)
+static int twinSize(const Twin *t) { return (t->a1 >= t->a0 ? t->a1 - t->a0 + 1 : 1) + t->hx + (t->b1 >= t->b0 ? t->b1 - t->b0 + 1 : 1) + t->hy; }
+// (A ROW SORTED TO SEVERAL COLUMNS: each target column's colour walked in from the nearest panel of it that need not cross a column already
+// set -- the targets in the order given; the fewest swaps of the two orders, nearest first and as given; -1 none)
+static int rowFixMulti(const int32_t *row, const uint8_t *ok, const int *col, const int32_t *colour, int nt, RowFix *f) {
+  int best = 99; f->n = 0; f->ok = 0;
+  for (int order = 0; order < 2; order++) {
+    int32_t cur[W + 2]; for (int c = 0; c <= W + 1; c++) cur[c] = row[c];
+    uint8_t lock[W + 2] = { 0 }; int n = 0, bad = 0; int32_t at[8];
+    int idx[6]; for (int i = 0; i < nt; i++) idx[i] = i;
+    if (order) for (int i = 0; i < nt; i++) for (int j = i + 1; j < nt; j++) if (col[idx[j]] < col[idx[i]]) { int t = idx[i]; idx[i] = idx[j]; idx[j] = t; }
+    for (int s = 0; s < nt && !bad; s++) {
+      int to = col[idx[s]]; int32_t want = colour[idx[s]];
+      if (!ok[to]) { bad = 1; break; }
+      if (cur[to] == want) { lock[to] = 1; continue; }
+      int from = 0, d = 99;
+      for (int p = 1; p <= W; p++) {
+        if (lock[p] || cur[p] != want || !ok[p]) continue;
+        int lo = imin(p, to), hi = imax(p, to), clear = 1;
+        for (int q = lo; q <= hi; q++) if (!ok[q] || (q != to && q != p && lock[q])) clear = 0;
+        if (lock[to]) clear = 0;
+        if (clear && iabs(p - to) < d) { d = iabs(p - to); from = p; }
+      }
+      if (!from) { bad = 1; break; }
+      int p = from;
+      while (p != to) { int l = p < to ? p : p - 1; if (n >= 8) { bad = 1; break; } int32_t v = cur[l]; cur[l] = cur[l + 1]; cur[l + 1] = v; at[n++] = (int32_t)l; p += p < to ? 1 : -1; }
+      lock[to] = 1;
+    }
+    if (bad || n >= best) continue;
+    best = n; f->n = n; for (int i = 0; i < n; i++) f->at[i] = at[i]; f->ok = 1;
+  }
+  return f->ok ? best : -1;
+}
+// (the trigger row of t: Y at c, X at c+1 -- the wrong way round -- and its arms)
+static int trigFix(const int32_t *row, const uint8_t *ok, int c, int32_t X, int32_t Y, int hx, int hy, RowFix *f) {
+  if (!hx && !hy) return twinRowFix(row, ok, c, Y, c + 1, X, f);
+  int col[6], nt = 0; int32_t colour[6];
+  col[nt] = c; colour[nt++] = Y; col[nt] = c + 1; colour[nt++] = X;
+  if (hx) { col[nt] = c - 1; colour[nt++] = X; col[nt] = c - 2; colour[nt++] = X; }
+  if (hy) { col[nt] = c + 2; colour[nt++] = Y; col[nt] = c + 3; colour[nt++] = Y; }
+  return rowFixMulti(row, ok, col, colour, nt, f);
+}
 // (every two-column eight the board can be sorted into within TWIN_MAXSWAPS, the cheapest TWIN_OFFER * 4 kept: the grid in g, its top
 // in *topOut, the cells that can be sorted in ok, the full rows in *rows)
 static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topOut, Twin *best, int *rows, int cap) {
@@ -376,28 +419,32 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
   int nb = 0;
   for (int c = 1; c < W; c++) for (int r = 1; r <= top; r++) {
     if (!any[r]) continue;
-    for (int32_t X = 1; X < 8; X++) for (int32_t Y = 1; Y < 8; Y++) {
-      if (X == Y) continue;
-      RowFix trig; int tc = twinRowFix(g[r], ok[r], c, Y, c + 1, X, &trig);
+    for (int32_t X = 1; X < 8; X++) for (int32_t Y = 1; Y < 8; Y++) for (int hx = 0; hx <= 2; hx += 2) for (int hy = 0; hy <= 2; hy += 2) {
+      if (X == Y || (hx && c - 2 < 1) || (hy && c + 3 > W)) continue;
+      RowFix trig; int tc = trigFix(g[r], ok[r], c, X, Y, hx, hy, &trig);
       if (tc < 0 || tc > cap) continue;
-      // (the cheapest run of X through row r in column c, and of Y in column c+1: each row's cost alone, a row shared by both counted once)
-      for (int la = 3; la <= 5; la++) for (int a0 = r - la + 1; a0 <= r; a0++) {
-        int a1 = a0 + la - 1;
-        if (a0 < 1 || a1 > top || r - a0 >= 3 || a1 - r >= 3) continue;
-        for (int lb = 8 - la; lb <= 5; lb++) for (int b0 = r - lb + 1; b0 <= r; b0++) {
-          int b1 = b0 + lb - 1;
-          if (lb < 3 || b0 < 1 || b1 > top || r - b0 >= 3 || b1 - r >= 3) continue;
-          int cost = tc, okAll = 1;
-          for (int q = imin(a0, b0); q <= imax(a1, b1) && okAll; q++) {
+      // (each side a run of its colour in its column through row r (3 to 5, split by the trigger row so neither clears before it), or
+      // none where its arm makes the three; eight or more in all -- each row's cost alone, a row shared by both counted once)
+      for (int la = hx ? 0 : 3; la <= 5; la = la ? la + 1 : 3) for (int a0 = la ? r - la + 1 : r + 1; a0 <= r; a0++) {
+        int a1 = la ? a0 + la - 1 : r;
+        if (la && (a0 < 1 || a1 > top || r - a0 >= 3 || a1 - r >= 3)) continue;
+        for (int lb = hy ? 0 : 3; lb <= 5; lb = lb ? lb + 1 : 3) for (int b0 = lb ? r - lb + 1 : r + 1; b0 <= r; b0++) {
+          int b1 = lb ? b0 + lb - 1 : r;
+          if (lb && (b0 < 1 || b1 > top || r - b0 >= 3 || b1 - r >= 3)) continue;
+          Twin t = { 0, c, r, X, Y, a0, a1, b0, b1, hx, hy };
+          if (twinSize(&t) < 8) continue;
+          int cost = tc, okAll = 1, qlo = imin(la ? a0 : r, lb ? b0 : r), qhi = imax(la ? a1 : r, lb ? b1 : r);
+          for (int q = qlo; q <= qhi && okAll; q++) {
             if (q == r) continue;
-            int wx = q >= a0 && q <= a1, wy = q >= b0 && q <= b1;
+            int wx = la && q >= a0 && q <= a1, wy = lb && q >= b0 && q <= b1;
             RowFix f; int k = any[q] ? twinRowFix(g[q], ok[q], wx ? c : 0, X, wy ? c + 1 : 0, Y, &f) : -1;
             if (k < 0) okAll = 0; else cost += k;
           }
           if (!okAll || cost > cap) continue;
+          t.cost = cost;
           int at = nb < TWIN_OFFER * 4 ? nb++ : -1;
           if (at < 0) { int w = 0; for (int i = 1; i < nb; i++) if (best[i].cost > best[w].cost) w = i; if (best[w].cost <= cost) continue; at = w; }
-          best[at] = (Twin){ cost, c, r, X, Y, a0, a1, b0, b1 };
+          best[at] = t;
         }
       }
     }
@@ -427,7 +474,7 @@ static int twinSort(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int
     RowFix f; if (twinRowFix(h[q], ok[q], wx ? t->c : 0, t->X, wy ? t->c + 1 : 0, t->Y, &f) < 0) return -1;
     for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l; if (twinThree(h, top)) bad = 1; }
   }
-  RowFix f; if (bad || twinRowFix(h[t->r], ok[t->r], t->c, t->Y, t->c + 1, t->X, &f) < 0) return -1;
+  RowFix f; if (bad || trigFix(h[t->r], ok[t->r], t->c, t->X, t->Y, t->hx, t->hy, &f) < 0) return -1;
   for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThree(h, top)) bad = 1; }
   return bad ? -1 : ns;
 }
@@ -496,7 +543,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
       continue;
     }
     seq[ns++] = t->r * 8 + t->c;
-    if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = (t->a1 - t->a0 + 1) + (t->b1 - t->b0 + 1); out[n].twin = 1; n++; offered++; twinOffered++; }
+    if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 1; n++; offered++; twinOffered++; }
   }
   return n;
 }
