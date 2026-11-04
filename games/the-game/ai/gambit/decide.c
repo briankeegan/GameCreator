@@ -231,6 +231,7 @@ static double contLostOf(const Judge *J, double give) {
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
 static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
+static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -527,6 +528,25 @@ static Played playOf(const Read *R, int n) {
     // (the line pressed later must be known to last as long: a loss it was not judged for never licenses waiting)
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
+  }
+  // (THE SECOND HAND -- the owner: set up between moves, never at the cost of the board's life: where the decision is the hold, the next
+  // swap toward the eight kept as the target (propose.c twinNextSwap), judged on the engine, is pressed instead -- only where it lives
+  // as the hold does or is lost no sooner, breaks the board's chain no shorter, wastes no three, keeps the window's reserve, and leaves
+  // the board nearer the eight on the engine as well)
+  freeSetup = 0;
+  if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && twinWanted && !clockOut()) {
+    int32_t sw;
+    if (twinNextSwap(decQ.b, &sw)) {
+      static Judge FS; Cand k; int32_t one[1] = { sw };
+      const Judge *H = P.top;
+      if (candOf(&k, PLAY_SETUP, one, 1, -1, 0)) {
+        k.settled = 0; k.twin = 2; freeSetup = -1;
+        if (judgeCand(R, &k, &FS) && !FS.o.dead && (H->o.lives ? FS.o.lives : (FS.o.lives || lostOf(&FS) >= lostOf(H))) && !cutsShort(&FS) &&
+            !wastesThree(&FS) && !spendsReserve(&FS) && FS.o.twinAfter >= 0 && H->o.twinAfter >= 0 && FS.o.twinAfter < H->o.twinAfter) {
+          P.line = &FS; freeSetup = 1;
+        }
+      }
+    }
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;

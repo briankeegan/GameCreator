@@ -413,6 +413,43 @@ static int twinCostOn(Board *b) {
   for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost;
   return lo;
 }
+// THE SWAPS THAT SORT ONE: the eight t's rows sorted, the rows nearest the cursor first, then the trigger row, on a copy of the grid g --
+// the trigger left unpressed; how many, or -1 where a row cannot be sorted or a three clears before the trigger
+static int twinSort(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq) {
+  static int32_t h[MAXROWS + 2][W + 2];
+  memcpy(h, g, sizeof h);
+  int ns = 0, bad = 0;
+  int lo = imin(t->a0, t->b0), hi = imax(t->a1, t->b1), up = iabs(b->curRow - lo) <= iabs(b->curRow - hi);
+  for (int s = 0; s <= hi - lo && !bad; s++) {
+    int q = up ? lo + s : hi - s;
+    if (q == t->r) continue;
+    int wx = q >= t->a0 && q <= t->a1, wy = q >= t->b0 && q <= t->b1;
+    RowFix f; if (twinRowFix(h[q], ok[q], wx ? t->c : 0, t->X, wy ? t->c + 1 : 0, t->Y, &f) < 0) return -1;
+    for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l; if (twinThree(h, top)) bad = 1; }
+  }
+  RowFix f; if (bad || twinRowFix(h[t->r], ok[t->r], t->c, t->Y, t->c + 1, t->X, &f) < 0) return -1;
+  for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThree(h, top)) bad = 1; }
+  return bad ? -1 : ns;
+}
+// THE SECOND HAND (the owner: set up between moves, in the time the board waits, never at the cost of its life): one eight kept as the
+// target across decisions -- the same two columns, colours and trigger row (a row up or down, the stack's rise), while the board still
+// holds it within TWIN_REACH swaps; else the cheapest -- so its swaps build one eight and never undo each other. Its next swap in *swap;
+// 0 where there is none (none in reach, or it is loaded: its trigger is the mode's to press)
+static Twin twinKept; static int32_t twinKeptSet;
+static int twinNextSwap(Board *b, int32_t *swap) {
+  static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2]; static Twin best[TWIN_OFFER * 4]; int top;
+  int nb = twinScan(b, g, ok, &top, best, 0, TWIN_REACH), w = -1;
+  for (int i = 0; i < nb && twinKeptSet; i++)
+    if (best[i].c == twinKept.c && best[i].X == twinKept.X && best[i].Y == twinKept.Y && iabs(best[i].r - twinKept.r) <= 1 && (w < 0 || best[i].cost < best[w].cost)) w = i;
+  for (int i = 0; i < nb && w < 0; i++) if (w < 0 || best[i].cost < best[w].cost) w = i;
+  if (w < 0) { twinKeptSet = 0; return 0; }
+  twinKept = best[w]; twinKeptSet = 1;
+  if (best[w].cost == 0) return 0;
+  int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, &best[w], seq);
+  if (ns < 1) return 0;
+  *swap = seq[0];
+  return 1;
+}
 static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
@@ -435,21 +472,8 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int offered = 0;
   for (int i = 0; i < nb && offered < TWIN_OFFER && n < cap; i++) {
     const Twin *t = &best[i];
-    static int32_t h[MAXROWS + 2][W + 2];
-    memcpy(h, g, sizeof h);
-    int32_t seq[MAXLINE]; int ns = 0, bad = 0;
-    // (the rows nearest the cursor first, then outward: the cursor walks the window once)
-    int lo = imin(t->a0, t->b0), hi = imax(t->a1, t->b1), up = iabs(b->curRow - lo) <= iabs(b->curRow - hi);
-    for (int s = 0; s <= hi - lo && !bad; s++) {
-      int q = up ? lo + s : hi - s;
-      if (q == t->r) continue;
-      int wx = q >= t->a0 && q <= t->a1, wy = q >= t->b0 && q <= t->b1;
-      RowFix f; if (twinRowFix(h[q], ok[q], wx ? t->c : 0, t->X, wy ? t->c + 1 : 0, t->Y, &f) < 0) { bad = 1; break; }
-      for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l; if (twinThree(h, top)) bad = 1; }
-    }
-    RowFix f; if (bad || twinRowFix(h[t->r], ok[t->r], t->c, t->Y, t->c + 1, t->X, &f) < 0) continue;
-    for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThree(h, top)) bad = 1; }
-    if (bad) continue;
+    int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, t, seq);
+    if (ns < 0) continue;
     // (SET UP BETWEEN MOVES -- the owner: the set-up built of moves that cost nothing, never of the board's life: the first one, two and
     // three of its swaps, each a line of its own -- a swap pressed where the board waits, the rest left for the next wait; the rank takes
     // one only where it is lost no sooner and keeps the window's reserve, rank.c nearerEight)
