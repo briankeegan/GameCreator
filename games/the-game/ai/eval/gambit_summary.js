@@ -11,6 +11,7 @@ var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
+var aimsIn = {}, goalMiss = { n: 0, dec: 0 };   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
 var frontS = {};   // (the frontiers carried on, search/frontier.c: per frontier, the lines kept and carried in, the decisions it was let go whole)
 var svSeed = [0, 0], rdyBeam = [0, 0], frontId = [0, 0, 0, 0];
@@ -177,6 +178,15 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         if (now === then) putDown.alike++; else { putDown.moved++; putDown.by.push(now - then); }
       }
     }
+    // (THE MODE'S AIM, IN THE MODE IT WAS MADE IN: each attack (GAMBITA) read against the aims of the mode of the decision before it --
+    // a game switched at the top-out is read for each mode it played; and the decisions that passed the mode over)
+    var inMode = null;
+    lines.forEach(function (l) {
+      var d = /^GAMBITD \d+ (.*?) play=/.exec(l);
+      if (d) { inMode = d[1]; goalMiss.dec++; if (/ goalMiss=/.test(l)) goalMiss.n++; return; }
+      var a = /^GAMBITA \d+ ([cx]) (\d+)/.exec(l); if (!a || !inMode) return;
+      var o = { combo: {}, chain: {} }; o[a[1] === 'c' ? 'combo' : 'chain'][a[2]] = 1; aimOf(inMode, o, aimsIn);
+    });
     // (SWITCHING: each switch by its direction -- the mode before it to the mode after -- and the mode a lost game was lost in)
     var was = null, one = null, switched = false, last = null;
     lines.forEach(function (l) {
@@ -346,10 +356,11 @@ function meetsAim(aim, combo, chain) {
   if (aim.chain && !test(chain, aim.chain)) return false;
   return !!(aim.combo || aim.chain);
 }
-function aimOf(mode, a) {
+function aimOf(mode, a, into) {
   var rule = RULES.filter(function (r) { return r.name === mode; })[0];
   if (!rule) return;
-  var t = aims[mode] || (aims[mode] = { met: 0, all: 0, first: 0, head: JSON.stringify((rule.aims || [])[0] || {}) });
+  into = into || aims;
+  var t = into[mode] || (into[mode] = { met: 0, all: 0, first: 0, head: JSON.stringify((rule.aims || [])[0] || {}) });
   var count = function (n, combo, chain) {
     t.all += n;
     if ((rule.aims || []).some(function (x) { return meetsAim(x, combo, chain); })) t.met += n;
@@ -370,6 +381,13 @@ Object.keys(modes).sort().forEach(function (k) {
                 Math.round(100 * (t.popLineupPlayed || 0) / t.pop) + '%, a full row broken ' + Math.round(100 * (t.popFull || 0) / t.pop) + '%' : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
+// THE MEASURE (the owner: every run, whether it meets the mode's goal and the moves it wastes): the attacks in each mode that met its
+// aims and its first, the decisions that passed the mode over, the swaps that came to nothing, the wasted threes a minute
+Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
+  console.log('the measure, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met its aims' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') + ', its first ' + t.head + ' ' + t.first + (t.all ? ' (' + Math.round(100 * t.first / t.all) + '%)' : '')); });
+{ var nmv0 = moves.clear + moves.setup + moves.break + moves.none + moves.open;
+  console.log('the measure, waste: the mode passed over in ' + goalMiss.n + ' of ' + goalMiss.dec + ' decisions; ' + (nmv0 ? Math.round(100 * moves.none / nmv0) : '-') + '% of ' + nmv0 +
+              ' swaps came to nothing; ' + moves.wasted + ' wasted threes' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '')); }
 // (HELD UNJUDGED: a decision whose lines the clock stopped the judge on, every one -- cands= `-jN` -- and the hold played for want of
 // a look at them; decide.c judges them again to the move's frame, rescued=1)
 (function () {

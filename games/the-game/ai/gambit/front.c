@@ -740,10 +740,12 @@ static void countAttacks(const Board *b) {
   if (fresh > 0 && nn > fresh && !(cc > F.chainMax)) F.st.together++;
   if (cc >= 2 && F.npendCombo) F.npendCombo = 0;
   // (EVERY COMBO OF FIVE OR MORE, ONE LINE (GAMBITC): the frame it is counted on and its size -- the mode it was made in is the one the
-  // decision before it was asked in: gambit_eights.js)
+  // decision before it was asked in: gambit_eights.js. EVERY ATTACK, ONE LINE (GAMBITA <frame> c <size> | x <chain>): the mode's aim
+  // read in the mode it was made in, gambit_summary.js)
   if (cc == 0 && F.npendCombo) {
     for (int i = 0; i < F.npendCombo; i++) {
       F.st.combo[imin(F.pendCombo[i], 63)]++;
+      { char la[48]; snprintf(la, sizeof la, "GAMBITA %d c %d", F.now, F.pendCombo[i]); flog(la); }
       if (F.pendCombo[i] >= 5) { char l[48]; snprintf(l, sizeof l, "GAMBITC %d %d", F.now, F.pendCombo[i]); flog(l); }
     }
     F.npendCombo = 0;
@@ -753,7 +755,7 @@ static void countAttacks(const Board *b) {
     if (cc >= 3) F.st.linkBy[fromGarbage ? LINK_GARBAGE : F.swapSince ? LINK_SWAP : LINK_ALONE][imin(cc, 31)]++;
     F.chainMax = cc; F.swapSince = 0;
   }
-  if (cc == 0 && F.chainMax >= 2) F.st.chain[imin(F.chainMax, 31)]++;
+  if (cc == 0 && F.chainMax >= 2) { F.st.chain[imin(F.chainMax, 31)]++; char la[48]; snprintf(la, sizeof la, "GAMBITA %d x %d", F.now, F.chainMax); flog(la); }
   if (cc == 0) F.chainMax = 0;
 }
 
