@@ -265,12 +265,18 @@ static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 // any other line that fires no fallback 2, then each fallback, 2 + its entry, and last a clear outside the list that breaks nothing --
 // the owner: a combo or chain the list does not ask for is the last resort, after every fallback)
 static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
+// (THE SET-UP TOWARD AN EIGHT, where the mode's first entry is a combo of eight or more -- the owner: finish them goes for the eights
+// and their set-up: a line whose board is TWIN_STEP swaps or more nearer a two-column eight than the board left alone (outcome.c
+// twinAfter, the hold's in twinHold) is a set-up toward the first entry)
+static int32_t twinHold = -1;
+static int firstIsEight(void) { if (theList.n < 1) return 0; const Test *c = &theList.aim[0].combo; return (c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8; }
+static int towardEight(const Judge *J) { return !J->hold && twinHold >= 0 && J->o.twinAfter >= 0 && J->o.twinAfter <= twinHold - TWIN_STEP && firstIsEight(); }
 static int goalKeyOf(const Judge *J) {
   if (J->hold) return 2;
   if (J->met == 0 || J->modeFirst) return 0;   // (the mode's first entry, under garbage too where it breaks nothing: the mode is played there)
-  if (fallbackOf(J)) return 2 + J->met;
-  if (J->outside && !(J->apBroke > 0) && (J->apCombo > 0 || J->apChain > 0)) return 3 + MAXAIMS;
-  return J->apBroke > 0 || setupPlay(J->k.play) ? 1 : 2;
+  if (fallbackOf(J) && !towardEight(J)) return 2 + J->met;
+  if (J->outside && !(J->apBroke > 0) && (J->apCombo > 0 || J->apChain > 0) && !towardEight(J)) return 3 + MAXAIMS;
+  return J->apBroke > 0 || setupPlay(J->k.play) || towardEight(J) ? 1 : 2;
 }
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
 // and none broken

@@ -317,6 +317,7 @@ static int ranked(const Read *R, const Found *S) {
   holdCand(R, 0, H);
   if (rescue) { clockDue = rescueDue; clockShare = rescueShare; rescues++; }
   order[n] = H; n++;
+  twinHold = H->o.twinAfter;
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   sortJudged(order, n);
   // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)

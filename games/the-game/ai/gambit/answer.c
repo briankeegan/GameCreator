@@ -569,6 +569,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" w3="); L_i(P.line ? P.line->o.j.threes : -1); if (P.line && wastesThree(P.line)) L_s("/w");   // (the line played: its wasted threes as the judge saw them)
   if (P.line && P.line->ideasAsked && P.line->ideas >= 0) { L_s(" ideas="); L_i(P.line->ideas); }
   if (pairOffered || (P.line && P.line->k.pair)) { L_s(" pair="); L_i(pairOffered); if (P.line && P.line->k.pair) L_s("/played"); }
+  if (P.line && towardEight(P.line)) { L_s(" toward8="); L_i(twinHold); L_s("/"); L_i(P.line->o.twinAfter); }
   if (twinLo > -2) { L_s(" twinLo="); L_i(twinLo); L_s("/"); L_i(twinRows); }
   if (twinOffered || (P.line && P.line->k.twin)) { L_s(" twin="); L_i(twinOffered); if (P.line && P.line->k.twin) L_s(P.line->k.twin == 2 ? "/setup" : "/played"); }
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
