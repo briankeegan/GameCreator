@@ -531,8 +531,7 @@ static Played playOf(const Read *R, int n) {
   }
   // (THE SECOND HAND -- the owner: set up between moves, never at the cost of the board's life: where the decision is the hold, the next
   // swap toward the eight kept as the target (propose.c twinNextSwap), judged on the engine, is pressed instead -- only where it lives
-  // as the hold does or is lost no sooner, breaks the board's chain no shorter, wastes no three, keeps the window's reserve, and leaves
-  // the board nearer the eight on the engine as well)
+  // as the hold does or is lost no sooner, breaks the board's chain no shorter, wastes no three and keeps the window's reserve)
   freeSetup = 0;
   if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && twinWanted && !clockOut()) {
     int32_t sw;
@@ -541,13 +540,13 @@ static Played playOf(const Read *R, int n) {
       const Judge *H = P.top;
       if (candOf(&k, PLAY_SETUP, one, 1, -1, 0)) {
         k.settled = 0; k.twin = 2; freeSetup = -1;
-        // (turned down: -1 not played out, -2 lost sooner, -3 the chain cut short, -4 a wasted three, -5 the reserve, -6 no nearer)
+        // (turned down: -1 not played out, -2 lost sooner, -3 the chain cut short, -4 a wasted three, -5 the reserve -- the swap is the kept
+        // eight's own, so it brings that eight a swap nearer by its making)
         if (!judgeCand(R, &k, &FS) || FS.o.dead) freeSetup = -1;
         else if (!(H->o.lives ? FS.o.lives : (FS.o.lives || lostOf(&FS) >= lostOf(H)))) freeSetup = -2;
         else if (cutsShort(&FS)) freeSetup = -3;
         else if (wastesThree(&FS)) freeSetup = -4;
         else if (spendsReserve(&FS)) freeSetup = -5;
-        else if (!(FS.o.twinAfter >= 0 && H->o.twinAfter >= 0 && FS.o.twinAfter < H->o.twinAfter)) freeSetup = -6;
         else { P.line = &FS; freeSetup = 1; }
       }
     }
