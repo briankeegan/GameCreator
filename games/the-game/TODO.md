@@ -113,6 +113,14 @@ narrowed, not dropped.
      board more than it gives here; what is open is building it where the board is clear.
      Tried: under garbage only an eight with a garbage cell beside a cell it clears, sorted through any cells at rest (idea123) --
      offered in 186 of 13414 finish decisions, played once, 8+ 0.15 a minute, survived 38/48.
+   - **Set up outside the mode, fired in it** (the owner). The set-up key (rank.c 7d) puts the line nearer a two-column eight first
+     among lines every key above leaves equal; on main its distance is 99 (none within 12 swaps of full rows) on most boards. Read
+     through any cells of panels at rest, to 20 swaps, every mode (idea124): 8+ 0.14, survived 42/48. With finish them taking a line
+     two swaps nearer as a set-up toward its first entry (the goal key): any line lost alike (idea125) 8+ 0.28 and 0.20, survived 42/48
+     and 38/48; living lines only (idea126) 0.15 and 0.18, 44/48 and 42/48; living or lost three breaks' time away (idea127) 0.32 --
+     9 of the eights two-column lines played on boards set up in the modes before -- 40/48 and 26/32. The distance in finish them only
+     (idea128): round 1 23/24, 8+ 0.19 (main's round 1 23/24, 0.18). The set-up key only where the nearer line is lost no sooner
+     (idea129): 22/24, 0.17. The set-ups that double the eights are the ones that spend a break's time: the owner's call.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
      0.89, Gambit 0.08 in the same games. Most are two vertical runs in adjacent columns, built by sorting the rows, then one swap.
 11b. **Finish them whenever the enemy is topped out**, its stop time or not (the owner: their stack above the board, so that they could
