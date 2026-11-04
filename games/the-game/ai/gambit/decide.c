@@ -242,6 +242,7 @@ static double contLostOf(const Judge *J, double give) {
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
 static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
+static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
@@ -564,6 +565,27 @@ static Played playOf(const Read *R, int n) {
         else { P.line = &FS; freeSetup = 1; }
       }
     }
+  }
+  // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
+  // hold, on a board with no garbage on it or on its way and not raising, the trigger of a chain the mode's first entry asks for is
+  // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
+  chainUp = chainNow = chainAfter = 0;
+  if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && !R->under && decQ.narr == 0 && theTables.r[R->rule].table == 2 &&
+      theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
+    double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
+    const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
+    int32_t sw = 0, trig = 0;
+    chainNow = triggerChainOf(&decQ, &trig);
+    int fire = chainNow >= want && trig;
+    if (fire) sw = trig; else if (!chainUpSwap(&decQ, &sw, &chainNow, &chainAfter)) sw = 0;
+    if (sw) {
+      static Judge CU; Cand k; int32_t one[1] = { sw };
+      if (candOf(&k, fire ? PLAY_ENTRY : PLAY_SETUP, one, 1, -1, 0)) {
+        k.settled = 0; chainUp = -1;
+        if (judgeCand(R, &k, &CU) && !CU.o.dead && CU.o.lives && (fire || !wastesThree(&CU))) { P.line = &CU; chainUp = fire ? 2 : 1; }
+      }
+    }
+    clockDue = keepDue; clockShare = keepShare;
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
