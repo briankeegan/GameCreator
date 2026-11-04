@@ -670,7 +670,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 7d. AN EIGHT NEARER (the owner: an eight is set up outside the mode that fires it, in the modes leading up to the top-out, and between
   // moves -- the move that leaves a better set-up): of two lines every key above leaves equal, the one whose board is TWIN_STEP swaps or
   // more nearer a two-column combo of eight (outcome.c twinAfter) -- survival, the chain, the breaks and their material all decide first
-  if (x->o.twinAfter >= 0 && y->o.twinAfter >= 0 && iabs(x->o.twinAfter - y->o.twinAfter) >= TWIN_STEP) return (cmpKey = __LINE__, (x->o.twinAfter - y->o.twinAfter));
+  // (and only where the nearer is lost no sooner: a set-up built outside the mode that fires it is never paid for in survival)
+  if (x->o.twinAfter >= 0 && y->o.twinAfter >= 0 && iabs(x->o.twinAfter - y->o.twinAfter) >= TWIN_STEP) {
+    const Judge *nr = x->o.twinAfter < y->o.twinAfter ? x : y, *fr = nr == x ? y : x;
+    if (lx || lostOf(nr) >= lostOf(fr)) return (cmpKey = __LINE__, (x->o.twinAfter - y->o.twinAfter));
+  }
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return (cmpKey = __LINE__, (ax - ay));
