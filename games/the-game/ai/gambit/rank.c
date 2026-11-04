@@ -49,7 +49,7 @@ static void dropAs(int play, int why) { dropped[play][why]++; }
 static int32_t cutWhy[4], cutWhyBreak[4];
 // THE FIRST LINE OF A DECISION THE BREAK SEARCH SAID BREAKS AND THE JUDGE SAYS DOES NOT: its play, swaps and both counts, for the log
 // and the board's dump (two measures of one fact)
-static struct { int32_t set, play, nseq, seq[MAXLINE], said, judged; } unbroken;
+static struct { int32_t set, play, nseq, seq[MAXLINE], said, judged, alone; } unbroken;   // (alone: what the board left alone breaks in the line's time)
 
 // the decision's reading of the board, which every candidate is judged by (decide.c read)
 typedef struct {
@@ -104,7 +104,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   Made m = j ? (Made){ j->made.combo, j->made.chain, j->made.broke, k->x.cells } : (Made){ k->x.combo, k->x.chain, k->x.broke, k->x.cells };
   if (j && k->x.broke > 0 && !(j->made.broke > 0)) {
     dropAs(play, DROP_UNBROKEN);
-    if (!unbroken.set) { unbroken.set = 1; unbroken.play = play; unbroken.nseq = k->nseq; for (int i = 0; i < k->nseq; i++) unbroken.seq[i] = k->seq[i]; unbroken.said = k->x.broke; unbroken.judged = j->made.broke; }
+    if (!unbroken.set) { unbroken.set = 1; unbroken.play = play; unbroken.nseq = k->nseq; for (int i = 0; i < k->nseq; i++) unbroken.seq[i] = k->seq[i]; unbroken.said = k->x.broke; unbroken.judged = j->made.broke; unbroken.alone = j->base; }
   }
   if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), m.broke > 0 ? 2 : m.combo > 0 || m.chain > 0)) { dropAs(play, DROP_BACK); return 0; }
   // (it fits the list -- the chain as the game counts it -- or it is outside it: ranked after every line within it that lives, and kept,
