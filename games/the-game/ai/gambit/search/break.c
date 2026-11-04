@@ -30,13 +30,13 @@ static LOCAL int32_t touchFrom;
 #define LINEUP_AFTER 30
 #define LINEPOOL 8192   // lines one level holds: TOUCH_WIDE x the swaps of a board
 
-typedef struct { int32_t key, n, s, h, len, kept; int32_t path[MAXPATH]; } Line;
+typedef struct { int32_t key, n, s, h, len, kept, carried; int32_t path[MAXPATH]; } Line;   // carried: grown from a line the last decision carried on
 typedef struct { int32_t n, len[KEEPN]; int32_t path[KEEPN][MAXPATH]; } Paths;
 // THE ANSWER (breakMoves' return): depth 1 with the first swaps that break (moves) and how -- the line (path), the line-up pairs
 // (lines, one per first swap found), or depth 0 with the line nearest a break (toward) and the lines to choose among (towards)
 typedef struct {
   int32_t depth, nmoves, moves[MAXROWS * W];
-  int32_t at, touch, carried, wide, lineup, fresh;   // fresh: found by the beam from this board's own first swaps, before the carried lines; lineup: 0 none, 1 the pop's end, 2 a pair, 3 aimed, 4 ready
+  int32_t at, touch, carried, wide, lineup, fresh;   // fresh: found from this board's own first swaps, with lines carried on beside them; lineup: 0 none, 1 the pop's end, 2 a pair, 3 aimed, 4 ready
   int32_t built;                                    // the line breakNear builds (the nearest break walked to)
   int32_t pathLen, path[MAXPATH];
   int32_t pairs[MAXROWS * W][2];                    // lines, beside moves (lineup 2 and 4)
@@ -305,7 +305,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     if (!(s->resume->len[i] > 0 && s->resume->len[i] < LONGEST)) continue;
     Line *a = lineNew(); if (!a) break;
     a->len = s->resume->len[i]; for (int k = 0; k < a->len; k++) a->path[k] = s->resume->path[i][k];
-    a->n = s->root; a->kept = 0;   // kept: the swaps played so far
+    a->n = s->root; a->kept = 0; a->carried = 1;   // kept: the swaps played so far
     act[nact++] = a;
   }
   while (nact && !SEARCH_OUT()) {
@@ -365,18 +365,25 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       if (ntl && (!s->haveToward || tl[0]->s > s->towardS)) { s->haveToward = 1; s->towardS = tl[0]->s; s->towardLen = tl[0]->len; for (int k = 0; k < tl[0]->len; k++) s->toward[k] = tl[0]->path[k]; }
       keepPaths(&o->keepOut, tl, ntl < KEEPN ? ntl : KEEPN);
       // Swaps made in another order often leave the same board: each board is kept once, its best-scoring line.
-      int nk = 0;
-      for (int i = 0; i < ntl && nk < beam; i++) {
-        Line *l = tl[i];
-        Node *ln = NODE(x, l->n);
-        int dup = 0;
-        for (int q = 0; q < nk && !dup; q++) {
-          Node *kn = NODE(x, kept[q]->n);
-          if ((int32_t)kn->hash != l->h || kn->keyn != ln->keyn) continue;
-          dup = memcmp(kn->key, ln->key, sizeof(int32_t) * ln->keyn) == 0;
+      // (THE BOARD AS IT IS, ITS SHARE OF THE BEAM: lines grown from the ones the last decision carried on take at most half the beam
+      // while lines from this board's own first swaps are left to fill it -- carried lines were ranked on a board the garbage has since
+      // changed, and crowd out a break the board has now)
+      int nk = 0, nc = 0;
+      static LOCAL unsigned char skipped[LINEPOOL];
+      for (int pass = 0; pass < 2 && nk < beam; pass++)
+        for (int i = 0; i < ntl && nk < beam; i++) {
+          Line *l = tl[i];
+          if (pass == 0) { skipped[i] = 0; if (l->carried && nc >= beam / 2) { skipped[i] = 1; continue; } }
+          else if (!skipped[i]) continue;
+          Node *ln = NODE(x, l->n);
+          int dup = 0;
+          for (int q = 0; q < nk && !dup; q++) {
+            Node *kn = NODE(x, kept[q]->n);
+            if ((int32_t)kn->hash != l->h || kn->keyn != ln->keyn) continue;
+            dup = memcmp(kn->key, ln->key, sizeof(int32_t) * ln->keyn) == 0;
+          }
+          if (!dup) { kept[nk++] = l; nc += l->carried; }
         }
-        if (!dup) kept[nk++] = l;
-      }
       ntl = nk;
       for (int i = 0; i < nk; i++) tl[i] = kept[i];
       int ntn = 0, ar = td & 1;
@@ -404,7 +411,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       // host that says it), the one the cursor walks fewer actions for before the material: the window pays for every cell of it
       const Board *rb = ensureBoard(x, s->root);
       int starved = pressAllowance >= 0 && rb;
-      int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestPath[MAXPATH];
+      int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestCarried = 0, bestPath[MAXPATH];
       for (int i = 0; i < ntl; i++) {
         for (int b = bAt[i]; b < bAt[i + 1]; b++) {
           int32_t mv = bMv[b];
@@ -417,14 +424,14 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
             int acts = 0;
             if (starved) { int r = rb->curRow, c = rb->curCol; for (int k = 0; k < nl->len; k++) { acts += actionsFor(r, c, CR(nl->path[k]), CC(nl->path[k]), pressAllowance - acts); r = CR(nl->path[k]); c = CC(nl->path[k]); } }
             int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
-            if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
+            if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestCarried = tl[i]->carried; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
             continue;
           }
           if (bestB < 0 && within(s, t3)) tn[ntn++] = nl;
         }
       }
       batchDone();
-      if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; }
+      if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; o->fresh = s->resume && s->resume->n && !bestCarried; }
       if (bestB >= 0 && foundTd < 0) foundTd = td;
       if (foundTd >= 0 && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == TOUCH_DEPTH)) tpath = 1;
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)
@@ -596,7 +603,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   int nf = swapsOfNode(x, s.root, ms), nfirsts = 0, at1 = -1;
   for (int i = 0; i < nf; i++) {
     Line *l = lineNew(); if (!l) break;
-    l->key = ms[i]; l->len = 1; l->path[0] = ms[i];
+    l->key = ms[i]; l->len = 1; l->path[0] = ms[i]; l->kept = 0; l->carried = 0;
     l->n = stepMarked(&s, s.root, MK_SWAP, ms[i], 0);
     firsts[nfirsts++] = l;
   }
@@ -611,16 +618,6 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
       for (int i = 0; i < nn && liveNode(x, node); i++) node = stepMarked(&s, node, MK_SWAP, nl[i], 0);
       if (liveNode(x, node) && breaksAt(&s, node, nl, nn)) { found(out, nl[0]); setPath(out, nl, nn); out->depth = 1; out->at = NODE(x, node)->t; out->built = 1; return; }
     }
-  }
-  // (THE BOARD AS IT IS FIRST: with lines carried on from the last decision, the touch beam from this board's own first swaps is grown
-  // in the first half of the share, then the carried lines are played again and grown -- carried lines seed the beam deep and crowd
-  // out a break the board has now)
-  if (!(wait > 0) && resume && resume->n && clockShare > 0) {
-    double half = nowMs() + (clockShare - nowMs()) / 2, old = clockShareBegin(half);
-    s.resume = 0; int hit = touchBeam(&s, firsts, nfirsts); s.resume = resume;
-    if (hit) trimPath(&s);
-    clockShareEnd(old);
-    if (hit) { out->depth = 1; out->fresh = 1; return; }
   }
   if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; trimPath(&s); return; }
   if (wait > 0) {
