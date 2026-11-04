@@ -601,6 +601,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       cmpKey = keep;
     }
   }
+  // (THE HOLD OVER A LINE: the hold played where a line was offered -- the key that put it first, and that line's play: holdOver=kKEY:play)
+  if (n > 1 && order[0] && order[0]->hold) {
+    for (int i = 1; i < n; i++) if (!order[i]->hold && order[i]->k.nseq) {
+      int32_t keep = cmpKey; compareJudged(order[0], order[i]);
+      L_s(" holdOver=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[i]->k.play]); cmpKey = keep; break; }
+  }
   // (THE MODE PASSED OVER: the line played does not meet the mode's first entry, and a line offered that does lives as it does, or is
   // lost no sooner -- the key that put the line played first, the line's play and the two's losses: goalMiss=kKEY:play:lost/lost.
   // Only survival may pass the mode over (the owner))

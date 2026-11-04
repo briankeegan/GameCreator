@@ -560,6 +560,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (and a swap toward an eight, lost no sooner and the reserve kept, before the wait -- set up between moves: rank.c nearerEight)
       int ex = nearerEight(x, y), ey = nearerEight(y, x);
       if (ex != ey) return (cmpKey = __LINE__, (ex ? -1 : 1));
+      // (WHILE GARBAGE POPS, THE CURSOR FREE (the owner: it holds too much -- it can do things while garbage is breaking): a line that
+      // sets up -- no clear of three for nothing, the reserve kept, lost no sooner -- before the hold, whatever it walks: the wait buys
+      // nothing the pop does not)
+      if (popLeft(decQ.b) > 0 && x->hold != y->hold) {
+        const Judge *m = x->hold ? y : x, *h = x->hold ? x : y;
+        if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h))) return (cmpKey = __LINE__, (x->hold ? 1 : -1));
+      }
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
