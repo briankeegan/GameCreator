@@ -417,8 +417,9 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
   Board *b = decQ.b;
-  // (the set-up's first swaps on any board -- under garbage, a pop running -- but never while the board chains: its chain is never spoiled)
-  int prefixes = !R->topped && decQ.b->chainCounter < 2, setupOnly = !bigAsked && twinTime(R->under, R->topped);
+  // (the set-up's first swaps on any board -- under garbage, a pop running, a chain falling: the owner, once the chain's next link is
+  // set, go do something else -- the judge plays each on the engine, and one that cuts the board's chain short ranks after the wait)
+  int prefixes = !R->topped, setupOnly = !bigAsked && twinTime(R->under, R->topped);
   twinLo = -2;
   if ((!bigAsked && !setupOnly && !prefixes) || clockOut()) return n;
   static int32_t g[MAXROWS + 2][W + 2];
