@@ -211,6 +211,7 @@ static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t ==
 // window later, as the survival search counts it (search/outlive.c OUT_ACT) -- so a line across the board is the later loss only where
 // it buys that much more time than one at hand. At 16 the bot walks too little to live: switching 3/48)
 #define WALK_FRAMES 8
+#define TWIN_KEY_REACH 12   // (the farthest eight the set-up key 7d reads: an eight within a line's reach)
 #define TWIN_STEP 2   // (swaps nearer an eight that decide between two lines otherwise equal: 7d)
 static int lineWalk(const Judge *J);
 static double lostOf(const Judge *x) {
@@ -674,9 +675,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // moves -- the move that leaves a better set-up): of two lines every key above leaves equal, the one whose board is TWIN_STEP swaps or
   // more nearer a two-column combo of eight (outcome.c twinAfter) -- survival, the chain, the breaks and their material all decide first
   // (only where the nearer is lost no sooner: a set-up is never paid for with the board's life)
-  if (x->o.twinAfter >= 0 && y->o.twinAfter >= 0 && iabs(x->o.twinAfter - y->o.twinAfter) >= TWIN_STEP) {
-    const Judge *nr = x->o.twinAfter < y->o.twinAfter ? x : y, *fr = nr == x ? y : x;
-    if (nr->o.lives || (!fr->o.lives && lostOf(nr) >= lostOf(fr))) return (cmpKey = __LINE__, (x->o.twinAfter - y->o.twinAfter));
+  // (and only within TWIN_KEY_REACH swaps: an eight farther off is set up of the moves that cost nothing -- 1'', nearerEight -- not by
+  // this key over every key after it)
+  int t8x = x->o.twinAfter > TWIN_KEY_REACH ? 99 : x->o.twinAfter, t8y = y->o.twinAfter > TWIN_KEY_REACH ? 99 : y->o.twinAfter;
+  if (t8x >= 0 && t8y >= 0 && iabs(t8x - t8y) >= TWIN_STEP) {
+    const Judge *nr = t8x < t8y ? x : y, *fr = nr == x ? y : x;
+    if (nr->o.lives || (!fr->o.lives && lostOf(nr) >= lostOf(fr))) return (cmpKey = __LINE__, (t8x - t8y));
   }
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
