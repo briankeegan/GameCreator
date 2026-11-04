@@ -530,7 +530,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // pressed of a line put down is spent from the input window for nothing
   if (x->carried != y->carried && !x->hold && !y->hold && (lx || lostAlike(x, y))) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke) && !(goalLine(o) && !goalLine(c))) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
@@ -556,6 +556,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
     // (of two that break: the one that meets the earlier combo entry of the mode's list -- the combo the mode asks goes with the break)
     else if (comboEntry(x) != comboEntry(y)) return (cmpKey = __LINE__, (comboEntry(x) - comboEntry(y)));
+    // (of two that break: the one that meets the mode's first entry, chain or combo -- the mode's attack under garbage, the break with
+    // it: the owner, the mode passed over for survival only)
+    else if (goalLine(x) != goalLine(y)) return (cmpKey = __LINE__, (goalLine(x) ? -1 : 1));
     // (a line put down for another throws away the actions pressed of it: the other is charged them -- the walk the line in progress was
     // played for, less what is left of it)
     else {
