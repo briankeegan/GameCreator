@@ -369,10 +369,11 @@ static int lineWalk(const Judge *J) {
 // short, the line that spends less of what is left keeps more of the next break)
 static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 ? 0 : imax(0, BREAK_WALK - (pressAllowance - lineWalk(J))); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
-// A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board TWIN_STEP swaps or more nearer a two-column eight than b (outcome.c
-// twinAfter), is lost no sooner (or lives), and leaves the window its reserve -- the set-up built between moves, of what is spare
+// A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
+// the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
+// the set-up built between moves, of what is spare: a swap nearer is a swap nearer
 static int nearerEight(const Judge *a, const Judge *b) {
-  if (a->o.twinAfter < 0 || b->o.twinAfter < 0 || a->o.twinAfter > b->o.twinAfter - TWIN_STEP || spendsReserve(a)) return 0;
+  if (a->o.twinAfter < 0 || b->o.twinAfter < 0 || a->o.twinAfter >= b->o.twinAfter || b->o.twinAfter >= 99 || spendsReserve(a)) return 0;
   return a->o.lives || (!b->o.lives && lostOf(a) >= lostOf(b));
 }
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the

@@ -326,7 +326,7 @@ static int growLines(Cand *out, int n, int cap) {
 //   Any other mode leaves the trigger alone: a combo it does not ask for is wasted (rank.c wastesThree).
 #define TWIN_MAXSWAPS 12
 #define TWIN_OFFER 3
-#define TWIN_REACH 20   // (the most swaps the distance to an eight is counted to, for the set-up key: rank.c 7d)
+#define TWIN_REACH 20   // (the most swaps the distance to an eight is counted to -- one distance, the set-ups proposed by it and ranked by it)
 #define TWIN_SETUP_MAX 8   // (the most swaps a set-up is built in outside the mode that fires it)
 typedef struct { int32_t n, at[8], ok; } RowFix;
 static int twinRowFix(const int32_t *row, const uint8_t *ok, int cx, int32_t X, int cy, int32_t Y, RowFix *f) {
@@ -425,7 +425,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   static int32_t g[MAXROWS + 2][W + 2];
   static uint8_t ok[MAXROWS + 2][W + 2];
   static Twin best[TWIN_OFFER * 4];
-  int top, rows, nb = twinScan(b, g, ok, &top, best, &rows, TWIN_MAXSWAPS);
+  int top, rows, nb = twinScan(b, g, ok, &top, best, &rows, prefixes ? TWIN_REACH : TWIN_MAXSWAPS);
   twinRows = rows;
   // (the fewest swaps first; each line built and played out on a copy of the grid: none that makes a three before its trigger)
   // (a set-up only where none is loaded -- no trigger one swap away -- and short enough to be worth building ahead)
@@ -456,6 +456,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
     if (prefixes && i < 2 && ns > 0)
       for (int p = 1; p <= 3 && p < ns && n < cap; p++)
         if (candOf(&out[n], PLAY_SETUP, seq, p, -1, 0)) { out[n].settled = 1; out[n].twin = 2; n++; twinOffered++; }
+    if (t->cost > TWIN_MAXSWAPS) continue;   // (past TWIN_MAXSWAPS: its first swaps only -- an eight that far is set up, never fired whole)
     if (setupOnly) {
       if (ns < 1 || ns > TWIN_SETUP_MAX) continue;
       if (candOf(&out[n], PLAY_SETUP, seq, ns, -1, 0)) { out[n].settled = 1; out[n].twin = 2; n++; offered++; twinOffered++; }
