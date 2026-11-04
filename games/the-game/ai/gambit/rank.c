@@ -437,6 +437,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
+  // 1. (neither lives, under garbage, below the material floor) THE BREAK'S MATERIAL KEPT (the owner: the board spent to three rows and
+  // dying for want of panels): a clear that breaks nothing (spends) after a line that keeps the panels and is lost a break's time away or
+  // more -- the panels it spends to stall are the next break's; it is played only where every line that keeps them is lost within one
+  if (!lx && decF.under && x->spends != y->spends) {
+    const Judge *o = x->spends ? y : x;
+    if (diesAt(o) >= rankSave) return (cmpKey = __LINE__, (x->spends ? 1 : -1));
+  }
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
