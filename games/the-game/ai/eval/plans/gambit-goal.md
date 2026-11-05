@@ -146,6 +146,9 @@ where it meets the new mode's first entry or breaks garbage.
   other measures, not a mode doing well. Once it is at 23 or 24, the next worst is taken. A run takes about ten minutes (seven of them the game, in real time: Gambit thinks on the clock). A run made
   stale by a newer change is cancelled at once. Each run is reported with when it began and when it should end, in ET on the 24-hour
   clock.
+- **A run's seed is a set of games, not one** (the owner): `seed` N gives each of a mode's 24 games its own seed, N x 100 + the
+  pattern x 10 + the game (PA_SEED), so "seed 82" is 24 different games a mode. Round r plays base N + r - 1: seed 82's round 2 is
+  seed 83's round 1, never run as a new set.
 - **The measure, every run** (the owner): the run's own report on Actions prints it (`gambit_summary.js`, "the measure"): survived; the
   attacks each mode made that met its aims and its first; the decisions that passed the mode over; the swaps that came to nothing; the
   wasted threes a minute. A change is judged on all of them, not on survived alone.
