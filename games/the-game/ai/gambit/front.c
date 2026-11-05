@@ -59,6 +59,7 @@ typedef struct {
   int32_t behind, behindWorst;   // (a line's swaps whose keys began later than the frame the judge pressed them from, and by how much at most)
   int32_t revealCleared;         // (plans dropped for a panel unseen when they were made coming to a clear: front.c revealClears)
   int32_t early;                 // (frames the queue held garbage the telegraph had due a frame or few later: front.c arrivedEarly)
+  int32_t queueOnly;             // (divergences in the queue alone, the plan kept: front.c frontFrame)
   int32_t combo[64], chain[32];
   // each chain link past the list's two, by its cause: panels out of garbage (colours not shown when it was decided), a swap pressed
   // since the link before it, or neither (the stack alone)
@@ -298,7 +299,9 @@ static int arrivedEarly(const Board *want, const Board *got) {
 static const int PANEL_FIELDS[] = { COLOR, STATE, TIMER, ISGARBAGE, CHAINING, METAL, GARBAGEID, XOFF, YOFF, GWIDTH, GHEIGHT, COMBOINDEX, COMBOSIZE,
                                     MATCHANYWAY, PROPCHAIN, STATECHANGED, DONTSWAP, QUEUEDHOVER, SHAKETIME, FELL, POPTIME, POPINDEX, INITIALTIME };
 // Where two boards first disagree (0: they agree), into `why`.
-static int differ(const Board *w, const Board *g, char *why, int cap) {
+static int differQ(const Board *w, const Board *g, char *why, int cap, int queue);
+static int differ(const Board *w, const Board *g, char *why, int cap) { return differQ(w, g, why, cap, 1); }
+static int differQ(const Board *w, const Board *g, char *why, int cap, int queue) {
 #define DIFF1(f) if (w->f != g->f) { snprintf(why, (unsigned long)cap, "stack." #f " %d vs %d", (int)w->f, (int)g->f); return 1; }
   DIFF1(clock) DIFF1(speed) DIFF1(displacement) DIFF1(riseLock) DIFF1(hasRisen) DIFF1(manualRaise) DIFF1(manualRaiseYet)
   DIFF1(preventManualRaise) DIFF1(stopTime) DIFF1(preStopTime) DIFF1(shakeTime) DIFF1(peakShakeTime) DIFF1(health) DIFF1(chainCounter)
@@ -309,7 +312,7 @@ static int differ(const Board *w, const Board *g, char *why, int cap) {
   if (w->riseTimer != g->riseTimer) { snprintf(why, (unsigned long)cap, "stack.riseTimer"); return 1; }
   int sameQ = w->ninc == g->ninc;
   for (int i = 0; sameQ && i < w->ninc; i++) sameQ = sameInc(&w->inc[i], &g->inc[i]);
-  if (!sameQ && !heldBack(w, g)) {
+  if (queue && !sameQ && !heldBack(w, g)) {
     if (!arrivedEarly(w, g)) { snprintf(why, (unsigned long)cap, "incoming %d vs %d", w->ninc, g->ninc); return 1; }
     F.st.early++;
   }
@@ -966,7 +969,17 @@ static int frontFrame(void) {
   F.wall = wall;
   int diverged = 0;
   if (F.haveExpect && differ(F.expect, t, why, sizeof why)) {
-    dropAll(); F.st.diverged++; diverged = 1;
+    // (GARBAGE COME UNFORESEEN, THE BOARD ITSELF AS PREDICTED: only the queue differs -- the panels the keys planned act on are the ones
+    // they were judged on, and the garbage drops as the next frame's prediction from the board has it. The keys and the line in hand
+    // are pressed on; the question out, asked without the garbage, is dropped and asked again on this board -- its answer takes the
+    // line's place. Anything else that differs drops the plan.)
+    char why2[160]; int queueOnly = !differQ(F.expect, t, why2, sizeof why2, 0);
+    if (queueOnly) {
+      if (F.pending) { abortTo(F.pId); F.pending = 0; }
+      memcpy(F.knew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.nknew = F.narr;
+      F.st.queueOnly++;
+    } else dropAll();
+    F.st.diverged++; diverged = !queueOnly;
     if (F.loggedDiffer < 40) {
       // (and the garbage on its way as the telegraph shows it now, and as the plan knew it: how many, and how many due by now)
       // (and the soonest the plan knew of, in frames from now: how late a forecast that did not come due was)
@@ -1111,10 +1124,10 @@ static void afterFrame(int32_t bits) {
 static void statsLine(char *out, int cap) {
   int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
-                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"aimed\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"early\":%d,\"attacks\":{\"combo\":{",
+                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"aimed\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"early\":%d,\"queueOnly\":%d,\"attacks\":{\"combo\":{",
                    F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
-                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.aimed, F.st.behind, F.st.behindWorst, F.st.revealCleared, F.st.early);
+                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.aimed, F.st.behind, F.st.behindWorst, F.st.revealCleared, F.st.early, F.st.queueOnly);
   int first = 1;
   for (int z = 0; z < 64 && k < cap; z++) if (F.st.combo[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.combo[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");
