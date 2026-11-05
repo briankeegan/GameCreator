@@ -200,6 +200,9 @@ narrowed, not dropped.
      others lost; with the set-up undone key too (idea172) 45/48 (runs 2302, 2303). Neither better.
    - **Under garbage, away from it, beside the hold** (1'g, rank.c): a line that walks to the bottom goes after the hold. Kept only
      between moves (idea173) 39/48 against 45/48 (runs 2304, 2305): the hold there is right.
+   - **The break search's share under garbage** (answer.c UNDER_SHARE 0.75): 0.9 (idea174) 43/48 against 45/48 (runs 2306, 2307).
+   - Across five variants on sets 82 and 84 no game was lost more than twice: each loss is the clock's draw, about 6% a game, not a
+     game the bot cannot play.
    - **A 24-game run is noisy**: the same behaviour on the same seed gave 20/24 and 23/24 (runs 2247, 2248) -- the clock decides how
      far each search goes, and the runner's clock differs run to run. A gap of 3 games in 24 is not a measurement.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
