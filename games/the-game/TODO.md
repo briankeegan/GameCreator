@@ -208,6 +208,10 @@ narrowed, not dropped.
    - **Pressure's deaths are the window, not the search** (run 2308, factory-8): on the last boards a break is there -- the search
      alone finds it in 55-153 ms natively -- but 5-7 swaps across the board, 30-odd actions, with 20-23 left in the window. 36% of
      the window goes on lines not played out (13,996 of 38,445 actions): the next lever is fewer lines begun and dropped.
+     Not better: the line in progress put down only for a loss a break's time later (idea175, 44/48 against 43/48); a hold keeping
+     the line in progress (idea176, 67/72 against 65/72 on sets 82, 84, 86) -- neither moved the window spent on lines not played out
+     (35%). 99% of the lines of two swaps or more played are handed on (cof=, run 2316): "none carried by the last answer" is not a
+     line left unhanded.
    - **A 24-game run is noisy**: the same behaviour on the same seed gave 20/24 and 23/24 (runs 2247, 2248) -- the clock decides how
      far each search goes, and the runner's clock differs run to run. A gap of 3 games in 24 is not a measurement.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
