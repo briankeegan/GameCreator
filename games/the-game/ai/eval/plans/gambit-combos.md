@@ -156,5 +156,5 @@ those fired by one swap (two vertical runs side by side, above). The colours kee
 but there is no left or right: no colour is kept on a side.
 
 So a set-up can be general, not one combo built on purpose: of two set-ups, the one that leaves the board flatter, with fewer
-same-colour panels touching and more a swap apart. The tools: `boardSample.lua` and `boardstats.py`, `staged.py` (the scratchpad of
-the session that measured it; to be added beside `combo_replays.py`).
+same-colour panels touching and more a swap apart. The tools: `combo_replays.py split` for the games, `lua/boardSample.lua` (in a
+panel-game checkout, as `comboReplay.lua`) for the boards, `board_stats.py` and `board_staged.py` for the table.
