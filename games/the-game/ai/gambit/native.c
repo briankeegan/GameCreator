@@ -160,7 +160,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   memset(&hostQ, 0, sizeof hostQ);
   hostQ.b = hostBoard; hostQ.holdLeft = q->holdLeft; hostQ.holdStarted = q->holdStarted; hostQ.tight = 0;
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
-  gb_refused(q->refA, q->refB); gb_pressed(q->swapA, q->swapB);
+  gb_refused(q->refA, q->refB); gb_pressed(q->swapA, q->swapB); movedStamp(hostBoard->clock, hostBoard->garbageCreatedCount, hostQ.narr);
   hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
                  !q->noRaise && canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);

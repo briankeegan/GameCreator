@@ -155,8 +155,35 @@ static int swappedBack(int r, int c) {
 static int firstOk(int r, int c, int clears) { return !swapBack(r, c, clears); }
 // (THE SWAP PRESSED LAST, the host's: a line hands on several swaps and the frame loop presses them all, so the pair the next decision
 // must not swap back is the last one pressed, not the last decision's first)
+// (THE PANELS MOVED LATELY: the pairs pressed, each the panel it moved right and the one it moved left, with the frame, the garbage made
+// and the garbage on its way as the next question found them -- a set-up undone while nothing new is told is inputs spent to stand where
+// the board stood: rank.c 1'v)
+#define MOVED_N 8
+#define MOVED_FOR 180   // frames a set-up is kept
+static struct { int32_t right, left, at, made, narr; } moved[MOVED_N];
+static int nmoved, movedFresh;
 EXPORT(gb_pressed) void gb_pressed(int a, int b) {
-  if (a && b && a != NUL && b != NUL && !samePair(a, b, theBack.lastA, theBack.lastB)) { theBack.lastA = a; theBack.lastB = b; theBack.runs = 0; }
+  if (a && b && a != NUL && b != NUL && !samePair(a, b, theBack.lastA, theBack.lastB)) {
+    theBack.lastA = a; theBack.lastB = b; theBack.runs = 0;
+    for (int i = MOVED_N - 1; i > 0; i--) moved[i] = moved[i - 1];
+    moved[0].right = a; moved[0].left = b; moved[0].at = -1; if (nmoved < MOVED_N) nmoved++; movedFresh = 1;
+  }
+}
+static void movedStamp(int32_t clock, int32_t made, int32_t narr) {
+  if (movedFresh && nmoved) { moved[0].at = clock; moved[0].made = made; moved[0].narr = narr; }
+  movedFresh = 0;
+}
+// (a line's first swap moves back a panel a set-up moved lately -- the one it moved right now moved left, or the one it moved left now
+// moved right -- with nothing new told since: no garbage made, none more or less on its way)
+static int undoesMoved(int r, int c, int32_t clock, int32_t made, int32_t narr) {
+  if (!backBoard || r < 0 || r >= backBoard->nrows || c < 1 || c + 1 > W) return 0;
+  int32_t L = backBoard->p[r][c].f[ID], R = backBoard->p[r][c + 1].f[ID];
+  if (L == NUL || R == NUL) return 0;
+  for (int i = 0; i < nmoved; i++) {
+    if (moved[i].at < 0 || clock - moved[i].at > MOVED_FOR || moved[i].made != made || moved[i].narr != narr) continue;
+    if (moved[i].right == R || moved[i].left == L) return 1;
+  }
+  return 0;
 }
 EXPORT(gb_back) void gb_back(int lastA, int lastB, int runs, int blockA, int blockB, int blockUntil, int at) {
   Back k = { lastA, lastB, runs, blockA, blockB, blockUntil, at };
