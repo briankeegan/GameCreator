@@ -149,6 +149,8 @@ where it meets the new mode's first entry or breaks garbage.
 - **A run's seed is a set of games, not one** (the owner): `seed` N gives each of a mode's 24 games its own seed, N x 100 + the
   pattern x 10 + the game (PA_SEED), so "seed 82" is 24 different games a mode. Round r plays base N + r - 1: seed 82's round 2 is
   seed 83's round 1, never run as a new set.
+  A change is judged on more than one set (the owner): the same sets as what it is compared with, for the comparison, and never one set
+  alone -- `rounds` [1,2] plays two.
 - **The measure, every run** (the owner): the run's own report on Actions prints it (`gambit_summary.js`, "the measure"): survived; the
   attacks each mode made that met its aims and its first; the decisions that passed the mode over; the swaps that came to nothing; the
   wasted threes a minute. A change is judged on all of them, not on survived alone.
