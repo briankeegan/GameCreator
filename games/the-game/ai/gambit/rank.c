@@ -322,6 +322,16 @@ static int awayFromGarbage(const Judge *J) {
   if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; lowG = lowestG(decQ.b); }
   return lowG < gridLen(decQ.b) && lowG - CR(J->k.seq[0]) >= GARBAGE_AWAY;
 }
+// (ABOVE THE GARBAGE -- the owner: why go above the top garbage when there are not the panels there to break it or do anything: a line
+// that clears nothing and breaks nothing, its every swap above the highest garbage at rest)
+static int aboveGarbage(const Judge *J) {
+  if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || clears(J) || !decQ.b) return 0;
+  int hi = 0;
+  for (int r = 1; r < decQ.b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = decQ.b->p[r][c].f; if (f[ISGARBAGE] && f[STATE] == NORMAL && r > hi) hi = r; }
+  if (!hi) return 0;
+  for (int i = 0; i < J->k.nseq; i++) if (CR(J->k.seq[i]) <= hi) return 0;
+  return 1;
+}
 // (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out, of two that
 // both live it is no break to put first -- the owner: a three is for survival only, topped out; the mode's attacks break the garbage)
 static int threeBreakOnly(const Judge *J) { return J->apBroke > 0 && J->apCombo < 4 && J->apChain < 2; }
@@ -499,6 +509,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
+  // (THE LINE IN HAND HELD -- the owner: a swap or two made, then the cursor goes elsewhere, is moves for nothing: the line in progress is
+  // put down for a line lost later only by a break's time or more, or for one that breaks more garbage -- the judgement of a board the
+  // garbage is still landing on moves by a few frames between decisions, and a plan put down for that is one never played out)
+  int heldHand = !lx && x->carried != y->carried && !x->hold && !y->hold && (x->carried ? x : y)->k.nseq > 0 &&
+                 iabs((int)(lostOf(x) - lostOf(y))) < rankSave && imax(0, (x->carried ? y : x)->apBroke) <= imax(0, (x->carried ? x : y)->apBroke);
+  if (heldHand) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
@@ -547,6 +563,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
+  // 1'h. UNDER GARBAGE, NOT ABOVE IT: of two that survive alike, a line that does nothing above the highest garbage (aboveGarbage) after
+  // the other, the hold too -- moves up there break nothing and are the window spent
+  if (decF.under && (lx || lostAlike(x, y)) && aboveGarbage(x) != aboveGarbage(y)) return (cmpKey = __LINE__, (aboveGarbage(x) ? 1 : -1));
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
   // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
   // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
