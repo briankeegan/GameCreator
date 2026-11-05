@@ -312,6 +312,8 @@ static int finishAsked(void) {
     if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) big = 1; }
   return big;
 }
+// (an attack none of the mode's list asks: outside it, and a chain of two or more or a combo of four or more)
+static int attackOutside(const Judge *J) { return !J->hold && J->outside && (J->apChain >= 2 || J->apCombo >= 4); }
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
 // (the lowest garbage row of the decision's board, read once a board: search/break.c lowestG)
 #define GARBAGE_AWAY 4
@@ -529,6 +531,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (cx != cy && !brokeMore && !spends) return (cmpKey = __LINE__, (cy - cx));
     }
   }
+  // 1'o. THE MODE'S OWN ATTACK (the owner: every mode goes for what the mode asks): of two that survive alike, a line whose attack is none
+  // the list asks (outside it: a chain of two or more, a combo of four or more) after one that fits the list or sends nothing, whatever
+  // either breaks
+  if ((lx || lostAlike(x, y)) && attackOutside(x) != attackOutside(y)) return (cmpKey = __LINE__, (attackOutside(x) ? 1 : -1));
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
   // owner: no big chains at the finish; a chain is played there only where nothing else lives as long
