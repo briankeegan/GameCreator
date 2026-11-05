@@ -266,6 +266,21 @@ function GambitNative:telegraph(sources, me, view)
   for _, src in ipairs(sources or EMPTY) do
     local q = src.outgoingGarbage
     local w = wired(src)
+    -- (THE FORECAST'S SOURCE, logged: what the opponent's board shipped of its telegraph, and the times read off it -- the first 60
+    -- frames a game it holds a piece, and every 600th frame)
+    if w then
+      if not self.teleClock or (me.clock or 0) < self.teleClock then self.teleLogged = 0 end
+      self.teleClock = me.clock or 0
+      local nog = view and view.og and #view.og or -1
+      if me.clock and ((nog > 0 and self.teleLogged < 60) or me.clock % 600 == 0) then
+        self.teleLogged = self.teleLogged + (nog > 0 and 1 or 0)
+        local first = view and view.og and view.og[1]
+        C.gn_log(string.format("TELE clock %d sw %d: view %s og %d seenSW %s snapClock %s seen %s; first %s",
+          me.clock, me.stopWatch or -1, view and "yes" or "no", nog, tostring(view and view.seenSW), tostring(view and view.clock),
+          tostring(view and view.seen), first and string.format("%dx%d chain %s earned %s", first.width or -1, first.height or -1,
+          tostring(first.isChain), tostring(first.frameEarned)) or "-"))
+      end
+    end
     if w and view and view.og and view.seenSW and view.clock and me.stopWatch and not BLIND then
       n = n + 1
       x = viewTelegraph(self, T, x, view, me)
