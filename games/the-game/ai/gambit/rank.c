@@ -305,6 +305,7 @@ static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke 
 // (the entry of the mode's list a line meets where it asks a combo, MAXAIMS where it meets none that does)
 // (THE FINISH: the list asks a combo of eight or more and no chain -- finish them, the enemy near the top: a slab two rows tall or more is
 // up to 76 frames of shake it lives through, the 8's pieces are a few cells each -- the owner: big chains near the top give it time)
+#define ZIP_WALK 2   // (the actions more a dig may walk for the zip: rank.c the dig zipped)
 static int finishAsked(void) {
   int big = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo, *h = &theList.aim[i].chain;
@@ -498,6 +499,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
+  // (THE LINE IN HAND HELD -- the owner: a swap or two made, then the cursor goes elsewhere, is moves for nothing: the line in progress is
+  // put down for a line lost later only by a break's time or more, or for one that breaks more garbage -- the judgement of a board the
+  // garbage is still landing on moves by a few frames between decisions, and a plan put down for that is one never played out)
+  int heldHand = !lx && x->carried != y->carried && !x->hold && !y->hold && (x->carried ? x : y)->k.nseq > 0 &&
+                 iabs((int)(lostOf(x) - lostOf(y))) < rankSave && imax(0, (x->carried ? y : x)->apBroke) <= imax(0, (x->carried ? x : y)->apBroke);
+  if (heldHand) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
@@ -654,6 +661,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     else {
       int sx = lineWalk(x), sy = lineWalk(y);
       if (carriedSunk >= 0 && x->carried != y->carried) { const Judge *c = x->carried ? x : y; int sunk = imax(0, carriedSunk - lineWalk(c)); if (c == x) sy += sunk; else sx += sunk; }
+      // (THE DIG ZIPPED -- the owner: digging goes for the zipper: of two that break as much garbage, walking within ZIP_WALK actions of
+      // each other, the one that leaves the colours more zippered -- fewer of a colour touching, more a swap apart: judge.c spreadOf)
+      if (x->apBroke == y->apBroke && iabs(sx - sy) <= ZIP_WALK && x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
       int64_t px = (int64_t)x->apBroke * imax(1, sy), py = (int64_t)y->apBroke * imax(1, sx); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
     }
   }
