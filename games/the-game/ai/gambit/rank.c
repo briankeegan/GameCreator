@@ -119,7 +119,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // and leaving it alone -- the hold -- meets what it makes)
   int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
   J->met = j ? entry : -1;
-  { int nl = R->list.n; J->modeFirst = J->met == 0 || (R->under && nl > 0 && J->met == nl + 1); }
+  { int nl = R->list.n; J->modeFirst = J->met == 0 || (R->topped && nl > 0 && J->met == nl + 1); }   // (the one rule's three that breaks is the mode's first only topped out -- the owner: a three is for survival)
   J->saving = R->saving && R->under && m.broke > 0;
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
   J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;
@@ -179,7 +179,7 @@ static void holdCand(const Read *R, int wait, Judge *J) {
   J->o = outcome(0, 0, 0);
   J->material = -1;
   J->met = J->o.dead ? -1 : metOf(&R->asked, (Made){ J->o.j.whole.combo, J->o.j.whole.chain, 0, 0 });
-  { int nl = R->list.n; J->modeFirst = J->met == 0 || (R->under && nl > 0 && J->met == nl + 1); }
+  { int nl = R->list.n; J->modeFirst = J->met == 0 || (R->topped && nl > 0 && J->met == nl + 1); }   // (the one rule's three that breaks is the mode's first only topped out -- the owner: a three is for survival)
   aloneChain = J->o.j.whole.chain;   // (made before the board is lost too: judge.c, a settle the board is lost in)
   J->k.play = PLAY_HOLD; J->k.aim = -1; J->hold = 1; J->wait = wait; J->aim = -1;
   J->t.tier = HOLD_TIER; J->t.nsub = 1; J->t.sub[0] = wait ? -1 : 0;
@@ -303,6 +303,10 @@ static int awayFromGarbage(const Judge *J) {
   if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; lowG = lowestG(decQ.b); }
   return lowG < gridLen(decQ.b) && lowG - CR(J->k.seq[0]) >= GARBAGE_AWAY;
 }
+// (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out, of two that
+// both live it is no break to put first -- the owner: a three is for survival only, topped out; the mode's attacks break the garbage)
+static int threeBreakOnly(const Judge *J) { return J->apBroke > 0 && J->apCombo < 4 && J->apChain < 2; }
+static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx && !decF.topped && threeBreakOnly(J)); }
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
   if (J->o.j.threes > 0 && !(brokeSeen(J) > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
@@ -501,9 +505,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // and meets nothing the mode asks for (the hold, a set-up) -- waiting meets the mode no more than the break does, and the garbage left
   // is the board's danger; below the material floor before any line that breaks none, the list's or not: the break is the panels the
   // board lacks, and a board waited on below the floor finds no break later
-  if (decF.under && (lx || lostAlike(x, y)) && (x->apBroke > 0) != (y->apBroke > 0)) {
-    const Judge *b = x->apBroke > 0 ? x : y, *o = x->apBroke > 0 ? y : x;
-    if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (x->apBroke > 0 ? -1 : 1));
+  if (decF.under && (lx || lostAlike(x, y)) && breaksFirst(x, lx) != breaksFirst(y, lx)) {
+    const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
+    if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
   // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
@@ -567,7 +571,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
   // and the rest wait for it to give some back
   if (decF.under && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
-    int bx = x->apBroke > 0, by = y->apBroke > 0;
+    int bx = breaksFirst(x, lx), by = breaksFirst(y, lx);
     // (but not over the mode's first entry thrown where the break meets none of it: the mode is played under garbage too -- the goal
     // decides between them, 1b)
     if (bx != by && !((bx ? y : x)->modeFirst && !(bx ? x : y)->modeFirst)) return (cmpKey = __LINE__, (bx ? -1 : 1));
