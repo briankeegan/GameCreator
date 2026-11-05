@@ -615,7 +615,7 @@ static void take(void) {
     // (A HOLD WALKS THE CURSOR TO THE NEXT WORK: where the best line that is no hold begins, with the window to spare -- AIM_RESERVE actions
     // kept -- and the cursor two cells or more from it; nothing swapped, the board the same)
     int aimed = 0;
-    if (a.kind == 0 && a.aim && !a.empty && allowanceAt(at) >= AIM_RESERVE &&
+    if (0 && a.kind == 0 && a.aim && !a.empty && allowanceAt(at) >= AIM_RESERVE &&
         iabs(F.pBoard->curRow - CR(a.aim)) + iabs(F.pBoard->curCol - CC(a.aim)) >= 2 &&
         keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, MK_GO, CR(a.aim), CC(a.aim), &k) && k.n > 0) { aimed = 1; F.st.aimed++; }
     if (!aimed && !keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
