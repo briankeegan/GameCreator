@@ -606,12 +606,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     for (int i = 1; i < n; i++) if (!order[i]->hold && order[i]->k.nseq) {
       int32_t keep = cmpKey; compareJudged(order[0], order[i]);
       L_s(" holdOver=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[i]->k.play]); cmpKey = keep; break; }
-    // (and over the line offered that is lost latest, where it is lost later than the hold: holdLate=kKEY:play:lost/lost)
+    // (and over the line offered whose board is lost latest, the frame it is lost on, no walk charged, later than the hold's: holdLate=kKEY:play:lost/lost)
     int li = -1;
-    for (int i = 1; i < n; i++) if (!order[i]->hold && order[i]->k.nseq && (order[i]->o.lives || lostOf(order[i]) > lostOf(order[0])) &&
-                                    (li < 0 || order[i]->o.lives || (!order[li]->o.lives && lostOf(order[i]) > lostOf(order[li])))) li = i;
+    for (int i = 1; i < n; i++) if (!order[i]->hold && order[i]->k.nseq && (order[i]->o.lives || diesAt(order[i]) > diesAt(order[0])) &&
+                                    (li < 0 || order[i]->o.lives || (!order[li]->o.lives && diesAt(order[i]) > diesAt(order[li])))) li = i;
     if (li > 0) { int32_t keep = cmpKey; compareJudged(order[0], order[li]);
-      L_s(" holdLate=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[li]->k.play]); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i(order[li]->o.lives ? -1 : (int32_t)lostOf(order[li]));
+      L_s(" holdLate=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[li]->k.play]); L_s(":"); L_i((int32_t)diesAt(order[0])); L_s("/"); L_i(order[li]->o.lives ? -1 : (int32_t)diesAt(order[li]));
       cmpKey = keep; }
   }
   // (THE MODE PASSED OVER: the line played does not meet the mode's first entry, and a line offered that does lives as it does, or is
