@@ -481,6 +481,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
+  // (THE HOLD NEVER OVER A LONGER LIFE (the owner: hold is dumb): of the hold and a move, neither living, the move whose board is lost
+  // later goes first, whatever its walk charges -- the charge is the order's preference for the nearer, and beside the hold the walk
+  // is the only thing between the board and the later loss)
+  if (!lx && x->hold != y->hold) {
+    const Judge *h = x->hold ? x : y, *m = x->hold ? y : x;
+    double dm = diesAt(m), dh = diesAt(h);
+    if (m->k.nseq && dm >= 0 && dh >= 0 && dm < 1e299 && dm > dh) return (cmpKey = __LINE__, (m == x ? -1 : 1));
+  }
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
@@ -600,10 +608,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // set-up: pressed for nothing it spends the window the next break needs)
       // (and while the board's own chain falls -- the owner: set up and started, it can do something else; it just sits there waiting for
       // it to finish: a set-up that keeps the chain as far as the hold does, the same)
+      // (and every other time too -- the owner: hold is dumb, a set-up or flattening is better 90% of the time: a set-up, a lineup,
+      // a line toward the next break or nearest the list, or a level, before the hold)
       int chaining = decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2);
-      if ((popLeft(decQ.b) > 0 || chaining) && x->hold != y->hold) {
+      if (x->hold != y->hold) {
         const Judge *m = x->hold ? y : x, *h = x->hold ? x : y;
-        int sets = m->k.play == PLAY_SETUP || m->k.play == PLAY_LINEUP || m->k.play == PLAY_TOWARD || m->k.play == PLAY_NEAREST;
+        int sets = m->k.play == PLAY_SETUP || m->k.play == PLAY_LINEUP || m->k.play == PLAY_TOWARD || m->k.play == PLAY_NEAREST || m->k.play == PLAY_LEVEL;
         if (sets && m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (x->hold ? 1 : -1));
       }
