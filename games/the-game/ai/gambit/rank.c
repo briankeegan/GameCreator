@@ -498,6 +498,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
+  // (AT THE FINISH, A SLAB NOT BOUGHT WITH A FEW FRAMES -- the owner: no big chains near the top, they give the enemy time: of two
+  // neither living, the one that sends no slab of two rows or more before a chain lost later by less than a break's time)
+  if (!lx && finishAsked() && (chainReach(x) >= 3) != (chainReach(y) >= 3)) {
+    const Judge *c = chainReach(x) >= 3 ? x : y, *o = c == x ? y : x;
+    if (lostOf(c) - lostOf(o) < rankSave && diesAt(o) >= rankSave) return (cmpKey = __LINE__, (c == x ? 1 : -1));
+  }
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
