@@ -948,10 +948,12 @@ static int frontFrame(void) {
     dropAll(); F.st.diverged++; diverged = 1;
     if (F.loggedDiffer < 40) {
       // (and the garbage on its way as the telegraph shows it now, and as the plan knew it: how many, and how many due by now)
-      int dueNow = 0, dueKnew = 0;
+      // (and the soonest the plan knew of, in frames from now: how late a forecast that did not come due was)
+      int dueNow = 0, dueKnew = 0; int32_t soonest = 0x7fffffff;
       for (int i = 0; i < F.narr; i++) dueNow += F.arr[i].at <= t->stopWatch;
-      for (int i = 0; i < F.nknew; i++) dueKnew += F.knew[i].at <= t->stopWatch;
-      char l[320]; snprintf(l, sizeof l, "DIVERGED clock %d: %s (on its way %d, due %d; known %d, due %d)", now, why, F.narr, dueNow, F.nknew, dueKnew);
+      for (int i = 0; i < F.nknew; i++) { dueKnew += F.knew[i].at <= t->stopWatch; if (F.knew[i].at < soonest) soonest = F.knew[i].at; }
+      char l[320]; snprintf(l, sizeof l, "DIVERGED clock %d: %s (on its way %d, due %d; known %d, due %d, soonest in %d)", now, why, F.narr, dueNow, F.nknew, dueKnew,
+                            F.nknew ? soonest - t->stopWatch : -1);
       flog(l); F.loggedDiffer++;
     }
   }
