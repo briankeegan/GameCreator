@@ -411,7 +411,7 @@ static int reserveShort(const Judge *J) {
   int left = pop > 0 ? allowLeftAt(pop, lineWalk(J)) : pressAllowance - lineWalk(J);
   return imax(0, BREAK_WALK - left);
 }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
+static int spendsReserve(const Judge *J) { return reserveShort(J) > 0; }
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
@@ -541,7 +541,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int fx = awayFromGarbage(x), fy = awayFromGarbage(y);
     if (fx != fy) {
       const Judge *f = fx ? x : y, *o = fx ? y : x;
-      if (imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f)) && !(goalLine(f) && !goalLine(o)) && (lx || diesAt(o) >= diesAt(f))) return (cmpKey = __LINE__, (fx ? 1 : -1));
+      // (but not a set-up against the hold that keeps the reserve: waiting is no nearer the garbage -- the owner: a set-up beats holding
+      // under garbage, as long as it saves enough moves)
+      if (!(setupKind(f) && o->hold && !spendsReserve(f)) && imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f)) && !(goalLine(f) && !goalLine(o)) && (lx || diesAt(o) >= diesAt(f))) return (cmpKey = __LINE__, (fx ? 1 : -1));
     }
   }
   // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
