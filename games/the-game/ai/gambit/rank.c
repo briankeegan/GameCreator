@@ -600,8 +600,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // set-up: pressed for nothing it spends the window the next break needs)
       // (and while the board's own chain falls -- the owner: set up and started, it can do something else; it just sits there waiting for
       // it to finish: a set-up that keeps the chain as far as the hold does, the same)
+      // (and with garbage on its way: a line toward the next break before the hold -- the owner: never hold; the time to the landing is
+      // the walk to the break it will need)
       int chaining = decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2);
-      if ((popLeft(decQ.b) > 0 || chaining) && x->hold != y->hold) {
+      int coming = decQ.narr > 0 && ((x->hold ? y : x)->k.play == PLAY_TOWARD);
+      if ((popLeft(decQ.b) > 0 || chaining || coming) && x->hold != y->hold) {
         const Judge *m = x->hold ? y : x, *h = x->hold ? x : y;
         int sets = m->k.play == PLAY_SETUP || m->k.play == PLAY_LINEUP || m->k.play == PLAY_TOWARD || m->k.play == PLAY_NEAREST;
         if (sets && m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
