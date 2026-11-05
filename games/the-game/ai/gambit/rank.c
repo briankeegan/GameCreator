@@ -598,10 +598,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // a set-up, a lineup, a line toward the next break or nearest the list; no clear of three for nothing, the reserve kept, lost no
       // sooner -- before the hold, whatever it walks: the wait buys nothing the pop does not. A line the survival search found is no
       // set-up: pressed for nothing it spends the window the next break needs)
-      if (popLeft(decQ.b) > 0 && x->hold != y->hold) {
+      // (and while the board's own chain falls -- the owner: set up and started, it can do something else; it just sits there waiting for
+      // it to finish: a set-up that keeps the chain as far as the hold does, the same)
+      int chaining = decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2);
+      if ((popLeft(decQ.b) > 0 || chaining) && x->hold != y->hold) {
         const Judge *m = x->hold ? y : x, *h = x->hold ? x : y;
         int sets = m->k.play == PLAY_SETUP || m->k.play == PLAY_LINEUP || m->k.play == PLAY_TOWARD || m->k.play == PLAY_NEAREST;
-        if (sets && m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h))) return (cmpKey = __LINE__, (x->hold ? 1 : -1));
+        if (sets && m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
+          return (cmpKey = __LINE__, (x->hold ? 1 : -1));
       }
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
