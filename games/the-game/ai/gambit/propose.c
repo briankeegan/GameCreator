@@ -245,6 +245,53 @@ static int levelLine(const Board *b, int32_t *seq, int cap) {
   return n;
 }
 
+// THE ZIPPER IN PASSING (plans/gambit-combos.md, the players' stacks; the owner: while garbage breaks or panels fall, one swap on the way
+// that makes the stack a little more zippered): of the swaps within ZIP_NEAR actions of the cursor, two panels at rest of two colours,
+// the one that makes no match and leaves the most more pairs of a colour a swap apart, less the pairs touching (judge.c spreadOf) --
+// 0 when none gains
+#define ZIP_NEAR 3
+#define POP_BAND 3   // (the rows under the lowest garbage the pop is used in)
+#define POP_NEAR 4   // (the actions from the cursor it is used within)
+static int zipGrid(int32_t g[][W + 2], int r, int c) { return r >= 1 && r < MAXROWS && c >= 1 && c <= W ? g[r][c] : 0; }
+static int zipSpread(int32_t g[][W + 2], int top, int r0, int r1) {
+  int s = 0;
+  for (int r = imax(1, r0); r <= imin(top, r1); r++) for (int c = 1; c <= W; c++) {
+    int32_t v = g[r][c]; if (v <= 0) continue;
+    s -= (zipGrid(g, r + 1, c) == v) + (zipGrid(g, r, c + 1) == v);
+    int32_t m = zipGrid(g, r + 1, c), n = zipGrid(g, r, c + 1);
+    s += (zipGrid(g, r + 2, c) == v && m > 0 && m != v) + (zipGrid(g, r, c + 2) == v && n > 0 && n != v);
+    s += (zipGrid(g, r + 1, c - 1) == v) + (zipGrid(g, r + 1, c + 1) == v);
+  }
+  return s;
+}
+static int zipMatch(int32_t g[][W + 2], int r, int c) {
+  int32_t v = g[r][c]; if (v <= 0) return 0;
+  int h = 1, k; for (k = c - 1; zipGrid(g, r, k) == v; k--) h++; for (k = c + 1; zipGrid(g, r, k) == v; k++) h++;
+  int u = 1; for (k = r - 1; zipGrid(g, k, c) == v; k--) u++; for (k = r + 1; zipGrid(g, k, c) == v; k++) u++;
+  return h >= 3 || u >= 3;
+}
+static int zipSwap(const Board *b, int32_t *mv, int rlo, int rhi, int near) {
+  static int32_t g[MAXROWS + 2][W + 2];
+  int top = imin(b->nrows - 1, MAXROWS - 1);
+  for (int r = 0; r <= top + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
+  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = b->p[r][c].f;
+    g[r][c] = !f[ISGARBAGE] && f[STATE] == NORMAL && f[COLOR] > 0 && f[COLOR] < 8 ? f[COLOR] : 0;
+  }
+  int best = 0, bestD = 99; *mv = 0;
+  for (int r = imax(1, rlo); r <= top && r <= b->topCurRow && r <= rhi; r++) for (int c = 1; c < W; c++) {
+    int d = iabs(r - b->curRow) + iabs(c - b->curCol);
+    if (d > near) continue;
+    int32_t a = g[r][c], z = g[r][c + 1];
+    if (a <= 0 || z <= 0 || a == z) continue;
+    int before = zipSpread(g, top, r - 2, r + 2);
+    g[r][c] = z; g[r][c + 1] = a;
+    int gain = zipMatch(g, r, c) || zipMatch(g, r, c + 1) ? -99 : zipSpread(g, top, r - 2, r + 2) - before;
+    g[r][c] = a; g[r][c + 1] = z;
+    if (gain > best || (gain == best && gain > 0 && d < bestD)) { best = gain; bestD = d; *mv = (int32_t)(r * 8 + c); }
+  }
+  return best > 0;
+}
 // ---- the candidates
 static int candOf(Cand *k, int play, const int32_t *seq, int n, int aim, int extend) {
   memset(k, 0, sizeof *k);
@@ -782,6 +829,10 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     static Perches pd; perchedDrops(decQ.b, &pd);
     for (int i = 0; i < pd.n; i++) { int m0 = n; ADD(PLAY_LEVEL, pd.seq[i], pd.len[i], -1, 0); if (n > m0) out[m0].drop = 1; }
   }
+  // THE POP USED (the owner: while garbage breaks it just sits there): while a slab pops, the swap within POP_NEAR of the cursor, in the
+  // rows just under the lowest garbage, that zips the stack (zipSwap) -- a set-up, after every other set-up: played rather than nothing
+  if (R->pop && R->under) { int lg = lowestG(decQ.b); int32_t z;
+    if (lg < gridLen(decQ.b) && zipSwap(decQ.b, &z, lg - POP_BAND, lg - 1, POP_NEAR) && !seenDigHas(decQ.b, z)) { int m0 = n; ADD(PLAY_SETUP, &z, 1, -1, 0); if (n > m0) out[m0].zip = 1; } }
   // LEVEL: the swap that flattens the stack, under garbage or before a block lands
   // (a swap that clears nothing and brings back a board this dig has stood on goes nowhere: not offered)
   if (S->lvU && !seenDigHas(decQ.b, S->lvU)) { int32_t one = S->lvU; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
