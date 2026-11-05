@@ -303,6 +303,15 @@ static int comboOutside(const Judge *J) { return !J->hold && J->outside && J->ap
 // line in progress on what it was begun for -- and that word is no break the judge saw)
 static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke : J->apBroke; }
 // (the entry of the mode's list a line meets where it asks a combo, MAXAIMS where it meets none that does)
+// (THE FINISH: the list asks a combo of eight or more and no chain -- finish them, the enemy near the top: a slab two rows tall or more is
+// up to 76 frames of shake it lives through, the 8's pieces are a few cells each -- the owner: big chains near the top give it time)
+static int finishAsked(void) {
+  int big = 0;
+  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo, *h = &theList.aim[i].chain;
+    if (h->op) return 0;
+    if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) big = 1; }
+  return big;
+}
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
 // (the lowest garbage row of the decision's board, read once a board: search/break.c lowestG)
 #define GARBAGE_AWAY 4
@@ -500,7 +509,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // under garbage too: a chain left to end short of the target is the attack thrown away
   // (and a chain the board is about to make on its own -- garbage converting into a match, panels falling -- is a chain going too: the
   // line that takes it further is chosen while it can still be reached, not once its second link has popped)
-  if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y))) {
+  if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y)) && !finishAsked()) {
     int32_t cap = imax(listChainCap(), 3);   // (at least to three: the owner)
     {
       int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap);
@@ -517,6 +526,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
                    (decF.under && pressAllowance >= 0 && pressAllowance - lineWalk(lc) < BREAK_WALK / 2 && reserveShort(lc) > reserveShort(sc));
       if (cx != cy && !brokeMore && !spends) return (cmpKey = __LINE__, (cy - cx));
     }
+  }
+  // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
+  // rows or more (a chain of three or longer, the board's own going on included) before one that does -- unless that one breaks more
+  // garbage: the break is the board's life
+  if (finishAsked() && (lx || lostAlike(x, y))) {
+    int bx = chainReach(x) >= 3, by = chainReach(y) >= 3;
+    if (bx != by) { const Judge *s = bx ? y : x, *c = bx ? x : y;
+      if (imax(0, s->apBroke) >= imax(0, c->apBroke)) return (cmpKey = __LINE__, (bx ? 1 : -1)); }
   }
   // 1'L. UNDER GARBAGE, BREAK (the owner: it waits too long to break garbage; low, spend less and focus on breaking): garbage on the
   // board, of two that both live, or are lost alike with the break lost no sooner, a line that breaks garbage before one that breaks none
