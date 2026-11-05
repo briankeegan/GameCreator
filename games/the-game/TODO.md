@@ -214,7 +214,9 @@ narrowed, not dropped.
      line left unhanded. Of the decisions that found none in progress (c16=, run 2320, pressure 22/24 on set 88): 11,740 after a
      hold, 2,715 after a move of one swap -- a move's walk the next decision can drop, since nothing of a one-swap line is carried.
      Next: the frame loop counts the move among the line's swaps pressed (front.c lineOfPressed counts only the swaps handed on after
-     it), so the move itself can be carried until it is pressed.
+     it), so the move itself can be carried until it is pressed. Tried by the move's two panels (idea177): 62/72 against 65/72, and
+     the actions moved from "none carried" to "all pressed" whole (35% still) -- the move's panels had shifted before it was pressed,
+     the walk lost either way.
    - **A 24-game run is noisy**: the same behaviour on the same seed gave 20/24 and 23/24 (runs 2247, 2248) -- the clock decides how
      far each search goes, and the runner's clock differs run to run. A gap of 3 games in 24 is not a measurement.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
