@@ -831,6 +831,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 11. THE NEARER FIRST SWAP: of two lines every key leaves equal, the one whose first swap the cursor reaches in fewer actions
   // (core/nodes.h actionsFor, as the frame loop walks) -- the hold presses nothing, nearest of all
   { int nx = firstWalk(x), ny = firstWalk(y); if (nx != ny) return (cmpKey = __LINE__, (nx - ny)); }
+  // 12. THE ZIPPER: of two lines every key leaves equal, the one that leaves the colours more zippered -- fewer of a colour touching,
+  // more a swap apart, as the players' stacks are (plans/gambit-combos.md)
+  if (!x->hold && !y->hold && x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
   return (cmpKey = __LINE__, (0));
 }
 // A LINE IN WALKING ORDER: its swaps pressed in the order the cursor reaches them soonest -- from where the cursor is, each swap's walk
