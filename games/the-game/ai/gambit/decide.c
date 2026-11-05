@@ -603,7 +603,7 @@ static Played playOf(const Read *R, int n) {
 // on a board the stack is not yet)
 // (made: what the line was ranked as making when it was played -- the judge's count, or the search's word for a line whose board is lost
 // during it (rank.c judgeCand): the rest of such a line is read on it too, carriedCand)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; } Carry;   // (rule: the mode it was begun in)
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule, moveOnly, idL, idR; Aim aim; Made made; } Carry;   // (rule: the mode it was begun in; moveOnly: a one-swap line, carried as its move until the move's two panels have changed places -- idL, idR)
 static Carry theCarry;
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
@@ -638,6 +638,10 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.waits = waits; carriedSunk = -1;
   // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
   // tier, and its swaps after the first are the break it was chosen for)
+  // (A MOVE OF ONE SWAP is carried as itself, its walk the window spent on it: found again by its two panels, carried on while they stand
+  // where they stood -- once they have changed places the move is pressed, and nothing of it is left)
+  int moveOnly = k && k->k.nseq == 1 && first == 1;
+  if (moveOnly) first = 0;
   carrySkip = !k ? 1 : (k->wait && k->k.play != PLAY_CARRYWAIT) ? 2 : k->k.nseq < first + 1 ? 3 : (k->t.tier > 4 && !(k->apBroke > 0)) ? 4 : 0;
   if (carrySkip) { carryClr = carrySkip; return; }
   int32_t row1[W + 1];
@@ -650,6 +654,10 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   carriedSunk = lineWalk(k);
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
   theCarry.rule = R->rule;
+  if (moveOnly) {
+    int r = CR(k->k.seq[0]), c = CC(k->k.seq[0]);
+    theCarry.moveOnly = 1; theCarry.idL = decQ.b->p[r][c].f[ID]; theCarry.idR = decQ.b->p[r][c + 1].f[ID];
+  }
 }
 static int32_t carryRule(void) { return theCarry.rule; }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
@@ -821,6 +829,10 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
   int32_t rest[MAXLINE], nrest = C->nrest - skip;
   for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
+  if (C->moveOnly) {
+    int r = CR(rest[0]), c = CC(rest[0]);
+    if (r < 0 || r >= decQ.b->nrows || decQ.b->p[r][c].f[ID] != C->idL || decQ.b->p[r][c + 1].f[ID] != C->idR) { carryNone = 18; return 0; }
+  }
   // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
   // settled line waits while the board still moves)
   // (a settled line's next step is pressed on the board settled from the step before, as it was judged: on a board still moving the
