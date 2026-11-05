@@ -158,3 +158,17 @@ but there is no left or right: no colour is kept on a side.
 So a set-up can be general, not one combo built on purpose: of two set-ups, the one that leaves the board flatter, with fewer
 same-colour panels touching and more a swap apart. The tools: `combo_replays.py split` for the games, `lua/boardSample.lua` (in a
 panel-game checkout, as `comboReplay.lua`) for the boards, `board_stats.py` and `board_staged.py` for the table.
+
+## The crossed seam, ready
+
+`lua/comboSample.lua` (in a panel-game checkout, as `boardSample.lua`) writes each combo of 8+ with the board as it matched, the
+boards 1, 20, 60 and 120 frames before, and the swaps of the last 150 frames. Over the same 60 Tanycanayt games and 6 of some_noob's:
+
+- **Every one of the 260 is one swap finishing two colours at once**: each panel of the swapped pair completes a run of its own
+  colour where it lands. 164 are column + column, 84 an L or T + a column, 12 use a row.
+- **222 of the 260 had garbage on the screen.** The seam is how they break garbage, not only a calm-board build.
+- 2 to 4 swaps in the second before is typical: the seam is crossed last, one panel into each column.
+
+A board's **crossed seams** are the pairs side by side whose swap does that (`seamsOf`, judge.c). One is ready on 11.9% of
+Tanycanayt's boards and on 5.9% of Gambit's. Gambit makes the small ones as often (6-7 combos 0.57 a minute against his 0.64) but
+not the big ones (8+ 0.05 against 1.29): those need a column of four or five, a swap into the gap of an A x A.
