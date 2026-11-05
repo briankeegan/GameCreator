@@ -418,10 +418,23 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // leave as many, or three or more each: run 446, build, a line lost at 266 taken over one lost at 385 that broke more, two tries against
 // three. Past three the material decides: run 451, the later loss taken there too, spent the panels -- large_garbage's material under
 // garbage 19 where it was 23 -- finish 15 against 17)
-static int lostAlike(const Judge *x, const Judge *y) {
-  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+static int alikeAt(double a, double b) {
+  double lo = a < b ? a : b, hi = a < b ? b : a;
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
   return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
+}
+// (and alike on the frame each board is lost as well, no walk charged: the charge is the order's preference for the nearer, never a
+// break's time of life -- two boards lost a break's time apart are never alike for what the walk charges)
+static int lostAlike(const Judge *x, const Judge *y) {
+  if (!alikeAt(lostOf(x), lostOf(y))) return 0;
+  double dx = diesAt(x), dy = diesAt(y);
+  return dx < 0 || dy < 0 || (dx > dy ? dx - dy : dy - dx) < rankSave || alikeAt(dx, dy);
+}
+// (two lost less than a break's time apart, by the walk charged and by the frame each is lost)
+static int lostNear(const Judge *x, const Judge *y) {
+  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+  double dx = diesAt(x), dy = diesAt(y);
+  return lo >= rankSave && hi - lo < rankSave && (dx < 0 || dy < 0 || (dx > dy ? dx - dy : dy - dx) < rankSave);
 }
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
 static int32_t cmpKey;
@@ -429,9 +442,14 @@ static int32_t cmpKey;
 // panels the next break is made from. Beside one that spends none and leaves the next decision a break's time (rankSave), the two
 // survive alike, and the list puts the one that keeps its panels first -- under garbage too: a chain fired for its stop leaves the
 // garbage where it is and fewer panels to break it with)
+// (and only where the spend buys less than a break's time more on the frame each board is lost: the time it buys is the next break's
+// chance, as the spends key has it)
 static int boughtWithPanels(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
-  return lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends;
+  if (!(lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends)) return 0;
+  const Judge *sp = x->spends ? x : y, *o = x->spends ? y : x;
+  double ds = diesAt(sp), d0 = diesAt(o);
+  return ds < 0 || d0 < 0 || ds - d0 < rankSave;
 }
 // (A COMBO OF FOUR OUTSIDE THE LIST: panels spent for a small piece the mode does not ask for -- the owner: a last resort)
 static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
@@ -646,8 +664,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // a break's time apart, where the later buys no break more -- and keep the board's own chain alike, the first entry, then a line that
   // fires no fallback, then each fallback in the list's order (goalKeyOf)
   if (cutsShort(x) == cutsShort(y)) {
-    double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
-    if (lx || (lo >= rankSave && hi - lo < rankSave)) {
+    if (lx || lostNear(x, y)) {
       int gx = goalKeyOf(x), gy = goalKeyOf(y);
       if (gx != gy) return (cmpKey = __LINE__, (gx - gy));
       // (and of two that make the first entry, or two set-ups toward it, the fewer presses: the owner, the goal first and the shortest
