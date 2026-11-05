@@ -176,6 +176,18 @@ narrowed, not dropped.
      Tried and not kept: wasted threes ranked against the line (idea157, 158: 2.00 to 1.75 a minute, the threes beside bigger breaks);
      the panels kept a row below the floor (idea160: big chain 21, pressure 20, finish 21 -- material no higher). A change of a game a
      mode is under one run's noise: the next measures are 48 games a mode.
+   - **On main tonight** (finish them, the worst, sets 82 and 84): the walk never turns a life into a death (lostOf's walk charge put a
+     hold before a break line alive 140 frames longer; the mode passed over 291 against 459); a set-up while the board's own chain falls
+     (45/48 against 43/48). Threes break only topped out (the owner; finish them 41/48 against 44/48 on sets 80 and 82). Low, a spend held
+     back only where it buys less than a break's time (43/48 against 41/48).
+   - **Set up, then undone** (the owner, watching: setup and unsetup while waiting, nothing changing): 8% of swaps move a panel that a
+     swap 3 s before moved the other way. Each decision plans afresh, a one-swap set-up is never carried (carryOf: more than one swap),
+     and only the exact pair swapped back is caught (rules.c swappedBack, judge.c noops). A memory of the last pair pressed (idea168) did
+     not change it (8.1% to 7.9%, 43/48 against 45/48): most of it is lines in progress, and the host hands on only the last pair. Next:
+     the host hands every pressed swap with the line it belongs to, and a line's first swap may not move back what another line moved.
+   - **Live, against Gambit_100** (run 663, 12 won 9 lost): every attack comes over the wire (GambitNative.lua wired) and is known only
+     once in the stack's own queue -- 77 divergences, incoming 0 vs N, known 0; 5 of the 9 losses had one in their last 300 frames. The
+     copy of the opponent played here could tell the garbage on its way, read as known, not delivered from. The owner's to decide.
    - **A 24-game run is noisy**: the same behaviour on the same seed gave 20/24 and 23/24 (runs 2247, 2248) -- the clock decides how
      far each search goes, and the runner's clock differs run to run. A gap of 3 games in 24 is not a measurement.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
