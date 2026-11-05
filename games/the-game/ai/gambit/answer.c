@@ -662,6 +662,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the planner and the list's first entry: a line that meets it found, and how near its nearest line comes, the first entry's percent)
   if (S.haveAp) { L_s(" p0="); L_i(S.ap.perAim[0].set ? 1 : 0); L_s("/"); L_i(S.ap.nearest.set ? (int64_t)S.ap.nearest.near : -1); }
   L_s(" cof="); L_i(carrySkip);
+  if (A->ended == 16) { L_s(" c16="); L_i(carryClr); }
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
   int any = 0;
@@ -802,7 +803,7 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 // for the old mode's list), the dig, the line toward a break.
 static void modeLeft(void) {
   lifeLived = 0;
-  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
+  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext); carryClr = 7;
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0; carriedSunk = -1;
 }
 // A new game: nothing of the last one is carried on.

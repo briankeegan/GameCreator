@@ -629,6 +629,9 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anc
 // (WHY THE LINE PLAYED WAS NOT HANDED ON, for the log: 0 it was, 1 no line, 2 it waits, 3 nothing of it left, 4 a tier past the set-ups
 // that breaks nothing, 5 no bottom-row panel to anchor it to; -1 none asked)
 static int32_t carrySkip = -1;
+// (WHAT LAST LET THE LINE IN PROGRESS GO, for the log of a decision that found none carried (answer.c ended 16): 1-5 the decision before
+// played no line to hand on (carrySkip's), 6 a hold's break in reach not anchored, 7 the mode changed, 8 a new game)
+static int32_t carryClr;
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
@@ -636,10 +639,10 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
   // tier, and its swaps after the first are the break it was chosen for)
   carrySkip = !k ? 1 : (k->wait && k->k.play != PLAY_CARRYWAIT) ? 2 : k->k.nseq < first + 1 ? 3 : (k->t.tier > 4 && !(k->apBroke > 0)) ? 4 : 0;
-  if (carrySkip) return;
+  if (carrySkip) { carryClr = carrySkip; return; }
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
-  if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carrySkip = 5; return; }
+  if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carrySkip = 5; carryClr = 5; return; }
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
   for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
@@ -666,7 +669,7 @@ static void carryReady(const Judge *H, int32_t qid) {
   const Judged *j = &H->o.j;
   if ((!H->hold && H->k.nseq != 1) || H->o.ready != 1 || j->readyN < 1) return;
   memset(&theCarry, 0, sizeof theCarry);
-  if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) return;
+  if (!anchorOf(j->readyRow1, j->readyLine, j->readyN)) { carryClr = 6; return; }
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = j->readyN;
   for (int i = 0; i < j->readyN; i++) theCarry.rest[i] = j->readyLine[i];
   theCarry.settled = 0; theCarry.broke = 1; theCarry.popping = popLeft(decQ.b) > 0; theCarry.ready = !H->hold; theCarry.made = (Made){ 0, 0, 1, 0 };

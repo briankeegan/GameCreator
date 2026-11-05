@@ -11,7 +11,7 @@ var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
-var carrySkip = { n: 0, by: {} };   // (the lines of two swaps or more played, and why each was not handed on to the next decision: answer.c cof=)
+var carrySkip = { n: 0, by: {}, c16n: 0, c16: {} };   // (the lines of two swaps or more played, and why each was not handed on to the next decision: answer.c cof=)
 var aimsIn = {}, goalMiss = { n: 0, dec: 0 }, dips = { n: 0, none: 0 };   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
 var frontS = {};   // (the frontiers carried on, search/frontier.c: per frontier, the lines kept and carried in, the decisions it was let go whole)
@@ -190,6 +190,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (d) { inMode = d[1]; goalMiss.dec++; if (/ goalMiss=/.test(l)) goalMiss.n++;
         var cf = / cof=(-?\d+)/.exec(l), sw = / swaps=(\d+)/.exec(l);
         if (cf && +cf[1] >= 0 && sw && +sw[1] >= 2) { carrySkip.n++; carrySkip.by[cf[1]] = (carrySkip.by[cf[1]] || 0) + 1; }
+        var c16 = / c16=(\d+)/.exec(l); if (c16) { carrySkip.c16n++; carrySkip.c16[c16[1]] = (carrySkip.c16[c16[1]] || 0) + 1; }
         return; }
       var a = /^GAMBITA \d+ ([cx]) (\d+)/.exec(l); if (!a || !inMode) return;
       var o = { combo: {}, chain: {} }; o[a[1] === 'c' ? 'combo' : 'chain'][a[2]] = 1; aimOf(inMode, o, aimsIn);
@@ -397,7 +398,9 @@ Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
               ' swaps came to nothing; ' + moves.wasted + ' wasted threes' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') +
               '; ' + dips.n + ' walks down and back for one swap (' + dips.none + ' of them for nothing)'); }
 if (carrySkip.n) { var CS = { 0: 'handed on', 2: 'it waits', 3: 'nothing of it left', 4: 'a tier past the set-ups breaking nothing', 5: 'no panel to anchor it' };
-  console.log('lines of two swaps or more played: ' + carrySkip.n + ', ' + Object.keys(carrySkip.by).sort().map(function (k) { return (CS[k] || k) + ' ' + carrySkip.by[k]; }).join(', ')); }
+  console.log('lines of two swaps or more played: ' + carrySkip.n + ', ' + Object.keys(carrySkip.by).sort().map(function (k) { return (CS[k] || k) + ' ' + carrySkip.by[k]; }).join(', '));
+  var C16 = { 1: 'the decision before held', 2: 'it played a line that waits', 3: 'it played one swap', 4: 'it played a line past the set-ups breaking nothing', 5: 'its line had no panel to anchor it', 6: "a hold's break in reach not anchored", 7: 'the mode changed' };
+  if (carrySkip.c16n) console.log('decisions that found no line in progress where one was being pressed: ' + carrySkip.c16n + ', let go because ' + Object.keys(carrySkip.c16).sort().map(function (k) { return (C16[k] || k) + ' ' + carrySkip.c16[k]; }).join(', ')); }
 // (HELD UNJUDGED: a decision whose lines the clock stopped the judge on, every one -- cands= `-jN` -- and the hold played for want of
 // a look at them; decide.c judges them again to the move's frame, rescued=1)
 (function () {
