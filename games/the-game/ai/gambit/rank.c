@@ -624,6 +624,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
         const Judge *z = x->o.j.spread > y->o.j.spread ? x : y, *o = z == x ? y : x;
         if (lineWalk(z) <= lineWalk(o)) return (cmpKey = __LINE__, (z == x ? -1 : 1));
       }
+      // (then the flatter, where it walks no further -- the players keep the stack flat)
+      if (sx && sy && x->o.j.bump != y->o.j.bump) {
+        const Judge *z = x->o.j.bump < y->o.j.bump ? x : y, *o = z == x ? y : x;
+        if (lineWalk(z) <= lineWalk(o)) return (cmpKey = __LINE__, (z == x ? -1 : 1));
+      }
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
@@ -820,6 +825,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1));
     if (x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
     if (x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
+    if (x->o.j.bump != y->o.j.bump) return (cmpKey = __LINE__, (x->o.j.bump - y->o.j.bump));
     }
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
   for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return (cmpKey = __LINE__, (tx.sub[q] < ty.sub[q] ? -1 : 1));

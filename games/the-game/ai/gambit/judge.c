@@ -60,6 +60,7 @@ typedef struct {
   int32_t even;                 // the board it ends on: its tallest column less its lowest, in rows (evenOf; -1 not known)
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
+  int32_t bump;                 // and its bumpiness (bumpOf): the steps between neighbouring columns' heights, summed
 } Judged;
 
 static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -293,6 +294,17 @@ static void ownChainOf(const Question *q) {
 }
 // THE JUDGE: the line seq (n swaps, r * 8 + c) from the question, as the options say.
 // HOW FLAT A BOARD IS: its tallest column less its lowest, in rows -- panels and garbage alike, the stack as it stands
+// A BOARD'S BUMPINESS: the steps between neighbouring columns' heights, summed -- the players keep it low (plans/gambit-combos.md)
+static int32_t bumpOf(const Board *b) {
+  int32_t prev = -1, sum = 0;
+  for (int c = 1; c <= W; c++) {
+    int h = 0;
+    for (int r = 1; r < b->nrows; r++) if (b->p[r][c].f[COLOR] > 0 || b->p[r][c].f[ISGARBAGE]) h = r;
+    if (prev >= 0) sum += iabs(h - prev);
+    prev = h;
+  }
+  return sum;
+}
 static int32_t evenOf(const Board *b) {
   int hi = 0, lo = 1 << 20;
   for (int c = 1; c <= W; c++) {
@@ -493,7 +505,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
-  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; }
+  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; j->bump = eb ? bumpOf(eb) : 0; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));
