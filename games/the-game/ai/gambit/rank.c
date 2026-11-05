@@ -295,6 +295,14 @@ static int comboOutside(const Judge *J) { return !J->hold && J->outside && J->ap
 static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke : J->apBroke; }
 // (the entry of the mode's list a line meets where it asks a combo, MAXAIMS where it meets none that does)
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
+// (the lowest garbage row of the decision's board, read once a board: search/break.c lowestG)
+#define GARBAGE_AWAY 4
+static int awayFromGarbage(const Judge *J) {
+  static LOCAL const Board *forB; static LOCAL int32_t forClock = -1, lowG = 0;
+  if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || !decQ.b) return 0;
+  if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; lowG = lowestG(decQ.b); }
+  return lowG < gridLen(decQ.b) && lowG - CR(J->k.seq[0]) >= GARBAGE_AWAY;
+}
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
   if (J->o.j.threes > 0 && !(brokeSeen(J) > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
@@ -496,6 +504,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (decF.under && (lx || lostAlike(x, y)) && (x->apBroke > 0) != (y->apBroke > 0)) {
     const Judge *b = x->apBroke > 0 ? x : y, *o = x->apBroke > 0 ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (x->apBroke > 0 ? -1 : 1));
+  }
+  // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
+  // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
+  // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
+  if (decF.under && (lx || lostAlike(x, y))) {
+    int fx = awayFromGarbage(x), fy = awayFromGarbage(y);
+    if (fx != fy) {
+      const Judge *f = fx ? x : y, *o = fx ? y : x;
+      if (imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f)) && !(goalLine(f) && !goalLine(o)) && (lx || diesAt(o) >= diesAt(f))) return (cmpKey = __LINE__, (fx ? 1 : -1));
+    }
   }
   // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
   // (readyNext) before one that does not and breaks no more garbage now -- a board that cannot break what lands next is the loss
