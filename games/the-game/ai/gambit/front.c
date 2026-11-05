@@ -58,6 +58,7 @@ typedef struct {
           raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps, starved, inHand, aimed;
   int32_t behind, behindWorst;   // (a line's swaps whose keys began later than the frame the judge pressed them from, and by how much at most)
   int32_t revealCleared;         // (plans dropped for a panel unseen when they were made coming to a clear: front.c revealClears)
+  int32_t early;                 // (frames the queue held garbage the telegraph had due a frame or few later: front.c arrivedEarly)
   int32_t combo[64], chain[32];
   // each chain link past the list's two, by its cause: panels out of garbage (colours not shown when it was decided), a swap pressed
   // since the link before it, or neither (the stack alone)
@@ -277,6 +278,23 @@ static int heldBack(const Board *want, const Board *got) {
   }
   return 1;
 }
+// THE QUEUE AHEAD OF THE TELEGRAPH (loose sync: the server delivers a wired source's garbage a frame or three before its copy here
+// says it is due): the queue the game has is the one predicted and, after it, pieces the telegraph shows on their way and due within
+// EARLY_MAX frames -- known garbage come early, not garbage unforeseen; the plan made knowing it stands (counted: F.st.early)
+#define EARLY_MAX 4
+static int arrivedEarly(const Board *want, const Board *got) {
+  if (got->ninc <= want->ninc) return 0;
+  for (int i = 0; i < want->ninc; i++) if (!sameInc(&want->inc[i], &got->inc[i])) return 0;
+  static uint8_t used[MAXARRIVALS];
+  memset(used, 0, sizeof used);
+  for (int i = want->ninc; i < got->ninc; i++) {
+    int found = 0;
+    for (int k = 0; k < F.narr && !found; k++)
+      if (!used[k] && F.arr[k].at - got->stopWatch <= EARLY_MAX && sameInc(&got->inc[i], &F.arr[k].g)) { used[k] = 1; found = 1; }
+    if (!found) return 0;
+  }
+  return 1;
+}
 static const int PANEL_FIELDS[] = { COLOR, STATE, TIMER, ISGARBAGE, CHAINING, METAL, GARBAGEID, XOFF, YOFF, GWIDTH, GHEIGHT, COMBOINDEX, COMBOSIZE,
                                     MATCHANYWAY, PROPCHAIN, STATECHANGED, DONTSWAP, QUEUEDHOVER, SHAKETIME, FELL, POPTIME, POPINDEX, INITIALTIME };
 // Where two boards first disagree (0: they agree), into `why`.
@@ -291,7 +309,10 @@ static int differ(const Board *w, const Board *g, char *why, int cap) {
   if (w->riseTimer != g->riseTimer) { snprintf(why, (unsigned long)cap, "stack.riseTimer"); return 1; }
   int sameQ = w->ninc == g->ninc;
   for (int i = 0; sameQ && i < w->ninc; i++) sameQ = sameInc(&w->inc[i], &g->inc[i]);
-  if (!sameQ && !heldBack(w, g)) { snprintf(why, (unsigned long)cap, "incoming %d vs %d", w->ninc, g->ninc); return 1; }
+  if (!sameQ && !heldBack(w, g)) {
+    if (!arrivedEarly(w, g)) { snprintf(why, (unsigned long)cap, "incoming %d vs %d", w->ninc, g->ninc); return 1; }
+    F.st.early++;
+  }
   int sameS = w->nstall == g->nstall;
   for (int i = 0; sameS && i < w->nstall; i++)
     sameS = w->stall[i].leftId == g->stall[i].leftId && w->stall[i].rightId == g->stall[i].rightId && w->stall[i].row == g->stall[i].row &&
@@ -1090,10 +1111,10 @@ static void afterFrame(int32_t bits) {
 static void statsLine(char *out, int cap) {
   int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
-                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"aimed\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"attacks\":{\"combo\":{",
+                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"aimed\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"early\":%d,\"attacks\":{\"combo\":{",
                    F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
-                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.aimed, F.st.behind, F.st.behindWorst, F.st.revealCleared);
+                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.aimed, F.st.behind, F.st.behindWorst, F.st.revealCleared, F.st.early);
   int first = 1;
   for (int z = 0; z < 64 && k < cap; z++) if (F.st.combo[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.combo[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");
