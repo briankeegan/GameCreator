@@ -471,7 +471,7 @@ static int ranked(const Read *R, const Found *S) {
     }
     if (!keeps && keptLost >= rankSave) keeps = 1;
     if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1;
-    if (keeps) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i])) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    if (keeps) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i])) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 24; } } else order[m++] = order[i]; } n = m; } }
   // (NO COMBO THE MODE DOES NOT ASK FOR, where a three does as well: the line ranked first making one is played with each of its swaps
   // left out in turn, and one that makes none, lives as long, breaks as much and makes as much of the list is the line -- a fourth panel
   // walked in by a swap the break did not need is a panel and a walk for nothing (the owner: no mode asks a combo of four))
