@@ -481,7 +481,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
-  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // (the line in progress is put down for a later loss only where that loss is a break's time later on the frame each board is lost:
+  // nearer than that, the swaps it has pressed are the window spent for the other's sake, and the two survive alike)
+  int carriedNear = x->carried != y->carried && !x->hold && !y->hold && diesAt(x) >= 0 && diesAt(y) >= 0 &&
+                    (diesAt(x) > diesAt(y) ? diesAt(x) - diesAt(y) : diesAt(y) - diesAt(x)) < rankSave;
+  if (!lx && !carriedNear && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
   // none and breaks as much
