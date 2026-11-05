@@ -635,9 +635,9 @@ static int convertLines(const Read *R, Cand *out, int n, int cap) {
 }
 // WORK ON THE WAY (plans/gambit-infra.md B, D): a settled line whose first swap is a walk away, again with a swap made first on a cell
 // the cursor passes anyway (a step aside at most) that does something there -- it clears, or it sets up: the board it settles to has the
-// nearest break nearer (search/break.c nearOf, under garbage) or its colours more connected (search/plan.c connectedOf, the planner's own
-// setup measure). Only the swaps on some line's way are stepped (on every thread: core/nodes.h stepBatch), the most useful first: a
-// clear, then the break brought nearer, then the colours joined. Offered as the play it was made from, every swap pressed once the board
+// nearest break nearer (search/break.c nearOf, under garbage) or the stack more zippered, clearing nothing (judge.c spreadOf: fewer of a
+// colour touching, more a swap apart -- the players' stacks). Only the swaps on some line's way are stepped (on every thread:
+// core/nodes.h stepBatch), the most useful first: a clear, then the break brought nearer, then the zip. Offered as the play it was made from, every swap pressed once the board
 // settles; the engine judges the whole of it, so a swap that spoils the line or leaves the board no better is ranked by what it does.
 #define WAY_MIN 3     // the cursor's actions to a line's first swap before its way is searched
 #define WAY_PER 2     // lines on the way, a line
@@ -675,7 +675,7 @@ static int wayLines(Cand *out, int n, int cap) {
   if (!no) return n;
   const Board *b0 = ensureBoard(x, root);
   int under = garbageOn(decQ.b);
-  int32_t near0 = under ? nearOf(b0) : 0, conn0 = connectedOf(b0);
+  int32_t near0 = under ? nearOf(b0) : 0, zip0 = spreadOf(b0);
   stepBatch(x, par, on, MK_SETTLE, no);
   int nu = 0;
   for (int j = 0; j < no; j++) {
@@ -684,9 +684,10 @@ static int wayLines(Cand *out, int n, int cap) {
     if (!liveNode(x, o) || !statsOf(x, o, &st)) continue;
     const Board *b = ensureBoard(x, o);
     if (!b) continue;
-    int32_t nearer = under ? near0 - nearOf(b) : 0, joined = connectedOf(b) - conn0;
+    // (or the stack more zippered -- fewer of a colour touching, more a swap apart: judge.c spreadOf, the players' stacks)
+    int32_t nearer = under ? near0 - nearOf(b) : 0, zipped = st.cleared > 0 ? 0 : spreadOf(b) - zip0;
     // (a clear of three that breaks nothing is no work: a wasted three)
-    int32_t sc = st.cleared > 3 || st.broke > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : joined > 0 ? joined : 0;
+    int32_t sc = st.cleared > 3 || st.broke > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : zipped > 0 ? zipped : 0;
     if (sc > 0) { on[nu] = on[j]; score[nu++] = sc; }
   }
   batchDone();
@@ -827,8 +828,8 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     static Perches pd; perchedDrops(decQ.b, &pd);
     for (int i = 0; i < pd.n; i++) { int m0 = n; ADD(PLAY_LEVEL, pd.seq[i], pd.len[i], -1, 0); if (n > m0) out[m0].drop = 1; }
   }
-  // ZIP: while a slab pops or panels move, the swap on the way that zips the stack (zipSwap) -- a set-up, ranked as one
-  if (R->pop || hasActivePanels(decQ.b)) { int32_t z; if (zipSwap(decQ.b, &z) && !seenDigHas(decQ.b, z)) ADD(PLAY_SETUP, &z, 1, -1, 0); }
+  // ZIP: the swap near the cursor that zips the stack (zipSwap) -- a set-up, after every other set-up: what is played rather than nothing
+  { int32_t z; if (zipSwap(decQ.b, &z) && !seenDigHas(decQ.b, z)) { int m0 = n; ADD(PLAY_SETUP, &z, 1, -1, 0); if (n > m0) out[m0].zip = 1; } }
   // LEVEL: the swap that flattens the stack, under garbage or before a block lands
   // (a swap that clears nothing and brings back a board this dig has stood on goes nowhere: not offered)
   if (S->lvU && !seenDigHas(decQ.b, S->lvU)) { int32_t one = S->lvU; ADD(PLAY_LEVEL, &one, 1, -1, 0); }

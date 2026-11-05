@@ -14,6 +14,7 @@ typedef struct {
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
   int32_t twin;    // two columns sorted row by row, then one swap that clears both (propose.c twinLines): 1 the line, 2 the set-up alone
+  int32_t zip;     // one swap near the cursor that zips the stack (propose.c zipSwap): a set-up after every other
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -625,6 +626,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
         if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
+      // (of two set-ups, the one that is no zip first -- the zip is what is played rather than nothing)
+      if (sx && sy && x->k.zip != y->k.zip) return (cmpKey = __LINE__, (x->k.zip ? 1 : -1));
       // (of two set-ups: the one that leaves more crossed seams -- a swap finishing two colours at once, the players' 8+ combo)
       if (sx && sy && x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
