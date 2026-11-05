@@ -224,6 +224,9 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **One run per condition measures nothing.** The seed-to-seed noise floor
   is ~911 points; ignore any smaller gap. `GC_GA_SEED` makes repeats
   possible.
+- **One `gambit-24.yml` run at a time, 30 jobs at most.** A run is 25 jobs, and
+  the runners are shared with the owner's deploys and fights: queue the next run
+  until the last one ends.
 - **A fan-out dispatch carries BOTH `variant` and `ga_seed`.** The workflow's
   concurrency key is built from them, so a dispatch missing either shares a
   group with every other one and is cancelled seconds after it starts. A 204
