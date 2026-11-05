@@ -530,12 +530,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     }
   }
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
-  // rows or more (a chain of three or longer, the board's own going on included) before one that does -- unless that one breaks more
-  // garbage: the break is the board's life
+  // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
+  // owner: no big chains at the finish; a chain is played there only where nothing else lives as long
   if (finishAsked() && (lx || lostAlike(x, y))) {
     int bx = chainReach(x) >= 3, by = chainReach(y) >= 3;
-    if (bx != by) { const Judge *s = bx ? y : x, *c = bx ? x : y;
-      if (imax(0, s->apBroke) >= imax(0, c->apBroke)) return (cmpKey = __LINE__, (bx ? 1 : -1)); }
+    if (bx != by) return (cmpKey = __LINE__, (bx ? 1 : -1));
   }
   // 1'L. UNDER GARBAGE, BREAK (the owner: it waits too long to break garbage; low, spend less and focus on breaking): garbage on the
   // board, of two that both live, or are lost alike with the break lost no sooner, a line that breaks garbage before one that breaks none
