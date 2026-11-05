@@ -508,7 +508,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
   carrySkip = -1;
-  if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
+  // (a hold keeps the line in progress: the swaps it has pressed are the window spent on it, and the next decision judges it again --
+  // carried on where every step is still there and it still makes what it was begun for)
+  if (!(d.kind == 0 && P.top && (P.top->wait || P.top->hold) && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
   carryNextOf(P.line);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
   keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
