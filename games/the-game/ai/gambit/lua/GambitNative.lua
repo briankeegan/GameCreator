@@ -99,6 +99,29 @@ end
 -- alone. Set to anything, empty too, it is the host's (empty: none).
 pcall(ffi.cdef, "int setenv(const char *name, const char *value, int overwrite);")
 if os.getenv("GC_GAMBIT_WORKERS") == nil then ffi.C.setenv("GC_GAMBIT_WORKERS", "4", 0) end
+-- THE MACHINE WHERE THE HOST LAYS OUT NONE: GC_GAMBIT_CPUS unset, the layout every game is measured on (eval/training.sh): the game's
+-- thread on CPU 0, Gambit's own on the first CPU of another core, its workers on the CPUs left. Under three CPUs, none.
+pcall(ffi.cdef, "long sysconf(int name); int sched_setaffinity(int pid, size_t size, const void *mask);")
+if os.getenv("GC_GAMBIT_CPUS") == nil then
+  local ok, n = pcall(function() return tonumber(ffi.C.sysconf(84)) end)   -- (_SC_NPROCESSORS_ONLN)
+  local function core(c)
+    local f = io.open("/sys/devices/system/cpu/cpu" .. c .. "/topology/core_id")
+    if not f then return tostring(c) end
+    local v = f:read("*l"); f:close(); return v
+  end
+  if ok and n and n >= 3 then
+    local gcpu, rest = nil, {}
+    for c = 1, n - 1 do
+      if not gcpu and core(c) ~= core(0) then gcpu = c else rest[#rest + 1] = tostring(c) end
+    end
+    if gcpu and #rest > 0 then
+      ffi.C.setenv("GC_GAMBIT_CPUS", tostring(gcpu), 0)
+      if os.getenv("GC_GAMBIT_WORKER_CPUS") == nil then ffi.C.setenv("GC_GAMBIT_WORKER_CPUS", table.concat(rest, ","), 0) end
+      local mask = ffi.new("uint8_t[128]"); mask[0] = 1
+      ffi.C.sched_setaffinity(0, 128, mask)
+    end
+  end
+end
 local function open()
   local f = assert(io.open(DIR .. "/libgambit.so", "rb"), "GambitNative: no " .. DIR .. "/libgambit.so")
   local bytes = f:read("*a"); f:close()
