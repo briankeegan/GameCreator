@@ -310,7 +310,13 @@ static int awayFromGarbage(const Judge *J) {
   static LOCAL const Board *forB; static LOCAL int32_t forClock = -1, lowG = 0;
   if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || !decQ.b) return 0;
   if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; lowG = lowestG(decQ.b); }
-  return lowG < gridLen(decQ.b) && lowG - CR(J->k.seq[0]) >= GARBAGE_AWAY;
+  if (lowG >= gridLen(decQ.b)) return 0;
+  int r = CR(J->k.seq[0]);
+  if (lowG - r >= GARBAGE_AWAY) return 1;
+  // (and panels between garbage -- the owner: moved around for no apparent reason; breaking, fine, otherwise don't bother: a row with
+  // garbage under it and over it)
+  if (r > lowG) for (int rr = r + 1; rr < decQ.b->nrows; rr++) for (int c = 1; c <= W; c++) if (decQ.b->p[rr][c].f[ISGARBAGE]) return 1;
+  return 0;
 }
 // (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out, of two that
 // both live it is no break to put first -- the owner: a three is for survival only, topped out; the mode's attacks break the garbage)
@@ -521,8 +527,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
-  // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
-  // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
+  // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense; panels between garbage
+  // moved for nothing): of two that survive alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the
+  // lowest garbage, or on a row with garbage under it and over it, after one that does not
   // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
   if (decF.under && (lx || lostAlike(x, y))) {
     int fx = awayFromGarbage(x), fy = awayFromGarbage(y);
