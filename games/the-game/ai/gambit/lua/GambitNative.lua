@@ -94,6 +94,11 @@ end
 -- A FRESH GAMBIT FOR EVERY MATCH (the owner: every game a fresh game, whoever it is against): a copy of the library loaded as an instance
 -- of its own -- every one of its statics new, its threads its own -- and set up as the first match's was. The last match's instance is
 -- quit before (native.c gn_quit: its threads joined, its memory freed) and let go. The process, its connection and its lobby stay.
+-- THE WORKERS WHERE THE HOST NAMES NONE: GC_GAMBIT_WORKERS unset is 4, the number every game is measured on (gambit-24.yml `workers`)
+-- -- a host that starts the client without it (bot/fight.sh) plays the Gambit training measured, not one searching on its own thread
+-- alone. Set to anything, empty too, it is the host's (empty: none).
+pcall(ffi.cdef, "int setenv(const char *name, const char *value, int overwrite);")
+if os.getenv("GC_GAMBIT_WORKERS") == nil then ffi.C.setenv("GC_GAMBIT_WORKERS", "4", 0) end
 local function open()
   local f = assert(io.open(DIR .. "/libgambit.so", "rb"), "GambitNative: no " .. DIR .. "/libgambit.so")
   local bytes = f:read("*a"); f:close()
