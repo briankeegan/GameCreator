@@ -616,6 +616,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
         if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
+      // (of two set-ups: the one that leaves the colours more spread -- fewer of a colour touching, more a swap apart: the players' stacks)
+      if (sx && sy && x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
@@ -809,7 +811,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   Tier tx = tierView(x), ty = tierView(y);
   if (tx.tier != ty.tier) return (cmpKey = __LINE__, (tx.tier - ty.tier));
   // 9a. (two set-ups that live, neither clearing anything, no garbage on the board) the one that leaves more ideas ready -- before the kind of set-up
-  if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1)); }
+  if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1));
+    // (then the one that leaves the colours more spread: fewer of a colour touching, more a swap apart -- plans/gambit-combos.md)
+    if (x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1)); }
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
   for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return (cmpKey = __LINE__, (tx.sub[q] < ty.sub[q] ? -1 : 1));
   // 10. THE PLAN KEPT (plans/gambit-infra.md F, stable): of two lines every key leaves equal, the one the last decision kept (an
