@@ -303,6 +303,8 @@ static int comboOutside(const Judge *J) { return !J->hold && J->outside && J->ap
 // line in progress on what it was begun for -- and that word is no break the judge saw)
 static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke : J->apBroke; }
 // (the entry of the mode's list a line meets where it asks a combo, MAXAIMS where it meets none that does)
+// (the list asks a combo of eight or more)
+static int bigComboAsked(void) { for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) return 1; } return 0; }
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
 // (the lowest garbage row of the decision's board, read once a board: search/break.c lowestG)
 #define GARBAGE_AWAY 4
@@ -616,6 +618,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
         if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
+      // (where the list asks a combo of eight or more, of two set-ups the one that leaves the colours more zippered -- fewer of a colour
+      // touching, more a swap apart: the stacks the players fire their eights from)
+      if (sx && sy && bigComboAsked() && x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
       // (of two set-ups: the one that leaves more crossed seams -- a swap finishing two colours at once, the players' 8+ combo)
       if (sx && sy && x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
@@ -812,6 +817,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (tx.tier != ty.tier) return (cmpKey = __LINE__, (tx.tier - ty.tier));
   // 9a. (two set-ups that live, neither clearing anything, no garbage on the board) the one that leaves more ideas ready -- before the kind of set-up
   if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1));
+    if (bigComboAsked() && x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
     if (x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
     }
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
