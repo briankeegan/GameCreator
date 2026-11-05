@@ -305,6 +305,7 @@ static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke 
 // (the entry of the mode's list a line meets where it asks a combo, MAXAIMS where it meets none that does)
 // (THE FINISH: the list asks a combo of eight or more and no chain -- finish them, the enemy near the top: a slab two rows tall or more is
 // up to 76 frames of shake it lives through, the 8's pieces are a few cells each -- the owner: big chains near the top give it time)
+#define STACK_DANGER 3   // (rows from the top the stack is kept down from: rank.c 1'T)
 static int finishAsked(void) {
   int big = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo, *h = &theList.aim[i].chain;
@@ -499,6 +500,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // 1'T. THE STACK KEPT DOWN (fight 795: four of five lost to their own stack risen to the top, no garbage on it, while the mode built its
+  // attack): the stack STACK_DANGER rows or fewer from the top, of two that survive alike, the line that leaves its tallest column lower
+  // first -- every mode, the finish too: an attack is never bought with the top
+  if (decQ.b && (lx || lostAlike(x, y)) && x->o.j.tall >= 0 && y->o.j.tall >= 0 && x->o.j.tall != y->o.j.tall) {
+    int top = imin(decQ.b->topCurRow, gridLen(decQ.b) - 2), now = 0;
+    for (int c = 1; c <= W; c++) for (int r = 1; r <= top; r++) if (cellAt(decQ.b, r, c) != 0 && r > now) now = r;
+    if (now >= top - STACK_DANGER) return (cmpKey = __LINE__, (x->o.j.tall - y->o.j.tall));
+  }
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
   // none and breaks as much
