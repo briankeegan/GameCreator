@@ -222,6 +222,15 @@ static double diesAt(const Judge *x) {
   if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
   return own;
 }
+// (THE WALK NEVER TURNS A LIFE INTO A DEATH: two boards lost a break's time apart or more on the frame each is lost, the later of them,
+// whatever the walk charges -- the judge pressed each line on its walks already, and the charge is the order's preference for the nearer,
+// never a break's time of life: the walked line's board 140 frames alive past the hold's was put after it)
+static int walkTurns(const Judge *x, const Judge *y) {
+  if (x->o.lives || y->o.lives) return 0;
+  double dx = diesAt(x), dy = diesAt(y);
+  if (dx >= 1e299 || dy >= 1e299 || dx < 0 || dy < 0 || (dx > dy ? dx - dy : dy - dx) < rankSave) return 0;
+  return (dx > dy) != (lostOf(x) > lostOf(y));
+}
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
@@ -471,6 +480,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
+  if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
