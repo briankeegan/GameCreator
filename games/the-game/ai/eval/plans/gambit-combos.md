@@ -132,3 +132,29 @@ Tried (idea93, branch `idea93`): a proposer that sorts the rows and offers the l
 them, seed 92, 48 games: 8+ 64 against main's 62, survived 44/48 both, cursor 305 against 304 cells a minute. It was offered in 2,124
 decisions and played in 134 -- 2,087 of the offers under garbage, where breaks rank first, and 37 on a board with none: finish them in
 training is 72-99% of its decisions under garbage, so the calm boards the players build on hardly come up there.
+
+## How the players organise the stack, in general
+
+60 of Tanycanayt's live games against Gambit (runs 589-600, 658, 688, 692), re-simulated on the server's engine with each board
+sampled every 30 frames; the boards with no garbage on them compared (his 1,669, Gambit's 5,842 in the same games):
+
+| | Tanycanayt | Gambit |
+|---|---|---|
+| the same colour directly above | **7%** | 12% |
+| the same colour beside | **5%** | 13% |
+| colours in a full row | **4.33** | 4.17 |
+| bumpiness (sum of neighbouring columns' height gaps) | **6.6** | 9.1 |
+| a colour's mean column: off the middle / its wander over the game | 0.34 / **0.34** | 0.26 / 0.41 |
+| A x A in a column, per 10 panels (one swap from a run of three) | **1.30** | 1.07 |
+| A x A in a row, per 10 panels | **0.86** | 0.65 |
+| the same colour on a diagonal, per 10 panels | **2.51** | 1.83 |
+| combos of 8+ a minute | **1.29** | 0.05 |
+
+**He keeps the stack flat and the colours spread: few panels of a colour touching, many a swap from touching.** A pair touching is a
+match spent early or a three for nothing; a colour a swap away from several of its kind is a combo waiting -- the 8+ are several of
+those fired by one swap (two vertical runs side by side, above). The colours keep their columns a little more (they wander less),
+but there is no left or right: no colour is kept on a side.
+
+So a set-up can be general, not one combo built on purpose: of two set-ups, the one that leaves the board flatter, with fewer
+same-colour panels touching and more a swap apart. The tools: `boardSample.lua` and `boardstats.py`, `staged.py` (the scratchpad of
+the session that measured it; to be added beside `combo_replays.py`).
