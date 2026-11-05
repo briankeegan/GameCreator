@@ -60,6 +60,7 @@ typedef struct {
   int32_t even;                 // the board it ends on: its tallest column less its lowest, in rows (evenOf; -1 not known)
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
+  int32_t seamBest;             // (and the most panels one of them clears)
 } Judged;
 
 static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -324,23 +325,25 @@ static int32_t spreadOf(const Board *b) {
 // A BOARD'S CROSSED SEAMS (plans/gambit-combos.md, the players' 8+ combos): of its panels at rest, the side-by-side pairs of two
 // colours whose swap finishes a match of each -- the panel that moves right completes a line of three or more of its colour there, in
 // its new column or its row onward, and the one that moves left the same on its side. Every 8+ combo the players made is one of these
-static int32_t seamsOf(const Board *b) {
-  int32_t n = 0;
+static int32_t seamsOf(const Board *b, int32_t *best) {
+  int32_t n = 0; *best = 0;
 #define SC(r, c) ((r) >= 1 && (r) < b->nrows && (c) >= 1 && (c) <= W && !b->p[r][c].f[ISGARBAGE] && b->p[r][c].f[STATE] == NORMAL ? b->p[r][c].f[COLOR] : 0)
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c < W; c++) {
     int32_t a = SC(r, c), z = SC(r, c + 1);
     if (a <= 0 || z <= 0 || a == z || a >= 8 || z >= 8) continue;
-    // (a lands at c+1: its column there, and its row on past c+1; z lands at c: its column there, and its row on before c)
+    // (a lands at c+1: its column there, and its row on past c+1; z lands at c: its column there, and its row on before c -- each the
+    // cells it clears, its column's run and its row's, itself once)
     int up = 0, dn = 0, run = 0;
     for (int k = r + 1; SC(k, c + 1) == a; k++) up++;
     for (int k = r - 1; SC(k, c + 1) == a; k--) dn++;
     for (int k = c + 2; SC(r, k) == a; k++) run++;
-    int fa = up + dn >= 2 || run >= 2;
+    int ca = (up + dn >= 2 ? up + dn : 0) + (run >= 2 ? run : 0);
     up = dn = run = 0;
     for (int k = r + 1; SC(k, c) == z; k++) up++;
     for (int k = r - 1; SC(k, c) == z; k--) dn++;
     for (int k = c - 1; SC(r, k) == z; k--) run++;
-    if (fa && (up + dn >= 2 || run >= 2)) n++;
+    int cz = (up + dn >= 2 ? up + dn : 0) + (run >= 2 ? run : 0);
+    if (ca && cz) { n++; if (ca + cz + 2 > *best) *best = ca + cz + 2; }
   }
 #undef SC
   return n;
@@ -493,7 +496,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
-  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; }
+  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb, &j->seamBest) : 0; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));

@@ -617,6 +617,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
       // (of two set-ups: the one that leaves more crossed seams -- a swap finishing two colours at once, the players' 8+ combo)
+      if (sx && sy && x->o.j.seamBest != y->o.j.seamBest) return (cmpKey = __LINE__, (x->o.j.seamBest > y->o.j.seamBest ? -1 : 1));
       if (sx && sy && x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
@@ -812,6 +813,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (tx.tier != ty.tier) return (cmpKey = __LINE__, (tx.tier - ty.tier));
   // 9a. (two set-ups that live, neither clearing anything, no garbage on the board) the one that leaves more ideas ready -- before the kind of set-up
   if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1));
+    if (x->o.j.seamBest != y->o.j.seamBest) return (cmpKey = __LINE__, (x->o.j.seamBest > y->o.j.seamBest ? -1 : 1));
     if (x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
     }
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
