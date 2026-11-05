@@ -315,6 +315,12 @@ static int awayFromGarbage(const Judge *J) {
 // (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out, of two that
 // both live it is no break to put first -- the owner: a three is for survival only, topped out; the mode's attacks break the garbage)
 static int threeBreakOnly(const Judge *J) { return J->apBroke > 0 && J->apCombo < 4 && J->apChain < 2; }
+// (A SET-UP OF ANY KIND: a set-up, a lineup, a line toward the next break or nearest the list, a level -- a move that makes the next
+// thing, no hold)
+static int setupKind(const Judge *J) {
+  int p = J->k.play;
+  return !J->hold && (p == PLAY_SETUP || p == PLAY_LINEUP || p == PLAY_TOWARD || p == PLAY_NEAREST || p == PLAY_LEVEL);
+}
 static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx && !decF.topped && threeBreakOnly(J)); }
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
@@ -600,13 +606,18 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // set-up: pressed for nothing it spends the window the next break needs)
       // (and while the board's own chain falls -- the owner: set up and started, it can do something else; it just sits there waiting for
       // it to finish: a set-up that keeps the chain as far as the hold does, the same)
+      // (and every other time too -- the owner: hold is dumb, a set-up or flattening is better 90% of the time; swaps over distance, the
+      // set-up is key: a set-up, a lineup, a line toward the next break or nearest the list, or a level, before the hold and before a
+      // line of another kind, whatever either walks)
       int chaining = decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2);
-      if ((popLeft(decQ.b) > 0 || chaining) && x->hold != y->hold) {
-        const Judge *m = x->hold ? y : x, *h = x->hold ? x : y;
-        int sets = m->k.play == PLAY_SETUP || m->k.play == PLAY_LINEUP || m->k.play == PLAY_TOWARD || m->k.play == PLAY_NEAREST;
-        if (sets && m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
-          return (cmpKey = __LINE__, (x->hold ? 1 : -1));
+      int sx = setupKind(x), sy = setupKind(y);
+      if (sx != sy) {
+        const Judge *m = sx ? x : y, *h = sx ? y : x;
+        if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
+          return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
+      // (of two set-ups: the one that leaves more crossed seams -- a swap finishing two colours at once, the players' 8+ combo)
+      if (sx && sy && x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
@@ -800,7 +811,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   Tier tx = tierView(x), ty = tierView(y);
   if (tx.tier != ty.tier) return (cmpKey = __LINE__, (tx.tier - ty.tier));
   // 9a. (two set-ups that live, neither clearing anything, no garbage on the board) the one that leaves more ideas ready -- before the kind of set-up
-  if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1)); }
+  if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1));
+    if (x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
+    }
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
   for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return (cmpKey = __LINE__, (tx.sub[q] < ty.sub[q] ? -1 : 1));
   // 10. THE PLAN KEPT (plans/gambit-infra.md F, stable): of two lines every key leaves equal, the one the last decision kept (an
