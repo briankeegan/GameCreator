@@ -185,9 +185,19 @@ narrowed, not dropped.
      and only the exact pair swapped back is caught (rules.c swappedBack, judge.c noops). A memory of the last pair pressed (idea168) did
      not change it (8.1% to 7.9%, 43/48 against 45/48): most of it is lines in progress, and the host hands on only the last pair. Next:
      the host hands every pressed swap with the line it belongs to, and a line's first swap may not move back what another line moved.
-   - **Live, against Gambit_100** (run 663, 12 won 9 lost): every attack comes over the wire (GambitNative.lua wired) and is known only
-     once in the stack's own queue -- 77 divergences, incoming 0 vs N, known 0; 5 of the 9 losses had one in their last 300 frames. The
-     copy of the opponent played here could tell the garbage on its way, read as known, not delivered from. The owner's to decide.
+   - **Live, against Gambit_100** (gambit-w100: 100 actions a window against the standard 76). Over loose sync every attack is known
+     only once it is in the stack's own queue: played that way in training (gambit-24 `blind`), finish them is 13/24 where the same
+     games with the telegraph are 23/24 (run 2299). On main: the Lua client reads the copy of the opponent played here as the forecast
+     -- what it stages and each transit not yet finished on its own stopWatch (8f2b3f8b); a fight's divergences and unforeseen garbage
+     say whether it holds. On main: GC_GAMBIT_WORKERS unset is 4, so a fight searches on the four workers training measures (a fight
+     started without it ran on none, its search time half of training's).
+   - **Every death, live and in training, is the break search cut by the clock**: in a lost game's last 900 frames it is cut in 13 to
+     38 of 36 to 74 decisions. A board where it found nothing in 200 ms had a break 8 swaps deep, found in 3.4 s (2291 large_garbage-8,
+     frame 461). breakNear, the beam's guide, brings panels along their rows only, never over a gap they fall through. Next: a guide
+     that counts a fall.
+   - **Lost alike by the frame each is lost too** (idea171, 45d8aea2): a line lost at 293 and the hold at 97 were alike once the walk
+     was charged, and the mode's key took the hold. With it 45/48 against 45/48 (runs 2300, 2301): main's three losses survived, three
+     others lost; with the set-up undone key (idea172) in run.
    - **A 24-game run is noisy**: the same behaviour on the same seed gave 20/24 and 23/24 (runs 2247, 2248) -- the clock decides how
      far each search goes, and the runner's clock differs run to run. A gap of 3 games in 24 is not a measurement.
    - The players who make them (live replays, `ai/eval/plans/gambit-combos.md`): Tanycanayt 1.46 combos of 8+ a minute, PDR_Lava
