@@ -11,7 +11,7 @@ var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
-var aimsIn = {}, goalMiss = { n: 0, dec: 0 };   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
+var aimsIn = {}, goalMiss = { n: 0, dec: 0 }, dips = { n: 0, none: 0 };   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
 var frontS = {};   // (the frontiers carried on, search/frontier.c: per frontier, the lines kept and carried in, the decisions it was let go whole)
 var svSeed = [0, 0], rdyBeam = [0, 0], frontId = [0, 0, 0, 0];
@@ -181,6 +181,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     // (THE MODE'S AIM, IN THE MODE IT WAS MADE IN: each attack (GAMBITA) read against the aims of the mode of the decision before it --
     // a game switched at the top-out is read for each mode it played; and the decisions that passed the mode over)
     var inMode = null;
+    // (THE WALK DOWN AND BACK: a swap 4 or more rows under the swaps pressed either side of it, all three within 240 frames, and what it came to)
+    var mv = lines.map(function (l) { var m = /^GAMBITM (\d+) (\d+),\d+ .*? ([csbn]) \d+\/\d+/.exec(l); return m && { at: +m[1], r: +m[2], o: m[3] }; }).filter(Boolean).sort(function (a, b) { return a.at - b.at; });
+    for (var mi = 1; mi + 1 < mv.length; mi++) if (mv[mi - 1].r - mv[mi].r >= 4 && mv[mi + 1].r - mv[mi].r >= 4 && mv[mi + 1].at - mv[mi - 1].at < 240) { dips.n++; if (mv[mi].o === 'n') dips.none++; }
     lines.forEach(function (l) {
       var d = /^GAMBITD \d+ (.*?) play=/.exec(l);
       if (d) { inMode = d[1]; goalMiss.dec++; if (/ goalMiss=/.test(l)) goalMiss.n++; return; }
@@ -387,7 +390,8 @@ Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
   console.log('the measure, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met its aims' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') + ', its first ' + t.head + ' ' + t.first + (t.all ? ' (' + Math.round(100 * t.first / t.all) + '%)' : '')); });
 { var nmv0 = moves.clear + moves.setup + moves.break + moves.none + moves.open;
   console.log('the measure, waste: the mode passed over in ' + goalMiss.n + ' of ' + goalMiss.dec + ' decisions; ' + (nmv0 ? Math.round(100 * moves.none / nmv0) : '-') + '% of ' + nmv0 +
-              ' swaps came to nothing; ' + moves.wasted + ' wasted threes' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '')); }
+              ' swaps came to nothing; ' + moves.wasted + ' wasted threes' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') +
+              '; ' + dips.n + ' walks down and back for one swap (' + dips.none + ' of them for nothing)'); }
 // (HELD UNJUDGED: a decision whose lines the clock stopped the judge on, every one -- cands= `-jN` -- and the hold played for want of
 // a look at them; decide.c judges them again to the move's frame, rescued=1)
 (function () {
