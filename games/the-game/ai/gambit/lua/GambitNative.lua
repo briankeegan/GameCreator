@@ -350,6 +350,21 @@ local function opponentOf(sources, view, clock)
   return has, out, top, stop
 end
 
+-- (THE ENEMY AS OUR GARBAGE WILL LEAVE IT: the rows this stack has sent it that have not landed -- staged on the telegraph, or on their
+-- way -- each piece its height, added to its tallest column: the rules' enemy.height is the board it will have, so a big chain on its
+-- way brings on the mode that finishes it, and the next attack is sized to the room left)
+local function rowsOnItsWay(me)
+  local q, n = me and me.outgoingGarbage, 0
+  if not q then return 0 end
+  for _, g in ipairs(q.stagedGarbage or EMPTY) do n = n + (g.height or 1) end
+  if q.transitTimers then
+    for k = q.transitTimers.first, q.transitTimers.last do
+      local t = q.transitTimers[k]
+      for _, g in ipairs(t and q.garbageInTransit[t] or EMPTY) do n = n + (g.height or 1) end
+    end
+  end
+  return n
+end
 function GambitNative:think(stack, sources, view)
   local idle = KeyDataEncoding.base64encode[1]
   -- (the countdown: once the cursor has come to rest, the opening asked of the board as play will begin with it -- gn_countdown)
@@ -370,6 +385,7 @@ function GambitNative:think(stack, sources, view)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
   local has, out, top, stop = opponentOf(sources, view, stack.clock)
+  if has == 1 then top = math.min(12, top + rowsOnItsWay(stack)) end
   local t2 = ThinkBudget.now()
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2

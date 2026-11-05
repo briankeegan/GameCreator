@@ -38,7 +38,7 @@
   {
    "name": "finish them",
    "when": {
-    "enemy.topped": true
+    "enemy.height": ">=11"
    },
    "aims": [
     {
