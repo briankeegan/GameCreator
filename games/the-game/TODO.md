@@ -189,8 +189,10 @@ narrowed, not dropped.
      only once it is in the stack's own queue: played that way in training (gambit-24 `blind`), finish them is 13/24 where the same
      games with the telegraph are 23/24 (run 2299). On main: the Lua client reads the copy of the opponent played here as the forecast
      -- what it stages and each transit not yet finished on its own stopWatch (8f2b3f8b); a fight's divergences and unforeseen garbage
-     say whether it holds. On main: GC_GAMBIT_WORKERS unset is 4, so a fight searches on the four workers training measures (a fight
-     started without it ran on none, its search time half of training's).
+     say whether it holds: run 706 knew the garbage in 1,822 of 2,137 divergences (none before), but it came sooner than forecast.
+     Four workers in a fight, unpinned (GC_GAMBIT_WORKERS unset as 4): 23 won of 84 against the same code with none (runs 706,
+     709), where none on both sides won 10 of 19 (run 666) -- 4.9 late answers in 1,000, 84 swaps a minute against 98. Back to none
+     (5d1c8e93); the workers return only with the machine laid out as training lays it out, measured in a fight first.
    - **Every death, live and in training, is the break search cut by the clock**: in a lost game's last 900 frames it is cut in 13 to
      38 of 36 to 74 decisions. A board where it found nothing in 200 ms had a break 8 swaps deep, found in 3.4 s (2291 large_garbage-8,
      frame 461). breakNear, the beam's guide, brings panels along their rows only, never over a gap they fall through. Next: a guide
