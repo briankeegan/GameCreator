@@ -496,6 +496,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
+  // (THE LINE IN HAND HELD -- the owner: a swap or two made, then the cursor goes elsewhere, is moves for nothing: the line in progress is
+  // put down for a line lost later only by a break's time or more, or for one that breaks more garbage -- the judgement of a board the
+  // garbage is still landing on moves by a few frames between decisions, and a plan put down for that is one never played out)
+  int heldHand = !lx && x->carried != y->carried && !x->hold && !y->hold && (x->carried ? x : y)->k.nseq > 0 &&
+                 iabs((int)(lostOf(x) - lostOf(y))) < rankSave && imax(0, (x->carried ? y : x)->apBroke) <= imax(0, (x->carried ? x : y)->apBroke);
+  if (heldHand) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
