@@ -214,13 +214,62 @@ end
 -- (GC_GAMBIT_BLIND: training played as the live server plays it -- every source as if wired, its garbage known only once it is in
 -- this stack's own queue, as loose sync delivers it)
 local BLIND = os.getenv("GC_GAMBIT_BLIND") == "1"
-function GambitNative:telegraph(sources, me)
+-- (THE WIRED SOURCE'S OWN TELEGRAPH: the opponent's client ships its outgoing garbage with every board it shows (DisplayEventCapture og,
+-- BotClient's view.og) -- the blocks a player sees at the top -- and that is the opponent's own, where the copy played here from its
+-- relayed keys runs behind it and can come apart from it. Each piece is told on the opponent's stopWatch (frameEarned); a board's
+-- frame, and the frame this stack saw it on, carry that onto this stack's (the two stacks' countdowns taken as one length). A piece
+-- still staged ships as the copy's would; one gone from the telegraph since is on its way: due LAND frames after the last board that
+-- still showed it staged, and forgotten once that frame is past.)
+local STAGING, LAND = 45 + 45 + 1, 60
+local function viewTelegraph(self, T, x, view, me)
+  local cd = (me.clock or 0) - (me.stopWatch or 0)
+  local snapSW = view.clock - cd
+  local nowSW = snapSW + (me.stopWatch - view.seenSW)
+  local mem = self.ogMem or {}; self.ogMem = mem
+  local seen = {}
+  for _, g in ipairs(view.og) do
+    -- (a chain grows, its frameEarned moving to its last link: it is known by its first)
+    local first = nil
+    if g.isChain then for f in pairs(g.links or EMPTY) do f = tonumber(f); if f and (not first or f < first) then first = f end end end
+    local k = g.isChain and ("c" .. tostring(first or g.frameEarned)) or (tostring(g.frameEarned) .. ":" .. tostring(g.rowEarned) .. ":" .. tostring(g.colEarned))
+    seen[k] = true
+    mem[k] = { g = g, last = snapSW }
+  end
+  T[x], T[x + 1] = nowSW, 0; x = x + 2
+  local at, nt, sent = x, 0, 0
+  x = x + 1
+  for k, e in pairs(mem) do
+    if not seen[k] then
+      local t = math.max((e.g.frameEarned or e.last) + STAGING, e.last) + LAND
+      if t < nowSW - 2 or sent >= SOURCE_PIECES then mem[k] = nil
+      else
+        T[x], T[x + 1] = t, 1; x = x + 2
+        x = piece(T, x, { width = e.g.width, height = e.g.height, isChain = e.g.isChain, isMetal = e.g.isMetal, frameEarned = e.g.frameEarned, finalized = true })
+        nt, sent = nt + 1, sent + 1
+      end
+    end
+  end
+  T[at] = nt
+  -- (still staged, the last to ship at the end, as the engine's staged list: the soonest earned last)
+  local staged = {}
+  for _, g in ipairs(view.og) do staged[#staged + 1] = g end
+  table.sort(staged, function(a, b) return (a.frameEarned or 0) > (b.frameEarned or 0) end)
+  local keep = math.max(0, math.min(#staged, SOURCE_PIECES - sent))
+  T[x] = keep; x = x + 1
+  for i = #staged - keep + 1, #staged do local g = staged[i]
+    x = piece(T, x, { width = g.width, height = g.height, isChain = g.isChain, isMetal = g.isMetal, frameEarned = g.frameEarned, finalized = not g.isChain or nil }) end
+  return x
+end
+function GambitNative:telegraph(sources, me, view)
   local T, x = C.gn_tele(), 1
   local n = 0
   for _, src in ipairs(sources or EMPTY) do
     local q = src.outgoingGarbage
     local w = wired(src)
-    if q and src.stopWatch ~= nil and not BLIND then
+    if w and view and view.og and view.seenSW and view.clock and me.stopWatch and not BLIND then
+      n = n + 1
+      x = viewTelegraph(self, T, x, view, me)
+    elseif q and src.stopWatch ~= nil and not BLIND then
       n = n + 1
       T[x], T[x + 1] = caughtUp(src, me), b01(q.illegalStuffIsAllowed); x = x + 2
       -- (every transit not yet delivered: one whose time has come waits while the stack has CAPPED_AT queued, GarbageDelivery; its count
@@ -317,7 +366,7 @@ function GambitNative:think(stack, sources, view)
   local t0 = ThinkBudget.now()
   self:load(stack)
   local t1 = ThinkBudget.now()
-  self:telegraph(sources, stack)
+  self:telegraph(sources, stack, view)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
   local has, out, top, stop = opponentOf(sources, view, stack.clock)
