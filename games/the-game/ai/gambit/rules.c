@@ -151,6 +151,28 @@ static int swappedBack(int r, int c) {
   int32_t a = backBoard->p[r][c].f[ID], b = backBoard->p[r][c + 1].f[ID];
   return a != NUL && b != NUL && samePair(a, b, theBack.lastA, theBack.lastB);
 }
+// (THE PANELS MOVED LATELY, the frame loop's: every swap pressed, newest first -- the panel it moved right and the one it moved left, the
+// frame, the line it was a swap of (the answer's id plus one) -- a panel moved back by another line is a set-up undone: rank.c 1'v)
+#define MOVED_N 8
+#define MOVED_FOR 180   // frames a panel moved is kept
+static struct { int32_t right, left, at, lid; } moved[MOVED_N];
+static int nmoved;
+static int32_t movedOwn = -1;   // (the line in progress's id, the decision's: the panels it moved it moves as it was planned to)
+static void movedSet(int n, const int32_t *r, const int32_t *l, const int32_t *at, const int32_t *lid) {
+  nmoved = n < MOVED_N ? n : MOVED_N; for (int i = 0; i < nmoved; i++) { moved[i].right = r[i]; moved[i].left = l[i]; moved[i].at = at[i]; moved[i].lid = lid[i]; }
+}
+// (a line's first swap moves back a panel another line moved within MOVED_FOR frames -- the one it moved right now moved left, or the one
+// it moved left now moved right; own: the line's own id, -1 a line not in progress)
+static int undoesMoved(int r, int c, int32_t clock, int32_t own) {
+  if (!backBoard || r < 0 || r >= backBoard->nrows || c < 1 || c + 1 > W) return 0;
+  int32_t L = backBoard->p[r][c].f[ID], R = backBoard->p[r][c + 1].f[ID];
+  if (L == NUL || R == NUL) return 0;
+  for (int i = 0; i < nmoved; i++) {
+    if (clock - moved[i].at > MOVED_FOR || (own >= 0 && moved[i].lid == own + 1)) continue;
+    if (moved[i].right == R || moved[i].left == L) return 1;
+  }
+  return 0;
+}
 // a line's first swap: not the swap back the judge refuses
 static int firstOk(int r, int c, int clears) { return !swapBack(r, c, clears); }
 // (THE SWAP PRESSED LAST, the host's: a line hands on several swaps and the frame loop presses them all, so the pair the next decision

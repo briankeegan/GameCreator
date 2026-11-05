@@ -208,6 +208,7 @@ static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
 static int32_t carryRule(void);   // (the mode the line in progress was begun in)
+static int32_t carryIdNow(void);   // (the line in progress's id, -1 none)
 static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
@@ -309,6 +310,7 @@ static int ranked(const Read *R, const Found *S) {
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0, cc = 0;
   carryNone = 21;
+  movedOwn = carryIdNow();   // (the line in progress's own panels: rules.c undoesMoved)
   if (R->guides.n && (cc = carriedCand(R, &ck, &cwait)) && !judgeCand(R, &ck, &theJudged[n])) carryNone = 19;
   if (R->guides.n && cc && carryNone != 19) {
     carryNone = 0;
@@ -652,6 +654,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.rule = R->rule;
 }
 static int32_t carryRule(void) { return theCarry.rule; }
+static int32_t carryIdNow(void) { return theCarry.set ? theCarry.id : -1; }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
 // as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the
