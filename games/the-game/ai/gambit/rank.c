@@ -613,6 +613,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
     // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
     else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
+    // (of two that break: the one that breaks as much garbage with fewer clears of three that break nothing on the way -- the owner: no
+    // wasted threes; a three on the way to a break spends the panels the next break is made from)
+    else if (x->o.j.threes != y->o.j.threes && imax(0, (x->o.j.threes < y->o.j.threes ? x : y)->apBroke) >= imax(0, (x->o.j.threes < y->o.j.threes ? y : x)->apBroke))
+      return (cmpKey = __LINE__, (x->o.j.threes < y->o.j.threes ? -1 : 1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
     // (of two that break: the one that meets the earlier combo entry of the mode's list -- the combo the mode asks goes with the break)
     else if (comboEntry(x) != comboEntry(y)) return (cmpKey = __LINE__, (comboEntry(x) - comboEntry(y)));
