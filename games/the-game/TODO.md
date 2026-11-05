@@ -207,7 +207,8 @@ narrowed, not dropped.
      game the bot cannot play.
    - **Main, each mode** (runs 2291-2326): switching 24/24 (set 82); pressure 65/72 (19, 24, 22 on sets 82, 84, 86); finish them 45/48;
      big chain 43/48 (22, 21); build 41/48 (21, 20) -- build the worst. One build, 19 and 24 on two sets: a 24-game run tells
-     a gap of a game or two from none. The set-up undone key (idea169) on pressure 44/48 against 43/48.
+     a gap of a game or two from none. The set-up undone key (idea169): finish them 46/48 (45), pressure 44 (43), build 44 (41),
+     big chain 38 (43) -- 172/192 over the four, as without it; merged (13498457) and reverted (9645e64b) once big chain was in.
    - **Pressure's deaths are the window, not the search** (run 2308, factory-8): on the last boards a break is there -- the search
      alone finds it in 55-153 ms natively -- but 5-7 swaps across the board, 30-odd actions, with 20-23 left in the window. 36% of
      the window goes on lines not played out (13,996 of 38,445 actions): the next lever is fewer lines begun and dropped.
