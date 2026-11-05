@@ -305,6 +305,7 @@ static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke 
 // (the entry of the mode's list a line meets where it asks a combo, MAXAIMS where it meets none that does)
 // (THE FINISH: the list asks a combo of eight or more and no chain -- finish them, the enemy near the top: a slab two rows tall or more is
 // up to 76 frames of shake it lives through, the 8's pieces are a few cells each -- the owner: big chains near the top give it time)
+#define ZIP_WALK 2   // (the actions more a dig may walk for the zip: rank.c the dig zipped)
 static int finishAsked(void) {
   int big = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo, *h = &theList.aim[i].chain;
@@ -652,6 +653,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     else {
       int sx = lineWalk(x), sy = lineWalk(y);
       if (carriedSunk >= 0 && x->carried != y->carried) { const Judge *c = x->carried ? x : y; int sunk = imax(0, carriedSunk - lineWalk(c)); if (c == x) sy += sunk; else sx += sunk; }
+      // (THE DIG ZIPPED -- the owner: digging goes for the zipper: of two that break as much garbage, walking within ZIP_WALK actions of
+      // each other, the one that leaves the colours more zippered -- fewer of a colour touching, more a swap apart: judge.c spreadOf)
+      if (x->apBroke == y->apBroke && iabs(sx - sy) <= ZIP_WALK && x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
       int64_t px = (int64_t)x->apBroke * imax(1, sy), py = (int64_t)y->apBroke * imax(1, sx); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
     }
   }
