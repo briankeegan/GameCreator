@@ -333,7 +333,9 @@ static int setupKind(const Judge *J) {
 static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx && !decF.topped && threeBreakOnly(J)); }
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
-  if (J->o.j.threes > 0 && !(brokeSeen(J) > 0)) return 1;   // (any clear of three a line that breaks nothing makes for nothing -- a line lost too)
+  // (any clear of three that breaks nothing and begins no chain, whatever the line breaks after it -- the owner: never a three unless
+  // it follows through; a line dropped before its later break leaves the three made for nothing. A line lost too)
+  if (J->o.j.threes > 0) return 1;
   if (comboOutside(J) && !(J->apBroke > 0)) return 1;   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
   if (cutsShort(J) && !(J->apBroke > 0)) return 1;   // (the board's own chain cut short: the three that began it made for nothing -- unless the
   // line breaks more garbage than the board left alone, its chain and all: a break is never a three for nothing, the chain key weighs it)
