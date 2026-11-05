@@ -193,13 +193,16 @@ local function piece(T, x, g)
 end
 -- A SOURCE WHOSE GARBAGE COMES OVER THE WIRE: the engine's own routing (common/engine/GarbageDelivery.lua looseSyncActive) -- loose
 -- sync on and connected, the source not this client's: the server's relayed garbage is what lands, and the copy of the source played
--- here is no word on it (its outgoing queue is never delivered here). Anywhere else -- lockstep, Training, a local match -- the source
--- is played here exactly and delivers here, so its outgoing garbage is the garbage on its way and its board the opponent's own.
+-- here never delivers its own (its outgoing queue is never popped here). Anywhere else -- lockstep, Training, a local match -- the
+-- source is played here exactly and delivers here, so its outgoing garbage is the garbage on its way and its board the opponent's own.
+-- (THE WIRED SOURCE'S FORECAST: the copy is played from the opponent's relayed keys and the garbage this stack sends it (bot/BotClient),
+-- so its telegraph is the opponent's: what it stages, and each transit not yet finished on the copy's own stopWatch. A finished one is
+-- the server's to deliver -- it is in this stack's own queue once it comes, and never popped from the copy's, so it is left out.)
 local function wired(src)
   return LOOSE_SYNC_GARBAGE and GAME and GAME.netClient and GAME.netClient.isConnected and GAME.netClient:isConnected()
     and not src.is_local and true or false
 end
--- (a wired source's garbage is read off this stack's own queue only, what the server delivered: board.lua loads it)
+-- (a wired source's garbage delivered is read off this stack's own queue, what the server sent: board.lua loads it)
 -- (A SOURCE PLAYED HERE BEHIND THIS STACK: an opponent's stack copied from its relayed keys runs as far as its keys have come, so it
 -- can be frames behind this one -- its transits are timed on its own stopWatch, which the frame loop reads them against (front.c
 -- arrivalsOf), so its stopWatch is given as it will be once it has caught up: the frames it is behind added)
@@ -221,7 +224,8 @@ function GambitNative:telegraph(sources, me)
   local n = 0
   for _, src in ipairs(sources or EMPTY) do
     local q = src.outgoingGarbage
-    if q and src.stopWatch ~= nil and not wired(src) and not BLIND then
+    local w = wired(src)
+    if q and src.stopWatch ~= nil and not BLIND then
       n = n + 1
       T[x], T[x + 1] = caughtUp(src, me), b01(q.illegalStuffIsAllowed); x = x + 2
       -- (every transit not yet delivered: one whose time has come waits while the stack has CAPPED_AT queued, GarbageDelivery; its count
@@ -231,7 +235,7 @@ function GambitNative:telegraph(sources, me)
       if q.transitTimers then
         for k = q.transitTimers.first, q.transitTimers.last do
           local t = q.transitTimers[k]
-          if t and sent < SOURCE_PIECES then
+          if t and sent < SOURCE_PIECES and (not w or t > src.stopWatch) then
             local list = q.garbageInTransit[t] or EMPTY
             T[x], T[x + 1] = t, #list; x = x + 2
             for i = 1, #list do x = piece(T, x, list[i]) end
