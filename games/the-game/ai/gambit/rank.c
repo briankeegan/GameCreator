@@ -558,7 +558,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int fx = awayFromGarbage(x), fy = awayFromGarbage(y);
     if (fx != fy) {
       const Judge *f = fx ? x : y, *o = fx ? y : x;
-      if (imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f)) && !(goalLine(f) && !goalLine(o)) && (lx || diesAt(o) >= diesAt(f))) return (cmpKey = __LINE__, (fx ? 1 : -1));
+      // (but not a set-up against the hold while a slab pops with two breaks' walk of the allowance left after it -- the owner: so much
+      // time while garbage breaks; the wait is the window kept for nothing, and the walk back is paid out of what is spare)
+      int popSpare = setupKind(f) && o->hold && popLeft(decQ.b) > 0 && pressAllowance >= 0 && pressAllowance - lineWalk(f) >= 2 * BREAK_WALK && !wastesThree(f);
+      if (!popSpare && imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f)) && !(goalLine(f) && !goalLine(o)) && (lx || diesAt(o) >= diesAt(f))) return (cmpKey = __LINE__, (fx ? 1 : -1));
     }
   }
   // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
