@@ -469,6 +469,10 @@ static int shortChain(const Judge *J) { int32_t reach = J->o.dead ? imax(J->apCh
 // is told. The line in progress keeps its place while it stands HORIZON frames from now, so it is put down only where it fails, not where
 // the next decision's horizon reaches a frame further: every swap of a plan put down is a move for nothing)
 static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->modeFirst); }
+// (OFF THE MODE: a line whose attack the mode's list does not ask -- a chain where it asks combos, a 2x or a chain past its length, a combo
+// of four or more it does not ask -- the board's own chain going on counted, as every line has it alike)
+#define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
+static int offMode(const Judge *J) { return !J->hold && !J->o.dead && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOn(x), ly = livesOn(y);
@@ -478,6 +482,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *l = lx ? x : y, *o = lx ? y : x;
     if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
+  }
+  // 1. (no garbage on the board) THE MODE, NOT THE MOST LIFE (the owner: lower the stack and there is more time; with no garbage it keeps
+  // making chains for nothing): a line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more --
+  // the next decisions keep the stack down; the life an off-mode attack buys past that is the mode thrown away
+  if (!decF.under && offMode(x) != offMode(y)) {
+    const Judge *f = offMode(x) ? x : y, *o = f == x ? y : x;
+    if (livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) return (cmpKey = __LINE__, (f == x ? 1 : -1));
   }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
