@@ -112,7 +112,7 @@ where it meets the new mode's first entry or breaks garbage.
 | --- | --- | --- | --- | --- |
 | opener | a fight's start, until either board tops out (its top row reached by panels or landed garbage, as the engine has it -- garbage queued or falling does not count) | pressure from the start: big chains only | 8+ chain | chain 6+, 4+ |
 | time attack | no enemy | score alone: set up the biggest chain there is | 8+ chain | none: nothing under 8 |
-| finish them | the enemy 2 rows from the top or topped out (its tallest column, garbage or panels, as the engine has it) -- whatever its stop time | small pieces it cannot absorb: each landing's shake under the stop it burns | combo 8, 9, 10 (two small pieces each) | combo 6, combo 5; chains last (a combo of 4 is wasted) |
+| finish them | the enemy 2 rows from the top or topped out (its tallest column, garbage or panels, as the engine has it) -- whatever its stop time | small pieces it cannot absorb: each landing's shake under the stop it burns | combo 8, 9, 10 (two small pieces each) | combo 5, combo 6, then combo 4 (allowed, the least of them); chains last |
 | big chain | the enemy's stack under 5 rows | it has room: one huge block, no combos | 8+ chain | chain 4+, carried on as far as it goes |
 | build | the enemy's stack under 9 rows | steady medium attacks, no combos | 5-chain | 3-chain, 4-chain |
 | pressure | the enemy's stack 9 rows or more | keep it high with quick 4-chains, no combos | 4-chain | 3-chain |
