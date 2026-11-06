@@ -480,8 +480,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
     const Judge *l = lx ? x : y, *o = lx ? y : x;
-    if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
-    lx = ly = 1;
+    // (and a line that lives by the horizon alone is no living line beside one lost a break's time later still: the two are judged as
+    // two that die, and the later loss decides -- a line in progress past the horizon is no reason to pass over a board alive 3 times as long)
+    if (!l->o.lives && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l) + rankSave) lx = ly = 0;
+    else {
+      if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
+      lx = ly = 1;
+    }
   }
   // 1. A BREAK'S TIME OF LIFE IS NEVER GIVEN AWAY (the owner: still can't die): neither living, two lines lost a break's time (rankSave) or
   // more apart on the frames each board is lost (diesAt, no walk charged), the later first -- before the line in progress, the mode and every key after: the
