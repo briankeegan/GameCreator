@@ -475,6 +475,7 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 #define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
 static int offMode(const Judge *J) { return !J->hold && !J->o.dead && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
+static int32_t popLeft(const Board *b);   // (propose.c: the frames a popping slab has left)
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOn(x), ly = livesOn(y);
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
@@ -568,7 +569,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
   // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
   // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
-  if (decF.under && (lx || lostAlike(x, y))) {
+  // (while a slab pops its converted panels are unshown, so nothing at the garbage can be planned: the board's own panels below are the
+  // work there is, and the rule waits for the pop to end)
+  if (decF.under && (lx || lostAlike(x, y)) && !(decQ.b && popLeft(decQ.b) > 0)) {
     int fx = awayFromGarbage(x), fy = awayFromGarbage(y);
     if (fx != fy) {
       const Judge *f = fx ? x : y, *o = fx ? y : x;
