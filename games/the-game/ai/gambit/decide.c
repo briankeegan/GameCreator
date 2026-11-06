@@ -122,7 +122,9 @@ static int readBoard_(Read *R) {
   // floor kept by raising, a reserve: below it, not topped, the panels under `to` -- garbage on them aside, a slab is no panel to break
   // with -- the rows the next break is made of brought in)
   int32_t to = rule->raiseTo ? rule->raiseTo : theTables.raiseTo;
-  int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped;
+  // (and only while the opener plays: once it has given way to a mode, the mode is played on the stack it has -- a game no garbage reaches
+  // raises no more than one it does)
+  int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped && !openerOver;
   // (and A LOW STACK: under LOW_ROWS rows of panels, not topped, it is raised all the same -- the owner's rule: below six rows, raise high)
   int refill = !opening && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
   raiseRefill = refill;
