@@ -514,9 +514,9 @@ static int ranked(const Read *R, const Found *S) {
   }
   // COMMITTED (the owner: efficiency, no mistakes, no changing minds): the line in progress is played to its end -- before every key and
   // filter above, the hold among them -- unless the order's first lives where it does not, or is lost a break's time (rankSave) or more
-  // later: a line put down is every input pressed of it spent for nothing, and the input budget is the game's. Not a line whose three
-  // is now for nothing, nor one whose chain now ends at two, unless it breaks garbage: there the break is what follows the three through
-  if (commitJ && n && order[0] != commitJ && !commitJ->o.dead && !commitJ->hold && (commitJ->apBroke > 0 || (!wastesThree(commitJ) && !shortChain(commitJ)))) {
+  // later: a line put down is every input pressed of it spent for nothing, and the input budget is the game's. Never a line whose three
+  // now breaks nothing (the owner: wasted threes, not okay), nor one whose chain now ends at two unless it breaks garbage
+  if (commitJ && n && order[0] != commitJ && !commitJ->o.dead && !commitJ->hold && !wastesThree(commitJ) && (commitJ->apBroke > 0 || !shortChain(commitJ))) {
     const Judge *b = order[0];
     if (commitJ->o.lives || (!b->o.lives && lostOf(commitJ) + rankSave > lostOf(b))) {
       int at = -1;
