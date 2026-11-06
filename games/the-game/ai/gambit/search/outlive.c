@@ -5,6 +5,8 @@
 // answer; else the line whose board is lost latest. And THE FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn).
 
 #define OUT_SEQ 16
+#define OUT_DEPTH 10   // (the swaps deep the survival beam may grow: its clock stops it first on a busy decision -- a level is begun only
+                       // while the time it takes is left -- and a board with time to spare is searched further, not left at six)
 typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor
 typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts; } Outlived;
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
