@@ -158,6 +158,9 @@ static int readBoard_(Read *R) {
     // raise into the garbage is a death)
     if ((rq.narr > 0 || R->under) && rows > raiseAlive) rows = raiseAlive;
     { int32_t h = rq.b->height ? rq.b->height : 12; rows = imin(rows, h - 1 - fullTop(rq.b)); }
+    // (THE OPENING'S MARGIN: the garbage shown is not all that comes -- a volley keeps landing past the pieces on screen -- so with garbage on
+    // its way the opening's raise stops a row short of what the board lives through once the shown pieces land)
+    if (opening && (rq.narr > 0 || R->under) && rows > 0) rows--;
     if (rows <= 0) { R->up = R->low = 0; raiseWait = 0; } else to = fullTop(rq.b) + rows;
   }
   R->to = to;
