@@ -17,6 +17,8 @@ static int32_t raiseRefill;   // (the raise asked is the floor's, not the openin
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
+#define REFILL_TO 8  // and the floor's raise goes up to this many rows, never the opening's `to` -- the owner: the opener's raise kept, the
+                     // others lower: a stack raised near the top leaves every mode surviving and none of its attack
 #define RAISE_WAIT 120   // the frames the floor's raise waits for the stack to take one, at most
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
@@ -126,7 +128,7 @@ static int readBoard_(Read *R) {
   // (and A LOW STACK: under LOW_ROWS rows of panels, not topped, it is raised all the same -- the owner's rule: below six rows, raise high)
   int refill = !opening && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
   raiseRefill = refill;
-  int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
+  int32_t rowsUp = (opening ? to : imin(to, REFILL_TO)) - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
   R->low = to && (opening || refill) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
   refillAsked = refillReady = refillAlive = 0; raiseWait = 0;
   // (THE FLOOR'S RAISE, TIMED: a board busy now -- a cascade, panels moving, the shake -- is one the engine would not raise; it is run on,
@@ -139,7 +141,7 @@ static int readBoard_(Read *R) {
     if (w > 0) {
       rq.b = raiseWaitBoard; rq.holdLeft = 0; rq.holdStarted = 0;
       rq.narr = 0; for (int i = 0; i < decQ.narr; i++) if (decQ.arr[i].at > w) { rq.arr[rq.narr] = decQ.arr[i]; rq.arr[rq.narr++].at -= w; }
-      rowsUp = to - panelTop(raiseWaitBoard);
+      rowsUp = imin(to, REFILL_TO) - panelTop(raiseWaitBoard);
       if (rowsUp > 0) { R->up = 1; raiseWait = w; }
     }
     if (!R->up) refillAsked = -(w == NOT_ASKED ? 1 : 2);   // (asked, and the stack takes no raise within RAISE_WAIT: -1, or nothing to raise once it does: -2)
