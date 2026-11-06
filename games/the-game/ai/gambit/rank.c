@@ -321,6 +321,16 @@ static int awayFromGarbage(const Judge *J) {
   if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; lowG = lowestG(decQ.b); }
   return lowG < gridLen(decQ.b) && lowG - CR(J->k.seq[0]) >= GARBAGE_AWAY;
 }
+// (ABOVE THE GARBAGE -- the owner: why go above the top garbage when there are not the panels there to break it or do anything: a line
+// that clears nothing and breaks nothing, its every swap above the highest garbage at rest)
+static int aboveGarbage(const Judge *J) {
+  if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || clears(J) || !decQ.b) return 0;
+  int hi = 0;
+  for (int r = 1; r < decQ.b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = decQ.b->p[r][c].f; if (f[ISGARBAGE] && f[STATE] == NORMAL && r > hi) hi = r; }
+  if (!hi) return 0;
+  for (int i = 0; i < J->k.nseq; i++) if (CR(J->k.seq[i]) <= hi) return 0;
+  return 1;
+}
 // (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out, of two that
 // both live it is no break to put first -- the owner: a three is for survival only, topped out; the mode's attacks break the garbage)
 static int threeBreakOnly(const Judge *J) { return J->apBroke > 0 && J->apCombo < 4 && J->apChain < 2; }
@@ -564,6 +574,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
+  // 1'h. UNDER GARBAGE, NOT ABOVE IT: of two that survive alike, a line that does nothing above the highest garbage (aboveGarbage) after
+  // the other, the hold too -- moves up there break nothing and are the window spent
+  if (decF.under && (lx || lostAlike(x, y)) && aboveGarbage(x) != aboveGarbage(y)) return (cmpKey = __LINE__, (aboveGarbage(x) ? 1 : -1));
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
   // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
   // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
