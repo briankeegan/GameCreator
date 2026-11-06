@@ -23,6 +23,38 @@ static int outBetter(int32_t l, int32_t a, int32_t ol, int32_t oa) {
   double v = l - (double)OUT_ACT * a, ov = ol - (double)OUT_ACT * oa;
   return v > ov || (v == ov && a < oa);
 }
+// THE BEAM KEPT ACROSS DECISIONS (the owner: if it has no answer it can think for a second): the lines the search ended on are kept,
+// anchored to a bottom-row panel's id (judge.c anchorIdAt), and the next search begins with them replayed on its own board -- shifted by
+// the rows the stack rose -- beside the root: a beam cut by the clock decision after decision grows deeper across them instead of
+// starting over. A kept line is judged again on the board as it is: one the board no longer takes is gone, never played stale
+#define OUT_KEEP 12
+static OItem outKept[OUT_KEEP]; static int outNKept, outKeepBusy; static int32_t outKeptId = NUL, outKeptCol, outSeeded;   // (lines replayed from the kept beam: the log's)
+static void outKeepLevel(const Question *q, const OItem *lv, int n) {
+  if (__atomic_exchange_n(&outKeepBusy, 1, __ATOMIC_ACQUIRE)) return;
+  outNKept = 0; outKeptId = NUL;
+  for (int c = 1; c <= W && outKeptId == NUL; c++) { int32_t id = anchorIdAt(q->b, c); if (id != NUL) { outKeptId = id; outKeptCol = c; } }
+  if (outKeptId != NUL) for (int i = 0; i < n && outNKept < OUT_KEEP; i++) if (lv[i].nseq > 0 && lv[i].nseq < OUT_SEQ) outKept[outNKept++] = lv[i];
+  __atomic_store_n(&outKeepBusy, 0, __ATOMIC_RELEASE);
+}
+static int outSeed(Ctx *x, const Question *q, int root, OItem *level, int nlev, int cap) {
+  if (__atomic_exchange_n(&outKeepBusy, 1, __ATOMIC_ACQUIRE)) return nlev;
+  int dr = NOT_ASKED;
+  if (outNKept && outKeptId != NUL) for (int r = 0; r < q->b->nrows && dr == NOT_ASKED; r++) if (q->b->p[r][outKeptCol].f[ID] == outKeptId) dr = r - 1;
+  for (int i = 0; dr != NOT_ASKED && i < outNKept && nlev < cap && !clockOut(); i++) {
+    OItem it; memset(&it, 0, sizeof it); int node = root;
+    for (int k = 0; k < outKept[i].nseq && liveNode(x, node); k++) {
+      int32_t mr = CR(outKept[i].seq[k]) + dr, mc = CC(outKept[i].seq[k]);
+      if (mr < 1 || mr >= q->b->nrows) { node = -1; break; }
+      node = step(x, node, MK_SWAP, mr, mc, 0); it.seq[it.nseq++] = mr * 8 + mc;
+    }
+    if (!liveNode(x, node)) continue;
+    const Board *eb = ensureBoard(x, node); if (!eb) continue;
+    it.n = node; it.room = eb->height - NODE(x, node)->top; it.h = heldOf(x, node); it.g = NODE(x, node)->garb; it.acts = outKept[i].acts;
+    level[nlev++] = it; outSeeded++;
+  }
+  __atomic_store_n(&outKeepBusy, 0, __ATOMIC_RELEASE);
+  return nlev;
+}
 static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best, over; memset(&best, 0, sizeof best); memset(&over, 0, sizeof over);
   double t0 = nowMs(), perStep = 0;
@@ -34,6 +66,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
   static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ka[PLAN_KIDS], ms1[MAXROWS * W];
   int nlev = 1;
   memset(&level[0], 0, sizeof level[0]); level[0].n = root;
+  nlev = outSeed(x, q, root, level, nlev, width);
   int keep = pressAllowance >= 0 ? pressAllowance - OUT_RESERVE : 1 << 20;
   for (int d = 1; d <= depth && nlev; d++) {
     double tl = nowMs();
@@ -91,6 +124,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     for (int i = 0; i < nlev; i++) level[i] = top[idx[i]];
     perStep = nsteps ? (nowMs() - tl) / nsteps : 0;
   }
+  outKeepLevel(q, level, nlev);
   if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt + OUT_LATER))) return over;
   return best;
 }

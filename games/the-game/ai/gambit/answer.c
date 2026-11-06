@@ -730,6 +730,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (P.deferred) L_s(" deferred=1");
   { static int32_t comboSeen; if (combosDropped != comboSeen) { L_s(" noFour=1"); comboSeen = combosDropped; } }
   { static int32_t rescueSeen; if (rescues != rescueSeen) { L_s(" rescued=1"); rescueSeen = rescues; } }
+  { static int32_t seedSeen; if (outSeeded != seedSeen) { L_s(" svSeeded="); L_i(outSeeded - seedSeen); seedSeen = outSeeded; } }
   if (R.saving) L_s(" saving=1");
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
   L_s(" lifePeak="); L_i(lifePeakOf());
