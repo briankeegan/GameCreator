@@ -24,8 +24,11 @@ Four of these are measured every run beside survival (`target.sh`, from each gam
   after it is made at the soonest, a chain's after the chain ends. So: big garbage to top it out, then small pieces, each landing
   after its last shake reached 0 and as its stop runs out -- never a big piece at an enemy already topped. Of our six live wins
   against Mastershadow (re-simulated on the server's engine), four died the frame a 16-42-frame shake ran out with no stop left, one
-  when its stop ran out after a three, one when the stack rose into the top with nothing left. Measured: frames from its first
-  top-out to its death, and the shake and pop time our garbage handed it on the way. Target: the owner's.
+  when its stop ran out after a three, one when the stack rose into the top with nothing left. Over 73 live games (10,464 landings,
+  every player's), a landing killed -- the stack died with no clear of its own after it -- 3.8% of the time for a 3-4-wide on a topped
+  stack, 7.7% for a 5-wide, 1.4% for one row, 0.5% for 2-3 rows, 0.3% for 4; with 1-2 rows free 2.3%, 3.5%, 1.0%, 0.4%, 0.2%. So finish
+  them begins 2 rows from the top and asks for small pieces (the modes' table). Measured: frames from its first top-out to its death,
+  and the shake and pop time our garbage handed it on the way. Target: the owner's.
 
 The 24 games: 8 combo_storm, 8 factory, 8 large_garbage -- the real client's Training mode (`training-mode.yml`), the server's
 engine at **level 11**, the game's own think and input budgets. Live: Gambit against the default on the fork's server
@@ -109,7 +112,7 @@ where it meets the new mode's first entry or breaks garbage.
 | --- | --- | --- | --- | --- |
 | opener | a fight's start, until either board tops out (its top row reached by panels or landed garbage, as the engine has it -- garbage queued or falling does not count) | pressure from the start: big chains only | 8+ chain | chain 6+, 4+ |
 | time attack | no enemy | score alone: set up the biggest chain there is | 8+ chain | none: nothing under 8 |
-| finish them | the enemy topped out (its top row reached, garbage or panels, as the engine has it) -- whatever its stop time | a hit it cannot absorb | 8+ combo | combo 5, combo 6, 3-chain (a combo of 4 is wasted) |
+| finish them | the enemy 2 rows from the top or topped out (its tallest column, garbage or panels, as the engine has it) -- whatever its stop time | small pieces it cannot absorb: each landing's shake under the stop it burns | combo 8, 9, 10 (two small pieces each) | combo 6, combo 5; chains last (a combo of 4 is wasted) |
 | big chain | the enemy's stack under 5 rows | it has room: one huge block, no combos | 8+ chain | chain 4+, carried on as far as it goes |
 | build | the enemy's stack under 9 rows | steady medium attacks, no combos | 5-chain | 3-chain, 4-chain |
 | pressure | the enemy's stack 9 rows or more | keep it high with quick 4-chains, no combos | 4-chain | 3-chain |
