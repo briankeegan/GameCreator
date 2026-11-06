@@ -3,6 +3,7 @@
 // THE QUESTION'S OWN FACTS from the host (answer.c gb_answer): the enemy as the host sends it, whether a raise may begin
 typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
+static int enemyToppedNow(void) { return theOpp.has && theOpp.out; }
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 static int32_t openerOver, openerChained;   // (the opener played out: a board has topped out this game -- or, nobody across, its chain thrown)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)

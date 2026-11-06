@@ -475,6 +475,7 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 #define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
 static int offMode(const Judge *J) { return !J->hold && !J->o.dead && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
+static int enemyToppedNow(void);   // (decide.c: the enemy topped out, as its board was last seen)
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOn(x), ly = livesOn(y);
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
@@ -519,6 +520,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // 1'k. A TOPPED ENEMY LEFT TO DIE (the engine: garbage that lands on a topped board is shake it cannot die in, 18 to 76 frames a
+  // landing; the owner: finish them, and big pieces near the top give it time): the finish asked, the enemy topped out, of two that
+  // survive alike the line that throws nothing first, where it breaks as much -- what is sent only keeps it alive past its stop
+  if (finishAsked() && enemyToppedNow() && (lx || lostAlike(x, y)) && (x->o.j.blocks > 0) != (y->o.j.blocks > 0)) {
+    const Judge *t = x->o.j.blocks > 0 ? x : y, *o = t == x ? y : x;
+    if (imax(0, brokeSeen(o)) >= imax(0, brokeSeen(t))) return (cmpKey = __LINE__, (t == x ? 1 : -1));
+  }
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
   // none and breaks as much
