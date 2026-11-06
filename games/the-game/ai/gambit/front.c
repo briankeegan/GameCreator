@@ -593,6 +593,9 @@ static void take(void) {
       if (F.nalt && F.altMode != modeAt(at)) F.nalt = 0;
       if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineTap = 0; F.lineN = F.nalt; F.lineAsked = F.altAsked; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
       if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
+      // (and nothing in hand to follow: the keys already planned -- the rest of the line in progress, every swap of it made keys -- are
+      // pressed on as they are, never cleared for a hold nobody judged)
+      if (planOf(at)) { F.st.inHand++; continue; }
     }
     if (!a.empty) { F.altMode = modeAt(a.at); F.altAsked = F.pPosted; F.nalt = a.nalt; for (int i = 0; i < a.nalt; i++) F.alt[i] = a.alt[i]; }
     int kind = a.kind == 1 ? MK_SWAP : a.kind == 2 ? MK_RAISE : MK_HOLD;
