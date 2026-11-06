@@ -212,6 +212,8 @@ static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
+static Judge *commitJ;   // the line in progress as judged, whatever the filters after take out (COMMITTED, ranked's end)
+static int32_t committed;   // (decisions the line in progress was played by COMMITTED over the order's first: the log's)
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
 // it could not be asked. The hold's board is the board left alone. A line lost before its end is lost where the judge saw it lost, and a
@@ -285,7 +287,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; commitJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -321,7 +323,7 @@ static int ranked(const Read *R, const Found *S) {
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
     else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
-    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; }
+    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; commitJ = cj; }
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
     static Judge thru;
@@ -492,6 +494,20 @@ static int ranked(const Read *R, const Found *S) {
     w = J->k; w.nseq = 0;
     for (int i = 1; i < J->k.nseq; i++) w.seq[w.nseq++] = J->k.seq[i];
     if (judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; backTrimmed++; }
+  }
+  // COMMITTED (the owner: efficiency, no mistakes, no changing minds): the line in progress is played to its end -- before every key and
+  // filter above, the hold among them -- unless the order's first lives where it does not, or is lost a break's time (rankSave) or more
+  // later: a line put down is every input pressed of it spent for nothing, and the input budget is the game's. Not a line whose three
+  // is now for nothing, nor one whose chain now ends at two, unless it breaks garbage: there the break is what follows the three through
+  if (commitJ && n && order[0] != commitJ && !commitJ->o.dead && !commitJ->hold && (commitJ->apBroke > 0 || (!wastesThree(commitJ) && !shortChain(commitJ)))) {
+    const Judge *b = order[0];
+    if (commitJ->o.lives || (!b->o.lives && lostOf(commitJ) + rankSave > lostOf(b))) {
+      int at = -1;
+      for (int i = 0; i < n; i++) if (order[i] == commitJ) at = i;
+      if (at < 0) at = n++;
+      for (int i = at; i > 0; i--) order[i] = order[i - 1];
+      order[0] = commitJ; carriedJ = commitJ; carryNone = 0; committed++;
+    }
   }
   phaseMs[0] = (int32_t)(t1 - t0); phaseMs[1] = (int32_t)(t2 - t1); phaseMs[2] = (int32_t)(nowMs() - t2);
   return n;
