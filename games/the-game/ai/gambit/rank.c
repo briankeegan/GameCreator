@@ -470,6 +470,7 @@ static int shortChain(const Judge *J) { int32_t reach = J->o.dead ? imax(J->apCh
 // the next decision's horizon reaches a frame further: every swap of a plan put down is a move for nothing)
 static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->modeFirst); }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
+#define FLAT_WALK 4   // (actions: the walk two lines may differ by for the flatter, then the more crossed, to decide: 8c')
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOn(x), ly = livesOn(y);
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
@@ -817,6 +818,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 8c. THE IDEAS KEPT: of two that live, meet the same entry and throw alike, the one whose board holds more ideas ready -- one
     // fired, the others kept, each to be fired on its own
     if (ax < MAXAIMS && lx) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1)); }
+    // 8c'. FLAT AND CROSSED (the owner, the great players: flat, and crisscrossed -- their stacks as tall as Gambit's, flatter, the seams
+    // crossed): of two that meet the same entry, survive alike and walk within FLAT_WALK actions of each other, the one whose board is a
+    // row flatter or more (judge.c evenOf), then the one with more crossed seams (seamsOf: a swap that finishes two colours at once)
+    if ((lx || lostAlike(x, y)) && iabs(lineWalk(x) - lineWalk(y)) <= FLAT_WALK) {
+      if (x->o.j.even >= 0 && y->o.j.even >= 0 && x->o.j.even != y->o.j.even) return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
+      if (x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
+    }
     // 8d. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk
     if (ax < MAXAIMS) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); } }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
