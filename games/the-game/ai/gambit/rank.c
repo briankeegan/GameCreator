@@ -436,6 +436,9 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // three. Past three the material decides: run 451, the later loss taken there too, spent the panels -- large_garbage's material under
 // garbage 19 where it was 23 -- finish 15 against 17)
 static int lostAlike(const Judge *x, const Judge *y) {
+  // (never two boards lost a break's time apart or more on the frames each is lost -- the walk the order charges a line makes no longer
+  // life alike, and the keys after the survival key would trade it for the window: rank.c diesAt)
+  { double dx = diesAt(x), dy = diesAt(y); if (dx >= 0 && dy >= 0 && dx < 1e299 && dy < 1e299 && (dx > dy ? dx - dy : dy - dx) >= rankSave) return 0; }
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
   return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
