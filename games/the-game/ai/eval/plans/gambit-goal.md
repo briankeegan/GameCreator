@@ -1,7 +1,18 @@
 # Gambit: the goal
 
 **Gambit plays like a player: it survives every game at level 11, it plays the mode it is in, it never spoils a chain the board is
-already making, and its cursor goes where the next swap is instead of across the board.**
+already making, its cursor goes where the next swap is instead of across the board, it is never idle, and it wastes no input.**
+
+Three of these are measured every run beside survival (`target.sh`, from each game's own log) and none ships worse than main:
+
+- **Never idle** (the owner: it sits waiting doing nothing most of the time). A hold is played only where no set-up, flattening or
+  line toward the mode survives as well: waiting while garbage pops, or while a chain falls, is time to set up nearby. Measured: the
+  share of decisions that hold. Last measured: 42-47% in every mode (main, f612ef5d). Target: the players' -- a person's cursor is
+  still only between moves.
+- **The mode played, garbage on the board or not** (item 3 below). Measured: the share of each mode's attacks that meet its aim.
+- **No wasted input** (the owner: efficiency, no mistakes, no changing minds). A line begun is pressed to its end unless survival needs
+  another; no three that breaks nothing. Measured: the share of inputs pressed on lines dropped before their end (`actsLost`) and
+  wasted threes a minute. Last measured: 27-33% of inputs; 0.01-0.04 threes a minute. Target: under 10%, and no wasted three.
 
 The 24 games: 8 combo_storm, 8 factory, 8 large_garbage -- the real client's Training mode (`training-mode.yml`), the server's
 engine at **level 11**, the game's own think and input budgets. Live: Gambit against the default on the fork's server
