@@ -891,11 +891,11 @@ static int wastedSwap(const Board *t, int32_t bits) {
   return s;
 }
 // THE SAVE: the board played on for GUARD_DIE frames, the garbage on its way landing as the game lands it -- with the swap not pressed
-// and nothing after it (lostIn 0), or with it pressed and the plan's keys after it as they will be pressed (lostIn 1). A three the plan
-// made as the board's save (the survival search found it needed: Planned.save 1) is let through when the board is lost without it, and
-// one the judge saw on the line's way to the garbage it breaks (Planned.save 2, rank.c wastesThree) is let through as the judge let it; any
-// other -- one the judge did not see, a colour it could not know shown -- never: the swap is refused and the next decision asked, where
-// the survival search finds the save if the board needs one.
+// and nothing after it (lostIn 0), or with it pressed and the plan's keys after it as they will be pressed (lostIn 1). A three the
+// judge saw on the line's way to the garbage it breaks (Planned.save 2, rank.c wastesThree) is let through as the judge let it; any other
+// -- the survival search's save, one the judge did not see, a colour it could not know shown -- is let through when the board is lost
+// without it: refused there, the next decision comes after the stop time it was pressed in has run out, and its pop is the board's time.
+// Otherwise the swap is refused and the next decision asked.
 static Board *dieBoard;
 static int lostIn(const Board *t, int32_t bits, int press) {
   Board *g = dieBoard;
@@ -915,7 +915,7 @@ static int lostIn(const Board *t, int32_t bits, int press) {
 static int threeSaves(const Board *t, int32_t bits, int planned) {
   if (!dieBoard) dieBoard = nb_new();
   if (!dieBoard) return 0;
-  return planned == 2 || (planned && lostIn(t, bits, 0));
+  return planned == 2 || lostIn(t, bits, 0);
 }
 // ---------------------------------------------------------------- the countdown
 // THE OPENING THOUGHT THROUGH THE COUNTDOWN: the board does not move while the countdown runs, so the board of the first frame in play
