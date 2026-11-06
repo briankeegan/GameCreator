@@ -234,7 +234,7 @@ static double contLostOf(const Judge *J, double give) {
   int32_t dt = imax(0, eb->clock - decQ.b->clock);
   Question q2 = decQ; q2.b = eb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
-  Outlived c = outlive(&q2, HORIZON + REST, REST, give, 6, 30);
+  Outlived c = outlive(&q2, HORIZON + REST, REST, give, OUT_DEPTH, 30);
   int32_t lost = c.set ? c.lostAt : diesIn(&q2, HORIZON + REST);
   if (lost < 0) return -1;
   return lost == FOREVER ? 1e9 : (double)dt + lost;
@@ -383,7 +383,7 @@ static int ranked(const Read *R, const Found *S) {
   int svDone = __atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE);
   if (!(n && order[0]->o.lives) && (svDone || leftMs() > 0)) {
     surviveAsked = 1;
-    Outlived sv = svDone ? svJob : outlive(&decQ, HORIZON + REST, REST, leftMs(), 6, 30);
+    Outlived sv = svDone ? svJob : outlive(&decQ, HORIZON + REST, REST, leftMs(), OUT_DEPTH, 30);
     offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
