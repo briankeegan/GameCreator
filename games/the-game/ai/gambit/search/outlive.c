@@ -7,8 +7,8 @@
 #define OUT_SEQ 16
 #define OUT_DEPTH 10   // (the swaps deep the survival beam may grow: its clock stops it first on a busy decision -- a level is begun only
                        // while the time it takes is left -- and a board with time to spare is searched further, not left at six)
-typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor
-typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts; } Outlived;
+typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts, pan; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor
+typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts, pan; } Outlived;
 static LOCAL int outFree;   // (the save pass: steps not held to the list -- outliveSave)
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
@@ -21,9 +21,17 @@ static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(
 // window later, OUT_ACT frames each (76 in 600) -- so a save across the board must buy that much more time than one at hand; one that
 // lasts beats one that does not)
 #define OUT_ACT 8
-static int outBetter(int32_t l, int32_t a, int32_t ol, int32_t oa) {
+// (THE PANELS KEPT: of two lines lost at frames finite, each panel left on the board is worth OUT_PANEL frames -- a row of rise is six
+// panels, 56 frames at level 11's start -- so a save that burns the board's material must buy that much more time than one that keeps it)
+#define OUT_PANEL 9
+static int32_t panelsOf(const Board *b) {
+  int n = 0;
+  if (b) for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; n += f[COLOR] != NUL && !f[ISGARBAGE] && f[STATE] != MATCHED && f[STATE] != POPPING && f[STATE] != POPPED; }
+  return n;
+}
+static int outBetter(int32_t l, int32_t a, int32_t p, int32_t ol, int32_t oa, int32_t op) {
   if (l == FOREVER || ol == FOREVER) return l == FOREVER && (ol != FOREVER || a < oa);
-  double v = l - (double)OUT_ACT * a, ov = ol - (double)OUT_ACT * oa;
+  double v = l - (double)OUT_ACT * a + (double)OUT_PANEL * p, ov = ol - (double)OUT_ACT * oa + (double)OUT_PANEL * op;
   return v > ov || (v == ov && a < oa);
 }
 static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
@@ -69,7 +77,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
         k->n = out; k->nseq = imin(level[i].nseq + 1, OUT_SEQ);
         for (int s2 = 0; s2 < level[i].nseq && s2 < OUT_SEQ; s2++) k->seq[s2] = level[i].seq[s2];
         if (level[i].nseq < OUT_SEQ) k->seq[level[i].nseq] = ms1[j];
-        k->room = ensureBoard(x, out)->height - on->top; k->h = heldOf(x, out); k->g = on->garb;
+        k->room = ensureBoard(x, out)->height - on->top; k->h = heldOf(x, out); k->g = on->garb; k->pan = panelsOf(ensureBoard(x, out));
         { const Board *pb = ensureBoard(x, level[i].n); k->acts = level[i].acts + (pb ? actionsFor(pb->curRow, pb->curCol, CR(ms1[j]), CC(ms1[j]), pressAllowance >= 0 ? pressAllowance - level[i].acts : HOLDTIGHT + 1) : 0); }
       }
     }
@@ -85,7 +93,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
       if (top[i].lost == FOREVER && !outFree && !lineFits(top[i].seq, top[i].nseq, 0)) { top[i].lost = -1; continue; }
       Outlived *o = top[i].acts <= keep ? &best : &over;
-      if (!o->set || outBetter(top[i].lost, top[i].acts, o->lostAt, o->acts)) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
+      if (!o->set || outBetter(top[i].lost, top[i].acts, top[i].pan, o->lostAt, o->acts, o->pan)) { o->set = 1; o->acts = top[i].acts; o->pan = top[i].pan; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
       if (top[i].lost == FOREVER && o == &best) return best;
     }
     for (int i = 0; i < nkeep; i++) { idx[i] = i; kl[i] = top[i].lost; }
