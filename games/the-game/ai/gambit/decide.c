@@ -212,6 +212,7 @@ static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
+static int32_t inBetween;   // (decisions a set-up swap was pressed in between the line in progress's steps: the log's)
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
 // it could not be asked. The hold's board is the board left alone. A line lost before its end is lost where the judge saw it lost, and a
@@ -327,6 +328,25 @@ static int ranked(const Read *R, const Found *S) {
     static Judge thru;
     Cand k2 = ck; k2.settled = 0; k2.play = PLAY_CARRY;
     if (cwait && judgeCand(R, &k2, &thru)) { thru.carried = 1; order[n] = &thru; n++; }
+    // IN BETWEEN (the owner: the proper set-up in between everything; plans/gambit-mastershadow.md): while the line in progress waits --
+    // for the board to settle, a slab to pop, a chain to fall -- one swap near the cursor and clear of the line's own cells that zips the
+    // stack (propose.c zipSwap), pressed before the line's next step. It is the line in progress, in the line's place, only where it keeps
+    // everything the line does: lives as it does or is lost no sooner, breaks as much, makes as long a chain and as large a combo, wastes
+    // no three
+    Judge *cl = carriedJ ? (Judge *)carriedJ : 0; int32_t z;
+    if (cl && !cl->o.dead && ck.nseq >= 1 && ck.nseq < MAXLINE && (cwait || popLeft(decQ.b) > 0 || cascadeLive(decQ.b)) && !clockOut() &&
+        zipSwap(decQ.b, &z, 1, decQ.b->topCurRow, ZIP_NEAR + 1, ck.seq, ck.nseq)) {
+      static Cand kz; static Judge jz;
+      kz = ck; kz.nseq = 0; kz.seq[kz.nseq++] = z; for (int i = 0; i < ck.nseq; i++) kz.seq[kz.nseq++] = ck.seq[i];
+      kz.way = 1;
+      if (judgeCand(R, &kz, &jz) && !jz.o.dead && !wastesThree(&jz) && (jz.o.lives || (!cl->o.lives && lostOf(&jz) >= lostOf(cl))) &&
+          imax(0, brokeSeen(&jz)) >= imax(0, brokeSeen(cl)) && jz.o.j.whole.chain >= cl->o.j.whole.chain && jz.o.j.whole.combo >= cl->o.j.whole.combo &&
+          jz.o.j.spread > cl->o.j.spread) {
+        jz.carried = 1; jz.wait = 0;
+        for (int i = 0; i < n; i++) if (order[i] == cl) order[i] = &jz;
+        carriedJ = &jz; inBetween++;
+      }
+    }
   }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
