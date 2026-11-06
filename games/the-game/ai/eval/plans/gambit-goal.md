@@ -204,6 +204,8 @@ where it meets the new mode's first entry or breaks garbage.
 
 At `277e8159` (the survival search's save pass: where no line held to the list lives, it searches again free of the list, and the decision's save check decides), seed 85: switching 23, pressure 23, finish them 22, build 19, big chain 20 -- 107 of 120 against 100 at `f9fc896d`. A board topped by its own panels with no garbage (switching combo_storm-5) had no move within the list but a plain three.
 
+At `277e8159`, seed 86: switching 21, pressure 21, finish them 22, build 24, big chain 22 -- 110 of 120. The panels kept in the survival search's choice (`24b7e1c3`, each panel left worth 9 frames among saves lost alike) on seed 86: 21, 23, 22, 20, 21 -- 107. Not merged.
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
