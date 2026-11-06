@@ -474,6 +474,8 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 #define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
 static int offMode(const Judge *J) { return !J->hold && !J->o.dead && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
+#define MAT_LOW 30   // (panels under the lowest garbage: the players' digging level, plans/gambit-mastershadow.md)
+#define MAT_STEP 3   // (panels: the gap that decides, a three's worth)
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOn(x), ly = livesOn(y);
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
@@ -564,6 +566,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
+  // 1'm. UNDER GARBAGE, THE PANELS KEPT (plans/gambit-mastershadow.md: the players dig at about 30 panels; Gambit's deaths are a board
+  // spent below that, then buried): of two that survive alike, garbage on the board, where either leaves under MAT_LOW panels under the
+  // lowest garbage (outcome.c matLeft), the one that leaves more, by MAT_STEP or more -- the next break is made of them
+  if (decF.under && (lx || lostAlike(x, y)) && x->o.matLeft >= 0 && y->o.matLeft >= 0 && imin(x->o.matLeft, y->o.matLeft) < MAT_LOW &&
+      iabs(x->o.matLeft - y->o.matLeft) >= MAT_STEP) return (cmpKey = __LINE__, (x->o.matLeft > y->o.matLeft ? -1 : 1));
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
   // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
   // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
