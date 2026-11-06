@@ -891,13 +891,14 @@ static int wastedSwap(const Board *t, int32_t bits) {
   return s;
 }
 // THE SAVE: the board played on for GUARD_DIE frames, the garbage on its way landing as the game lands it -- with the swap not pressed
-// and nothing after it (lostIn 0), or with it pressed and the plan's keys after it as they will be pressed (lostIn 1). A three the
-// judge saw on the line's way to the garbage it breaks (Planned.save 2, rank.c wastesThree) is let through as the judge let it; any other
-// -- the survival search's save, one the judge did not see, a colour it could not know shown -- is let through when the board is lost
-// without it: refused there, the next decision comes after the stop time it was pressed in has run out, and its pop is the board's time.
-// Otherwise the swap is refused and the next decision asked.
+// and nothing after it (livesFor 0), or with it pressed and the plan's keys after it as they will be pressed (livesFor 1). A three the
+// judge saw on the line's way to the garbage it breaks (Planned.save 2, rank.c wastesThree) is let through as the judge let it, and the
+// survival search's save (Planned.save 1) when the board is lost without it; any other -- one the judge did not see, a colour it could
+// not know shown -- when the board is lost without it and lives longer with it pressed: refused there, the next decision comes after the
+// stop time it was pressed in has run out. Otherwise the swap is refused and the next decision asked.
 static Board *dieBoard;
-static int lostIn(const Board *t, int32_t bits, int press) {
+// (the frames the board is played on before it is lost, GUARD_DIE when it is not)
+static int32_t livesFor(const Board *t, int32_t bits, int press) {
   Board *g = dieBoard;
   copyBoard(g, t);
   static Arrival pend[MAXARRIVALS];
@@ -910,12 +911,15 @@ static int lostIn(const Board *t, int32_t bits, int press) {
     Planned *q = press ? planOf(F.now + f + 1) : 0;
     g->input = q ? q->bits & ~(IN_SWAP | IN_RAISE) : 0; g->pressSwap = q && (q->bits & IN_SWAP);
   }
-  return g->gameOverClock > 0;
+  return g->gameOverClock > 0 ? g->gameOverClock - t->clock : GUARD_DIE;
 }
 static int threeSaves(const Board *t, int32_t bits, int planned) {
   if (!dieBoard) dieBoard = nb_new();
   if (!dieBoard) return 0;
-  return planned == 2 || lostIn(t, bits, 0);
+  if (planned == 2) return 1;
+  int32_t without = livesFor(t, bits, 0);
+  if (without >= GUARD_DIE) return 0;
+  return planned == 1 || livesFor(t, bits, 1) > without;
 }
 // ---------------------------------------------------------------- the countdown
 // THE OPENING THOUGHT THROUGH THE COUNTDOWN: the board does not move while the countdown runs, so the board of the first frame in play
