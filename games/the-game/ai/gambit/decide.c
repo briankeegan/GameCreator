@@ -815,6 +815,7 @@ static int routeJudged(const Read *R, int n) {
 // (why the line in progress was not carried on, for the log: 0 carried or none, 1 its anchor panel gone, 2 a step no longer there to
 // press, 3 it no longer breaks and its swaps pressed did not, 4 it no longer makes what it was begun for)
 static int carryDrop;
+static int carryLate;   // (the line in progress dropped only because the clock stopped its judging: answer.c gives no answer then)
 // (and for the log, the line dropped: the steps it had left, and for 2 how the judge ended it -- cut at, the steps it pressed)
 static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, carryDropWhy, carryDropNats;
 // (WHY NO LINE IN PROGRESS WAS OFFERED, for the frame loop's count of what ended its line -- answer.c ended: 0 one was; 16 none was
@@ -822,7 +823,7 @@ static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, 
 // gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing)
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
-  *wait = 0; carryDrop = 0;
+  *wait = 0; carryDrop = 0; carryLate = 0;
   carryNone = !C->set ? 16 : C->id != carryFrom ? 17 : 0;
   int skip = C->id == carryFrom ? carryPressed : 0;
   if (C->set && C->nrest <= skip && theCarryNext.set) {
@@ -849,7 +850,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];
   // (a step no longer legal: the judge pressed fewer than the line has. A line the board is lost on is offered all the same -- judged
   // lost, as any line is, and ranked by its loss: where every line is lost, the line in progress may be lost latest)
-  if (!j.dead && j.nats < nrest) { carryDrop = 2; carryDropDead = -1; carryDropCut = j.cut; carryDropWhy = j.cutWhy; carryDropNats = j.nats; return 0; }
+  if (!j.dead && j.nats < nrest) { carryDrop = 2; carryLate = j.late || clockOut(); carryDropDead = -1; carryDropCut = j.cut; carryDropWhy = j.cutWhy; carryDropNats = j.nats; return 0; }
   *wait = moving;
   // (the chain as the game counts it -- one already falling is the line's, begun by its first swap -- as the list's check counts it)
   // (A REST THE BOARD IS LOST DURING is read on what the line was played as making, as the rank reads a line the judge could not play

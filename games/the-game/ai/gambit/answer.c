@@ -473,7 +473,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
   Move d = R.up ? (Move){ 2, 0 } : P.line && !timed ? (Move){ 1, P.line->k.seq[0] } : (Move){ 0, 0 };
   A->d = d;
-  A->empty = starved && d.kind == 0;
+  // (and a hold where the line in progress was let go only for the clock -- its judging stopped before it pressed a swap: the frame
+  // loop presses on the line in hand, never a break worth a life dropped for want of time: fight 813, match 20)
+  A->empty = (starved || carryLate) && d.kind == 0;
   // (THE MOVE IN HAND: of the lines that live and are no hold -- a ready one first -- the best ranked, kept by the frame loop for a
   // decision the clock leaves no time)
   A->nalt = 0;
