@@ -483,6 +483,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
+  // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
+  // the line in progress before the other, the hold too, where it breaks as much garbage: every swap pressed of a line put down is the input budget
+  // spent for nothing, and only a break's time of life, or more garbage broken, is worth it
+  if (x->carried != y->carried && (lx || lostAlike(x, y))) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    if (!c->hold && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
   // 1. THE MODE, NOT THE MOST LIFE (the owner: the mode is respected always, garbage on the board or not; a lower stack is more time): a
   // line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more -- the next decisions keep the
   // stack down; the life an off-mode attack buys past that is the mode thrown away. Under garbage, only one that breaks as much of it
