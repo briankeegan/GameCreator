@@ -38,11 +38,26 @@
   {
    "name": "finish them",
    "when": {
-    "enemy.height": ">=11"
+    "enemy.height": ">=10"
    },
    "aims": [
     {
-     "combo": ">=8"
+     "combo": "==8"
+    },
+    {
+     "combo": "==9"
+    },
+    {
+     "combo": "==10"
+    },
+    {
+     "combo": "==5"
+    },
+    {
+     "combo": "==6"
+    },
+    {
+     "combo": "==4"
     }
    ]
   },
