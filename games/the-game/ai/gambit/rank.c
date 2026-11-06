@@ -483,6 +483,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
+  // 1. A BREAK'S TIME OF LIFE IS NEVER GIVEN AWAY (the owner: still can't die): neither living, two lines lost a break's time (rankSave) or
+  // more apart on the frames each board is lost (diesAt, no walk charged), the later first -- before the line in progress, the mode and every key after: the
+  // walk the order charges a line, or a rule's preference, never makes a longer life alike
+  if (!lx) { double dx = diesAt(x), dy = diesAt(y);
+    if (dx >= 0 && dy >= 0 && dx < 1e299 && dy < 1e299 && (dx > dy ? dx - dy : dy - dx) >= rankSave) return (cmpKey = __LINE__, (dy > dx ? 1 : -1)); }
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
   // the line in progress before the other, the hold too, where it breaks as much garbage: every swap pressed of a line put down is the input budget
   // spent for nothing, and only a break's time of life, or more garbage broken, is worth it
@@ -491,11 +496,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!c->hold && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. THE MODE, NOT THE MOST LIFE (the owner: the mode is respected always, garbage on the board or not; a lower stack is more time): a
-  // line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more -- the next decisions keep the
+  // line off the mode after one that keeps to it -- a line, never the hold: waiting meets no mode -- and leaves the board OFF_MODE_LIFE breaks' time or more -- the next decisions keep the
   // stack down; the life an off-mode attack buys past that is the mode thrown away. Under garbage, only one that breaks as much of it
   if (offMode(x) != offMode(y)) {
     const Judge *f = offMode(x) ? x : y, *o = f == x ? y : x;
-    if ((livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) && (!decF.under || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
+    if (!o->hold && (livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) && (!decF.under || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
       return (cmpKey = __LINE__, (f == x ? 1 : -1));
   }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
