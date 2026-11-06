@@ -206,6 +206,8 @@ At `277e8159` (the survival search's save pass: where no line held to the list l
 
 At `277e8159`, seed 86: switching 21, pressure 21, finish them 22, build 24, big chain 22 -- 110 of 120. The panels kept in the survival search's choice (`24b7e1c3`, each panel left worth 9 frames among saves lost alike) on seed 86: 21, 23, 22, 20, 21 -- 107. Not merged.
 
+The opening's raise a row short while garbage is on its way (`3a086617`), seed 86: finish them 23, switching 19, pressure 21, big chain 21, build 22 -- 106 against 110. Its target (an opening death after the raise, finish them combo_storm-8 at 381) lived. Not merged.
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
