@@ -483,12 +483,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
-  // 1. (no garbage on the board) THE MODE, NOT THE MOST LIFE (the owner: lower the stack and there is more time; with no garbage it keeps
-  // making chains for nothing): a line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more --
-  // the next decisions keep the stack down; the life an off-mode attack buys past that is the mode thrown away
-  if (!decF.under && offMode(x) != offMode(y)) {
+  // 1. THE MODE, NOT THE MOST LIFE (the owner: the mode is respected always, garbage on the board or not; a lower stack is more time): a
+  // line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more -- the next decisions keep the
+  // stack down; the life an off-mode attack buys past that is the mode thrown away. Under garbage, only one that breaks as much of it
+  if (offMode(x) != offMode(y)) {
     const Judge *f = offMode(x) ? x : y, *o = f == x ? y : x;
-    if (livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) return (cmpKey = __LINE__, (f == x ? 1 : -1));
+    if ((livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) && (!decF.under || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
+      return (cmpKey = __LINE__, (f == x ? 1 : -1));
   }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
