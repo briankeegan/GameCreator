@@ -488,11 +488,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
       lx = ly = 1;
     }
   }
-  // 1. A BREAK'S TIME OF LIFE IS NEVER GIVEN AWAY (the owner: still can't die): neither living, two lines lost a break's time (rankSave) or
-  // more apart on the frames each board is lost (diesAt, no walk charged), the later first -- before the line in progress, the mode and every key after: the
-  // walk the order charges a line, or a rule's preference, never makes a longer life alike
-  if (!lx) { double dx = diesAt(x), dy = diesAt(y);
-    if (dx >= 0 && dy >= 0 && dx < 1e299 && dy < 1e299 && (dx > dy ? dx - dy : dy - dx) >= rankSave) return (cmpKey = __LINE__, (dy > dx ? 1 : -1)); }
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
   // the line in progress before the other, the hold too, where it breaks as much garbage: every swap pressed of a line put down is the input budget
   // spent for nothing, and only a break's time of life, or more garbage broken, is worth it
