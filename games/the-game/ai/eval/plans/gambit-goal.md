@@ -1,9 +1,9 @@
 # Gambit: the goal
 
 **Gambit plays like a player: it survives every game at level 11, it plays the mode it is in, it never spoils a chain the board is
-already making, its cursor goes where the next swap is instead of across the board, it is never idle, and it wastes no input.**
+already making, its cursor goes where the next swap is instead of across the board, it is never idle, it wastes no input, and it kills fast.**
 
-Three of these are measured every run beside survival (`target.sh`, from each game's own log) and none ships worse than main:
+Four of these are measured every run beside survival (`target.sh`, from each game's own log) and none ships worse than main:
 
 - **Never idle** (the owner: it sits waiting doing nothing most of the time). A hold is played only where no set-up, flattening or
   line toward the mode survives as well: waiting while garbage pops, or while a chain falls, is time to set up nearby. Measured: the
@@ -15,6 +15,17 @@ Three of these are measured every run beside survival (`target.sh`, from each ga
 - **No wasted input** (the owner: efficiency, no mistakes, no changing minds). A line begun is pressed to its end unless survival needs
   another; no three that breaks nothing. Measured: the share of inputs pressed on lines dropped before their end (`actsLost`) and
   wasted threes a minute. Last measured: 27-33% of inputs; 0.01-0.04 threes a minute. Target: under 10%, and no wasted three.
+- **Kill, and kill fast** (the owner: win as quickly as possible, against people and bots alike). The enemy dies on the first frame
+  it is topped out with no stop time, no shake, and nothing popping or swapping (`Stack.lua` `checkDeath`, `advancePassiveRaise`;
+  level 11 has 1 health). What our garbage hands it: each landing is shake -- 18 frames for up to 4 panels, 24 for 5, 42 for 6-11,
+  66 for 12-23, 76 for 24 -- and a landing while it still shakes renews the largest shake since its shake was last 0. Breaking it is
+  pop time, 30 + 6 frames per panel cleared on screen. Its own clears while topped: a four-plus combo is 55-56 frames of stop, a
+  chain link 80, a three none. Garbage cannot drop while it is topped and drops one piece at a time; a combo of ours lands 151 frames
+  after it is made at the soonest, a chain's after the chain ends. So: big garbage to top it out, then small pieces, each landing
+  after its last shake reached 0 and as its stop runs out -- never a big piece at an enemy already topped. Of our six live wins
+  against Mastershadow (re-simulated on the server's engine), four died the frame a 16-42-frame shake ran out with no stop left, one
+  when its stop ran out after a three, one when the stack rose into the top with nothing left. Measured: frames from its first
+  top-out to its death, and the shake and pop time our garbage handed it on the way. Target: the owner's.
 
 The 24 games: 8 combo_storm, 8 factory, 8 large_garbage -- the real client's Training mode (`training-mode.yml`), the server's
 engine at **level 11**, the game's own think and input budgets. Live: Gambit against the default on the fork's server
