@@ -7,8 +7,10 @@ Three of these are measured every run beside survival (`target.sh`, from each ga
 
 - **Never idle** (the owner: it sits waiting doing nothing most of the time). A hold is played only where no set-up, flattening or
   line toward the mode survives as well: waiting while garbage pops, or while a chain falls, is time to set up nearby. Measured: the
-  share of decisions that hold. Last measured: 42-47% in every mode (main, f612ef5d). Target: the players' -- a person's cursor is
-  still only between moves.
+  share of decisions that hold, and the share of half-seconds with no key pressed. Last measured: holds 42-47% in every mode (main,
+  f612ef5d), 75% of them while garbage pops; no key pressed in 27% of half-seconds, Mastershadow 5% in the same six live matches
+  (plans/gambit-mastershadow.md). Target: 5%. The game's input budget (76 actions in 600 frames) is spent mostly already, so the
+  wasted input below goes first: it is the budget the set-ups are pressed with.
 - **The mode played, garbage on the board or not** (item 3 below). Measured: the share of each mode's attacks that meet its aim.
 - **No wasted input** (the owner: efficiency, no mistakes, no changing minds). A line begun is pressed to its end unless survival needs
   another; no three that breaks nothing. Measured: the share of inputs pressed on lines dropped before their end (`actsLost`) and
