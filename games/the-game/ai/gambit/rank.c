@@ -484,7 +484,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // spent for nothing, and only a break's time of life, or more garbage broken, is worth it
   if (x->carried != y->carried && (lx || lostAlike(x, y))) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (!c->hold && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    // (unless the other meets the mode's first entry, the line in progress does not, and the other breaks as much garbage: the same
+    // break made as the mode asks -- the owner: modes are respected)
+    int modeOver = goalKeyOf(o) == 0 && goalKeyOf(c) > 0 && imax(0, brokeSeen(o)) >= imax(0, brokeSeen(c));
+    if (!c->hold && !modeOver && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. THE MODE, NOT THE MOST LIFE (the owner: the mode is respected always, garbage on the board or not; a lower stack is more time): a
   // line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more -- the next decisions keep the
