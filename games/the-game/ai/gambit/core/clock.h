@@ -26,6 +26,10 @@ static void clockShareEnd(double old) { clockShare = old; }
 static LOCAL int64_t clockPoll;
 // A host that knows the game's frame (native.c) stops a decision on it: out once the frame before its move has begun.
 static int (*clockFrameOut)(void);
+// (THE JUDGE'S FRAMES: a host that knows its frames hands the searches a stop JUDGE_FRAMES before the move's frame (clockFrameOut) and
+// the judging the move's frame itself (clockJudgeOut, decide.c): frames that come sooner than the clock said -- a catch-up burst --
+// end the searches, never the judging of what they found)
+static int (*clockJudgeOut)(void);
 // A JOB BESIDE THE DECISION (decide.c readySpread): no deadline of the decision's -- its searches end in their own share, or when the
 // next decision takes the pool back (jobStop)
 static LOCAL int inJob;

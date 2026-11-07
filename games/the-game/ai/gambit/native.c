@@ -147,11 +147,16 @@ static int frameOut(void) {
   if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) return 1;
   return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
 }
+#define JUDGE_FRAMES 2   // (the judging's p90 under garbage is 42 ms, about two frames and a half: run 2630)
+static int searchFrameOut(void) {
+  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST) - JUDGE_FRAMES) return 1;
+  return frameOut();
+}
 static void ringKeep(int32_t at, int32_t allow);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
-  dueFrame = q->at - 1; clockFrameOut = frameOut;
+  dueFrame = q->at - 1; clockFrameOut = searchFrameOut; clockJudgeOut = frameOut;
   // (the searches' deadline is the frame loop's own: the start of the frame the decision is cut at -- the one before its move, sooner by
   // the burst -- less its closing work)
   double due = moveStartMs(dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) - closeWorst();

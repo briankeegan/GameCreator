@@ -297,6 +297,7 @@ static int ranked(const Read *R, const Found *S) {
   readyStop(); readyPendClear(); readyCollect = 1;   // (and keeps each landed board: searched once, its nearest break measured)
   rankReact = C2.reaction + 1;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
+  if (clockJudgeOut) clockFrameOut = clockJudgeOut;   // (the judging's frames: core/clock.h)
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   // (NOTHING JUDGED IN TIME: the searches and the proposing took the decision's time and the clock stopped the judge on every line --
   // every line is judged again up to the move's own frame, the host's hard stop (clockFrameOut): a board is never held for want of a
