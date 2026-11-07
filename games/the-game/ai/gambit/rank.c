@@ -97,6 +97,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (ONE THE CLOCK STOPPED THE JUDGE ON: its board past that frame unknown -- ranked as a line lost on the frame it was judged alive to,
   // what it makes on the search's word: never a board that lasts, and never dropped for a hold that dies sooner)
   if (oc.late) {
+    // (a break the search found and the clock gave the judge no frame of: alive to the frame the search played it to its break -- the
+    // search's word, its engine the judge's -- a hold for want of the judge's time is the break given up)
+    if (oc.j.aliveTo <= 0 && (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) && k->xDone > 0 && k->x.broke > 0) oc.j.aliveTo = k->xDone;
     if (oc.j.aliveTo <= 0) { dropAs(play, DROP_UNJUDGED); return 0; }
     oc.late = 0; oc.dead = 1; oc.lives = 0; oc.lostAt = oc.j.aliveTo; oc.ready = NOT_ASKED;
   }
