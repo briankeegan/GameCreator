@@ -418,8 +418,11 @@ static int lineWalk(const Judge *J) {
 // (a line that breaks nothing and walks the input allowance below a break's walk: the next break is pressed out of what is left)
 // (how far below a break's walk a line that breaks nothing leaves the allowance: 0 when it keeps it, or breaks -- the window already
 // short, the line that spends less of what is left keeps more of the next break)
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 ? 0 : imax(0, BREAK_WALK - (pressAllowance - lineWalk(J))); }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
+// (and only with garbage on the board or on its way: with none, no break is pressed out of what is left, and a reserve kept for one
+// is the window the board's own rise needs, held back)
+static int garbageAhead(void) { return decF.under || decQ.narr > 0; }
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 || !garbageAhead() ? 0 : imax(0, BREAK_WALK - (pressAllowance - lineWalk(J))); }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && garbageAhead() && pressAllowance - lineWalk(J) < BREAK_WALK; }
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
