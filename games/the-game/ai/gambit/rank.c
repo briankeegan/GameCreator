@@ -339,14 +339,13 @@ static int setupKind(const Judge *J) {
   int p = J->k.play;
   return !J->hold && (p == PLAY_SETUP || p == PLAY_LINEUP || p == PLAY_TOWARD || p == PLAY_NEAREST || p == PLAY_LEVEL || p == PLAY_ZIP);
 }
-// (A ZIP AMONG SET-UPS: a set-up toward the list, a lineup, a line toward a break or nearest the list before a
-// swap that only zips the stack; of two zips, or a zip and a level, the stack left more zipped -- its colours a swap apart, not touching
+// (A ZIP AMONG SET-UPS: a set-up toward the list, a lineup, a line toward a break or nearest the list, a level before a
+// swap that only zips the stack; of two zips, the stack left more zipped -- its colours a swap apart, not touching
 // (judge.c spreadOf). -1 x first, 1 y first, 0 neither)
 static int zipOver(const Judge *x, const Judge *y) {
   int zx = x->k.play == PLAY_ZIP, zy = y->k.play == PLAY_ZIP;
   if (!zx && !zy) return 0;
-  int lv = (zx ? y : x)->k.play == PLAY_LEVEL;
-  if (zx != zy && !lv) return zx ? 1 : -1;
+  if (zx != zy) return zx ? 1 : -1;
   if (x->o.j.spread != y->o.j.spread) return x->o.j.spread > y->o.j.spread ? -1 : 1;
   return 0;
 }

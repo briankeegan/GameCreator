@@ -698,9 +698,11 @@ static int wayLines(Cand *out, int n, int cap) {
 }
 // THE STACK ZIPPED (the players' stacks: a colour left a swap from its partner, not beside it -- one swap then fires what the bot
 // chooses, and nothing lands into a match on its own): the single swaps of two panels at rest that clear nothing and leave the stack
-// more zipped by ZIP_GAIN or more (judge.c spreadOf, on the colours at rest), the most zipped first, then nearest the cursor
+// more zipped by ZIP_GAIN or more (judge.c spreadOf, on the colours at rest), the most zipped first, then nearest the cursor -- on a
+// stack with ZIP_ROOM rows free above it
 #define ZIPN 6
 #define ZIP_GAIN 2
+#define ZIP_ROOM 4   // (the rows free above the stack a zip needs)
 static int32_t zipOffered;   // (the zips this decision offered: the log's)
 static int32_t zipSpread(int32_t g[][W + 2], int top) {
   int32_t staged = 0, touching = 0;
@@ -730,6 +732,7 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
     if (v != 0) top = r;
     ok[r][c] = v > 0 && v < 8 && f[STATE] == NORMAL && (r == 1 || (cellAt(b, r - 1, c) != 0 && b->p[r - 1][c].f[STATE] == NORMAL));
   }
+  if (top > (b->height ? b->height : 12) - ZIP_ROOM) return n;   // (a stack this high is lowered, not sorted)
   if (top > b->topCurRow) top = b->topCurRow;
   int32_t base = zipSpread(g, top), mv[ZIPN * 4], gain[ZIPN * 4]; int d[ZIPN * 4], nm = 0;
   for (int r = 1; r <= top; r++) for (int c = 1; c < W; c++) {
