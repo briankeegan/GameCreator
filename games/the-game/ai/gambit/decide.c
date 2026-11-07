@@ -624,6 +624,13 @@ static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) 
   return 0;
 }
 static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anchorInto(&theCarry, row1, seq, n); }
+// (no bottom-row panel the line leaves alone -- a dig along the bottom row touches every one: a panel of the row not yet risen, which no
+// swap reaches)
+static int anchorBelow(Carry *C, const Board *b) {
+  if (!b || b->nrows < 1) return 0;
+  for (int c = 1; c <= W; c++) { const int32_t *f = b->p[0][c].f; if (f[COLOR] && !f[ISGARBAGE] && f[ID] != NUL) { C->anchorRow = 0; C->anchorCol = c; C->anchorId = f[ID]; return 1; } }
+  return 0;
+}
 // (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
 // (waits: the decisions in a row the line has waited for the board to settle -- carryWaitsOut)
 // (WHY THE LINE PLAYED WAS NOT HANDED ON, for the log: 0 it was, 1 no line, 2 it waits, 3 nothing of it left, 4 a tier past the set-ups
@@ -642,7 +649,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   if (carrySkip) { carryClr = carrySkip; return; }
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
-  if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carrySkip = 5; carryClr = 5; return; }
+  if (!anchorOf(row1, k->k.seq, k->k.nseq) && !anchorBelow(&theCarry, decQ.b)) { carrySkip = 5; carryClr = 5; return; }
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
   for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
