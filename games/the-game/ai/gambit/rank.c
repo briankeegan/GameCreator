@@ -318,7 +318,7 @@ static int finishAsked(void) {
   int big = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo, *h = &theList.aim[i].chain;
     if (h->op) return 0;
-    if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) big = 1; }
+    if (((c->op == OP_GE || c->op == OP_EQ) && c->n >= 8) || (c->op == OP_GT && c->n + 1 >= 8)) big = 1; }   // (an entry of "==8" and up asks one too)
   return big;
 }
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
@@ -396,8 +396,8 @@ static void markIdle(Judge **a, int n) {
 // played it makes a shorter one
 static int cutsShort(const Judge *J) {
   if (J->hold || !J->apPlayed) return 0;
-  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
-  return aloneChain > 1 && J->apWhole < aloneChain;
+  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain && ownChainAsked(ownChainN);   // (judge.c ownChainOf: by the frame its last link comes)
+  return aloneChain > 1 && J->apWhole < aloneChain && ownChainAsked(aloneChain);
 }
 #define FLAT_ROWS 2
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
@@ -463,11 +463,6 @@ static int boughtWithPanels(const Judge *x, const Judge *y) {
 static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
 // (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" its target, the length it asks at least: a
 // link past the target is presses and panels the list does not ask for)
-static int32_t listChainCap(void) {
-  int32_t cap = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
-  return cap;
-}
 #define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
 // (A 2x ITS LINE DOES NOT CONTINUE: the chain the line makes ends at two -- read on the judge's count whether or not the board is lost
@@ -510,7 +505,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (x->carried != y->carried && (lx || lostAlike(x, y))) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
     // (and never over a board that outlives it: that is the break's time of life worth the switch)
-    if (!c->hold && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead && !outlives(o, c)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    // (nor over a line that meets the mode's first entry where it does not, and breaks as much garbage: the same break made as the mode
+    // asks -- the owner: modes are respected, in every mode)
+    int modeOver = goalKeyOf(o) == 0 && goalKeyOf(c) > 0 && imax(0, brokeSeen(o)) >= imax(0, brokeSeen(c));
+    if (!c->hold && !modeOver && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead && !outlives(o, c)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. THE MODE, NOT THE MOST LIFE (the owner: the mode is respected always, garbage on the board or not; a lower stack is more time): a
   // line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more -- the next decisions keep the
@@ -552,7 +550,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // under garbage too: a chain left to end short of the target is the attack thrown away
   // (and a chain the board is about to make on its own -- garbage converting into a match, panels falling -- is a chain going too: the
   // line that takes it further is chosen while it can still be reached, not once its second link has popped)
-  if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y)) && !finishAsked()) {
+  if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y)) && !finishAsked() && listChainCap() > 0) {   // (and not where the list asks no chain: rules.c ownChainAsked)
     int32_t cap = imax(listChainCap(), 3);   // (at least to three: the owner)
     {
       int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap);
@@ -574,7 +572,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
   // owner: no big chains at the finish; a chain is played there only where nothing else lives as long
   if (finishAsked() && (lx || lostAlike(x, y))) {
-    int bx = chainReach(x) >= 3, by = chainReach(y) >= 3;
+    // (a list that asks no chain at all: no chain of two either -- every chain is a slab at an enemy topped out)
+    int at = listChainCap() > 0 ? 3 : 2, bx = chainReach(x) >= at, by = chainReach(y) >= at;
     if (bx != by) return (cmpKey = __LINE__, (bx ? 1 : -1));
   }
   // 1'L. UNDER GARBAGE, BREAK (the owner: it waits too long to break garbage; low, spend less and focus on breaking): garbage on the

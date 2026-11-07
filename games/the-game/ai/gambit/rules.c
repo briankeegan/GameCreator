@@ -110,6 +110,16 @@ static int32_t blocksOf(int32_t combo, int32_t chain) {
 // THE LIST FROM THE HOST: n entries, each ten words -- combo, chain and send (each op, n, near) and break -- in the io body (the loader
 // writes them from the rules file).
 static List theList;
+// (the longest chain the mode's list asks: 0 where it asks none)
+static int32_t listChainCap(void) {
+  int32_t cap = 0;
+  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
+  return cap;
+}
+// THE BOARD'S OWN CHAIN, KEPT AS THE MODE ASKS (the owner: modes are respected -- a chain going is not kept for its own sake): a chain
+// the board makes on its own, n links, is the mode's attack only where the list asks a chain that long or longer -- past the longest it
+// asks, or where it asks none (the finish: combos, the pieces that land soonest), cutting it is no waste
+static int ownChainAsked(int32_t n) { return n >= 2 && n <= listChainCap(); }
 EXPORT(gb_list) int gb_list(int n) {
   if (n < 0 || n > MAXAIMS) return -1;
   const int32_t *w = gbIo;

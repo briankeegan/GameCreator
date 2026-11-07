@@ -250,6 +250,17 @@ static int breaksAt(BS *s, int n, const int32_t *path, int len) {
 // and the material, the panels under each column's first garbage: a slab broken above another leaves its panels on the lower one,
 // out of reach until that breaks)
 static int32_t materialOn(const Board *b);   // (facts.c)
+// (THE ONE RULE, OF A BREAK: what the swap that breaks clears, its settle with it -- 2 an entry of the mode's list, 1 a three that makes
+// no chain, 0 a chain or a combo the list does not ask for, the last resort: judge.c the one rule)
+static int breakCat(Ctx *x, int n) {
+  Stats a; int32_t combo = 0, chain = 0;
+  if (statsOf(x, n, &a)) { combo = biggestOf(&a); chain = chainOfStats(&a); }
+  int z = settleOf(x, n);
+  if (z != n && liveNode(x, z) && statsOf(x, z, &a)) { combo = imax(combo, biggestOf(&a)); chain = imax(chain, chainOfStats(&a)); }
+  Made m = { combo, chain, 1, 0 };
+  for (int i = 0; i < theList.n; i++) if (meets(&theList.aim[i], m)) return 2;
+  return combo <= 3 && chain <= 1 ? 1 : 0;
+}
 static int32_t brokeSettled(Ctx *x, int n, int32_t *mat) {
   int z = settleOf(x, n), w = liveNode(x, z) ? z : n;
   Board *b = ensureBoard(x, w);
@@ -409,6 +420,8 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       // leaves the three that began it wasted -- then the one that leaves the most material once its board settles, then the one that
       // has broken most: a break whose converted panels match again is rows more of the slab -- and, with an input allowance to keep (a
       // host that says it), the one the cursor walks fewer actions for before the material: the window pays for every cell of it
+      // (and before the actions, the one rule (breakCat): a break the mode's list asks, then a three's, then the last resort -- the mode
+      // is played under garbage too, and a break is made as the mode asks where the level has one)
       const Board *rb = ensureBoard(x, s->root);
       int starved = pressAllowance >= 0 && rb;
       int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestCarried = 0, bestPath[MAXPATH];
@@ -423,7 +436,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
             int32_t mat, br = brokeSettled(x, t3, &mat);
             int acts = 0;
             if (starved) { int r = rb->curRow, c = rb->curCol; for (int k = 0; k < nl->len; k++) { acts += actionsFor(r, c, CR(nl->path[k]), CC(nl->path[k]), pressAllowance - acts); r = CR(nl->path[k]); c = CC(nl->path[k]); } }
-            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
+            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)breakCat(x, t3) << 32) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
             if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestCarried = tl[i]->carried; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
             continue;
           }
