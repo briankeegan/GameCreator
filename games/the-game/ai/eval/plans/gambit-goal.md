@@ -222,6 +222,8 @@ Main measured twice on both sets (`7df66d1a`, the Gambit of `277e8159`): set 85 
 
 MERGED (`b384cb13`, idea272): a dying board keeps its save -- a three the save check gave no answer on is kept as the save, a save line that outlives the hold is carried past the set-ups' tier, no walk charged where the sooner loss is within a break's time. Set 85: build 23, finish them 23, pressure 20, switching 20, big chain 20 -- 106, main's 107 and 112. Merged as doing as well once (the owner: if it does as well once, move on).
 
+HELD UNJUDGED (about 150 decisions a run, a third with a break found): the move's frame comes while the searches still run (`out=1`), every line is dropped unjudged and the hold is played. The searches stopped JUDGE_FRAMES game frames early (`3134a367`, idea275): 155 such decisions against 150, set 85 build 17 -- not merged. The client runs frames in bursts, and one burst crosses the searches' stop and the move's frame together; the judging needs its time before the frame can come, not frames before it.
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
