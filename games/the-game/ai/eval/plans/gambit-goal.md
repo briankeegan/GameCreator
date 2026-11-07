@@ -212,6 +212,8 @@ The away-from-garbage order lifted while a slab pops or the board's own chain fa
 
 Where the actions go (`fd6dd511`, the carried line logged as it is dropped, switching seed 86, 22/24): 29% of actions are pressed for lines never played out, most of them a carried line dropped as a wasted three though it still breaks garbage (714 such drops in 24 games) -- the three made, its break never reached.
 
+The same code run twice: main's build on seed 86 survived 24 (`277e8159`) and 20 (`f9b7d641`, the same Gambit) -- one 24-game run moves by four games, so a change is read on all five modes over both seeds, never on one run. Build's losses on main and on every variant since are the board out of breaks under the garbage (gambit_reach.js: 98 of 108 boards searched again had none to find); the deaths are decided before the last break, not at it.
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
