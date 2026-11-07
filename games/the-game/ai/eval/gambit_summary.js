@@ -12,6 +12,7 @@ if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2);
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
 var carrySkip = { n: 0, by: {}, c16n: 0, c16: {} };   // (the lines of two swaps or more played, and why each was not handed on to the next decision: answer.c cof=)
+var wrongIn = {};   // (THE WRONG ATTACKS: each mode's attacks that met none of its aims, by what they were and what made them -- the swap pressed within 120 frames before, or the board alone)
 var aimsIn = {}, goalMiss = { n: 0, dec: 0, keys: {} }, outMiss = { n: 0, keys: {} }, brkOver = { n: 0, keys: {} }, dips = { n: 0, none: 0, up: 0, upNone: 0 };   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
 var frontS = {};   // (the frontiers carried on, search/frontier.c: per frontier, the lines kept and carried in, the decisions it was let go whole)
@@ -200,7 +201,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     }
     // (THE MODE'S AIM, IN THE MODE IT WAS MADE IN: each attack (GAMBITA) read against the aims of the mode of the decision before it --
     // a game switched at the top-out is read for each mode it played; and the decisions that passed the mode over)
-    var inMode = null;
+    var inMode = null, lastSwapAt = -1, lastSwapPlay = '';
     // (THE WALK DOWN AND BACK: a swap 4 or more rows under the swaps pressed either side of it, all three within 240 frames, and what it came to)
     var mv = lines.map(function (l) { var m = /^GAMBITM (\d+) (\d+),\d+ .*? ([csbn]) \d+\/\d+/.exec(l); return m && { at: +m[1], r: +m[2], o: m[3] }; }).filter(Boolean).sort(function (a, b) { return a.at - b.at; });
     for (var mi = 1; mi + 1 < mv.length; mi++) {
@@ -218,8 +219,16 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         if (cf && +cf[1] >= 0 && sw && +sw[1] >= 2) { carrySkip.n++; carrySkip.by[cf[1]] = (carrySkip.by[cf[1]] || 0) + 1; }
         var c16 = / c16=(\d+)/.exec(l); if (c16) { carrySkip.c16n++; carrySkip.c16[c16[1]] = (carrySkip.c16[c16[1]] || 0) + 1; }
         return; }
-      var a = /^GAMBITA \d+ ([cx]) (\d+)/.exec(l); if (!a || !inMode) return;
-      var o = { combo: {}, chain: {} }; o[a[1] === 'c' ? 'combo' : 'chain'][a[2]] = 1; aimOf(inMode, o, aimsIn);
+      var mm = /^GAMBITM (\d+) \d+,\d+ (.*?) [csbn] \d+\/\d+/.exec(l); if (mm) { lastSwapAt = +mm[1]; lastSwapPlay = mm[2]; return; }
+      var a = /^GAMBITA (\d+) ([cx]) (\d+)/.exec(l); if (!a || !inMode) return;
+      var o = { combo: {}, chain: {} }; o[a[2] === 'c' ? 'combo' : 'chain'][a[3]] = 1;
+      var before = (aimsIn[inMode] || { met: 0 }).met;
+      aimOf(inMode, o, aimsIn);
+      if (aimsIn[inMode] && aimsIn[inMode].met === before) {
+        var w = wrongIn[inMode] || (wrongIn[inMode] = { n: 0, what: {}, by: {} }), what = (a[2] === 'c' ? 'combo ' : 'chain ') + (+a[3] >= 6 ? '6+' : a[3]);
+        var by = lastSwapAt >= 0 && +a[1] - lastSwapAt <= 120 ? lastSwapPlay.replace(/ /g, '_') : 'alone';
+        w.n++; w.what[what] = (w.what[what] || 0) + 1; w.by[by] = (w.by[by] || 0) + 1;
+      }
     });
     // (SWITCHING: each switch by its direction -- the mode before it to the mode after -- and the mode a lost game was lost in)
     var was = null, one = null, switched = false, last = null;
@@ -419,6 +428,8 @@ console.log('SURVIVED ' + all + '/' + games);
 // aims and its first, the decisions that passed the mode over, the swaps that came to nothing, the wasted threes a minute
 Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
   console.log('the measure, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met its aims' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') + ', its first ' + t.head + ' ' + t.first + (t.all ? ' (' + Math.round(100 * t.first / t.all) + '%)' : '')); });
+Object.keys(wrongIn).sort().forEach(function (k) { var w = wrongIn[k], t = aimsIn[k] || { all: 0 }, top = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (z) { return z + ' x' + o[z]; }).join(', '); };
+  console.log('the wrong attacks, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' -- ' + top(w.what) + '; made by ' + top(w.by)); });
 { var nmv0 = moves.clear + moves.setup + moves.break + moves.none + moves.open;
   console.log('the measure, waste: the mode passed over in ' + goalMiss.n + ' of ' + goalMiss.dec + ' decisions; ' + (nmv0 ? Math.round(100 * moves.none / nmv0) : '-') + '% of ' + nmv0 +
               ' swaps came to nothing; ' + moves.wasted + ' wasted threes' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') +
