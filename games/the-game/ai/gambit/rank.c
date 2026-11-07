@@ -776,6 +776,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 2'. (neither lives, under garbage) THE LINEUP FIRST: of two that break, the one that converts more full rows of the block -- the
     // lineup that keeps a slab breaking, row after row -- unless it is lost a break's time sooner: a row a line leaves is a row a later
     // break must make, and the board dies when the rows on it and coming outrun the rows broken (1d596973)
+    // -- but of two lost alike, one within the mode's list before one outside it: the rows a line converts are no reason for an attack
+    // the mode does not ask (the owner: every attack is what the mode asks)
+    if (decF.under && bx && by && x->outside != y->outside && lostAlike(x, y)) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
     if (decF.under && bx && by) { int rx = imax(0, x->apBroke) / W, ry = imax(0, y->apBroke) / W;
       if (rx != ry && (lostAlike(x, y) || (rx > ry) == (lostOf(x) > lostOf(y)))) return (cmpKey = __LINE__, (ry - rx)); }
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
