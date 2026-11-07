@@ -962,7 +962,7 @@ static int threeSaves(const Board *t, int32_t bits, int planned) {
 // play begins and for CD_SLACK frames after -- its lead, and with it the decision's time, the countdown's -- and answered as any question
 // is: the first frame in play takes the answer, its keys from that frame.
 #define CD_SLACK 4
-#define CD_ASKS 2   // (the opening and the decision after it, on the board its swaps leave -- planned on the layers shown, neither offered a raise: no garbage is shown before play begins, and the raise is the first decision's in play to make on what it shows)
+#define CD_ASKS 2   // (the opening and the decision after it, on the board its swaps leave -- planned on the layers shown, the raise offered to both: no garbage can be shown before an attack's flight from the first frame in play, so the raise the opener takes is decided here and the next is planned on the board it leaves -- the owner: the opener's plan ready before play, not after its raise)
 static void take(void);
 static int frontCountdown(int32_t left) {
   if (left <= 0) return 0;
@@ -977,7 +977,7 @@ static int frontCountdown(int32_t left) {
     int32_t hl, hs, next = F.nextAt;
     if (!predict(F.cdBoard, next, 0, 0, 0, 0, F.pr, &hl, &hs) || F.pr->gameOverClock > 0) { F.countdownAsked = CD_ASKS; return 0; }
     F.now = now;
-    F.askNoRaise = 1; ask(next, F.pr, hl, hs, F.prPend, F.nprPend); F.askNoRaise = 0;
+    ask(next, F.pr, hl, hs, F.prPend, F.nprPend);
     F.countdownAsked++;
     { char l[96]; snprintf(l, sizeof l, "COUNTDOWN clock %d: the next asked for %d, %d frames ahead", now, next, next - now); flog(l); }
     return 1;
@@ -991,7 +991,7 @@ static int frontCountdown(int32_t left) {
   F.cdBoard->inCountdown = 0; F.cdBoard->stopWatchIsRunning = 1; F.cdBoard->riseLock = 0;
   F.cdBoard->clock = at; F.cdBoard->stopWatch = CD_SLACK - 1;
   F.now = now;
-  F.askNoRaise = 1; ask(at, F.cdBoard, 0, 0, 0, 0); F.askNoRaise = 0;
+  ask(at, F.cdBoard, 0, 0, 0, 0);
   F.countdownAsked = 1;
   { char l[96]; snprintf(l, sizeof l, "COUNTDOWN clock %d: the opening asked for %d, %d frames ahead", now, at, at - now); flog(l); }
   return 1;
