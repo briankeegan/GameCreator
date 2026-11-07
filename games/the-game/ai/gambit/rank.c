@@ -386,8 +386,10 @@ static void markIdle(Judge **a, int n) {
 // then the kind of line (plans/gambit-next.md 0).
 // A LINE THAT CUTS THE BOARD'S OWN CHAIN SHORT: the board left alone makes a chain (the hold's judging, aloneChain) and with the line
 // played it makes a shorter one
+// (at the finish the board's own chain is no attack kept: the enemy topped out, the pieces that land soonest kill -- the owner: send as
+// much small garbage as fast as possible, not an 8-chain carried on)
 static int cutsShort(const Judge *J) {
-  if (J->hold || !J->apPlayed) return 0;
+  if (J->hold || !J->apPlayed || finishAsked()) return 0;
   if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
   return aloneChain > 1 && J->apWhole < aloneChain;
 }
