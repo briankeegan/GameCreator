@@ -708,6 +708,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
     // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
     // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
+    // (of two that break and survive alike: one within the mode's list before one outside it, whatever either breaks -- the owner: every
+    // attack is what the mode asks)
+    else if (x->outside != y->outside) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
     else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
     // (of two that break: the one that meets the earlier combo entry of the mode's list -- the combo the mode asks goes with the break)
@@ -822,8 +825,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (lostAlike) the hold put first by the list is the board left to the frame it dies, the tower growing while a line that lives on waits
     // -- but of two breaks lost alike that convert the same full rows (2'), the list decides: a combo or chain it does not ask for is the
     // one rule's last clear, after its entries and the three that breaks
+    // -- and under garbage, of two lost alike, the list decides too (the owner: every attack is what the mode asks)
+    int alikeUnder = decF.under && lostAlike(x, y);
     int sameBreak = decF.under && x->apBroke > 0 && y->apBroke > 0 && imax(0, x->apBroke) / W == imax(0, y->apBroke) / W;
-    if (x->outside != y->outside && (sameBreak || (!(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends))) &&
+    if (x->outside != y->outside && (alikeUnder || sameBreak || (!(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends))) &&
         !((x->hold || y->hold) && (lostOf(x) > lostOf(y) ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) >= rankSave)) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
   }
   // 5a. TWO THAT LIVE: the list before the material -- a board that lives either way throws the attack the list asks, not the cheaper
