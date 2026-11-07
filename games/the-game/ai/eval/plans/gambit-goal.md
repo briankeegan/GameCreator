@@ -30,7 +30,7 @@ Four of these are measured every run beside survival (`target.sh`, from each gam
   them begins 2 rows from the top and asks for small pieces (the modes' table). Measured: frames from its first top-out to its death,
   and the shake and pop time our garbage handed it on the way. Target: the owner's.
 
-The 24 games: 8 combo_storm, 8 factory, 8 large_garbage -- the real client's Training mode (`training-mode.yml`), the server's
+The 28 games: 8 combo_storm, 8 factory, 8 large_garbage, and 4 endless -- no garbage ever, six minutes, the board must not die of its own rise -- the real client's Training mode (`training-mode.yml`), the server's
 engine at **level 11**, the game's own think and input budgets. Live: Gambit against the default on the fork's server
 (`bot-prod-smoke-test.yml`, `mode: fight`) and on the main server.
 
@@ -72,8 +72,8 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    done. Measured: clears begun while
    another still clears, the pair lines played, the lines that threw two blocks or more, the ideas left ready (gambit_summary.js
    `several ideas at once`).
-6. **Every mode 24/24 at level 11, twice in a row**, then switching (5-30 s, every direction) 24/24 with the switches happening.
-   **The order (the owner's):** the goal stays 24/24 in every mode; 22 of 24 is where a mode is left for the next -- a change made for
+6. **Every mode 28/28 at level 11, twice in a row** -- the 24 garbage games and the 4 endless -- then switching (5-30 s, every direction) 28/28 with the switches happening.
+   **The order (the owner's):** the goal stays 28/28 in every mode; 22 of the 24 garbage games and all 4 endless is where a mode is left for the next -- a change made for
    one mode can undo another's, so the last two are won with every mode run together. Once every mode is at 22, they are run together
    and each change is checked for a mode it set back, until all are at 24, twice.
    Finish them reached 22 in run 432; big chain in run 1464 (lockstep). In real time, on the base (plans/gambit-since-base.md):
@@ -124,7 +124,7 @@ where it meets the new mode's first entry or breaks garbage.
 
 ## Done, for each mode
 
-- 24/24 in **two runs in a row** at level 11 (one run is too noisy).
+- 28/28 in **two runs in a row** at level 11 (one run is too noisy).
 - Played within the mode's list, its aim met at the share item 3 sets.
 - 0 frames over the think budget, 0 keys dropped, **0 late moves**, 0 divergences ("The truth held").
 - The default bot still survives its 24 (it shares the engine and the searches).
@@ -202,7 +202,7 @@ where it meets the new mode's first entry or breaks garbage.
 
 ## Where it stands
 
-A SET is the 24 games a panel seed base gives (gambit-24.yml `seed`: 3 patterns of 8 games, each its own panels) -- set 86 is those 24 games every run. A mode is measured on a set, never on a single game.
+A SET is the 28 games a panel seed base gives (gambit-24.yml `seed`: 3 garbage patterns of 8 games and endless's 4, each its own panels) -- set 86 is those 28 games every run. A mode is measured on a set, never on a single game.
 
 At `277e8159` (the survival search's save pass: where no line held to the list lives, it searches again free of the list, and the decision's save check decides), set 85: switching 23, pressure 23, finish them 22, build 19, big chain 20 -- 107 of 120 against 100 at `f9fc896d`. A board topped by its own panels with no garbage (switching combo_storm-5) had no move within the list but a plain three.
 

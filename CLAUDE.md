@@ -177,7 +177,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
 
 ## The AI trainer (`games/the-game/ai/eval/`)
 
-- **Gambit's goal is `plans/gambit-goal.md`**: every mode 24/24 at level 11, played as the mode asks, never spoiling the board's own chain. Its rules and
+- **Gambit's goal is `plans/gambit-goal.md`**: every mode 28/28 at level 11 (24 garbage games and 4 endless, no garbage for six minutes), played as the mode asks, never spoiling the board's own chain. Its rules and
   its order are there; read it before working on Gambit.
 - **Gambit is C, in `games/the-game/ai/gambit/`** (layout in its README), on the one C engine (`eval/native/pa.c`). In the Lua
   client it runs in-process (`libgambit.so`, `PA_BOT=gambit`): the stack goes straight into the C engine. `gambit.wasm` and its loader
@@ -224,7 +224,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **One run per condition measures nothing.** The seed-to-seed noise floor
   is ~911 points; ignore any smaller gap. `GC_GA_SEED` makes repeats
   possible.
-- **One `gambit-24.yml` run at a time, 30 jobs at most.** A run is 25 jobs, and
+- **One `gambit-24.yml` run at a time, 30 jobs at most.** A run is 29 jobs (28 games and the report), and
   the runners are shared with the owner's deploys and fights: queue the next run
   until the last one ends.
 - **A fan-out dispatch carries BOTH `variant` and `ga_seed`.** The workflow's
