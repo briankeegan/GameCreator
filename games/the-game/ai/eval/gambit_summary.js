@@ -10,6 +10,8 @@ var fs = require('fs'), path = require('path');
 var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
+// (and the fill rule's, gambit-rules-fill.json, for a run played on it: decide.c fillList)
+(JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules-fill.json'), 'utf8')).attack || []).forEach(function (r) { if (!RULES.some(function (q) { return q.name === r.name; })) RULES.push(r); });
 var aims = {};   // by the mode a game played throughout: { met, all }
 var carrySkip = { n: 0, by: {}, c16n: 0, c16: {} };   // (the lines of two swaps or more played, and why each was not handed on to the next decision: answer.c cof=)
 var wrongIn = {};   // (THE WRONG ATTACKS: each mode's attacks that met none of its aims, by what they were and what made them -- the swap pressed within 120 frames before, or the board alone)
@@ -212,7 +214,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     }
     lines.forEach(function (l) {
       var d = /^GAMBITD \d+ (.*?) play=/.exec(l);
-      if (d) { inMode = d[1]; goalMiss.dec++; var pp = / pop=(\d+)/.exec(l), pf = /^GAMBITD (\d+)/.exec(l); if (pp && +pp[1] > 0 && pf) lastPopAt = +pf[1]; var gm = / goalMiss=(k\d+:[a-z_]+)/.exec(l); if (gm) { goalMiss.n++; goalMiss.keys[gm[1]] = (goalMiss.keys[gm[1]] || 0) + 1; }
+      if (d) { inMode = d[1]; goalMiss.dec++; var flm = / fill=(\d+)/.exec(l); lastFill = flm ? +flm[1] : null; var pp = / pop=(\d+)/.exec(l), pf = /^GAMBITD (\d+)/.exec(l); if (pp && +pp[1] > 0 && pf) lastPopAt = +pf[1]; var gm = / goalMiss=(k\d+:[a-z_]+)/.exec(l); if (gm) { goalMiss.n++; goalMiss.keys[gm[1]] = (goalMiss.keys[gm[1]] || 0) + 1; }
         var om = / outMiss=(k\d+:[a-z_]+:[a-z_]+)/.exec(l); if (om) { outMiss.n++; outMiss.keys[om[1]] = (outMiss.keys[om[1]] || 0) + 1; }
         var bo = / brkOver=(k\d+:[a-z_]+:[a-z_]+)/.exec(l); if (bo) { brkOver.n++; brkOver.keys[bo[1]] = (brkOver.keys[bo[1]] || 0) + 1; }
         var cf = / cof=(-?\d+)/.exec(l), sw = / swaps=(\d+)/.exec(l);
@@ -402,15 +404,25 @@ function meetsAim(aim, combo, chain) {
   if (aim.chain && !test(chain, aim.chain)) return false;
   return !!(aim.combo || aim.chain);
 }
+// (A LIST'S FILL, as the decision before the attack read it -- decide.c fillList: the chains of three or more the enemy's room took, the
+// longest logged as fill=N; none, 0: the list's other aims)
+var lastFill = null;
+function aimsNow(rule) {
+  var l = rule.aims || [];
+  if (!l.some(function (x) { return x && x.chain === 'fill'; })) return l;
+  if (lastFill >= 3) { var o = []; for (var n = lastFill; n >= 3; n--) o.push({ chain: '==' + n }); return o; }
+  return l.filter(function (x) { return !(x && x.chain === 'fill'); });
+}
 function aimOf(mode, a, into) {
   var rule = RULES.filter(function (r) { return r.name === mode; })[0];
   if (!rule) return;
+  var list = aimsNow(rule);
   into = into || aims;
   var t = into[mode] || (into[mode] = { met: 0, all: 0, first: 0, head: JSON.stringify((rule.aims || [])[0] || {}) });
   var count = function (n, combo, chain) {
     t.all += n;
-    if ((rule.aims || []).some(function (x) { return meetsAim(x, combo, chain); })) t.met += n;
-    if (rule.aims && rule.aims[0] && meetsAim(rule.aims[0], combo, chain)) t.first += n;
+    if (list.some(function (x) { return typeof x === 'object' && meetsAim(x, combo, chain); })) t.met += n;
+    if (list[0] && typeof list[0] === 'object' && meetsAim(list[0], combo, chain)) t.first += n;
   };
   Object.keys(a.combo || {}).forEach(function (z) { count(a.combo[z], +z, 1); });
   Object.keys(a.chain || {}).forEach(function (z) { count(a.chain[z], 0, +z); });
