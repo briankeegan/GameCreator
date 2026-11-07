@@ -733,7 +733,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (top && !top->o.lives) {
     const Judge *late = 0;
     for (int i = 0; i < P.ncands; i++) { const Judge *j = order[i]; if (j != top && (j->o.lives || lostOf(j) > lostOf(top)) && (!late || (j->o.lives && !late->o.lives) || (j->o.lives == late->o.lives && lostOf(j) > lostOf(late)))) late = j; }
-    A->sooner = late && !late->o.lives && !lostAlike(top, late) && !(walkTurns(top, late) && diesAt(top) > diesAt(late));
+    A->sooner = late && !late->o.lives && !lostAlike(top, late) && !(walkTurns(top, late) && diesAt(top) > diesAt(late)) && !nearLater(top, late) && !(diesAt(top) >= diesAt(late) && diesAt(late) < NEAR_DEATH * rankSave);
     if (late && compareJudged(top, late) < 0) {
       L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey);
     }

@@ -231,6 +231,14 @@ static int walkTurns(const Judge *x, const Judge *y) {
   if (dx >= 1e299 || dy >= 1e299 || dx < 0 || dy < 0 || (dx > dy ? dx - dy : dy - dx) < rankSave) return 0;
   return (dx > dy) != (lostOf(x) > lostOf(y));
 }
+#define NEAR_DEATH 2
+#define DEATH_STEP 8   // (a cursor step's walk, WALK_FRAMES: a later loss by less is no frame the board can use)
+// (x lost DEATH_STEP frames or more after y, neither living, y lost within NEAR_DEATH breaks' time: rank.c 1, death near)
+static int nearLater(const Judge *x, const Judge *y) {
+  if (x->o.lives || y->o.lives) return 0;
+  double dx = diesAt(x), dy = diesAt(y);
+  return dy >= 0 && dy < NEAR_DEATH * rankSave && dx < 1e299 && dx - dy >= DEATH_STEP;
+}
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
@@ -479,6 +487,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
+  // 1. DEATH NEAR, THE LATER DEATH (the owner: death is never an option): of two that do not live, the sooner lost within NEAR_DEATH
+  // breaks' time, the one whose board is lost later by DEATH_STEP frames or more first -- on the frame each board is lost, no walk
+  // charged, before the line in progress and before the mode: there a frame of life is the next break's chance
+  if (!lx && nearLater(x, y)) return (cmpKey = __LINE__, -1);
+  if (!lx && nearLater(y, x)) return (cmpKey = __LINE__, 1);
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
   // the line in progress before the other, the hold too, where it breaks as much garbage: every swap pressed of a line put down is the input budget
   // spent for nothing, and only a break's time of life, or more garbage broken, is worth it
