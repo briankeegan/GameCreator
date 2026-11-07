@@ -751,6 +751,36 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
   for (int i = 0; i < nm && i < ZIPN && n < cap; i++) if (candOf(&out[n], PLAY_ZIP, &mv[i], 1, -1, 0)) { out[n].settled = 1; n++; zipOffered++; }
   return n;
 }
+// THE BOARD'S OWN CHAIN CUT AT THE MODE'S LENGTH: with the board about to chain on its own (decide.c, the read's aloneChain) longer than
+// any chain the mode's list asks (rules.c listChainCap -- none in a mode that asks none), every swap the engine allows beside a panel in
+// motion or a slab popping, nearest the cursor first -- one of them takes a link out from under the chain, and the ranking keeps the
+// line that meets the list (the owner: every attack is what the mode asks)
+#define CUTN 16
+static int32_t cutOffered;   // (the cuts this decision offered: the log's)
+static int cutLines(const Read *R, Cand *out, int n, int cap) {
+  cutOffered = 0;
+  int32_t longest = listChainCap();
+  for (int i = 0; i < theList.n; i++) if (theList.aim[i].chain.op == OP_GE || theList.aim[i].chain.op == OP_GT) longest = MAXCHAIN;   // (an ask of "or longer" has no longest)
+  if (R->aloneChain < 2 || R->aloneChain <= longest) return n;
+  Board *b = decQ.b;
+  int h = b->height ? b->height : 12;
+  uint8_t moving[MAXROWS + 2][W + 2]; memset(moving, 0, sizeof moving);
+  for (int r = 1; r <= h + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = P(b, r, c)->f;
+    if (f[ISGARBAGE] ? f[STATE] == MATCHED : f[COLOR] != 0 && (f[STATE] != NORMAL || SETB(f[CHAINING]))) moving[r][c] = 1;   // (a slab popping among them: what it turns into chains with what lies beside it)
+  }
+  int32_t mv[W * MAXROWS]; int d[W * MAXROWS], nm = 0;
+  for (int r = 1; r <= h && r < b->nrows; r++) for (int c = 1; c < W; c++) {
+    int near = 0;
+    for (int rr = imax(1, r - 2); rr <= imin(h + 1, r + 2) && !near; rr++) for (int cc = imax(1, c - 1); cc <= imin(W, c + 2); cc++) if (moving[rr][cc]) { near = 1; break; }
+    int32_t cost;
+    if (!near || !canSwapPanels(b, P(b, r, c), P(b, r, c + 1), &cost) || cost) continue;
+    mv[nm] = r * 8 + c; d[nm] = iabs(r - b->curRow) + iabs(c - b->curCol); nm++;
+  }
+  for (int i = 1; i < nm; i++) for (int j = i; j > 0 && d[j] < d[j - 1]; j--) { int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; }
+  for (int i = 0; i < nm && i < CUTN && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &mv[i], 1, -1, 0)) { n++; cutOffered++; }
+  return n;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
@@ -856,5 +886,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = twinLines(R, out, n, cap);
   n = wayLines(out, n, cap);
   n = zipLines(R, out, n, cap);
+  n = cutLines(R, out, n, cap);
   return n;
 }
