@@ -202,17 +202,19 @@ where it meets the new mode's first entry or breaks garbage.
 
 ## Where it stands
 
-At `277e8159` (the survival search's save pass: where no line held to the list lives, it searches again free of the list, and the decision's save check decides), seed 85: switching 23, pressure 23, finish them 22, build 19, big chain 20 -- 107 of 120 against 100 at `f9fc896d`. A board topped by its own panels with no garbage (switching combo_storm-5) had no move within the list but a plain three.
+A SET is the 24 games a panel seed base gives (gambit-24.yml `seed`: 3 patterns of 8 games, each its own panels) -- set 86 is those 24 games every run. A mode is measured on a set, never on a single game.
 
-At `277e8159`, seed 86: switching 21, pressure 21, finish them 22, build 24, big chain 22 -- 110 of 120. The panels kept in the survival search's choice (`24b7e1c3`, each panel left worth 9 frames among saves lost alike) on seed 86: 21, 23, 22, 20, 21 -- 107. Not merged.
+At `277e8159` (the survival search's save pass: where no line held to the list lives, it searches again free of the list, and the decision's save check decides), set 85: switching 23, pressure 23, finish them 22, build 19, big chain 20 -- 107 of 120 against 100 at `f9fc896d`. A board topped by its own panels with no garbage (switching combo_storm-5) had no move within the list but a plain three.
 
-The opening's raise a row short while garbage is on its way (`3a086617`), seed 86: finish them 23, switching 19, pressure 21, big chain 21, build 22 -- 106 against 110. Its target (an opening death after the raise, finish them combo_storm-8 at 381) lived. Not merged.
+At `277e8159`, set 86: switching 21, pressure 21, finish them 22, build 24, big chain 22 -- 110 of 120. The panels kept in the survival search's choice (`24b7e1c3`, each panel left worth 9 frames among saves lost alike) on set 86: 21, 23, 22, 20, 21 -- 107. Not merged.
 
-The away-from-garbage order lifted while a slab pops or the board's own chain falls (`1a6140e4`), seed 86: switching 23, pressure 21, finish them 21, build 22, big chain 19 -- 106 against 110. Not merged. In those decisions the hold was 63% of answers during a pop and 32% during a cascade; the keys that put it first were the away-from-garbage order, the allowance's reserve (the window at 10-24 actions) and the mode.
+The opening's raise a row short while garbage is on its way (`3a086617`), set 86: finish them 23, switching 19, pressure 21, big chain 21, build 22 -- 106 against 110. Its target (an opening death after the raise, finish them combo_storm-8 at 381) lived. Not merged.
 
-Where the actions go (`fd6dd511`, the carried line logged as it is dropped, switching seed 86, 22/24): 29% of actions are pressed for lines never played out, most of them a carried line dropped as a wasted three though it still breaks garbage (714 such drops in 24 games) -- the three made, its break never reached.
+The away-from-garbage order lifted while a slab pops or the board's own chain falls (`1a6140e4`), set 86: switching 23, pressure 21, finish them 21, build 22, big chain 19 -- 106 against 110. Not merged. In those decisions the hold was 63% of answers during a pop and 32% during a cascade; the keys that put it first were the away-from-garbage order, the allowance's reserve (the window at 10-24 actions) and the mode.
 
-The same code run twice: main's build on seed 86 survived 24 (`277e8159`) and 20 (`f9b7d641`, the same Gambit) -- one 24-game run moves by four games, so a change is read on all five modes over both seeds, never on one run. Build's losses on main and on every variant since are the board out of breaks under the garbage (gambit_reach.js: 98 of 108 boards searched again had none to find); the deaths are decided before the last break, not at it.
+Where the actions go (`fd6dd511`, the carried line logged as it is dropped, switching set 86, 22/24): 29% of actions are pressed for lines never played out, most of them a carried line dropped as a wasted three though it still breaks garbage (714 such drops in 24 games) -- the three made, its break never reached.
+
+The same code run twice: main's build on set 86 survived 24 (`277e8159`) and 20 (`f9b7d641`, the same Gambit) -- one 24-game run moves by four games, so a change is read on all five modes over both sets, never on one run. Build's losses on main and on every variant since are the board out of breaks under the garbage (gambit_reach.js: 98 of 108 boards searched again had none to find); the deaths are decided before the last break, not at it.
 
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
