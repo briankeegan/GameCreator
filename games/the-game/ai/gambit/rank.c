@@ -227,11 +227,16 @@ static double diesAt(const Judge *x) {
 // never a break's time of life: the walked line's board 140 frames alive past the hold's was put after it)
 // (and a board lost within a break's time has no frame to give for a walk: there the later loss decides by any margin -- the hold lost at
 // 8 is never put before the line lost at 19 for the cursor's walk)
+static int spendsReserve(const Judge *J);
 static int walkTurns(const Judge *x, const Judge *y) {
   if (x->o.lives || y->o.lives) return 0;
   double dx = diesAt(x), dy = diesAt(y);
   if (dx >= 1e299 || dy >= 1e299 || dx < 0 || dy < 0 || dx == dy) return 0;
   if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
+  // (nor where the later one buys less than a break's time with the window the next breaks are pressed from: the actions it spends come
+  // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
+  { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
+    if ((dx > dy ? dx - dy : dy - dx) < rankSave && spendsReserve(l) && !spendsReserve(s)) return 0; }
   return (dx > dy) != (lostOf(x) > lostOf(y));
 }
 static double lostOf(const Judge *x) {
