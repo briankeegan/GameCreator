@@ -351,10 +351,11 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
 // 120 boards searched again, run 415, where 1 to 3 had been)
-// (a decision the host let go, or whose frame came, takes its jobs back at once: a job keeps its own share and never reads the host's abort
-// or the frame, so the decision would wait out the share -- and the question asked after it with it, answered past its frame)
+// (a decision the host let go takes its jobs back at once: a job keeps its own share and never reads the host's abort, so the decision
+// would wait out the share -- and the question asked after it with it, answered past its frame. One whose frame came keeps them: its
+// answer is pressed, and what they found is in it)
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  if (clockAborted || abort_poll() == 1 || (clockFrameOut && clockFrameOut())) __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
+  if (clockAborted || abort_poll() == 1) __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
   jobsDone(brCtx);
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = leftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;
