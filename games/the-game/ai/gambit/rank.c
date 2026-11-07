@@ -488,7 +488,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
     const Judge *l = lx ? x : y, *o = lx ? y : x;
-    if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
+    // (nor to one that breaks more garbage than it and is lost no sooner: the break lives by the horizon as the line in progress does)
+    if (!(!l->o.lives && (goalLine(o) || imax(0, o->apBroke) > imax(0, l->apBroke)) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
   // 1. DEATH NEAR, THE LATER DEATH (the owner: death is never an option): of two that do not live, the sooner lost within NEAR_DEATH
