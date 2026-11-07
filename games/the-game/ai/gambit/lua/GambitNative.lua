@@ -370,9 +370,10 @@ end
 -- frames with chance VE_MOVE, pulled back toward VE_BASE; our garbage lands on it when it leaves our queue, a row a piece of each row
 -- it is; it digs a row out every VE_DIG frames while any is on it; topped at 12. Measured on Tanycanayt's own board over 46 live games
 -- (32,403 boards, one every 32 frames): its stack less its garbage rows median 7, sd 1.6, 3 to 11, moving 0.21 rows a sample; its
--- garbage dug out 0.21 rows a second net while any was on it. Seeded from PA_SEED: a run repeats.
+-- garbage dug out 0.21 rows a second net while any was on it. Topped with no shake left, it dies (VENEMY in the log) and a new one
+-- begins. Seeded from PA_SEED: a run repeats.
 local VIRTUAL = os.getenv("GC_GAMBIT_ENEMY") == "virtual"
-local VE_BASE, VE_LO, VE_HI, VE_STEP, VE_MOVE, VE_DIG = 7, 3, 11, 32, 0.21, 285
+local VE_BASE, VE_LO, VE_HI, VE_STEP, VE_MOVE, VE_DIG, VE_SHAKE = 7, 3, 11, 32, 0.21, 285, 76
 local VE = { clock = -1 }
 local function veRand()   -- (a linear congruential stream, the same for a seed in any LuaJIT)
   VE.r = (VE.r * 1103515245 + 12345) % 2147483648
@@ -392,7 +393,7 @@ local function virtualEnemy(me, clock)
       end
     end
   end
-  for g, h in pairs(VE.seen) do if not cur[g] then VE.garbage = VE.garbage + h end end
+  for g, h in pairs(VE.seen) do if not cur[g] then VE.garbage = VE.garbage + h; VE.landed = clock end end
   VE.seen = cur
   while VE.clock < clock do
     VE.clock = VE.clock + 1
@@ -402,7 +403,17 @@ local function virtualEnemy(me, clock)
     end
     if VE.garbage > 0 then VE.dig = VE.dig + 1; if VE.dig >= VE_DIG then VE.dig = 0; VE.garbage = VE.garbage - 1 end else VE.dig = 0 end
   end
+  -- (DEAD as a stack is: topped out with no shake left -- VE_SHAKE frames, the longest, since the last landing -- logged with the frames
+  -- from its first top-out, and the next one begins: low, no garbage, as a new round's)
   local h = VE.base + VE.garbage
+  if h >= 12 then
+    VE.topped = VE.topped or clock
+    if clock - (VE.landed or clock) >= VE_SHAKE then
+      C.gn_log(string.format("VENEMY clock %d: died, %d frames from its top-out, %d kills", clock, clock - VE.topped, (VE.kills or 0) + 1))
+      VE.kills = (VE.kills or 0) + 1; VE.base = VE_LO + math.floor(veRand() * (VE_BASE - VE_LO + 1)); VE.garbage = 0; VE.dig = 0; VE.topped = nil
+      h = VE.base
+    end
+  else VE.topped = nil end
   return math.min(12, h), h >= 12 and 1 or 0
 end
 
