@@ -696,6 +696,58 @@ static int wayLines(Cand *out, int n, int cap) {
   }
   return n;
 }
+// THE STACK ZIPPED (the players' stacks: a colour left a swap from its partner, not beside it -- one swap then fires what the bot
+// chooses, and nothing lands into a match on its own): the single swaps of two panels at rest that clear nothing and leave the stack
+// more zipped by ZIP_GAIN or more (judge.c spreadOf, on the colours at rest), the most zipped first, then nearest the cursor
+#define ZIPN 6
+#define ZIP_GAIN 2
+static int32_t zipOffered;   // (the zips this decision offered: the log's)
+static int32_t zipSpread(int32_t g[][W + 2], int top) {
+  int32_t staged = 0, touching = 0;
+  #define ZC(r, c) ((r) >= 1 && (r) <= top && (c) >= 1 && (c) <= W && g[r][c] > 0 && g[r][c] < 8 ? g[r][c] : 0)
+  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
+    int32_t v = ZC(r, c); if (!v) continue;
+    if (ZC(r + 1, c) == v) touching++;
+    if (ZC(r, c + 1) == v) touching++;
+    if (ZC(r + 2, c) == v && ZC(r + 1, c) && ZC(r + 1, c) != v) staged++;
+    if (ZC(r, c + 2) == v && ZC(r, c + 1) && ZC(r, c + 1) != v) staged++;
+    if (ZC(r + 1, c - 1) == v) staged++;
+    if (ZC(r + 1, c + 1) == v) staged++;
+  }
+  #undef ZC
+  return staged - touching;
+}
+static int zipLines(const Read *R, Cand *out, int n, int cap) {
+  zipOffered = 0;
+  if (R->pop) return n;
+  Board *b = decQ.b;
+  static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2];
+  int H = imin(gridLen(b) - 2, MAXROWS), top = 0;
+  for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) { g[r][c] = 0; ok[r][c] = 0; }
+  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) {
+    int32_t v = cellAt(b, r, c); const int32_t *f = b->p[r][c].f;
+    g[r][c] = f[STATE] == NORMAL ? v : -1;
+    if (v != 0) top = r;
+    ok[r][c] = v > 0 && v < 8 && f[STATE] == NORMAL && (r == 1 || (cellAt(b, r - 1, c) != 0 && b->p[r - 1][c].f[STATE] == NORMAL));
+  }
+  if (top > b->topCurRow) top = b->topCurRow;
+  int32_t base = zipSpread(g, top), mv[ZIPN * 4], gain[ZIPN * 4]; int d[ZIPN * 4], nm = 0;
+  for (int r = 1; r <= top; r++) for (int c = 1; c < W; c++) {
+    int32_t cost;
+    if (!ok[r][c] || !ok[r][c + 1] || g[r][c] == g[r][c + 1] || !canSwapPanels(b, P(b, r, c), P(b, r, c + 1), &cost) || cost) continue;
+    int32_t t = g[r][c]; g[r][c] = g[r][c + 1]; g[r][c + 1] = t;
+    int clears = twinThree(g, top); int32_t s = zipSpread(g, top) - base;
+    g[r][c + 1] = g[r][c]; g[r][c] = t;
+    if (clears || s < ZIP_GAIN) continue;
+    int dd = iabs(r - b->curRow) + iabs(c - b->curCol), at = nm;
+    if (nm == ZIPN * 4) { at = -1; for (int i = 0; i < nm; i++) if (gain[i] < s || (gain[i] == s && d[i] > dd)) { if (at < 0 || gain[i] < gain[at] || (gain[i] == gain[at] && d[i] > d[at])) at = i; } if (at < 0) continue; } else nm++;
+    mv[at] = r * 8 + c; gain[at] = s; d[at] = dd;
+  }
+  for (int i = 1; i < nm; i++) for (int j = i; j > 0 && (gain[j] > gain[j - 1] || (gain[j] == gain[j - 1] && d[j] < d[j - 1])); j--) {
+    int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; u = gain[j]; gain[j] = gain[j - 1]; gain[j - 1] = u; int e = d[j]; d[j] = d[j - 1]; d[j - 1] = e; }
+  for (int i = 0; i < nm && i < ZIPN && n < cap; i++) if (candOf(&out[n], PLAY_ZIP, &mv[i], 1, -1, 0)) { out[n].settled = 1; n++; zipOffered++; }
+  return n;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
@@ -800,5 +852,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = growLines(out, n, cap);
   n = twinLines(R, out, n, cap);
   n = wayLines(out, n, cap);
+  n = zipLines(R, out, n, cap);
   return n;
 }

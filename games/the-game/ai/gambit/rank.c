@@ -337,7 +337,18 @@ static int threeBreakOnly(const Judge *J) { return J->apBroke > 0 && J->apCombo 
 // thing, no hold)
 static int setupKind(const Judge *J) {
   int p = J->k.play;
-  return !J->hold && (p == PLAY_SETUP || p == PLAY_LINEUP || p == PLAY_TOWARD || p == PLAY_NEAREST || p == PLAY_LEVEL);
+  return !J->hold && (p == PLAY_SETUP || p == PLAY_LINEUP || p == PLAY_TOWARD || p == PLAY_NEAREST || p == PLAY_LEVEL || p == PLAY_ZIP);
+}
+// (A ZIP AMONG SET-UPS: a set-up toward the list, a lineup, a line toward a break or nearest the list before a
+// swap that only zips the stack; of two zips, or a zip and a level, the stack left more zipped -- its colours a swap apart, not touching
+// (judge.c spreadOf). -1 x first, 1 y first, 0 neither)
+static int zipOver(const Judge *x, const Judge *y) {
+  int zx = x->k.play == PLAY_ZIP, zy = y->k.play == PLAY_ZIP;
+  if (!zx && !zy) return 0;
+  int lv = (zx ? y : x)->k.play == PLAY_LEVEL;
+  if (zx != zy && !lv) return zx ? 1 : -1;
+  if (x->o.j.spread != y->o.j.spread) return x->o.j.spread > y->o.j.spread ? -1 : 1;
+  return 0;
 }
 static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx && !decF.topped && threeBreakOnly(J)); }
 static int wastesThree(const Judge *J) {
@@ -674,6 +685,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
         if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
+      if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
       // (of two set-ups: the one that leaves more crossed seams -- a swap finishing two colours at once, the players' 8+ combo)
       if (sx && sy && x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
@@ -725,6 +737,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (and of two that make the first entry, or two set-ups toward it, the fewer presses: the owner, the goal first and the shortest
       // way to it, the set-up included -- a press is a press, a cursor step or a swap)
       int sx = !x->hold && setupPlay(x->k.play), sy = !y->hold && setupPlay(y->k.play);
+      if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
       if (gx == 0 || (sx && sy)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
     }
   }
