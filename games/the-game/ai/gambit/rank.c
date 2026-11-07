@@ -337,7 +337,17 @@ static int threeBreakOnly(const Judge *J) { return J->apBroke > 0 && J->apCombo 
 // thing, no hold)
 static int setupKind(const Judge *J) {
   int p = J->k.play;
-  return !J->hold && (p == PLAY_SETUP || p == PLAY_LINEUP || p == PLAY_TOWARD || p == PLAY_NEAREST || p == PLAY_LEVEL);
+  return !J->hold && (p == PLAY_SETUP || p == PLAY_LINEUP || p == PLAY_TOWARD || p == PLAY_NEAREST || p == PLAY_LEVEL || p == PLAY_ZIP);
+}
+// (A ZIP AMONG SET-UPS: a set-up toward the list, a lineup, a line toward a break or nearest the list, a level before a
+// swap that only zips the stack; of two zips, the stack left more zipped -- its colours a swap apart, not touching
+// (judge.c spreadOf). -1 x first, 1 y first, 0 neither)
+static int zipOver(const Judge *x, const Judge *y) {
+  int zx = x->k.play == PLAY_ZIP, zy = y->k.play == PLAY_ZIP;
+  if (!zx && !zy) return 0;
+  if (zx != zy) return zx ? 1 : -1;
+  if (x->o.j.spread != y->o.j.spread) return x->o.j.spread > y->o.j.spread ? -1 : 1;
+  return 0;
 }
 static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx && !decF.topped && threeBreakOnly(J)); }
 static int wastesThree(const Judge *J) {
@@ -423,8 +433,20 @@ static int lineWalk(const Judge *J) {
 // (a line that breaks nothing and walks the input allowance below a break's walk: the next break is pressed out of what is left)
 // (how far below a break's walk a line that breaks nothing leaves the allowance: 0 when it keeps it, or breaks -- the window already
 // short, the line that spends less of what is left keeps more of the next break)
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 ? 0 : imax(0, BREAK_WALK - (pressAllowance - lineWalk(J))); }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
+// (THE RESERVE, AS THE NEXT BREAK FINDS IT: the window left once a line is pressed, read at the soonest frame a break can be needed --
+// now with garbage on the board, the next block's landing with one on its way, else EARLIEST_LANDING: an attack the enemy makes now is
+// in the telegraph at once and lands that long after -- the actions that leave the window by then counted back. With nobody across
+// (time attack, the rules' enemy.none) no break is ever needed and no reserve is kept)
+#define EARLIEST_LANDING 151   // (pa-engine.js: GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 staged, GARBAGE_DELAY_LAND_TIME landing)
+static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
+static int allowAtNeed(int walk) {
+  if (decF.under) return pressAllowance - walk;
+  int32_t t = EARLIEST_LANDING;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
+  return allowLeftAt(t, walk);
+}
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 || ruleNoEnemy ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
@@ -615,7 +637,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // for may be told of by then or not
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = reserveShort(x), ry = reserveShort(y);
-    if (rx != ry) return (cmpKey = __LINE__, (rx - ry));
+    // (but never against the board's own rise: with no garbage on the board or on its way, the board is lost to the stack rising, and
+    // the line that keeps it alive longer by a cursor step's walk or more is played over the reserve -- the board kept doing things)
+    const Judge *kp = rx < ry ? x : y, *sp = rx < ry ? y : x;
+    int rises = !lx && !decF.under && decQ.narr == 0 && !sp->o.dead && diesAt(sp) >= diesAt(kp) + WALK_FRAMES;
+    if (rx != ry && !rises) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
@@ -674,6 +700,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
         if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
+      if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
       // (of two set-ups: the one that leaves more crossed seams -- a swap finishing two colours at once, the players' 8+ combo)
       if (sx && sy && x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
@@ -725,6 +752,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (and of two that make the first entry, or two set-ups toward it, the fewer presses: the owner, the goal first and the shortest
       // way to it, the set-up included -- a press is a press, a cursor step or a swap)
       int sx = !x->hold && setupPlay(x->k.play), sy = !y->hold && setupPlay(y->k.play);
+      if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
       if (gx == 0 || (sx && sy)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
     }
   }
@@ -763,6 +791,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 2'. (neither lives, under garbage) THE LINEUP FIRST: of two that break, the one that converts more full rows of the block -- the
     // lineup that keeps a slab breaking, row after row -- unless it is lost a break's time sooner: a row a line leaves is a row a later
     // break must make, and the board dies when the rows on it and coming outrun the rows broken (1d596973)
+    // -- but of two lost alike, one within the mode's list before one outside it: the rows a line converts are no reason for an attack
+    // the mode does not ask (the owner: every attack is what the mode asks)
+    if (decF.under && bx && by && x->outside != y->outside && lostAlike(x, y)) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
     if (decF.under && bx && by) { int rx = imax(0, x->apBroke) / W, ry = imax(0, y->apBroke) / W;
       if (rx != ry && (lostAlike(x, y) || (rx > ry) == (lostOf(x) > lostOf(y)))) return (cmpKey = __LINE__, (ry - rx)); }
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
@@ -789,7 +820,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // order is not what keeps the board (run 491, large_garbage-6: a hold lost at 194 over a line toward a break lost at 212)
     // -- nor the hold over a line lost a break's time later: holding is no entry of the list, and lost alike past three breaks' time
     // (lostAlike) the hold put first by the list is the board left to the frame it dies, the tower growing while a line that lives on waits
-    if (x->outside != y->outside && !(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends) &&
+    // -- but of two breaks lost alike that convert the same full rows (2'), the list decides: a combo or chain it does not ask for is the
+    // one rule's last clear, after its entries and the three that breaks
+    int sameBreak = decF.under && x->apBroke > 0 && y->apBroke > 0 && imax(0, x->apBroke) / W == imax(0, y->apBroke) / W;
+    if (x->outside != y->outside && (sameBreak || (!(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends))) &&
         !((x->hold || y->hold) && (lostOf(x) > lostOf(y) ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) >= rankSave)) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
   }
   // 5a. TWO THAT LIVE: the list before the material -- a board that lives either way throws the attack the list asks, not the cheaper

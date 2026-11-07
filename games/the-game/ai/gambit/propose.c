@@ -696,6 +696,91 @@ static int wayLines(Cand *out, int n, int cap) {
   }
   return n;
 }
+// THE STACK ZIPPED (the players' stacks: a colour left a swap from its partner, not beside it -- one swap then fires what the bot
+// chooses, and nothing lands into a match on its own): the single swaps of two panels at rest that clear nothing and leave the stack
+// more zipped by ZIP_GAIN or more (judge.c spreadOf, on the colours at rest), the most zipped first, then nearest the cursor -- on a
+// stack with ZIP_ROOM rows free above it
+#define ZIPN 6
+#define ZIP_GAIN 2
+#define ZIP_ROOM 4   // (the rows free above the stack a zip needs)
+static int32_t zipOffered;   // (the zips this decision offered: the log's)
+static int32_t zipSpread(int32_t g[][W + 2], int top) {
+  int32_t staged = 0, touching = 0;
+  #define ZC(r, c) ((r) >= 1 && (r) <= top && (c) >= 1 && (c) <= W && g[r][c] > 0 && g[r][c] < 8 ? g[r][c] : 0)
+  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
+    int32_t v = ZC(r, c); if (!v) continue;
+    if (ZC(r + 1, c) == v) touching++;
+    if (ZC(r, c + 1) == v) touching++;
+    if (ZC(r + 2, c) == v && ZC(r + 1, c) && ZC(r + 1, c) != v) staged++;
+    if (ZC(r, c + 2) == v && ZC(r, c + 1) && ZC(r, c + 1) != v) staged++;
+    if (ZC(r + 1, c - 1) == v) staged++;
+    if (ZC(r + 1, c + 1) == v) staged++;
+  }
+  #undef ZC
+  return staged - touching;
+}
+static int zipLines(const Read *R, Cand *out, int n, int cap) {
+  zipOffered = 0;
+  if (R->pop) return n;
+  Board *b = decQ.b;
+  static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2];
+  int H = imin(gridLen(b) - 2, MAXROWS), top = 0;
+  for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) { g[r][c] = 0; ok[r][c] = 0; }
+  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) {
+    int32_t v = cellAt(b, r, c); const int32_t *f = b->p[r][c].f;
+    g[r][c] = f[STATE] == NORMAL ? v : -1;
+    if (v != 0) top = r;
+    ok[r][c] = v > 0 && v < 8 && f[STATE] == NORMAL && (r == 1 || (cellAt(b, r - 1, c) != 0 && b->p[r - 1][c].f[STATE] == NORMAL));
+  }
+  if (top > (b->height ? b->height : 12) - ZIP_ROOM) return n;   // (a stack this high is lowered, not sorted)
+  if (top > b->topCurRow) top = b->topCurRow;
+  int32_t base = zipSpread(g, top), mv[ZIPN * 4], gain[ZIPN * 4]; int d[ZIPN * 4], nm = 0;
+  for (int r = 1; r <= top; r++) for (int c = 1; c < W; c++) {
+    int32_t cost;
+    if (!ok[r][c] || !ok[r][c + 1] || g[r][c] == g[r][c + 1] || !canSwapPanels(b, P(b, r, c), P(b, r, c + 1), &cost) || cost) continue;
+    int32_t t = g[r][c]; g[r][c] = g[r][c + 1]; g[r][c + 1] = t;
+    int clears = twinThree(g, top); int32_t s = zipSpread(g, top) - base;
+    g[r][c + 1] = g[r][c]; g[r][c] = t;
+    if (clears || s < ZIP_GAIN) continue;
+    int dd = iabs(r - b->curRow) + iabs(c - b->curCol), at = nm;
+    if (nm == ZIPN * 4) { at = -1; for (int i = 0; i < nm; i++) if (gain[i] < s || (gain[i] == s && d[i] > dd)) { if (at < 0 || gain[i] < gain[at] || (gain[i] == gain[at] && d[i] > d[at])) at = i; } if (at < 0) continue; } else nm++;
+    mv[at] = r * 8 + c; gain[at] = s; d[at] = dd;
+  }
+  for (int i = 1; i < nm; i++) for (int j = i; j > 0 && (gain[j] > gain[j - 1] || (gain[j] == gain[j - 1] && d[j] < d[j - 1])); j--) {
+    int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; u = gain[j]; gain[j] = gain[j - 1]; gain[j - 1] = u; int e = d[j]; d[j] = d[j - 1]; d[j - 1] = e; }
+  for (int i = 0; i < nm && i < ZIPN && n < cap; i++) if (candOf(&out[n], PLAY_ZIP, &mv[i], 1, -1, 0)) { out[n].settled = 1; n++; zipOffered++; }
+  return n;
+}
+// THE BOARD'S OWN CHAIN CUT AT THE MODE'S LENGTH: with the board about to chain on its own (decide.c, the read's aloneChain) longer than
+// any chain the mode's list asks (rules.c listChainCap -- none in a mode that asks none), every swap the engine allows beside a panel in
+// motion or a slab popping, nearest the cursor first -- one of them takes a link out from under the chain, and the ranking keeps the
+// line that meets the list (the owner: every attack is what the mode asks)
+#define CUTN 16
+static int32_t cutOffered;   // (the cuts this decision offered: the log's)
+static int cutLines(const Read *R, Cand *out, int n, int cap) {
+  cutOffered = 0;
+  int32_t longest = listChainCap();
+  for (int i = 0; i < theList.n; i++) if (theList.aim[i].chain.op == OP_GE || theList.aim[i].chain.op == OP_GT) longest = MAXCHAIN;   // (an ask of "or longer" has no longest)
+  if (R->aloneChain < 2 || R->aloneChain <= longest) return n;
+  Board *b = decQ.b;
+  int h = b->height ? b->height : 12;
+  uint8_t moving[MAXROWS + 2][W + 2]; memset(moving, 0, sizeof moving);
+  for (int r = 1; r <= h + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = P(b, r, c)->f;
+    if (f[ISGARBAGE] ? f[STATE] == MATCHED : f[COLOR] != 0 && (f[STATE] != NORMAL || SETB(f[CHAINING]))) moving[r][c] = 1;   // (a slab popping among them: what it turns into chains with what lies beside it)
+  }
+  int32_t mv[W * MAXROWS]; int d[W * MAXROWS], nm = 0;
+  for (int r = 1; r <= h && r < b->nrows; r++) for (int c = 1; c < W; c++) {
+    int near = 0;
+    for (int rr = imax(1, r - 2); rr <= imin(h + 1, r + 2) && !near; rr++) for (int cc = imax(1, c - 1); cc <= imin(W, c + 2); cc++) if (moving[rr][cc]) { near = 1; break; }
+    int32_t cost;
+    if (!near || !canSwapPanels(b, P(b, r, c), P(b, r, c + 1), &cost) || cost) continue;
+    mv[nm] = r * 8 + c; d[nm] = iabs(r - b->curRow) + iabs(c - b->curCol); nm++;
+  }
+  for (int i = 1; i < nm; i++) for (int j = i; j > 0 && d[j] < d[j - 1]; j--) { int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; }
+  for (int i = 0; i < nm && i < CUTN && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &mv[i], 1, -1, 0)) { n++; cutOffered++; }
+  return n;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
@@ -800,5 +885,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = growLines(out, n, cap);
   n = twinLines(R, out, n, cap);
   n = wayLines(out, n, cap);
+  n = zipLines(R, out, n, cap);
+  n = cutLines(R, out, n, cap);
   return n;
 }
