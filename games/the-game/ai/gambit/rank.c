@@ -484,12 +484,13 @@ static int offMode(const Judge *J) { return !J->hold && !J->o.dead && J->met < 0
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOn(x), ly = livesOn(y);
-  // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
-  // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
+  // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line lost no sooner than it, the two alike:
+  // the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
     const Judge *l = lx ? x : y, *o = lx ? y : x;
-    // (nor to one that breaks more garbage than it and is lost no sooner: the break lives by the horizon as the line in progress does)
-    if (!(!l->o.lives && (goalLine(o) || imax(0, o->apBroke) > imax(0, l->apBroke)) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
+    // (nor to any line lost no sooner than it: that line lives by the horizon as the line in progress does, and the line in progress is
+    // kept over it by the keys that weigh changing minds -- what each breaks, the mode)
+    if (!(!l->o.lives && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
   // 1. DEATH NEAR, THE LATER DEATH (the owner: death is never an option): of two that do not live, the sooner lost within NEAR_DEATH
