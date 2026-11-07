@@ -1,4 +1,5 @@
 // GAMBIT'S DECISION (plans/decision.md): read the board, propose, judge, rank, play -- in that order, once a decision.
+static void cwSeen(const Judge *J);   // (below: the line in progress put down as a wasted three, for the log)
 
 // THE QUESTION'S OWN FACTS from the host (answer.c gb_answer): the enemy as the host sends it, whether a raise may begin
 typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
@@ -454,7 +455,7 @@ static int ranked(const Read *R, const Found *S) {
     }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { cwSeen(carriedJ); carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
   // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
   // or is lost later: only there is a 2x a save
@@ -805,6 +806,15 @@ static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, 
 // (WHY NO LINE IN PROGRESS WAS OFFERED, for the frame loop's count of what ended its line -- answer.c ended: 0 one was; 16 none was
 // carried by the last answer; 17 the frame loop asked on another line than the one carried; 18 every swap of it pressed; 19 the judge
 // gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing)
+// (THE LINE IN PROGRESS PUT DOWN AS A WASTED THREE, for the log (answer.c cw=): its play, the swaps left, what the judge reads of it now --
+// its threes, the garbage broken as seen and beyond the board alone, dead, lost -- and what it was played for: the garbage it broke then,
+// whether a slab popped then, the frames since)
+static struct { int32_t set, play, nrest, threes, brokeSeen, apBroke, dead, lostAt, brokeThen, poppingThen, cascNow, popNow; } cwLog;
+static void cwSeen(const Judge *J) {
+  cwLog.set = 1; cwLog.play = J->k.play; cwLog.nrest = J->k.nseq; cwLog.threes = J->o.j.threes; cwLog.brokeSeen = brokeSeen(J); cwLog.apBroke = J->apBroke;
+  cwLog.dead = J->o.dead; cwLog.lostAt = J->o.lostAt; cwLog.brokeThen = theCarry.broke; cwLog.poppingThen = theCarry.popping;
+  cwLog.cascNow = decQ.b ? cascadeLive(decQ.b) : 0; cwLog.popNow = decQ.b ? popLeft(decQ.b) > 0 : 0;
+}
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0; carryLate = 0;

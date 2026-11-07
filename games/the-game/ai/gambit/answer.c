@@ -730,6 +730,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
+  if (cwLog.set) { L_s(" cw="); L_play(cwLog.play); L_s("/"); L_i(cwLog.nrest); L_s("/t"); L_i(cwLog.threes); L_s("/b"); L_i(cwLog.brokeSeen); L_s("/a"); L_i(cwLog.apBroke);
+    L_s("/d"); L_i(cwLog.dead); L_s("/l"); L_i(cwLog.lostAt); L_s("/then"); L_i(cwLog.brokeThen); L_s("/p"); L_i(cwLog.poppingThen); L_s("/c"); L_i(cwLog.cascNow); L_s("/n"); L_i(cwLog.popNow); cwLog.set = 0; }
   { static int32_t comboSeen; if (combosDropped != comboSeen) { L_s(" noFour=1"); comboSeen = combosDropped; } }
   { static int32_t rescueSeen; if (rescues != rescueSeen) { L_s(" rescued=1"); rescueSeen = rescues; } }
   if (R.saving) L_s(" saving=1");
