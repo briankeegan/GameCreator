@@ -518,7 +518,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
     const Judge *l = lx ? x : y, *o = lx ? y : x;
-    if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
+    // -- nor a line in progress outside the mode's list that lives by the horizon alone beside a break within it lost no more than a
+    // break's time sooner: the horizon's credit is the line in progress's, and an attack the mode does not ask is not bought with it
+    // (the owner: every attack is what the mode asks)
+    int inBreak = !l->o.lives && l->outside && !o->outside && !o->hold && o->apBroke > 0 && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l) - rankSave;
+    if (!inBreak && !(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
@@ -587,7 +591,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // window under half a break's walk where the other leaves it more: the next break would not be there to press)
       int spends = (spendsReserve(lc) && !spendsReserve(sc)) ||
                    (decF.under && pressAllowance >= 0 && pressAllowance - lineWalk(lc) < BREAK_WALK / 2 && reserveShort(lc) > reserveShort(sc));
-      if (cx != cy && !brokeMore && !spends) return (cmpKey = __LINE__, (cy - cx));
+      // (and not between one within the mode's list and one outside it: the chain taken further with an attack the mode does not ask
+      // is that attack -- the list decides, 2 and 5)
+      if (cx != cy && !brokeMore && !spends && x->outside == y->outside) return (cmpKey = __LINE__, (cy - cx));
     }
   }
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
