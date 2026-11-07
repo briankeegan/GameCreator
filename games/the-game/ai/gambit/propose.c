@@ -284,7 +284,7 @@ static int growLines(Cand *out, int n, int cap) {
   Ctx *x = fillCtx = ctxOf(fillCtx);
   static Land L; static Fills F;
   int bigAsked = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
+  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if (asksEight(c)) bigAsked = 1; }
   for (int i = 0, n0 = n; i < n0 && n < cap && !clockOut(); i++) {
     const Cand *k = &out[i];
     if (k->nseq < 1 || k->grown) continue;
@@ -513,7 +513,7 @@ static int twinNextSwap(Board *b, int32_t *swap) {
 }
 static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
+  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if (asksEight(c)) bigAsked = 1; }
   Board *b = decQ.b;
   // (the set-up's first swaps on any board -- under garbage, a pop running, a chain falling: the owner, once the chain's next link is
   // set, go do something else -- the judge plays each on the engine, and one that cuts the board's chain short ranks after the wait)
