@@ -361,8 +361,49 @@ local function opponentOf(sources, view, clock)
   -- (and a host that has fought an opponent this session is in a fight from each game's countdown on, before the new game's stack is
   -- wired: a match begins with the opponent not topped out, low, held up by nothing)
   if has == 1 then FOUGHT = true end
-  if has == 0 and (FIGHT or FOUGHT) then return 1, 0, 0, 0 end
+  if has == 0 and (FIGHT or FOUGHT) then return 1, 0, 0, 0, true end
   return has, out, top, stop
+end
+
+-- THE VIRTUAL ENEMY (GC_GAMBIT_ENEMY=virtual, training only -- the stand-in above made a stack that moves as players' do, so a rule that
+-- reads the enemy's room is played offline): its own stack drifts about VE_BASE rows (VE_LO to VE_HI), a row up or down every VE_STEP
+-- frames with chance VE_MOVE, pulled back toward VE_BASE; our garbage lands on it when it leaves our queue, a row a piece of each row
+-- it is; it digs a row out every VE_DIG frames while any is on it; topped at 12. Measured on Tanycanayt's own board over 46 live games
+-- (32,403 boards, one every 32 frames): its stack less its garbage rows median 7, sd 1.6, 3 to 11, moving 0.21 rows a sample; its
+-- garbage dug out 0.21 rows a second net while any was on it. Seeded from PA_SEED: a run repeats.
+local VIRTUAL = os.getenv("GC_GAMBIT_ENEMY") == "virtual"
+local VE_BASE, VE_LO, VE_HI, VE_STEP, VE_MOVE, VE_DIG = 7, 3, 11, 32, 0.21, 285
+local VE = { clock = -1 }
+local function veRand()   -- (a linear congruential stream, the same for a seed in any LuaJIT)
+  VE.r = (VE.r * 1103515245 + 12345) % 2147483648
+  return VE.r / 2147483648
+end
+local function virtualEnemy(me, clock)
+  if clock < VE.clock or not VE.r then
+    VE = { clock = clock, base = VE_BASE, garbage = 0, dig = 0, seen = {}, r = (tonumber(os.getenv("PA_SEED") or "1") or 1) % 2147483648 }
+  end
+  local q, cur = me and me.outgoingGarbage, {}
+  if q then
+    for _, g in ipairs(q.stagedGarbage or EMPTY) do cur[g] = g.height or 1 end
+    if q.transitTimers then
+      for k = q.transitTimers.first, q.transitTimers.last do
+        local t = q.transitTimers[k]
+        for _, g in ipairs(t and q.garbageInTransit[t] or EMPTY) do cur[g] = g.height or 1 end
+      end
+    end
+  end
+  for g, h in pairs(VE.seen) do if not cur[g] then VE.garbage = VE.garbage + h end end
+  VE.seen = cur
+  while VE.clock < clock do
+    VE.clock = VE.clock + 1
+    if VE.clock % VE_STEP == 0 and veRand() < VE_MOVE then
+      local up = 0.5 + 0.1 * (VE_BASE - VE.base)
+      VE.base = math.max(VE_LO, math.min(VE_HI, VE.base + (veRand() < up and 1 or -1)))
+    end
+    if VE.garbage > 0 then VE.dig = VE.dig + 1; if VE.dig >= VE_DIG then VE.dig = 0; VE.garbage = VE.garbage - 1 end else VE.dig = 0 end
+  end
+  local h = VE.base + VE.garbage
+  return math.min(12, h), h >= 12 and 1 or 0
 end
 
 -- (THE ENEMY AS OUR GARBAGE WILL LEAVE IT: the rows this stack has sent it that have not landed -- staged on the telegraph, or on their
@@ -399,7 +440,8 @@ function GambitNative:think(stack, sources, view)
   self:telegraph(sources, stack, view)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
-  local has, out, top, stop = opponentOf(sources, view, stack.clock)
+  local has, out, top, stop, stand = opponentOf(sources, view, stack.clock)
+  if stand and VIRTUAL then top, out = virtualEnemy(stack, stack.clock) end
   if has == 1 then top = math.min(12, top + rowsOnItsWay(stack)) end
   local t2 = ThinkBudget.now()
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
