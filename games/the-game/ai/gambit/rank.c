@@ -454,6 +454,7 @@ static int lostAlike(const Judge *x, const Judge *y) {
 }
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
 static int32_t cmpKey;
+static int breakInReach;   // (a line of the order breaks garbage or leaves a break in reach: sortJudged)
 // (BOUGHT WITH THE PANELS: the later loss of a line that clears panels below the floor and breaks nothing is stop time, bought with the
 // panels the next break is made from. Beside one that spends none and leaves the next decision a break's time (rankSave), the two
 // survive alike, and the list puts the one that keeps its panels first -- under garbage too: a chain fired for its stop leaves the
@@ -515,13 +516,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
+  // (only while a break is in reach -- a line offered breaks garbage now, or leaves one in reach once everything lands: panels kept for
+  // no break the search can find buy nothing, and the clear's later loss is the time a break may come in)
   // 1. (neither lives, garbage on the board or on its way, below the material floor) THE BREAK'S MATERIAL KEPT (the owner: low, spend
   // less and break) (the owner: the board spent to three rows and
   // dying for want of panels): a clear that breaks nothing (spends) after a line that keeps the panels and is lost a break's time away or
   // more -- the panels it spends to stall are the next break's; it is played only where every line that keeps them is lost within one
   // (and only where the line that keeps them leaves more of them: a board the garbage lands on loses its panels under the lowest garbage
   // held or not, and a hold that leaves no more of them keeps nothing -- outcome.c matLeft)
-  if (!lx && (decF.under || decQ.narr > 0) && x->spends != y->spends) {
+  if (!lx && breakInReach && (decF.under || decQ.narr > 0) && x->spends != y->spends) {
     const Judge *o = x->spends ? y : x, *sp = x->spends ? x : y;
     // (and only where the spend buys less than a break's time more: one that keeps the board alive a break's time longer buys the next
     // break's chance -- death is never an option)
@@ -949,6 +952,8 @@ static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   markIdle(a, n);
+  breakInReach = 0;
+  for (int i = 0; i < n && !breakInReach; i++) breakInReach = (!a[i]->hold && a[i]->apBroke > 0) || a[i]->o.ready == 1 || a[i]->readyNext == 1;
   for (int w = 1; w < n; w *= 2)
     for (int lo = 0; lo < n; lo += 2 * w) {
       int mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n, i = lo, j = mid, k = lo;
