@@ -603,7 +603,7 @@ static Played playOf(const Read *R, int n) {
 // on a board the stack is not yet)
 // (made: what the line was ranked as making when it was played -- the judge's count, or the search's word for a line whose board is lost
 // during it (rank.c judgeCand): the rest of such a line is read on it too, carriedCand)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; } Carry;   // (rule: the mode it was begun in)
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule, paused; Aim aim; Made made; } Carry;   // (rule: the mode it was begun in; paused: the holds played since its last swap)
 static Carry theCarry;
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
@@ -630,7 +630,7 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anc
 // that breaks nothing, 5 no bottom-row panel to anchor it to; -1 none asked)
 static int32_t carrySkip = -1;
 // (WHAT LAST LET THE LINE IN PROGRESS GO, for the log of a decision that found none carried (answer.c ended 16): 1-5 the decision before
-// played no line to hand on (carrySkip's), 6 a hold's break in reach not anchored, 7 the mode changed, 8 a new game)
+// played no line to hand on (carrySkip's), 6 a hold's break in reach not anchored, 7 the mode changed, 8 a new game, 9 paused CARRY_PAUSES holds running)
 static int32_t carryClr;
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
@@ -652,6 +652,17 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.rule = R->rule;
 }
 static int32_t carryRule(void) { return theCarry.rule; }
+// A LINE PAUSED, NOT PUT DOWN (the owner: efficiency, no changing minds): a hold played while a line is in progress leaves the line in
+// progress -- what is left of it once the swaps pressed of it are taken off, handed to the next decision as the hold's own -- so the
+// swaps already pressed of it are not spent for nothing; CARRY_PAUSES holds running and it is put down
+#define CARRY_PAUSES 3
+static void carryPause(int32_t qid) {
+  Carry *C = &theCarry;
+  int skip = C->id == carryFrom ? carryPressed : 0;
+  if (!C->set || C->ready || C->nrest <= skip || ++C->paused > CARRY_PAUSES) { memset(C, 0, sizeof *C); carryClr = 9; return; }
+  C->nrest -= skip; for (int i = 0; i < C->nrest; i++) C->rest[i] = C->rest[i + skip];
+  C->id = qid;
+}
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
 // as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the
