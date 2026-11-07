@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// THE RUN, SUMMED: every game of a 24-game run (gambit-24.yml), read from each game's own results.txt and survivor.log -- per mode, how
+// THE RUN, SUMMED: every game of a 28-game run (gambit-24.yml: 24 garbage games and 4 endless), read from each game's own results.txt and survivor.log -- per mode, how
 // many survived and the frames the rest were lost at; the combos and chains made; the budgets (frames over the think budget, the
 // slowest frame, keys dropped, late moves); and each mode's aim -- of the attacks a game played in one mode fired (combos of four or more,
 // chains of two or more, as the game counts them), the share that met one of the mode's aims (gambit-rules.json). One directory per
@@ -11,6 +11,9 @@ var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
+var carrySkip = { n: 0, by: {}, c16n: 0, c16: {} };   // (the lines of two swaps or more played, and why each was not handed on to the next decision: answer.c cof=)
+var wrongIn = {};   // (THE WRONG ATTACKS: each mode's attacks that met none of its aims, by what they were and what made them -- the swap pressed within 120 frames before, or the board alone)
+var aimsIn = {}, goalMiss = { n: 0, dec: 0, keys: {} }, outMiss = { n: 0, keys: {} }, brkOver = { n: 0, keys: {} }, dips = { n: 0, none: 0, up: 0, upNone: 0 };   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
 var frontS = {};   // (the frontiers carried on, search/frontier.c: per frontier, the lines kept and carried in, the decisions it was let go whole)
 var svSeed = [0, 0], rdyBeam = [0, 0], frontId = [0, 0, 0, 0];
@@ -35,9 +38,9 @@ var think = { wall: [], br: [], brUnder: [] };   // each decision's wall ms (wal
 // latest)
 var cutShort = { boards: 0, cut: 0, cutKept: 0, cutAll: 0, cutNone: 0 };
 // EVERY MOVE ON THE WAY: the swaps pressed by what they came to, and the cells the cursor walked (front.c moveOn)
-var noneBy = {}, noneHow = {}, actsBy = {};
+var noneBy = {}, noneHow = {}, noneWhy = {}, actsBy = {}, actsLost = {}, actsAll = 0;
 var balance = { lost: { converted: 0, spent: 0, landed: 0, frames: 0, games: 0 }, survived: { converted: 0, spent: 0, landed: 0, frames: 0, games: 0 } };   // (the board's material: front.c converted, spent)   // (the swaps that came to nothing, by the kind of line that pressed them)
-var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0, wasted: 0, wastedAlone: 0, refusedWaste: 0, saved: 0, guardLet: 0, refusedSpoil: 0 };   // (wasted: clears of three that broke nothing and were no chain's link)
+var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together: 0, wasted: 0, wastedAlone: 0, refusedWaste: 0, saved: 0, guardLet: 0, refusedSpoil: 0, through: 0 };   // (wasted: clears of three that broke nothing and were no chain's link)
 // SEVERAL IDEAS AT ONCE: the lines firing two ideas offered and played (pair=N/played), the blocks the lines played threw (thrown=), and
 // the ideas left ready on the board a line played leaves, where the rank asked (ideas=)
 var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
@@ -133,6 +136,7 @@ var brNone = { n: 0, cut: 0 };   // (decisions whose break search found none, an
 var winHeld = { checked: 0, short: 0, worst: 0 };   // (THE WINDOW HELD, front.c: lines reached as judged, those the window held fewer actions for)
 var putBack = 0, putBackAt = [], putBackShown = 0, putBackShownAt = [], reaskShown = 0, idleQ = { lost: { frames: 0, idle: 0 }, survived: { frames: 0, idle: 0 } };   // (pairs put back for nothing refused at the press; frames idle with garbage queued, by outcome)
 var catd = { n: 0, missing: 0 };   // (decisions that offered lines, and those whose lines carry no category)   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
+var whyNot = { life: {}, brk: {}, lateLife: {}, lateBrk: {}, unsettled: 0, dec: 0 };   // (answer.c opts :kKEY -- every line offered and passed over, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
@@ -150,6 +154,24 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   if (drop) budget.dropped += +drop[1];
   if (fs.existsSync(lf)) {
     var lines = fs.readFileSync(lf, 'utf8').split('\n');
+    // (WHY NOT: each line offered beside the line played, with the key that put the line played first -- one that would have lived later
+    // (a cursor step's walk or more) or broken more garbage, counted by that key; and in a lost game's last 600 frames, apart)
+    { var lossAt = m[2] === 'lost' ? +m[3] : null, seenAt = {};
+      lines.forEach(function (l) {
+        if (l.indexOf('GAMBITD ') !== 0) return;
+        var at = +l.split(' ')[1], op = / opts=(\S+)/.exec(l); if (!op || seenAt[at]) return; seenAt[at] = 1; whyNot.dec++;
+        var es = op[1].split(','), top = es[0].split(':'), tl = top[1], tb = +top[2] || 0, late = lossAt !== null && at >= lossAt - 600 && at <= lossAt;
+        for (var i = 1; i < es.length; i++) {
+          var e = es[i].split(':'), k = (e.filter(function (x) { return /^k/.test(x); })[0] || '');
+          if (k === 'k?') { whyNot.unsettled++; continue; }
+          if (!k) continue;
+          var key = k + ':' + (top[0].replace(/[*~]/g, '')) + '>' + e[0].replace(/[*~]/g, '');
+          var life = (e[1] === 'L' && tl !== 'L') || (e[1] !== 'L' && tl !== 'L' && e[1] !== 'inf' && tl !== 'inf' && +e[1] - +tl >= 8);
+          var brk = (+e[2] || 0) > tb;
+          if (life) { whyNot.life[key] = (whyNot.life[key] || 0) + 1; if (late) whyNot.lateLife[key] = (whyNot.lateLife[key] || 0) + 1; }
+          if (brk) { whyNot.brk[key] = (whyNot.brk[key] || 0) + 1; if (late) whyNot.lateBrk[key] = (whyNot.lateBrk[key] || 0) + 1; }
+        }
+      }); }
     // (the decisions the clock cut: what a faster or slower machine would have played differently)
     lines.forEach(function (l) { if (l.indexOf('GAMBITD ') !== 0) return; var c = / out=(\d+)/.exec(l); if (!c) return; budget.decisions++; if (+c[1]) budget.out++; });
     // (A LIFE KEPT: a line played under garbage that lives, then nothing new told -- the next block lands on the same frame, as many
@@ -165,7 +187,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     // same as the decision before's -- the next block landing on the same frame, as many queued -- so the engine's prediction was all
     // either had: the one trajectory judged two ways)
     for (var dj = 0; dj + 1 < ds.length; dj++) {
-      var pa = ds[dj], pb = ds[dj + 1], cb = / carryBy=(\S+?):(k\d+|f)/.exec(pb);
+      var pa = ds[dj], pb = ds[dj + 1], cb = / (?:carryBy|putDown)=(\S+?):(k\d+|f)/.exec(pb);
       if (!cb || num(pa, 'land') === null || num(pb, 'land') === null) continue;
       var same = +pa.split(' ')[1] + num(pa, 'land') === +pb.split(' ')[1] + num(pb, 'land') && num(pa, 'qk') === num(pb, 'qk');
       putDown[same ? 'same' : 'told']++; if (same) putDown.sameBy[cb[2]] = (putDown.sameBy[cb[2]] || 0) + 1;
@@ -177,6 +199,40 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         if (now === then) putDown.alike++; else { putDown.moved++; putDown.by.push(now - then); }
       }
     }
+    // (THE MODE'S AIM, IN THE MODE IT WAS MADE IN: each attack (GAMBITA) read against the aims of the mode of the decision before it --
+    // a game switched at the top-out is read for each mode it played; and the decisions that passed the mode over)
+    var inMode = null, lastSwapAt = -1, lastSwapPlay = '', lastPopAt = -1e9;
+    // (THE WALK DOWN AND BACK: a swap 4 or more rows under the swaps pressed either side of it, all three within 240 frames, and what it came to)
+    var mv = lines.map(function (l) { var m = /^GAMBITM (\d+) (\d+),\d+ .*? ([csbn]) \d+\/\d+/.exec(l); return m && { at: +m[1], r: +m[2], o: m[3] }; }).filter(Boolean).sort(function (a, b) { return a.at - b.at; });
+    for (var mi = 1; mi + 1 < mv.length; mi++) {
+      if (mv[mi + 1].at - mv[mi - 1].at >= 240) continue;
+      var down = mv[mi - 1].r - mv[mi].r >= 4 && mv[mi + 1].r - mv[mi].r >= 4, up = mv[mi].r - mv[mi - 1].r >= 4 && mv[mi].r - mv[mi + 1].r >= 4;
+      if (down) { dips.n++; if (mv[mi].o === 'n') dips.none++; }
+      if (up) { dips.up++; if (mv[mi].o === 'n') dips.upNone++; }
+    }
+    lines.forEach(function (l) {
+      var d = /^GAMBITD \d+ (.*?) play=/.exec(l);
+      if (d) { inMode = d[1]; goalMiss.dec++; var flm = / fill=(\d+)/.exec(l); lastFill = flm ? +flm[1] : null; var pp = / pop=(\d+)/.exec(l), pf = /^GAMBITD (\d+)/.exec(l); if (pp && +pp[1] > 0 && pf) lastPopAt = +pf[1]; var gm = / goalMiss=(k\d+:[a-z_]+)/.exec(l); if (gm) { goalMiss.n++; goalMiss.keys[gm[1]] = (goalMiss.keys[gm[1]] || 0) + 1; }
+        var om = / outMiss=(k\d+:[a-z_]+:[a-z_]+)/.exec(l); if (om) { outMiss.n++; outMiss.keys[om[1]] = (outMiss.keys[om[1]] || 0) + 1; }
+        var bo = / brkOver=(k\d+:[a-z_]+:[a-z_]+)/.exec(l); if (bo) { brkOver.n++; brkOver.keys[bo[1]] = (brkOver.keys[bo[1]] || 0) + 1; }
+        var cf = / cof=(-?\d+)/.exec(l), sw = / swaps=(\d+)/.exec(l);
+        if (cf && +cf[1] >= 0 && sw && +sw[1] >= 2) { carrySkip.n++; carrySkip.by[cf[1]] = (carrySkip.by[cf[1]] || 0) + 1; }
+        var c16 = / c16=(\d+)/.exec(l); if (c16) { carrySkip.c16n++; carrySkip.c16[c16[1]] = (carrySkip.c16[c16[1]] || 0) + 1; }
+        return; }
+      var mm = /^GAMBITM (\d+) \d+,\d+ (.*?) [csbn] \d+\/\d+/.exec(l); if (mm) { lastSwapAt = +mm[1]; lastSwapPlay = mm[2]; return; }
+      var a = /^GAMBITA (\d+) ([cx]) (\d+)/.exec(l); if (!a || !inMode) return;
+      var o = { combo: {}, chain: {} }; o[a[2] === 'c' ? 'combo' : 'chain'][a[3]] = 1;
+      var before = (aimsIn[inMode] || { met: 0 }).met;
+      aimOf(inMode, o, aimsIn);
+      if (aimsIn[inMode] && aimsIn[inMode].met === before) {
+        var w = wrongIn[inMode] || (wrongIn[inMode] = { n: 0, what: {}, by: {} }), what = (a[2] === 'c' ? 'combo ' : 'chain ') + (+a[3] >= 6 ? '6+' : a[3]);
+        var by = lastSwapAt >= 0 && +a[1] - lastSwapAt <= 120 ? lastSwapPlay.replace(/ /g, '_') : 'alone';
+        w.n++; w.what[what] = (w.what[what] || 0) + 1; w.by[by] = (w.by[by] || 0) + 1;
+        // (noted apart, still counted -- the owner: a chain the garbage makes falling on its own, no swap of ours in the 120 frames before
+        // it and garbage popping within 600, is one a swap may not have been able to stop)
+        if (by === 'alone' && +a[1] - lastPopAt <= 600) w.garbage = (w.garbage || 0) + 1;
+      }
+    });
     // (SWITCHING: each switch by its direction -- the mode before it to the mode after -- and the mode a lost game was lost in)
     var was = null, one = null, switched = false, last = null;
     lines.forEach(function (l) {
@@ -195,7 +251,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         var bh = / brRes=\d+\/\d+\/(\d+)(?:\/\d+)?(\/(gid|anchor))?/.exec(l); if (bh) { beamDepth.held += +bh[1]; if (bh[3]) beamDepth[bh[3]]++; }
         var bw = / brResWhy=(\d+)\/(\d+)\/(\d+)\/(\d+)/.exec(l); if (bw) for (var q = 0; q < 4; q++) beamDepth.why[q] += +bw[q + 1]; }
       var cd = / carryDrop=(\d+)/.exec(l); if (cd) carryWhy[cd[1]] = (carryWhy[cd[1]] || 0) + 1;
-      var cb = / carryBy=(\S+?):(k\d+|f)/.exec(l); if (cb) { carryByKey[cb[2]] = (carryByKey[cb[2]] || 0) + 1; carryByPlay[cb[1]] = (carryByPlay[cb[1]] || 0) + 1; }
+      var cb = / (?:carryBy|putDown)=(\S+?):(k\d+|f)/.exec(l); if (cb) { carryByKey[cb[2]] = (carryByKey[cb[2]] || 0) + 1; carryByPlay[cb[1]] = (carryByPlay[cb[1]] || 0) + 1; }
       if (/ carryDrop=2/.test(l)) { allow.drop2++; if (/ carryDrop=2:d-1:c0/.test(l)) { allow.drop2cut0++; var cw = / carryDrop=2:d-1:c0([anw])/.exec(l); if (cw) allow.why[cw[1]]++; } }
       var w = / want=(\d+),(\d+)/.exec(l);
       if (w) { var r = +w[1], c = +w[2]; if (last) { var d = Math.abs(r - last[0]) + Math.abs(c - last[1]); walk.n++; walk.cells += d; if (d >= 6) walk.far++; } last = [r, c]; }
@@ -214,8 +270,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var ru = / rule=([etl])/.exec(l);
       if (ru) { rule[ru[1]] = (rule[ru[1]] || 0) + 1; rule.n = (rule.n || 0) + 1; }
       // (THE MODE'S LIST, of the lines begun -- not the line in progress carried on: answer.c mode=entry/fallback/lost/other/save. A fallback
-      // is unforced where a line offered that is no fallback leaves the next decision a break's time, rankSave, or lives)
-      var md = / mode=(\d+)\/([01])\/(\w+|-)\/(\w+|-)\/(\d+)/.exec(l), pl = / play=(\S+)/.exec(l);
+      // is unforced where no chain is going (a chain going is carried on: /c) and a line offered that is no fallback leaves the next decision
+      // a break's time, rankSave, or lives, and is lost no sooner than the fallback)
+      var md = / mode=(\d+)\/([01])\/(\w+|-)\/(\w+|-)\/(\d+)((?:\/k\d+)?)(\/c)?/.exec(l), pl = / play=(\S+)/.exec(l);
       // (THE PLANNER AND THE FIRST ENTRY: p0=found/near -- the decisions it found a line that meets it, and of those that began a line, the
       // ones that began that entry; near, the first entry's percent the nearest line came)
       var p0 = / p0=([01])\/(-?\d+)/.exec(l);
@@ -225,8 +282,9 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         rule.mLines = (rule.mLines || 0) + 1;
         if (+md[1] === 0) rule.mFirst = (rule.mFirst || 0) + 1;
         if (md[2] === '1') { rule.mFall = (rule.mFall || 0) + 1;
-          var oth = md[4], save = +md[5];
-          if (oth === 'L' || oth === 'inf' || (oth !== '-' && +oth >= save)) rule.mFree = (rule.mFree || 0) + 1; }
+          var oth = md[4], save = +md[5], own = md[3] === 'L' || md[3] === 'inf' ? Infinity : +md[3];
+          var othLost = oth === 'L' || oth === 'inf' ? Infinity : (oth === '-' ? -1 : +oth);
+          if (!md[7] && othLost >= save && othLost >= own) rule.mFree = (rule.mFree || 0) + 1; }
       }
       if (um) { t.dec++; if (+um[1] && mm) { t.under++; t.mat += +mm[1]; t.pan += pm ? +pm[1] : 0; } }
       // (THE BREAK THE LINEUP MAKES: of the lines played under garbage that break it, the ones that make a chain on the way)
@@ -321,9 +379,11 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       aggr.frames += o.frames || 0;
       Object.keys(moves).forEach(function (k) { moves[k] += (o.moves || {})[k] || 0; });
       Object.keys(o.noneHow || {}).forEach(function (k) { noneHow[k] = (noneHow[k] || 0) + o.noneHow[k]; });
+      Object.keys(o.noneWhy || {}).forEach(function (k) { noneWhy[k] = (noneWhy[k] || 0) + o.noneWhy[k]; });
       if (o.material) { var mb = balance[m[2]]; mb.converted += o.material.converted || 0; mb.spent += o.material.spent || 0; mb.landed += o.material.landed || 0; mb.frames += o.frames || 0; mb.games++; }
       Object.keys(o.noneBy || {}).forEach(function (k) { noneBy[k] = (noneBy[k] || 0) + o.noneBy[k]; });
       // (THE WINDOW SPENT: the actions keyed, by the kind of line, in games survived and lost apart -- a minute's worth each)
+      Object.keys(o.actsLost || {}).forEach(function (k) { actsLost[k] = (actsLost[k] || 0) + o.actsLost[k]; }); actsAll += o.actions || 0;
       if (o.actsBy) { var ab = actsBy[m[2]] || (actsBy[m[2]] = { frames: 0, by: {} }); ab.frames += o.frames || 0; Object.keys(o.actsBy).forEach(function (k) { ab.by[k] = (ab.by[k] || 0) + o.actsBy[k]; }); }
       Object.keys(a.combo || {}).forEach(function (z) { var g = PA.comboGarbage(+z); aggr.attacks += a.combo[z]; aggr.blocks += a.combo[z] * g.length; aggr.cells += a.combo[z] * g.reduce(function (s, w) { return s + w; }, 0); });
       Object.keys(a.chain || {}).forEach(function (z) { aggr.attacks += a.chain[z]; aggr.blocks += a.chain[z] * (+z - 1); aggr.cells += a.chain[z] * 6 * (+z - 1); });
@@ -342,14 +402,25 @@ function meetsAim(aim, combo, chain) {
   if (aim.chain && !test(chain, aim.chain)) return false;
   return !!(aim.combo || aim.chain);
 }
-function aimOf(mode, a) {
+// (A LIST'S FILL, as the decision before the attack read it -- decide.c fillList: the chains of three or more the enemy's room took, the
+// longest logged as fill=N; none, 0: the list's other aims)
+var lastFill = null;
+function aimsNow(rule) {
+  var l = rule.aims || [];
+  if (!l.some(function (x) { return x && x.chain === 'fill'; })) return l;
+  if (lastFill >= 3) { var o = []; for (var n = lastFill; n >= 3; n--) o.push({ chain: '==' + n }); return o; }
+  return l.filter(function (x) { return !(x && x.chain === 'fill'); });
+}
+function aimOf(mode, a, into) {
   var rule = RULES.filter(function (r) { return r.name === mode; })[0];
   if (!rule) return;
-  var t = aims[mode] || (aims[mode] = { met: 0, all: 0, first: 0, head: JSON.stringify((rule.aims || [])[0] || {}) });
+  var list = aimsNow(rule);
+  into = into || aims;
+  var t = into[mode] || (into[mode] = { met: 0, all: 0, first: 0, head: JSON.stringify((rule.aims || [])[0] || {}) });
   var count = function (n, combo, chain) {
     t.all += n;
-    if ((rule.aims || []).some(function (x) { return meetsAim(x, combo, chain); })) t.met += n;
-    if (rule.aims && rule.aims[0] && meetsAim(rule.aims[0], combo, chain)) t.first += n;
+    if (list.some(function (x) { return typeof x === 'object' && meetsAim(x, combo, chain); })) t.met += n;
+    if (list[0] && typeof list[0] === 'object' && meetsAim(list[0], combo, chain)) t.first += n;
   };
   Object.keys(a.combo || {}).forEach(function (z) { count(a.combo[z], +z, 1); });
   Object.keys(a.chain || {}).forEach(function (z) { count(a.chain[z], 0, +z); });
@@ -366,6 +437,75 @@ Object.keys(modes).sort().forEach(function (k) {
                 Math.round(100 * (t.popLineupPlayed || 0) / t.pop) + '%, a full row broken ' + Math.round(100 * (t.popFull || 0) / t.pop) + '%' : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
+// THE MEASURE (the owner: every run, whether it meets the mode's goal and the moves it wastes): the attacks in each mode that met its
+// aims and its first, the decisions that passed the mode over, the swaps that came to nothing, the wasted threes a minute
+Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
+  console.log('the measure, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met its aims' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') + ', its first ' + t.head + ' ' + t.first + (t.all ? ' (' + Math.round(100 * t.first / t.all) + '%)' : '')); });
+Object.keys(wrongIn).sort().forEach(function (k) { var w = wrongIn[k], t = aimsIn[k] || { all: 0 }, top = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (z) { return z + ' x' + o[z]; }).join(', '); };
+  console.log('the wrong attacks, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' -- ' + top(w.what) + '; made by ' + top(w.by));
+  console.log('the extra, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' (target 0%) -- of them ' + (w.garbage || 0) + ' the garbage made falling on its own'); });
+{ var nmv0 = moves.clear + moves.setup + moves.break + moves.none + moves.open;
+  console.log('the measure, waste: the mode passed over in ' + goalMiss.n + ' of ' + goalMiss.dec + ' decisions; ' + (nmv0 ? Math.round(100 * moves.none / nmv0) : '-') + '% of ' + nmv0 +
+              ' swaps came to nothing; ' + moves.wasted + ' wasted threes' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') +
+              '; ' + dips.n + ' walks down and back for one swap (' + dips.none + ' of them for nothing), ' + dips.up + ' up and back (' + dips.upNone + ' for nothing)');
+  var top = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).slice(0, 8).map(function (k) { return k + ' x' + o[k]; }).join(', '); };
+  // (the mode passed over, by the order's key that did it: answer.c goalMiss -- the first entry; outMiss -- a break the mode asks, an
+  // attack it does not ask played over it)
+  console.log('the mode passed over, by key: the first entry ' + goalMiss.n + (goalMiss.n ? ' (' + top(goalMiss.keys) + ')' : '') + '; a break the mode asks under an attack it does not ' + outMiss.n + (outMiss.n ? ' (' + top(outMiss.keys) + ')' : ''));
+  // (answer.c brkOver: under garbage, a line breaking nothing played over a break lost no sooner, by the key that did it)
+  var top10 = function (o) { var ks = Object.keys(o), n = 0; ks.forEach(function (k) { n += o[k]; }); return n + (n ? ' (' + ks.sort(function (a, b) { return o[b] - o[a]; }).slice(0, 10).map(function (k) { return k + ' x' + o[k]; }).join(', ') + ')' : ''); };
+  console.log('why not, of ' + whyNot.dec + ' decisions (answer.c opts :k, key:played>passed over): a line living later passed over ' + top10(whyNot.life) + '; breaking more ' + top10(whyNot.brk) +
+              '; in the last 600 frames of the games lost, living later ' + top10(whyNot.lateLife) + '; breaking more ' + top10(whyNot.lateBrk) + '; ' + whyNot.unsettled + ' pairs the order does not settle (k?)');
+  console.log('a break passed over, by key: ' + brkOver.n + (brkOver.n ? ' (' + top(brkOver.keys) + ')' : '')); }
+if (carrySkip.n) { var CS = { 0: 'handed on', 2: 'it waits', 3: 'nothing of it left', 4: 'a tier past the set-ups breaking nothing', 5: 'no panel to anchor it' };
+  console.log('lines of two swaps or more played: ' + carrySkip.n + ', ' + Object.keys(carrySkip.by).sort().map(function (k) { return (CS[k] || k) + ' ' + carrySkip.by[k]; }).join(', '));
+  var C16 = { 1: 'the decision before held', 2: 'it played a line that waits', 3: 'it played one swap', 4: 'it played a line past the set-ups breaking nothing', 5: 'its line had no panel to anchor it', 6: "a hold's break in reach not anchored", 7: 'the mode changed' };
+  if (carrySkip.c16n) console.log('decisions that found no line in progress where one was being pressed: ' + carrySkip.c16n + ', let go because ' + Object.keys(carrySkip.c16).sort().map(function (k) { return (C16[k] || k) + ' ' + carrySkip.c16[k]; }).join(', ')); }
+// (HELD UNJUDGED: a decision whose lines the clock stopped the judge on, every one -- cands= `-jN` -- and the hold played for want of
+// a look at them; decide.c judges them again to the move's frame, rescued=1)
+(function () {
+  var n = 0, held = 0, rescued = 0;
+  fs.readdirSync(DIR).forEach(function (g) {
+    var lf = path.join(DIR, g, 'survivor.log'); if (!fs.existsSync(lf)) return;
+    fs.readFileSync(lf, 'utf8').split('\n').forEach(function (l) {
+      if (l.indexOf('GAMBITD ') !== 0) return; n++;
+      if (/ rescued=1/.test(l)) rescued++;
+      if (/ opts=hold:[^, ]*( |$)/.test(l) && /-j\d/.test(l)) held++;
+    });
+  });
+  if (n) console.log('held unjudged: ' + held + ' of ' + n + ' decisions played the hold with every line unjudged in time; ' + rescued + ' judged again to the move\'s frame');
+})();
+// (THE OPENER'S HANDOVER, a run with `then` -- gambit-24.yml: each game from its start to the top-out, where the opener gives way to the
+// mode the run named; the garbage there broken -- the first decision after with none on the board -- then HANDOVER_HOLD frames more in
+// that mode. Passed: alive at the end of that; a loss after it is the new mode's, not the opener's. Never switched: the game ran out first)
+var HANDOVER_HOLD = 900;
+// (the handover is a 90 s game, the measure's own: a board whose garbage is never all gone -- large_garbage's -- is the mode's past it)
+var HANDOVER_CAP = 5400;
+(function () {
+  var by = {}, n = 0, passed = 0, fails = [];
+  fs.readdirSync(DIR).sort().forEach(function (g) {
+    var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
+    if (!fs.existsSync(rf) || !fs.existsSync(lf)) return;
+    var r = /(\w+) training (lost|survived) frames=(\d+)/.exec(fs.readFileSync(rf, 'utf8')); if (!r) return;
+    var ds = fs.readFileSync(lf, 'utf8').split('\n').filter(function (l) { return l.indexOf('GAMBITD ') === 0; }).map(function (l) {
+      var f = /^GAMBITD (\d+) (.*?) play=/.exec(l) || [0, 0, '']; return { at: +f[1], mode: f[2], under: / under=1 /.test(l) }; });
+    if (!ds.length || ds[0].mode !== 'opener') return;
+    var hi = -1; for (var i = 0; i < ds.length && hi < 0; i++) if (ds[i].mode !== 'opener') hi = i;
+    var lostAt = r[2] === 'lost' ? +r[3] : null, to = hi >= 0 ? ds[hi].mode : 'never switched', o = by[to] || (by[to] = { n: 0, passed: 0, lost: [] });
+    var bi = -1; for (var j = Math.max(hi, 0); hi >= 0 && j < ds.length && bi < 0; j++) if (!ds[j].under) bi = j;
+    var end = bi >= 0 ? ds[bi].at + HANDOVER_HOLD : null, ok;
+    if (hi < 0) ok = lostAt === null;
+    else ok = lostAt === null || (end !== null && lostAt >= end) || lostAt >= HANDOVER_CAP;
+    n++; o.n++; if (ok) { passed++; o.passed++; } else {
+      var why = hi < 0 ? 'lost in the opener' : bi < 0 ? 'lost before the garbage was broken' : 'lost within ' + HANDOVER_HOLD + ' of the break';
+      o.lost.push(lostAt); fails.push(g + ' at ' + lostAt + ': ' + why + (hi >= 0 ? ' (switched at ' + ds[hi].at + (bi >= 0 ? ', broken at ' + ds[bi].at : '') + ')' : ''));
+    }
+  });
+  if (!n || Object.keys(by).every(function (k) { return k === 'never switched'; }) && !process.env.GC_HANDOVER) return;
+  console.log('HANDOVER ' + passed + '/' + n + ' (the opener to the top-out, its garbage broken, then ' + HANDOVER_HOLD + ' frames in the mode after)');
+  Object.keys(by).sort().forEach(function (k) { var o = by[k]; console.log('  to ' + k + ': ' + o.passed + '/' + o.n + (o.lost.length ? '; lost at ' + o.lost.join(', ') : '')); });
+  fails.forEach(function (f) { console.log('  failed ' + f); });
+})();
 // (WHY EACH GAME WAS LOST: causeOf, a tag a loss, the first that holds; the losses counted by tag, then each loss with its numbers)
 { var tags = Object.keys(causes.by).sort(function (a, b) { return causes.by[b] - causes.by[a]; });
   console.log('losses by the piece that failed: ' + (tags.map(function (k) { return k + ' x' + causes.by[k]; }).join(', ') || '-') +
@@ -380,7 +520,7 @@ if (nturns) {
   console.log('lost while playing: ' + (Object.keys(lostIn).sort().map(function (k) { return k + ' x' + lostIn[k]; }).join(', ') || '-'));
 }
 if (rule.mLines) console.log("the mode's list: of " + rule.mLines + ' lines begun that meet it, ' + (rule.mFirst || 0) + ' its first entry, ' + (rule.mFall || 0) +
-  ' a fallback -- ' + (rule.mFree || 0) + ' of them unforced: a line offered with no fallback left the next decision a break\'s time');
+  ' a fallback -- ' + (rule.mFree || 0) + ' of them unforced: no chain going, and a line offered with no fallback left the next decision a break\'s time and was lost no sooner');
 if (rule.p0n) console.log("the planner and the first entry: of " + rule.p0n + ' decisions planned, ' + (rule.p0f || 0) + ' found a line that meets it; of those that began a line, ' +
   (rule.p0p || 0) + ' of ' + (rule.p0b || 0) + ' began it; the nearest line, by the first entry\'s percent: ' + JSON.stringify(rule.p0near || {}));
 if (rule.n) console.log('the one rule: of ' + rule.n + ' lines played that met a part of it, ' + Math.round(100 * (rule.e || 0) / rule.n) + '% an entry of the list, ' + Math.round(100 * (rule.t || 0) / rule.n) + '% a three that breaks, ' + Math.round(100 * (rule.l || 0) / rule.n) + '% a last resort');
@@ -420,8 +560,17 @@ if (nmv) console.log('every move on the way: the cursor walked ' + (aggr.frames 
 Object.keys(actsBy).sort().forEach(function (w) { var ab = actsBy[w], min = ab.frames / 3600; if (!min) return; var tot = 0; Object.keys(ab.by).forEach(function (k) { tot += ab.by[k]; });
   console.log('the window spent, games ' + w + ': ' + Math.round(tot / min) + ' actions a minute -- ' + Object.keys(ab.by).sort(function (a, b) { return ab.by[b] - ab.by[a]; }).map(function (k) { return k + ' ' + Math.round(ab.by[k] / min); }).join(', ')); });
 if (moves.none) console.log('moves wasted: ' + moves.none + ' swaps that came to nothing, by the line that pressed them: ' + Object.keys(noneBy).sort(function (a, b) { return noneBy[b] - noneBy[a]; }).map(function (k) { return k + ' ' + noneBy[k]; }).join(', ') +
-                             '; by what became of their line: ' + (noneHow.dropped || 0) + ' dropped before its later swaps, ' + (noneHow.on || 0) + ' its later swaps pressed, ' + (noneHow.last || 0) + ' the line\'s last swap');
-console.log('wasted threes: ' + moves.wasted + ' clears of three that broke no garbage and were no link of a chain, made by a swap' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') + '; ' + moves.wastedAlone + ' more the stack made alone; ' + moves.refusedWaste + ' swaps refused at the press for one (' + moves.refusedSpoil + ' of them spoiling the board\'s own chain); ' + moves.saved + ' threes the board needed not to die (a save the survival search confirmed, not counted as wasted); ' + moves.guardLet + ' let through at the press as the board\'s save (lost without it in 120 frames, alive with it)');
+                             '; by what became of their line: ' + (noneHow.dropped || 0) + ' of a line put down or dropped before its end, ' + (noneHow.on || 0) + ' its later swaps pressed, ' + (noneHow.last || 0) + ' of a line played out (carried on to its end, or its last swap)');
+// (THE DROPPED, BY WHAT ENDED THEIR LINE: front.c lineEnds -- a number of 10 or more past the frame loop's own is the line of the order's
+// key that put the line down, rank.c compareJudged)
+var END_NAME = { 0: 'unknown', 1: 'carried on', 2: 'held over it', 3: 'not carried', 4: 'carry: anchor gone', 5: 'carry: step not there', 6: 'carry: no longer breaks',
+  7: 'a raise', 16: 'none carried by the last answer', 17: 'carried another line', 18: 'carried: all pressed', 19: 'carried: no judgement', 20: 'carried: a wasted three', 24: 'carried: a 2x not taken to three', 21: 'no list', 10: 'loop: another mode', 11: 'loop: no board predicted', 12: 'loop: no keys', 13: 'loop: keys do not fit', 14: 'loop: walk over the allowance' };
+if (Object.keys(actsLost).length) { var lostN = 0; Object.keys(actsLost).forEach(function (k) { lostN += actsLost[k]; });
+  console.log('the window spent on lines not played out: ' + lostN + ' of ' + actsAll + ' actions (' + (actsAll ? (100 * lostN / actsAll).toFixed(1) : '-') + '%), by what ended them: ' +
+    Object.keys(actsLost).sort(function (a, b) { return actsLost[b] - actsLost[a]; }).map(function (k) { return (END_NAME[k] || 'put down by rank.c:' + k) + ' ' + actsLost[k]; }).join(', ')); }
+if (Object.keys(noneWhy).length) console.log('moves wasted, the dropped by what ended their line: ' + Object.keys(noneWhy).sort(function (a, b) { return noneWhy[b] - noneWhy[a]; })
+  .map(function (k) { return (END_NAME[k] || 'put down by rank.c:' + k) + ' ' + noneWhy[k]; }).join(', '));
+console.log('wasted threes: ' + moves.wasted + ' clears of three that broke no garbage, were no link of a chain and whose line broke none after it (front.c FOLLOW_FOR), made by a swap; ' + moves.through + ' more its line followed through with a break' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') + '; ' + moves.wastedAlone + ' more the stack made alone; ' + moves.refusedWaste + ' swaps refused at the press for one (' + moves.refusedSpoil + ' of them spoiling the board\'s own chain); ' + moves.saved + ' threes the board needed not to die (a save the survival search confirmed, not counted as wasted); ' + moves.guardLet + ' let through at the press as the board\'s save (lost without it in 120 frames, alive with it)');
 console.log('several ideas at once: ' + moves.together + ' clears begun while another was still clearing; lines firing two ideas ' + several.pairOff +
             ' offered, ' + several.pairPlayed + ' played; of ' + several.thrownLines + ' lines played that threw, ' + several.thrown2 + ' threw two blocks or more (' +
             several.thrown + ' blocks); the board a line left held ' + (several.ideasN ? (several.ideas / several.ideasN).toFixed(2) : '-') + ' ideas ready on average, two or more ' +
