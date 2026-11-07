@@ -72,7 +72,7 @@ typedef struct {
   int32_t noneWhy[1024];   // (and dropped, by what ended the line: lineEnds)
   int32_t actsBy[NPLAYS + 1], actsLost[1024];   // (THE WINDOW SPENT: the actions pressed, by the kind of line -- 0 none -- and those of a line put down or dropped before its end, by what ended it)   // (and by what became of their line: dropped before its later swaps, those pressed, its last swap)
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
-  int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil;   // (a wasted three: a clear of three that broke no garbage and was no link of a chain -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die)
+  int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil, through;   // (a wasted three: a clear of three that broke no garbage, was no link of a chain and whose line broke none after it -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die; through: a three whose line broke garbage after it)
 } FStats;
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 // (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
@@ -80,6 +80,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_OPEN 64
 #define MOVE_IDS 32
 #define MOVE_FOR 600
+#define FOLLOW_FOR 360   // (the frames a swap's three waits for a break by a later swap of its line: past them, unbroken, it was wasted)
 #define MOVE_FALL 60
 typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx, row, col, acts, pa, pb; } MoveOpen;   // pa, pb: the ids of the two cells swapped (0: none there)   // row, col: where it was pressed; acts: the actions pressed since the swap before, its own included   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 // (the lines whose swaps are followed: each answer's swaps in all and how many of them were pressed, by the answer's id)
@@ -132,6 +133,7 @@ static struct {
   uint32_t rnd;
   FStats st;
   char pendLog[200];   // (the wasted three's log line, written once it is counted)
+  struct { int32_t lid, until, open; char log[200]; } w3[16]; int32_t nw3, matchLid;   // (a swap's three waiting for its line's break: FOLLOW_FOR)
   int32_t loggedDiffer, matchAt, matchAfter, matchSave, matchGuard, loggedWasted, pendSwapAt, refA, refB, refUntil, guardSpoil, loggedRefusedBoards, swapA, swapB, prSwapA, prSwapB;
   int32_t pPosted, lineAsked, altAsked, lastReveal;   // (the frames questions were posted on, and colours were last shown on)   // (the followed swap a clear came of: pressed at, swaps since, a save's -- for the wasted three's count and log)
 } F;
@@ -714,6 +716,36 @@ static int follow(void) {
 #define WASG (1 << 20)
 static uint8_t wasGarbage[WASG];
 static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke);
+// A THREE FOLLOWED THROUGH (the owner: never a three unless it follows through): a swap's three that breaks nothing waits FOLLOW_FOR
+// frames for a break by a swap of its own line -- the line it was pressed in, or one that line was carried on as; one that comes is
+// no waste (through), one that does not is counted wasted then. A three that begins a chain is no waste either (open ones dropped)
+static int sameLine(int32_t from, int32_t lid) {
+  const LineRec *r = lineRec(from);
+  for (int hop = 0; r && hop < LINE_RECS; hop++) { if (r->id == lid) return 1; if (r->why != END_ON || !r->next) return 0; r = lineRec(r->next); }
+  return 0;
+}
+static void threeOpen(int32_t lid, int32_t now) {
+  if (F.nw3 == 16) { F.st.wasted++; memmove(F.w3, F.w3 + 1, sizeof F.w3[0] * 15); F.nw3--; }
+  F.w3[F.nw3].lid = lid; F.w3[F.nw3].until = now + FOLLOW_FOR; F.w3[F.nw3].open = 1; F.w3[F.nw3].log[0] = 0; F.nw3++;
+}
+static void threesOpenDrop(void) { int k = 0; for (int i = 0; i < F.nw3; i++) if (!F.w3[i].open) F.w3[k++] = F.w3[i]; F.nw3 = k; }
+static int threesSettle(const char *log) {
+  int took = 0;
+  for (int i = 0; i < F.nw3; i++) if (F.w3[i].open) { F.w3[i].open = 0; if (log[0] && !took) { snprintf(F.w3[i].log, sizeof F.w3[i].log, "%s", log); took = 1; } }
+  return took;
+}
+static void threeThrough(int32_t lid) {
+  int k = 0; for (int i = 0; i < F.nw3; i++) { if (sameLine(F.w3[i].lid, lid)) F.st.through++; else F.w3[k++] = F.w3[i]; } F.nw3 = k;
+}
+static void threesDue(int32_t now) {
+  int k = 0;
+  for (int i = 0; i < F.nw3; i++) {
+    if (F.w3[i].open || now < F.w3[i].until) { F.w3[k++] = F.w3[i]; continue; }
+    F.st.wasted++;
+    if (F.w3[i].log[0] && F.loggedWasted < 400) { flog(F.w3[i].log); F.loggedWasted++; }
+  }
+  F.nw3 = k;
+}
 static void countAttacks(const Board *b) {
   static int32_t now[MAXROWS * W], freshIds[MAXROWS * W];
   int nn = 0, fresh = 0, fromGarbage = 0, gm = 0;
@@ -735,9 +767,11 @@ static void countAttacks(const Board *b) {
   // (a clear of three with no garbage broken waits: a chain it starts makes it a link, and it was no waste)
   // (wasted: a swap's -- a panel a followed swap moved is in it; wastedAlone: the stack's own, panels out of garbage or fallen)
   // (counted once its clear and every panel falling from it have settled: a three's chain comes after it pops)
-  if (cc >= 2) { F.pendThree = F.pendThreeAlone = F.pendSave = 0; F.pendLog[0] = 0; }
+  if (cc >= 2) { F.pendThree = F.pendThreeAlone = F.pendSave = 0; F.pendLog[0] = 0; threesOpenDrop(); }
+  threesDue(b->clock);
   if (cc == 0 && (F.pendThree || F.pendThreeAlone || F.pendSave) && !hasActivePanels((Board *)b)) {
-    F.st.wasted += F.pendThree; F.st.wastedAlone += F.pendThreeAlone; F.st.saved += F.pendSave; F.pendThree = F.pendThreeAlone = F.pendSave = 0;
+    if (threesSettle(F.pendLog)) F.pendLog[0] = 0;
+    F.st.wastedAlone += F.pendThreeAlone; F.st.saved += F.pendSave; F.pendThree = F.pendThreeAlone = F.pendSave = 0;
     if (F.pendLog[0] && F.loggedWasted < 400) {
       flog(F.pendLog);
       // (the first few with the board their swap was pressed on: GAMBITX <frame pressed>)
@@ -747,7 +781,7 @@ static void countAttacks(const Board *b) {
     F.pendLog[0] = 0;
   }
   if (fresh == 3 && cc < 2 && !brokeNow) {
-    if (bySwap && F.matchSave) F.pendSave++; else if (bySwap) F.pendThree++; else F.pendThreeAlone++;
+    if (bySwap && F.matchSave) F.pendSave++; else if (bySwap) { F.pendThree++; threeOpen(F.matchLid, b->clock); } else F.pendThreeAlone++;
     // (each logged, the first few hundred: where, and the swap it came of -- to find what pressed it)
     if (F.loggedWasted < 400 && !F.pendLog[0]) {
       char *l = F.pendLog; int k = snprintf(l, sizeof F.pendLog, "GAMBITW %d three", b->clock);
@@ -852,7 +886,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
       if (!m->moved[j] && b->clock - m->at <= MOVE_FALL && (st == HOVERING || st == FALLING)) m->moved[j] = 1;
       if (m->moved[j]) for (int q = 0; q < nfresh && !done; q++) done = fresh[q] == m->ids[j];
     }
-    if (done) { bySwap = 1; F.matchAt = m->at; F.matchAfter = m->swapsAfter; F.matchSave = m->save; F.matchGuard = m->guard; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; moveLog(m, broke ? 'b' : !m->swapsAfter ? 'c' : 's'); continue; }
+    if (done) { bySwap = 1; F.matchLid = m->lid; if (broke) threeThrough(m->lid); F.matchAt = m->at; F.matchAfter = m->swapsAfter; F.matchSave = m->save; F.matchGuard = m->guard; if (broke) F.st.moveBreak++; else if (!m->swapsAfter) F.st.moveClear++; else F.st.moveSetup++; moveLog(m, broke ? 'b' : !m->swapsAfter ? 'c' : 's'); continue; }
     if (!alive || b->clock - m->at > MOVE_FOR) { noneOf(m); continue; }
     if (k != i) F.moves[k] = *m;
     k++;
@@ -1151,8 +1185,8 @@ static void statsLine(char *out, int cap) {
   }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "}");
   // (the swaps still followed when the match ends are counted by what they came to so far: nothing yet)
-  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d,\"guardLet\":%d,\"refusedSpoil\":%d}",
-                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet, F.st.refusedSpoil);
+  if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"moves\":{\"clear\":%d,\"setup\":%d,\"break\":%d,\"none\":%d,\"open\":%d,\"cells\":%d,\"together\":%d,\"wasted\":%d,\"wastedAlone\":%d,\"refusedWaste\":%d,\"saved\":%d,\"guardLet\":%d,\"refusedSpoil\":%d,\"through\":%d}",
+                        F.st.moveClear, F.st.moveSetup, F.st.moveBreak, F.st.moveNone, F.nmoves, F.st.cursorCells, F.st.together, F.st.wasted + F.nw3, F.st.wastedAlone, F.st.wasteRefused, F.st.saved, F.st.guardLet, F.st.refusedSpoil, F.st.through);
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), ",\"noneBy\":{");
   first = 1;
   for (int z = 0; z < NPLAYS && k < cap; z++) if (F.st.noneBy[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%s\":%d", first ? "" : ",", PLAY_NAME[z], F.st.noneBy[z]); first = 0; }
