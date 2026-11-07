@@ -204,6 +204,7 @@ static int fairShare(Cand *c, int n, int cap) {
 #define NSTRIP 12   // the lines judged again with one swap left out (THE THREE TAKEN OUT)
 #define STRIP_LINES 3   // the best lines that waste a three, each judged again so
 static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
+static int32_t orderN;   // (the lines in the order the move was picked from: decide's n)
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
@@ -219,6 +220,7 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 #define SAVE_MS 10
 #define SAVE_KEEP_MS 4
 static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
+static int32_t saveBlind;   // (a three kept as the save because the save check gave no answer this decision: the log's)
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
@@ -285,7 +287,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; orderN = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -452,6 +454,10 @@ static int ranked(const Read *R, const Found *S) {
         else if (cw >= 0 && ck >= 0) saveOk = 1;
       }
     }
+    // (A SAVE THE CHECK COULD NOT ANSWER -- no time left to ask it, or no answer in the time it had: every line that keeps its threes is
+    // lost within a break's time and the three lives or is lost later, so the three is the save -- death is never an option. Only a
+    // check that answered takes a three out)
+    if (!keeps && !saveOk && (wasteLives || wasteLost >= 0) && !(saveAsked && saveCw >= 0 && saveCk >= 0)) { saveOk = 1; saveBlind = 1; }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
@@ -589,7 +595,7 @@ static Played playOf(const Read *R, int n) {
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
-  P.ncands = n;
+  P.ncands = n; orderN = n;
   return P;
 }
 // THE LINE IN PROGRESS (carryOf): the line of the move played, when it has more than one swap and is a play -- not a hold or a clear. It
@@ -632,13 +638,22 @@ static int32_t carrySkip = -1;
 // (WHAT LAST LET THE LINE IN PROGRESS GO, for the log of a decision that found none carried (answer.c ended 16): 1-5 the decision before
 // played no line to hand on (carrySkip's), 6 a hold's break in reach not anchored, 7 the mode changed, 8 a new game, 9 paused CARRY_PAUSES holds running)
 static int32_t carryClr;
+// (A SAVE: the line played outlives the hold -- it lives where the hold does not, or both are lost and it is lost later. Its swaps after
+// the first are what the board lives by, whatever its tier: the next decision is asked before they are pressed, often with little
+// time, and without the line in progress its answer -- a hold -- takes their keys' place)
+static int savesOverHold(const Judge *k) {
+  const Judge *H = 0;
+  for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
+  if (!H || !k || k->hold || k->o.dead || H->o.lives) return 0;
+  return k->o.lives || diesAt(k) > diesAt(H);
+}
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.waits = waits; carriedSunk = -1;
   // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
   // tier, and its swaps after the first are the break it was chosen for)
-  carrySkip = !k ? 1 : (k->wait && k->k.play != PLAY_CARRYWAIT) ? 2 : k->k.nseq < first + 1 ? 3 : (k->t.tier > 4 && !(k->apBroke > 0)) ? 4 : 0;
+  carrySkip = !k ? 1 : (k->wait && k->k.play != PLAY_CARRYWAIT) ? 2 : k->k.nseq < first + 1 ? 3 : (k->t.tier > 4 && !(k->apBroke > 0) && !savesOverHold(k)) ? 4 : 0;
   if (carrySkip) { carryClr = carrySkip; return; }
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
