@@ -628,6 +628,15 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       L_s(" goalMiss=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[0]->k.play]); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)diesAt(order[0])); L_s("/"); L_i(g->o.lives ? -1 : (int32_t)diesAt(g));
       cmpKey = keep; }
   }
+  // (A BREAK PASSED OVER: under garbage, the line played breaks nothing and a line offered breaks garbage and lives, or is lost no sooner
+  // -- the key that put the line played first, the two's plays and losses: brkOver=kKEY:play:other:lost/lost)
+  if (n && order[0] && decF.under && !(order[0]->apBroke > 0)) {
+    const Judge *g = 0;
+    for (int i = 1; i < n && !g; i++) { const Judge *j = order[i]; if (!j->hold && j->apBroke > 0 && !j->o.dead && (j->o.lives || (!order[0]->o.lives && diesAt(j) >= diesAt(order[0])))) g = j; }
+    if (g) { int32_t keep = cmpKey; compareJudged(order[0], g);
+      L_s(" brkOver=k"); L_i(cmpKey); L_s(":"); L_s(order[0]->hold ? "hold" : PLAY_NAME[order[0]->k.play]); L_s(":"); L_s(PLAY_NAME[g->k.play]); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)diesAt(order[0])); L_s("/"); L_i(g->o.lives ? -1 : (int32_t)diesAt(g));
+      cmpKey = keep; }
+  }
   // (THE MODE'S BREAK PASSED OVER: the line played makes an attack the list does not ask for, and a line offered breaks garbage as the
   // mode asks -- an entry of the list or a three -- lives as it does or is lost no sooner: the key that put the line played first, its
   // play, the other's play and the two's losses: outMiss=kKEY:play:other:lost/lost)
