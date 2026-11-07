@@ -15,7 +15,7 @@ Four of these are measured every run beside survival (`target.sh`, from each gam
   meet its list, 0% extra -- no chain or combo the mode does not ask for, whoever made it, the board's own chains and the digging
   included. The one exception (the owner): a chain the garbage makes falling on its own, which no swap could stop -- never one our
   swaps drop onto it. Measured: the share of each mode's attacks that meet its aim ("the measure"), and the wrong attacks by kind and maker
-  ("the wrong attacks"), and the extra less the garbage's own ("the extra"). Last measured (`d2e34a60`, set 85): finish them 48%, build 42%, pressure 36%, big chain 28%. Target: 100%.
+  ("the wrong attacks"), and the extra less the garbage's own ("the extra"). Last measured (`d2e34a60`, set 85): finish them 48%, build 42%, pressure 36%, big chain 28%. Target: 100% -- as close to it as it can be got, like every other measure here.
 - **No wasted input** (the owner: efficiency, no mistakes, no changing minds). A line begun is pressed to its end unless survival needs
   another; no three that breaks nothing. Measured: the share of inputs pressed on lines dropped before their end (`actsLost`) and
   wasted threes a minute. Last measured: 27-33% of inputs; 0.01-0.04 threes a minute. Target: under 10%, and no wasted three.
