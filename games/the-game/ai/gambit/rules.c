@@ -15,6 +15,9 @@ typedef struct { int32_t op, n, near; } Test;
 // brk: -1 not asked, 0 a line that breaks nothing, 1 a line that breaks
 typedef struct { Test combo, chain, send; int32_t brk; } Aim;
 typedef struct { Aim aim[MAXAIMS]; int32_t n; } List;
+// (AN ENTRY THAT ASKS A COMBO OF EIGHT OR MORE: ">=8", ">7" or "==8" and up -- the two-piece combos, by whichever test the rules file
+// writes them)
+static int asksEight(const Test *c) { return (c->op == OP_GE || c->op == OP_EQ) ? c->n >= 8 : c->op == OP_GT ? c->n + 1 >= 8 : 0; }
 typedef struct { int32_t combo, chain, broke, cells; } Made;
 
 static int test(double v, Test t) {
