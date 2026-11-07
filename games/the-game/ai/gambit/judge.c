@@ -170,7 +170,7 @@ static int spoilsChain(Board *g, Board *a, int32_t (*keyAt)(int32_t f), void (*l
     gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
     if (f >= FIRST_LOOK && g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
   }
-  return ac >= 2 && gc < ac && garbageCells(g) >= garbageCells(a);
+  return ac >= 2 && gc < ac && garbageCells(g) >= garbageCells(a) && ownChainAsked(ac);
 }
 // THE FIRST SWAP'S OWN CLEAR (the line's wasted three, as the game makes it): the board the swap is pressed on beside the board left
 // alone as long, by the one test

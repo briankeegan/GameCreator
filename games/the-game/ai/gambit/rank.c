@@ -391,8 +391,8 @@ static void markIdle(Judge **a, int n) {
 // played it makes a shorter one
 static int cutsShort(const Judge *J) {
   if (J->hold || !J->apPlayed) return 0;
-  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
-  return aloneChain > 1 && J->apWhole < aloneChain;
+  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain && ownChainAsked(ownChainN);   // (judge.c ownChainOf: by the frame its last link comes)
+  return aloneChain > 1 && J->apWhole < aloneChain && ownChainAsked(aloneChain);
 }
 #define FLAT_ROWS 2
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
@@ -458,11 +458,6 @@ static int boughtWithPanels(const Judge *x, const Judge *y) {
 static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
 // (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" its target, the length it asks at least: a
 // link past the target is presses and panels the list does not ask for)
-static int32_t listChainCap(void) {
-  int32_t cap = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
-  return cap;
-}
 #define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
 // (A 2x ITS LINE DOES NOT CONTINUE: the chain the line makes ends at two -- read on the judge's count whether or not the board is lost
@@ -547,7 +542,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // under garbage too: a chain left to end short of the target is the attack thrown away
   // (and a chain the board is about to make on its own -- garbage converting into a match, panels falling -- is a chain going too: the
   // line that takes it further is chosen while it can still be reached, not once its second link has popped)
-  if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y)) && !finishAsked()) {
+  if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y)) && !finishAsked() && listChainCap() > 0) {   // (and not where the list asks no chain: rules.c ownChainAsked)
     int32_t cap = imax(listChainCap(), 3);   // (at least to three: the owner)
     {
       int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap);
