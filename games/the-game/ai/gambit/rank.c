@@ -225,10 +225,13 @@ static double diesAt(const Judge *x) {
 // (THE WALK NEVER TURNS A LIFE INTO A DEATH: two boards lost a break's time apart or more on the frame each is lost, the later of them,
 // whatever the walk charges -- the judge pressed each line on its walks already, and the charge is the order's preference for the nearer,
 // never a break's time of life: the walked line's board 140 frames alive past the hold's was put after it)
+// (and a board lost within a break's time has no frame to give for a walk: there the later loss decides by any margin -- the hold lost at
+// 8 is never put before the line lost at 19 for the cursor's walk)
 static int walkTurns(const Judge *x, const Judge *y) {
   if (x->o.lives || y->o.lives) return 0;
   double dx = diesAt(x), dy = diesAt(y);
-  if (dx >= 1e299 || dy >= 1e299 || dx < 0 || dy < 0 || (dx > dy ? dx - dy : dy - dx) < rankSave) return 0;
+  if (dx >= 1e299 || dy >= 1e299 || dx < 0 || dy < 0 || dx == dy) return 0;
+  if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
   return (dx > dy) != (lostOf(x) > lostOf(y));
 }
 static double lostOf(const Judge *x) {
