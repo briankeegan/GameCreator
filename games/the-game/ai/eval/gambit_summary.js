@@ -228,8 +228,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         var w = wrongIn[inMode] || (wrongIn[inMode] = { n: 0, what: {}, by: {} }), what = (a[2] === 'c' ? 'combo ' : 'chain ') + (+a[3] >= 6 ? '6+' : a[3]);
         var by = lastSwapAt >= 0 && +a[1] - lastSwapAt <= 120 ? lastSwapPlay.replace(/ /g, '_') : 'alone';
         w.n++; w.what[what] = (w.what[what] || 0) + 1; w.by[by] = (w.by[by] || 0) + 1;
-        // (the exception, the owner: a chain the garbage makes falling on its own -- no swap of ours in the 120 frames before it, garbage
-        // popping within 600 -- is not the mode's to fix)
+        // (noted apart, still counted -- the owner: a chain the garbage makes falling on its own, no swap of ours in the 120 frames before
+        // it and garbage popping within 600, is one a swap may not have been able to stop)
         if (by === 'alone' && +a[1] - lastPopAt <= 600) w.garbage = (w.garbage || 0) + 1;
       }
     });
@@ -433,8 +433,7 @@ Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
   console.log('the measure, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met its aims' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') + ', its first ' + t.head + ' ' + t.first + (t.all ? ' (' + Math.round(100 * t.first / t.all) + '%)' : '')); });
 Object.keys(wrongIn).sort().forEach(function (k) { var w = wrongIn[k], t = aimsIn[k] || { all: 0 }, top = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (z) { return z + ' x' + o[z]; }).join(', '); };
   console.log('the wrong attacks, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' -- ' + top(w.what) + '; made by ' + top(w.by));
-  var ex = w.n - (w.garbage || 0), al = t.all - (w.garbage || 0);
-  console.log('the extra, ' + k + ': ' + ex + ' of ' + al + (al ? ' (' + Math.round(100 * ex / al) + '%)' : '') + ' -- not counting ' + (w.garbage || 0) + ' the garbage made falling on its own (target 0%)'); });
+  console.log('the extra, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' (target 0%) -- of them ' + (w.garbage || 0) + ' the garbage made falling on its own'); });
 { var nmv0 = moves.clear + moves.setup + moves.break + moves.none + moves.open;
   console.log('the measure, waste: the mode passed over in ' + goalMiss.n + ' of ' + goalMiss.dec + ' decisions; ' + (nmv0 ? Math.round(100 * moves.none / nmv0) : '-') + '% of ' + nmv0 +
               ' swaps came to nothing; ' + moves.wasted + ' wasted threes' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') +
