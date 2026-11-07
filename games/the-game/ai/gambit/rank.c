@@ -418,8 +418,20 @@ static int lineWalk(const Judge *J) {
 // (a line that breaks nothing and walks the input allowance below a break's walk: the next break is pressed out of what is left)
 // (how far below a break's walk a line that breaks nothing leaves the allowance: 0 when it keeps it, or breaks -- the window already
 // short, the line that spends less of what is left keeps more of the next break)
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 ? 0 : imax(0, BREAK_WALK - (pressAllowance - lineWalk(J))); }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
+// (THE RESERVE, AS THE NEXT BREAK FINDS IT: the window left once a line is pressed, read at the soonest frame a break can be needed --
+// now with garbage on the board, the next block's landing with one on its way, else EARLIEST_LANDING: an attack the enemy makes now is
+// in the telegraph at once and lands that long after -- the actions that leave the window by then counted back. With nobody across
+// (time attack, the rules' enemy.none) no break is ever needed and no reserve is kept)
+#define EARLIEST_LANDING 151   // (pa-engine.js: GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 staged, GARBAGE_DELAY_LAND_TIME landing)
+static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
+static int allowAtNeed(int walk) {
+  if (decF.under) return pressAllowance - walk;
+  int32_t t = EARLIEST_LANDING;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
+  return allowLeftAt(t, walk);
+}
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 || ruleNoEnemy ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
