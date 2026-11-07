@@ -208,6 +208,10 @@ At `277e8159`, seed 86: switching 21, pressure 21, finish them 22, build 24, big
 
 The opening's raise a row short while garbage is on its way (`3a086617`), seed 86: finish them 23, switching 19, pressure 21, big chain 21, build 22 -- 106 against 110. Its target (an opening death after the raise, finish them combo_storm-8 at 381) lived. Not merged.
 
+The away-from-garbage order lifted while a slab pops or the board's own chain falls (`1a6140e4`), seed 86: switching 23, pressure 21, finish them 21, build 22, big chain 19 -- 106 against 110. Not merged. In those decisions the hold was 63% of answers during a pop and 32% during a cascade; the keys that put it first were the away-from-garbage order, the allowance's reserve (the window at 10-24 actions) and the mode.
+
+Where the actions go (`fd6dd511`, the carried line logged as it is dropped, switching seed 86, 22/24): 29% of actions are pressed for lines never played out, most of them a carried line dropped as a wasted three though it still breaks garbage (714 such drops in 24 games) -- the three made, its break never reached.
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
