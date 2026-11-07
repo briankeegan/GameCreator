@@ -135,6 +135,7 @@ var brNone = { n: 0, cut: 0 };   // (decisions whose break search found none, an
 var winHeld = { checked: 0, short: 0, worst: 0 };   // (THE WINDOW HELD, front.c: lines reached as judged, those the window held fewer actions for)
 var putBack = 0, putBackAt = [], putBackShown = 0, putBackShownAt = [], reaskShown = 0, idleQ = { lost: { frames: 0, idle: 0 }, survived: { frames: 0, idle: 0 } };   // (pairs put back for nothing refused at the press; frames idle with garbage queued, by outcome)
 var catd = { n: 0, missing: 0 };   // (decisions that offered lines, and those whose lines carry no category)   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
+var whyNot = { life: {}, brk: {}, lateLife: {}, lateBrk: {}, unsettled: 0, dec: 0 };   // (answer.c opts :kKEY -- every line offered and passed over, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
@@ -152,6 +153,24 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   if (drop) budget.dropped += +drop[1];
   if (fs.existsSync(lf)) {
     var lines = fs.readFileSync(lf, 'utf8').split('\n');
+    // (WHY NOT: each line offered beside the line played, with the key that put the line played first -- one that would have lived later
+    // (a cursor step's walk or more) or broken more garbage, counted by that key; and in a lost game's last 600 frames, apart)
+    { var lossAt = m[2] === 'lost' ? +m[3] : null, seenAt = {};
+      lines.forEach(function (l) {
+        if (l.indexOf('GAMBITD ') !== 0) return;
+        var at = +l.split(' ')[1], op = / opts=(\S+)/.exec(l); if (!op || seenAt[at]) return; seenAt[at] = 1; whyNot.dec++;
+        var es = op[1].split(','), top = es[0].split(':'), tl = top[1], tb = +top[2] || 0, late = lossAt !== null && at >= lossAt - 600 && at <= lossAt;
+        for (var i = 1; i < es.length; i++) {
+          var e = es[i].split(':'), k = (e.filter(function (x) { return /^k/.test(x); })[0] || '');
+          if (k === 'k?') { whyNot.unsettled++; continue; }
+          if (!k) continue;
+          var key = k + ':' + (top[0].replace(/[*~]/g, '')) + '>' + e[0].replace(/[*~]/g, '');
+          var life = (e[1] === 'L' && tl !== 'L') || (e[1] !== 'L' && tl !== 'L' && e[1] !== 'inf' && tl !== 'inf' && +e[1] - +tl >= 8);
+          var brk = (+e[2] || 0) > tb;
+          if (life) { whyNot.life[key] = (whyNot.life[key] || 0) + 1; if (late) whyNot.lateLife[key] = (whyNot.lateLife[key] || 0) + 1; }
+          if (brk) { whyNot.brk[key] = (whyNot.brk[key] || 0) + 1; if (late) whyNot.lateBrk[key] = (whyNot.lateBrk[key] || 0) + 1; }
+        }
+      }); }
     // (the decisions the clock cut: what a faster or slower machine would have played differently)
     lines.forEach(function (l) { if (l.indexOf('GAMBITD ') !== 0) return; var c = / out=(\d+)/.exec(l); if (!c) return; budget.decisions++; if (+c[1]) budget.out++; });
     // (A LIFE KEPT: a line played under garbage that lives, then nothing new told -- the next block lands on the same frame, as many
@@ -404,6 +423,9 @@ Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
   // attack it does not ask played over it)
   console.log('the mode passed over, by key: the first entry ' + goalMiss.n + (goalMiss.n ? ' (' + top(goalMiss.keys) + ')' : '') + '; a break the mode asks under an attack it does not ' + outMiss.n + (outMiss.n ? ' (' + top(outMiss.keys) + ')' : ''));
   // (answer.c brkOver: under garbage, a line breaking nothing played over a break lost no sooner, by the key that did it)
+  var top10 = function (o) { var ks = Object.keys(o), n = 0; ks.forEach(function (k) { n += o[k]; }); return n + (n ? ' (' + ks.sort(function (a, b) { return o[b] - o[a]; }).slice(0, 10).map(function (k) { return k + ' x' + o[k]; }).join(', ') + ')' : ''); };
+  console.log('why not, of ' + whyNot.dec + ' decisions (answer.c opts :k, key:played>passed over): a line living later passed over ' + top10(whyNot.life) + '; breaking more ' + top10(whyNot.brk) +
+              '; in the last 600 frames of the games lost, living later ' + top10(whyNot.lateLife) + '; breaking more ' + top10(whyNot.lateBrk) + '; ' + whyNot.unsettled + ' pairs the order does not settle (k?)');
   console.log('a break passed over, by key: ' + brkOver.n + (brkOver.n ? ' (' + top(brkOver.keys) + ')' : '')); }
 if (carrySkip.n) { var CS = { 0: 'handed on', 2: 'it waits', 3: 'nothing of it left', 4: 'a tier past the set-ups breaking nothing', 5: 'no panel to anchor it' };
   console.log('lines of two swaps or more played: ' + carrySkip.n + ', ' + Object.keys(carrySkip.by).sort().map(function (k) { return (CS[k] || k) + ' ' + carrySkip.by[k]; }).join(', '));
