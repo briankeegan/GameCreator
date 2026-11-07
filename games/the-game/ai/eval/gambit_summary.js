@@ -12,7 +12,7 @@ if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2);
 var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
 var aims = {};   // by the mode a game played throughout: { met, all }
 var carrySkip = { n: 0, by: {}, c16n: 0, c16: {} };   // (the lines of two swaps or more played, and why each was not handed on to the next decision: answer.c cof=)
-var aimsIn = {}, goalMiss = { n: 0, dec: 0, keys: {} }, outMiss = { n: 0, keys: {} }, dips = { n: 0, none: 0 };   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
+var aimsIn = {}, goalMiss = { n: 0, dec: 0, keys: {} }, outMiss = { n: 0, keys: {} }, brkOver = { n: 0, keys: {} }, dips = { n: 0, none: 0 };   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
 var frontS = {};   // (the frontiers carried on, search/frontier.c: per frontier, the lines kept and carried in, the decisions it was let go whole)
 var svSeed = [0, 0], rdyBeam = [0, 0], frontId = [0, 0, 0, 0];
@@ -189,6 +189,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var d = /^GAMBITD \d+ (.*?) play=/.exec(l);
       if (d) { inMode = d[1]; goalMiss.dec++; var gm = / goalMiss=(k\d+:[a-z_]+)/.exec(l); if (gm) { goalMiss.n++; goalMiss.keys[gm[1]] = (goalMiss.keys[gm[1]] || 0) + 1; }
         var om = / outMiss=(k\d+:[a-z_]+:[a-z_]+)/.exec(l); if (om) { outMiss.n++; outMiss.keys[om[1]] = (outMiss.keys[om[1]] || 0) + 1; }
+        var bo = / brkOver=(k\d+:[a-z_]+:[a-z_]+)/.exec(l); if (bo) { brkOver.n++; brkOver.keys[bo[1]] = (brkOver.keys[bo[1]] || 0) + 1; }
         var cf = / cof=(-?\d+)/.exec(l), sw = / swaps=(\d+)/.exec(l);
         if (cf && +cf[1] >= 0 && sw && +sw[1] >= 2) { carrySkip.n++; carrySkip.by[cf[1]] = (carrySkip.by[cf[1]] || 0) + 1; }
         var c16 = / c16=(\d+)/.exec(l); if (c16) { carrySkip.c16n++; carrySkip.c16[c16[1]] = (carrySkip.c16[c16[1]] || 0) + 1; }
@@ -401,7 +402,9 @@ Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
   var top = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).slice(0, 8).map(function (k) { return k + ' x' + o[k]; }).join(', '); };
   // (the mode passed over, by the order's key that did it: answer.c goalMiss -- the first entry; outMiss -- a break the mode asks, an
   // attack it does not ask played over it)
-  console.log('the mode passed over, by key: the first entry ' + goalMiss.n + (goalMiss.n ? ' (' + top(goalMiss.keys) + ')' : '') + '; a break the mode asks under an attack it does not ' + outMiss.n + (outMiss.n ? ' (' + top(outMiss.keys) + ')' : '')); }
+  console.log('the mode passed over, by key: the first entry ' + goalMiss.n + (goalMiss.n ? ' (' + top(goalMiss.keys) + ')' : '') + '; a break the mode asks under an attack it does not ' + outMiss.n + (outMiss.n ? ' (' + top(outMiss.keys) + ')' : ''));
+  // (answer.c brkOver: under garbage, a line breaking nothing played over a break lost no sooner, by the key that did it)
+  console.log('a break passed over, by key: ' + brkOver.n + (brkOver.n ? ' (' + top(brkOver.keys) + ')' : '')); }
 if (carrySkip.n) { var CS = { 0: 'handed on', 2: 'it waits', 3: 'nothing of it left', 4: 'a tier past the set-ups breaking nothing', 5: 'no panel to anchor it' };
   console.log('lines of two swaps or more played: ' + carrySkip.n + ', ' + Object.keys(carrySkip.by).sort().map(function (k) { return (CS[k] || k) + ' ' + carrySkip.by[k]; }).join(', '));
   var C16 = { 1: 'the decision before held', 2: 'it played a line that waits', 3: 'it played one swap', 4: 'it played a line past the set-ups breaking nothing', 5: 'its line had no panel to anchor it', 6: "a hold's break in reach not anchored", 7: 'the mode changed' };
