@@ -478,8 +478,20 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 #define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
 static int offMode(const Judge *J) { return !J->hold && !J->o.dead && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
+// (A BOARD THAT OUTLIVES ANOTHER: c's is lost -- past the horizon or not -- and o's lives, stands the whole judging, or is lost a break's
+// time (rankSave) or more later, on the frame each is lost, no walk charged; a loss not asked outlives nothing)
+static int outlives(const Judge *o, const Judge *c) {
+  double dc = diesAt(c), dn = diesAt(o);
+  if (c->o.lives || dc < 0 || dc >= 1e299) return 0;
+  if (o->o.lives || dn >= 1e300) return 1;
+  return dn >= 0 && dn < 1e299 && dn - dc >= rankSave;
+}
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx = livesOn(x), ly = livesOn(y);
+  // (the horizon's credit is no life beside a board that outlives it: the line in progress lost past the horizon, beside a line that
+  // lives or is lost a break's time later, is a line that is lost -- death is never an option)
+  if (lx && !x->o.lives && outlives(y, x)) lx = 0;
+  if (ly && !y->o.lives && outlives(x, y)) ly = 0;
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
@@ -492,7 +504,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // spent for nothing, and only a break's time of life, or more garbage broken, is worth it
   if (x->carried != y->carried && (lx || lostAlike(x, y))) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (!c->hold && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    // (and never over a board that outlives it: that is the break's time of life worth the switch)
+    if (!c->hold && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead && !outlives(o, c)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. THE MODE, NOT THE MOST LIFE (the owner: the mode is respected always, garbage on the board or not; a lower stack is more time): a
   // line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more -- the next decisions keep the
