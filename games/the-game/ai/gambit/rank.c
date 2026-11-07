@@ -310,7 +310,7 @@ static int finishAsked(void) {
   int big = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo, *h = &theList.aim[i].chain;
     if (h->op) return 0;
-    if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) big = 1; }
+    if (asksEight(c)) big = 1; }
   return big;
 }
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }

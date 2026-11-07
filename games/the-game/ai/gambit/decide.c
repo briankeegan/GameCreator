@@ -84,7 +84,7 @@ static int readBoard_(Read *R) {
   theList = R->list; listOn = 1; decF.belowFloor = R->belowFloor;
   // (an eight is set up ahead wherever some mode asks one -- outcome.c twinAfter, rank.c 7d)
   twinWanted = 0;
-  for (int i = 0; i < theTables.n && !twinWanted; i++) for (int k = 0; k < theTables.r[i].list.n; k++) { const Test *t = &theTables.r[i].list.aim[k].combo; if ((t->op == OP_GE || t->op == OP_GT) && t->n + (t->op == OP_GT) >= 8) twinWanted = 1; }
+  for (int i = 0; i < theTables.n && !twinWanted; i++) for (int k = 0; k < theTables.r[i].list.n; k++) { const Test *t = &theTables.r[i].list.aim[k].combo; if (asksEight(t)) twinWanted = 1; }
   // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's -- before
   // the board dies; the rule's `by` is an attack's)
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];
