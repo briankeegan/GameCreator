@@ -184,7 +184,7 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `gambit.js` are for JavaScript hosts.
 - **The truth never falters: every board Gambit's frame loop predicts is the one the game makes.** A board that differs is a plan made
   on a board that never was. The telegraph carries everything on its way, held-back garbage too, and the frame loop lands it as the
-  search does. `gambit_summary.js` counts the games' own divergences and a 24-game run with any is red (`gambit-24.yml`, "The truth
+  search does. `gambit_summary.js` counts the games' own divergences and a 28-game run with any is red (`gambit-24.yml`, "The truth
   held"); `lua/check.lua` exits 1 on one.
 
 - **Read state, never recall it: `status.sh`.** It prints what is training,

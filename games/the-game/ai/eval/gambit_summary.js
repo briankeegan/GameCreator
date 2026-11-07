@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// THE RUN, SUMMED: every game of a 24-game run (gambit-24.yml), read from each game's own results.txt and survivor.log -- per mode, how
+// THE RUN, SUMMED: every game of a 28-game run (gambit-24.yml: 24 garbage games and 4 endless), read from each game's own results.txt and survivor.log -- per mode, how
 // many survived and the frames the rest were lost at; the combos and chains made; the budgets (frames over the think budget, the
 // slowest frame, keys dropped, late moves); and each mode's aim -- of the attacks a game played in one mode fired (combos of four or more,
 // chains of two or more, as the game counts them), the share that met one of the mode's aims (gambit-rules.json). One directory per

@@ -1,7 +1,7 @@
-name: Gambit 24
+name: Gambit 28
 
-# A Gambit profile plays all 24 training games in the real client's Training mode -- 8 each of combo_storm, factory and
-# large_garbage, every game a job of its own, as training-mode.yml plays one pattern -- and a report job reads all 24 games'
+# A Gambit profile plays all 28 training games in the real client's Training mode -- 8 each of combo_storm, factory and
+# large_garbage and 4 endless (no garbage, six minutes), every game a job of its own, as training-mode.yml plays one pattern -- and a report job reads all 28 games'
 # logs and writes the run up: games/the-game/ai/eval/gambit_summary.js (survived per mode, the frames lost at, combos and
 # chains, the budgets), gambit_losses.js (the decisions before each loss), gambit_reach.js (was the break there; the turn).
 # The summary is the run's notices; every report is the gambit-report artifact. With report_run, nothing is played: that run's games
@@ -127,7 +127,7 @@ jobs:
           GC_GAMBIT_FIGHT: ${{ inputs.fight }}
           GC_GAMBIT_BLIND: ${{ inputs.blind }}
         run: |
-          # (rotate: game g gives way to the g-th of the four modes in turn, so 24 games try each mode six times)
+          # (rotate: game g gives way to the g-th of the four modes in turn, so the 28 games try each mode seven times)
           if [ "$GC_GAMBIT_THEN" = rotate ]; then M=(finish_them big_chain pressure build); export GC_GAMBIT_THEN=${M[$(( (${{ matrix.game }} - 1) % 4 ))]}; fi
           if [ -n "$SEED_BASE" ]; then
             case "${{ matrix.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; endless) P=4;; *) P=9;; esac
@@ -216,7 +216,7 @@ jobs:
           grep -h "boards searched again\|moves at the turn\|own time" report/reach.txt | sed 's/^/::notice title=reach::/' || true
           # (the reports whole, in the job's log: readable where the artifact is not)
           for f in summary losses reach; do echo "===== $f"; cat report/$f.txt; done
-          { echo '## Gambit 24'; echo '```'; cat report/summary.txt; echo; tail -3 report/losses.txt; grep -h "boards searched again\|moves at the turn" report/reach.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '## Gambit 28'; echo '```'; cat report/summary.txt; echo; tail -3 report/losses.txt; grep -h "boards searched again\|moves at the turn" report/reach.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         timeout-minutes: 5
