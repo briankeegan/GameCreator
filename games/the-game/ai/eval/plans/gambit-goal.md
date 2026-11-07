@@ -216,6 +216,8 @@ Where the actions go (`fd6dd511`, the carried line logged as it is dropped, swit
 
 The same code run twice: main's build on set 86 survived 24 (`277e8159`) and 20 (`f9b7d641`, the same Gambit) -- one 24-game run moves by four games, so a change is read on all five modes over both sets, never on one run. Build's losses on main and on every variant since are the board out of breaks under the garbage (gambit_reach.js: 98 of 108 boards searched again had none to find); the deaths are decided before the last break, not at it.
 
+The death and mode stack (`9699935c`, idea268: the board's own chain kept only as long as the list asks, the line in progress giving way to the mode's first entry, a hold pausing a line, death near ranked on the frame lost, the agent's save and "==8" fixes, the material kept only while a break is in reach, a dig anchored to the row not yet risen, and the line in progress alike with a break lost no sooner): set 85 build 22, finish them 22, pressure 17, switching 19 -- against main's 19, 22, 23, 23. Not merged. The same with the line in progress alike with any line lost no sooner (`6c96a8ff`, idea269): set 85 build 20 and 21, finish them 20, pressure 23, switching 23, big chain 21 -- 107, main's 107; set 86 build 18, finish them 17 (three combo_storm games lost before 1320). Not merged. The finish's mode share rose in both (49-50% of attacks met, 83 eights against main's 9 on set 85).
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
