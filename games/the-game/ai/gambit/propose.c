@@ -697,9 +697,9 @@ static int wayLines(Cand *out, int n, int cap) {
   return n;
 }
 // THE BOARD'S OWN CHAIN CUT: in a mode whose list asks for no chain (rules.c listChainCap), with the board about to chain on its own
-// (decide.c, the read's aloneChain), every swap the engine allows beside a panel in motion, nearest the cursor first -- one of them takes
+// (decide.c, the read's aloneChain), every swap the engine allows beside a panel in motion or a slab popping, nearest the cursor first -- one of them takes
 // a link out from under the chain, and the ranking keeps the line that leaves none (rank.c, the no-slab key)
-#define CUTN 12
+#define CUTN 16
 static int32_t cutOffered;   // (the cuts this decision offered: the log's)
 static int cutLines(const Read *R, Cand *out, int n, int cap) {
   cutOffered = 0;
@@ -709,7 +709,7 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
   uint8_t moving[MAXROWS + 2][W + 2]; memset(moving, 0, sizeof moving);
   for (int r = 1; r <= h + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
     const int32_t *f = P(b, r, c)->f;
-    if (f[COLOR] != 0 && !f[ISGARBAGE] && (f[STATE] != NORMAL || SETB(f[CHAINING]))) moving[r][c] = 1;
+    if (f[ISGARBAGE] ? f[STATE] == MATCHED : f[COLOR] != 0 && (f[STATE] != NORMAL || SETB(f[CHAINING]))) moving[r][c] = 1;   // (a slab popping among them: what it turns into chains with what lies beside it)
   }
   int32_t mv[W * MAXROWS]; int d[W * MAXROWS], nm = 0;
   for (int r = 1; r <= h && r < b->nrows; r++) for (int c = 1; c < W; c++) {
