@@ -373,7 +373,7 @@ end
 -- garbage dug out 0.21 rows a second net while any was on it. Topped with no shake left, it dies (VENEMY in the log) and a new one
 -- begins. Seeded from PA_SEED: a run repeats.
 local VIRTUAL = os.getenv("GC_GAMBIT_ENEMY") == "virtual"
-local VE_BASE, VE_LO, VE_HI, VE_STEP, VE_MOVE, VE_DIG, VE_SHAKE = 7, 3, 11, 32, 0.21, 285, 76
+local VE_BASE, VE_LO, VE_HI, VE_STEP, VE_MOVE, VE_DIG, VE_SHAKE, VE_FLIGHT = 7, 3, 11, 32, 0.21, 285, 76, 151
 local VE = { clock = -1 }
 local function veRand()   -- (a linear congruential stream, the same for a seed in any LuaJIT)
   VE.r = (VE.r * 1103515245 + 12345) % 2147483648
@@ -381,7 +381,7 @@ local function veRand()   -- (a linear congruential stream, the same for a seed 
 end
 local function virtualEnemy(me, clock)
   if clock < VE.clock or not VE.r then
-    VE = { clock = clock, base = VE_BASE, garbage = 0, dig = 0, seen = {}, r = (tonumber(os.getenv("PA_SEED") or "1") or 1) % 2147483648 }
+    VE = { clock = clock, base = VE_BASE, garbage = 0, dig = 0, seen = {}, done = {}, r = (tonumber(os.getenv("PA_SEED") or "1") or 1) % 2147483648 }
   end
   local q, cur = me and me.outgoingGarbage, {}
   if q then
@@ -393,8 +393,18 @@ local function virtualEnemy(me, clock)
       end
     end
   end
-  for g, h in pairs(VE.seen) do if not cur[g] then VE.garbage = VE.garbage + h; VE.landed = clock end end
-  VE.seen = cur
+  -- (a piece lands VE_FLIGHT frames after it is first seen on our queue, or as it leaves it -- training has no stack to take it, so it
+  -- may never leave; until then it is a row on its way)
+  local onWay, seen = 0, {}
+  for g, h in pairs(cur) do
+    local first = VE.seen[g] and VE.seen[g][1] or clock
+    seen[g] = { first, h }
+    if not VE.done[g] then
+      if clock - first >= VE_FLIGHT then VE.garbage = VE.garbage + h; VE.landed = clock; VE.done[g] = true else onWay = onWay + h end
+    end
+  end
+  for g, e in pairs(VE.seen) do if not cur[g] and not VE.done[g] then VE.garbage = VE.garbage + e[2]; VE.landed = clock end end
+  VE.seen = seen
   while VE.clock < clock do
     VE.clock = VE.clock + 1
     if VE.clock % VE_STEP == 0 and veRand() < VE_MOVE then
@@ -414,7 +424,7 @@ local function virtualEnemy(me, clock)
       h = VE.base
     end
   else VE.topped = nil end
-  return math.min(12, h), h >= 12 and 1 or 0
+  return math.min(12, h), h >= 12 and 1 or 0, onWay
 end
 
 -- (THE ENEMY AS OUR GARBAGE WILL LEAVE IT: the rows this stack has sent it that have not landed -- staged on the telegraph, or on their
@@ -452,8 +462,9 @@ function GambitNative:think(stack, sources, view)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
   local has, out, top, stop, stand = opponentOf(sources, view, stack.clock)
-  if stand and VIRTUAL then top, out = virtualEnemy(stack, stack.clock) end
-  if has == 1 then top = math.min(12, top + rowsOnItsWay(stack)) end
+  local onWay
+  if stand and VIRTUAL then top, out, onWay = virtualEnemy(stack, stack.clock) end
+  if has == 1 then top = math.min(12, top + (onWay or rowsOnItsWay(stack))) end
   local t2 = ThinkBudget.now()
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
