@@ -623,7 +623,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // for may be told of by then or not
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = reserveShort(x), ry = reserveShort(y);
-    if (rx != ry) return (cmpKey = __LINE__, (rx - ry));
+    // (but never against the board's own rise: with no garbage on the board or on its way, the board is lost to the stack rising, and
+    // the line that keeps it alive longer by a cursor step's walk or more is played over the reserve -- the board kept doing things)
+    const Judge *kp = rx < ry ? x : y, *sp = rx < ry ? y : x;
+    int rises = !lx && !decF.under && decQ.narr == 0 && !sp->o.dead && diesAt(sp) >= diesAt(kp) + WALK_FRAMES;
+    if (rx != ry && !rises) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
