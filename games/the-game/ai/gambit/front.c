@@ -914,9 +914,8 @@ static int wastedSwap(const Board *t, int32_t bits) {
   aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;
   F.guardSpoil = 0;
   if (wastedThree(guardBoard, aloneBoard)) return 1;
-  // (and the board's own chain spoiled by the swap, the board left alone after it -- as the judge asks it of every swap of a line; not at
-  // the finish, rank.c cutsShort)
-  if (finishAsked()) return 0;
+  // (and the board's own chain spoiled by the swap, the board left alone after it -- as the judge asks it of every swap of a line; a
+  // chain the mode asks, rules.c ownChainAsked)
   copyBoard(guardBoard, t); copyBoard(aloneBoard, t);
   guardBoard->input = bits & ~IN_SWAP; guardBoard->pressSwap = 1;
   aloneBoard->input = bits & ~IN_SWAP; aloneBoard->pressSwap = 0;

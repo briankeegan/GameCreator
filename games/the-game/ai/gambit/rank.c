@@ -386,12 +386,10 @@ static void markIdle(Judge **a, int n) {
 // then the kind of line (plans/gambit-next.md 0).
 // A LINE THAT CUTS THE BOARD'S OWN CHAIN SHORT: the board left alone makes a chain (the hold's judging, aloneChain) and with the line
 // played it makes a shorter one
-// (at the finish the board's own chain is no attack kept: the enemy topped out, the pieces that land soonest kill -- the owner: send as
-// much small garbage as fast as possible, not an 8-chain carried on)
 static int cutsShort(const Judge *J) {
-  if (J->hold || !J->apPlayed || finishAsked()) return 0;
-  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
-  return aloneChain > 1 && J->apWhole < aloneChain;
+  if (J->hold || !J->apPlayed) return 0;
+  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain && ownChainAsked(ownChainN);   // (judge.c ownChainOf: by the frame its last link comes)
+  return aloneChain > 1 && J->apWhole < aloneChain && ownChainAsked(aloneChain);
 }
 #define FLAT_ROWS 2
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
@@ -457,11 +455,6 @@ static int boughtWithPanels(const Judge *x, const Judge *y) {
 static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
 // (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" its target, the length it asks at least: a
 // link past the target is presses and panels the list does not ask for)
-static int32_t listChainCap(void) {
-  int32_t cap = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
-  return cap;
-}
 #define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
 // (A 2x ITS LINE DOES NOT CONTINUE: the chain the line makes ends at two -- read on the judge's count whether or not the board is lost
