@@ -420,7 +420,11 @@ static int ranked(const Read *R, const Found *S) {
       if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
-    if (!keeps && keptLost >= rankSave) keeps = 1;
+    // (with no garbage on the board or on its way the board is lost to its own rise, and a break's time is fewer rows the faster it
+    // rises: a three is wasted only where the line without one keeps it a row's rise past that, at the speed it rises now)
+    int32_t keepFor = rankSave;
+    if (!decF.under && decQ.narr == 0 && decQ.b && decQ.b->speed >= 1 && decQ.b->speed <= 99) keepFor += SPEED_TO_RISE_TIME[decQ.b->speed - 1];
+    if (!keeps && keptLost >= keepFor) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
     // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way
