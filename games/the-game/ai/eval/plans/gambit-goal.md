@@ -11,7 +11,10 @@ Four of these are measured every run beside survival (`target.sh`, from each gam
   f612ef5d), 75% of them while garbage pops; no key pressed in 27% of half-seconds, Mastershadow 5% in the same six live matches
   (plans/gambit-mastershadow.md). Target: 5%. The game's input budget (76 actions in 600 frames) is spent mostly already, so the
   wasted input below goes first: it is the budget the set-ups are pressed with.
-- **The mode played, garbage on the board or not** (item 3 below). Measured: the share of each mode's attacks that meet its aim.
+- **The mode played, garbage on the board or not** (item 3 below). Every attack is what the mode asks: 100% of each mode's attacks
+  meet its list, 0% extra -- no chain or combo the mode does not ask for, whoever made it, the board's own chains and the digging
+  included. Measured: the share of each mode's attacks that meet its aim ("the measure"), and the wrong attacks by kind and maker
+  ("the wrong attacks"). Last measured (`d2e34a60`, set 85): finish them 48%, build 42%, pressure 36%, big chain 28%. Target: 100%.
 - **No wasted input** (the owner: efficiency, no mistakes, no changing minds). A line begun is pressed to its end unless survival needs
   another; no three that breaks nothing. Measured: the share of inputs pressed on lines dropped before their end (`actsLost`) and
   wasted threes a minute. Last measured: 27-33% of inputs; 0.01-0.04 threes a minute. Target: under 10%, and no wasted three.
@@ -47,8 +50,7 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    for every mode: after the list's entries, a three that breaks garbage; last of all (they cost blocks), a clear that makes a chain or
    a combo the list does not ask for; nothing else clears (`judge.c` the one rule). Every mode defends itself while it attacks. Each mode's attacks meet its own aim -- pressure 4-chains, build 5-chains, big
    chain 8+, finish them its combos -- built on purpose from its own stack, not the chains garbage colours happen to make. Measured
-   every run: of the attacks fired in each mode, the share that met the mode's aim. Last measured: pressure 38%, build 26%, big chain
-   10%. The target is the owner's to set.
+   every run: of the attacks fired in each mode, the share that met the mode's aim. Target (the owner): 100%, 0% extra.
 4. **The cursor walks the shortest way.** A line's swaps are pressed in the order the cursor reaches them soonest, kept only where the
    engine says the board comes out no worse (`rank.c` `judgeWalked`). Measured: the mean cells between one swap and the next, and the
    share of jumps of 6 or more. Last measured (main server): 3.4 cells, 17%.
