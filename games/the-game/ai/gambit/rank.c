@@ -234,7 +234,7 @@ static int walkTurns(const Judge *x, const Judge *y) {
   if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
   return (dx > dy) != (lostOf(x) > lostOf(y));
 }
-#define NEAR_DEATH 2
+#define NEAR_DEATH 1
 #define DEATH_STEP 8   // (a cursor step's walk, WALK_FRAMES: a later loss by less is no frame the board can use)
 // (x lost DEATH_STEP frames or more after y, neither living, y lost within NEAR_DEATH breaks' time: rank.c 1, death near)
 static int nearLater(const Judge *x, const Judge *y) {
