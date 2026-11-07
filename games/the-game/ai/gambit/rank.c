@@ -426,8 +426,15 @@ static int lineWalk(const Judge *J) {
 // (a line that breaks nothing and walks the input allowance below a break's walk: the next break is pressed out of what is left)
 // (how far below a break's walk a line that breaks nothing leaves the allowance: 0 when it keeps it, or breaks -- the window already
 // short, the line that spends less of what is left keeps more of the next break)
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 ? 0 : imax(0, BREAK_WALK - (pressAllowance - lineWalk(J))); }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && pressAllowance - lineWalk(J) < BREAK_WALK; }
+// (the allowance as the next break finds it: a slab popping is broken again once it has popped, and the actions pressed before then
+// that leave the window by then are back)
+static int allowAtBreak(int walk) {
+  static LOCAL const Board *forB; static LOCAL int32_t forClock = -1, pop = 0;
+  if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; pop = popLeft(decQ.b); }
+  return pop > 0 ? allowLeftAt(pop, walk) : pressAllowance - walk;
+}
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 ? 0 : imax(0, BREAK_WALK - allowAtBreak(lineWalk(J))); }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && allowAtBreak(lineWalk(J)) < BREAK_WALK; }
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
