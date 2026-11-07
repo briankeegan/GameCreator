@@ -696,6 +696,33 @@ static int wayLines(Cand *out, int n, int cap) {
   }
   return n;
 }
+// THE BOARD'S OWN CHAIN CUT: in a mode whose list asks for no chain (rules.c listChainCap), with the board about to chain on its own
+// (decide.c, the read's aloneChain), every swap the engine allows beside a panel in motion, nearest the cursor first -- one of them takes
+// a link out from under the chain, and the ranking keeps the line that leaves none (rank.c, the no-slab key)
+#define CUTN 12
+static int32_t cutOffered;   // (the cuts this decision offered: the log's)
+static int cutLines(const Read *R, Cand *out, int n, int cap) {
+  cutOffered = 0;
+  if (listChainCap() > 0 || R->aloneChain < 2) return n;
+  Board *b = decQ.b;
+  int h = b->height ? b->height : 12;
+  uint8_t moving[MAXROWS + 2][W + 2]; memset(moving, 0, sizeof moving);
+  for (int r = 1; r <= h + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = P(b, r, c)->f;
+    if (f[COLOR] != 0 && !f[ISGARBAGE] && (f[STATE] != NORMAL || SETB(f[CHAINING]))) moving[r][c] = 1;
+  }
+  int32_t mv[W * MAXROWS]; int d[W * MAXROWS], nm = 0;
+  for (int r = 1; r <= h && r < b->nrows; r++) for (int c = 1; c < W; c++) {
+    int near = 0;
+    for (int rr = imax(1, r - 2); rr <= imin(h + 1, r + 2) && !near; rr++) for (int cc = imax(1, c - 1); cc <= imin(W, c + 2); cc++) if (moving[rr][cc]) { near = 1; break; }
+    int32_t cost;
+    if (!near || !canSwapPanels(b, P(b, r, c), P(b, r, c + 1), &cost) || cost) continue;
+    mv[nm] = r * 8 + c; d[nm] = iabs(r - b->curRow) + iabs(c - b->curCol); nm++;
+  }
+  for (int i = 1; i < nm; i++) for (int j = i; j > 0 && d[j] < d[j - 1]; j--) { int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; }
+  for (int i = 0; i < nm && i < CUTN && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &mv[i], 1, -1, 0)) { n++; cutOffered++; }
+  return n;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
@@ -800,5 +827,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = growLines(out, n, cap);
   n = twinLines(R, out, n, cap);
   n = wayLines(out, n, cap);
+  n = cutLines(R, out, n, cap);
   return n;
 }
