@@ -715,6 +715,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
     L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
+    // (and the order's key that put the first above it, rank.c cmpKey: every line offered says why it was not played)
+    if (i && order[0]) { int32_t keep = cmpKey; if (compareJudged(order[0], j) < 0) { L_s(":k"); L_i(cmpKey); } else L_s(":k?"); cmpKey = keep; }
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   // (THE MODE'S LIST, for the report: the entry the line played meets, whether it is a fallback -- an entry after the first that breaks
