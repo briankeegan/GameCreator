@@ -9,6 +9,8 @@ static int32_t openerAt;     // (and the frame it was played out on: a fight's s
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
 static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
+#define LATE_BREAKS 2   // (the break lines judged past the move's frame where nothing was judged in it)
+static int32_t lateBreaks;   // (decisions that did: the log's)
 static int32_t rescues;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
@@ -305,6 +307,19 @@ static int ranked(const Read *R, const Found *S) {
   if (!n && nc && clockFrameOut && clockOut()) {
     rescue = 1; clockDue = 0; clockShare = 0;
     for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+    // (and the move's frame gone before any was judged: the break the search found is judged past it -- a few ms late is a move the frame
+    // loop presses late, the hold is a board that dies without the break it was searched for)
+    if (!n) {
+      int (*keep)(void) = clockFrameOut; clockFrameOut = 0;
+      for (int i = 0, k = 0; i < nc && k < LATE_BREAKS; i++) {
+        int p = theCands[i].play;
+        if (p != PLAY_BREAKSEARCH && p != PLAY_BREAKLINE && p != PLAY_LINEUPBREAK) continue;
+        k++;
+        if (judgeCand(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+      }
+      clockFrameOut = keep;
+      if (n) lateBreaks++;
+    }
   }
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
