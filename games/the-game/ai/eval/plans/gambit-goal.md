@@ -226,6 +226,8 @@ HELD UNJUDGED (about 150 decisions a run, a third with a break found): the move'
 
 MERGED (`e433bc1d`): a decision the host let go takes its worker jobs back at once -- live run p49's 24 late answers each followed one (451-463 ms on the logged boards, 37-42 ms with it). Stopping them also when the frame came lost games in the test runs (set 85 build 21, finish them 23, pressure 20, switching 19): only the let-go half is kept.
 MERGED (`e57a351e`, idea281): the line in progress never stands over a board that lives, or is lost a break's time later on the frame each is lost. Set 85, the 24 garbage games: 23, 21, 20, 21, 21 -- 106, main's 107 and 112. Endless (4 games, no garbage, six minutes): finish them 2, pressure 4, switching 0, big chain 2 -- 8 of 16; its deaths are the window spent (a 14-swap level line, 6-9-swap combo entries) with the stack at the top, and the cheap three that keeps it down dropped as wasted.
+MERGED (`1abbaef9`, idea283): near death, a later loss bought with the window the next breaks need is no later loss. Set 85, 28 games: 117 of 140.
+MERGED (`d2e34a60`, idea290): the board's own chain kept only as long as the mode's list asks (`rules.c` ownChainAsked), and finish them plays no chain. Set 85, 28 games: finish them 25, pressure 23, switching 25, big chain 22, build 23 -- 118 of 140. The wrong attacks stay at 52-72% a mode: under garbage the digging is done with combos, and of the chains the board makes alone in finish them, 685 of 717 come where no line lives (cutting them, `2ac75928`/`d2a12365`, changed nothing).
 
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
