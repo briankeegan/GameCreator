@@ -220,6 +220,8 @@ The death and mode stack (`9699935c`, idea268: the board's own chain kept only a
 
 Main measured twice on both sets (`7df66d1a`, the Gambit of `277e8159`): set 85 107 and 112 (build 19/23, finish them 22/22, pressure 23/22, switching 23/23, big chain 20/22), set 86 110 and 105 (24/19, 22/22, 21/20, 21/22, 22/22) -- 217 both times over the two sets. One mode in one run moves by up to five; ten runs total move by none here. The fixes alone (`6ca4653b`, idea271: the agent's save fixes, "==8" read as an eight, a dig anchored below, the logs) 103 and 102 of 239 games -- 205, twelve under. Not merged; its two halves are measured apart.
 
+MERGED (`b384cb13`, idea272): a dying board keeps its save -- a three the save check gave no answer on is kept as the save, a save line that outlives the hold is carried past the set-ups' tier, no walk charged where the sooner loss is within a break's time. Set 85: build 23, finish them 23, pressure 20, switching 20, big chain 20 -- 106, main's 107 and 112. Merged as doing as well once (the owner: if it does as well once, move on).
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
