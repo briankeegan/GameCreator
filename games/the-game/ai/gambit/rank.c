@@ -318,7 +318,7 @@ static int finishAsked(void) {
   int big = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo, *h = &theList.aim[i].chain;
     if (h->op) return 0;
-    if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) big = 1; }
+    if (((c->op == OP_GE || c->op == OP_EQ) && c->n >= 8) || (c->op == OP_GT && c->n + 1 >= 8)) big = 1; }   // (an entry of "==8" and up asks one too)
   return big;
 }
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
@@ -572,7 +572,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
   // owner: no big chains at the finish; a chain is played there only where nothing else lives as long
   if (finishAsked() && (lx || lostAlike(x, y))) {
-    int bx = chainReach(x) >= 3, by = chainReach(y) >= 3;
+    // (a list that asks no chain at all: no chain of two either -- every chain is a slab at an enemy topped out)
+    int at = listChainCap() > 0 ? 3 : 2, bx = chainReach(x) >= at, by = chainReach(y) >= at;
     if (bx != by) return (cmpKey = __LINE__, (bx ? 1 : -1));
   }
   // 1'L. UNDER GARBAGE, BREAK (the owner: it waits too long to break garbage; low, spend less and focus on breaking): garbage on the
