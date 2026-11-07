@@ -631,6 +631,16 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       L_s(" goalMiss=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[0]->k.play]); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)diesAt(order[0])); L_s("/"); L_i(g->o.lives ? -1 : (int32_t)diesAt(g));
       cmpKey = keep; }
   }
+  // (AN ATTACK THE MODE DOES NOT ASK, PLAYED OVER ONE IT DOES: the line played breaks outside the list, and a line offered breaks within
+  // it and is lost no more than a break's time sooner -- the key that put the line played first, the two plays and losses:
+  // outKey=kKEY:play:in-play:lost/lost)
+  if (n && order[0] && !order[0]->hold && order[0]->outside && order[0]->apBroke > 0) {
+    const Judge *g = 0;
+    for (int i = 1; i < n && !g; i++) { const Judge *j = order[i]; if (!j->hold && !j->outside && j->apBroke > 0 && (j->o.lives || (!order[0]->o.lives && diesAt(j) >= diesAt(order[0]) - rankSave))) g = j; }
+    if (g) { int32_t keep = cmpKey; compareJudged(order[0], g);
+      L_s(" outKey=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[0]->k.play]); L_s(":"); L_s(PLAY_NAME[g->k.play]); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)diesAt(order[0])); L_s("/"); L_i(g->o.lives ? -1 : (int32_t)diesAt(g));
+      cmpKey = keep; }
+  }
   // (a two-column eight offered and not played: the key the line played was ranked first by, before the best of them, and the two's losses)
   if (n && order[0] && !order[0]->k.twin) for (int i = 1; i < n; i++) if (order[i]->k.twin == 1) {
     int32_t keep = cmpKey; compareJudged(order[0], order[i]);
