@@ -62,6 +62,36 @@
    ]
   },
   {
+   "name": "fill",
+   "when": {
+    "enemy.height": "<10"
+   },
+   "aims": [
+    {
+     "chain": "fill"
+    },
+    {
+     "combo": "==8"
+    },
+    {
+     "combo": "==9"
+    },
+    {
+     "combo": "==10"
+    },
+    {
+     "combo": "==5"
+    },
+    {
+     "combo": "==6"
+    },
+    {
+     "combo": "==4"
+    }
+   ],
+   "by": 600
+  },
+  {
    "name": "big chain",
    "when": {
     "enemy.height": "<5"
