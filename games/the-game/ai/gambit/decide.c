@@ -19,7 +19,7 @@ static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: t
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
-#define OPENING_RAISE 600   // the opening raise's frames: the countdown and the seconds before garbage first lands (340-400 in the garbage patterns)
+#define OPENING_RAISE 0   // the opening raise's frames: the countdown and the seconds before garbage first lands (340-400 in the garbage patterns)
 #define RAISE_WAIT 120   // the frames the floor's raise waits for the stack to take one, at most
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
