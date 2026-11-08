@@ -863,7 +863,7 @@ static int digLines(const Read *R, Cand *out, int n, int cap) {
     if (ns < 0 || ns + 1 > DIG_MAXSWAPS) continue;
     seq[ns++] = t->r * 8 + t->c;
     if (candOf(&out[n], PLAY_DIG, seq, ns, -1, 0)) {
-      out[n].x.combo = digSize(t);
+      out[n].x.combo = digSize(t); out[n].x.broke = 1;   // (it touches garbage at rest: a dig the judge finds breaking none is put down unbroken, and logged)
       n++; digOffered++;
     }
   }
