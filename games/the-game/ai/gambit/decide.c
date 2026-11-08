@@ -418,7 +418,12 @@ static int ranked(const Read *R, const Found *S) {
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps
   { int ns = 0, tried = 0, none = !(n && order[0]->o.lives), n0 = n;
-    for (int i = 0; i < n0 && tried < STRIP_LINES && ns < NSTRIP && leftMs() > 0; i++) {
+    // (the line in progress first, whatever its place: dropped whole, every action pressed of it is spent for nothing -- the owner, no
+    // changing minds; its three left out is the same line carried on)
+    int ci = -1; for (int i = 0; i < n0 && ci < 0; i++) if (order[i] == carriedJ) ci = i;
+    for (int ii = ci >= 0 ? -1 : 0; ii < n0 && tried < STRIP_LINES + (ci >= 0) && ns < NSTRIP && leftMs() > 0; ii++) {
+      int i = ii < 0 ? ci : ii;
+      if (ii >= 0 && i == ci) continue;
       const Judge *J = order[i];
       if (J->hold || !wastesThree(J) || J->k.nseq < 2) continue;
       tried++;
@@ -429,6 +434,7 @@ static int ranked(const Read *R, const Found *S) {
         if (!candOf(&k, J->k.play, seq, m, J->k.aim, J->k.extend)) continue;
         k.settled = J->k.settled; k.way = J->k.way;
         if (!judgeCand(R, &k, &stripped[ns]) || wastesThree(&stripped[ns])) continue;
+        if (J == carriedJ) stripped[ns].carried = 1;
         if (none) readyNextFor(&stripped[ns]);
         order[n++] = &stripped[ns++];
       }
