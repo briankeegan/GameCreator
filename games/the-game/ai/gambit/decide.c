@@ -3,6 +3,7 @@
 // THE QUESTION'S OWN FACTS from the host (answer.c gb_answer): the enemy as the host sends it, whether a raise may begin
 typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
+static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 static int32_t openerOver, openerChained;   // (the opener played out: a board has topped out this game -- or, nobody across, its chain thrown)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
@@ -17,6 +18,7 @@ static int32_t raiseRefill;   // (the raise asked is the floor's, not the openin
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
+#define OPENING_RAISE 600   // the opening raise's frames: the countdown and the seconds before garbage first lands (340-400 in the garbage patterns)
 #define RAISE_WAIT 120   // the frames the floor's raise waits for the stack to take one, at most
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
 // THE FLOOR A LINE'S BOARD KEEPS, as the rule in force tests it (facts.c keepsFloor, the line's breaks aside): outcome.c asks it of the
@@ -97,14 +99,19 @@ static int readBoard_(Read *R) {
   const Rule *rule = &theTables.r[ri];
   R->rule = ri;
   ruleNoEnemy = asksNoEnemy(rule);
-  R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on;
+  // (A GAME WITH GARBAGE IN IT: garbage on the board once this game, or on its way -- a stack topped by its own rise is none. The floor,
+  // the searches' and the rank's, and the floor's raise are the next break's material; with no garbage ever, endless, they hold the stack
+  // seven rows high at forty-seven frames a row)
+  if (F->known[FACT_US_CONTACT] || decQ.narr > 0 || decQ.b->ninc > 0) garbageSeen = 1;
+  int garbageGame = garbageSeen;
+  R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on && garbageGame;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
   fillList(&R->list);
   R->guides = R->list;
   R->by = deadlineOf(F, rule);
   // (below the material floor a step that clears and breaks nothing is out, as the judge drops it)
-  R->belowFloor = R->keepOn && R->keep.t[KEEP_MATERIAL].op && !test(F->v[FACT_US_MATERIAL], R->keep.t[KEEP_MATERIAL]);
+  R->belowFloor = garbageGame && R->keepOn && R->keep.t[KEEP_MATERIAL].op && !test(F->v[FACT_US_MATERIAL], R->keep.t[KEEP_MATERIAL]);
   theList = R->list; listOn = 1; decF.belowFloor = R->belowFloor;
   // (an eight is set up ahead wherever some mode asks one -- outcome.c twinAfter, rank.c 7d)
   twinWanted = 0;
@@ -146,9 +153,11 @@ static int readBoard_(Read *R) {
   // floor kept by raising, a reserve: below it, not topped, the panels under `to` -- garbage on them aside, a slab is no panel to break
   // with -- the rows the next break is made of brought in)
   int32_t to = rule->raiseTo ? rule->raiseTo : theTables.raiseTo;
-  int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped;
-  // (and A LOW STACK: under LOW_ROWS rows of panels, not topped, it is raised all the same -- the owner's rule: below six rows, raise high)
-  int refill = !opening && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
+  int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped && decQ.b->clock < OPENING_RAISE;
+  // (and A LOW STACK: under LOW_ROWS rows of panels, not topped, it is raised all the same -- the owner's rule: below six rows, raise high;
+  // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
+  // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
+  int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
   raiseRefill = refill;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
   R->low = to && (opening || refill) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
