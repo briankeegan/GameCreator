@@ -795,6 +795,31 @@ static int digSize(const Twin *t) { return digSide(t->a1 >= t->a0, t->a0, t->a1,
 static int digTouch(uint8_t gb[][W + 2], int r, int c) {   // (garbage at rest: a slab popping or falling is broken by nothing)
   return gb[r + 1][c] == 1 || gb[r - 1][c] == 1 || (c > 1 && gb[r][c - 1] == 1) || (c < W && gb[r][c + 1] == 1);
 }
+// A LINE MADE ON THE DECISION'S BOARD, PRESSED ON A STACK THAT RISES: the judge presses each swap at the row it is given, and a row
+// rises under a line of several swaps (forty-seven frames at top speed) -- each swap's row moved up by the rows risen before it, walked on
+// the engine one swap at a time as the line's own swaps fall; -1 where the board is lost on the way
+static Ctx *riseCtx;
+static int rowOfId(const Board *B, int32_t id) {
+  for (int r = 0; r < B->nrows; r++) for (int c = 1; c <= W; c++) if (B->p[r][c].f[ID] == id) return r;
+  return -1;
+}
+static int riseLine(int32_t *seq, int ns) {
+  Ctx *x = riseCtx = ctxOf(riseCtx);
+  const Board *b0 = decQ.b; int32_t ref = NUL; int r0 = 0;
+  for (int r = 1; r < b0->nrows && ref == NUL; r++) for (int c = 1; c <= W && ref == NUL; c++) if (b0->p[r][c].f[ID] != NUL && b0->p[r][c].f[COLOR] != 0) { ref = b0->p[r][c].f[ID]; r0 = r; }
+  if (ref == NUL) return 0;
+  int node = rootOf(x, &decQ);
+  for (int i = 0; i < ns; i++) {
+    if (!liveNode(x, node)) return -1;
+    const Board *B = ensureBoard(x, node);
+    int rr = B ? rowOfId(B, ref) : -1;
+    if (rr < 0) return -1;
+    int r = CR(seq[i]) + (rr - r0), c = CC(seq[i]);
+    seq[i] = r * 8 + c;
+    int from; node = pressWalk(x, node, MK_SWAP, r, c, step, &from);   // (as the judge presses it: a swap whose pair still moves waited for)
+  }
+  return liveNode(x, node) ? 0 : -1;
+}
 static int digLines(const Read *R, Cand *out, int n, int cap) {
   digOffered = 0; digWhy[0] = 0;
   if (!R->under || clockOut()) return n;
@@ -862,6 +887,7 @@ static int digLines(const Read *R, Cand *out, int n, int cap) {
     int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, t, seq);
     if (ns < 0 || ns + 1 > DIG_MAXSWAPS) continue;
     seq[ns++] = t->r * 8 + t->c;
+    if (riseLine(seq, ns) < 0) continue;
     if (candOf(&out[n], PLAY_DIG, seq, ns, -1, 0)) {
       out[n].x.combo = digSize(t); out[n].x.broke = 1;   // (it touches garbage at rest: a dig the judge finds breaking none is put down unbroken, and logged)
       n++; digOffered++;
