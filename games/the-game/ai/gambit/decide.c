@@ -3,6 +3,7 @@
 // THE QUESTION'S OWN FACTS from the host (answer.c gb_answer): the enemy as the host sends it, whether a raise may begin
 typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
+static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 static int32_t openerOver, openerChained;   // (the opener played out: a board has topped out this game -- or, nobody across, its chain thrown)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
@@ -106,7 +107,8 @@ static int readBoard_(Read *R) {
   R->by = deadlineOf(F, rule);
   // (A GAME WITH GARBAGE IN IT: garbage on the board once this game, or on its way -- the floor and the floor's raise are the next
   // break's material; with none ever, endless, they are a stack held seven rows high at forty-seven frames a row)
-  int garbageGame = gambitHit || F->known[FACT_US_CONTACT] || decQ.narr > 0 || decQ.b->ninc > 0;
+  if (F->known[FACT_US_CONTACT] || decQ.narr > 0 || decQ.b->ninc > 0) garbageSeen = 1;   // (garbage itself -- a stack topped by its own rise is none)
+  int garbageGame = garbageSeen;
   // (below the material floor a step that clears and breaks nothing is out, as the judge drops it)
   R->belowFloor = garbageGame && R->keepOn && R->keep.t[KEEP_MATERIAL].op && !test(F->v[FACT_US_MATERIAL], R->keep.t[KEEP_MATERIAL]);
   theList = R->list; listOn = 1; decF.belowFloor = R->belowFloor;
