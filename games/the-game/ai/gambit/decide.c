@@ -456,13 +456,20 @@ static int ranked(const Read *R, const Found *S) {
     // rises: a three is wasted only where the line without one keeps it a row's rise past that, at the speed it rises now)
     int32_t keepFor = rankSave;
     if (!decF.under && decQ.narr == 0 && decQ.b && decQ.b->speed >= 1 && decQ.b->speed <= 99) keepFor += SPEED_TO_RISE_TIME[decQ.b->speed - 1];
+    // (A GAME NO GARBAGE HAS REACHED: the board's only death is its rise, and the save put off to a later decision is put off at every
+    // decision -- the survival search finds the three it would make later, and later the window is spent: a three is the save wherever
+    // every line that keeps it is lost within the judge's horizon (HORIZON + REST), asked of no search; the order still plays it only
+    // where it is lost later than the rest by a break's time)
+    int noGarbage = !garbageSeen && !decF.under && decQ.narr == 0;
+    if (noGarbage) keepFor = HORIZON + REST;
     if (!keeps && keptLost >= keepFor) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
+    if (!keeps && noGarbage) saveOk = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
     // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way
     // landing as it would. A three whose board, with the best line on, outlasts the other's by nothing was not needed not to die: it
     // is wasted)
-    if (!keeps && saveRoomMs() > SAVE_KEEP_MS + 2) {
+    if (!keeps && !saveOk && saveRoomMs() > SAVE_KEEP_MS + 2) {
       const Judge *bw = 0, *bk = 0;
       for (int i = 0; i < n; i++) {
         const Judge *J = order[i];
