@@ -450,6 +450,11 @@ static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->ap
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
+// (the mode's list asks a combo of eight or more: finish them)
+static int listAsksEight(void) {
+  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_EQ || c->op == OP_GE) && c->n >= 8) return 1; if (c->op == OP_GT && c->n + 1 >= 8) return 1; }
+  return 0;
+}
 static int nearerEight(const Judge *a, const Judge *b) {
   if (a->o.twinAfter < 0 || b->o.twinAfter < 0 || a->o.twinAfter >= b->o.twinAfter || b->o.twinAfter >= 99 || spendsReserve(a)) return 0;
   return a->o.lives || (!b->o.lives && diesAt(a) >= diesAt(b));
@@ -715,6 +720,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (of two that break: the one that meets the mode's first entry, chain or combo -- the mode's attack under garbage, the break with
     // it: the owner, the mode passed over for survival only)
     else if (goalLine(x) != goalLine(y)) return (cmpKey = __LINE__, (goalLine(x) ? -1 : 1));
+    // (of two that break and survive alike, where the mode asks an eight: the one that leaves the board a two-column eight TWIN_STEP or more
+    // swaps nearer -- the players dig toward the crossed seam, and 222 of their 260 eights were made with garbage on the screen)
+    else if (listAsksEight() && x->o.twinAfter >= 0 && y->o.twinAfter >= 0 && imin(x->o.twinAfter, y->o.twinAfter) <= TWIN_KEY_REACH &&
+             iabs(x->o.twinAfter - y->o.twinAfter) >= TWIN_STEP) return (cmpKey = __LINE__, (x->o.twinAfter - y->o.twinAfter));
     // (a line put down for another throws away the actions pressed of it: the other is charged them -- the walk the line in progress was
     // played for, less what is left of it)
     else {
