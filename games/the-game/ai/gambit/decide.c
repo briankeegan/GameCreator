@@ -65,7 +65,8 @@ static int readBoard_(Read *R) {
   // (the frames until the board is lost if nothing is done, from the engine with the garbage the game shows landing when it lands:
   // sooner than the rise alone takes, the garbage on its way decides it -- queueKills)
   int32_t alone = diesIn(&decQ, F->v[FACT_US_DIES]);
-  if (alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
+  // (no answer -- the clock stopped it: NOT_ASKED, -1 -- is no death in -1 frames: the stack's own estimate stands)
+  if (alone >= 0 && alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
   // (the rule: the mode in force, else the first whose `when` the facts hold -- with no opponent to read, the rule asking `enemy.none`;
   // else the first of the rules, so a board with nobody across still plays)
   // (THE OPENER: in a fight with no mode named, from the game's start until either board tops out -- garbage landed above its top row,
