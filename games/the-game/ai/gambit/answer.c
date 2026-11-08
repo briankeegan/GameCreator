@@ -845,7 +845,27 @@ static int lapOf(int n, int32_t *lap) {
 EXPORT(gb_switch_game) void gb_switch_game(uint32_t seed) {
   nswitch = 0; modeRule = C2.GP.mode;
   int32_t rules[MAXRULES], nr = 0;
-  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1 && !asksNoEnemy(&theTables.r[i])) rules[nr++] = theTables.r[i].name;
+  // (the modes live play can reach: a rule that is the first whose `when` holds at some enemy height -- one that tests anything else is
+  // counted reachable; one every height of which an earlier rule takes is left out: the fill rule leaves big chain, pressure and build so)
+  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) {
+    const Rule *r = &theTables.r[i];
+    if (r->table != 1 || asksNoEnemy(r)) continue;
+    int other = 0;
+    for (int w = 0; w < r->nwhen; w++) if (r->when[w].fact != FACT_ENEMY_HEIGHT) other = 1;
+    int reach = other;
+    for (int h = 0; h <= 12 && !reach; h++) {
+      int first = -1;
+      for (int j = 0; j < theTables.n && first < 0; j++) {
+        const Rule *q = &theTables.r[j];
+        if (q->table != 1 || asksNoEnemy(q)) continue;
+        int holds = 1;
+        for (int w = 0; w < q->nwhen; w++) if (q->when[w].fact == FACT_ENEMY_HEIGHT && !test(h, q->when[w].t)) holds = 0; else if (q->when[w].fact != FACT_ENEMY_HEIGHT) holds = 0;
+        if (holds) first = j;
+      }
+      if (first == i) reach = 1;
+    }
+    if (reach) rules[nr++] = r->name;
+  }
   if (!switchMin || nr < 2) return;
   static int32_t lap[MAXRULES * MAXRULES + 1];
   int nl = lapOf(nr, lap);
