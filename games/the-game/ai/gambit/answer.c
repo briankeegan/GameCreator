@@ -666,6 +666,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (readyPre) { L_s(" pre="); L_i(readyPre); L_s("/"); L_i(readyPendN); }
   if (wayOffered) { L_s(" way="); L_i(wayOffered); if (wayPlayed) L_s("/played"); }
   if (cutOffered) { L_s(" cut="); L_i(cutOffered); if (P.line && P.line->k.play == PLAY_CUT) L_s("/played"); }
+  if (digOffered) { L_s(" dig="); L_i(digOffered); if (P.line && P.line->k.play == PLAY_DIG) L_s("/played"); }
+  if (digWhy[0]) { L_s(" digW="); for (int i = 1; i < 8; i++) { if (i > 1) L_s("/"); L_i(digWhy[i]); } }
   if (zipOffered) { L_s(" zip="); L_i(zipOffered); if (P.line && P.line->k.play == PLAY_ZIP) L_s("/played"); }
   // (the floor's raise: the rows asked, how many leave a break once everything lands, how many the board lives through -- or, asked
   // while the board is busy, -1 a cascade, -2 the game's raise not allowed)
