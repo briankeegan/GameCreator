@@ -364,6 +364,10 @@ static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
   // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
   if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
+  // (READY FOR NOTHING: a line lost no later than the hold buys nothing by leaving the next block breakable or a break nearer -- the
+  // block lands on a board already lost, and the walk to it is the window the board had left; live p49 at 45.8 s, finish them: every
+  // line lost in 2.5 s and the cursor walked eight rows up for a "ready" swap)
+  if (!L->o.lives && l != NOT_ASKED && h != NOT_ASKED && h != FOREVER && l != FOREVER && l <= h && !(L->apBroke > 0)) return 0;
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
   // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
   // breaks lost at 44 put after a hold lost at 44)
@@ -595,6 +599,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // one that leaves the board flatter by FLAT_ROWS or more, whatever the window holds
   if ((lx || lostAlike(x, y)) && !decF.under && decQ.narr == 0 && decF.next == NOT_ASKED && decQ.b->chainCounter < 2 &&
       x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
+    return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
+  // 1'e2. FLAT WHERE NOTHING ELSE IS BOUGHT (the owner: it always matters what it does -- flatten, organize, never a walk for nothing):
+  // of two lost alike that neither break garbage nor throw, garbage on the board or not, the one that leaves the board flatter by a row
+  if (!lx && lostAlike(x, y) && !(x->apBroke > 0) && !(y->apBroke > 0) && thrownOf(x) == 0 && thrownOf(y) == 0 &&
+      x->o.j.even >= 0 && y->o.j.even >= 0 && x->o.j.even != y->o.j.even)
     return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
