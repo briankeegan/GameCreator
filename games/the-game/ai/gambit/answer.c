@@ -905,6 +905,8 @@ static int32_t modeAt(int32_t at) {
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
   decQ = hostQ; decQ.b = hostBoard;
+  levelBreak = C2.reaction + 1 + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (outcome.c: the level's break, as rankSave)
+  if (levelBreak <= 0) levelBreak = LEVEL11_BREAK;
   ncache = 0; rootBuildable = NOT_ASKED;
   // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
   // (the opener plays from the countdown to its end -- the top-out, or nobody across its chain thrown -- and the schedule runs from there)

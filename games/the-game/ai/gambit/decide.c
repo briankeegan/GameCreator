@@ -30,8 +30,11 @@ static Keep floorKeep; static int32_t floorKeepOn;
 // Every chain of three or more that fits is the mode's -- one that fills the room exactly first, then the longer -- never a 2x (the
 // owner: a 3x and a 4x, or two 3x, as well as a 6x). No three-chain fits: the list's other aims, its small combos, in their order.
 #define FILL_FLIGHT 151
-#define FILL_LINK 66
-#define FILL_ROWS 12
+// (a link: its three flashing, faced and popped, the panels above hovering and falling a row -- FILL_FALL, the engine's -- read off the
+// board, so every level's own: 66 at level 11)
+#define FILL_FALL 15
+#define FILL_LINK (decQ.b->fFLASH + decQ.b->fFACE + 3 * decQ.b->fPOP + decQ.b->fHOVER + FILL_FALL)
+#define FILL_ROWS (decQ.b->height ? decQ.b->height : 12)   // (the enemy's rows: the level is both boards')
 static int32_t fillN = NOT_ASKED;   // (the longest chain the room took this decision, 0 none: the log's)
 static void fillList(List *L) {
   int at = -1;

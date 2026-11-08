@@ -169,7 +169,7 @@ static void searchMerge(const Read *R, Found *S) {
   // (a chain the workers did not begin: extended or begun here, in what is left)
   if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, leftMs() / 2);
 }
-#define PLAN_URGENT 240   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
+#define PLAN_URGENT AT_LEVEL(240)   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
 static void searchAll(const Read *R, Found *S) {
   if (!R->guides.n) return;
   // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
