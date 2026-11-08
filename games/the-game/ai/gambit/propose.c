@@ -700,9 +700,9 @@ static int wayLines(Cand *out, int n, int cap) {
 // chooses, and nothing lands into a match on its own): the single swaps of two panels at rest that clear nothing and leave the stack
 // more zipped by ZIP_GAIN or more (judge.c spreadOf, on the colours at rest), the most zipped first, then nearest the cursor -- on a
 // stack with ZIP_ROOM rows free above it
-#define ZIPN 10
+#define ZIPN 16
 #define ZIP_GAIN 1
-#define ZIP_ROOM 3   // (the rows free above the stack a zip needs)
+#define ZIP_ROOM 2   // (the rows free above the stack a zip needs)
 static int32_t zipOffered;   // (the zips this decision offered: the log's)
 static int32_t zipSpread(int32_t g[][W + 2], int top) {
   int32_t staged = 0, touching = 0;
