@@ -702,15 +702,20 @@ static int wayLines(Cand *out, int n, int cap) {
 // stack with ZIP_ROOM rows free above it
 #define ZIPN 10
 #define ZIP_GAIN 1
+#define ZIP_SURFACE 2   // (the rows under a column's top garbage lands on: zipSpread)
 #define ZIP_ROOM 3   // (the rows free above the stack a zip needs)
 static int32_t zipOffered;   // (the zips this decision offered: the log's)
 static int32_t zipSpread(int32_t g[][W + 2], int top) {
-  int32_t staged = 0, touching = 0;
+  int32_t staged = 0, touching = 0, ht[W + 2];
   #define ZC(r, c) ((r) >= 1 && (r) <= top && (c) >= 1 && (c) <= W && g[r][c] > 0 && g[r][c] < 8 ? g[r][c] : 0)
+  // (a pair touching at the stack's surface -- within ZIP_SURFACE rows of its column's top -- counts twice: garbage lands there, and what
+  // it turns into matches what it lands on)
+  for (int c = 1; c <= W; c++) { ht[c] = 0; for (int r = 1; r <= top; r++) if (g[r][c] != 0) ht[c] = r; }
   for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
     int32_t v = ZC(r, c); if (!v) continue;
-    if (ZC(r + 1, c) == v) touching++;
-    if (ZC(r, c + 1) == v) touching++;
+    int surf = r + ZIP_SURFACE > ht[c];
+    if (ZC(r + 1, c) == v) touching += surf ? 2 : 1;
+    if (ZC(r, c + 1) == v) touching += surf || r + ZIP_SURFACE > ht[c + 1] ? 2 : 1;
     if (ZC(r + 2, c) == v && ZC(r + 1, c) && ZC(r + 1, c) != v) staged++;
     if (ZC(r, c + 2) == v && ZC(r, c + 1) && ZC(r, c + 1) != v) staged++;
     if (ZC(r + 1, c - 1) == v) staged++;
