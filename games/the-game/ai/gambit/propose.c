@@ -721,7 +721,7 @@ static int32_t zipSpread(int32_t g[][W + 2], int top) {
 }
 static int zipLines(const Read *R, Cand *out, int n, int cap) {
   zipOffered = 0;
-  if (R->pop) return n;
+  (void)R;   // (while a slab pops too: what it turns into lands on the stack the zip leaves -- the judge plays each on the engine)
   Board *b = decQ.b;
   static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2];
   int H = imin(gridLen(b) - 2, MAXROWS), top = 0;
