@@ -879,6 +879,9 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     int32_t one = S->ap.setup; ADD(PLAY_SETUP, &one, 1, -1, 0);
   }
   if (S->haveAp && S->ap.lowest.set) { int m0 = n; ADD(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.lowest); }
+  // THE LONGEST STOP: the planner's line that earns the most stop time -- the rise held while the stack is cleared down (endless at its
+  // speed: a row every 47 frames outruns threes, and only the stop a combo or a chain link earns holds it)
+  if (S->haveAp && S->ap.stopBest.set && S->ap.stopBest.nseq) { int m0 = n; ADD(PLAY_CLEAR, S->ap.stopBest.seq, S->ap.stopBest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.stopBest); }
   #undef ADD
   // (and from the lines above: the converted row's chain, then every three grown -- the converted lines' own among them)
   n = convertLines(R, out, n, cap);
