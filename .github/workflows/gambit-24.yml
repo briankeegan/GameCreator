@@ -148,6 +148,8 @@ jobs:
             echo "::notice title=seed::${{ matrix.pattern }} ${{ matrix.game }} round ${{ matrix.round }}: PA_SEED=$PA_SEED"
           fi
           echo "::notice title=cores::$(nproc) threads, $(lscpu | awk -F: '/^Core\(s\) per socket|^Thread\(s\) per core/ {gsub(/ +/, " ", $2); printf "%s:%s, ", $1, $2}')cpu:core $(lscpu -e=CPU,CORE | tail -n +2 | awk '{printf "%s:%s ", $1, $2}'), GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
+          # (the runner's CPU written beside the game: a slower one gives the search less in the same frame -- every game can be read by it)
+          mkdir -p out; echo "runner cpu: $(lscpu | sed -n 's/^Model name: *//p' | head -1), $(nproc) threads, $(lscpu | sed -n 's/^CPU max MHz: *//p' | head -1) MHz max" > out/cpu.txt
           bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
         if: always()
@@ -160,6 +162,7 @@ jobs:
           path: |
             out/results.txt
             out/survivor.log
+            out/cpu.txt
           if-no-files-found: warn
           retention-days: 14
 
