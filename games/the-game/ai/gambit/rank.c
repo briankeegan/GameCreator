@@ -534,6 +534,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (nor over a line that meets the mode's first entry where it does not, and breaks as much garbage: the same break made as the mode
     // asks -- the owner: modes are respected, in every mode)
     int modeOver = goalKeyOf(o) == 0 && goalKeyOf(c) > 0 && imax(0, brokeSeen(o)) >= imax(0, brokeSeen(c));
+    // (nor a line in progress outside the mode's list over one within it that breaks as much: an attack the mode does not ask, kept
+    // only for the swaps already pressed of it -- the owner: every attack is what the mode asks)
+    if (c->outside && !o->outside && !o->hold && imax(0, brokeSeen(o)) >= imax(0, brokeSeen(c))) modeOver = 1;
     if (!c->hold && !modeOver && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead && !outlives(o, c)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. THE MODE, NOT THE MOST LIFE (the owner: the mode is respected always, garbage on the board or not; a lower stack is more time): a
