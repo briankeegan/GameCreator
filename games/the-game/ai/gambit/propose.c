@@ -781,6 +781,78 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
   for (int i = 0; i < nm && i < CUTN && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &mv[i], 1, -1, 0)) { n++; cutOffered++; }
   return n;
 }
+// THE COMBO DUG (the players: the dig is the attack -- 222 of their 260 eights made with garbage on the screen): under garbage, every swap
+// of two panels at rest -- and every two, the first clearing nothing -- that makes a match of DIG_MIN cells or more at once, a cell of it
+// touching the garbage, on the colours at rest (no fall played: a swap into a gap is not one of these). The DIGN most, by the combo,
+// then the fewer swaps, then nearest the cursor; each judged on the engine as any line.
+#define DIGN 6
+#define DIG_MIN 4
+static int32_t digOffered;   // (the digs this decision offered: the log's)
+static int digMatch(int32_t g[][W + 2], uint8_t gb[][W + 2], int top, int *touch) {
+  static uint8_t m[MAXROWS + 2][W + 2]; int n = 0; *touch = 0;
+  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) m[r][c] = 0;
+  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
+    int32_t v = g[r][c]; if (!(v > 0 && v < 8)) continue;
+    if (c + 2 <= W && g[r][c + 1] == v && g[r][c + 2] == v) { for (int k = c; k <= W && g[r][k] == v; k++) m[r][k] = 1; }
+    if (r + 2 <= top && g[r + 1][c] == v && g[r + 2][c] == v) { for (int k = r; k <= top && g[k][c] == v; k++) m[k][c] = 1; }
+  }
+  static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
+  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) if (m[r][c]) {
+    n++;
+    for (int d = 0; d < 4; d++) { int rr = r + DR[d], cc = c + DC[d]; if (rr >= 1 && rr <= top + 1 && cc >= 1 && cc <= W && gb[rr][cc]) *touch = 1; }
+  }
+  return n;
+}
+static int digLines(const Read *R, Cand *out, int n, int cap) {
+  digOffered = 0;
+  if (!R->under) return n;
+  Board *b = decQ.b;
+  static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2], gb[MAXROWS + 2][W + 2];
+  int H = imin(gridLen(b) - 2, MAXROWS), top = 0;
+  for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) { g[r][c] = 0; ok[r][c] = 0; gb[r][c] = 0; }
+  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = b->p[r][c].f; int32_t v = cellAt(b, r, c);
+    if (f[ISGARBAGE]) { gb[r][c] = 1; g[r][c] = -1; continue; }
+    g[r][c] = f[STATE] == NORMAL ? v : -2;
+    if (v > 0) top = r;
+    ok[r][c] = v > 0 && v < 8 && f[STATE] == NORMAL && (r == 1 || (cellAt(b, r - 1, c) != 0 && b->p[r - 1][c].f[STATE] == NORMAL));
+  }
+  if (top > b->topCurRow) top = b->topCurRow;
+  int32_t cs[DIGN * 4][2]; int ns[DIGN * 4], sz[DIGN * 4], dd[DIGN * 4], nk = 0, t;
+  #define SW(r, c) do { int32_t u_ = g[r][c]; g[r][c] = g[r][c + 1]; g[r][c + 1] = u_; } while (0)
+  #define KEEP(a, b2, k, s, d) do { int at_ = nk < DIGN * 4 ? nk++ : -1; \
+    if (at_ < 0) { at_ = 0; for (int q_ = 1; q_ < nk; q_++) if (sz[q_] < sz[at_] || (sz[q_] == sz[at_] && ns[q_] > ns[at_])) at_ = q_; \
+      if (sz[at_] > (s) || (sz[at_] == (s) && ns[at_] <= (k))) at_ = -1; } \
+    if (at_ >= 0) { cs[at_][0] = (a); cs[at_][1] = (b2); ns[at_] = (k); sz[at_] = (s); dd[at_] = (d); } } while (0)
+  for (int r = 1; r <= top; r++) for (int c = 1; c < W; c++) {
+    int32_t cost;
+    if (!ok[r][c] || !ok[r][c + 1] || g[r][c] == g[r][c + 1] || !canSwapPanels(b, P(b, r, c), P(b, r, c + 1), &cost) || cost) continue;
+    SW(r, c);
+    int s1 = digMatch(g, gb, top, &t), d1 = iabs(r - b->curRow) + iabs(c - b->curCol);
+    if (s1 >= DIG_MIN && t) KEEP(r * 8 + c, 0, 1, s1, d1);
+    else if (s1 == 0) {
+      // (a second swap after it: the first set up, the second the trigger)
+      for (int r2 = 1; r2 <= top; r2++) for (int c2 = 1; c2 < W; c2++) {
+        if ((r2 == r && iabs(c2 - c) <= 1) || !ok[r2][c2] || !ok[r2][c2 + 1] || g[r2][c2] == g[r2][c2 + 1]) continue;
+        SW(r2, c2);
+        int s2 = digMatch(g, gb, top, &t);
+        if (s2 >= DIG_MIN && t) KEEP(r * 8 + c, r2 * 8 + c2, 2, s2, d1 + iabs(r2 - r) + iabs(c2 - c));
+        SW(r2, c2);
+      }
+    }
+    SW(r, c);
+  }
+  #undef SW
+  #undef KEEP
+  for (int i = 1; i < nk; i++) for (int j = i; j > 0; j--) {
+    int better = sz[j] > sz[j - 1] || (sz[j] == sz[j - 1] && (ns[j] < ns[j - 1] || (ns[j] == ns[j - 1] && dd[j] < dd[j - 1])));
+    if (!better) break;
+    int32_t a0 = cs[j][0], a1 = cs[j][1]; cs[j][0] = cs[j - 1][0]; cs[j][1] = cs[j - 1][1]; cs[j - 1][0] = a0; cs[j - 1][1] = a1;
+    int x; x = ns[j]; ns[j] = ns[j - 1]; ns[j - 1] = x; x = sz[j]; sz[j] = sz[j - 1]; sz[j - 1] = x; x = dd[j]; dd[j] = dd[j - 1]; dd[j - 1] = x;
+  }
+  for (int i = 0; i < nk && i < DIGN && n < cap; i++) if (candOf(&out[n], PLAY_DIG, cs[i], ns[i], -1, 0)) { out[n].settled = 0; n++; digOffered++; }
+  return n;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
@@ -887,5 +959,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = wayLines(out, n, cap);
   n = zipLines(R, out, n, cap);
   n = cutLines(R, out, n, cap);
+  n = digLines(R, out, n, cap);
   return n;
 }
