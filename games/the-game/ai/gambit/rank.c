@@ -596,6 +596,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if ((lx || lostAlike(x, y)) && !decF.under && decQ.narr == 0 && decF.next == NOT_ASKED && decQ.b->chainCounter < 2 &&
       x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
     return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
+  // 1'e2. FLAT WHERE NOTHING ELSE IS BOUGHT: of two lost alike that neither break garbage nor throw, the flatter
+  if (!lx && lostAlike(x, y) && !(x->apBroke > 0) && !(y->apBroke > 0) && thrownOf(x) == 0 && thrownOf(y) == 0 &&
+      x->o.j.even >= 0 && y->o.j.even >= 0 && x->o.j.even != y->o.j.even)
+    return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
   // owner: no big chains at the finish; a chain is played there only where nothing else lives as long
