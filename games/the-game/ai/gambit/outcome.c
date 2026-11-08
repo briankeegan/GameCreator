@@ -5,8 +5,14 @@
 // What the decision knows of the board (Facts) comes from its reading of it.
 
 static double leftMsOf(void);   // (propose.c leftMs: the time the decision's searches have left)
-#define HORIZON 240   // a board stands when it is alive this long after now
-#define REST 120      // and this long after the line's last swap
+// A BREAK'S TIME AT THIS LEVEL (levelBreak, set each question as rank.c rankSave is: a reaction, then a three popping a row of garbage
+// -- flash, face and the pops, read off the board, so every level is its own): the frames below were measured at level 11, where it is
+// LEVEL11_BREAK (reaction 12), and scale with it
+static int32_t levelBreak = 97;
+#define LEVEL11_BREAK 97
+#define AT_LEVEL(f) ((int32_t)((int64_t)(f) * levelBreak / LEVEL11_BREAK))
+#define HORIZON AT_LEVEL(240)   // a board stands when it is alive this long after now
+#define REST AT_LEVEL(120)      // and this long after the line's last swap
 
 typedef struct {
   int32_t land;        // frames until the last block shown lands (NOT_ASKED: none coming) -- JUDGE.lastLanding
