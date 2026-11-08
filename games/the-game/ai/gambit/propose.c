@@ -792,8 +792,8 @@ static int32_t digOffered;   // (the digs this decision offered: the log's)
 static int32_t digWhy[8];   // (the first dig put down as waste: set, threes, broke, combo, chain, outside, combo asked, swaps)
 static int digSide(int la, int a0, int a1, int h) { return la ? a1 - a0 + 1 + h : (h ? 1 + h : 0); }
 static int digSize(const Twin *t) { return digSide(t->a1 >= t->a0, t->a0, t->a1, t->hx) + digSide(t->b1 >= t->b0, t->b0, t->b1, t->hy); }
-static int digTouch(uint8_t gb[][W + 2], int r, int c) {
-  return gb[r + 1][c] || gb[r - 1][c] || (c > 1 && gb[r][c - 1]) || (c < W && gb[r][c + 1]);
+static int digTouch(uint8_t gb[][W + 2], int r, int c) {   // (garbage at rest: a slab popping or falling is broken by nothing)
+  return gb[r + 1][c] == 1 || gb[r - 1][c] == 1 || (c > 1 && gb[r][c - 1] == 1) || (c < W && gb[r][c + 1] == 1);
 }
 static int digLines(const Read *R, Cand *out, int n, int cap) {
   digOffered = 0; digWhy[0] = 0;
@@ -803,7 +803,7 @@ static int digLines(const Read *R, Cand *out, int n, int cap) {
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS), any = 0;
   for (int r = 0; r <= MAXROWS + 1; r++) for (int c = 0; c <= W + 1; c++) { g[r][c] = 0; ok[r][c] = 0; gb[r][c] = 0; }
   for (int c = 0; c <= W + 1; c++) gb[MAXROWS + 2][c] = 0;
-  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { g[r][c] = cellAt(b, r, c); if (g[r][c] != 0) top = r; if (b->p[r][c].f[ISGARBAGE]) { gb[r][c] = 1; any = 1; } }
+  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { g[r][c] = cellAt(b, r, c); if (g[r][c] != 0) top = r; if (b->p[r][c].f[ISGARBAGE]) { gb[r][c] = b->p[r][c].f[STATE] == NORMAL ? 1 : 2; any |= gb[r][c] == 1; } }
   if (!any) return n;
   if (top > b->topCurRow) top = b->topCurRow;
   uint32_t rowOk[MAXROWS + 2];
