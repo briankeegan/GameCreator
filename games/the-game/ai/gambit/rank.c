@@ -521,7 +521,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // -- nor a line in progress outside the mode's list that lives by the horizon alone beside a break within it lost no more than a
     // break's time sooner: the horizon's credit is the line in progress's, and an attack the mode does not ask is not bought with it
     // (the owner: every attack is what the mode asks)
-    int inBreak = !l->o.lives && l->outside && !o->outside && !o->hold && o->apBroke > 0 && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l) - rankSave;
+    int inBreak = !l->o.lives && l->outside && !o->outside && !o->hold && o->apBroke > 0 && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l) - rankSave;
     if (!inBreak && !(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
