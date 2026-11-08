@@ -65,7 +65,7 @@ static int readBoard_(Read *R) {
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
   // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
   factSet(F, FACT_ENEMY_NONE, !theOpp.has);
-  R->enemyTopped = theOpp.has && theOpp.out;
+  R->enemyTopped = theOpp.has && theOpp.out; raceOn = R->enemyTopped;
   // (the frames until the board is lost if nothing is done, from the engine with the garbage the game shows landing when it lands:
   // sooner than the rise alone takes, the garbage on its way decides it -- queueKills)
   int32_t alone = diesIn(&decQ, F->v[FACT_US_DIES]);
@@ -466,7 +466,7 @@ static int ranked(const Read *R, const Found *S) {
     // lives -- the three is the save, asked of no search: by the time the rule's break's time comes the window is too short to press it.
     // Live p65, r661, 8348: the hold lost in 104 frames, a break's time and seven, the line that would have lived 242 frames longer
     // dropped as a wasted three, and the board lost 50 frames later)
-    int nearSave = keptLost >= 0 && keptLost < NEAR_SAVE * rankSave && (wasteLives || wasteLost - keptLost >= rankSave);
+    int nearSave = raceOn && keptLost >= 0 && keptLost < NEAR_SAVE * rankSave && (wasteLives || wasteLost - keptLost >= rankSave);
     if (!keeps && keptLost >= keepFor && !nearSave) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     if (!keeps && nearSave) saveOk = 1;

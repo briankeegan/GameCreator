@@ -467,6 +467,7 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // three. Past three the material decides: run 451, the later loss taken there too, spent the panels -- large_garbage's material under
 // garbage 19 where it was 23 -- finish 15 against 17)
 #define NEAR_LOSS 3
+static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
@@ -527,7 +528,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
   // lost a little later "alike" the hold, or off the mode, and held, and the board died of the holds (live p65, r661, 8097-8204: a
   // survival line lost 74 frames later passed over six times as the stack came down from 170 frames to 63)
-  if (!lx) {
+  // (only in the race: the enemy topped out -- under garbage mid-game a board is lost within three breaks' time most of the time, and
+  // there the line in progress and the mode decide: finish them, sets 86-89, 97 against main's 105 with the key always on)
+  if (!lx && raceOn) {
     double a = lostOf(x), b = lostOf(y), lo = a < b ? a : b, hi = a < b ? b : a;
     if (lo >= 0 && lo < NEAR_LOSS * rankSave && hi - lo >= NEAR_GAIN && !x->o.dead == !y->o.dead) return (cmpKey = __LINE__, (a > b ? -1 : 1));
   }
