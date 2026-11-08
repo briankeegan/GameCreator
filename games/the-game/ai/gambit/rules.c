@@ -9,7 +9,7 @@
 #define MAXAIMS 16
 
 // One test of a number: an operator and its operand ("<=3"); OP_NONE where the aim does not ask it.
-enum { OP_NONE, OP_GE, OP_LE, OP_EQ, OP_NE, OP_GT, OP_LT };
+enum { OP_NONE, OP_GE, OP_LE, OP_EQ, OP_NE, OP_GT, OP_LT, OP_FILL };   // OP_FILL: a chain the enemy's room asks (decide.c fillList)
 // near: written as a string near() reads (">=8", not a plain number or a negative)
 typedef struct { int32_t op, n, near; } Test;
 // brk: -1 not asked, 0 a line that breaks nothing, 1 a line that breaks

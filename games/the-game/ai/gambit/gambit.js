@@ -16,7 +16,8 @@ function testOf(t, what) {
 var AIM_KEYS = { combo: 1, chain: 1, send: 1, break: 1 };
 function aimWords(a) {
   Object.keys(a).forEach(function (k) { if (!AIM_KEYS[k]) throw new Error('gambit: an aim asks ' + k + ', which rules.c does not read'); });
-  return [].concat(testOf(a.combo, 'combo'), testOf(a.chain, 'chain'), testOf(a.send, 'send'), [a.break === true ? 1 : a.break === false ? 0 : -1]);
+  // ("fill": the chains the enemy's room asks, decide.c fillList -- rules.c OP_FILL)
+  return [].concat(testOf(a.combo, 'combo'), a.chain === 'fill' ? [7, 0, 0] : testOf(a.chain, 'chain'), testOf(a.send, 'send'), [a.break === true ? 1 : a.break === false ? 0 : -1]);
 }
 
 // The exports of a gambit.wasm instance, bound: its io body and the calls that hand it what it decides on.

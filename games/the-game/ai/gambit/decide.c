@@ -23,6 +23,28 @@ static int32_t savingPanels;   // (saving panels up, across decisions; a new gam
 // board every line ends on
 static Keep floorKeep; static int32_t floorKeepOn;
 #define MODE_DEBOUNCE 60   // the frames a mode the enemy's board calls must hold before it is played (a second): modes.js's too
+// THE CHAIN THE ENEMY'S ROOM ASKS (the owner: modes are dynamic -- fill with chains, top out with a small combo, keep the next coming):
+// a list's aim {"chain":"fill"} is the chains that fit the rows the enemy will have free when they land, leaving it one -- an n-chain
+// lands as n - 1 rows, FILL_FLIGHT frames after it is made and FILL_LINK more a link, and the enemy rises a row every
+// SPEED_TO_RISE_TIME frames of it not held by its stop (its height already counts the rows on their way: GambitNative rowsOnItsWay).
+// Every chain of three or more that fits is the mode's -- one that fills the room exactly first, then the longer -- never a 2x (the
+// owner: a 3x and a 4x, or two 3x, as well as a 6x). No three-chain fits: the list's other aims, its small combos, in their order.
+#define FILL_FLIGHT 151
+#define FILL_LINK 66
+#define FILL_ROWS 12
+static int32_t fillN = NOT_ASKED;   // (the longest chain the room took this decision, 0 none: the log's)
+static void fillList(List *L) {
+  int at = -1;
+  for (int i = 0; i < L->n && at < 0; i++) if (L->aim[i].chain.op == OP_FILL) at = i;
+  if (at < 0) { fillN = NOT_ASKED; return; }
+  int32_t top = theOpp.has && theOpp.topKnown ? theOpp.top : 0, free = FILL_ROWS - top, stop = theOpp.stopKnown ? imax(0, theOpp.stop) : 0;
+  int32_t perRow = decQ.b->speed >= 1 && decQ.b->speed <= 99 ? SPEED_TO_RISE_TIME[decQ.b->speed - 1] : 120, nmax = 0;
+  for (int n = MAXCHAIN; n >= 3 && !nmax; n--) { int32_t risen = imax(0, FILL_FLIGHT + FILL_LINK * (n - 1) - stop) / perRow; if (n - 1 <= free - risen - 1) nmax = n; }
+  List out; memset(&out, 0, sizeof out);
+  if (nmax >= 3) for (int n = nmax; n >= 3 && out.n < MAXAIMS; n--) { Aim a; memset(&a, 0, sizeof a); a.chain.op = OP_EQ; a.chain.n = n; a.chain.near = 1; a.brk = -1; out.aim[out.n++] = a; }
+  else for (int i = 0; i < L->n; i++) if (i != at) out.aim[out.n++] = L->aim[i];
+  *L = out; fillN = nmax;
+}
 static int decisionFloor(const Board *b) { return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1; }
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
@@ -78,6 +100,7 @@ static int readBoard_(Read *R) {
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
+  fillList(&R->list);
   R->guides = R->list;
   R->by = deadlineOf(F, rule);
   // (below the material floor a step that clears and breaks nothing is out, as the judge drops it)

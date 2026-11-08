@@ -744,6 +744,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (R.full) L_s(" full=1");
   if (switchedNow) L_s(" switched=1");
   // (the enemy as the rules read it: its height, topped out, the frames of its stop -- what picked the rule)
+  if (fillN != NOT_ASKED) { L_s(" fill="); L_i(fillN); }
   if (theOpp.has) { L_s(" enemy="); L_i(theOpp.top); L_s("/"); L_i(theOpp.out); L_s("/"); L_i(theOpp.stopKnown ? theOpp.stop : -1); }
   if (P.line && P.line->k.grown) L_s(" grown=1");
   if (P.line && P.line->k.drop) L_s(" drop=1");
