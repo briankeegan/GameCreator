@@ -410,6 +410,7 @@ static int cutsShort(const Judge *J) {
   return aloneChain > 1 && J->apWhole < aloneChain && ownChainAsked(aloneChain);
 }
 #define FLAT_ROWS 2
+#define FLAT_NOGARBAGE 1   // (with no garbage on its way: a row flatter is a row more before the top, 1'e)
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int downtime(void) {
   return !decF.under && (decF.next == NOT_ASKED || decF.next > 2 * rankSave) && decQ.b->chainCounter < 2 &&
@@ -592,9 +593,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   // 1'e. FLAT, NO GARBAGE ON ITS WAY (the stack at speed: a well between towers is where the board dies -- a canyon is never dug out at
   // forty-seven frames a row): with no garbage on the board, held or due, and the board not chaining, of two that survive alike the
-  // one that leaves the board flatter by FLAT_ROWS or more, whatever the window holds
+  // one that leaves the board flatter by FLAT_NOGARBAGE or more, whatever the window holds
   if ((lx || lostAlike(x, y)) && !decF.under && decQ.narr == 0 && decF.next == NOT_ASKED && decQ.b->chainCounter < 2 &&
-      x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
+      x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_NOGARBAGE)
     return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
