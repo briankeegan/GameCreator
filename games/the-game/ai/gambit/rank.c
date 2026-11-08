@@ -518,7 +518,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
     const Judge *l = lx ? x : y, *o = lx ? y : x;
-    if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
+    // -- nor a line in progress outside the mode's list that lives by the horizon alone beside a break within it lost no more than a
+    // break's time sooner: the horizon's credit is the line in progress's, and an attack the mode does not ask is not bought with it
+    // (the owner: every attack is what the mode asks)
+    int inBreak = !l->o.lives && l->outside && !o->outside && !o->hold && o->apBroke > 0 && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l) - rankSave;
+    if (!inBreak && !(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
