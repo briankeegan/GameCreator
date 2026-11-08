@@ -364,6 +364,8 @@ static int beatsHold(const Judge *L, const Judge *H) {
   int32_t l = L->o.lostAt, h = H->o.lostAt;
   // (a known death beats holding only when the hold's is one too, and later: two deaths are two frames)
   if (l != NOT_ASKED && (!L->o.dead || H->o.dead) && (l == FOREVER ? h != FOREVER : h != FOREVER && h != NOT_ASKED && l > h)) return 1;
+  // (READY FOR NOTHING: a line lost no later than the hold buys nothing by leaving the next block breakable or a break nearer)
+  if (!L->o.lives && l != NOT_ASKED && h != NOT_ASKED && h != FOREVER && l != FOREVER && l <= h && !(L->apBroke > 0)) return 0;
   if (L->o.nearAfter >= 0 && H->o.nearAfter >= 0 && L->o.nearAfter < H->o.nearAfter) return 1;
   // (a break lost no sooner than the hold: the garbage it converts is the board's next panels -- run 491, large_garbage-4, 7531: two
   // breaks lost at 44 put after a hold lost at 44)
