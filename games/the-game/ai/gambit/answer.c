@@ -631,6 +631,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       L_s(" goalMiss=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[0]->k.play]); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)diesAt(order[0])); L_s("/"); L_i(g->o.lives ? -1 : (int32_t)diesAt(g));
       cmpKey = keep; }
   }
+  // (THE DIG THE MODE ASKS, OFFERED: under garbage, the lines offered that break and meet the mode's list with a combo of four or more --
+  // the dig that is the mode's attack -- and whether the line played is one: comboDig=N[/played])
+  if (decF.under && n) { int k = 0; for (int i = 0; i < n; i++) { const Judge *j = order[i]; if (!j->hold && !j->outside && j->apBroke > 0 && j->apCombo >= 4) k++; }
+    if (k) { L_s(" comboDig="); L_i(k); if (order[0] && !order[0]->hold && !order[0]->outside && order[0]->apBroke > 0 && order[0]->apCombo >= 4) L_s("/played"); } }
   // (AN ATTACK THE MODE DOES NOT ASK, PLAYED OVER ONE IT DOES: the line played breaks outside the list, and a line offered breaks within
   // it and is lost no more than a break's time sooner -- the key that put the line played first, the two plays and losses:
   // outKey=kKEY:play:in-play:lost/lost)
