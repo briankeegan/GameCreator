@@ -781,6 +781,93 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
   for (int i = 0; i < nm && i < CUTN && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &mv[i], 1, -1, 0)) { n++; cutOffered++; }
   return n;
 }
+// THE COMBO DUG, STAGED (the players: the dig is the attack, its seam set up over several swaps and fired with one): under garbage, every
+// column run of three to five, or arm of two along the trigger row, on either side of one swap -- the twin's shapes, one side enough --
+// that clears DIG_MIN cells or more at once, a cell of it touching the garbage; its rows sorted along themselves (no three before the
+// trigger, twinSort), then the trigger. The DIGN cheapest within DIG_MAXSWAPS, each a whole line judged on the engine as any entry.
+#define DIGN 4
+#define DIG_MIN 4
+#define DIG_MAXSWAPS 8
+static int32_t digOffered;   // (the digs this decision offered: the log's)
+static int digSide(int la, int a0, int a1, int h) { return la ? a1 - a0 + 1 + h : (h ? 1 + h : 0); }
+static int digSize(const Twin *t) { return digSide(t->a1 >= t->a0, t->a0, t->a1, t->hx) + digSide(t->b1 >= t->b0, t->b0, t->b1, t->hy); }
+static int digTouch(uint8_t gb[][W + 2], int r, int c) {
+  return gb[r + 1][c] || gb[r - 1][c] || (c > 1 && gb[r][c - 1]) || (c < W && gb[r][c + 1]);
+}
+static int digLines(const Read *R, Cand *out, int n, int cap) {
+  digOffered = 0;
+  if (!R->under || clockOut()) return n;
+  Board *b = decQ.b;
+  static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2], gb[MAXROWS + 3][W + 2];
+  int top = 0, H = imin(gridLen(b) - 2, MAXROWS), any = 0;
+  for (int r = 0; r <= MAXROWS + 1; r++) for (int c = 0; c <= W + 1; c++) { g[r][c] = 0; ok[r][c] = 0; gb[r][c] = 0; }
+  for (int c = 0; c <= W + 1; c++) gb[MAXROWS + 2][c] = 0;
+  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { g[r][c] = cellAt(b, r, c); if (g[r][c] != 0) top = r; if (b->p[r][c].f[ISGARBAGE]) { gb[r][c] = 1; any = 1; } }
+  if (!any) return n;
+  if (top > b->topCurRow) top = b->topCurRow;
+  uint32_t rowOk[MAXROWS + 2];
+  for (int r = 1; r <= top; r++) { rowOk[r] = 0; for (int c = 1; c <= W; c++) { ok[r][c] = !gb[r][c] && g[r][c] > 0 && g[r][c] < 8 && b->p[r][c].f[STATE] == NORMAL && (r == 1 || (g[r - 1][c] != 0 && b->p[r - 1][c].f[STATE] == NORMAL)); rowOk[r] += ok[r][c]; } }
+  Twin best[DIGN * 3]; int nb = 0;
+  for (int c = 1; c < W; c++) for (int r = 1; r <= top; r++) {
+    if (!rowOk[r]) continue;
+    for (int32_t X = 1; X < 8; X++) for (int32_t Y = 1; Y < 8; Y++) for (int hx = 0; hx <= 2; hx += 2) for (int hy = 0; hy <= 2; hy += 2) {
+      if (X == Y || (hx && c - 2 < 1) || (hy && c + 3 > W)) continue;
+      RowFix trig; int tc = trigFix(g[r], ok[r], c, X, Y, hx, hy, &trig);
+      if (tc < 0 || tc > DIG_MAXSWAPS - 1) continue;
+      for (int la = 0; la <= 5; la = la ? la + 1 : 3) for (int a0 = la ? r - la + 1 : r + 1; a0 <= r; a0++) {
+        int a1 = la ? a0 + la - 1 : r;
+        if (la && (a0 < 1 || a1 > top || r - a0 >= 3 || a1 - r >= 3)) continue;
+        for (int lb = 0; lb <= 5; lb = lb ? lb + 1 : 3) for (int b0 = lb ? r - lb + 1 : r + 1; b0 <= r; b0++) {
+          int b1 = lb ? b0 + lb - 1 : r;
+          if (lb && (b0 < 1 || b1 > top || r - b0 >= 3 || b1 - r >= 3)) continue;
+          int sx = digSide(la, a0, a1, hx), sy = digSide(lb, b0, b1, hy);
+          if (sx + sy < DIG_MIN) continue;
+          // (the cells it clears, one touching the garbage)
+          int touch = 0;
+          if (sx) { if (la) for (int q = a0; q <= a1; q++) touch |= digTouch(gb, q, c); else touch |= digTouch(gb, r, c);
+                    if (hx) touch |= digTouch(gb, r, c - 1) | digTouch(gb, r, c - 2); }
+          if (sy) { if (lb) for (int q = b0; q <= b1; q++) touch |= digTouch(gb, q, c + 1); else touch |= digTouch(gb, r, c + 1);
+                    if (hy) touch |= digTouch(gb, r, c + 2) | digTouch(gb, r, c + 3); }
+          if (!touch) continue;
+          int cost = tc, okAll = 1, qlo = imin(la ? a0 : r, lb ? b0 : r), qhi = imax(la ? a1 : r, lb ? b1 : r);
+          for (int q = qlo; q <= qhi && okAll; q++) {
+            if (q == r) continue;
+            int wx = la && q >= a0 && q <= a1, wy = lb && q >= b0 && q <= b1;
+            RowFix f; int k = rowOk[q] ? twinRowFix(g[q], ok[q], wx ? c : 0, X, wy ? c + 1 : 0, Y, &f) : -1;
+            if (k < 0) okAll = 0; else cost += k;
+          }
+          if (!okAll || cost > DIG_MAXSWAPS - 1) continue;
+          Twin t = { cost, c, r, X, Y, a0, a1, b0, b1, hx, hy };
+          // (kept: the most cells, then the fewest swaps; a shape found again with another colour on its side that clears nothing, the
+          // cheaper)
+          int sz = sx + sy, at = -1;
+          for (int i = 0; i < nb && at < 0; i++) { const Twin *u = &best[i];
+            if (u->c == c && u->r == r && u->a0 == a0 && u->a1 == a1 && u->b0 == b0 && u->b1 == b1 && u->hx == hx && u->hy == hy && (!sx || u->X == X) && (!sy || u->Y == Y)) at = u->cost > cost ? i : -2; }
+          if (at == -2) continue;
+          if (at < 0 && nb < DIGN * 3) at = nb++;
+          if (at < 0) {
+            int w = 0;
+            for (int i = 1; i < nb; i++) if (digSize(&best[i]) < digSize(&best[w]) || (digSize(&best[i]) == digSize(&best[w]) && best[i].cost > best[w].cost)) w = i;
+            if (digSize(&best[w]) > sz || (digSize(&best[w]) == sz && best[w].cost <= cost)) continue;
+            at = w;
+          }
+          best[at] = t;
+        }
+      }
+    }
+  }
+  for (int i = 0; i < nb && n < cap && !clockOut(); i++) {
+    const Twin *t = &best[i];
+    int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, t, seq);
+    if (ns < 0 || ns + 1 > DIG_MAXSWAPS) continue;
+    seq[ns++] = t->r * 8 + t->c;
+    if (candOf(&out[n], PLAY_DIG, seq, ns, -1, 0)) {
+      out[n].x.combo = digSize(t);
+      n++; digOffered++;
+    }
+  }
+  return n;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
@@ -887,5 +974,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = wayLines(out, n, cap);
   n = zipLines(R, out, n, cap);
   n = cutLines(R, out, n, cap);
+  n = digLines(R, out, n, cap);
   return n;
 }
