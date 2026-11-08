@@ -511,6 +511,31 @@ static int twinNextSwap(Board *b, int32_t *swap) {
   *swap = seq[pick];
   return 1;
 }
+// A LINE MADE ON THE DECISION'S BOARD, PRESSED ON A STACK THAT RISES: the judge presses each swap at the row it is given, and a row
+// rises under a line of several swaps (forty-seven frames at top speed) -- each swap's row moved up by the rows risen before it, walked on
+// the engine one swap at a time as the judge presses them; the swaps walked before the board is lost (ns: all)
+static Ctx *riseCtx;
+static int rowOfId(const Board *B, int32_t id) {
+  for (int r = 0; r < B->nrows; r++) for (int c = 1; c <= W; c++) if (B->p[r][c].f[ID] == id) return r;
+  return -1;
+}
+static int riseLine(int32_t *seq, int ns, int kind) {   // (kind: MK_SWAP pressed straight through, MK_SETTLE each swap let settle)
+  Ctx *x = riseCtx = ctxOf(riseCtx);
+  const Board *b0 = decQ.b; int32_t ref = NUL; int r0 = 0;
+  for (int r = 1; r < b0->nrows && ref == NUL; r++) for (int c = 1; c <= W && ref == NUL; c++) if (b0->p[r][c].f[ID] != NUL && b0->p[r][c].f[COLOR] != 0) { ref = b0->p[r][c].f[ID]; r0 = r; }
+  if (ref == NUL) return ns;
+  int node = rootOf(x, &decQ);
+  for (int i = 0; i < ns; i++) {
+    if (!liveNode(x, node)) return i;
+    const Board *B = ensureBoard(x, node);
+    int rr = B ? rowOfId(B, ref) : -1;
+    if (rr < 0) return i;
+    int r = CR(seq[i]) + (rr - r0), c = CC(seq[i]);
+    seq[i] = r * 8 + c;
+    int from; node = pressWalk(x, node, kind, r, c, step, &from);   // (as the judge presses it: a swap whose pair still moves waited for)
+  }
+  return liveNode(x, node) ? ns : ns - 1;
+}
 static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
@@ -535,19 +560,27 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
     const Twin *t = &best[i];
     int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, t, seq);
     if (ns < 0) continue;
+    // (the line pressed whole, its trigger last: its rows as the stack will have them at each swap -- riseLine; the set-ups are its
+    // first swaps, each offered only where the board lives through it)
+    int32_t set[MAXLINE]; for (int q = 0; q < ns; q++) set[q] = seq[q];
+    int walkedSet = riseLine(set, imin(ns, prefixes && i < 2 ? imax(3, setupOnly ? ns : 0) : setupOnly ? ns : 0), MK_SETTLE);
+    int whole = t->cost > TWIN_MAXSWAPS || setupOnly ? 0 : ns + 1;
+    if (whole) seq[ns] = t->r * 8 + t->c;
+    int walked = whole ? riseLine(seq, whole, MK_SWAP) : 0;
     // (SET UP BETWEEN MOVES -- the owner: the set-up built of moves that cost nothing, never of the board's life: the first one, two and
     // three of its swaps, each a line of its own -- a swap pressed where the board waits, the rest left for the next wait; the rank takes
     // one only where it is lost no sooner and keeps the window's reserve, rank.c nearerEight)
     if (prefixes && i < 2 && ns > 0)
-      for (int p = 1; p <= 3 && p < ns && n < cap; p++)
-        if (candOf(&out[n], PLAY_SETUP, seq, p, -1, 0)) { out[n].settled = 1; out[n].twin = 2; n++; twinOffered++; }
+      for (int p = 1; p <= 3 && p < ns && p <= walkedSet && n < cap; p++)
+        if (candOf(&out[n], PLAY_SETUP, set, p, -1, 0)) { out[n].settled = 1; out[n].twin = 2; n++; twinOffered++; }
     if (t->cost > TWIN_MAXSWAPS) continue;   // (past TWIN_MAXSWAPS: its first swaps only -- an eight that far is set up, never fired whole)
     if (setupOnly) {
-      if (ns < 1 || ns > TWIN_SETUP_MAX) continue;
-      if (candOf(&out[n], PLAY_SETUP, seq, ns, -1, 0)) { out[n].settled = 1; out[n].twin = 2; n++; offered++; twinOffered++; }
+      if (ns < 1 || ns > TWIN_SETUP_MAX || walkedSet < ns) continue;
+      if (candOf(&out[n], PLAY_SETUP, set, ns, -1, 0)) { out[n].settled = 1; out[n].twin = 2; n++; offered++; twinOffered++; }
       continue;
     }
-    seq[ns++] = t->r * 8 + t->c;
+    if (walked < whole) continue;
+    ns++;   // (the trigger, its row risen too)
     if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 1; n++; offered++; twinOffered++; }
   }
   return n;
