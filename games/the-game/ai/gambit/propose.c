@@ -789,13 +789,14 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
 #define DIG_MIN 4
 #define DIG_MAXSWAPS 8
 static int32_t digOffered;   // (the digs this decision offered: the log's)
+static int32_t digWhy[8];   // (the first dig put down as waste: set, threes, broke, combo, chain, outside, combo asked, swaps)
 static int digSide(int la, int a0, int a1, int h) { return la ? a1 - a0 + 1 + h : (h ? 1 + h : 0); }
 static int digSize(const Twin *t) { return digSide(t->a1 >= t->a0, t->a0, t->a1, t->hx) + digSide(t->b1 >= t->b0, t->b0, t->b1, t->hy); }
 static int digTouch(uint8_t gb[][W + 2], int r, int c) {
   return gb[r + 1][c] || gb[r - 1][c] || (c > 1 && gb[r][c - 1]) || (c < W && gb[r][c + 1]);
 }
 static int digLines(const Read *R, Cand *out, int n, int cap) {
-  digOffered = 0;
+  digOffered = 0; digWhy[0] = 0;
   if (!R->under || clockOut()) return n;
   Board *b = decQ.b;
   static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2], gb[MAXROWS + 3][W + 2];
