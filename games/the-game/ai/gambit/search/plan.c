@@ -42,6 +42,7 @@ typedef struct {
   int32_t set, n, nseq, seq[MAXLINE], ats[MAXLINE];
   int32_t brk, cells, chain, combo, broke, earned, done, fire, floor, aimIndex, top;
   int32_t kc;   // (quick: the break keeps the board's own chain -- search/break.c keepsOwnChain)
+  int32_t cat;  // (quick: what the break makes, as a list asking no chain ranks it -- search/break.c breakCat; 0 where the list asks a chain)
   int32_t acts; // the cursor's actions for its swaps, from the root's cursor (core/nodes.h actionsFor)
   double near;
 } PLine;
@@ -51,9 +52,12 @@ static int32_t actOf(Ctx *x, const PItem *it, int32_t m) {
   return b ? actionsFor(b->curRow, b->curCol, CR(m), CC(m), pressAllowance >= 0 ? pressAllowance - it->acts : HOLDTIGHT + 1) : 0;
 }
 // (THE QUICK BREAK: one that keeps the board's own chain before one that cuts it, then the more broken, then the sooner)
-static int quickBefore(const PLine *q, int kc, int32_t broke, int32_t done) {
+// -- and where the list asks no chain (finish them, the fill with no room), the break the mode asks before a plain three before a chain:
+// a chain there is an attack the mode does not ask)
+static int quickBefore(const PLine *q, int kc, int cat, int32_t broke, int32_t done) {
   if (!q->set) return 1;
   if (kc != q->kc) return kc > q->kc;
+  if (cat != q->cat) return cat > q->cat;
   return broke > q->broke || (broke == q->broke && done < q->done);
 }
 typedef struct {
@@ -196,11 +200,11 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         if (!liveNode(x, sw) || !stepFitsAt(x, sw)) continue;
         int32_t bk = NODE(x, sw)->brk - stillAt(&still, NODE(x, sw)->t);
         if (o->by != NOT_ASKED && NODE(x, it->n)->t > o->by) bk = 0;
-        int kc = bk > 0 ? keepsOwnChain(x, sw) : 0;
-        if (bk > 0 && quickBefore(&P->quick, kc, bk, NODE(x, sw)->t)) {
+        int kc = bk > 0 ? keepsOwnChain(x, sw) : 0, cat = bk > 0 && listChainCap() == 0 ? breakCat(x, sw) : 0;
+        if (bk > 0 && quickBefore(&P->quick, kc, cat, bk, NODE(x, sw)->t)) {
           PLine *l = &P->quick; memset(l, 0, sizeof *l);
           lineFrom(l, it, m, sw, NODE(x, it->n)->t);
-          l->brk = 1; l->broke = bk; l->done = NODE(x, sw)->t; l->aimIndex = -1; l->floor = -1; l->kc = kc;
+          l->brk = 1; l->broke = bk; l->done = NODE(x, sw)->t; l->aimIndex = -1; l->floor = -1; l->kc = kc; l->cat = cat;
         }
       }
     // the level read in the order it was made: every board within the rules is a kid of its parent; one that clears is weighed
@@ -248,7 +252,8 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
           // (the chain kept as the swap leaves it, before the settle the step runs on: by then the chain has run its course)
           int kc = 1;
           if (ownChainBy > 0) { int sw = step(x, it->n, MK_SWAP, CR(m), CC(m), 0); kc = liveNode(x, sw) && keepsOwnChain(x, sw); }
-          if (quickBefore(&P->quick, kc, made.broke, done) && OKE()) { FILL(P->quick, -1); P->quick.brk = 1; P->quick.kc = kc; }
+          int cat = listChainCap() == 0 ? breakCat(x, out) : 0;
+          if (quickBefore(&P->quick, kc, cat, made.broke, done) && OKE()) { FILL(P->quick, -1); P->quick.brk = 1; P->quick.kc = kc; P->quick.cat = cat; }
         }
         if (inTime && kept) {
           double nr = leadOf(o->aims, made, o->under);
