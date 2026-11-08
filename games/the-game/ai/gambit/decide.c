@@ -17,6 +17,7 @@ static int32_t rescues;   // (decisions whose lines were all judged again past t
 static int32_t raiseRefill;   // (the raise asked is the floor's, not the opening's: answer.c lets nothing go before it)
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
+#define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define OPENING_RAISE 600   // the opening raise's frames: the countdown and the seconds before garbage first lands (340-400 in the garbage patterns)
 #define RAISE_WAIT 120   // the frames the floor's raise waits for the stack to take one, at most
@@ -459,13 +460,19 @@ static int ranked(const Read *R, const Found *S) {
     // rises: a three is wasted only where the line without one keeps it a row's rise past that, at the speed it rises now)
     int32_t keepFor = rankSave;
     if (!decF.under && decQ.narr == 0 && decQ.b && decQ.b->speed >= 1 && decQ.b->speed <= 99) keepFor += SPEED_TO_RISE_TIME[decQ.b->speed - 1];
-    if (!keeps && keptLost >= keepFor) keeps = 1;
+    // (A SAVE NEAR THE END: every line that keeps its threes lost within NEAR_SAVE breaks' time, and the three lost a break's time later or
+    // lives -- the three is the save, asked of no search: by the time the rule's break's time comes the window is too short to press it.
+    // Live p65, r661, 8348: the hold lost in 104 frames, a break's time and seven, the line that would have lived 242 frames longer
+    // dropped as a wasted three, and the board lost 50 frames later)
+    int nearSave = keptLost >= 0 && keptLost < NEAR_SAVE * rankSave && (wasteLives || wasteLost - keptLost >= rankSave);
+    if (!keeps && keptLost >= keepFor && !nearSave) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
+    if (!keeps && nearSave) saveOk = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
     // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way
     // landing as it would. A three whose board, with the best line on, outlasts the other's by nothing was not needed not to die: it
     // is wasted)
-    if (!keeps && saveRoomMs() > SAVE_KEEP_MS + 2) {
+    if (!keeps && !saveOk && saveRoomMs() > SAVE_KEEP_MS + 2) {
       const Judge *bw = 0, *bk = 0;
       for (int i = 0; i < n; i++) {
         const Judge *J = order[i];
