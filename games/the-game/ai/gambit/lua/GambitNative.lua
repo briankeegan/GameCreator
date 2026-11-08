@@ -373,7 +373,7 @@ end
 -- garbage dug out 0.21 rows a second net while any was on it. Topped with no shake left, it dies (VENEMY in the log) and a new one
 -- begins. Seeded from PA_SEED: a run repeats.
 local VIRTUAL = os.getenv("GC_GAMBIT_ENEMY") == "virtual"
-local VE_BASE, VE_LO, VE_HI, VE_STEP, VE_MOVE, VE_DIG, VE_SHAKE, VE_FLIGHT = 7, 3, 11, 32, 0.21, 285, 76, 151
+local VE_BASE, VE_LO, VE_HI, VE_STEP, VE_MOVE, VE_DIG, VE_FLIGHT = 7, 3, 11, 32, 0.21, 285, 151
 local VE = { clock = -1 }
 local function veRand()   -- (a linear congruential stream, the same for a seed in any LuaJIT)
   VE.r = (VE.r * 1103515245 + 12345) % 2147483648
@@ -393,6 +393,18 @@ local function virtualEnemy(me, clock)
       end
     end
   end
+  -- (A LANDING'S SHAKE, as the engine's onGarbageLand has it: by the piece's cells, 18 frames up to 4, 24 for 5, 42 to 11, 66 to 23, 76
+  -- from 24; a landing while it shakes renews the largest shake since it was last 0; garbage landing above its top row shakes nothing)
+  local function land(g, h)
+    local before = VE.base + VE.garbage
+    VE.garbage = VE.garbage + h; VE.landed = clock
+    if before < 12 then
+      local cells = (g.width or 6) * h
+      local sh = cells <= 4 and 18 or cells == 5 and 24 or cells <= 11 and 42 or cells <= 23 and 66 or 76
+      if (VE.shake or 0) <= 0 then VE.shakeMax = 0 end
+      VE.shakeMax = math.max(VE.shakeMax or 0, sh); VE.shake = VE.shakeMax
+    end
+  end
   -- (a piece lands VE_FLIGHT frames after it is first seen on our queue, or as it leaves it -- training has no stack to take it, so it
   -- may never leave; until then it is a row on its way)
   local onWay, seen = 0, {}
@@ -400,10 +412,10 @@ local function virtualEnemy(me, clock)
     local first = VE.seen[g] and VE.seen[g][1] or clock
     seen[g] = { first, h }
     if not VE.done[g] then
-      if clock - first >= VE_FLIGHT then VE.garbage = VE.garbage + h; VE.landed = clock; VE.done[g] = true else onWay = onWay + h end
+      if clock - first >= VE_FLIGHT then land(g, h); VE.done[g] = true else onWay = onWay + h end
     end
   end
-  for g, e in pairs(VE.seen) do if not cur[g] and not VE.done[g] then VE.garbage = VE.garbage + e[2]; VE.landed = clock end end
+  for g, e in pairs(VE.seen) do if not cur[g] and not VE.done[g] then land(g, e[2]) end end
   VE.seen = seen
   while VE.clock < clock do
     VE.clock = VE.clock + 1
@@ -411,16 +423,17 @@ local function virtualEnemy(me, clock)
       local up = 0.5 + 0.1 * (VE_BASE - VE.base)
       VE.base = math.max(VE_LO, math.min(VE_HI, VE.base + (veRand() < up and 1 or -1)))
     end
+    if (VE.shake or 0) > 0 then VE.shake = VE.shake - 1 end
     if VE.garbage > 0 then VE.dig = VE.dig + 1; if VE.dig >= VE_DIG then VE.dig = 0; VE.garbage = VE.garbage - 1 end else VE.dig = 0 end
   end
-  -- (DEAD as a stack is: topped out with no shake left -- VE_SHAKE frames, the longest, since the last landing -- logged with the frames
+  -- (DEAD as a stack is: topped out with no shake left -- logged with the frames
   -- from its first top-out, and the next one begins: low, no garbage, as a new round's)
   local h = VE.base + VE.garbage
   if h >= 12 then
     VE.topped = VE.topped or clock
-    if clock - (VE.landed or clock) >= VE_SHAKE then
+    if (VE.shake or 0) <= 0 then
       C.gn_log(string.format("VENEMY clock %d: died, %d frames from its top-out, %d kills", clock, clock - VE.topped, (VE.kills or 0) + 1))
-      VE.kills = (VE.kills or 0) + 1; VE.base = VE_LO + math.floor(veRand() * (VE_BASE - VE_LO + 1)); VE.garbage = 0; VE.dig = 0; VE.topped = nil
+      VE.kills = (VE.kills or 0) + 1; VE.base = VE_LO + math.floor(veRand() * (VE_BASE - VE_LO + 1)); VE.garbage = 0; VE.dig = 0; VE.topped = nil; VE.shake = 0
       h = VE.base
     end
   else VE.topped = nil end
