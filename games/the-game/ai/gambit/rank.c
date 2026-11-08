@@ -129,6 +129,13 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // could not play the line out)
   int32_t fire = j && j->fire >= 0 ? j->fire : (k->xFire >= 0 ? k->xFire : k->xDone);
   if (R->by != NOT_ASKED && R->by && fire >= 0 && fire > R->by) { dropAs(play, DROP_LATE); return 0; }
+#define RISE_ROWS 2
+  // (THE RISE'S DEADLINE: with no garbage on the board or on its way, a line fires within RISE_ROWS rows of the stack's rise at the speed
+  // it rises now -- one that takes longer is broken by the rows that rise under it before its last swap, and every action pressed of it
+  // is spent for nothing (endless, the owner: no changing minds); the hold and the survival search's save are not lines that fire, and
+  // the opener builds its chain at the start's speed)
+  if (!R->under && decQ.narr == 0 && R->rule >= 0 && theTables.r[R->rule].table != 2 && decQ.b && decQ.b->speed >= 1 && decQ.b->speed <= 99 && play != PLAY_SURVIVE && fire >= 0 &&
+      fire > RISE_ROWS * SPEED_TO_RISE_TIME[decQ.b->speed - 1]) { dropAs(play, DROP_LATE); return 0; }
   // (a set-up is to clear nothing: it ends before its first step that clears panels and breaks nothing; when that is its first, the
   // play is a clear)
   Xs x = k->x;
