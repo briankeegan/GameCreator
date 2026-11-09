@@ -252,6 +252,7 @@ static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
+static const Judge *strippedCarry;   // (the line in progress without the swap that makes its three: THE THREE TAKEN OUT)
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
 // it could not be asked. The hold's board is the board left alone. A line lost before its end is lost where the judge saw it lost, and a
@@ -433,8 +434,14 @@ static int ranked(const Read *R, const Found *S) {
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps
+  strippedCarry = 0;
   { int ns = 0, tried = 0, none = !(n && order[0]->o.lives), n0 = n;
-    for (int i = 0; i < n0 && tried < STRIP_LINES && ns < NSTRIP && leftMs() > 0; i++) {
+    // (the line in progress first, whatever its place: without the swap that makes its three it is still the line in progress -- carried,
+    // its swaps pressed so far not for nothing -- where otherwise the order puts it down whole as a wasted three)
+    int ci = -1; for (int i = 0; i < n0; i++) if (order[i] == carriedJ) ci = i;
+    for (int i0 = -1; i0 < n0 && tried < STRIP_LINES && ns < NSTRIP && leftMs() > 0; i0++) {
+      int i = i0 < 0 ? ci : i0;
+      if (i < 0 || (i0 >= 0 && i == ci)) continue;
       const Judge *J = order[i];
       if (J->hold || !wastesThree(J) || J->k.nseq < 2) continue;
       tried++;
@@ -445,6 +452,7 @@ static int ranked(const Read *R, const Found *S) {
         if (!candOf(&k, J->k.play, seq, m, J->k.aim, J->k.extend)) continue;
         k.settled = J->k.settled; k.way = J->k.way;
         if (!judgeCand(R, &k, &stripped[ns]) || wastesThree(&stripped[ns])) continue;
+        if (J == carriedJ && !strippedCarry) { stripped[ns].carried = 1; strippedCarry = &stripped[ns]; }
         if (none) readyNextFor(&stripped[ns]);
         order[n++] = &stripped[ns++];
       }
@@ -510,7 +518,7 @@ static int ranked(const Read *R, const Found *S) {
     if (!keeps && !saveOk && (wasteLives || wasteLost >= 0) && !(saveAsked && saveCw >= 0 && saveCk >= 0)) { saveOk = 1; saveBlind = 1; }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
   // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
   // or is lost later: only there is a 2x a save
