@@ -2,6 +2,14 @@
 // the moves that make it so -- every one asked of breaksAfterLanding (judge.c), the readiness every move that breaks nothing is held to.
 
 static Ctx *readyCtx;
+// (by the cells the cursor walks to the swap, a stable insertion: swaps as near keep the order before)
+static void sortNearCursor(int32_t *a, int n, int r0, int c0) {
+  for (int s = 1; s < n; s++) {
+    int32_t v = a[s]; int dv = iabs(CR(v) - r0) + iabs(CC(v) - c0), k = s;
+    while (k > 0 && iabs(CR(a[k - 1]) - r0) + iabs(CC(a[k - 1]) - c0) > dv) { a[k] = a[k - 1]; k--; }
+    a[k] = v;
+  }
+}
 // READY FOR THE GARBAGE ON ITS WAY (readyFor): the board run to the frame the first arrival lands, a break then within two swaps; not
 // ready, the first swap after which it is (never the swap back). ready 1/0; setup the swap (0: none).
 typedef struct { int32_t ready, setup, at; double ms; } Readied;
@@ -20,6 +28,7 @@ static Readied readyFor(const Question *q, double ms) {
   if (now == LOST_FIRST || now == 1) { out.ready = now == 1; out.ms = nowMs() - t0; return out; }
   static int32_t ms1[MAXROWS * W];
   int n1 = swapsOfNode(x, root, ms1);
+  sortNearCursor(ms1, n1, q->b->curRow, q->b->curCol);   // (the set-up nearest the cursor found first: readyLines)
   double shareOld = clockShareBegin(t0 + ms);
   for (int i = 0; i < n1 && !out.setup && !clockOut(); i++) {
     if (!firstOk(CR(ms1[i]), CC(ms1[i]), 0)) continue;   // (a setup clears nothing: never the swap back)
@@ -57,7 +66,10 @@ static int readyLines(const Question *q, int32_t land, double ms, int32_t *seq, 
   double t0 = nowMs(), shareOld = clockShareBegin(t0 + ms);
   static int32_t firsts[MAXROWS * W], live[MAXROWS * W], seconds[MAXROWS * W];
   int nf = legalSwaps(q->b, firsts), nl = 0, found = 0;
+  // (nearest the cursor first, then nearest the top: of the swaps that leave the board ready, the one the cursor is already by -- the top
+  // first sent the cursor across the board for a set-up one beside it did as well: live r785, 8833, row 8 from row 3)
   sortNearTop(firsts, nf, fullTop(q->b));
+  sortNearCursor(firsts, nf, q->b->curRow, q->b->curCol);
   JudgeOpts jo = { 0, q->tight, land, 0, 0, -1, 0, 0 };
   Judged j;
   for (int i = 0; i < nf && !clockOut() && !found; i++) {

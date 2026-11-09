@@ -28,6 +28,7 @@ typedef struct {
   Made made;                    // beyond the board left alone: { combo, chain, broke }
   int32_t keepsChain;           // the board's own chain reached by the frame it reaches it left alone (ownChainBy): 1, 0, -1 not asked
   int32_t noopAt;               // the first swap that swaps straight back the pair the swap before it swapped, nothing moved between (-1 none)
+  int64_t sames;                // the swaps (bit k) of two panels of one colour: they move nothing (a row walk past a panel like the one walked)
   int64_t noops;                // every such swap, bit k for swap k
   Made whole;                   // what the board ends up making with the line played, the chain already under way included (garbage
                                 // broken still counted beyond the board left alone): a line that cuts a chain short makes the shorter one
@@ -347,7 +348,7 @@ static int32_t seamsOf(const Board *b) {
 }
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->noops = 0;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->noops = 0; j->sames = 0;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -414,6 +415,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         if (bf && mr >= 0 && mr < bf->nrows && mc >= 1 && mc + 1 <= W) {
           int32_t a = bf->p[mr][mc].f[ID], b = bf->p[mr][mc + 1].f[ID];
           if (k > 0 && seq[k] == seq[k - 1] && a != NUL && b != NUL && a == prevB && b == prevA) { if (j->noopAt < 0) j->noopAt = k; if (k < 64) j->noops |= (int64_t)1 << k; }
+          { const int32_t *fa = bf->p[mr][mc].f, *fb = bf->p[mr][mc + 1].f;
+            if (k < 64 && fa[COLOR] > 0 && fa[COLOR] == fb[COLOR] && !fa[ISGARBAGE] && !fb[ISGARBAGE]) j->sames |= (int64_t)1 << k; }
           prevA = a; prevB = b;
         } else prevA = prevB = NUL; }
       if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
