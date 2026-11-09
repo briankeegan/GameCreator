@@ -228,7 +228,6 @@ static double diesAt(const Judge *x) {
 // (and a board lost within a break's time has no frame to give for a walk: there the later loss decides by any margin -- the hold lost at
 // 8 is never put before the line lost at 19 for the cursor's walk)
 static int spendsReserve(const Judge *J);
-static int lostAlike(const Judge *x, const Judge *y);
 static int walkTurns(const Judge *x, const Judge *y) {
   if (x->o.lives || y->o.lives) return 0;
   double dx = diesAt(x), dy = diesAt(y);
@@ -238,12 +237,7 @@ static int walkTurns(const Judge *x, const Judge *y) {
   // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
     if ((dx > dy ? dx - dy : dy - dx) < rankSave && spendsReserve(l) && !spendsReserve(s)) return 0; }
-  // (nor may the charge make alike two boards that are not: lost a break's time apart, the charge closing the gap to less, the keys
-  // for the alike -- the nearer, the mode -- took the sooner. Set 86 combo_storm 5, 20757: the cut lost at 115 put before the save lost at
-  // 362 by FOCUS, the save's seven swaps charged 240 frames of walk; the board was lost at 21006)
-  double lo = dx < dy ? dx : dy, hi = dx < dy ? dy : dx; int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
-  int aliveAlike = lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);
-  return (dx > dy) != (lostOf(x) > lostOf(y)) || (!aliveAlike && lostAlike(x, y));
+  return (dx > dy) != (lostOf(x) > lostOf(y));
 }
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
@@ -540,13 +534,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     double a = lostOf(x), b = lostOf(y), lo = a < b ? a : b, hi = a < b ? b : a;
     if (lo >= 0 && lo < NEAR_LOSS * rankSave && hi - lo >= NEAR_GAIN && !x->o.dead == !y->o.dead) return (cmpKey = __LINE__, (a > b ? -1 : 1));
   }
-  // 1. NO HOLDING INTO A LOSS: neither living, the hold lost within a break's time and a move lost NEAR_GAIN frames later or more, the move
+  // 1. NO HOLDING INTO A LOSS: neither living, the hold lost within NEAR_LOSS breaks' time and a move lost NEAR_GAIN frames later or more, the move
   // first -- a break's time is the least a garbage line takes to come off, and a hold that dies inside it waits for nothing (set 89,
-  // combo_storm 6, 10335 and 10374: holds lost in 95 and 56 frames over a line lost 77 and 74 frames later, the board lost at 10530)
+  // combo_storm 6, 10335 and 10374: holds lost in 95 and 56 frames over a line lost 77 and 74 frames later, the board lost at 10530;
+  // set 86 combo_storm 5, 14781 and 14810: holds lost in 228 and 202 over lines lost 54 and 51 later, the board lost at 15012)
   if (!lx && x->hold != y->hold) {
     const Judge *h = x->hold ? x : y, *m = x->hold ? y : x;
     double a = diesAt(h), b = diesAt(m);   // (the frames each is lost, no walk charged: the walk's charge is the order's preference, not a loss)
-    if (a >= 0 && a < rankSave && !m->o.dead && b < 1e299 && b - a >= NEAR_GAIN) return (cmpKey = __LINE__, (m == x ? -1 : 1));
+    if (a >= 0 && a < NEAR_LOSS * rankSave && !m->o.dead && b < 1e299 && b - a >= NEAR_GAIN) return (cmpKey = __LINE__, (m == x ? -1 : 1));
   }
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
   // the line in progress before the other, the hold too, where it breaks as much garbage: every swap pressed of a line put down is the input budget
