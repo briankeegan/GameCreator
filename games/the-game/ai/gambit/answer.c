@@ -500,7 +500,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // profile's gap and a jitter after the swap before it (front.c calmGap), a player's pause between moves, never a key of a line in hand
   // later than it was judged. Only a hold that lives was calm: 807 paced swaps in a set, the play a machine's)
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
-    A->holdLives = (d.kind == 0 && top && top->o.lives) || (H && !H->o.dead && (H->o.lives || diesAt(H) >= CALM_BREAKS * rankSave)); }
+    // (or the line played keeps the board that long itself: the pause comes after its swaps, between it and the next line, never inside it)
+    const Judge *Lp = d.kind == 1 ? P.line : 0;
+    A->holdLives = (d.kind == 0 && top && top->o.lives) || (H && !H->o.dead && (H->o.lives || diesAt(H) >= CALM_BREAKS * rankSave))
+                   || (Lp && !Lp->o.dead && (Lp->o.lives || diesAt(Lp) >= CALM_BREAKS * rankSave)); }
   A->ended = carryDrop >= 1 && carryDrop <= 3 ? 3 + carryDrop : !carriedJ ? (carryNone ? carryNone : 3) : P.line && (P.line == carriedJ || P.line->carried) ? 1
            : top && top != carriedJ && compareJudged(top, carriedJ) < 0 && cmpKey >= 10 ? cmpKey : 2;
   A->wastes = !P.line || R.up ? 0 : wastesThree(P.line) && saveOk ? 1 : P.line->o.j.threes > 0 && P.line->apBroke > 0 ? 2 : 0;   // (a three the survival search found the board needed not to die, or one on the way to a break)
