@@ -282,6 +282,7 @@ static double contLostOf(const Judge *J, double give) {
 }
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
 static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
+static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
@@ -326,7 +327,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; orderN = 0; twoDropped = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; orderN = 0; twoDropped = 0; twoWhy = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -524,8 +525,10 @@ static int ranked(const Read *R, const Found *S) {
       else if (spendsReserve(order[i])) continue;   // (a line that spends the window the next break is pressed from keeps nothing)
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
-    if (!keeps && keptLost >= rankSave) keeps = 1;
-    if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1;
+    int why = keeps ? 1 : 0;
+    if (!keeps && keptLost >= rankSave) keeps = 1, why = 2;
+    if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1, why = 3;
+    twoWhy = why; twoLostLog = twoLives ? 1e300 : twoLost; twoKeptLog = keptLost;
     // (not where the list asks no chain: a 2x taken to three is a bigger slab the mode does not ask)
     if (keeps && listChainCap() > 0) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i])) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 24; } } else order[m++] = order[i]; } n = m; } }
   // (NO COMBO THE MODE DOES NOT ASK FOR, where a three does as well: the line ranked first making one is played with each of its swaps
