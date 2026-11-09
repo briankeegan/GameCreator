@@ -340,12 +340,16 @@ static int setupKind(const Judge *J) {
   return !J->hold && (p == PLAY_SETUP || p == PLAY_LINEUP || p == PLAY_TOWARD || p == PLAY_NEAREST || p == PLAY_LEVEL || p == PLAY_ZIP);
 }
 // (A ZIP AMONG SET-UPS: a set-up toward the list, a lineup, a line toward a break or nearest the list, a level before a
-// swap that only zips the stack; of two zips, the stack left more zipped -- its colours a swap apart, not touching
-// (judge.c spreadOf). -1 x first, 1 y first, 0 neither)
+// swap that only zips the stack -- unless the zip walks ZIP_NEAR actions fewer: the owner, go toward the zipper and it sets up on its
+// own; a set-up across the board walks the window away for what a zip at hand makes. Of two zips, the nearer, then the stack left more
+// zipped -- its colours a swap apart, not touching (judge.c spreadOf). -1 x first, 1 y first, 0 neither)
+#define ZIP_NEAR 4
 static int zipOver(const Judge *x, const Judge *y) {
   int zx = x->k.play == PLAY_ZIP, zy = y->k.play == PLAY_ZIP;
   if (!zx && !zy) return 0;
-  if (zx != zy) return zx ? 1 : -1;
+  if (zx != zy) { const Judge *z = zx ? x : y, *o = zx ? y : x; int first = lineWalk(o) - lineWalk(z) >= ZIP_NEAR ? z == x : o == x; return first ? -1 : 1; }
+  // (of two zips, the nearer by ZIP_NEAR actions or more, then the more zipped)
+  { int wx = lineWalk(x), wy = lineWalk(y); if (iabs(wx - wy) >= ZIP_NEAR) return wx < wy ? -1 : 1; }
   if (x->o.j.spread != y->o.j.spread) return x->o.j.spread > y->o.j.spread ? -1 : 1;
   return 0;
 }
@@ -469,7 +473,6 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
-#define CHANGE_BREAKS 2   // (the breaks' time later a line off the plan's way to the mode must be lost to put the plan in progress down)
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
@@ -580,16 +583,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
-  // 1. THE PLAN IN PROGRESS GOES TOWARD THE MODE (the owner: it should go towards the goal of the mode): neither living, the line in
-  // progress is put down for a line lost later only where that line serves the mode better (goalKeyOf: an entry nearer the list's first)
-  // or is lost CHANGE_BREAKS breaks' time later -- near the end each decision's search finds a line a little longer and the plan was
-  // put down after one swap, four times in 100 frames, nothing finished (live r785, 8876-8937)
-  if (!lx && x->carried != y->carried) {
-    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    double dc = diesAt(c), dn = diesAt(o);
-    if (!c->o.dead && !c->hold && dc >= 0 && dc < 1e299 && dn < 1e299 && dn > dc && dn - dc < CHANGE_BREAKS * rankSave && goalKeyOf(o) >= goalKeyOf(c))
-      return (cmpKey = __LINE__, (c == x ? -1 : 1));
-  }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
