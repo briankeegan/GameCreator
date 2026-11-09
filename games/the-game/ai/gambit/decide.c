@@ -438,7 +438,10 @@ static int ranked(const Read *R, const Found *S) {
   { int ns = 0, tried = 0, none = !(n && order[0]->o.lives), n0 = n;
     // (the line in progress first, whatever its place: without the swap that makes its three it is still the line in progress -- carried,
     // its swaps pressed so far not for nothing -- where otherwise the order puts it down whole as a wasted three)
-    int ci = -1; for (int i = 0; i < n0; i++) if (order[i] == carriedJ) ci = i;
+    // (not where the list asks a chain: a chain's line is its swaps' order, and one swap left out is a chain begun from another place --
+    // fill on seed 86, 25 and 23 against 26 and 26 with it on)
+    int asksChain = 0; for (int i = 0; i < theList.n; i++) if (theList.aim[i].chain.op) asksChain = 1;
+    int ci = -1; if (!asksChain) for (int i = 0; i < n0; i++) if (order[i] == carriedJ) ci = i;
     for (int i0 = -1; i0 < n0 && tried < STRIP_LINES && ns < NSTRIP && leftMs() > 0; i0++) {
       int i = i0 < 0 ? ci : i0;
       if (i < 0 || (i0 >= 0 && i == ci)) continue;
@@ -452,7 +455,7 @@ static int ranked(const Read *R, const Found *S) {
         if (!candOf(&k, J->k.play, seq, m, J->k.aim, J->k.extend)) continue;
         k.settled = J->k.settled; k.way = J->k.way;
         if (!judgeCand(R, &k, &stripped[ns]) || wastesThree(&stripped[ns])) continue;
-        if (J == carriedJ && !strippedCarry) { stripped[ns].carried = 1; strippedCarry = &stripped[ns]; }
+        if (J == carriedJ && !asksChain && !strippedCarry) { stripped[ns].carried = 1; strippedCarry = &stripped[ns]; }
         if (none) readyNextFor(&stripped[ns]);
         order[n++] = &stripped[ns++];
       }
