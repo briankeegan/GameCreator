@@ -528,8 +528,9 @@ static int ranked(const Read *R, const Found *S) {
   // time on; only there is the reserve worth more than the line
   if (!garbageSeen) {
     int keeps = 0; double keptLost = -1;
-    for (int i = 0; i < n; i++) if (!spendsReserve(order[i])) { if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]); }
-    if (keeps || keptLost >= rankSave) { int m = 0; for (int i = 0; i < n; i++) { if (spendsReserve(order[i])) { if (order[i] == carriedJ) { carriedJ = 0; carryNone = 25; } } else order[m++] = order[i]; } n = m; }
+    // (the hold spends nothing: below the reserve already, every line that presses a key spends it, and the hold is the one that keeps it)
+    for (int i = 0; i < n; i++) if (order[i]->hold || !spendsReserve(order[i])) { if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]); }
+    if (keeps || keptLost >= rankSave) { int m = 0; for (int i = 0; i < n; i++) { if (!order[i]->hold && spendsReserve(order[i])) { if (order[i] == carriedJ) { carriedJ = 0; carryNone = 25; } } else order[m++] = order[i]; } n = m; }
   }
   // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
   // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
