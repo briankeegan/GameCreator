@@ -112,6 +112,35 @@ static int nearLineOf(const Bits *B, int32_t *seq, int *nseq) {
   return best;
 }
 static int breakNearLine(const Board *b, int32_t *seq, int *nseq) { bitsOf(b, &scratchBits); return nearLineOf(&scratchBits, seq, nseq); }
+// (THE NEAREST COMBO OF FOUR THAT BREAKS: as nearLineOf, four in a row or a column through a panel touching garbage -- the combo the
+// mode's list asks, made where it breaks; NEAR_MISS when none)
+static int nearLine4Of(const Bits *B, int32_t *seq, int *nseq) {
+  int top = B->top, best = 1 << 30;
+  if (nseq) *nseq = 0;
+  for (int r = 1; r <= top; r++) {
+    unsigned starts = bitsStarts(B, r);
+    for (int c = 1; c <= W; c++) {
+      if (!(starts >> c & 1)) continue;
+      int32_t k = B->code[r][c];
+      for (int r0 = r - 3; r0 <= r; r0++) {
+        if (r0 < 1 || r0 + 3 > top) continue;
+        int dv = 0, from, fr[4] = { 0 }, qs[4] = { 0 }, nq = 0;
+        for (int q = r0; q <= r0 + 3 && dv < best; q++) { if (q == r) continue; int d = bitsBring(B, q, c, k, 0, &from); if (d >= 0) { dv += d; qs[nq] = q; fr[nq++] = from; } else dv = 1 << 30; }
+        if (dv < best) { best = dv; if (seq) { int n = 0; for (int i = 0; i < nq; i++) n = walkTo(qs[i], fr[i], c, seq, n); *nseq = n; } }
+      }
+      for (int c0 = c - 3; c0 <= c; c0++) {
+        if (c0 < 1 || c0 + 3 > W) continue;
+        unsigned used = 1u << c;
+        int dh = 0, from, fr[4] = { 0 }, ts[4] = { 0 }, nt = 0;
+        for (int t = c0; t <= c0 + 3 && dh < best; t++) { if (t == c) continue; int d = bitsBring(B, r, t, k, used, &from); if (d >= 0) { used |= 1u << from; dh += d; ts[nt] = t; fr[nt++] = from; } else dh = 1 << 30; }
+        if (dh < best) { best = dh; if (seq) { int n = 0; for (int i = 0; i < nt; i++) n = walkTo(r, fr[i], ts[i], seq, n); *nseq = n; } }
+      }
+    }
+  }
+  return best;
+}
+static int listAsksFour(void) { Made m = { 4, 0, 1, 0 }; for (int i = 0; i < theList.n; i++) if (meets(&theList.aim[i], m)) return 1; return 0; }
+#define COMBO_MORE 2   // (the swaps more than the nearest three a combo of four that breaks may take and be built first)
 static int breakNear(const Board *b) { return breakNearLine(b, 0, 0); }
 // A PERCHED BLOCK (perchedDrops): a garbage block whose bottom row is held up by panels in some of the columns under it and by nothing in
 // the others -- a hollow under it. Its supports walked along their row past the block's nearer edge let it down, and the stack's height
@@ -623,6 +652,19 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   for (int i = 0; i < nfirsts; i++)
     if (breaksAt(&s, firsts[i]->n, firsts[i]->path, 1)) { found(out, firsts[i]->key); int32_t t = NODE(x, firsts[i]->n)->t; if (at1 < 0 || t < at1) at1 = t; }
   if (out->nmoves) { out->depth = 1; out->at = at1; return; }
+  // (THE BREAK BUILT: the nearest break's panels walked to it along their rows -- breakNear's own line -- played on the engine; where the
+  // list asks a combo of four, the nearest four that breaks first, within COMBO_MORE swaps of the nearest three: the break the mode asks,
+  // not a three the list does not -- finish them, 59% of the off-mode lines played with no on-mode line offered)
+  if (!(wait > 0) && listAsksFour()) {
+    static LOCAL int32_t nl[MAXPATH], n4[MAXPATH]; int nn = 0, m4 = 0;
+    bitsOf(q->b, &scratchBits);
+    int d3 = nearLineOf(&scratchBits, nl, &nn), d4 = nearLine4Of(&scratchBits, n4, &m4);
+    if (d4 < NEAR_MISS && m4 > 0 && m4 <= MAXPATH && d4 <= d3 + COMBO_MORE) {
+      int node = s.root;
+      for (int i = 0; i < m4 && liveNode(x, node); i++) node = stepMarked(&s, node, MK_SWAP, n4[i], 0);
+      if (liveNode(x, node) && breaksAt(&s, node, n4, m4) && breakCat(x, node) == 2) { found(out, n4[0]); setPath(out, n4, m4); out->depth = 1; out->at = NODE(x, node)->t; out->built = 1; return; }
+    }
+  }
   // (THE BREAK BUILT: the nearest break's panels walked to it along their rows -- breakNear's own line -- played on the engine)
   if (!(wait > 0)) {
     static LOCAL int32_t nl[MAXPATH]; int nn = 0;
