@@ -162,10 +162,13 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
   gb_refused(q->refA, q->refB); gb_pressed(q->swapA, q->swapB);
   hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
+  int32_t rescued0 = rescues;
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
                  !q->noRaise && canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
-  // (the closing work: from the moment it ran out of time to its answer)
-  if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
+  // (the closing work: from the moment it ran out of time to its answer -- not a decision whose lines were all judged again past the
+  // clock up to the move's own frame (decide.c rescue): that is the frame's time used on purpose, and counted as closing work it took
+  // every decision of the next CLOSEN its whole time -- set 89 endless 4: one rescue of 236 ms, 97 decisions starved, the board lost)
+  if (clockWentOut && rescues == rescued0) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
   Answer *A = &theAnswer;
   memset(out, 0, sizeof *out);
   out->id = q->id; out->epoch = q->epoch; out->at = q->at; out->kind = A->d.kind; out->move = A->d.move;
