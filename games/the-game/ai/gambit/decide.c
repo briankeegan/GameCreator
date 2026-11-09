@@ -538,7 +538,10 @@ static int ranked(const Read *R, const Found *S) {
       if (J->o.lives || J->apBroke > 0) { anyOk = 1; continue; }
       double d = diesAt(J); if (d < 0 || d >= 1e299) { anyOk = 1; continue; }
       int walk = J->hold ? 0 : lineWalk(J), back = -1;
-      for (int t = 0; t <= (int)d; t += 4) if (allowLeftAt(t, walk) >= BREAK_WALK) { back = t; break; }
+      // (the window is whole again once its length has passed -- every action in it gone -- so the frames asked end there: a board lost
+      // far off asked to its frame was millions of steps, 5 s a decision and the board lost holding: endless on seed 86, 15754)
+      int last = d < winLen ? (int)d : winLen;
+      for (int t = 0; t <= last; t += 4) if (allowLeftAt(t, walk) >= BREAK_WALK) { back = t; break; }
       ok[i] = back >= 0 && back + BREAK_WALK * PRESS_FRAMES <= d;
       if (ok[i]) anyOk = 1;
     }
