@@ -699,6 +699,9 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anc
 // (WHY THE LINE PLAYED WAS NOT HANDED ON, for the log: 0 it was, 1 no line, 2 it waits, 3 nothing of it left, 4 a tier past the set-ups
 // that breaks nothing, 5 no bottom-row panel to anchor it to; -1 none asked)
 static int32_t carrySkip = -1;
+// (THE LINE IN PROGRESS, WHERE IT BEGAN: the frame and the kind of line it was begun as -- carried on, it is played as `carry` from then on;
+// the log's `from`, so a reader sees what the swap pressed now is for)
+static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (WHAT LAST LET THE LINE IN PROGRESS GO, for the log of a decision that found none carried (answer.c ended 16): 1-5 the decision before
 // played no line to hand on (carrySkip's), 6 a hold's break in reach not anchored, 7 the mode changed, 8 a new game)
 static int32_t carryClr;
@@ -712,6 +715,8 @@ static int savesOverHold(const Judge *k) {
   return k->o.lives || diesAt(k) > diesAt(H);
 }
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
+  if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
+  else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.waits = waits; carriedSunk = -1;
