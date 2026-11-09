@@ -20,6 +20,7 @@ static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: t
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
+#define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
 #define OPENING_RAISE 600   // the opening raise's frames: the countdown and the seconds before garbage first lands (340-400 in the garbage patterns)
 #define RAISE_WAIT 120   // the frames the floor's raise waits for the stack to take one, at most
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
@@ -284,7 +285,7 @@ static double contLostOf(const Judge *J, double give) {
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
-static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
+static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
@@ -330,7 +331,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; orderN = 0; twoDropped = 0; twoWhy = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -524,6 +525,25 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+  // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
+  // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
+  // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
+  // The rise and the window both counted: the presses leaving the window by each frame (core/nodes.h allowLeftAt), the frame each line's
+  // board is lost (diesAt). Endless on main: the deaths with 5-12 actions left; held whatever the rise, 21 of 28 (idea354)
+  if (!garbageSeen && pressAllowance >= 0) {
+    int n0w = n;
+    int ok[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP], anyOk = 0;
+    for (int i = 0; i < n; i++) {
+      const Judge *J = order[i]; ok[i] = 1;
+      if (J->o.lives || J->apBroke > 0) { anyOk = 1; continue; }
+      double d = diesAt(J); if (d < 0 || d >= 1e299) { anyOk = 1; continue; }
+      int walk = J->hold ? 0 : lineWalk(J), back = -1;
+      for (int t = 0; t <= (int)d; t += 4) if (allowLeftAt(t, walk) >= BREAK_WALK) { back = t; break; }
+      ok[i] = back >= 0 && back + BREAK_WALK * PRESS_FRAMES <= d;
+      if (ok[i]) anyOk = 1;
+    }
+    if (anyOk) { int m = 0; for (int i = 0; i < n; i++) { if (!ok[i]) { if (order[i] == carriedJ) { carriedJ = 0; carryNone = 25; } } else order[m++] = order[i]; } n = m; windowCut = n0w - n; }
+  }
   // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
   // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
   // or is lost later: only there is a 2x a save
