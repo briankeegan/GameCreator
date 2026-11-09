@@ -469,6 +469,7 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
+#define CHANGE_BREAKS 2   // (the breaks' time later a line off the plan's way to the mode must be lost to put the plan in progress down)
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
@@ -579,6 +580,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
+  // 1. THE PLAN IN PROGRESS GOES TOWARD THE MODE (the owner: it should go towards the goal of the mode): neither living, the line in
+  // progress is put down for a line lost later only where that line serves the mode better (goalKeyOf: an entry nearer the list's first)
+  // or is lost CHANGE_BREAKS breaks' time later -- near the end each decision's search finds a line a little longer and the plan was
+  // put down after one swap, four times in 100 frames, nothing finished (live r785, 8876-8937)
+  if (!lx && x->carried != y->carried) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    double dc = diesAt(c), dn = diesAt(o);
+    if (!c->o.dead && !c->hold && dc >= 0 && dc < 1e299 && dn < 1e299 && dn > dc && dn - dc < CHANGE_BREAKS * rankSave && goalKeyOf(o) >= goalKeyOf(c))
+      return (cmpKey = __LINE__, (c == x ? -1 : 1));
+  }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
