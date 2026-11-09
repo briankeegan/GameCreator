@@ -539,7 +539,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // combo_storm 6, 10335 and 10374: holds lost in 95 and 56 frames over a line lost 77 and 74 frames later, the board lost at 10530)
   if (!lx && x->hold != y->hold) {
     const Judge *h = x->hold ? x : y, *m = x->hold ? y : x;
-    double a = lostOf(h), b = lostOf(m);
+    double a = diesAt(h), b = diesAt(m);   // (the frames each is lost, no walk charged: the walk's charge is the order's preference, not a loss)
     if (a >= 0 && a < rankSave && !m->o.dead && b < 1e299 && b - a >= NEAR_GAIN) return (cmpKey = __LINE__, (m == x ? -1 : 1));
   }
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
