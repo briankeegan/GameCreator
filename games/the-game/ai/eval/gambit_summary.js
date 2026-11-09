@@ -17,7 +17,7 @@ var aims = {};   // by the mode a game played throughout: { met, all }
 var carrySkip = { n: 0, by: {}, c16n: 0, c16: {} };   // (the lines of two swaps or more played, and why each was not handed on to the next decision: answer.c cof=)
 var sentIn = {};    // (THE GARBAGE SENT: each mode's attacks by kind and size -- chain n as 2x..13x, combo n -- their count, the rows each sends and whether the mode asked it)
 var wrongIn = {};   // (THE WRONG ATTACKS: each mode's attacks that met none of its aims, by what they were and what made them -- the swap pressed within 120 frames before, or the board alone)
-var aimsIn = {}, goalMiss = { n: 0, dec: 0, keys: {} }, outMiss = { n: 0, keys: {} }, brkOver = { n: 0, keys: {} }, dips = { n: 0, none: 0, up: 0, upNone: 0 };   var overG = { n: 0, none: 0, all: 0, acts: 0, useful: 0 };   // (swaps over unbroken garbage, GAMBITM's last field: their share and what they came to; the actions a swap that came to something)   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
+var aimsIn = {}, goalMiss = { n: 0, dec: 0, keys: {} }, outMiss = { n: 0, keys: {} }, brkOver = { n: 0, keys: {} }, dips = { n: 0, none: 0, up: 0, upNone: 0 };   var overG = { n: 0, none: 0, all: 0, acts: 0, useful: 0 };   var lostOwn = { lines: 0, acts: 0, own: 0, never: 0, neverOwn: 0, by: {} };   // (GAMBITE: the lines not played out, the actions charged, those of their own -- not taken over from the line they carried on -- and those never pressed a swap)   // (swaps over unbroken garbage, GAMBITM's last field: their share and what they came to; the actions a swap that came to something)   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
 var frontS = {};   // (the frontiers carried on, search/frontier.c: per frontier, the lines kept and carried in, the decisions it was let go whole)
 var svSeed = [0, 0], rdyBeam = [0, 0], frontId = [0, 0, 0, 0];
@@ -208,6 +208,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     var inMode = null, lastSwapAt = -1, lastSwapPlay = '', lastPopAt = -1e9;
     // (THE WALK DOWN AND BACK: a swap 4 or more rows under the swaps pressed either side of it, all three within 240 frames, and what it came to)
     var mv = lines.map(function (l) { var m = /^GAMBITM (\d+) (\d+),\d+ .*? ([csbn]) \d+\/\d+/.exec(l); return m && { at: +m[1], r: +m[2], o: m[3] }; }).filter(Boolean).sort(function (a, b) { return a.at - b.at; });
+    lines.forEach(function (l) { var e = /^GAMBITE \d+ (-?\d+) (\d+)\/(\d+) (\d+) (\d+)$/.exec(l); if (!e) return; var own = +e[4] - +e[5];
+      lostOwn.lines++; lostOwn.acts += +e[4]; lostOwn.own += own; lostOwn.by[e[1]] = (lostOwn.by[e[1]] || 0) + own; if (e[2] === '0') { lostOwn.never++; lostOwn.neverOwn += own; } });
     lines.forEach(function (l) { var m = /^GAMBITM \d+ \d+,\d+ .*? ([csbn]) \d+\/\d+ (\d+) -?\d+ \d+ \d+(?: (\d))?$/.exec(l); if (!m) return;
       overG.all++; overG.acts += +m[2]; if (m[1] !== 'n') overG.useful++; if (m[3] === '1') { overG.n++; if (m[1] === 'n') overG.none++; } });
     for (var mi = 1; mi + 1 < mv.length; mi++) {
@@ -463,6 +465,8 @@ Object.keys(wrongIn).sort().forEach(function (k) { var w = wrongIn[k], t = aimsI
   console.log('the measure, waste: the mode passed over in ' + goalMiss.n + ' of ' + goalMiss.dec + ' decisions; ' + (nmv0 ? Math.round(100 * moves.none / nmv0) : '-') + '% of ' + nmv0 +
               ' swaps came to nothing; ' + moves.wasted + ' wasted threes' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') +
               '; ' + dips.n + ' walks down and back for one swap (' + dips.none + ' of them for nothing), ' + dips.up + ' up and back (' + dips.upNone + ' for nothing)');
+  if (lostOwn.lines) console.log('the measure, input spent for nothing: ' + lostOwn.own + ' of ' + actsAll + ' actions (' + (actsAll ? (100 * lostOwn.own / actsAll).toFixed(1) : '-') + '%, target under 10%) on ' + lostOwn.lines + ' lines not played out, their own -- ' + (lostOwn.acts - lostOwn.own) + ' more taken over from the lines they carried on; ' + lostOwn.neverOwn + ' on ' + lostOwn.never + ' lines no swap of which was pressed; by what ended them: ' +
+              Object.keys(lostOwn.by).sort(function (a, b) { return lostOwn.by[b] - lostOwn.by[a]; }).slice(0, 6).map(function (k) { return k + ' ' + lostOwn.by[k]; }).join(', '));
   if (overG.all) console.log('the measure, organised: ' + overG.n + ' of ' + overG.all + ' swaps over unbroken garbage (' + Math.round(100 * overG.n / overG.all) + '%), ' + overG.none + ' of them came to nothing (' + (overG.n ? Math.round(100 * overG.none / overG.n) : 0) + '%); ' +
               (overG.useful ? (overG.acts / overG.useful).toFixed(1) : '-') + ' actions pressed a swap that came to something');
   var top = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).slice(0, 8).map(function (k) { return k + ' x' + o[k]; }).join(', '); };
