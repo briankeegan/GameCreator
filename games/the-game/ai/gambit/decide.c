@@ -680,10 +680,6 @@ static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) 
     for (int i = 0; i < n; i++) if (CR(seq[i]) == 1 && (CC(seq[i]) == c || CC(seq[i]) + 1 == c)) touched = 1;
     if (!touched) { C->anchorRow = 1; C->anchorCol = c; C->anchorId = row1[c]; return 1; }
   }
-  // (no settled panel on the bottom row the line leaves alone -- the row clearing, or every one of it swapped: the row still rising in
-  // under it, which no swap reaches and which rises with the stack, holds the line's place)
-  if (decQ.b && decQ.b->nrows > 1)
-    for (int c = 1; c <= W; c++) { const int32_t *f = decQ.b->p[0][c].f; if (f[COLOR] > 0 && !f[ISGARBAGE] && f[ID] != NUL) { C->anchorRow = 0; C->anchorCol = c; C->anchorId = f[ID]; return 1; } }
   return 0;
 }
 static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anchorInto(&theCarry, row1, seq, n); }
@@ -708,10 +704,9 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.waits = waits; carriedSunk = -1;
-  // (every line of two swaps or more is carried, whatever its tier: a line begun and not carried is judged again from nothing at the next
-  // decision, and one put down there for another is every swap of it pressed for nothing -- the cursor sent after the next one; a line
-  // carried stands while it survives as well, the order's keys for the line in progress)
-  carrySkip = !k ? 1 : (k->wait && k->k.play != PLAY_CARRYWAIT) ? 2 : k->k.nseq < first + 1 ? 3 : 0;
+  // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
+  // tier, and its swaps after the first are the break it was chosen for)
+  carrySkip = !k ? 1 : (k->wait && k->k.play != PLAY_CARRYWAIT) ? 2 : k->k.nseq < first + 1 ? 3 : (k->t.tier > 4 && !(k->apBroke > 0) && !savesOverHold(k)) ? 4 : 0;
   if (carrySkip) { carryClr = carrySkip; return; }
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
