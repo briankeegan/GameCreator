@@ -510,11 +510,7 @@ static int ranked(const Read *R, const Found *S) {
     if (!keeps && !saveOk && (wasteLives || wasteLost >= 0) && !(saveAsked && saveCw >= 0 && saveCk >= 0)) { saveOk = 1; saveBlind = 1; }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
-    // (THE LINE IN PROGRESS FOLLOWS THROUGH: carried, it breaks garbage after its three -- the three on its way to the break the line was
-    // begun for, the press guard's own let-through (answer.c wastes 2) -- it is not put down for the three: put down, every swap of it
-    // pressed is for nothing, and the three it made already with them)
-    int through = carriedJ && !carriedJ->o.dead && carriedJ->apBroke > 0 && carriedJ->o.j.threes > 0;
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && !(through && order[i] == carriedJ)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
   // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
   // or is lost later: only there is a 2x a save

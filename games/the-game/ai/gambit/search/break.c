@@ -153,7 +153,23 @@ static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
 static int garbageOn(const Board *b) { bitsOf(b, &scratchBits); return bitsLowestG(&scratchBits) <= scratchBits.rows; }
 // the panels on the board, garbage not counted -- the material every break is made from
 static int32_t panelsOn(const Board *b) { bitsOf(b, &scratchBits); return bitsPanels(&scratchBits); }
-static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) - uneven(b); }
+// (A COMBO UNDER THE GARBAGE: the panels right under each column's lowest garbage, the colour most of them are -- four or more of one
+// colour there is a combo of four the mode's list asks for that breaks it, a swap or two from lining up; 0 none)
+static int comboUnder(const Board *b) {
+  int cnt[16] = { 0 }, best = 0;
+  for (int c = 1; c <= W; c++)
+    for (int r = 1; r < b->nrows; r++) if (b->p[r][c].f[ISGARBAGE]) {
+      const int32_t *f = b->p[r - 1][c].f;
+      if (r - 1 >= 1 && f[COLOR] > 0 && f[COLOR] < 16 && !f[ISGARBAGE] && f[STATE] == NORMAL && ++cnt[f[COLOR]] > best) best = cnt[f[COLOR]];
+      break;
+    }
+  return best >= 4;
+}
+// (as near a break, the board with a combo of four under the garbage first -- the break the mode asks found, not the three that breaks
+// for nothing the list does not ask: finish them, 978 of the chains sent after an off-mode line, 59% of off-mode lines with no on-mode one
+// offered)
+static int listAsksFour(void) { Made m = { 4, 0, 1, 0 }; for (int i = 0; i < theList.n; i++) if (meets(&theList.aim[i], m)) return 1; return 0; }
+static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) + (listAsksFour() && comboUnder(b) ? 200 : 0) - uneven(b); }
 // How far a board is toward lining up with the converting row `want`: per column, its top panel below the lowest garbage of that colour,
 // and the one under it too
 static int32_t pairsOf(const Board *b, const int32_t *want) {
