@@ -18,7 +18,9 @@ Four of these are measured every run beside survival (`target.sh`, from each gam
   ("the wrong attacks"), and the extra with the garbage's own noted apart ("the extra"). Last measured (`d2e34a60`, set 85): finish them 48%, build 42%, pressure 36%, big chain 28%. Target: 100% -- as close to it as it can be got, like every other measure here.
 - **No wasted input** (the owner: efficiency, no mistakes, no changing minds). A line begun is pressed to its end unless survival needs
   another; no three that breaks nothing. Measured: the share of inputs pressed on lines dropped before their end (`actsLost`) and
-  wasted threes a minute. Last measured: 27-33% of inputs; 0.01-0.04 threes a minute. Target: under 10%, and no wasted three.
+  wasted threes a minute. Last measured: 27-33% of inputs; 0.01-0.04 threes a minute. The actions of a line's own -- not those it took
+  over from the line it carried on, whose swaps were pressed -- are "the measure, input spent for nothing" (GAMBITE): 20.7% on set 86
+  (`79cabb52`), against 31.4% counted the old way. Target: under 10%, and no wasted three.
 - **Kill, and kill fast** (the owner: win as quickly as possible, against people and bots alike). The enemy dies on the first frame
   it is topped out with no stop time, no shake, and nothing popping or swapping (`Stack.lua` `checkDeath`, `advancePassiveRaise`;
   level 11 has 1 health). What our garbage hands it: each landing is shake -- 18 frames for up to 4 panels, 24 for 5, 42 for 6-11,
