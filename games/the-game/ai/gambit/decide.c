@@ -522,6 +522,15 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+  // THE RESERVE KEPT WITH NO GARBAGE (endless: the board lost to its own rise when the window is spent -- main, endless on seed 86,
+  // three lost with 5-12 actions left on average and 0-1 at the least): a line that spends the window the next clear is pressed from
+  // (rank.c spendsReserve) is taken out of the order where a line that keeps it -- the hold among them -- lives, or is lost a break's
+  // time on; only there is the reserve worth more than the line
+  if (!garbageSeen) {
+    int keeps = 0; double keptLost = -1;
+    for (int i = 0; i < n; i++) if (!spendsReserve(order[i])) { if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]); }
+    if (keeps || keptLost >= rankSave) { int m = 0; for (int i = 0; i < n; i++) { if (spendsReserve(order[i])) { if (order[i] == carriedJ) { carriedJ = 0; carryNone = 25; } } else order[m++] = order[i]; } n = m; }
+  }
   // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
   // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
   // or is lost later: only there is a 2x a save
@@ -884,6 +893,7 @@ static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, 
 // (WHY NO LINE IN PROGRESS WAS OFFERED, for the frame loop's count of what ended its line -- answer.c ended: 0 one was; 16 none was
 // carried by the last answer; 17 the frame loop asked on another line than the one carried; 18 every swap of it pressed; 19 the judge
 // gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing)
+// (25: it spends the reserve in a game with no garbage)
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0; carryLate = 0;
