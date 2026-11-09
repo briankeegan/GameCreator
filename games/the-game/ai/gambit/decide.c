@@ -287,7 +287,6 @@ static double contLostOf(const Judge *J, double give) {
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
 static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
-static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
@@ -332,7 +331,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; backTrimmed = 0; samesTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -580,15 +579,6 @@ static int ranked(const Read *R, const Found *S) {
     for (int i = 0; i < J->k.nseq; i++) if (i != at && i != at - 1) w.seq[w.nseq++] = J->k.seq[i];
     if (!judgeCand(R, &w, &JL) || compareJudged(&JL, J) > 0) break;
     JL.carried = J->carried; *J = JL; noopTrimmed++;
-  }
-  // (A SWAP OF ONE COLOUR -- two panels alike, the board left as it was: the line ranked first, judged once more without every such swap
-  // and played so unless that is ranked after it -- a row walk built a cell at a time steps past a panel like the one walked, a press
-  // and a walk for nothing)
-  if (n && order[0] && !order[0]->hold && order[0]->o.j.sames && order[0]->k.nseq >= 2 && !clockOut()) {
-    static Cand w; static Judge JL; Judge *J = order[0];
-    w = J->k; w.nseq = 0;
-    for (int i = 0; i < J->k.nseq; i++) if (!(i < 64 && (J->o.j.sames >> i & 1))) w.seq[w.nseq++] = J->k.seq[i];
-    if (w.nseq >= 1 && judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; samesTrimmed++; }
   }
   // (A SWAP BACK THE LINE DOES NOT NEED -- the owner: no flip and back: the line ranked first, its first swap swapping back the pair the
   // last swap pressed swapped (rank.c back), is judged once more without that swap and played so unless that is ranked after it)
