@@ -579,6 +579,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
+  // (THE PLAN IN PROGRESS NOT PUT DOWN FOR A FOLLOW-UP: a line whose own board is lost sooner than the line in progress's, later only by
+  // the break its readiness promises after the next landing, never put first over it -- that break is no line pressed, and the line
+  // put down for it threw its inputs away: two decisions on, the follow-up was another's (set 86, 802 lines put down by survival a
+  // median 31 frames into them, one in ten for a board lost sooner)
+  if (!lx && x->carried != y->carried && !x->hold && !y->hold) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    double oc = lostAtOf(c->o.lostAt, 0), oo = lostAtOf(o->o.lostAt, 0);
+    if (!c->o.dead && oc < 1e299 && oo < oc && diesAt(o) > diesAt(c)) return (cmpKey = __LINE__, (c == x ? -1 : 1));
+  }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
