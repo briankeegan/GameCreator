@@ -77,6 +77,7 @@ typedef struct {
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 // (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
 // it -- and how many swaps were pressed since)
+#define LOGGED_MAX 4000   // (the frame loop's notes a game -- a line dropped, an answer refused, guarded, late, a line behind: every one, for the reader)
 #define MOVE_OPEN 64
 #define MOVE_IDS 32
 #define MOVE_FOR 600
@@ -626,7 +627,7 @@ static void take(void) {
         keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, MK_GO, CR(a.aim), CC(a.aim), &k) && k.n > 0) { aimed = 1; F.st.aimed++; }
     if (!aimed && !keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
       F.st.refused++;
-      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
+      if (F.loggedRefused < LOGGED_MAX) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
       continue;
     }
     // (a raise held down: the button stays down for the frames it takes to bring the rows in, and raiseAfter after them)
@@ -642,7 +643,7 @@ static void take(void) {
     walkKeys(&k, at, F.pBoard);
     if (!keysFit(at, &k)) {
       F.st.guarded++;
-      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "GUARDED answer for %d taken at %d: its %d keys do not fit the input allowance", a.at, F.now, k.n); flog(l); F.loggedRefused++; }
+      if (F.loggedRefused < LOGGED_MAX) { char l[160]; snprintf(l, sizeof l, "GUARDED answer for %d taken at %d: its %d keys do not fit the input allowance", a.at, F.now, k.n); flog(l); F.loggedRefused++; }
       continue;
     }
     F.st.heldWalks += k.held;
@@ -679,7 +680,7 @@ static void lineEnds(int32_t why) {
 }
 static int lineDropped(int32_t due, const char *why, int32_t code) {
   lineEnds(code);
-  if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "LINE dropped at %d (due %d, %d left): %s", F.now, due, F.lineN, why); flog(l); F.loggedRefused++; }
+  if (F.loggedRefused < LOGGED_MAX) { char l[160]; snprintf(l, sizeof l, "LINE dropped at %d (due %d, %d left): %s", F.now, due, F.lineN, why); flog(l); F.loggedRefused++; }
   F.lineN = 0; return 0;
 }
 static int follow(void) {
@@ -691,7 +692,7 @@ static int follow(void) {
   // the first few logged; plans/gambit-goal.md, the truth)
   if (F.lineAt[0] > 0 && due > F.lineAt[0]) {
     F.st.behind++; F.st.behindWorst = imax(F.st.behindWorst, due - F.lineAt[0]);
-    if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "LINE behind at %d: %d,%d keyed from %d, judged from %d", F.now, CR(F.line[0]), CC(F.line[0]), due, F.lineAt[0]); flog(l); F.loggedRefused++; }
+    if (F.loggedRefused < LOGGED_MAX) { char l[160]; snprintf(l, sizeof l, "LINE behind at %d: %d,%d keyed from %d, judged from %d", F.now, CR(F.line[0]), CC(F.line[0]), due, F.lineAt[0]); flog(l); F.loggedRefused++; }
   }
   int32_t mv = F.line[0], hl, hs;
   if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) return lineDropped(due, "no board predicted", END_NOBOARD);

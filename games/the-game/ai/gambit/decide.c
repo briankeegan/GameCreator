@@ -15,6 +15,7 @@ static int32_t rescues;   // (decisions whose lines were all judged again past t
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
 static int32_t raiseRefill;   // (the raise asked is the floor's, not the opening's: answer.c lets nothing go before it)
+static int32_t raiseOpening, raiseTo, raiseRows;   // (the raise asked this decision: the opening's, and the rows it raises to -- the log's raiseFor)
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
@@ -164,8 +165,9 @@ static int readBoard_(Read *R) {
   // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
   // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
   int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
-  raiseRefill = refill;
+  raiseRefill = refill; raiseOpening = opening; raiseTo = to;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
+  raiseRows = rowsUp;
   R->low = to && (opening || refill) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
   refillAsked = refillReady = refillAlive = 0; raiseWait = 0;
   // (THE FLOOR'S RAISE, TIMED: a board busy now -- a cascade, panels moving, the shake -- is one the engine would not raise; it is run on,
