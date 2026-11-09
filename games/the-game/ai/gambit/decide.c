@@ -680,6 +680,10 @@ static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) 
     for (int i = 0; i < n; i++) if (CR(seq[i]) == 1 && (CC(seq[i]) == c || CC(seq[i]) + 1 == c)) touched = 1;
     if (!touched) { C->anchorRow = 1; C->anchorCol = c; C->anchorId = row1[c]; return 1; }
   }
+  // (no settled panel on the bottom row the line leaves alone -- the row clearing, or every one of it swapped: the row still rising in
+  // under it, which no swap reaches and which rises with the stack, holds the line's place)
+  if (decQ.b && decQ.b->nrows > 1)
+    for (int c = 1; c <= W; c++) { const int32_t *f = decQ.b->p[0][c].f; if (f[COLOR] > 0 && !f[ISGARBAGE] && f[ID] != NUL) { C->anchorRow = 0; C->anchorCol = c; C->anchorId = f[ID]; return 1; } }
   return 0;
 }
 static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anchorInto(&theCarry, row1, seq, n); }
