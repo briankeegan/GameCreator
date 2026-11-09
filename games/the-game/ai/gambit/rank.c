@@ -228,6 +228,7 @@ static double diesAt(const Judge *x) {
 // (and a board lost within a break's time has no frame to give for a walk: there the later loss decides by any margin -- the hold lost at
 // 8 is never put before the line lost at 19 for the cursor's walk)
 static int spendsReserve(const Judge *J);
+static int lostAlike(const Judge *x, const Judge *y);
 static int walkTurns(const Judge *x, const Judge *y) {
   if (x->o.lives || y->o.lives) return 0;
   double dx = diesAt(x), dy = diesAt(y);
@@ -237,7 +238,12 @@ static int walkTurns(const Judge *x, const Judge *y) {
   // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
     if ((dx > dy ? dx - dy : dy - dx) < rankSave && spendsReserve(l) && !spendsReserve(s)) return 0; }
-  return (dx > dy) != (lostOf(x) > lostOf(y));
+  // (nor may the charge make alike two boards that are not: lost a break's time apart, the charge closing the gap to less, the keys
+  // for the alike -- the nearer, the mode -- took the sooner. Set 86 combo_storm 5, 20757: the cut lost at 115 put before the save lost at
+  // 362 by FOCUS, the save's seven swaps charged 240 frames of walk; the board was lost at 21006)
+  double lo = dx < dy ? dx : dy, hi = dx < dy ? dy : dx; int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
+  int aliveAlike = lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);
+  return (dx > dy) != (lostOf(x) > lostOf(y)) || (!aliveAlike && lostAlike(x, y));
 }
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
