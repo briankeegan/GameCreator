@@ -567,6 +567,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" by="); if (R.by != NOT_ASKED && R.by) L_i(R.by); else L_s("-");
   L_s(" done="); if (P.line && A->done >= 0) L_i(A->done); else L_s("-");
   L_s(" fire="); if (P.line && A->fire >= 0) L_i(A->fire); else L_s("-");
+  if (P.line && P.line->carried && carryBeganAt >= 0 && carryBeganPlay >= 0 && carryBeganPlay < NPLAYS) { L_s(" from="); L_i(carryBeganAt); L_s(":"); L_play(carryBeganPlay); }   // (the line in progress: the frame it was begun and as what)
   L_s(" ats="); if (P.line && P.line->apNats) { for (int i = 0; i < P.line->apNats; i++) { if (i) L_s("/"); L_i(P.line->apAts[i]); } } else L_s("-");
   L_s(" swaps="); L_i(P.line ? P.line->k.nseq : 0);
   if (P.line && P.line->k.nseq > 0) { L_s(" seq="); for (int q = 0; q < P.line->k.nseq; q++) { if (q) L_s(";"); L_mv(P.line->k.seq[q]); } }   // (the line played, every swap: whether the next decision carries it on)
@@ -584,6 +585,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
   if (backTrimmed) L_s(" backTrimmed=1");
+  if (windowCut) { L_s(" windowCut="); L_i(windowCut); }   // (lines taken out: the window not back before their board is lost)
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); L_s(" twoWhy="); L_i(twoWhy); L_s("/"); L_i(twoLostLog >= 1e299 ? -2 : (int64_t)twoLostLog); L_s("/"); L_i((int64_t)twoKeptLog); }
   if (twoRemade) { L_s(" twoRemade="); L_i(twoRemade); }
   if (noopWaits) { L_s(" noopWaits="); L_i(noopWaits); }
@@ -707,6 +709,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
     if (carryDrop >= 2) { L_s(" carryRest="); for (int i = 0; i < carryDropN; i++) { if (i) L_s(";"); L_mv(carryDropRest[i]); } }
   }
+  // (WHY THIS LINE: the order's key that put the line played before the best line it passed over, and what that line was -- rank.c's
+  // line number, named by eval/rank_keys.js; none where nothing else was offered)
+  if (top && P.ncands > 1) { const Judge *ru = order[0] == top ? order[1] : order[0]; int32_t keepKey = cmpKey;
+    if (ru && ru != top && compareJudged(top, ru) < 0) { L_s(" won=k"); L_i(cmpKey); L_s(":"); L_play(ru->hold ? PLAY_HOLD : ru->k.play); } cmpKey = keepKey; }
   L_s(" opts=");
   for (int i = 0; i < P.ncands && i < 8; i++) {
     const Judge *j = order[i];
@@ -749,6 +755,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
+  // (A RAISE, AND WHY: asked as the opening's (o) or the floor's refill (r), the rows to raise to and the rows short of them, and whether the
+  // engine could raise now (1) or a cascade held it (0) -- on every decision a raise was asked)
+  if (R.low) { L_s(" raiseFor="); L_s(raiseOpening ? "o" : raiseRefill ? "r" : "-"); L_s(":"); L_i(raiseTo); L_s(":"); L_i(raiseRows); L_s(":"); L_i(R.up ? 1 : 0); }
   if (P.deferred) L_s(" deferred=1");
   { static int32_t comboSeen; if (combosDropped != comboSeen) { L_s(" noFour=1"); comboSeen = combosDropped; } }
   { static int32_t rescueSeen; if (rescues != rescueSeen) { L_s(" rescued=1"); rescueSeen = rescues; } }

@@ -15,10 +15,12 @@ static int32_t rescues;   // (decisions whose lines were all judged again past t
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
 static int32_t raiseRefill;   // (the raise asked is the floor's, not the opening's: answer.c lets nothing go before it)
+static int32_t raiseOpening, raiseTo, raiseRows;   // (the raise asked this decision: the opening's, and the rows it raises to -- the log's raiseFor)
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
+#define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
 #define OPENING_RAISE 600   // the opening raise's frames: the countdown and the seconds before garbage first lands (340-400 in the garbage patterns)
 #define RAISE_WAIT 120   // the frames the floor's raise waits for the stack to take one, at most
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
@@ -164,8 +166,9 @@ static int readBoard_(Read *R) {
   // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
   // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
   int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
-  raiseRefill = refill;
+  raiseRefill = refill; raiseOpening = opening; raiseTo = to;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
+  raiseRows = rowsUp;
   R->low = to && (opening || refill) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
   refillAsked = refillReady = refillAlive = 0; raiseWait = 0;
   // (THE FLOOR'S RAISE, TIMED: a board busy now -- a cascade, panels moving, the shake -- is one the engine would not raise; it is run on,
@@ -282,7 +285,7 @@ static double contLostOf(const Judge *J, double give) {
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
-static int32_t twoDropped;   // (lines taken out as a 2x not taken to three -- the log's)
+static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
@@ -328,7 +331,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; orderN = 0; twoDropped = 0; twoWhy = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -522,15 +525,24 @@ static int ranked(const Read *R, const Found *S) {
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
-  // THE RESERVE KEPT WITH NO GARBAGE (endless: the board lost to its own rise when the window is spent -- main, endless on seed 86,
-  // three lost with 5-12 actions left on average and 0-1 at the least): a line that spends the window the next clear is pressed from
-  // (rank.c spendsReserve) is taken out of the order where a line that keeps it -- the hold among them -- lives, or is lost a break's
-  // time on; only there is the reserve worth more than the line
-  if (!garbageSeen) {
-    int keeps = 0; double keptLost = -1;
-    // (the hold spends nothing: below the reserve already, every line that presses a key spends it, and the hold is the one that keeps it)
-    for (int i = 0; i < n; i++) if (order[i]->hold || !spendsReserve(order[i])) { if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]); }
-    if (keeps || keptLost >= rankSave) { int m = 0; for (int i = 0; i < n; i++) { if (!order[i]->hold && spendsReserve(order[i])) { if (order[i] == carriedJ) { carriedJ = 0; carryNone = 25; } } else order[m++] = order[i]; } n = m; }
+  // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
+  // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
+  // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
+  // The rise and the window both counted: the presses leaving the window by each frame (core/nodes.h allowLeftAt), the frame each line's
+  // board is lost (diesAt). Endless on main: the deaths with 5-12 actions left; held whatever the rise, 21 of 28 (idea354)
+  if (!garbageSeen && pressAllowance >= 0) {
+    int n0w = n;
+    int ok[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP], anyOk = 0;
+    for (int i = 0; i < n; i++) {
+      const Judge *J = order[i]; ok[i] = 1;
+      if (J->o.lives || J->apBroke > 0) { anyOk = 1; continue; }
+      double d = diesAt(J); if (d < 0 || d >= 1e299) { anyOk = 1; continue; }
+      int walk = J->hold ? 0 : lineWalk(J), back = -1;
+      for (int t = 0; t <= (int)d; t += 4) if (allowLeftAt(t, walk) >= BREAK_WALK) { back = t; break; }
+      ok[i] = back >= 0 && back + BREAK_WALK * PRESS_FRAMES <= d;
+      if (ok[i]) anyOk = 1;
+    }
+    if (anyOk) { int m = 0; for (int i = 0; i < n; i++) { if (!ok[i]) { if (order[i] == carriedJ) { carriedJ = 0; carryNone = 25; } } else order[m++] = order[i]; } n = m; windowCut = n0w - n; }
   }
   // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
   // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
@@ -709,6 +721,9 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anc
 // (WHY THE LINE PLAYED WAS NOT HANDED ON, for the log: 0 it was, 1 no line, 2 it waits, 3 nothing of it left, 4 a tier past the set-ups
 // that breaks nothing, 5 no bottom-row panel to anchor it to; -1 none asked)
 static int32_t carrySkip = -1;
+// (THE LINE IN PROGRESS, WHERE IT BEGAN: the frame and the kind of line it was begun as -- carried on, it is played as `carry` from then on;
+// the log's `from`, so a reader sees what the swap pressed now is for)
+static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (WHAT LAST LET THE LINE IN PROGRESS GO, for the log of a decision that found none carried (answer.c ended 16): 1-5 the decision before
 // played no line to hand on (carrySkip's), 6 a hold's break in reach not anchored, 7 the mode changed, 8 a new game)
 static int32_t carryClr;
@@ -722,6 +737,8 @@ static int savesOverHold(const Judge *k) {
   return k->o.lives || diesAt(k) > diesAt(H);
 }
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
+  if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
+  else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.waits = waits; carriedSunk = -1;
@@ -894,7 +911,6 @@ static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, 
 // (WHY NO LINE IN PROGRESS WAS OFFERED, for the frame loop's count of what ended its line -- answer.c ended: 0 one was; 16 none was
 // carried by the last answer; 17 the frame loop asked on another line than the one carried; 18 every swap of it pressed; 19 the judge
 // gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing)
-// (25: it spends the reserve in a game with no garbage)
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0; carryLate = 0;

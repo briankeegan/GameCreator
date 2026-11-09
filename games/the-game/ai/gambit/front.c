@@ -77,6 +77,7 @@ typedef struct {
 enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 // (a swap pressed, followed: the ids of the panels it moved -- the two swapped, and those above them that fall in the frames after
 // it -- and how many swaps were pressed since)
+#define LOGGED_MAX 4000   // (the frame loop's notes a game -- a line dropped, an answer refused, guarded, late, a line behind: every one, for the reader)
 #define MOVE_OPEN 64
 #define MOVE_IDS 32
 #define MOVE_FOR 600
@@ -85,7 +86,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx, row, col, acts, pa, pb; } MoveOpen;   // pa, pb: the ids of the two cells swapped (0: none there)   // row, col: where it was pressed; acts: the actions pressed since the swap before, its own included   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 // (the lines whose swaps are followed: each answer's swaps in all and how many of them were pressed, by the answer's id)
 #define LINE_RECS 64
-typedef struct { int32_t id, total, pressed, why, next, acts, inh; } LineRec;   // inh: the actions it took over from the line it carried on   // why: what ended the line (END_*, or the order's key that put it down); next: the answer's line it was carried on as (END_ON)
+typedef struct { int32_t id, total, pressed, why, next, acts, inh, q; } LineRec;   // q: the frame of the decision that played the line   // inh: the actions it took over from the line it carried on   // why: what ended the line (END_*, or the order's key that put it down); next: the answer's line it was carried on as (END_ON)
 static LineRec lineRecs[LINE_RECS];
 static LineRec *lineRec(int32_t lid) { LineRec *r = lid > 0 ? &lineRecs[(lid - 1) % LINE_RECS] : 0; return r && r->id == lid ? r : 0; }
 // WHAT ENDED A LINE, for the swaps of it that came to nothing (noneWhy): the answer's word (answer.c ended: carried on, held, not
@@ -626,7 +627,7 @@ static void take(void) {
         keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, MK_GO, CR(a.aim), CC(a.aim), &k) && k.n > 0) { aimed = 1; F.st.aimed++; }
     if (!aimed && !keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
       F.st.refused++;
-      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
+      if (F.loggedRefused < LOGGED_MAX) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
       continue;
     }
     // (a raise held down: the button stays down for the frames it takes to bring the rows in, and raiseAfter after them)
@@ -642,7 +643,7 @@ static void take(void) {
     walkKeys(&k, at, F.pBoard);
     if (!keysFit(at, &k)) {
       F.st.guarded++;
-      if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "GUARDED answer for %d taken at %d: its %d keys do not fit the input allowance", a.at, F.now, k.n); flog(l); F.loggedRefused++; }
+      if (F.loggedRefused < LOGGED_MAX) { char l[160]; snprintf(l, sizeof l, "GUARDED answer for %d taken at %d: its %d keys do not fit the input allowance", a.at, F.now, k.n); flog(l); F.loggedRefused++; }
       continue;
     }
     F.st.heldWalks += k.held;
@@ -651,7 +652,7 @@ static void take(void) {
     for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play >= 0 ? a.play + 1 : 0, a.kind == 1 ? a.id + 1 : 0, 0 });
     { LineRec *o = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
       lineEnds(a.ended);
-      if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->total = a.nhand + 1; r->pressed = 0; r->why = 0; r->next = 0;
+      if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->q = a.at; r->total = a.nhand + 1; r->pressed = 0; r->why = 0; r->next = 0;
         if (o && o->why == END_ON && o != r) { o->next = r->id; r->acts = r->inh = o->acts; } else r->acts = r->inh = 0; } }
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
@@ -679,7 +680,7 @@ static void lineEnds(int32_t why) {
 }
 static int lineDropped(int32_t due, const char *why, int32_t code) {
   lineEnds(code);
-  if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "LINE dropped at %d (due %d, %d left): %s", F.now, due, F.lineN, why); flog(l); F.loggedRefused++; }
+  if (F.loggedRefused < LOGGED_MAX) { char l[160]; snprintf(l, sizeof l, "LINE dropped at %d (due %d, %d left): %s", F.now, due, F.lineN, why); flog(l); F.loggedRefused++; }
   F.lineN = 0; return 0;
 }
 static int follow(void) {
@@ -691,7 +692,7 @@ static int follow(void) {
   // the first few logged; plans/gambit-goal.md, the truth)
   if (F.lineAt[0] > 0 && due > F.lineAt[0]) {
     F.st.behind++; F.st.behindWorst = imax(F.st.behindWorst, due - F.lineAt[0]);
-    if (F.loggedRefused < 40) { char l[160]; snprintf(l, sizeof l, "LINE behind at %d: %d,%d keyed from %d, judged from %d", F.now, CR(F.line[0]), CC(F.line[0]), due, F.lineAt[0]); flog(l); F.loggedRefused++; }
+    if (F.loggedRefused < LOGGED_MAX) { char l[160]; snprintf(l, sizeof l, "LINE behind at %d: %d,%d keyed from %d, judged from %d", F.now, CR(F.line[0]), CC(F.line[0]), due, F.lineAt[0]); flog(l); F.loggedRefused++; }
   }
   int32_t mv = F.line[0], hl, hs;
   if (!predict(F.expect, due, F.holdLeft, F.holdStarted, F.nextPend, F.nnextPend, F.pr, &hl, &hs)) return lineDropped(due, "no board predicted", END_NOBOARD);
@@ -830,11 +831,12 @@ static void countAttacks(const Board *b) {
 // after it, the swap set the clear up; a clear that breaks garbage, a break; none matched, a swap that did nothing.
 // EVERY SWAP, ONE LINE (GAMBITM): the frame it was pressed, where, the kind of line, what it came to (c a clear, s a set-up, b a break,
 // n nothing), its place in its line, the actions pressed for it since the swap before, what ended its line (front.c lineEnds; 0
-// not yet), and the ids of the two cells it swapped (0 none: a swap of the same two ids twice running is a swap back)
+// not yet), the ids of the two cells it swapped (0 none: a swap of the same two ids twice running is a swap back), and q= the frame of
+// the decision that played its line (its GAMBITD line: the line's reason)
 static void moveLog(const MoveOpen *m, char outcome) {
   const LineRec *r = lineRec(m->lid);
-  char l[160]; snprintf(l, sizeof l, "GAMBITM %d %d,%d %s %c %d/%d %d %d %d %d", m->at, m->row, m->col, m->play > 0 && m->play <= NPLAYS ? PLAY_NAME[m->play - 1] : "-",
-                        outcome, m->idx + 1, r ? r->total : 0, m->acts, r ? r->why : -1, m->pa, m->pb);
+  char l[200]; snprintf(l, sizeof l, "GAMBITM %d %d,%d %s %c %d/%d %d %d %d %d q=%d", m->at, m->row, m->col, m->play > 0 && m->play <= NPLAYS ? PLAY_NAME[m->play - 1] : "-",
+                        outcome, m->idx + 1, r ? r->total : 0, m->acts, r ? r->why : -1, m->pa, m->pb, r ? r->q : -1);
   flog(l);
 }
 static void noneOf(const MoveOpen *m) {
