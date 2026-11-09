@@ -85,7 +85,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx, row, col, acts, pa, pb; } MoveOpen;   // pa, pb: the ids of the two cells swapped (0: none there)   // row, col: where it was pressed; acts: the actions pressed since the swap before, its own included   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 // (the lines whose swaps are followed: each answer's swaps in all and how many of them were pressed, by the answer's id)
 #define LINE_RECS 64
-typedef struct { int32_t id, total, pressed, why, next, acts; } LineRec;   // why: what ended the line (END_*, or the order's key that put it down); next: the answer's line it was carried on as (END_ON)
+typedef struct { int32_t id, total, pressed, why, next, acts, inh; } LineRec;   // inh: the actions it took over from the line it carried on   // why: what ended the line (END_*, or the order's key that put it down); next: the answer's line it was carried on as (END_ON)
 static LineRec lineRecs[LINE_RECS];
 static LineRec *lineRec(int32_t lid) { LineRec *r = lid > 0 ? &lineRecs[(lid - 1) % LINE_RECS] : 0; return r && r->id == lid ? r : 0; }
 // WHAT ENDED A LINE, for the swaps of it that came to nothing (noneWhy): the answer's word (answer.c ended: carried on, held, not
@@ -652,7 +652,7 @@ static void take(void) {
     { LineRec *o = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
       lineEnds(a.ended);
       if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->total = a.nhand + 1; r->pressed = 0; r->why = 0; r->next = 0;
-        if (o && o->why == END_ON && o != r) { o->next = r->id; r->acts = o->acts; } else r->acts = 0; } }
+        if (o && o->why == END_ON && o != r) { o->next = r->id; r->acts = r->inh = o->acts; } else r->acts = r->inh = 0; } }
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
     F.lastHold = a.holdLives; F.lastBrk = a.brk; F.lastUrgent = a.urgent; F.havePace = 1;
@@ -672,6 +672,9 @@ static void lineEnds(int32_t why) {
   if (r && !r->why) {
     r->why = why > 0 && why < NEND ? why : END_NOTCARRIED;
     if (r->why != END_ON && r->pressed < r->total) F.st.actsLost[r->why] += r->acts;
+    // (THE LINE NOT PLAYED OUT, one line each (GAMBITE): the frame, what ended it, its swaps pressed of its total, the actions charged
+    // to it, those it took over from the line it carried on, and its kind -- the actions of its own are the walk spent on it alone)
+    if (r->why != END_ON && r->pressed < r->total) { char l[120]; snprintf(l, sizeof l, "GAMBITE %d %d %d/%d %d %d", F.now, r->why, r->pressed, r->total, r->acts, r->inh); flog(l); }
   }
 }
 static int lineDropped(int32_t due, const char *why, int32_t code) {
