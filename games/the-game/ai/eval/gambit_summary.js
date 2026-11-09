@@ -9,9 +9,13 @@
 var fs = require('fs'), path = require('path');
 var DIR = process.argv[2];
 if (!DIR) { console.error('usage: node gambit_summary.js DIR'); process.exit(2); }
-var RULES = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8')).attack || [];
+var RULESFILE = JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules.json'), 'utf8'));
+var RULES = (RULESFILE.attack || []).concat(RULESFILE.opener || []);   // (the opener's too: its attacks are read against its aims)
+// (and the fill rule's, gambit-rules-fill.json, for a run played on it: decide.c fillList)
+(JSON.parse(fs.readFileSync(path.join(__dirname, 'survivor-profiles/gambit-rules-fill.json'), 'utf8')).attack || []).forEach(function (r) { if (!RULES.some(function (q) { return q.name === r.name; })) RULES.push(r); });
 var aims = {};   // by the mode a game played throughout: { met, all }
 var carrySkip = { n: 0, by: {}, c16n: 0, c16: {} };   // (the lines of two swaps or more played, and why each was not handed on to the next decision: answer.c cof=)
+var sentIn = {};    // (THE GARBAGE SENT: each mode's attacks by kind and size -- chain n as 2x..13x, combo n -- their count, the rows each sends and whether the mode asked it)
 var wrongIn = {};   // (THE WRONG ATTACKS: each mode's attacks that met none of its aims, by what they were and what made them -- the swap pressed within 120 frames before, or the board alone)
 var aimsIn = {}, goalMiss = { n: 0, dec: 0, keys: {} }, outMiss = { n: 0, keys: {} }, brkOver = { n: 0, keys: {} }, dips = { n: 0, none: 0, up: 0, upNone: 0 };   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
@@ -224,6 +228,11 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var o = { combo: {}, chain: {} }; o[a[2] === 'c' ? 'combo' : 'chain'][a[3]] = 1;
       var before = (aimsIn[inMode] || { met: 0 }).met;
       aimOf(inMode, o, aimsIn);
+      var asked = !(aimsIn[inMode] && aimsIn[inMode].met === before), sk = a[2] === 'c' ? 'combo ' + a[3] : a[3] + 'x';
+      var sm = sentIn[inMode] || (sentIn[inMode] = { n: 0, rows: 0, k: {} }), se = sm.k[sk] || (sm.k[sk] = { n: 0, asked: 0, rows: 0 });
+      // (rows sent: a chain of n is one block n - 1 rows high; a combo of 8 to 10 two pieces, 11 and 12 two, 13 three, else one -- checkMatches.lua COMBO_GARBAGE)
+      var rowsOf = a[2] === 'c' ? (+a[3] >= 13 ? 3 : +a[3] >= 8 ? 2 : 1) : +a[3] - 1;
+      sm.n++; sm.rows += rowsOf; se.n++; se.rows += rowsOf; if (asked) se.asked++;
       if (aimsIn[inMode] && aimsIn[inMode].met === before) {
         var w = wrongIn[inMode] || (wrongIn[inMode] = { n: 0, what: {}, by: {} }), what = (a[2] === 'c' ? 'combo ' : 'chain ') + (+a[3] >= 6 ? '6+' : a[3]);
         var by = lastSwapAt >= 0 && +a[1] - lastSwapAt <= 120 ? lastSwapPlay.replace(/ /g, '_') : 'alone';
@@ -441,6 +450,10 @@ console.log('SURVIVED ' + all + '/' + games);
 // aims and its first, the decisions that passed the mode over, the swaps that came to nothing, the wasted threes a minute
 Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
   console.log('the measure, ' + k + ': ' + t.met + ' of ' + t.all + ' attacks met its aims' + (t.all ? ' (' + Math.round(100 * t.met / t.all) + '%)' : '') + ', its first ' + t.head + ' ' + t.first + (t.all ? ' (' + Math.round(100 * t.first / t.all) + '%)' : '')); });
+Object.keys(sentIn).sort().forEach(function (k) { var m = sentIn[k];
+  var ks = Object.keys(m.k).sort(function (a, b) { return m.k[b].n - m.k[a].n; });
+  console.log('the garbage sent, ' + k + ': ' + m.n + ' attacks, ' + m.rows + ' rows -- ' + ks.map(function (z) { var e = m.k[z];
+    return z + ' x' + e.n + ' (' + Math.round(100 * e.n / m.n) + '%, ' + e.rows + ' rows, ' + (e.asked === e.n ? 'asked' : e.asked ? e.asked + ' asked' : 'extra') + ')'; }).join(', ')); });
 Object.keys(wrongIn).sort().forEach(function (k) { var w = wrongIn[k], t = aimsIn[k] || { all: 0 }, top = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (z) { return z + ' x' + o[z]; }).join(', '); };
   console.log('the wrong attacks, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' -- ' + top(w.what) + '; made by ' + top(w.by));
   console.log('the extra, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' (target 0%) -- of them ' + (w.garbage || 0) + ' the garbage made falling on its own'); });

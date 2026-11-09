@@ -156,6 +156,8 @@ Brought back, on the base (pressure, real time; the base 20, 15, 19 in runs 1526
 - `e333ec54` the golden re-recorded on main (single-threaded 0 moves changed; with workers the replay is not exact, 133 moved) [infra]
 - `cd66cbdd` a line in progress whose board is lost during its rest read on what it was played as making (rank.c judgeCand reads such a line on the search's word, the carry on the judge's count, which is nothing for the step the board dies in: 964 of 1121 "no longer breaks" drops in 1812) -- big chain 24 (1815), build 22 (1818), pressure 20 (1817), finish 19 (1816), opener 17 (1814), switching 15 (1819): 117 against 119 [kept]
 - `5ad61044` a line in progress that has waited out read on the judge's count (on the search's word a waiting dead line was the break first each decision: waits of 8+ decisions 196 in 1819) -- switching 19 (1820, waits of 8+ 75), opener 15 (1821), finish 20 (1822), big chain 20 (1823): 74 against 75 on the same four [kept]
+- `442deb9e` the opener's attacks fired within 600 frames, as big chain's (the opener had no `by`) -- opener 20 (1824, against 15) [kept]
+- `241976d7` a clear outside the list that breaks nothing after every fallback (goalKeyOf gave it the hold's 2, every fallback 2 + its entry: the opener's first move a 4-combo in 8 of 24 games over lines within the list that lived) -- opener 22 (1825), big chain 19 (1826), finish 19 (1827), pressure 23 (1828), build 22 (1829), switching 24 (1830): 129 against 117 [kept]
 
 ## The shortlist for pressure, in the order to try
 

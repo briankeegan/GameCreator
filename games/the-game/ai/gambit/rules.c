@@ -9,7 +9,7 @@
 #define MAXAIMS 16
 
 // One test of a number: an operator and its operand ("<=3"); OP_NONE where the aim does not ask it.
-enum { OP_NONE, OP_GE, OP_LE, OP_EQ, OP_NE, OP_GT, OP_LT };
+enum { OP_NONE, OP_GE, OP_LE, OP_EQ, OP_NE, OP_GT, OP_LT, OP_FILL };   // OP_FILL: a chain the enemy's room asks (decide.c fillList)
 // near: written as a string near() reads (">=8", not a plain number or a negative)
 typedef struct { int32_t op, n, near; } Test;
 // brk: -1 not asked, 0 a line that breaks nothing, 1 a line that breaks
@@ -52,14 +52,13 @@ static int fits(const List *L, Made m) {
 }
 // THE ONE RULE'S THREE (judge.c breakingThree): after whatever entries a list has, under garbage, a three that breaks it -- the searches
 // look for it in every mode, and the order puts it after every entry
-// A LONG CHAIN OR A BIG COMBO UNDER GARBAGE (decide.c read): the searches are led toward a chain of five at most, and a combo of five at
-// most -- a chain or a combo the list asks bigger is one no buried board makes, and leading toward it leads toward none of the clears
-// that dig (each link that touches the garbage breaks it again; a combo of five is set up in the presses a buried board has); the list
-// itself, what fits and what meets, stays the mode's
+// A LONG CHAIN UNDER GARBAGE (decide.c read): the searches are led toward a chain of five at most -- a chain the list asks longer is one
+// no buried board makes, and leading toward it leads toward none of the clears that dig (each link that touches the garbage breaks it
+// again); a combo is led toward as the list asks it (the owner: eight and up is eight and up); the list itself, what fits and what
+// meets, stays the mode's
 static void guideShort(List *L) {
   for (int i = 0; i < L->n; i++) {
     Test *t = &L->aim[i].chain; if (t->op && t->n + (t->op == OP_GT) > 5 && (t->op == OP_GE || t->op == OP_GT || t->op == OP_EQ)) { t->op = OP_GE; t->n = 5; }
-    Test *c = &L->aim[i].combo; if (c->op && c->n + (c->op == OP_GT) > 6 && (c->op == OP_GE || c->op == OP_GT)) { c->op = OP_GE; c->n = 5; }
   }
 }
 static void withRule(List *L) {
@@ -111,6 +110,16 @@ static int32_t blocksOf(int32_t combo, int32_t chain) {
 // THE LIST FROM THE HOST: n entries, each ten words -- combo, chain and send (each op, n, near) and break -- in the io body (the loader
 // writes them from the rules file).
 static List theList;
+// (the longest chain the mode's list asks: 0 where it asks none)
+static int32_t listChainCap(void) {
+  int32_t cap = 0;
+  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
+  return cap;
+}
+// THE BOARD'S OWN CHAIN, KEPT AS THE MODE ASKS (the owner: modes are respected -- a chain going is not kept for its own sake): a chain
+// the board makes on its own, n links, is the mode's attack only where the list asks a chain that long or longer -- past the longest it
+// asks, or where it asks none (the finish: combos, the pieces that land soonest), cutting it is no waste
+static int ownChainAsked(int32_t n) { return n >= 2 && n <= listChainCap(); }
 EXPORT(gb_list) int gb_list(int n) {
   if (n < 0 || n > MAXAIMS) return -1;
   const int32_t *w = gbIo;
@@ -146,8 +155,19 @@ static int swapBack(int r, int c, int clears) {
   if (theBack.blockA && samePair(a, b, theBack.blockA, theBack.blockB) && theBack.at < theBack.blockUntil) return 1;
   return theBack.lastA && samePair(a, b, theBack.lastA, theBack.lastB) && (!clears || theBack.runs >= 2);
 }
+// (the swap back, whatever the line makes: the pair the last swap pressed swapped -- rank.c 1'u)
+static int swappedBack(int r, int c) {
+  if (!backBoard || r < 0 || r >= backBoard->nrows || c < 1 || c + 1 > W || !theBack.lastA) return 0;
+  int32_t a = backBoard->p[r][c].f[ID], b = backBoard->p[r][c + 1].f[ID];
+  return a != NUL && b != NUL && samePair(a, b, theBack.lastA, theBack.lastB);
+}
 // a line's first swap: not the swap back the judge refuses
 static int firstOk(int r, int c, int clears) { return !swapBack(r, c, clears); }
+// (THE SWAP PRESSED LAST, the host's: a line hands on several swaps and the frame loop presses them all, so the pair the next decision
+// must not swap back is the last one pressed, not the last decision's first)
+EXPORT(gb_pressed) void gb_pressed(int a, int b) {
+  if (a && b && a != NUL && b != NUL && !samePair(a, b, theBack.lastA, theBack.lastB)) { theBack.lastA = a; theBack.lastB = b; theBack.runs = 0; }
+}
 EXPORT(gb_back) void gb_back(int lastA, int lastB, int runs, int blockA, int blockB, int blockUntil, int at) {
   Back k = { lastA, lastB, runs, blockA, blockB, blockUntil, at };
   theBack = k;

@@ -5,8 +5,14 @@
 // What the decision knows of the board (Facts) comes from its reading of it.
 
 static double leftMsOf(void);   // (propose.c leftMs: the time the decision's searches have left)
-#define HORIZON 240   // a board stands when it is alive this long after now
-#define REST 120      // and this long after the line's last swap
+// A BREAK'S TIME AT THIS LEVEL (levelBreak, set each question as rank.c rankSave is: a reaction, then a three popping a row of garbage
+// -- flash, face and the pops, read off the board, so every level is its own): the frames below were measured at level 11, where it is
+// LEVEL11_BREAK (reaction 12), and scale with it
+static int32_t levelBreak = 97;
+#define LEVEL11_BREAK 97
+#define AT_LEVEL(f) ((int32_t)((int64_t)(f) * levelBreak / LEVEL11_BREAK))
+#define HORIZON AT_LEVEL(240)   // a board stands when it is alive this long after now
+#define REST AT_LEVEL(120)      // and this long after the line's last swap
 
 typedef struct {
   int32_t land;        // frames until the last block shown lands (NOT_ASKED: none coming) -- JUDGE.lastLanding
@@ -24,6 +30,7 @@ typedef struct {
   int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
   int32_t floorKept;   // the board the line leaves keeps the rule's floor, as the floor is tested (floorOf), the line's breaks aside; -1 not asked
   int32_t matLeft;     // the material the board the line leaves has: its panels under the lowest garbage, the next break's (materialOn); -1 not asked
+  int32_t twinAfter;   // the swaps to a two-column eight on the board the line leaves (propose.c twinCostOn; 99 none), -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   Judged j;
 } Outcome;
@@ -105,6 +112,8 @@ static int breakBuildable(const Board *b);   // (search/break.c: a break the pan
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on the board)
 static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
+static int twinCostOn(Board *b);              // (propose.c: the swaps to a two-column eight, 99 none)
+static int32_t twinWanted;                    // (some mode of the rules asks a combo of eight or more: decide.c read)
 // (THE BOARD LEFT ALONE, settled as a line is: whether it still has a break to build -- or no garbage to break. Asked once a decision:
 // what a line is measured against when it spends the next break's material)
 static int32_t rootBuildable = NOT_ASKED;
@@ -142,13 +151,14 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.fits = fitsList(&theList, o.j.made, &o.j, 1) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
+    o.panelsLeft = -1; o.nearAfter = -1; o.twinAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
     if (!waitTo) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
       if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
+      if (eb && twinWanted && !clockOut()) o.twinAfter = twinCostOn((Board *)eb);
       if (breaks) o.nextBuild = eb ? (!garbageOn(eb) || breakBuildable(eb)) : -1;
     }
     // (THE MATERIAL FLOOR: under garbage, a line that breaks nothing, does not stand and leaves no break to build where the board left
@@ -229,6 +239,21 @@ static int lineFits(const int32_t *seq, int n, int settled) {
   if (!listOn) o.fits = !o.j.dead && imax(m.chain, o.j.chainAll) <= MAXCHAIN;   // (the host's own check, a line held to no list)
   if (o.j.late) return 0;
   keep(seq, n, settled, 1, &o);
+  return o.fits;
+}
+// THE LINE THAT TAKES A 2x ON (search/extend.c three -- the owner: at least a 3x over a 2x, whatever the list asks): played on the
+// engine, the board not lost on it and its chain within MAXCHAIN; the list and the floor are the rank's to weigh, after survival
+static int lineLives(const int32_t *seq, int n, int settled) {
+  Outcome *hit = cached(seq, n, settled, 3);
+  if (hit) return hit->fits;
+  if (clockOut()) return 0;
+  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0 };
+  Outcome o;
+  memset(&o, 0, sizeof o);
+  judge(&decQ, seq, n, &jo, &o.j);
+  o.fits = !o.j.dead && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
+  if (o.j.late) return 0;
+  keep(seq, n, settled, 3, &o);
   return o.fits;
 }
 

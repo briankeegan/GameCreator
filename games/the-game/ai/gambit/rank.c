@@ -13,12 +13,13 @@ typedef struct {
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
+  int32_t twin;    // two columns sorted row by row, then one swap that clears both (propose.c twinLines): 1 the line, 2 the set-up alone
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
 typedef struct {
   Cand k;
-  int32_t settled, aim, wait, hold;
+  int32_t settled, aim, wait, hold, back;   // back: its first swap swaps back the pair the last swap pressed swapped (rules.c swappedBack)
   Tier t;
   Outcome o;
   int32_t apDone, apFire, apNats, apAts[MAXLINE], apChain, apChainAll, apCombo, apBroke, apPlayed;
@@ -28,6 +29,7 @@ typedef struct {
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
+  int32_t modeFirst;   // it meets the mode's own first entry, its break or not (under garbage R->asked holds each entry twice: rules.c withAttacks)
   int32_t first;       // the line in progress, its next step due now: first of its tier (decide.c ranked)
   int32_t carried;     // the line in progress, carried on from the last decision (decide.c carriedCand)
   int32_t idle;        // a line that clears nothing and does no better than the hold (markIdle): ranked after the hold
@@ -38,8 +40,8 @@ typedef struct {
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
 } Judge;
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
-// the judge could not press, w a wasted three, j the clock stopped its judging)
-enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, NDROPS };
+// the judge could not press, w a wasted three, j the clock stopped its judging, 2 a 2x not taken to three)
+enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, DROP_TWO, NDROPS };
 static int32_t dropped[NPLAYS][NDROPS], offered[NPLAYS];
 static void dropAs(int play, int why) { dropped[play][why]++; }
 // (the lines cut, by why the judge cut them: judge.c cutWhy -- 1 a first walk over the allowance, 2 no swap there, 3 a walk not begun
@@ -47,7 +49,7 @@ static void dropAs(int play, int why) { dropped[play][why]++; }
 static int32_t cutWhy[4], cutWhyBreak[4];
 // THE FIRST LINE OF A DECISION THE BREAK SEARCH SAID BREAKS AND THE JUDGE SAYS DOES NOT: its play, swaps and both counts, for the log
 // and the board's dump (two measures of one fact)
-static struct { int32_t set, play, nseq, seq[MAXLINE], said, judged; } unbroken;
+static struct { int32_t set, play, nseq, seq[MAXLINE], said, judged, alone; } unbroken;   // (alone: what the board left alone breaks in the line's time)
 
 // the decision's reading of the board, which every candidate is judged by (decide.c read)
 typedef struct {
@@ -81,6 +83,10 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
   int st = k->settled >= 0 ? k->settled : settledPlay(play);
+  // (STEADY, NOT IN BURSTS -- the owner: while a slab pops, a line that would wait for the board to stop before each swap is judged pressed
+  // straight through, each swap as soon as its pair is free: its swaps spread over the pop, not saved for its end -- unless it is found to
+  // break garbage, whose break is timed on the board settled)
+  if (k->settled < 0 && st && popLeft(decQ.b) > 0 && !(k->x.broke > 0) && (play == PLAY_ENTRY || play == PLAY_NEAREST || play == PLAY_BREAKLINE || play == PLAY_CLEAR)) st = 0;
   // (what it makes is the whole line on the engine, as the judge counts it -- not what the search that found it counted; a line the
   // judge could not play out is judged on the search's word)
   // (the line in progress waiting for the board to settle: judged on the board settled, as carriedCand found it)
@@ -98,7 +104,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   Made m = j ? (Made){ j->made.combo, j->made.chain, j->made.broke, k->x.cells } : (Made){ k->x.combo, k->x.chain, k->x.broke, k->x.cells };
   if (j && k->x.broke > 0 && !(j->made.broke > 0)) {
     dropAs(play, DROP_UNBROKEN);
-    if (!unbroken.set) { unbroken.set = 1; unbroken.play = play; unbroken.nseq = k->nseq; for (int i = 0; i < k->nseq; i++) unbroken.seq[i] = k->seq[i]; unbroken.said = k->x.broke; unbroken.judged = j->made.broke; }
+    if (!unbroken.set) { unbroken.set = 1; unbroken.play = play; unbroken.nseq = k->nseq; for (int i = 0; i < k->nseq; i++) unbroken.seq[i] = k->seq[i]; unbroken.said = k->x.broke; unbroken.judged = j->made.broke; unbroken.alone = j->base; }
   }
   if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), m.broke > 0 ? 2 : m.combo > 0 || m.chain > 0)) { dropAs(play, DROP_BACK); return 0; }
   // (it fits the list -- the chain as the game counts it -- or it is outside it: ranked after every line within it that lives, and kept,
@@ -113,6 +119,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // and leaving it alone -- the hold -- meets what it makes)
   int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
   J->met = j ? entry : -1;
+  { int nl = R->list.n; J->modeFirst = J->met == 0 || (R->topped && nl > 0 && J->met == nl + 1); }   // (the one rule's three that breaks is the mode's first only topped out -- the owner: a three is for survival)
   J->saving = R->saving && R->under && m.broke > 0;
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
   J->material = R->under && m.broke > 0 ? (oc.nextBuild == 0) + (oc.floorKept == 0) : -1;
@@ -154,7 +161,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
       if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, oc.nearAfter);
     }
   }
-  J->settled = st; J->aim = aim; J->o = oc;
+  J->settled = st; J->aim = aim; J->o = oc; J->back = k->nseq > 0 && swappedBack(CR(k->seq[0]), CC(k->seq[0]));
   J->apDone = j ? j->done : k->xDone; J->apFire = fire;
   if (j) { J->apNats = j->nats; for (int i = 0; i < j->nats; i++) J->apAts[i] = j->ats[i]; }
   else { J->apNats = k->xNats; for (int i = 0; i < k->xNats; i++) J->apAts[i] = k->xAts[i]; }
@@ -172,6 +179,7 @@ static void holdCand(const Read *R, int wait, Judge *J) {
   J->o = outcome(0, 0, 0);
   J->material = -1;
   J->met = J->o.dead ? -1 : metOf(&R->asked, (Made){ J->o.j.whole.combo, J->o.j.whole.chain, 0, 0 });
+  { int nl = R->list.n; J->modeFirst = J->met == 0 || (R->topped && nl > 0 && J->met == nl + 1); }   // (the one rule's three that breaks is the mode's first only topped out -- the owner: a three is for survival)
   aloneChain = J->o.j.whole.chain;   // (made before the board is lost too: judge.c, a settle the board is lost in)
   J->k.play = PLAY_HOLD; J->k.aim = -1; J->hold = 1; J->wait = wait; J->aim = -1;
   J->t.tier = HOLD_TIER; J->t.nsub = 1; J->t.sub[0] = wait ? -1 : 0;
@@ -199,12 +207,44 @@ static int digWaits(const Judge *k, const Judge *H, int32_t react) {
 static int32_t rankReact;   // (frames to the next decision: a reaction and a frame, set by the decision -- decide.c ranked)
 static int32_t rankSave;    // (and the frames one break takes after it: a full-width slab's row popped -- flash, face, a pop a cell)
 static double lostAtOf(int32_t t, int hold) { return t == FOREVER ? 1e300 : t == NOT_ASKED ? (hold ? -1 : 1e299) : t; }
+// (THE WALK COUNTED IN THE LOSS: a line's loss less WALK_FRAMES for each action the cursor walks for it -- an action spent comes back a
+// window later, as the survival search counts it (search/outlive.c OUT_ACT) -- so a line across the board is the later loss only where
+// it buys that much more time than one at hand. At 16 the bot walks too little to live: switching 3/48)
+#define WALK_FRAMES 8
+#define TWIN_KEY_REACH 12   // (the farthest eight the set-up key 7d reads: an eight within a line's reach)
+#define TWIN_STEP 2   // (swaps nearer an eight that decide between two lines otherwise equal: 7d)
+static int lineWalk(const Judge *J);
+static double lostOf(const Judge *x);
+// THE FRAME THE BOARD IS LOST, as the engine has it -- the line's own loss or its readiness's, no walk charged (lostOf charges the walk:
+// the order's preference for the nearer, not a loss): what a set-up that must never cost the board's life is held to
+static double diesAt(const Judge *x) {
+  double own = lostAtOf(x->o.lostAt, x->hold);
+  if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
+  return own;
+}
+// (THE WALK NEVER TURNS A LIFE INTO A DEATH: two boards lost a break's time apart or more on the frame each is lost, the later of them,
+// whatever the walk charges -- the judge pressed each line on its walks already, and the charge is the order's preference for the nearer,
+// never a break's time of life: the walked line's board 140 frames alive past the hold's was put after it)
+// (and a board lost within a break's time has no frame to give for a walk: there the later loss decides by any margin -- the hold lost at
+// 8 is never put before the line lost at 19 for the cursor's walk)
+static int spendsReserve(const Judge *J);
+static int walkTurns(const Judge *x, const Judge *y) {
+  if (x->o.lives || y->o.lives) return 0;
+  double dx = diesAt(x), dy = diesAt(y);
+  if (dx >= 1e299 || dy >= 1e299 || dx < 0 || dy < 0 || dx == dy) return 0;
+  if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
+  // (nor where the later one buys less than a break's time with the window the next breaks are pressed from: the actions it spends come
+  // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
+  { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
+    if ((dx > dy ? dx - dy : dy - dx) < rankSave && spendsReserve(l) && !spendsReserve(s)) return 0; }
+  return (dx > dy) != (lostOf(x) > lostOf(y));
+}
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
-  if (x->hold || x->extLost == NOT_ASKED) return own;
-  double ext = lostAtOf(x->extLost, 0);
-  return ext > own ? ext : own;
+  if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
+  if (x->hold || own >= 1e299 || own < 0) return own;
+  return own - (double)WALK_FRAMES * lineWalk(x);
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
 // is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding
@@ -248,21 +288,76 @@ static int thrownOf(const Judge *J) { return J->hold || J->o.dead ? 0 : J->o.j.b
 static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 // (A FALLBACK: a line that meets an entry of the mode's list after its first and breaks no garbage. The mode's goals in order (the
 // owner: a mode plays its first entry, builds toward it otherwise): the first entry 0, a set-up toward it or a break 1, the hold and
-// any other line that fires no fallback 2, then each fallback, 2 + its entry)
+// any other line that fires no fallback 2, then each fallback, 2 + its entry, and last a clear outside the list that breaks nothing --
+// the owner: a combo or chain the list does not ask for is the last resort, after every fallback)
 static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
 static int goalKeyOf(const Judge *J) {
   if (J->hold) return 2;
-  if (J->met == 0) return 0;
+  if (J->met == 0 || J->modeFirst) return 0;   // (the mode's first entry, under garbage too where it breaks nothing: the mode is played there)
   if (fallbackOf(J)) return 2 + J->met;
+  if (J->outside && !(J->apBroke > 0) && (J->apCombo > 0 || J->apChain > 0)) return 3 + MAXAIMS;
   return J->apBroke > 0 || setupPlay(J->k.play) ? 1 : 2;
 }
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
 // and none broken
+// (a line that breaks garbage beyond the board left alone (apBroke, the judge's count) made its threes on the way to the break -- a block
+// let down, the panels in the break's way cleared -- as the rules let a three break garbage (rules.c fits, judge.c breakingThree): not
+// wasted. The board's own chain cut short is, whatever the line breaks)
 static int cutsShort(const Judge *J);
+// A COMBO THE MODE DOES NOT ASK FOR (the owner: combos only where the enemy is topped out -- finish them -- or the board dies without
+// one): four or more panels at once, no chain, outside the mode's list
+static int comboOutside(const Judge *J) { return !J->hold && J->outside && J->apCombo >= 4 && J->apChain < 2; }
+// (the garbage a line breaks as the judge played it: a line whose board is lost while it plays out is ranked on the search's word -- a
+// line in progress on what it was begun for -- and that word is no break the judge saw)
+static int32_t brokeSeen(const Judge *J) { return J->o.dead ? J->o.j.made.broke : J->apBroke; }
+// (the entry of the mode's list a line meets where it asks a combo, MAXAIMS where it meets none that does)
+// (THE FINISH: the list asks a combo of eight or more and no chain -- finish them, the enemy near the top: a slab two rows tall or more is
+// up to 76 frames of shake it lives through, the 8's pieces are a few cells each -- the owner: big chains near the top give it time)
+#define ZIP_WALK 2   // (the actions more a dig may walk for the zip: rank.c the dig zipped)
+static int finishAsked(void) {
+  int big = 0;
+  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo, *h = &theList.aim[i].chain;
+    if (h->op) return 0;
+    if (((c->op == OP_GE || c->op == OP_EQ) && c->n >= 8) || (c->op == OP_GT && c->n + 1 >= 8)) big = 1; }   // (an entry of "==8" and up asks one too)
+  return big;
+}
+static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
+// (the lowest garbage row of the decision's board, read once a board: search/break.c lowestG)
+#define GARBAGE_AWAY 4
+static int awayFromGarbage(const Judge *J) {
+  static LOCAL const Board *forB; static LOCAL int32_t forClock = -1, lowG = 0;
+  if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || !decQ.b) return 0;
+  if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; lowG = lowestG(decQ.b); }
+  return lowG < gridLen(decQ.b) && lowG - CR(J->k.seq[0]) >= GARBAGE_AWAY;
+}
+// (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out, of two that
+// both live it is no break to put first -- the owner: a three is for survival only, topped out; the mode's attacks break the garbage)
+static int threeBreakOnly(const Judge *J) { return J->apBroke > 0 && J->apCombo < 4 && J->apChain < 2; }
+// (A SET-UP OF ANY KIND: a set-up, a lineup, a line toward the next break or nearest the list, a level -- a move that makes the next
+// thing, no hold)
+static int setupKind(const Judge *J) {
+  int p = J->k.play;
+  return !J->hold && (p == PLAY_SETUP || p == PLAY_LINEUP || p == PLAY_TOWARD || p == PLAY_NEAREST || p == PLAY_LEVEL || p == PLAY_ZIP);
+}
+// (A ZIP AMONG SET-UPS: a set-up toward the list, a lineup, a line toward a break or nearest the list, a level before a
+// swap that only zips the stack; of two zips, the stack left more zipped -- its colours a swap apart, not touching
+// (judge.c spreadOf). -1 x first, 1 y first, 0 neither)
+static int zipOver(const Judge *x, const Judge *y) {
+  int zx = x->k.play == PLAY_ZIP, zy = y->k.play == PLAY_ZIP;
+  if (!zx && !zy) return 0;
+  if (zx != zy) return zx ? 1 : -1;
+  if (x->o.j.spread != y->o.j.spread) return x->o.j.spread > y->o.j.spread ? -1 : 1;
+  return 0;
+}
+static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx && !decF.topped && threeBreakOnly(J)); }
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
-  if (J->o.j.threes > 0) return 1;   // (any clear of three the line makes for nothing, whatever else it makes -- a line lost too)
-  if (cutsShort(J)) return 1;        // (the board's own chain cut short: the three that began it made for nothing)
+  // (any clear of three that breaks nothing and begins no chain, whatever the line breaks after it -- the owner: never a three unless
+  // it follows through; a line dropped before its later break leaves the three made for nothing. A line lost too)
+  if (J->o.j.threes > 0) return 1;
+  if (comboOutside(J) && !(J->apBroke > 0)) return 1;   // (a combo the mode does not ask for that breaks nothing: the owner, only where the board dies without it)
+  if (cutsShort(J) && !(J->apBroke > 0)) return 1;   // (the board's own chain cut short: the three that began it made for nothing -- unless the
+  // line breaks more garbage than the board left alone, its chain and all: a break is never a three for nothing, the chain key weighs it)
   return (J->apCombo > 0 || J->apChain > 0) && !(J->apBroke > 0) && J->apCombo <= 3 && J->apChain <= 1 && thrownOf(J) == 0;
 }
 static int beatsHold(const Judge *L, const Judge *H) {
@@ -288,12 +383,22 @@ static int levelsFree(const Judge *L, const Judge *H) {
   if (L->o.lives) return 1;
   return !H->o.lives && L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED && lostOf(L) >= lostOf(H);
 }
+// (TWO COLUMNS LOADED AHEAD: a set-up for an eight is not doing nothing where it lives, or is lost no sooner than the
+// hold -- the mode that fires it has no time to build it; propose.c twinLines)
+// (the time to build one: not topped, no chain going and no slab popping -- under garbage too, on the rows at rest below it: garbage
+// on its way lands on top of the rows sorted, and a break is put before it (1'') -- it is built where the bot would otherwise hold)
+static int twinTime(int under, int topped) { (void)under; return !topped && decQ.b->chainCounter < 2 && popLeft(decQ.b) <= 0; }
+static int loadsFree(const Judge *L, const Judge *H) {
+  if (L->k.twin != 2 || L->o.dead || !twinTime(decF.under, 0)) return 0;
+  if (L->o.lives) return 1;
+  return !H->o.lives && L->o.lostAt != NOT_ASKED && H->o.lostAt != NOT_ASKED && lostOf(L) >= lostOf(H);
+}
 static void markIdle(Judge **a, int n) {
   const Judge *H = 0;
   for (int i = 0; i < n && !H; i++) if (a[i]->hold) H = a[i];
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   double holdLost = H ? lostOf(H) : 0;
-  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
@@ -301,18 +406,53 @@ static void markIdle(Judge **a, int n) {
 // played it makes a shorter one
 static int cutsShort(const Judge *J) {
   if (J->hold || !J->apPlayed) return 0;
-  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain;   // (judge.c ownChainOf: by the frame its last link comes)
-  return aloneChain > 1 && J->apWhole < aloneChain;
+  if (ownChainBy > 0 && J->o.j.keepsChain >= 0) return !J->o.j.keepsChain && ownChainAsked(ownChainN);   // (judge.c ownChainOf: by the frame its last link comes)
+  return aloneChain > 1 && J->apWhole < aloneChain && ownChainAsked(aloneChain);
+}
+#define FLAT_ROWS 2
+#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
+static int downtime(void) {
+  return !decF.under && (decF.next == NOT_ASKED || decF.next > 2 * rankSave) && decQ.b->chainCounter < 2 &&
+         (pressAllowance < 0 || pressAllowance >= 2 * BREAK_WALK);
+}
+#define FOCUS_NEAR 2
+#define FOCUS_FAR 5
+static int focusBand(const Judge *J) {
+  int d = iabs(CR(J->k.seq[0]) - decQ.b->curRow) + iabs(CC(J->k.seq[0]) - decQ.b->curCol);
+  return d <= FOCUS_NEAR ? 0 : d >= FOCUS_FAR ? 2 : 1;
 }
 static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : actionsFor(decQ.b->curRow, decQ.b->curCol, CR(J->k.seq[0]), CC(J->k.seq[0]), HOLDTIGHT + 1); }
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
-#define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int32_t carriedSunk = -1;   // (the actions the line in progress was judged to walk in all when played: decide.c carryOf; -1 not known)
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
   return n;
+}
+// (a line that breaks nothing and walks the input allowance below a break's walk: the next break is pressed out of what is left)
+// (how far below a break's walk a line that breaks nothing leaves the allowance: 0 when it keeps it, or breaks -- the window already
+// short, the line that spends less of what is left keeps more of the next break)
+// (THE RESERVE, AS THE NEXT BREAK FINDS IT: the window left once a line is pressed, read at the soonest frame a break can be needed --
+// now with garbage on the board, the next block's landing with one on its way, else EARLIEST_LANDING: an attack the enemy makes now is
+// in the telegraph at once and lands that long after -- the actions that leave the window by then counted back. With nobody across
+// (time attack, the rules' enemy.none) no break is ever needed and no reserve is kept)
+#define EARLIEST_LANDING 151   // (pa-engine.js: GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 staged, GARBAGE_DELAY_LAND_TIME landing)
+static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
+static int allowAtNeed(int walk) {
+  if (decF.under) return pressAllowance - walk;
+  int32_t t = EARLIEST_LANDING;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
+  return allowLeftAt(t, walk);
+}
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 || ruleNoEnemy ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
+// A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
+// the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
+// the set-up built between moves, of what is spare: a swap nearer is a swap nearer
+static int nearerEight(const Judge *a, const Judge *b) {
+  if (a->o.twinAfter < 0 || b->o.twinAfter < 0 || a->o.twinAfter >= b->o.twinAfter || b->o.twinAfter >= 99 || spendsReserve(a)) return 0;
+  return a->o.lives || (!b->o.lives && diesAt(a) >= diesAt(b));
 }
 // (x presses every swap y does, and more, its more chosen for what it does -- a line with work on its way, whose swap clears, brings the
 // break nearer or joins colours, or a route, whose second line makes something: y's swaps all among x's, in their order)
@@ -326,6 +466,9 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // leave as many, or three or more each: run 446, build, a line lost at 266 taken over one lost at 385 that broke more, two tries against
 // three. Past three the material decides: run 451, the later loss taken there too, spent the panels -- large_garbage's material under
 // garbage 19 where it was 23 -- finish 15 against 17)
+#define NEAR_LOSS 3
+static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
+#define NEAR_GAIN 30
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
@@ -345,45 +488,240 @@ static int boughtWithPanels(const Judge *x, const Judge *y) {
 static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
 // (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" its target, the length it asks at least: a
 // link past the target is presses and panels the list does not ask for)
-static int32_t listChainCap(void) {
-  int32_t cap = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *t = &theList.aim[i].chain; int32_t c = t->op == OP_GE || t->op == OP_EQ || t->op == OP_LE ? t->n : t->op == OP_GT ? t->n + 1 : 0; if (c > cap) cap = c; }
-  return cap;
-}
+#define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
+// (A 2x ITS LINE DOES NOT CONTINUE: the chain the line makes ends at two -- read on the judge's count whether or not the board is lost
+// while the line plays out: a line on a board lost later makes its 2x all the same)
+static int shortChain(const Judge *J) { int32_t reach = J->o.dead ? imax(J->apChain, J->o.j.chainAll) : chainReach(J); return !J->hold && J->apChain >= 2 && reach == 2; }
+// (THE PLAN IN PROGRESS STANDS WHILE IT STANDS THE HORIZON: lives is a line on the board's life -- HORIZON frames from now and REST after
+// its last swap -- and a line near it is judged on one side of it one decision and the other the next, as the horizon moves on and garbage
+// is told. The line in progress keeps its place while it stands HORIZON frames from now, so it is put down only where it fails, not where
+// the next decision's horizon reaches a frame further: every swap of a plan put down is a move for nothing)
+static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->modeFirst); }
+// (OFF THE MODE: a line whose attack the mode's list does not ask -- a chain where it asks combos, a 2x or a chain past its length, a combo
+// of four or more it does not ask -- the board's own chain going on counted, as every line has it alike)
+#define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
+static int offMode(const Judge *J) { return !J->hold && !J->o.dead && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
+static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
+// (A BOARD THAT OUTLIVES ANOTHER: c's is lost -- past the horizon or not -- and o's lives, stands the whole judging, or is lost a break's
+// time (rankSave) or more later, on the frame each is lost, no walk charged; a loss not asked outlives nothing)
+static int outlives(const Judge *o, const Judge *c) {
+  double dc = diesAt(c), dn = diesAt(o);
+  if (c->o.lives || dc < 0 || dc >= 1e299) return 0;
+  if (o->o.lives || dn >= 1e300) return 1;
+  return dn >= 0 && dn < 1e299 && dn - dc >= rankSave;
+}
 static int compareJudged(const Judge *x, const Judge *y) {
-  int lx = !!x->o.lives, ly = !!y->o.lives;
-  // 1. lives before does not
-  if (lx != ly) return (cmpKey = __LINE__, (lx ? -1 : 1));
+  int lx = livesOn(x), ly = livesOn(y);
+  // (the horizon's credit is no life beside a board that outlives it: the line in progress lost past the horizon, beside a line that
+  // lives or is lost a break's time later, is a line that is lost -- death is never an option)
+  if (lx && !x->o.lives && outlives(y, x)) lx = 0;
+  if (ly && !y->o.lives && outlives(x, y)) ly = 0;
+  // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
+  // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
+  if (lx != ly) {
+    const Judge *l = lx ? x : y, *o = lx ? y : x;
+    if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
+    lx = ly = 1;
+  }
+  // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
+  // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
+  // lost a little later "alike" the hold, or off the mode, and held, and the board died of the holds (live p65, r661, 8097-8204: a
+  // survival line lost 74 frames later passed over six times as the stack came down from 170 frames to 63)
+  // (only in the race: the enemy topped out -- under garbage mid-game a board is lost within three breaks' time most of the time, and
+  // there the line in progress and the mode decide: finish them, sets 86-89, 97 against main's 105 with the key always on)
+  if (!lx && raceOn) {
+    double a = lostOf(x), b = lostOf(y), lo = a < b ? a : b, hi = a < b ? b : a;
+    if (lo >= 0 && lo < NEAR_LOSS * rankSave && hi - lo >= NEAR_GAIN && !x->o.dead == !y->o.dead) return (cmpKey = __LINE__, (a > b ? -1 : 1));
+  }
+  // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
+  // the line in progress before the other, the hold too, where it breaks as much garbage: every swap pressed of a line put down is the input budget
+  // spent for nothing, and only a break's time of life, or more garbage broken, is worth it
+  if (x->carried != y->carried && (lx || lostAlike(x, y))) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    // (and never over a board that outlives it: that is the break's time of life worth the switch)
+    // (nor over a line that meets the mode's first entry where it does not, and breaks as much garbage: the same break made as the mode
+    // asks -- the owner: modes are respected, in every mode)
+    int modeOver = goalKeyOf(o) == 0 && goalKeyOf(c) > 0 && imax(0, brokeSeen(o)) >= imax(0, brokeSeen(c));
+    if (!c->hold && !modeOver && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead && !outlives(o, c)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
+  // 1. THE MODE, NOT THE MOST LIFE (the owner: the mode is respected always, garbage on the board or not; a lower stack is more time): a
+  // line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more -- the next decisions keep the
+  // stack down; the life an off-mode attack buys past that is the mode thrown away. Under garbage, only one that breaks as much of it
+  if (offMode(x) != offMode(y)) {
+    const Judge *f = offMode(x) ? x : y, *o = f == x ? y : x;
+    if ((livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) && (!decF.under || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
+      return (cmpKey = __LINE__, (f == x ? 1 : -1));
+  }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
   // after decides only between lines that survive alike
-  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
-  // 1'. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
-  // allowance below a break's walk (BREAK_WALK) after one that keeps it -- the next break is pressed out of what is left, and what is
-  // spent comes back only a window later, the garbage it is needed for may be told of by then or not
-  if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
-    int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
-    if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+  // 1. (neither lives, garbage on the board or on its way, below the material floor) THE BREAK'S MATERIAL KEPT (the owner: low, spend
+  // less and break) (the owner: the board spent to three rows and
+  // dying for want of panels): a clear that breaks nothing (spends) after a line that keeps the panels and is lost a break's time away or
+  // more -- the panels it spends to stall are the next break's; it is played only where every line that keeps them is lost within one
+  // (and only where the line that keeps them leaves more of them: a board the garbage lands on loses its panels under the lowest garbage
+  // held or not, and a hold that leaves no more of them keeps nothing -- outcome.c matLeft)
+  if (!lx && (decF.under || decQ.narr > 0) && x->spends != y->spends) {
+    const Judge *o = x->spends ? y : x, *sp = x->spends ? x : y;
+    // (and only where the spend buys less than a break's time more: one that keeps the board alive a break's time longer buys the next
+    // break's chance -- death is never an option)
+    if (diesAt(o) >= rankSave && o->o.matLeft >= 0 && sp->o.matLeft >= 0 && o->o.matLeft > sp->o.matLeft && diesAt(sp) - diesAt(o) < rankSave)
+      return (cmpKey = __LINE__, (x->spends ? 1 : -1));
   }
-  // 1'-. THE CHAIN FALLING, CARRIED ON (the owner: a chain that can be continued without dying is continued to the mode's target): while
-  // the board chains, of two that survive alike, the one that takes the chain further, up to the longest the list asks -- after the
-  // window's reserve, before a break, before the line in progress: a chain left to end short of the target is the attack thrown away
-  // (under garbage, between two that both break or both do not: a break is never put after a line that only carries the chain on --
-  // the owner: garbage broken first, the chain continued where it can be both)
-  if (decQ.b && decQ.b->chainCounter >= 2 && (lx || lostAlike(x, y)) && (!decF.under || (x->apBroke > 0) == (y->apBroke > 0))) {
-    int32_t cap = listChainCap();
-    if (cap >= 2) { int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap); if (cx != cy) return (cmpKey = __LINE__, (cy - cx)); }
+  // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
+  // order charges it -- the mode gives way to survival only)
+  int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
+  if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
+  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
+  // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
+  // none and breaks as much
+  if (lx && !decF.under && aloneChain < 2 && shortChain(x) != shortChain(y)) {
+    const Judge *sc = shortChain(x) ? x : y, *o = shortChain(x) ? y : x;
+    if (imax(0, o->apBroke) >= imax(0, sc->apBroke)) return (cmpKey = __LINE__, (shortChain(x) ? 1 : -1));
+  }
+  // 1'. THE CHAIN FALLING, CARRIED ON (the owner: a chain going is continued unless continuing kills the board): while the board chains,
+  // of two that survive alike, the one that takes the chain further, up to the longest the list asks -- before every key but survival,
+  // under garbage too: a chain left to end short of the target is the attack thrown away
+  // (and a chain the board is about to make on its own -- garbage converting into a match, panels falling -- is a chain going too: the
+  // line that takes it further is chosen while it can still be reached, not once its second link has popped)
+  if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2) && (lx || lostAlike(x, y)) && !finishAsked() && listChainCap() > 0) {   // (and not where the list asks no chain: rules.c ownChainAsked)
+    int32_t cap = imax(listChainCap(), 3);   // (at least to three: the owner)
+    {
+      int32_t cx = imin(chainReach(x), cap), cy = imin(chainReach(y), cap);
+      // (neither living: a 2x is still taken on to three -- the owner: a 2x is continued unless that kills the board -- but a chain longer
+      // than that only where it breaks as much garbage as the other: passed over, a break is the board's life)
+      const Judge *lc = cx > cy ? x : y, *sc = cx > cy ? y : x;
+      if (!lx && imax(0, lc->apBroke) < imax(0, sc->apBroke)) { cx = imin(cx, 3); cy = imin(cy, 3); }
+      // (and a line that breaks more and is lost no sooner is never passed over for a chain past three, nor one that is lost later for a
+      // 2x taken to three: the break is the longer life)
+      int brokeMore = !lx && imax(0, sc->apBroke) > imax(0, lc->apBroke) && (imin(cx, cy) >= 3 ? lostOf(sc) >= lostOf(lc) : lostOf(sc) > lostOf(lc));
+      // (a chain taken further on the window the next break is pressed from is not -- nor, garbage on the board, one that leaves the
+      // window under half a break's walk where the other leaves it more: the next break would not be there to press)
+      int spends = (spendsReserve(lc) && !spendsReserve(sc)) ||
+                   (decF.under && pressAllowance >= 0 && pressAllowance - lineWalk(lc) < BREAK_WALK / 2 && reserveShort(lc) > reserveShort(sc));
+      if (cx != cy && !brokeMore && !spends) return (cmpKey = __LINE__, (cy - cx));
+    }
+  }
+  // 1'e. FLAT, NO GARBAGE ON ITS WAY (the stack at speed: a well between towers is where the board dies -- a canyon is never dug out at
+  // forty-seven frames a row): with no garbage on the board, held or due, and the board not chaining, of two that survive alike the
+  // one that leaves the board flatter by FLAT_ROWS or more, whatever the window holds
+  if ((lx || lostAlike(x, y)) && !decF.under && decQ.narr == 0 && decF.next == NOT_ASKED && decQ.b->chainCounter < 2 &&
+      x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
+    return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
+  // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
+  // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
+  // owner: no big chains at the finish; a chain is played there only where nothing else lives as long
+  if (finishAsked() && (lx || lostAlike(x, y))) {
+    // (a list that asks no chain at all: no chain of two either -- every chain is a slab at an enemy topped out)
+    int at = listChainCap() > 0 ? 3 : 2, bx = chainReach(x) >= at, by = chainReach(y) >= at;
+    if (bx != by) return (cmpKey = __LINE__, (bx ? 1 : -1));
+  }
+  // 1'L. UNDER GARBAGE, BREAK (the owner: it waits too long to break garbage; low, spend less and focus on breaking): garbage on the
+  // board, of two that both live, or are lost alike with the break lost no sooner, a line that breaks garbage before one that breaks none
+  // and meets nothing the mode asks for (the hold, a set-up) -- waiting meets the mode no more than the break does, and the garbage left
+  // is the board's danger; below the material floor before any line that breaks none, the list's or not: the break is the panels the
+  // board lacks, and a board waited on below the floor finds no break later
+  if (decF.under && (lx || lostAlike(x, y)) && breaksFirst(x, lx) != breaksFirst(y, lx)) {
+    const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
+    if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
+  }
+  // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
+  // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
+  // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
+  if (decF.under && (lx || lostAlike(x, y))) {
+    int fx = awayFromGarbage(x), fy = awayFromGarbage(y);
+    if (fx != fy) {
+      const Judge *f = fx ? x : y, *o = fx ? y : x;
+      if (imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f)) && !(goalLine(f) && !goalLine(o)) && (lx || diesAt(o) >= diesAt(f))) return (cmpKey = __LINE__, (fx ? 1 : -1));
+    }
+  }
+  // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
+  // (readyNext) before one that does not and breaks no more garbage now -- a board that cannot break what lands next is the loss
+  // survival's horizon does not reach yet; a break now is never given up for it
+  if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) {
+    const Judge *r = x->readyNext == 1 ? x : y, *o = x->readyNext == 1 ? y : x;
+    if (imax(0, r->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
+  }
+  // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
+  // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the
+  // mode does not want
+  if ((lx || lostAlike(x, y)) && comboOutside(x) != comboOutside(y)) {
+    const Judge *cb = comboOutside(x) ? x : y, *o = comboOutside(x) ? y : x;
+    if (imax(0, o->apBroke) >= imax(0, cb->apBroke)) return (cmpKey = __LINE__, (comboOutside(x) ? 1 : -1));
+  }
+  // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
+  // allowance below a break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter
+  // after -- the next break is pressed out of what is left, and what is spent comes back only a window later, the garbage it is needed
+  // for may be told of by then or not
+  if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
+    int rx = reserveShort(x), ry = reserveShort(y);
+    // (but never against the board's own rise: with no garbage on the board or on its way, the board is lost to the stack rising, and
+    // the line that keeps it alive longer by a cursor step's walk or more is played over the reserve -- the board kept doing things)
+    const Judge *kp = rx < ry ? x : y, *sp = rx < ry ? y : x;
+    int rises = !lx && !decF.under && decQ.narr == 0 && !sp->o.dead && diesAt(sp) >= diesAt(kp) + WALK_FRAMES;
+    if (rx != ry && !rises) return (cmpKey = __LINE__, (rx - ry));
+  }
+  // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
+  // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
+  if ((lx || (lostAlike(x, y) && (lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y)) >= BACK_CALM * rankSave)) && !x->hold && !y->hold && x->back != y->back) {
+    const Judge *b = x->back ? x : y, *o = x->back ? y : x;
+    if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
+  }
+  // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
+  // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
+  // worked where the cursor is, and left only for what survives better or breaks where the near one does not
+  // (of two that break garbage, begun nearer is no saving where the nearer walks more for the break -- a swap put in front of the break the
+  // other already has: the fewer actions for as much garbage decides first, 1'' below)
+  if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0) && x->k.nseq && y->k.nseq &&
+      !(x->apBroke > 0 && imax(0, x->apBroke) == imax(0, y->apBroke) && lineWalk(x) != lineWalk(y))) {
+    int bx = focusBand(x), by = focusBand(y);
+    // (and a far line that breaks more garbage than the near one is not left for it: the near one is worked only where it breaks as much
+    // -- the garbage broken for the walk decides, 1'' below)
+    const Judge *nr = bx < by ? x : y, *fr = bx < by ? y : x;
+    if (bx != by && !(nr->apBroke > 0 && imax(0, nr->apBroke) < imax(0, fr->apBroke))) return (cmpKey = __LINE__, (bx - by));
+  }
+  // 1'0. THE LINE IN PROGRESS OVER ONE IT OUTLASTS AND OUTBREAKS (the owner: a move is wasted only where survival asks it): of two that
+  // survive alike, the line the last decision was playing before another lost no later that breaks no more garbage -- every swap
+  // pressed of a line put down is spent from the input window for nothing
+  if (x->carried != y->carried && !x->hold && !y->hold && (lx || lostAlike(x, y))) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    if (lostOf(c) >= lostOf(o) && imax(0, c->apBroke) >= imax(0, o->apBroke) && !(goalLine(o) && !goalLine(c))) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
   // and the rest wait for it to give some back
   if (decF.under && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
-    int bx = x->apBroke > 0, by = y->apBroke > 0;
-    if (bx != by) return (cmpKey = __LINE__, (bx ? -1 : 1));
+    int bx = breaksFirst(x, lx), by = breaksFirst(y, lx);
+    // (but not over the mode's first entry thrown where the break meets none of it: the mode is played under garbage too -- the goal
+    // decides between them, 1b)
+    if (bx != by && !((bx ? y : x)->modeFirst && !(bx ? x : y)->modeFirst)) return (cmpKey = __LINE__, (bx ? -1 : 1));
     // (of two that break nothing: a fallback after a line that fires none -- the mode's list before the walk; then the fewer actions)
     if (!bx) {
       int fx = fallbackOf(x), fy = fallbackOf(y);
       if (fx != fy) return (cmpKey = __LINE__, (fx ? 1 : -1));
+      // (and a swap toward an eight, lost no sooner and the reserve kept, before the wait -- set up between moves: rank.c nearerEight)
+      int ex = nearerEight(x, y), ey = nearerEight(y, x);
+      if (ex != ey) return (cmpKey = __LINE__, (ex ? -1 : 1));
+      // (WHILE GARBAGE POPS, THE CURSOR FREE (the owner: it holds too much -- it can do things while garbage is breaking): a set-up --
+      // a set-up, a lineup, a line toward the next break or nearest the list; no clear of three for nothing, the reserve kept, lost no
+      // sooner -- before the hold, whatever it walks: the wait buys nothing the pop does not. A line the survival search found is no
+      // set-up: pressed for nothing it spends the window the next break needs)
+      // (and while the board's own chain falls -- the owner: set up and started, it can do something else; it just sits there waiting for
+      // it to finish: a set-up that keeps the chain as far as the hold does, the same)
+      // (and every other time too -- the owner: hold is dumb, a set-up or flattening is better 90% of the time; swaps over distance, the
+      // set-up is key: a set-up, a lineup, a line toward the next break or nearest the list, or a level, before the hold and before a
+      // line of another kind, whatever either walks)
+      int chaining = decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2);
+      int sx = setupKind(x), sy = setupKind(y);
+      if (sx != sy) {
+        const Judge *m = sx ? x : y, *h = sx ? y : x;
+        if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
+          return (cmpKey = __LINE__, (sx ? -1 : 1));
+      }
+      if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
+      // (of two set-ups: the one that leaves more crossed seams -- a swap finishing two colours at once, the players' 8+ combo)
+      if (sx && sy && x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
       int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
@@ -391,11 +729,19 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
     else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
+    // (of two that break: the one that meets the earlier combo entry of the mode's list -- the combo the mode asks goes with the break)
+    else if (comboEntry(x) != comboEntry(y)) return (cmpKey = __LINE__, (comboEntry(x) - comboEntry(y)));
+    // (of two that break: the one that meets the mode's first entry, chain or combo -- the mode's attack under garbage, the break with
+    // it: the owner, the mode passed over for survival only)
+    else if (goalLine(x) != goalLine(y)) return (cmpKey = __LINE__, (goalLine(x) ? -1 : 1));
     // (a line put down for another throws away the actions pressed of it: the other is charged them -- the walk the line in progress was
     // played for, less what is left of it)
     else {
       int sx = lineWalk(x), sy = lineWalk(y);
       if (carriedSunk >= 0 && x->carried != y->carried) { const Judge *c = x->carried ? x : y; int sunk = imax(0, carriedSunk - lineWalk(c)); if (c == x) sy += sunk; else sx += sunk; }
+      // (THE DIG ZIPPED -- the owner: digging goes for the zipper: of two that break as much garbage, walking within ZIP_WALK actions of
+      // each other, the one that leaves the colours more zippered -- fewer of a colour touching, more a swap apart: judge.c spreadOf)
+      if (x->apBroke == y->apBroke && iabs(sx - sy) <= ZIP_WALK && x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
       int64_t px = (int64_t)x->apBroke * imax(1, sy), py = (int64_t)y->apBroke * imax(1, sx); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
     }
   }
@@ -425,9 +771,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (and of two that make the first entry, or two set-ups toward it, the fewer presses: the owner, the goal first and the shortest
       // way to it, the set-up included -- a press is a press, a cursor step or a swap)
       int sx = !x->hold && setupPlay(x->k.play), sy = !y->hold && setupPlay(y->k.play);
+      if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
       if (gx == 0 || (sx && sy)) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
     }
   }
+  // 1c. DOWNTIME, FLAT (the owner: flatter boards give more options): with no garbage on the board or due within two breaks' time,
+  // the board not chaining and the window holding two breaks' walks, of two that live and meet the mode's list alike, the one that
+  // leaves the board flatter by FLAT_ROWS or more -- the hold too
+  if (lx && downtime() && x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
+    return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
   if (lx) {
     // 2. (both live) the board's own chain kept before cut short: a chain the board is making is never stopped by a line that need not
     if (cutsShort(x) != cutsShort(y)) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1));
@@ -443,7 +795,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 1b. (neither lives) THE BOARD'S OWN CHAIN KEPT: a line that cuts the chain the board is making short ranks after one that keeps it
     // -- unless keeping it loses the board within a break's time (rankSave): a chain begun is the attack the board already has, and the
     // three that began it is wasted once it is cut (the owner: never spoil the board's own chain)
-    if (cutsShort(x) != cutsShort(y)) { const Judge *keep = cutsShort(x) ? y : x; if (lostOf(keep) >= rankSave) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1)); }
+    // -- or the board is short of panels (below the floor) and the cut breaks garbage the keeping does not, lost a break's time later: the
+    // chain spends the panels a break is made from, and a board short of them finds none after it
+    if (cutsShort(x) != cutsShort(y)) { const Judge *keep = cutsShort(x) ? y : x, *cut = cutsShort(x) ? x : y;
+      int spends = decF.belowFloor && cut->apBroke > 0 && !(keep->apBroke > 0) && lostOf(cut) - lostOf(keep) >= rankSave;
+      if (lostOf(keep) >= rankSave && !spends) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1)); }
     // 2. (neither lives) one that breaks garbage, while it leaves the next decision the time a break takes (rankSave): the panels a
     // break converts are what the next is made from -- a break lost before the next could be made converts them for nothing
     // -- on a board short of panels (below the floor) always; on one with panels to spare, not over a line lost a break's time later (run
@@ -454,6 +810,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 2'. (neither lives, under garbage) THE LINEUP FIRST: of two that break, the one that converts more full rows of the block -- the
     // lineup that keeps a slab breaking, row after row -- unless it is lost a break's time sooner: a row a line leaves is a row a later
     // break must make, and the board dies when the rows on it and coming outrun the rows broken (1d596973)
+    // -- but of two lost alike, one within the mode's list before one outside it: the rows a line converts are no reason for an attack
+    // the mode does not ask (the owner: every attack is what the mode asks)
+    if (decF.under && bx && by && x->outside != y->outside && lostAlike(x, y)) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
     if (decF.under && bx && by) { int rx = imax(0, x->apBroke) / W, ry = imax(0, y->apBroke) / W;
       if (rx != ry && (lostAlike(x, y) || (rx > ry) == (lostOf(x) > lostOf(y)))) return (cmpKey = __LINE__, (ry - rx)); }
     // 3. (neither lives) the later loss -- unless both leave the next decision the time a break takes (rankSave): those survive alike, and
@@ -468,8 +827,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (neither lives, lost alike) THE ALLOWANCE'S RESERVE: a line that breaks nothing and walks the input allowance below a break's walk
     // (BREAK_WALK) after one that keeps it -- the break the next decisions find has to be pressed out of what is left
     if (pressAllowance >= 0) {
-      int rx = !(x->apBroke > 0) && pressAllowance - lineWalk(x) < BREAK_WALK, ry = !(y->apBroke > 0) && pressAllowance - lineWalk(y) < BREAK_WALK;
-      if (rx != ry) return (cmpKey = __LINE__, (rx ? 1 : -1));
+      int rx = reserveShort(x), ry = reserveShort(y);
+      if (rx != ry) return (cmpKey = __LINE__, (rx - ry));
     }
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return (cmpKey = __LINE__, (x->readyNext ? -1 : 1));
@@ -478,7 +837,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // leave (6, 7a) do (run 441, big chain: a combo that breaks is outside a list of 8-chains, and was ranked below a plain three)
     // -- nor, under garbage, between two that both die where the one outside it spends no panels below the floor: dying, the list's
     // order is not what keeps the board (run 491, large_garbage-6: a hold lost at 194 over a line toward a break lost at 212)
-    if (x->outside != y->outside && !(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends)) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
+    // -- nor the hold over a line lost a break's time later: holding is no entry of the list, and lost alike past three breaks' time
+    // (lostAlike) the hold put first by the list is the board left to the frame it dies, the tower growing while a line that lives on waits
+    // -- but of two breaks lost alike that convert the same full rows (2'), the list decides: a combo or chain it does not ask for is the
+    // one rule's last clear, after its entries and the three that breaks
+    int sameBreak = decF.under && x->apBroke > 0 && y->apBroke > 0 && imax(0, x->apBroke) / W == imax(0, y->apBroke) / W;
+    if (x->outside != y->outside && (sameBreak || (!(decF.under && x->apBroke > 0 && y->apBroke > 0) && !(decF.under && !x->spends && !y->spends))) &&
+        !((x->hold || y->hold) && (lostOf(x) > lostOf(y) ? lostOf(x) - lostOf(y) : lostOf(y) - lostOf(x)) >= rankSave)) return (cmpKey = __LINE__, (x->outside ? 1 : -1));
   }
   // 5a. TWO THAT LIVE: the list before the material -- a board that lives either way throws the attack the list asks, not the cheaper
   // break (the owner: twice as aggressive)
@@ -518,6 +883,17 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // combo_storm-6: 1585 to 1816, a break of 24 to 28 cells in every line played, never made). After the material: put before it, the
   // sooner break spends the panels the next is made of
   if (!lx && decF.under && x->apBroke > 0 && y->apBroke > 0 && x->apFire >= 0 && y->apFire >= 0 && x->apFire != y->apFire) return (cmpKey = __LINE__, (x->apFire - y->apFire));
+  // 7d. AN EIGHT NEARER (the owner: an eight is set up outside the mode that fires it, in the modes leading up to the top-out, and between
+  // moves -- the move that leaves a better set-up): of two lines every key above leaves equal, the one whose board is TWIN_STEP swaps or
+  // more nearer a two-column combo of eight (outcome.c twinAfter) -- survival, the chain, the breaks and their material all decide first
+  // (only where the nearer is lost no sooner: a set-up is never paid for with the board's life)
+  // (and only within TWIN_KEY_REACH swaps: an eight farther off is set up of the moves that cost nothing -- 1'', nearerEight -- not by
+  // this key over every key after it)
+  int t8x = x->o.twinAfter > TWIN_KEY_REACH ? 99 : x->o.twinAfter, t8y = y->o.twinAfter > TWIN_KEY_REACH ? 99 : y->o.twinAfter;
+  if (t8x >= 0 && t8y >= 0 && iabs(t8x - t8y) >= TWIN_STEP) {
+    const Judge *nr = t8x < t8y ? x : y, *fr = nr == x ? y : x;
+    if (nr->o.lives || (!fr->o.lives && diesAt(nr) >= diesAt(fr))) return (cmpKey = __LINE__, (t8x - t8y));
+  }
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return (cmpKey = __LINE__, (ax - ay));
@@ -549,7 +925,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   Tier tx = tierView(x), ty = tierView(y);
   if (tx.tier != ty.tier) return (cmpKey = __LINE__, (tx.tier - ty.tier));
   // 9a. (two set-ups that live, neither clearing anything, no garbage on the board) the one that leaves more ideas ready -- before the kind of set-up
-  if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1)); }
+  if (tx.tier == 4 && lx && !decF.under && !clears(x) && !clears(y)) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1));
+    if (x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
+    }
   int n = tx.nsub < ty.nsub ? tx.nsub : ty.nsub;
   for (int q = 0; q < n; q++) if (tx.sub[q] != ty.sub[q]) return (cmpKey = __LINE__, (tx.sub[q] < ty.sub[q] ? -1 : 1));
   // 10. THE PLAN KEPT (plans/gambit-infra.md F, stable): of two lines every key leaves equal, the one the last decision kept (an
@@ -611,6 +989,9 @@ static int walkOrder(const Cand *k, Cand *out) {
 static int compareJudged(const Judge *x, const Judge *y);
 // A CANDIDATE JUDGED, and in walking order too when that walks less: the walking order is played when the one order puts it no lower --
 // what it makes is the engine's, as for every line; only the drops and the log's count are the line's own order's
+// STEADY, NOT IN BURSTS (the owner): a line judged settled -- each swap once the board has stopped moving -- waits out a popping slab and
+// then presses the rest at once. While a slab pops it is judged pressed straight through as well, each swap as soon as its pair is free,
+// and that one is the line unless the order puts it after the settled one: the same swaps spread over the pop
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) {
   int ok = judgeCand(R, k, J);
   static Cand w; static Judge JW;

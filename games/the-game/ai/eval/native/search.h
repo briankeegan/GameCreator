@@ -22,7 +22,7 @@ typedef struct { int32_t at, width, height, isChain, isMetal; } Arr;
 #define CAPPED_AT 72
 #define MAXARR 64   // pa.c / engine.c NBODY leave room for this many after the board
 #define KEYMAX (16 * W)
-enum { MK_LONG, MK_HOLD, MK_RAISE, MK_SWAP, MK_SETTLE };
+enum { MK_LONG, MK_HOLD, MK_RAISE, MK_SWAP, MK_SETTLE, MK_GO };   // MK_GO: the cursor walked to a cell, nothing swapped
 // MK_SETTLE (engines with STEP_STATS): a swap at (mr, mc) -- or, with mr 0, a
 // hold -- and then the frames until nothing moves, at most `frames` (or
 // SETTLE_CAP when that is 0), as the
@@ -137,10 +137,10 @@ static int legalSwaps(Board *b, int32_t *out) {
 }
 
 // ---- the bot's hands (panel-cpu.js beginWalk / driveWalk / nearestSwappable, puyocpu.js raiseStep)
-typedef struct { int32_t active, row, col, timer, cooldown, retries, disp; } Walk;
+typedef struct { int32_t active, row, col, timer, cooldown, retries, disp, go; } Walk;   // go: the walk ends at the cell, no swap pressed
 typedef struct { Walk w; int32_t cooldown, lastSwap, raiseFrames, raiseStarted; } Bot;
 static void beginWalk(Bot *bot, int row, int col, int cooldown) {
-  Walk w = { 1, row, col, 0, cooldown, 0, UND };
+  Walk w = { 1, row, col, 0, cooldown, 0, UND, 0 };
   bot->w = w;
 }
 static int nearestSwappable(Board *b, int fromRow, int fromCol, int *out) {
@@ -169,6 +169,7 @@ static void driveWalk(Ctx *x, Bot *bot, Board *b, int32_t *input) {
     w->timer = x->cursorMoveFrames - 1;
     return;
   }
+  if (w->go) { w->active = 0; return; }
   int ok = tryQueueSwap(b, b->curRow, b->curCol);
   Walk old = *w;
   w->active = 0;
@@ -321,6 +322,7 @@ static int advance(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   if (kind == MK_SETTLE) GIVE0(STEP_ERR);
 #endif
   if (swapping) { beginWalk(&bot, mr, mc, x->swapGap); driveWalk(x, &bot, st, &input); }
+  else if (kind == MK_GO) { beginWalk(&bot, mr, mc, 0); bot.w.go = 1; driveWalk(x, &bot, st, &input); }
   else if (kind == MK_RAISE) { bot.raiseFrames = 20; bot.raiseStarted = 0; bot.cooldown = x->reaction; }
   else if (kind == MK_HOLD || kind == MK_SETTLE) bot.cooldown = x->reaction;
   return advanceRest(x, pi, kind, mr, mc, frames, st, &bot, arr, narr, input, f, t0, swapping, 0);
@@ -852,6 +854,13 @@ static void runTasks(void) {
 }
 // A worker's life: wait for a phase, take steps until there are none, say so. The wait and the wake are wasm's atomics, or a native
 // host's own (gambit/native.c: a futex).
+// (the pool told to end -- a native host's instance quitting, gambit/native.c gn_quit: each worker leaves its loop)
+static int32_t poolQuit;
+static void poolEnd(void) {
+  __atomic_store_n(&poolQuit, 1, __ATOMIC_SEQ_CST);
+  __atomic_add_fetch(&pool.gen, 1, __ATOMIC_SEQ_CST);
+  __builtin_wasm_memory_atomic_notify(&pool.gen, -1);
+}
 static void workerLoop(void) {
   int32_t last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
   __atomic_add_fetch(&pool.nworkers, 1, __ATOMIC_SEQ_CST);
@@ -861,6 +870,7 @@ static void workerLoop(void) {
     for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last; spin++) {}
     while (__atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST) == last) __builtin_wasm_memory_atomic_wait32(&pool.gen, last, -1);
     last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
+    if (__atomic_load_n(&poolQuit, __ATOMIC_SEQ_CST)) return;
     runTasks();
     __atomic_add_fetch(&pool.ack, 1, __ATOMIC_SEQ_CST);
     __builtin_wasm_memory_atomic_notify(&pool.ack, 1);

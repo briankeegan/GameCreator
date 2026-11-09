@@ -1,9 +1,40 @@
 # Gambit: the goal
 
 **Gambit plays like a player: it survives every game at level 11, it plays the mode it is in, it never spoils a chain the board is
-already making, and its cursor goes where the next swap is instead of across the board.**
+already making, its cursor goes where the next swap is instead of across the board, it is never idle, it wastes no input, and it kills fast.**
 
-The 24 games: 8 combo_storm, 8 factory, 8 large_garbage -- the real client's Training mode (`training-mode.yml`), the server's
+Four of these are measured every run beside survival (`target.sh`, from each game's own log) and none ships worse than main:
+
+- **Never idle** (the owner: it sits waiting doing nothing most of the time). A hold is played only where no set-up, flattening or
+  line toward the mode survives as well: waiting while garbage pops, or while a chain falls, is time to set up nearby. Measured: the
+  share of decisions that hold, and the share of half-seconds with no key pressed. Last measured: holds 42-47% in every mode (main,
+  f612ef5d), 75% of them while garbage pops; no key pressed in 27% of half-seconds, Mastershadow 5% in the same six live matches
+  (plans/gambit-mastershadow.md). Target: 5%. The game's input budget (76 actions in 600 frames) is spent mostly already, so the
+  wasted input below goes first: it is the budget the set-ups are pressed with.
+- **The mode played, garbage on the board or not** (item 3 below). Every attack is what the mode asks: 100% of each mode's attacks
+  meet its list, 0% extra -- no chain or combo the mode does not ask for, whoever made it, the board's own chains and the digging
+  included. A chain the garbage makes falling on its own, which no swap could stop, is the one case that may not be fixable --
+  still counted, and noted apart; never one our swaps drop onto it. Measured: the share of each mode's attacks that meet its aim ("the measure"), and the wrong attacks by kind and maker
+  ("the wrong attacks"), and the extra with the garbage's own noted apart ("the extra"). Last measured (`d2e34a60`, set 85): finish them 48%, build 42%, pressure 36%, big chain 28%. Target: 100% -- as close to it as it can be got, like every other measure here.
+- **No wasted input** (the owner: efficiency, no mistakes, no changing minds). A line begun is pressed to its end unless survival needs
+  another; no three that breaks nothing. Measured: the share of inputs pressed on lines dropped before their end (`actsLost`) and
+  wasted threes a minute. Last measured: 27-33% of inputs; 0.01-0.04 threes a minute. Target: under 10%, and no wasted three.
+- **Kill, and kill fast** (the owner: win as quickly as possible, against people and bots alike). The enemy dies on the first frame
+  it is topped out with no stop time, no shake, and nothing popping or swapping (`Stack.lua` `checkDeath`, `advancePassiveRaise`;
+  level 11 has 1 health). What our garbage hands it: each landing is shake -- 18 frames for up to 4 panels, 24 for 5, 42 for 6-11,
+  66 for 12-23, 76 for 24 -- and a landing while it still shakes renews the largest shake since its shake was last 0. Breaking it is
+  pop time, 30 + 6 frames per panel cleared on screen. Its own clears while topped: a four-plus combo is 55-56 frames of stop, a
+  chain link 80, a three none. Garbage cannot drop while it is topped and drops one piece at a time; a combo of ours lands 151 frames
+  after it is made at the soonest, a chain's after the chain ends. So: big garbage to top it out, then small pieces, each landing
+  after its last shake reached 0 and as its stop runs out -- never a big piece at an enemy already topped. Of our six live wins
+  against Mastershadow (re-simulated on the server's engine), four died the frame a 16-42-frame shake ran out with no stop left, one
+  when its stop ran out after a three, one when the stack rose into the top with nothing left. Over 73 live games (10,464 landings,
+  every player's), a landing killed -- the stack died with no clear of its own after it -- 3.8% of the time for a 3-4-wide on a topped
+  stack, 7.7% for a 5-wide, 1.4% for one row, 0.5% for 2-3 rows, 0.3% for 4; with 1-2 rows free 2.3%, 3.5%, 1.0%, 0.4%, 0.2%. So finish
+  them begins 2 rows from the top and asks for small pieces (the modes' table). Measured: frames from its first top-out to its death,
+  and the shake and pop time our garbage handed it on the way. Target: the owner's.
+
+The 28 games: 8 combo_storm, 8 factory, 8 large_garbage, and 4 endless -- no garbage ever, six minutes, the board must not die of its own rise -- the real client's Training mode (`training-mode.yml`), the server's
 engine at **level 11**, the game's own think and input budgets. Live: Gambit against the default on the fork's server
 (`bot-prod-smoke-test.yml`, `mode: fight`) and on the main server.
 
@@ -20,8 +51,7 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    for every mode: after the list's entries, a three that breaks garbage; last of all (they cost blocks), a clear that makes a chain or
    a combo the list does not ask for; nothing else clears (`judge.c` the one rule). Every mode defends itself while it attacks. Each mode's attacks meet its own aim -- pressure 4-chains, build 5-chains, big
    chain 8+, finish them its combos -- built on purpose from its own stack, not the chains garbage colours happen to make. Measured
-   every run: of the attacks fired in each mode, the share that met the mode's aim. Last measured: pressure 38%, build 26%, big chain
-   10%. The target is the owner's to set.
+   every run: of the attacks fired in each mode, the share that met the mode's aim. Target (the owner): 100%, 0% extra.
 4. **The cursor walks the shortest way.** A line's swaps are pressed in the order the cursor reaches them soonest, kept only where the
    engine says the board comes out no worse (`rank.c` `judgeWalked`). Measured: the mean cells between one swap and the next, and the
    share of jumps of 6 or more. Last measured (main server): 3.4 cells, 17%.
@@ -45,13 +75,24 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    done. Measured: clears begun while
    another still clears, the pair lines played, the lines that threw two blocks or more, the ideas left ready (gambit_summary.js
    `several ideas at once`).
-6. **Every mode 24/24 at level 11, twice in a row**, then switching (5-30 s, every direction) 24/24 with the switches happening.
-   **The order (the owner's):** the goal stays 24/24 in every mode; 22 of 24 is where a mode is left for the next -- a change made for
+6. **Every mode 28/28 at level 11, twice in a row** -- the 24 garbage games and the 4 endless -- then switching (5-30 s, every direction) 28/28 with the switches happening.
+   **The order (the owner's):** the goal stays 28/28 in every mode; 22 of the 24 garbage games and all 4 endless is where a mode is left for the next -- a change made for
    one mode can undo another's, so the last two are won with every mode run together. Once every mode is at 22, they are run together
    and each change is checked for a mode it set back, until all are at 24, twice.
    Finish them reached 22 in run 432; big chain in run 1464 (lockstep). In real time, on the base (plans/gambit-since-base.md):
    pressure 23 in run 1555 and 21 in 1556 (factory 5 to 8 of 8, the other two 7 and 8); build 23 in run 1636 (combo_storm and
    large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). On the owner's lists (110143e3): pressure 22 in run 1669, build 22 in run 1672, finish 22 in run 1679, switching 22 in run 1789; each mode to 22 again, one at a time.
+
+THE OPENER'S OWN TARGET (the owner): 100%. It has the countdown's three seconds to itself, so it never dies. It is measured as a
+handover: from the start to the top-out, that garbage broken, then 15 s (900 frames) in the mode it gives way to -- each of finish
+them, big chain, pressure and build on the same 8 seeds per pattern, never time attack (no garbage there). gambit-24.yml `then`
+`["finish_them","big_chain","pressure","build"]`, `profile` gambit-opener.json, `frames` 5400 (a game not switched by 90 s is
+reported, not failed); gambit_summary.js prints HANDOVER.
+
+EVERY MODE IS MEASURED AS A LIVE FIGHT PLAYS IT (the owner): gambit-24.yml `fight` 1 with `profile` gambit.json (no mode pinned),
+so the opener is found from the countdown as a fight finds it, and `then` the mode measured -- `["finish_them"]`, `["big_chain"]`,
+`["pressure"]`, `["build"]` -- taken at the top-out for the rest of the game. A pinned profile never runs the path a live fight
+does (the countdown's question, the opener by the table). Time attack is set aside for now (the owner).
 
 ## The modes (the owner's plan)
 
@@ -64,14 +105,17 @@ A chain going is carried on to the mode's target whenever the board survives it,
 the first clear still pops; a chain that has ended counts the size it ended at. The ideal line, always, breaks garbage between the
 links it adds -- both at once before either alone. A four that breaks ranks after a three that breaks as much (the owner).
 
-In a fight every decision's mode is the one the enemy's board calls for: `gambit_modes.js` re-picks it from each decision's logged
-`enemy=` and counts the decisions that disagree; a fight with any is red.
+In a fight every decision's mode is the one the enemy's board calls for, debounced (the owner: a board flickering at a line does not
+switch the mode back and forth): the enemy topped out calls finish them at once; any other change is played once the facts have called
+it for a second (decide.c `MODE_DEBOUNCE`, 60 frames). `gambit_modes.js` re-picks it from each decision's logged `enemy=`, debounced
+the same way, and counts the decisions that disagree; a fight with any is red. Past a switch, the line in progress is carried on only
+where it meets the new mode's first entry or breaks garbage.
 
 | mode | picked when | for | first | fallbacks, only where it dies without them |
 | --- | --- | --- | --- | --- |
 | opener | a fight's start, until either board tops out (its top row reached by panels or landed garbage, as the engine has it -- garbage queued or falling does not count) | pressure from the start: big chains only | 8+ chain | chain 6+, 4+ |
 | time attack | no enemy | score alone: set up the biggest chain there is | 8+ chain | none: nothing under 8 |
-| finish them | the enemy topped out (its top row reached, as the engine has it), its stop ends within 2 s (120 frames) | a fast hit it cannot absorb | 8+ combo | combo 5, combo 6, 3-chain (a combo of 4 is wasted) |
+| finish them | the enemy 2 rows from the top or topped out (its tallest column, garbage or panels, as the engine has it) -- whatever its stop time | small pieces it cannot absorb: each landing's shake under the stop it burns | combo 8, 9, 10 (two small pieces each) | combo 5, combo 6, then combo 4 (allowed, the least of them); chains last |
 | big chain | the enemy's stack under 5 rows | it has room: one huge block, no combos | 8+ chain | chain 4+, carried on as far as it goes |
 | build | the enemy's stack under 9 rows | steady medium attacks, no combos | 5-chain | 3-chain, 4-chain |
 | pressure | the enemy's stack 9 rows or more | keep it high with quick 4-chains, no combos | 4-chain | 3-chain |
@@ -83,7 +127,7 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
 
 ## Done, for each mode
 
-- 24/24 in **two runs in a row** at level 11 (one run is too noisy).
+- 28/28 in **two runs in a row** at level 11 (one run is too noisy).
 - Played within the mode's list, its aim met at the share item 3 sets.
 - 0 frames over the think budget, 0 keys dropped, **0 late moves**, 0 divergences ("The truth held").
 - The default bot still survives its 24 (it shares the engine and the searches).
@@ -122,6 +166,28 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
   chains made; the budgets (frames over, keys dropped, late moves); the loss report (`gambit_losses.js`), the reach report and the turn
   (`gambit_reach.js`) -- written by the run on Actions; and the time it finishes, in ET on the 24-hour clock.
 - Commit and push every change. Never rerun code that has not changed.
+- **Small first** (the owner): a change runs 24 games of one mode -- the weakest first -- the goal's measure (`fight` 1, `profile`
+  gambit.json, `then` that mode); the other modes only once it does well there. Every run new games: a seed not run before (a seed
+  run again only to set two builds side by side). Main is not run again: its measure is the one on record. Its log goes in the same
+  run, and a run is never spent on a log alone.
+- **A run, as fast as it goes** (the owner): one change, one run -- of one mode, the weakest on record, until every mode is at 22; from
+  then on every mode together, each change checked for a mode it set back (the list's 6). Never a run that decides nothing.
+- **The worst first, always** (the owner): the next change is for the mode with the fewest survived in the latest run -- not the goal's
+  other measures, not a mode doing well. Once it is at 23 or 24, the next worst is taken. A run takes about ten minutes (seven of them the game, in real time: Gambit thinks on the clock). A run made
+  stale by a newer change is cancelled at once. Each run is reported with when it began and when it should end, in ET on the 24-hour
+  clock.
+- **A run's seed is a set of games, not one** (the owner): `seed` N gives each of a mode's 24 games its own seed, N x 100 + the
+  pattern x 10 + the game (PA_SEED), so "seed 82" is 24 different games a mode. Round r plays base N + r - 1: seed 82's round 2 is
+  seed 83's round 1, never run as a new set.
+  A change is judged on more than one set (the owner): the same sets as what it is compared with, for the comparison, and never one set
+  alone -- `rounds` [1,2] plays two.
+- **The measure, every run** (the owner): the run's own report on Actions prints it (`gambit_summary.js`, "the measure"): survived; the
+  attacks each mode made that met its aims and its first; the decisions that passed the mode over; the swaps that came to nothing; the
+  wasted threes a minute. A change is judged on all of them, not on survived alone.
+- **Main deploys the bots** (the owner): a change reaches main only once its run shows it works -- survived no worse, the measure no
+  worse. Each merge is reported with its commit, its time in ET and its numbers. A change that only logs or reports goes to main at
+  once: it plays nothing.
+- **Bot fights and deploys are the owner's**: not this work's.
 
 ## How -- infra, not patches
 
@@ -138,6 +204,44 @@ In a fight every decision's mode is the one the enemy's board calls for: `gambit
 - Commit and push every change. Never rerun code that has not changed.
 
 ## Where it stands
+
+A SET is the 28 games a panel seed base gives (gambit-24.yml `seed`: 3 garbage patterns of 8 games and endless's 4, each its own panels) -- set 86 is those 28 games every run. A mode is measured on a set, never on a single game.
+
+At `277e8159` (the survival search's save pass: where no line held to the list lives, it searches again free of the list, and the decision's save check decides), set 85: switching 23, pressure 23, finish them 22, build 19, big chain 20 -- 107 of 120 against 100 at `f9fc896d`. A board topped by its own panels with no garbage (switching combo_storm-5) had no move within the list but a plain three.
+
+At `277e8159`, set 86: switching 21, pressure 21, finish them 22, build 24, big chain 22 -- 110 of 120. The panels kept in the survival search's choice (`24b7e1c3`, each panel left worth 9 frames among saves lost alike) on set 86: 21, 23, 22, 20, 21 -- 107. Not merged.
+
+The opening's raise a row short while garbage is on its way (`3a086617`), set 86: finish them 23, switching 19, pressure 21, big chain 21, build 22 -- 106 against 110. Its target (an opening death after the raise, finish them combo_storm-8 at 381) lived. Not merged.
+
+The away-from-garbage order lifted while a slab pops or the board's own chain falls (`1a6140e4`), set 86: switching 23, pressure 21, finish them 21, build 22, big chain 19 -- 106 against 110. Not merged. In those decisions the hold was 63% of answers during a pop and 32% during a cascade; the keys that put it first were the away-from-garbage order, the allowance's reserve (the window at 10-24 actions) and the mode.
+
+Where the actions go (`fd6dd511`, the carried line logged as it is dropped, switching set 86, 22/24): 29% of actions are pressed for lines never played out, most of them a carried line dropped as a wasted three though it still breaks garbage (714 such drops in 24 games) -- the three made, its break never reached.
+
+The same code run twice: main's build on set 86 survived 24 (`277e8159`) and 20 (`f9b7d641`, the same Gambit) -- one 24-game run moves by four games, so a change is read on all five modes over both sets, never on one run. Build's losses on main and on every variant since are the board out of breaks under the garbage (gambit_reach.js: 98 of 108 boards searched again had none to find); the deaths are decided before the last break, not at it.
+
+The death and mode stack (`9699935c`, idea268: the board's own chain kept only as long as the list asks, the line in progress giving way to the mode's first entry, a hold pausing a line, death near ranked on the frame lost, the agent's save and "==8" fixes, the material kept only while a break is in reach, a dig anchored to the row not yet risen, and the line in progress alike with a break lost no sooner): set 85 build 22, finish them 22, pressure 17, switching 19 -- against main's 19, 22, 23, 23. Not merged. The same with the line in progress alike with any line lost no sooner (`6c96a8ff`, idea269): set 85 build 20 and 21, finish them 20, pressure 23, switching 23, big chain 21 -- 107, main's 107; set 86 build 18, finish them 17 (three combo_storm games lost before 1320). Not merged. The finish's mode share rose in both (49-50% of attacks met, 83 eights against main's 9 on set 85).
+
+Main measured twice on both sets (`7df66d1a`, the Gambit of `277e8159`): set 85 107 and 112 (build 19/23, finish them 22/22, pressure 23/22, switching 23/23, big chain 20/22), set 86 110 and 105 (24/19, 22/22, 21/20, 21/22, 22/22) -- 217 both times over the two sets. One mode in one run moves by up to five; ten runs total move by none here. The fixes alone (`6ca4653b`, idea271: the agent's save fixes, "==8" read as an eight, a dig anchored below, the logs) 103 and 102 of 239 games -- 205, twelve under. Not merged; its two halves are measured apart.
+
+MERGED (`b384cb13`, idea272): a dying board keeps its save -- a three the save check gave no answer on is kept as the save, a save line that outlives the hold is carried past the set-ups' tier, no walk charged where the sooner loss is within a break's time. Set 85: build 23, finish them 23, pressure 20, switching 20, big chain 20 -- 106, main's 107 and 112. Merged as doing as well once (the owner: if it does as well once, move on).
+
+HELD UNJUDGED (about 150 decisions a run, a third with a break found): the move's frame comes while the searches still run (`out=1`), every line is dropped unjudged and the hold is played. The searches stopped JUDGE_FRAMES game frames early (`3134a367`, idea275): 155 such decisions against 150, set 85 build 17 -- not merged. The client runs frames in bursts, and one burst crosses the searches' stop and the move's frame together; the judging needs its time before the frame can come, not frames before it.
+
+MERGED (`e433bc1d`): a decision the host let go takes its worker jobs back at once -- live run p49's 24 late answers each followed one (451-463 ms on the logged boards, 37-42 ms with it). Stopping them also when the frame came lost games in the test runs (set 85 build 21, finish them 23, pressure 20, switching 19): only the let-go half is kept.
+MERGED (`e57a351e`, idea281): the line in progress never stands over a board that lives, or is lost a break's time later on the frame each is lost. Set 85, the 24 garbage games: 23, 21, 20, 21, 21 -- 106, main's 107 and 112. Endless (4 games, no garbage, six minutes): finish them 2, pressure 4, switching 0, big chain 2 -- 8 of 16; its deaths are the window spent (a 14-swap level line, 6-9-swap combo entries) with the stack at the top, and the cheap three that keeps it down dropped as wasted.
+MERGED (`1abbaef9`, idea283): near death, a later loss bought with the window the next breaks need is no later loss. Set 85, 28 games: 117 of 140.
+MERGED (`d2e34a60`, idea290): the board's own chain kept only as long as the mode's list asks (`rules.c` ownChainAsked), and finish them plays no chain. Set 85, 28 games: finish them 25, pressure 23, switching 25, big chain 22, build 23 -- 118 of 140. The wrong attacks stay at 52-72% a mode: under garbage the digging is done with combos, and of the chains the board makes alone in finish them, 685 of 717 come where no line lives (cutting them, `2ac75928`/`d2a12365`, changed nothing).
+MERGED (`91e1c8f2`, idea298): the endless reserve read at the soonest a break is needed (none in time attack), the list deciding between breaks lost alike, the stack zipped between moves, the board's own chain cut past the longest the mode asks. Set 85, 28 games: finish them 24, pressure 26, build 26, big chain 23, switching 26 -- 125 of 140 against main's 118. The extra unchanged (51-71%); 8+ combos in finish them 0.28 to 0.49 a minute (the players 1.3-2.7). Tanycanayt's attacks in the same measure, 46 live games: under garbage finish 47%, pressure 23%, build 26%; their board clear, finish 78%.
+MERGED (`bbbc0193`, idea301): THE FILL RULE (the owner: modes are dynamic) -- below ten rows the enemy's room asks the mode: the chains of three or more that fit the rows it will have free when they land, leaving it one (several fit as well as one: a 3x and a 4x; never a 2x), and with no room for a three, finish them's small combos (`decide.c` fillList, logged `fill=N`). Live play picks it by the enemy's height in place of big chain, pressure and build, which stay in the rules file for profiles that name them. Measured offline against the virtual enemy (`GC_GAMBIT_ENEMY=virtual`, `lua/GambitNative.lua`: a stack that drifts and digs as Tanycanayt's did, takes our garbage a flight after it is sent, shakes by the piece and dies topped with none left), set 85, the same code: the extra 52% against the old rules' 63%, kills 423 against 448 (23 and 24 frames from top-out), survived 22 against 24. A pass is now finish them, fill and switching.
+MERGED (`8d678c9a`, idea309): the stack zipped harder (any gain, ten a decision, three rows free). Set 85: finish them 24, fill 25, switching 26 against 25, 25, 24; the garbage's own chains 607 and 603 against 654 and 640 -- the first change to move them. Measured and not merged: the longest-stop line offered (idea306, fill 20), a line's deadline at two rows of rise (idea307, no change in the inputs lost), the line in progress stripped of its three (idea308, finish them 22), the surface zipped twice (idea310, fill 21). The inputs counted lost on lines not played out (about 31%) include the part of a line that did its job; the waste is the swaps that came to nothing, 16% under garbage and 22% in endless, most of them set-ups played out and never fired.
+THE EXTRA OF OUR OWN LINES (`outKey`, on main from `f1f35699`): of finish them's 2,428 attacks, about four in five off the mode are the board's own chains; of the decisions that played an attack the mode does not ask over a break within it lost no sooner, nearly all were the line in progress kept (rank.c 1, its horizon's credit: 900 of 1,032). Taking the credit away (idea314) moved them to the next key (no changing minds, 708) and the extra 51% to 50%; giving the line in progress up as well (idea315) cut them to 259 and left the extra at 50%, finish them 21. Not merged: the off-mode attack the line in progress makes is the cheapest dig there is, and a dig made the mode's way costs the inputs the board needs. Survived: idea314 finish them 25, fill 25, switching 22.
+MAIN ON TWO SETS (`8132e3aa`, the 28 games a pass): set 85 finish them 24 and 25, fill 25 and 23, switching 26; set 86 finish them 23, fill 21 (combo_storm 4 of 8), switching 25. The extra 51-53% on both. An idea is weighed on both sets from here: one pass swings a mode four or five games.
+MERGED (`5dd8d447`, idea317): where the list asks no chain, the planner's quick break the mode asks before a plain three before a chain. Sets 85 and 86: finish them 24 (main 23), fill 23 and 24 (main 23-25 and 21); the extra unchanged, 52-55%. Measured and not merged: zipped with two rows free, sixteen a decision (idea316, fill 19). The love download is cached in gambit-24 (`16fcff68`): the release returned 504 for an hour and cost two passes half their games.
+THE COMBO DIG (`comboDig`, on main from `f50151fb`): under garbage, a line that breaks it with a combo the mode asks is offered in about 24% of decisions, and played in two of three of those. Searching every one- and two-swap combo of four or more touching the garbage (idea319) found one in 1,538 of 26,016 decisions and played 26: finish them 23, the extra 51%. The board seldom holds a combo dig two swaps away; the players stage the seam over several swaps first.
+MERGED (idea321): with no garbage on the board, held or due, of two lines that survive alike the flatter by two rows first, whatever the window holds (rank.c 1'e). Endless deaths were canyons -- towers at the walls, a well one or two columns wide between them -- and the downtime key that weighs flatness needs a window of forty, which top speed leaves in 1% of endless decisions. Sets 85 and 86: finish them 25 and 24, fill 28 and 26 (the first 28), switching 24 on set 85; endless 2-4 of 4 against main's 1-2; the extra unchanged, 51-54%.
+Measured and not merged: the combo dug over several swaps (idea320/322, the twin's shapes touching garbage at rest) -- finish them 24 and 25 against 25 and 24. Its lines broke nothing until each swap's row was moved up by the rows the stack rose before it (the judge presses a line at the rows it is given; `propose.c` riseLine); fixed, nearly every dig broke what a break line already broke, as soon, and the line in progress kept its place: played 13 of 440.
+MERGED (idea325): in a game no garbage has reached -- garbage on the board once, or on its way -- no material floor, no floor's raise, and the opening raise only in its first 600 frames. Endless at level 11 never left the opening (the stand-in opponent never tops out), so it raised toward eleven rows all six minutes, and the forty-panel floor pruned every line that cleared the stack down: the board sat one to five seconds from the top. Endless alone (28 games, seeds 85-91): 27 against main's 15 (the raise off entirely 25, the raise gated with the floor on 15); the hardest seeds 15 of 16 against 10. Sets 85 and 86: finish them 27 and 25 of 27, fill 26 and 22, switching 26. Measured and not merged: the flatter by one row (idea324, endless 18 of 28), the opener asking chains of four and three and combos of four in endless (15 of 27), the twin's lines walked as the stack rises (idea323, finish them 23 and 23).
+MERGED (idea326): every level its own timing -- the survival horizon, its rest and the planner's urgency scale with the level's break, the fill rule's link and the enemy's rows are read off the board, and the frames to the top are counted in the rise's units (they read sixteen times too long). Level 11's numbers unchanged. MERGED (idea332): the frames to the board's loss left alone, unanswered (the clock stopped it, -1), keep the stack's own estimate -- read as a frame count it made the planner's urgency and the log's dies say the board was safe at the end of games. Finish them, sets 86-88: 28, 26, 25 against main's 25, 25, 24 -- the first 28 in finish them. Measured and not merged: idea328 (ready for nothing, flat where nothing else is bought: 22, 24, 25, 20 against 27, 25, 25, 24), idea331 (near the end a later loss first: 27, 25, 27, 19), idea327 (in endless a three is a save within the horizon: 25 of 28 endless). MERGED (idea335): in the race -- the enemy topped out -- a later loss is a later loss before the line in progress, the mode, the reserve and the walk, and near the end a three that buys a break's time is the save. From the live fight L11 v L10 (a8c903e3, 19 games: L11 6 won, L10 13 won; the longest 44 min): every loss came in finish them with the winner topped too, and in 17 of 19 the last 15 s played a line lost a break's time sooner than one offered (rank.c walkTurns 83 times, the horizon's credit 52, the reserve 45, no slab 38, no changing minds 34). The test harness's enemy never tops out, so these keys never fire there; always on (idea334) they cost 8 games over sets 86-89. The fights measure it. Measured and not merged: no opening raise at all (idea336, live r392 and r410 raised twice in the first four seconds): finish them 23, 26, 24, 26 over sets 86-89 against main's 28, 26, 25, 26 -- the opening raise stays. Measured and not merged: a line that clears nothing and leaves the window under a break's walk idle under garbage (idea337): 25, 24, 24, 23 against main's 28 (27 again), 26, 25, 26. LIVE LOSSES are reviewed as they reach the stats page (panel-game gh-pages data/games.json and replay_rN.json.gz). MERGED (idea338): a decision rescued past the clock is not counted as closing work, so one slow rescue no longer takes the next 32 decisions' time (set 89 endless 4 had 97 starved): finish them 26, 23, 26, 24 over sets 86-89 against main's 27, 24, 24, 23 on the same day; the most starved decisions in a set-86 game 8 against 30.
 
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 

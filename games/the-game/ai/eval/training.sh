@@ -3,7 +3,7 @@
 #
 #   PG=<panel-game checkout> LOVE=<love binary> training.sh [BOT [PATTERN [GAMES]]]
 #
-# PATTERN is combo_storm, factory or large_garbage (default); GAMES how many games (default 10). Each game is a
+# PATTERN is combo_storm, factory, large_garbage (default) or endless (no garbage); GAMES how many games (default 10). Each game is a
 # client of its own: the menus clicked through (Main Menu -> og stuff -> Training -> the pattern -> Go! -> Ready),
 # the game played until the stack tops out or PA_TRAINING_FRAMES (FRAMES, default 10800) frames have gone, its
 # result a line `training lost|survived frames=F` in $OUT_DIR/pa_out.txt, then the client quits.
@@ -26,7 +26,8 @@ CMD="$OUT_DIR/pa_cmd.txt" OUT="$OUT_DIR/pa_out.txt"
 : > "$OUT"
 case "$BOT" in gambit|wasm) ;; *) echo "training.sh: BOT is gambit or wasm, not $BOT" >&2; exit 2 ;; esac
 # the block each pattern sends (TrainingMenu.lua), checked against what the menu reports before a game starts
-case "$PATTERN" in combo_storm) SIZE=4x1 ;; factory) SIZE=6x2 ;; large_garbage) SIZE=6x12 ;; *) echo "training.sh: PATTERN is combo_storm, factory or large_garbage, not $PATTERN" >&2; exit 2 ;; esac
+# (endless sends none: a game played for what the bot sends alone, 6 minutes unless FRAMES says otherwise)
+case "$PATTERN" in combo_storm) SIZE=4x1 ;; factory) SIZE=6x2 ;; large_garbage) SIZE=6x12 ;; endless) SIZE=endless; FRAMES=${FRAMES:-21600} ;; *) echo "training.sh: PATTERN is combo_storm, factory, large_garbage or endless, not $PATTERN" >&2; exit 2 ;; esac
 
 # THE BOT HAS THE MACHINE THE DRILLS GIVE IT. The client draws every frame in
 # software (llvmpipe), which spreads over every core it is given; it is held

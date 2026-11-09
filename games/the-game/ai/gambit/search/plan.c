@@ -15,14 +15,34 @@
 // A line is kept as an answer only when its end is within the rules through its settle and passes the shared line check. With
 // readyAt (a block on its way), an entry's line and the nearest are kept only if the board they leave breaks that block once landed.
 
-#define PLAN_SEQ 16
-// (a board of the beam, or a kid of one; ideas: its swaps that fire an entry; fired, firedCells, firedAim: the entries its line fired on
-// the way, what they sent, the first's entry)
-typedef struct { int32_t n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ], h, set; double reach; int32_t kid0, nkids, ideas, fired, firedCells, firedAim, acts; } PItem;   // acts: the cursor's actions for its swaps
+#define PLAN_POOL 4096
+#define PLAN_KIDS 65536
+#define PLAN_WIDE_MAX 640   // (the widest beam planned again with time over: its kids within PLAN_KIDS, 60 swaps a line at most -- propose.c searchAll)
+// A LINE IS A PATH IN A TREE: each step of a beam keeps its parent's step and its own swap, so a line of any length costs one step,
+// and how deep a line goes is bounded by the clock, never by its storage. A line's swaps are read back from its last step (pathRead).
+typedef struct { int32_t up, m, at; } PStep;   // up: the step before, -1 none; m: the swap, r * 8 + c; at: the frame it is pressed from
+#define PATH_STEPS (PLAN_POOL * MAXLINE + KEEPN * MAXPATH)
+typedef struct { int32_t n; PStep s[PATH_STEPS]; } PathTree;
+static void pathReset(PathTree *T) { T->n = 0; }
+// (a step added under `up`: -2 when the tree is full -- the line then grows no further)
+static int32_t pathAdd(PathTree *T, int32_t up, int32_t m, int32_t at) {
+  if (up == -2 || T->n >= PATH_STEPS) return -2;
+  T->s[T->n].up = up; T->s[T->n].m = m; T->s[T->n].at = at;
+  return T->n++;
+}
+// (a line's n swaps and their frames, from its last step p; ats may be 0)
+static void pathRead(const PathTree *T, int32_t p, int n, int32_t *seq, int32_t *ats) {
+  for (int k = n - 1; k >= 0 && p >= 0; k--, p = T->s[p].up) { seq[k] = T->s[p].m; if (ats) ats[k] = T->s[p].at; }
+}
+// (a board of the beam, or a kid of one; path: its line's last step, -1 none; a kid's line is its parent's path, up, and one swap more,
+// km pressed from kat -- made a step of the tree only when the kid is kept; ideas: its swaps that fire an entry; fired, firedCells,
+// firedAim: the entries its line fired on the way, what they sent, the first's entry)
+typedef struct { int32_t n, nseq, path, up, km, kat, h, set; double reach; int32_t kid0, nkids, ideas, fired, firedCells, firedAim, acts, xcc, xchain, xcombo, xbroke; } PItem;   // acts: the cursor's actions for its swaps; x*: what its steps made (search/extend.c)
 typedef struct {
-  int32_t set, n, nseq, seq[PLAN_SEQ], ats[PLAN_SEQ];
+  int32_t set, n, nseq, seq[MAXLINE], ats[MAXLINE];
   int32_t brk, cells, chain, combo, broke, earned, done, fire, floor, aimIndex, top;
   int32_t kc;   // (quick: the break keeps the board's own chain -- search/break.c keepsOwnChain)
+  int32_t cat;  // (quick: what the break makes, as a list asking no chain ranks it -- search/break.c breakCat; 0 where the list asks a chain)
   int32_t acts; // the cursor's actions for its swaps, from the root's cursor (core/nodes.h actionsFor)
   double near;
 } PLine;
@@ -32,9 +52,12 @@ static int32_t actOf(Ctx *x, const PItem *it, int32_t m) {
   return b ? actionsFor(b->curRow, b->curCol, CR(m), CC(m), pressAllowance >= 0 ? pressAllowance - it->acts : HOLDTIGHT + 1) : 0;
 }
 // (THE QUICK BREAK: one that keeps the board's own chain before one that cuts it, then the more broken, then the sooner)
-static int quickBefore(const PLine *q, int kc, int32_t broke, int32_t done) {
+// -- and where the list asks no chain (finish them, the fill with no room), the break the mode asks before a plain three before a chain:
+// a chain there is an attack the mode does not ask)
+static int quickBefore(const PLine *q, int kc, int cat, int32_t broke, int32_t done) {
   if (!q->set) return 1;
   if (kc != q->kc) return kc > q->kc;
+  if (cat != q->cat) return cat > q->cat;
   return broke > q->broke || (broke == q->broke && done < q->done);
 }
 typedef struct {
@@ -49,9 +72,10 @@ typedef struct {
   double ms;                 // the planner's share, ms
   const Paths *seeds;        // the lines the last decision's plan ended with, the swaps played since taken off (answer.c plannedPaths)
 } PlanOpts;
-typedef struct { PLine perAim[MAXAIMS], nearest, quick, lowest, stopBest, pair; int32_t setup, nsetupLine, setupLine[PLAN_SEQ]; double ms; int32_t base; } Plan;
+typedef struct { PLine perAim[MAXAIMS], nearest, quick, lowest, stopBest, pair; int32_t setup, nsetupLine, setupLine[MAXLINE]; double ms; int32_t base; } Plan;
 
-static LOCAL Ctx *planCtx;   // (each thread its own, as every buffer here: two plans search at once -- answer.c searchJob)
+static LOCAL Ctx *planCtx;
+static LOCAL PathTree planTree;   // (each thread its own, as every buffer here: two plans search at once -- answer.c searchJob)
 // THE PLAN KEPT (plans/gambit-infra.md F, as tree reuse keeps the subtree under the move played): the lines a plan ends with -- each
 // entry's best, the nearest, the quickest break, the lowest, the longest stop, and the beam's last boards -- kept (planOut) for the next
 // decision, which begins its beam from them as well as from its root (the seeds): what was searched is searched on, deeper, not again.
@@ -93,9 +117,9 @@ static int32_t sentCells(const Stats *s) {
   return n;
 }
 static void lineFrom(PLine *l, const PItem *it, int32_t mv, int32_t node, int32_t fire) {
-  l->set = 1; l->n = node; l->nseq = imin(it->nseq + 1, PLAN_SEQ);
-  for (int k = 0; k < it->nseq && k < PLAN_SEQ; k++) { l->seq[k] = it->seq[k]; l->ats[k] = it->ats[k]; }
-  if (it->nseq < PLAN_SEQ) { l->seq[it->nseq] = mv; l->ats[it->nseq] = fire; }
+  l->set = 1; l->n = node; l->nseq = imin(it->nseq + 1, MAXLINE);
+  pathRead(&planTree, it->path, l->nseq - 1, l->seq, l->ats);
+  l->seq[l->nseq - 1] = mv; l->ats[l->nseq - 1] = fire;
   l->fire = fire;
 }
 // READY (readyAfter): the board the line leaves, run to readyAt and settled, breaks the block with one swap
@@ -109,9 +133,6 @@ static int readyAfter(Ctx *x, int n, int32_t readyAt) {
   return any;
 }
 
-#define PLAN_POOL 4096
-#define PLAN_KIDS 65536
-#define PLAN_WIDE_MAX 640   // (the widest beam planned again with time over: its kids within PLAN_KIDS, 60 swaps a line at most -- propose.c searchAll)
 static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   memset(P, 0, sizeof *P);
   double t0 = nowMs(), shareOld = clockShareBegin(t0 + o->ms);
@@ -136,22 +157,23 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   static LOCAL int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], keyB[PLAN_KIDS], ms[MAXROWS * W];
   PItem *pool = poolA, *next = poolB;
   int npool = 1;
-  memset(&pool[0], 0, sizeof pool[0]); pool[0].n = root; pool[0].h = rootH;
+  memset(&pool[0], 0, sizeof pool[0]); pool[0].n = root; pool[0].h = rootH; pool[0].path = -1;
+  pathReset(&planTree);
   // (THE SEEDS: the kept plan's lines played again from the root, each step to its settle and within the rules, its first no swap back;
   // a line the new board no longer allows is let go)
   planSeeded = 0;
   for (int i = 0; o->seeds && i < o->seeds->n && npool < PLAN_POOL && !clockOut(); i++) {
     int len = o->seeds->len[i], nd = root, ok = 1;
-    if (len < 1 || len >= PLAN_SEQ) continue;
-    PItem it; memset(&it, 0, sizeof it);
+    if (len < 1 || len >= MAXLINE) continue;
+    PItem it; memset(&it, 0, sizeof it); it.path = -1;
     for (int k = 0; k < len && ok; k++) {
       int32_t m = o->seeds->path[i][k], at = NODE(x, nd)->t;
       int out = step(x, nd, MK_SETTLE, CR(m), CC(m), 0);
       if (!liveNode(x, out) || !stepFitsAt(x, out)) { ok = 0; break; }
       if (!k) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(m), CC(m), NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) { ok = 0; break; } }
-      it.seq[k] = m; it.ats[k] = at; nd = out;
+      it.path = pathAdd(&planTree, it.path, m, at); nd = out;
     }
-    if (!ok) continue;
+    if (!ok || it.path == -2) continue;
     it.n = nd; it.nseq = len; it.h = connectedOf(ensureBoard(x, nd));
     pool[npool++] = it; planSeeded++;
   }
@@ -178,11 +200,11 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         if (!liveNode(x, sw) || !stepFitsAt(x, sw)) continue;
         int32_t bk = NODE(x, sw)->brk - stillAt(&still, NODE(x, sw)->t);
         if (o->by != NOT_ASKED && NODE(x, it->n)->t > o->by) bk = 0;
-        int kc = bk > 0 ? keepsOwnChain(x, sw) : 0;
-        if (bk > 0 && quickBefore(&P->quick, kc, bk, NODE(x, sw)->t)) {
+        int kc = bk > 0 ? keepsOwnChain(x, sw) : 0, cat = bk > 0 && listChainCap() == 0 ? breakCat(x, sw) : 0;
+        if (bk > 0 && quickBefore(&P->quick, kc, cat, bk, NODE(x, sw)->t)) {
           PLine *l = &P->quick; memset(l, 0, sizeof *l);
           lineFrom(l, it, m, sw, NODE(x, it->n)->t);
-          l->brk = 1; l->broke = bk; l->done = NODE(x, sw)->t; l->aimIndex = -1; l->floor = -1; l->kc = kc;
+          l->brk = 1; l->broke = bk; l->done = NODE(x, sw)->t; l->aimIndex = -1; l->floor = -1; l->kc = kc; l->cat = cat;
         }
       }
     // the level read in the order it was made: every board within the rules is a kid of its parent; one that clears is weighed
@@ -208,9 +230,9 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
       int32_t firesAim = -1, firesCells = 0;   // (the entry this step fires, -1 none: an idea of its parent's; and what it sends)
       if (st.cleared > 0) {
         int32_t fire = NODE(x, it->n)->t, chain = chainOfStats(&st), bigC = biggestOf(&st), done = NODE(x, out)->t;
-        int32_t seqTmp[PLAN_SEQ + 1], ns = 0;
-        for (int k = 0; k < it->nseq && ns < PLAN_SEQ; k++) seqTmp[ns++] = it->seq[k];
-        seqTmp[ns++] = m;
+        int32_t seqTmp[MAXLINE], ns = imin(it->nseq + 1, MAXLINE);
+        pathRead(&planTree, it->path, ns - 1, seqTmp, 0);
+        seqTmp[ns - 1] = m;
         int endOk = -1;
         int32_t acts = it->acts + actOf(x, it, m);
         // (of two lines alike, the one the cursor walks fewer actions for, then the fewer swaps: the input window pays for each)
@@ -230,7 +252,8 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
           // (the chain kept as the swap leaves it, before the settle the step runs on: by then the chain has run its course)
           int kc = 1;
           if (ownChainBy > 0) { int sw = step(x, it->n, MK_SWAP, CR(m), CC(m), 0); kc = liveNode(x, sw) && keepsOwnChain(x, sw); }
-          if (quickBefore(&P->quick, kc, made.broke, done) && OKE()) { FILL(P->quick, -1); P->quick.brk = 1; P->quick.kc = kc; }
+          int cat = listChainCap() == 0 ? breakCat(x, out) : 0;
+          if (quickBefore(&P->quick, kc, cat, made.broke, done) && OKE()) { FILL(P->quick, -1); P->quick.brk = 1; P->quick.kc = kc; P->quick.cat = cat; }
         }
         if (inTime && kept) {
           double nr = leadOf(o->aims, made, o->under);
@@ -253,10 +276,9 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         #undef OKE
         #undef LESS
       }
-      if (nk < PLAN_KIDS) {
-        PItem *k = &kids[nk]; memset(k, 0, sizeof *k); k->n = out; k->nseq = imin(it->nseq + 1, PLAN_SEQ);
-        for (int q2 = 0; q2 < it->nseq && q2 < PLAN_SEQ; q2++) { k->seq[q2] = it->seq[q2]; k->ats[q2] = it->ats[q2]; }
-        if (it->nseq < PLAN_SEQ) { k->seq[it->nseq] = m; k->ats[it->nseq] = NODE(x, it->n)->t; }
+      if (nk < PLAN_KIDS && it->nseq < MAXLINE) {
+        PItem *k = &kids[nk]; memset(k, 0, sizeof *k); k->n = out; k->nseq = it->nseq + 1;
+        k->path = -1; k->up = it->path; k->km = m; k->kat = NODE(x, it->n)->t;
         k->fired = it->fired; k->firedCells = it->firedCells; k->firedAim = it->firedAim; k->acts = it->acts + actOf(x, it, m);
         if (firesAim >= 0) { k->firedCells += firesCells; k->firedAim = k->fired ? imin(k->firedAim, firesAim) : firesAim; k->fired++; }
         if (!it->nkids) it->kid0 = nk;   // (a parent's kids are made one after another: its swaps are one run of jobs)
@@ -282,7 +304,9 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
         int dup = 0;
         for (int q2 = 0; q2 < nn && !dup; q2++) { Node *on = NODE(x, next[q2].n); dup = on->hash == kn->hash && on->keyn == kn->keyn && !memcmp(on->key, kn->key, sizeof(int32_t) * kn->keyn); }
         if (dup) continue;
-        next[nn] = *k; next[nn].h = connectedOf(ensureBoard(x, k->n)); nn++;
+        int32_t p = pathAdd(&planTree, k->up, k->km, k->kat);
+        if (p == -2) continue;
+        next[nn] = *k; next[nn].path = p; next[nn].h = connectedOf(ensureBoard(x, k->n)); nn++;
       }
     }
     // the most connected board reached so far, if better than the one now: its first swap is a setup -- a board nearer the list one
@@ -291,8 +315,9 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
       PItem *it = &pool[idx[r]];
       if (it->nseq && (it->reach > (haveSetup ? setReachD : 0) || (haveSetup && setReachD > 0 && it->reach == setReachD && it->ideas > setIdeas) ||
                        (!(haveSetup && setReachD) && !it->reach && it->h > (haveSetup ? setH : rootH)))) {
-        haveSetup = 1; setReachD = it->reach; setH = it->h; setIdeas = it->ideas; P->setup = it->seq[0];
-        P->nsetupLine = imin(it->nseq, PLAN_SEQ); for (int q = 0; q < P->nsetupLine; q++) P->setupLine[q] = it->seq[q];
+        haveSetup = 1; setReachD = it->reach; setH = it->h; setIdeas = it->ideas;
+        P->nsetupLine = imin(it->nseq, MAXLINE); pathRead(&planTree, it->path, P->nsetupLine, P->setupLine, 0);
+        P->setup = P->setupLine[0];
       }
     }
     static LOCAL int32_t nidx[PLAN_POOL];
@@ -316,7 +341,7 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   planOut.n = 0;
   for (int ai = 0; ai < na; ai++) if (P->perAim[ai].set) planKeep(P->perAim[ai].seq, P->perAim[ai].nseq);
   { const PLine *ls[] = { &P->nearest, &P->quick, &P->lowest, &P->stopBest, &P->pair }; for (int q2 = 0; q2 < 5; q2++) if (ls[q2]->set) planKeep(ls[q2]->seq, ls[q2]->nseq); }
-  for (int q2 = 0; q2 < npool; q2++) planKeep(pool[q2].seq, pool[q2].nseq);
+  for (int q2 = 0; q2 < npool; q2++) if (pool[q2].nseq <= MAXPATH) { int32_t sq[MAXPATH]; pathRead(&planTree, pool[q2].path, pool[q2].nseq, sq, 0); planKeep(sq, pool[q2].nseq); }
   P->ms = nowMs() - t0;
   clockShareEnd(shareOld);
   #undef BROKE_OF

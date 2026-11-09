@@ -40,7 +40,7 @@ static void flog(const char *s) { hostLog(s); }
 // ---------------------------------------------------------------- Gambit's thread
 // One question waits at most: a newer one takes its place. Answers wait in order for the frame loop to take them.
 #define ANSN 16
-static int workerOn, qHas, qReset;
+static int workerOn, qHas, qReset, gnQuit;
 static FQuestion qSlot;
 static Board *qSlotBoard;
 static FAnswer answers[ANSN];
@@ -160,19 +160,23 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   memset(&hostQ, 0, sizeof hostQ);
   hostQ.b = hostBoard; hostQ.holdLeft = q->holdLeft; hostQ.holdStarted = q->holdStarted; hostQ.tight = 0;
   hostQ.narr = arrivalsFrom(hostBoard, q->arr, q->narr, hostQ.arr);
-  gb_refused(q->refA, q->refB);
+  gb_refused(q->refA, q->refB); gb_pressed(q->swapA, q->swapB);
   hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
+  int32_t rescued0 = rescues;
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
                  !q->noRaise && canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
-  // (the closing work: from the moment it ran out of time to its answer)
-  if (clockWentOut) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
+  // (the closing work: from the moment it ran out of time to its answer -- not a decision whose lines were all judged again past the
+  // clock up to the move's own frame (decide.c rescue): that is the frame's time used on purpose, and counted as closing work it took
+  // every decision of the next CLOSEN its whole time -- set 89 endless 4: one rescue of 236 ms, 97 decisions starved, the board lost)
+  if (clockWentOut && rescues == rescued0) { closeMs[nclose < CLOSEN ? nclose++ : (int)(frameCounter++ % CLOSEN)] = clock_ms() - clockWentOut; }
   Answer *A = &theAnswer;
   memset(out, 0, sizeof *out);
   out->id = q->id; out->epoch = q->epoch; out->at = q->at; out->kind = A->d.kind; out->move = A->d.move;
   out->tap = A->tap; out->raiseNow = A->raiseNow; out->raiseAfter = A->raiseAfter; out->raiseWait = A->raiseWait; out->nhand = A->nhand;
   for (int i = 0; i < A->nhand; i++) { out->hand[i] = A->hand[i]; out->handAt[i] = A->handAt[i]; }
-  out->wastes = A->wastes; out->play = A->play;
+  out->wastes = A->wastes; out->play = A->play; out->ended = A->ended;
   out->holdLives = A->holdLives; out->brk = A->brk; out->urgent = A->urgent; out->idleMs = A->idleMs;
+  out->aim = A->aim;
   out->empty = A->empty; out->nalt = A->nalt; for (int i = 0; i < A->nalt; i++) out->alt[i] = A->alt[i];
   out->ms = clock_ms() - t0; out->closeMs = clockWentOut ? clock_ms() - clockWentOut : 0;
   // the log line, its rule named and its wall time added
@@ -234,7 +238,8 @@ static void *workerMain(void *arg) {
   Board *b = nb_new();
   for (;;) {
     hostLock();
-    while (!qHas && !qReset) hostWait();
+    while (!qHas && !qReset && !gnQuit) hostWait();
+    if (gnQuit) { hostUnlock(); return 0; }
     if (qReset) { qReset = 0; ringCount = 0; hostUnlock(); onStop(); gb_new_game(); continue; }
     q = qSlot; copyBoard(b, qSlotBoard); q.b = b; qHas = 0;
     __atomic_store_n(&curQid, q.id, __ATOMIC_SEQ_CST);
@@ -291,15 +296,24 @@ void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, 
 void gn_switch(int min, int max) { gb_switch(min, max); }
 // The break search's share in percent, under garbage and otherwise (answer.c gb_share; 0 the default)
 void gn_share(int under, int otherwise) { gb_share(under, otherwise); }
+// The mode a named opener gives way to at the top-out (answer.c gb_then; -1 none)
+void gn_then(int rule) { gb_then(rule); }
 void gn_thread_stats(double *out) { hostThreadStats(out); }
 int32_t *gn_tele(void) { return tele; }
 int32_t *gn_ages(void) { return ages; }
 static void statsOut(void) { static char line[4096]; if (!F.st.frames) return; statsLine(line, sizeof line); flog(line); }
+// (the last frame a game was asked on: a clock behind it is a game begun again)
+static int32_t lastClock = NUL;
 // A match begins: nothing of the last is carried on.
 void gn_match(void) {
   statsOut();
+  lastClock = NUL;
   frontNew(gnReaction, gnAhead, gnGap, gnJitter);
   gb_switch_game((uint32_t)clock_ms());
+  // (the frame clock and the closing times are this game's: the last game's slowest closings would cut this one's decisions short)
+  nclose = 0; frameCounter = 0;
+  __atomic_store_n(&gameFrame, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&gameBurst, 0, __ATOMIC_SEQ_CST); dueFrame = 0;
+  { double z = 0; __atomic_store(&gameFrameMs, &z, __ATOMIC_SEQ_CST); }
   gnFrames = 0;
   hostLock();
   qHas = 0; qReset = 1; ansN = 0;
@@ -309,26 +323,33 @@ void gn_match(void) {
 }
 // THE FRAME PUBLISHED (the one a decision's guard reads, frameOut): the frame played, when it began, the ms a frame takes, the longest
 // burst -- every frame the game plays, the countdown's too
-static int32_t lastClock = NUL;
 static void framePublish(int32_t clock) {
   double t = clock_ms(), per = F.msPerFrame, last;
   static int32_t run;
   __atomic_load(&gameFrameMs, &last, __ATOMIC_SEQ_CST);
   run = last && t - last < per / 2 ? run + 1 : 0;
   // (the longest burst within the input window just past, not the longest ever: a hiccup long gone takes no frames from a decision)
-  static int32_t burstAt[64], burstRun[64], nb;
+  static int32_t burstAt[64], burstRun[64], nb, lastAt = NUL;
+  // (a game's frames start again at its countdown: the last game's bursts are not this one's -- kept, they read as just past forever,
+  // and each game of a session left its decisions less time than the last)
+  if (lastAt != NUL && clock < lastAt) nb = 0;
+  lastAt = clock;
   if (run > 0) { int k = nb < 64 ? nb++ : 0; if (k == 0 && nb == 64) { for (int i = 1; i < 64; i++) { burstAt[i - 1] = burstAt[i]; burstRun[i - 1] = burstRun[i]; } k = 63; } burstAt[k] = clock; burstRun[k] = run; }
   int32_t worst = 0, win = F.window > 0 ? F.window : 600;
-  for (int i = 0; i < nb; i++) if (clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
+  for (int i = 0; i < nb; i++) if (burstAt[i] <= clock && clock - burstAt[i] <= win && burstRun[i] > worst) worst = burstRun[i];
   __atomic_store_n(&gameBurst, worst, __ATOMIC_SEQ_CST);
   __atomic_store(&gameFrameMs, &t, __ATOMIC_SEQ_CST); __atomic_store(&gameMsPerFrame, &per, __ATOMIC_SEQ_CST); __atomic_store_n(&gameFrame, clock, __ATOMIC_SEQ_CST);
 }
-// THE COUNTDOWN (lua/GambitNative.lua, the frames before play): the opening asked on the layers shown (front.c frontCountdown)
-int gn_countdown(int left, int limit, int window) {
+// THE COUNTDOWN (lua/GambitNative.lua, the frames before play): the opening asked on the layers shown (front.c frontCountdown), the
+// opponent as the host has it -- a fight's opening is the opener's, planned through the countdown
+int gn_countdown(int left, int limit, int window, int oppHas, int oppOut, int oppTop, int oppStop) {
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
   if (lastClock != NUL && clock < lastClock) gn_match();
   lastClock = clock;
+  // (the opponent set once the game is begun: gn_match clears the frame loop's state, and an opponent set before it is lost -- the
+  // opening asked as if nobody were across)
+  F.oppHas = oppHas; F.oppOut = oppOut; F.oppTop = oppTop; F.oppStop = oppStop;
   if (limit > 0) F.limit = limit;
   if (window > 0) F.window = window;
   framePublish(clock);
@@ -368,6 +389,18 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   return bits;
 }
 void gn_end(void) { statsOut(); frontTraceOut(); ringOut(); }
+// THE INSTANCE ENDS (lua/GambitNative.lua, a match's own instance let go): Gambit's thread told to stop and joined, the search between
+// decisions and the pool's workers likewise, then every block of its memory freed and its log closed -- the library can be unloaded
+void hostJoin(int kind); void hostQuit(void);
+void gn_quit(void) {
+  abortTo(0x7ffffff0);
+  __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
+  hostLock(); gnQuit = 1; qHas = 0; hostSignal(); hostUnlock();
+  hostJoin(0);
+  onStop(); onEnd(); hostJoin(1);
+  poolEnd(); hostJoin(2);
+  hostQuit();
+}
 // A line from the host into the run's log (a slow frame's parts, say)
 void gn_log(const char *s) { flog(s); }
 // (the C checks, built by ./build.sh test)

@@ -38,6 +38,7 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   if (replayLow && !lowered(hostBoard, replayLow)) return -2;
   if (replayLow) hostQ.narr = 0;
   gb_new_game();
+  if (replayLow) gambitHit = garbageSeen = 1;   // (the boards are cut from garbage games: garbage has been on them -- with none ever, endless, no stack is raised)
   modeRule = mode;
   curQid = abortId + 1;
   replayWork = work; clockNowOf = work > 0 ? replayNow : 0; clockFrameOut = 0; clockWork = 0;

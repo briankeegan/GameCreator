@@ -5,8 +5,11 @@
 // answer; else the line whose board is lost latest. And THE FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn).
 
 #define OUT_SEQ 16
+#define OUT_DEPTH 10   // (the swaps deep the survival beam may grow: its clock stops it first on a busy decision -- a level is begun only
+                       // while the time it takes is left -- and a board with time to spare is searched further, not left at six)
 typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor
 typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts; } Outlived;
+static LOCAL int outFree;   // (the save pass: steps not held to the list -- outliveSave)
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
 static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(e->stopTime + e->preStopTime, e->shakeTime); }
 // (THE RESERVE: with an input allowance said, the line kept is the latest lost of those that leave OUT_RESERVE actions of it -- unless one
@@ -14,6 +17,15 @@ static int32_t heldOf(Ctx *x, int n) { Node *e = NODE(x, n); return e->t + imax(
 // pressed out of what is left)
 #define OUT_RESERVE 20
 #define OUT_LATER 120
+// (THE SAVE NEAREST THE CURSOR: of two lines lost at frames finite, the later loss less what its actions cost -- an action comes back a
+// window later, OUT_ACT frames each (76 in 600) -- so a save across the board must buy that much more time than one at hand; one that
+// lasts beats one that does not)
+#define OUT_ACT 8
+static int outBetter(int32_t l, int32_t a, int32_t ol, int32_t oa) {
+  if (l == FOREVER || ol == FOREVER) return l == FOREVER && (ol != FOREVER || a < oa);
+  double v = l - (double)OUT_ACT * a, ov = ol - (double)OUT_ACT * oa;
+  return v > ov || (v == ov && a < oa);
+}
 static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best, over; memset(&best, 0, sizeof best); memset(&over, 0, sizeof over);
   double t0 = nowMs(), perStep = 0;
@@ -47,7 +59,7 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
       for (int b = bAt[i], j = 0; b < bAt[i + 1] && nk < PLAN_KIDS; b++, j++) {
         ms1[j] = bMv[b];
         int out = stepTake(x, b, level[i].n, MK_SWAP, bMv[b]);
-        if (!liveNode(x, out) || !stepFitsAt(x, out)) continue;
+        if (!liveNode(x, out) || (!outFree && !stepFitsAt(x, out))) continue;
         if (d == 1) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(ms1[j]), CC(ms1[j]), NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) continue; }
         Node *on = NODE(x, out);
         int dup = 0;
@@ -71,9 +83,9 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     for (int i = 0; i < nkeep; i++) top[i] = kids[idx[i]];
     for (int i = 0; i < nkeep; i++) {
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
-      if (top[i].lost == FOREVER && !lineFits(top[i].seq, top[i].nseq, 0)) { top[i].lost = -1; continue; }
+      if (top[i].lost == FOREVER && !outFree && !lineFits(top[i].seq, top[i].nseq, 0)) { top[i].lost = -1; continue; }
       Outlived *o = top[i].acts <= keep ? &best : &over;
-      if (!o->set || top[i].lost > o->lostAt || (top[i].lost == o->lostAt && top[i].acts < o->acts)) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
+      if (!o->set || outBetter(top[i].lost, top[i].acts, o->lostAt, o->acts)) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
       if (top[i].lost == FOREVER && o == &best) return best;
     }
     for (int i = 0; i < nkeep; i++) { idx[i] = i; kl[i] = top[i].lost; }
@@ -83,6 +95,21 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
     perStep = nsteps ? (nowMs() - tl) / nsteps : 0;
   }
   if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt + OUT_LATER))) return over;
+  return best;
+}
+// THE SAVE (the owner: death is never an option): where no line held to the list lives, the search again in the time left with its steps
+// free of the list -- a plain three is the only move a board topped by its own panels has. Its line is offered only; the decision's no
+// wasted three (decide.c) plays it only where every line within the rule is lost and the save, asked, outlasts them
+static Outlived outliveSave(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
+  double t0 = nowMs();
+  Outlived best = outlive(q, to, rest, ms, depth, width);
+  if (best.set && best.lostAt == FOREVER) return best;
+  double left = ms - (nowMs() - t0);
+  if (left < 1) return best;
+  outFree = 1;
+  Outlived f = outlive(q, to, rest, left, depth, width);
+  outFree = 0;
+  if (f.set && f.nseq && (!best.set || (f.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && f.lostAt > best.lostAt))) return f;
   return best;
 }
 static int32_t diesIn(const Question *q, double horizon) {

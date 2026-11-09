@@ -165,7 +165,8 @@ int main(int argc, char **argv) {
   }
   gzclose(z);
   fclose(g);
-  // (the raise: each mode's question boards cut to a low stack with nothing on it or on its way -- each raised, and held down)
+  // (the raise: each mode's question boards cut to a low stack with nothing on it or on its way, in a game garbage has reached -- each
+  // raised, and held down)
   snprintf(path, sizeof path, "%s/decisions.txt.gz", dir);
   if ((z = gzopen(path, "r"))) {
     gb_replay_low(3);
@@ -250,7 +251,7 @@ int main(int argc, char **argv) {
   { int nm = 0; for (int i = 0; i < 64; i++) nm += modes[i] > 0;
     printf("%s: the answers -- %d questions over %d modes, %d played a line that dies while one lived, %d one lost a break's time sooner than one offered\n",
            liveDied || sooner || nm < 4 ? "FAIL" : "ok", nq, nm, liveDied, sooner);
-    printf("%s: the raise -- %d of %d low stacks with no garbage raised, %d of %d raises held down\n", lowRaised < lows || raiseHeld < raises || !raises ? "FAIL" : "ok", lowRaised, lows, raiseHeld, raises);
+    printf("%s: the raise -- %d of %d low stacks with no garbage on them (a garbage game) raised, %d of %d raises held down\n", lowRaised < lows || raiseHeld < raises || !raises ? "FAIL" : "ok", lowRaised, lows, raiseHeld, raises);
     fail |= liveDied || sooner || nm < 4 || !lows || lowRaised < lows || raiseHeld < raises; }
   if (golden) printf("wrote %s/decisions.golden\n", dir);
   else printf("%s: against the golden -- %d moves changed, %d records changed\n", moved ? "CHANGED" : "ok", moved, changed);

@@ -1,7 +1,7 @@
-name: Gambit 24
+name: Gambit 28
 
-# A Gambit profile plays all 24 training games in the real client's Training mode -- 8 each of combo_storm, factory and
-# large_garbage, every game a job of its own, as training-mode.yml plays one pattern -- and a report job reads all 24 games'
+# A Gambit profile plays all 28 training games in the real client's Training mode -- 8 each of combo_storm, factory and
+# large_garbage and 4 endless (no garbage, six minutes), every game a job of its own, as training-mode.yml plays one pattern -- and a report job reads all 28 games'
 # logs and writes the run up: games/the-game/ai/eval/gambit_summary.js (survived per mode, the frames lost at, combos and
 # chains, the budgets), gambit_losses.js (the decisions before each loss), gambit_reach.js (was the break there; the turn).
 # The summary is the run's notices; every report is the gambit-report artifact. With report_run, nothing is played: that run's games
@@ -16,8 +16,8 @@ on:
         description: 'A game survived this many frames counts as survived and ends (21600 = six minutes)'
         default: '21600'
       panel_ref:
-        description: 'The panel-game commit or branch the games play on (default: the one real-time play was measured on before lockstep, with PA_DRAW_EVERY)'
-        default: '4183b64dd73ecb3560c768a886c65e9ab2082bc4'
+        description: 'The panel-game commit or branch the games play on (default: real-time play with PA_DRAW_EVERY, and the endless pattern)'
+        default: '5c6c3231a97c3faad163c5e9bb0d35c53eaf5d4a'
       report_run:
         description: 'A past run of this workflow: its games written up again, nothing played'
         default: ''
@@ -31,14 +31,26 @@ on:
         description: 'The panel seed base (PA_SEED = base*100 + pattern*10 + game: every game the same panels every run); empty (the default) for random -- every run new games'
         default: ''
       patterns:
-        description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games; the goal is measured on all three)'
-        default: '["combo_storm","factory","large_garbage"]'
+        description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games, endless 4; the goal is measured on all four -- endless: no garbage ever, the board must not die of its own rise)'
+        default: '["combo_storm","factory","large_garbage","endless"]'
       gambit_from:
         description: 'A commit whose Gambit (games/the-game/ai/gambit) is played instead of this one, on these seeds and this harness -- a build before measured again on the same games; empty for this commit'
         default: ''
       rounds:
         description: "The rounds played, a JSON list: each round plays every pattern's 8 games again on seeds of its own (round r: seed base + r - 1), so a build is measured on more games than one run holds"
         default: '[1]'
+      fight:
+        description: "1: training played as a fight (GC_GAMBIT_FIGHT) -- an opponent there from the countdown on, low, never topped, so the opening is found as a live fight finds it; with a profile that names no mode (survivor-profiles/gambit.json)"
+        default: ''
+      blind:
+        description: "1: the senders' telegraphs hidden (GC_GAMBIT_BLIND) -- garbage known only once it is in the bot's own queue, as the live server's loose sync delivers it"
+        default: ''
+      enemy:
+        description: "virtual: a training fight's enemy a stack that moves as players' do, takes our garbage and digs it out (GC_GAMBIT_ENEMY) -- for a rule that reads the enemy's room"
+        default: ''
+      then:
+        description: "The modes an opener gives way to at the top-out, a JSON list (`_` for a space: [\"finish_them\",\"big_chain\",\"pressure\",\"build\"]): every game is played once per mode on the same seed (GC_GAMBIT_THEN); [\"rotate\"]: each game one mode, in turn; none: the profile's mode all game"
+        default: '[""]'
 
 permissions:
   contents: read
@@ -51,10 +63,18 @@ jobs:
     timeout-minutes: 350
     strategy:
       fail-fast: false
+      max-parallel: 29   # (the runners are shared: one run at a time, 30 jobs at most with the report)
       matrix:
-        pattern: ${{ fromJSON(inputs.patterns || '["combo_storm","factory","large_garbage"]') }}
+        pattern: ${{ fromJSON(inputs.patterns || '["combo_storm","factory","large_garbage","endless"]') }}
         game: [1, 2, 3, 4, 5, 6, 7, 8]
+        # (endless plays 4 games: 28 a run with the three garbage patterns' 24)
+        exclude:
+          - { pattern: endless, game: 5 }
+          - { pattern: endless, game: 6 }
+          - { pattern: endless, game: 7 }
+          - { pattern: endless, game: 8 }
         round: ${{ fromJSON(inputs.rounds || '[1]') }}
+        then: ${{ fromJSON(inputs.then || '[""]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,26 +86,38 @@ jobs:
           GAMBIT_FROM: ${{ inputs.gambit_from }}
         run: |
           from=$(awk -v n="$GAMBIT_FROM" '$1 == n { print $2 }' games/the-game/ai/eval/gambit-versions.txt); from=${from:-$GAMBIT_FROM}
-          # (that one commit fetched alone, not the history)
-          for i in 1 2 3; do timeout 120 git fetch --depth 1 --quiet origin "$from" && break; sleep 5; done
+          # (a short commit hash cannot be fetched by itself: resolved first against the branches' history)
+          case "$from" in *[!0-9a-f]*) ;; *) if [ ${#from} -lt 40 ]; then git fetch -q --filter=blob:none $([ -f .git/shallow ] && echo --unshallow) origin '+refs/heads/*:refs/remotes/origin/*' && from=$(git rev-parse --verify "$from^{commit}"); fi;; esac
+          # (that one commit fetched alone, not the history -- and no file of it until checked out: only the gambit folder's are fetched,
+          # not the whole tree's)
+          for i in 1 2 3; do timeout 120 git fetch --depth 1 --filter=blob:none --quiet origin "$from" && break; sleep 5; done
           rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
           echo "::notice title=gambit::the Gambit of ${{ inputs.gambit_from }}"
       - uses: actions/checkout@v4
         with:
           repository: briankeegan/panel-game
-          ref: ${{ inputs.panel_ref || '4183b64dd73ecb3560c768a886c65e9ab2082bc4' }}
+          ref: ${{ inputs.panel_ref || '5c6c3231a97c3faad163c5e9bb0d35c53eaf5d4a' }}
           path: panel-game
           fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # (love from the cache when a job before this one fetched it: the release download returns 504 for minutes at a time, and a job
+      # without love plays no game)
+      - name: love, cached
+        id: lovecache
+        timeout-minutes: 5
+        uses: actions/cache@v4
+        with:
+          path: /tmp/love.tar.gz
+          key: love-12.0-linux-x86_64
       - name: xvfb, love and clang
         timeout-minutes: 15
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
           for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang luajit zlib1g-dev && break; sleep 10; done
           mkdir -p ~/love2d
-          for i in 1 2 3; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep 10; done
+          [ -s /tmp/love.tar.gz ] || for i in 1 2 3 4 5 6; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep $((i * 15)); done
           tar -xzf /tmp/love.tar.gz -C ~/love2d
           mv ~/love2d/*.AppImage ~/love2d/love.AppImage
           chmod +x ~/love2d/love.AppImage
@@ -103,13 +135,21 @@ jobs:
           MINUTES: '60'
           GC_GAMBIT_WORKERS: ${{ inputs.workers }}
           SEED_BASE: ${{ inputs.seed }}
+          GC_GAMBIT_THEN: ${{ matrix.then }}
+          GC_GAMBIT_FIGHT: ${{ inputs.fight }}
+          GC_GAMBIT_BLIND: ${{ inputs.blind }}
+          GC_GAMBIT_ENEMY: ${{ inputs.enemy }}
         run: |
+          # (rotate: game g gives way to the g-th of the four modes in turn, so the 28 games try each mode seven times)
+          if [ "$GC_GAMBIT_THEN" = rotate ]; then M=(finish_them big_chain pressure build); export GC_GAMBIT_THEN=${M[$(( (${{ matrix.game }} - 1) % 4 ))]}; fi
           if [ -n "$SEED_BASE" ]; then
-            case "${{ matrix.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; *) P=9;; esac
+            case "${{ matrix.pattern }}" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; endless) P=4;; *) P=9;; esac
             export PA_SEED=$(((SEED_BASE + ${{ matrix.round }} - 1) * 100 + P * 10 + ${{ matrix.game }}))
             echo "::notice title=seed::${{ matrix.pattern }} ${{ matrix.game }} round ${{ matrix.round }}: PA_SEED=$PA_SEED"
           fi
           echo "::notice title=cores::$(nproc) threads, $(lscpu | awk -F: '/^Core\(s\) per socket|^Thread\(s\) per core/ {gsub(/ +/, " ", $2); printf "%s:%s, ", $1, $2}')cpu:core $(lscpu -e=CPU,CORE | tail -n +2 | awk '{printf "%s:%s ", $1, $2}'), GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
+          # (the runner's CPU written beside the game: a slower one gives the search less in the same frame -- every game can be read by it)
+          mkdir -p out; echo "runner cpu: $(lscpu | sed -n 's/^Model name: *//p' | head -1), $(nproc) threads, $(lscpu | sed -n 's/^CPU max MHz: *//p' | head -1) MHz max" > out/cpu.txt
           bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
         if: always()
@@ -118,10 +158,11 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: gambit-${{ matrix.pattern }}-${{ matrix.game }}${{ matrix.round > 1 && format('-r{0}', matrix.round) || '' }}
+          name: gambit-${{ matrix.pattern }}-${{ matrix.game }}${{ matrix.round > 1 && format('-r{0}', matrix.round) || '' }}${{ matrix.then != '' && format('-{0}', matrix.then) || '' }}
           path: |
             out/results.txt
             out/survivor.log
+            out/cpu.txt
           if-no-files-found: warn
           retention-days: 14
 
@@ -141,8 +182,11 @@ jobs:
           GAMBIT_FROM: ${{ inputs.gambit_from }}
         run: |
           from=$(awk -v n="$GAMBIT_FROM" '$1 == n { print $2 }' games/the-game/ai/eval/gambit-versions.txt); from=${from:-$GAMBIT_FROM}
-          # (that one commit fetched alone, not the history)
-          for i in 1 2 3; do timeout 120 git fetch --depth 1 --quiet origin "$from" && break; sleep 5; done
+          # (a short commit hash cannot be fetched by itself: resolved first against the branches' history)
+          case "$from" in *[!0-9a-f]*) ;; *) if [ ${#from} -lt 40 ]; then git fetch -q --filter=blob:none $([ -f .git/shallow ] && echo --unshallow) origin '+refs/heads/*:refs/remotes/origin/*' && from=$(git rev-parse --verify "$from^{commit}"); fi;; esac
+          # (that one commit fetched alone, not the history -- and no file of it until checked out: only the gambit folder's are fetched,
+          # not the whole tree's)
+          for i in 1 2 3; do timeout 120 git fetch --depth 1 --filter=blob:none --quiet origin "$from" && break; sleep 5; done
           rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
       - name: clang
         timeout-minutes: 10
@@ -188,7 +232,7 @@ jobs:
           grep -h "boards searched again\|moves at the turn\|own time" report/reach.txt | sed 's/^/::notice title=reach::/' || true
           # (the reports whole, in the job's log: readable where the artifact is not)
           for f in summary losses reach; do echo "===== $f"; cat report/$f.txt; done
-          { echo '## Gambit 24'; echo '```'; cat report/summary.txt; echo; tail -3 report/losses.txt; grep -h "boards searched again\|moves at the turn" report/reach.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '## Gambit 28'; echo '```'; cat report/summary.txt; echo; tail -3 report/losses.txt; grep -h "boards searched again\|moves at the turn" report/reach.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         timeout-minutes: 5

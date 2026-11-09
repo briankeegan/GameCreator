@@ -19,6 +19,7 @@
 #define LONGEST (2 * TOUCH_DEPTH)   // a line carried on to the next decision is shorter than this
 #define KEEPN 60                    // the lines carried on
 #define LINEUP_BUDGET 400
+#define TRIM_MS 5        // the ms a found line is trimmed in, past the search's share (trimPath)
 // (the touch beam from its wider beam on, its narrower left to another thread searching the same board: answer.c's wide job)
 static LOCAL int32_t touchFrom;
 #define LINEUP_DEPTH 8
@@ -29,13 +30,13 @@ static LOCAL int32_t touchFrom;
 #define LINEUP_AFTER 30
 #define LINEPOOL 8192   // lines one level holds: TOUCH_WIDE x the swaps of a board
 
-typedef struct { int32_t key, n, s, h, len, kept; int32_t path[MAXPATH]; } Line;
+typedef struct { int32_t key, n, s, h, len, kept, carried; int32_t path[MAXPATH]; } Line;   // carried: grown from a line the last decision carried on
 typedef struct { int32_t n, len[KEEPN]; int32_t path[KEEPN][MAXPATH]; } Paths;
 // THE ANSWER (breakMoves' return): depth 1 with the first swaps that break (moves) and how -- the line (path), the line-up pairs
 // (lines, one per first swap found), or depth 0 with the line nearest a break (toward) and the lines to choose among (towards)
 typedef struct {
   int32_t depth, nmoves, moves[MAXROWS * W];
-  int32_t at, touch, carried, wide, lineup;        // lineup: 0 none, 1 the pop's end, 2 a pair, 3 aimed, 4 ready
+  int32_t at, touch, carried, wide, lineup, fresh;   // fresh: found from this board's own first swaps, with lines carried on beside them; lineup: 0 none, 1 the pop's end, 2 a pair, 3 aimed, 4 ready
   int32_t built;                                    // the line breakNear builds (the nearest break walked to)
   int32_t pathLen, path[MAXPATH];
   int32_t pairs[MAXROWS * W][2];                    // lines, beside moves (lineup 2 and 4)
@@ -249,6 +250,17 @@ static int breaksAt(BS *s, int n, const int32_t *path, int len) {
 // and the material, the panels under each column's first garbage: a slab broken above another leaves its panels on the lower one,
 // out of reach until that breaks)
 static int32_t materialOn(const Board *b);   // (facts.c)
+// (THE ONE RULE, OF A BREAK: what the swap that breaks clears, its settle with it -- 2 an entry of the mode's list, 1 a three that makes
+// no chain, 0 a chain or a combo the list does not ask for, the last resort: judge.c the one rule)
+static int breakCat(Ctx *x, int n) {
+  Stats a; int32_t combo = 0, chain = 0;
+  if (statsOf(x, n, &a)) { combo = biggestOf(&a); chain = chainOfStats(&a); }
+  int z = settleOf(x, n);
+  if (z != n && liveNode(x, z) && statsOf(x, z, &a)) { combo = imax(combo, biggestOf(&a)); chain = imax(chain, chainOfStats(&a)); }
+  Made m = { combo, chain, 1, 0 };
+  for (int i = 0; i < theList.n; i++) if (meets(&theList.aim[i], m)) return 2;
+  return combo <= 3 && chain <= 1 ? 1 : 0;
+}
 static int32_t brokeSettled(Ctx *x, int n, int32_t *mat) {
   int z = settleOf(x, n), w = liveNode(x, z) ? z : n;
   Board *b = ensureBoard(x, w);
@@ -263,7 +275,21 @@ static int keepsOwnChain(Ctx *x, int n) {
   Board *b = liveNode(x, w) ? ensureBoard(x, w) : 0;
   return b && b->chainCounter >= ownChainN;
 }
-static int swapsOfNode(Ctx *x, int n, int32_t *ms) { Board *b = ensureBoard(x, n); return b ? legalSwaps(b, ms) : 0; }
+// (NO SWAP STRAIGHT BACK IN A LINE -- the owner: no flip and back: a search never grows a line by the swap the step before it made, its
+// two cells still full: it swaps the same pair back)
+static int swapsOfNode(Ctx *x, int n, int32_t *ms) {
+  Board *b = ensureBoard(x, n);
+  if (!b) return 0;
+  int m = legalSwaps(b, ms);
+  const Node *d = NODE(x, n);
+  if ((d->mk == MK_SWAP || d->mk == MK_SETTLE) && d->mr >= 0 && d->mr < b->nrows && d->mc >= 1 && d->mc + 1 <= W &&
+      b->p[d->mr][d->mc].f[ID] != NUL && b->p[d->mr][d->mc + 1].f[ID] != NUL) {
+    int32_t back = d->mr * 8 + d->mc; int k = 0;
+    for (int i = 0; i < m; i++) if (ms[i] != back) ms[k++] = ms[i];
+    m = k;
+  }
+  return m;
+}
 static void keepPaths(Paths *p, Line **ls, int n) {
   p->n = 0;
   for (int i = 0; i < n && p->n < KEEPN; i++) {
@@ -278,6 +304,7 @@ static int found(Broke *o, int32_t key) { int i = foundAlready(o, key); if (i >=
 static void setPath(Broke *o, const int32_t *path, int len) { o->pathLen = len; for (int k = 0; k < len; k++) o->path[k] = path[k]; }
 
 // THE TOUCH BEAM (touchBeam): the carried lines first, then the first swaps, grown a level at a time
+#define BEAM_SWAP_ACTS 3   // (a swap's actions, the walk with it: 3.0 a swap measured over 26,000 swaps of finish them)
 static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   Ctx *x = s->x;
   Broke *o = s->out;
@@ -289,7 +316,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     if (!(s->resume->len[i] > 0 && s->resume->len[i] < LONGEST)) continue;
     Line *a = lineNew(); if (!a) break;
     a->len = s->resume->len[i]; for (int k = 0; k < a->len; k++) a->path[k] = s->resume->path[i][k];
-    a->n = s->root; a->kept = 0;   // kept: the swaps played so far
+    a->n = s->root; a->kept = 0; a->carried = 1;   // kept: the swaps played so far
     act[nact++] = a;
   }
   while (nact && !SEARCH_OUT()) {
@@ -335,6 +362,9 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
         Line *l = tl[i];
         int32_t sc = nearScore(ensureBoard(x, l->n));
         if (sAt[i] >= 0) { int w = stepTake(x, sAt[i], l->n, MK_SETTLE, 0); if (liveNode(x, w)) { int32_t s2 = nearScore(ensureBoard(x, w)); if (s2 > sc) sc = s2; } }
+        // (THE WALK SPENT: with an input allowance to keep, a line's place is its estimated actions to a break -- those walked so far
+        // and a swap's worth (BEAM_SWAP_ACTS) for each swap still to go -- so of two as near a break the one that walked less leads)
+        if (pressAllowance >= 0) sc -= (1000 / BEAM_SWAP_ACTS) * spentOn(s, l->path, l->len);
         l->s = sc; l->h = (int32_t)NODE(x, l->n)->hash;
         idx[i] = i; keyS[i] = sc;
       }
@@ -346,18 +376,25 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       if (ntl && (!s->haveToward || tl[0]->s > s->towardS)) { s->haveToward = 1; s->towardS = tl[0]->s; s->towardLen = tl[0]->len; for (int k = 0; k < tl[0]->len; k++) s->toward[k] = tl[0]->path[k]; }
       keepPaths(&o->keepOut, tl, ntl < KEEPN ? ntl : KEEPN);
       // Swaps made in another order often leave the same board: each board is kept once, its best-scoring line.
-      int nk = 0;
-      for (int i = 0; i < ntl && nk < beam; i++) {
-        Line *l = tl[i];
-        Node *ln = NODE(x, l->n);
-        int dup = 0;
-        for (int q = 0; q < nk && !dup; q++) {
-          Node *kn = NODE(x, kept[q]->n);
-          if ((int32_t)kn->hash != l->h || kn->keyn != ln->keyn) continue;
-          dup = memcmp(kn->key, ln->key, sizeof(int32_t) * ln->keyn) == 0;
+      // (THE BOARD AS IT IS, ITS SHARE OF THE BEAM: lines grown from the ones the last decision carried on take at most half the beam
+      // while lines from this board's own first swaps are left to fill it -- carried lines were ranked on a board the garbage has since
+      // changed, and crowd out a break the board has now)
+      int nk = 0, nc = 0;
+      static LOCAL unsigned char skipped[LINEPOOL];
+      for (int pass = 0; pass < 2 && nk < beam; pass++)
+        for (int i = 0; i < ntl && nk < beam; i++) {
+          Line *l = tl[i];
+          if (pass == 0) { skipped[i] = 0; if (l->carried && nc >= beam / 2) { skipped[i] = 1; continue; } }
+          else if (!skipped[i]) continue;
+          Node *ln = NODE(x, l->n);
+          int dup = 0;
+          for (int q = 0; q < nk && !dup; q++) {
+            Node *kn = NODE(x, kept[q]->n);
+            if ((int32_t)kn->hash != l->h || kn->keyn != ln->keyn) continue;
+            dup = memcmp(kn->key, ln->key, sizeof(int32_t) * ln->keyn) == 0;
+          }
+          if (!dup) { kept[nk++] = l; nc += l->carried; }
         }
-        if (!dup) kept[nk++] = l;
-      }
       ntl = nk;
       for (int i = 0; i < nk; i++) tl[i] = kept[i];
       int ntn = 0, ar = td & 1;
@@ -383,9 +420,11 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       // leaves the three that began it wasted -- then the one that leaves the most material once its board settles, then the one that
       // has broken most: a break whose converted panels match again is rows more of the slab -- and, with an input allowance to keep (a
       // host that says it), the one the cursor walks fewer actions for before the material: the window pays for every cell of it
+      // (and before the actions, the one rule (breakCat): a break the mode's list asks, then a three's, then the last resort -- the mode
+      // is played under garbage too, and a break is made as the mode asks where the level has one)
       const Board *rb = ensureBoard(x, s->root);
       int starved = pressAllowance >= 0 && rb;
-      int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestPath[MAXPATH];
+      int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestCarried = 0, bestPath[MAXPATH];
       for (int i = 0; i < ntl; i++) {
         for (int b = bAt[i]; b < bAt[i + 1]; b++) {
           int32_t mv = bMv[b];
@@ -397,15 +436,15 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
             int32_t mat, br = brokeSettled(x, t3, &mat);
             int acts = 0;
             if (starved) { int r = rb->curRow, c = rb->curCol; for (int k = 0; k < nl->len; k++) { acts += actionsFor(r, c, CR(nl->path[k]), CC(nl->path[k]), pressAllowance - acts); r = CR(nl->path[k]); c = CC(nl->path[k]); } }
-            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
-            if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
+            int64_t bk = ((int64_t)keepsOwnChain(x, t3) << 40) + ((int64_t)breakCat(x, t3) << 32) + ((int64_t)(255 - imin(acts, 255)) << 24) + ((int64_t)imin(mat, 4095) << 8) + imin(br, 255);
+            if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestCarried = tl[i]->carried; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
             continue;
           }
           if (bestB < 0 && within(s, t3)) tn[ntn++] = nl;
         }
       }
       batchDone();
-      if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; }
+      if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; o->fresh = s->resume && s->resume->n && !bestCarried; }
       if (bestB >= 0 && foundTd < 0) foundTd = td;
       if (foundTd >= 0 && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == TOUCH_DEPTH)) tpath = 1;
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)
@@ -516,6 +555,39 @@ static int lineups(BS *s, Line **firsts, int nfirsts) {
   return 0;
 }
 
+// THE LINE TRIMMED (trimPath): the touch beam's line played again with each swap left out in turn, and kept without it whenever it still
+// breaks as much, keeps the board's own chain as it did, and spends fewer of the cursor's actions -- a line grown a swap a level, and
+// carried on from decision to decision, walks panels it need not (run 1875, factory-1 at 5094: 12 swaps where 10 break the same). Each
+// trial is the line's steps once more, within the search's clock; a trial the clock cuts changes nothing.
+static void trimPath(BS *s) {
+  Ctx *x = s->x; Broke *o = s->out;
+  if (o->pathLen < 3) return;
+  int32_t path[MAXPATH], len = o->pathLen; for (int k = 0; k < len; k++) path[k] = o->path[k];
+  int32_t mat0, br0; int node = s->root, keep0;
+  for (int k = 0; k < len && liveNode(x, node); k++) node = stepMarked(s, node, MK_SWAP, path[k], 0);
+  if (!liveNode(x, node)) return;
+  br0 = brokeSettled(x, node, &mat0); keep0 = keepsOwnChain(x, node);
+  int acts0 = spentOn(s, path, len);
+  // (in TRIM_MS of its own past the search's share, the clock allowing it that much: a trial is the line's steps once more)
+  double share = clockShare, by = nowMs() + TRIM_MS; if (!clockDue || by < clockDue) clockShare = by;
+  for (int i = 0; i < len && len > 1 && !SEARCH_OUT(); ) {
+    int32_t q[MAXPATH]; int m = 0;
+    for (int k = 0; k < len; k++) if (k != i) q[m++] = path[k];
+    // (pressed as the judge presses a line, core/nodes.h pressWalk: a swap whose pair still moves is walked to again from the frame after,
+    // so a swap left out does not refuse the one after it for the frames it changes)
+    int n = s->root;
+    for (int k = 0; k < m && liveNode(x, n); k++) { int from, o2 = pressWalk(x, n, MK_SWAP, CR(q[k]), CC(q[k]), step, &from); if (o2 >= 0) markStep(s, n, MK_SWAP, q[k], o2); n = o2; }
+    // (judged once its board has settled: a break the fall after the last swap makes is the line's)
+    if (liveNode(x, n)) { int z = settleOf(x, n); if (liveNode(x, z)) n = z; }
+    int32_t mat, br = liveNode(x, n) ? brokeSettled(x, n, &mat) : 0, acts = spentOn(s, q, m);
+    if (liveNode(x, n) && !SEARCH_OUT() && acts < acts0 && breaksAt(s, n, q, m) && br >= br0 && keepsOwnChain(x, n) >= keep0) {
+      for (int k = 0; k < m; k++) path[k] = q[k];
+      len = m; acts0 = acts; o->at = NODE(x, n)->t;
+      setPath(o, path, len); o->moves[0] = path[0];
+    } else i++;
+  }
+  clockShare = share;
+}
 // THE BREAK SEARCH from the decision's question: wait, the frames a popping slab has left (0: none); resume, the lines the last
 // decision's beam was growing, on this board. Answers into out.
 static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, Broke *out);
@@ -544,7 +616,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   int nf = swapsOfNode(x, s.root, ms), nfirsts = 0, at1 = -1;
   for (int i = 0; i < nf; i++) {
     Line *l = lineNew(); if (!l) break;
-    l->key = ms[i]; l->len = 1; l->path[0] = ms[i];
+    l->key = ms[i]; l->len = 1; l->path[0] = ms[i]; l->kept = 0; l->carried = 0;
     l->n = stepMarked(&s, s.root, MK_SWAP, ms[i], 0);
     firsts[nfirsts++] = l;
   }
@@ -560,7 +632,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
       if (liveNode(x, node) && breaksAt(&s, node, nl, nn)) { found(out, nl[0]); setPath(out, nl, nn); out->depth = 1; out->at = NODE(x, node)->t; out->built = 1; return; }
     }
   }
-  if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; return; }
+  if (!(wait > 0) && touchBeam(&s, firsts, nfirsts)) { out->depth = 1; trimPath(&s); return; }
   if (wait > 0) {
     // (a slab popping: the touch beam on the garbage elsewhere first, in half what is left -- a line-up's tries can take the whole of
     // it, and the touch beam had none (run 487, factory-1: a break of 7 swaps under a pop of 99 frames, found in 95 ms of 257 searched
@@ -568,6 +640,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
     if (clockShare > 0) {
       double half = nowMs() + (clockShare - nowMs()) / 2, old = clockShareBegin(half);
       int hit = touchBeam(&s, firsts, nfirsts);
+      if (hit) trimPath(&s);
       clockShareEnd(old);
       if (hit) { out->depth = 1; return; }
     }
@@ -575,7 +648,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
     if (w0 >= 0 && w0 < (1 << 20)) outsideBuf[w0] = 0;   // (made from the root: within the rules so far)
     if (!breaksAt(&s, w0, 0, 0) && lineups(&s, firsts, nfirsts)) { out->depth = 1; return; }
     // (no line-up of the popping slab breaks again: a break of the garbage elsewhere while it pops, the cursor being free)
-    if (touchBeam(&s, firsts, nfirsts)) { out->depth = 1; return; }
+    if (touchBeam(&s, firsts, nfirsts)) { out->depth = 1; trimPath(&s); return; }
   }
   // none found: the line nearest a break, and the lines to choose among -- the frontier the beam has grown furthest, then that line
   out->depth = 0;

@@ -168,12 +168,13 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
 }
 // (its own thread, beside the pool -- the pool may be the readiness's past the decision: native.c onThreadMain at the idle class on the
 // workers' CPUs. onState: 0 idle, 1 asked to run, 2 running)
-static int32_t onState, onThreadOn;
+static int32_t onState, onThreadOn, onQuit;
 static void onThread(void) {
   inJob = 2;
   for (;;) {
     int32_t st;
     while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 1) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
+    if (__atomic_load_n(&onQuit, __ATOMIC_ACQUIRE)) { __atomic_store_n(&onState, 0, __ATOMIC_RELEASE); return; }
     __atomic_store_n(&onState, 2, __ATOMIC_RELEASE);
     pressTight = decQ.tight; pressTap = decTap; ncache = 0;
     int32_t pop = popLeft(decQ.b);
@@ -211,6 +212,13 @@ static void onStart(const Paths *seeds) {
   __atomic_store_n(&onStopReq, 0, __ATOMIC_SEQ_CST);
   __atomic_store_n(&onDone, __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE), __ATOMIC_RELEASE);
   __atomic_store_n(&onActive, 1, __ATOMIC_RELEASE);
+  __atomic_store_n(&onState, 1, __ATOMIC_RELEASE);
+  __builtin_wasm_memory_atomic_notify(&onState, 1);
+}
+// (the thread told to end -- the instance quitting, native.c gn_quit -- once nothing runs on it)
+static void onEnd(void) {
+  if (!onThreadOn) return;
+  __atomic_store_n(&onQuit, 1, __ATOMIC_SEQ_CST);
   __atomic_store_n(&onState, 1, __ATOMIC_RELEASE);
   __builtin_wasm_memory_atomic_notify(&onState, 1);
 }
@@ -317,7 +325,7 @@ static void breakJob(int32_t i) {
   else if (kind == JOB_WIDE) { touchFrom = 1; breakRunTo(brJobR, brJobBy, &theBrWide); touchFrom = 0; __atomic_store_n(&wideDone, 1, __ATOMIC_RELEASE); }
   else {
     double old = clockShareBegin(brJobBy);
-    svJob = outlive(&decQ, HORIZON + REST, REST, brJobBy - nowMs(), 6, 30);
+    svJob = outliveSave(&decQ, HORIZON + REST, REST, brJobBy - nowMs(), OUT_DEPTH, 30);
     clockShareEnd(old);
     __atomic_store_n(&svJobDone, 1, __ATOMIC_RELEASE);
   }
@@ -343,7 +351,11 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
 // 120 boards searched again, run 415, where 1 to 3 had been)
+// (a decision the host let go takes its jobs back at once: a job keeps its own share and never reads the host's abort, so the decision
+// would wait out the share -- and the question asked after it with it, answered past its frame. One whose frame came keeps them: its
+// answer is pressed, and what they found is in it)
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
+  if (clockAborted || abort_poll() == 1) __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
   jobsDone(brCtx);
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = leftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;
@@ -368,7 +380,7 @@ static void L_d(double v) {
 }
 static void L_mv(int32_t mv) { L_i(CR(mv)); L_s(","); L_i(CC(mv)); }
 static void L_play(int p) { const char *s = p == -2 ? "raise" : PLAY_NAME[p]; for (; *s; s++) { char c[2] = { *s == ' ' ? '_' : *s, 0 }; L_s(c); } }
-static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c', 'w', 'j' };
+static const char DROP_CHAR[NDROPS] = { 'b', 'o', 't', 'f', 'r', 'u', 'c', 'w', 'j', '2' };
 
 // THE MOVE: the one order's choice -- the raise the opening called for, a line's first swap, or the hold
 typedef struct { int32_t kind, move; } Move;   // kind: 0 hold, 1 swap, 2 raise
@@ -378,9 +390,13 @@ typedef struct {
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
   int32_t sooner;   // the line played is lost sooner than one offered, and not alike (rank.c lostAlike): survival was not first
-  int32_t wastes;   // the line played makes a three for nothing as the judge saw it, and the survival search found the board needed it (decide.c saveOk)
+  int32_t ended;   // what ended the line in progress (front.c lineEnds): 1 carried on, 2 held over it, 3 none carried, 4-6 the carry
+                    // dropped it (carryDrop 1-3), or the line number of the order's key that put it down (rank.c cmpKey)
+  int32_t wastes;   // 1: the line played makes a three for nothing as the judge saw it, and the survival search found the board needed it (decide.c
+                    // saveOk); 2: it makes one on its way to the garbage it breaks (rank.c wastesThree) -- the press guard lets either through
   int32_t empty;                 // a hold the clock left no time to judge anything for (the frame loop plays the move in hand)
   int32_t nalt, alt[MAXLINE];    // the move in hand: the best line that lives and is no hold, a ready one first
+  int32_t aim;                   // a hold's: the first swap of the best line that is no hold -- the frame loop walks the cursor there (0: none)
   int32_t play, combo, chain, chainAll, broke, done, fire, nseq, seq[MAXLINE], rule, nlive, ncands;
   int32_t whole;   // the chain the board ends up making with the line played (-1: held)
   double idleMs, brMs;
@@ -461,7 +477,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
   Move d = R.up ? (Move){ 2, 0 } : P.line && !timed ? (Move){ 1, P.line->k.seq[0] } : (Move){ 0, 0 };
   A->d = d;
-  A->empty = starved && d.kind == 0;
+  // (and a hold where the line in progress was let go only for the clock -- its judging stopped before it pressed a swap: the frame
+  // loop presses on the line in hand, never a break worth a life dropped for want of time: fight 813, match 20)
+  A->empty = (starved || carryLate) && d.kind == 0;
   // (THE MOVE IN HAND: of the lines that live and are no hold -- a ready one first -- the best ranked, kept by the frame loop for a
   // decision the clock leaves no time)
   A->nalt = 0;
@@ -471,10 +489,16 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       if (J->hold || J->wait || !J->o.lives || J->k.nseq < 1 || (pass == 0 && J->o.ready != 1)) continue;
       A->nalt = imin(J->k.nseq, MAXLINE); for (int q = 0; q < A->nalt; q++) A->alt[q] = J->k.seq[q];
     }
+  // (THE CURSOR NOT LEFT IDLE -- the owner: a person moves toward the next move while waiting: a hold names where the best line that is no
+  // hold begins, and the frame loop walks the cursor there; a cursor walked changes nothing on the board)
+  A->aim = 0;
+  if (d.kind == 0) for (int i = 0; i < n && !A->aim; i++) if (!order[i]->hold && order[i]->k.nseq > 0) A->aim = order[i]->k.seq[0];
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
   A->holdLives = d.kind == 0 && top && top->o.lives;
-  A->wastes = P.line && !R.up && wastesThree(P.line) && saveOk;   // (a three the survival search found the board needed not to die)
+  A->ended = carryDrop >= 1 && carryDrop <= 3 ? 3 + carryDrop : !carriedJ ? (carryNone ? carryNone : 3) : P.line && (P.line == carriedJ || P.line->carried) ? 1
+           : top && top != carriedJ && compareJudged(top, carriedJ) < 0 && cmpKey >= 10 ? cmpKey : 2;
+  A->wastes = !P.line || R.up ? 0 : wastesThree(P.line) && saveOk ? 1 : P.line->o.j.threes > 0 && P.line->apBroke > 0 ? 2 : 0;   // (a three the survival search found the board needed not to die, or one on the way to a break)
   // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
   // settled line's after the board settles -- so the frame loop presses the line that was judged)
   A->nhand = 0; A->handSettled = P.line && P.line->settled;
@@ -489,6 +513,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the break search's work carried on to the next decision, past the move and as much of the line handed on as gets pressed)
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
+  carrySkip = -1;
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
   carryNextOf(P.line);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
@@ -551,8 +576,88 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" w3="); L_i(P.line ? P.line->o.j.threes : -1); if (P.line && wastesThree(P.line)) L_s("/w");   // (the line played: its wasted threes as the judge saw them)
   if (P.line && P.line->ideasAsked && P.line->ideas >= 0) { L_s(" ideas="); L_i(P.line->ideas); }
   if (pairOffered || (P.line && P.line->k.pair)) { L_s(" pair="); L_i(pairOffered); if (P.line && P.line->k.pair) L_s("/played"); }
+  if (twinLo > -2) { L_s(" twinLo="); L_i(twinLo); L_s("/"); L_i(twinRows); }
+  if (twinOffered || (P.line && P.line->k.twin)) { L_s(" twin="); L_i(twinOffered); if (P.line && P.line->k.twin) L_s(P.line->k.twin == 2 ? "/setup" : "/played"); }
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
+  if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
+  if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); }
+  if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
+  if (backTrimmed) L_s(" backTrimmed=1");
+  if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); L_s(" twoWhy="); L_i(twoWhy); L_s("/"); L_i(twoLostLog >= 1e299 ? -2 : (int64_t)twoLostLog); L_s("/"); L_i((int64_t)twoKeptLog); }
+  if (twoRemade) { L_s(" twoRemade="); L_i(twoRemade); }
+  if (noopWaits) { L_s(" noopWaits="); L_i(noopWaits); }
+  // (a 2x the line played leaves at 2x, going or made: the key it was ranked first by, before the best that takes a chain to three -- or,
+  // a 2x it makes, before the best that makes none -- and the two's losses)
+  if (n && P.line && P.line == order[0] && chainReach(P.line) == 2 && (aloneChain >= 2 || shortChain(P.line))) {
+    int32_t keep = cmpKey;
+    for (int i = 1; i < n; i++) if (!order[i]->hold && chainReach(order[i]) >= 3) {
+      compareJudged(order[0], order[i]); L_s(" c3Key=k"); L_i(cmpKey); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i((int32_t)lostOf(order[i])); break; }
+    if (shortChain(P.line)) for (int i = 1; i < n; i++) if (!shortChain(order[i]) && !(aloneChain >= 2)) {
+      compareJudged(order[0], order[i]); L_s(" no2Key=k"); L_i(cmpKey); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i((int32_t)lostOf(order[i])); L_s(order[i]->hold ? ":h" : ":l"); break; }
+    cmpKey = keep;
+  }
+  // (A HOLD OVER A LATER LOSS: the hold played where a line that is no hold is lost a break's time later or lives -- the key the hold was
+  // ranked first by, the two's losses and the line's play)
+  if (n && order[0] && order[0]->hold) {
+    int bi = -1;
+    for (int i = 1; i < n; i++) if (!order[i]->hold && order[i]->k.nseq && (order[i]->o.lives || lostOf(order[i]) >= lostOf(order[0]) + rankSave) && (bi < 0 || lostOf(order[i]) > lostOf(order[bi]))) bi = i;
+    if (bi > 0) {
+      int32_t keep = cmpKey; compareJudged(order[0], order[bi]);
+      L_s(" holdKey=k"); L_i(cmpKey); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i(order[bi]->o.lives ? -1 : (int32_t)lostOf(order[bi])); L_s(":"); L_s(PLAY_NAME[order[bi]->k.play]);
+      cmpKey = keep;
+    }
+  }
+  // (THE HOLD OVER A LINE: the hold played where a line was offered -- the key that put it first, and that line's play: holdOver=kKEY:play)
+  if (n > 1 && order[0] && order[0]->hold) {
+    for (int i = 1; i < n; i++) if (!order[i]->hold && order[i]->k.nseq) {
+      int32_t keep = cmpKey; compareJudged(order[0], order[i]);
+      L_s(" holdOver=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[i]->k.play]); cmpKey = keep; break; }
+    // (and over the line offered whose board is lost latest, the frame it is lost on, no walk charged, later than the hold's: holdLate=kKEY:play:lost/lost)
+    int li = -1;
+    for (int i = 1; i < n; i++) if (!order[i]->hold && order[i]->k.nseq && (order[i]->o.lives || diesAt(order[i]) > diesAt(order[0])) &&
+                                    (li < 0 || order[i]->o.lives || (!order[li]->o.lives && diesAt(order[i]) > diesAt(order[li])))) li = i;
+    if (li > 0) { int32_t keep = cmpKey; compareJudged(order[0], order[li]);
+      L_s(" holdLate=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[li]->k.play]); L_s(":"); L_i((int32_t)diesAt(order[0])); L_s("/"); L_i(order[li]->o.lives ? -1 : (int32_t)diesAt(order[li]));
+      cmpKey = keep; }
+  }
+  // (THE MODE PASSED OVER: the line played does not meet the mode's first entry, and a line offered that does lives as it does, or is
+  // lost no sooner -- the key that put the line played first, the line's play and the two's losses: goalMiss=kKEY:play:lost/lost.
+  // Only survival may pass the mode over (the owner))
+  if (n && order[0] && !(order[0]->met == 0 || order[0]->modeFirst)) {
+    const Judge *g = 0;
+    for (int i = 1; i < n && !g; i++) { const Judge *j = order[i]; if (!j->hold && (j->met == 0 || j->modeFirst) && (j->o.lives || (!order[0]->o.lives && diesAt(j) >= diesAt(order[0])))) g = j; }
+    if (g) { int32_t keep = cmpKey; compareJudged(order[0], g);
+      L_s(" goalMiss=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[0]->k.play]); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)diesAt(order[0])); L_s("/"); L_i(g->o.lives ? -1 : (int32_t)diesAt(g));
+      cmpKey = keep; }
+  }
+  // (THE DIG THE MODE ASKS, OFFERED: under garbage, the lines offered that break and meet the mode's list with a combo of four or more --
+  // the dig that is the mode's attack -- and whether the line played is one: comboDig=N[/played])
+  if (decF.under && n) { int k = 0; for (int i = 0; i < n; i++) { const Judge *j = order[i]; if (!j->hold && !j->outside && j->apBroke > 0 && j->apCombo >= 4) k++; }
+    if (k) { L_s(" comboDig="); L_i(k); if (order[0] && !order[0]->hold && !order[0]->outside && order[0]->apBroke > 0 && order[0]->apCombo >= 4) L_s("/played"); } }
+  // (AN ATTACK THE MODE DOES NOT ASK, PLAYED OVER ONE IT DOES: the line played breaks outside the list, and a line offered breaks within
+  // it and is lost no more than a break's time sooner -- the key that put the line played first, the two plays and losses:
+  // outKey=kKEY:play:in-play:lost/lost)
+  if (n && order[0] && !order[0]->hold && order[0]->outside && order[0]->apBroke > 0) {
+    const Judge *g = 0;
+    for (int i = 1; i < n && !g; i++) { const Judge *j = order[i]; if (!j->hold && !j->outside && j->apBroke > 0 && (j->o.lives || (!order[0]->o.lives && diesAt(j) >= diesAt(order[0]) - rankSave))) g = j; }
+    if (g) { int32_t keep = cmpKey; compareJudged(order[0], g);
+      L_s(" outKey=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[0]->k.play]); L_s(":"); L_s(PLAY_NAME[g->k.play]); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)diesAt(order[0])); L_s("/"); L_i(g->o.lives ? -1 : (int32_t)diesAt(g));
+      cmpKey = keep; }
+  }
+  // (a two-column eight offered and not played: the key the line played was ranked first by, before the best of them, and the two's losses)
+  if (n && order[0] && !order[0]->k.twin) for (int i = 1; i < n; i++) if (order[i]->k.twin == 1) {
+    int32_t keep = cmpKey; compareJudged(order[0], order[i]);
+    L_s(" twinKey=k"); L_i(cmpKey); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)lostOf(order[0])); L_s("/"); L_i(order[i]->o.lives ? -1 : (int32_t)lostOf(order[i])); L_s(":"); L_i(order[i]->o.dead ? 1 : 0);
+    cmpKey = keep; break;
+  }
+  // (a line played whose first swap swaps back the last swap's pair: the key it was ranked first by, before the best that does not, and
+  // the two's losses)
+  if (n && order[0] && order[0]->back && !order[0]->hold) for (int i = 1; i < n; i++) if (!order[i]->back && !order[i]->hold) {
+    int32_t keep = cmpKey; compareJudged(order[0], order[i]);
+    L_s(" backKey=k"); L_i(cmpKey); L_s(":"); L_i((int32_t)lostOf(order[0])); L_s("/"); L_i((int32_t)lostOf(order[i])); L_s(":"); L_i(order[i]->k.play);
+    cmpKey = keep; break;
+  }
   L_s(" casc="); L_i(cascadeLive(decQ.b)); L_s(" pop="); L_i(popLeft(decQ.b)); L_s(" hp="); L_i(decQ.b->health); L_s(" stop="); L_d(R.F.v[FACT_US_STOP]);
   if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
@@ -560,22 +665,26 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (planSeeded) { L_s(" seed="); L_i(planSeeded); }
   if (readyPre) { L_s(" pre="); L_i(readyPre); L_s("/"); L_i(readyPendN); }
   if (wayOffered) { L_s(" way="); L_i(wayOffered); if (wayPlayed) L_s("/played"); }
+  if (cutOffered) { L_s(" cut="); L_i(cutOffered); if (P.line && P.line->k.play == PLAY_CUT) L_s("/played"); }
+  if (zipOffered) { L_s(" zip="); L_i(zipOffered); if (P.line && P.line->k.play == PLAY_ZIP) L_s("/played"); }
   // (the floor's raise: the rows asked, how many leave a break once everything lands, how many the board lives through -- or, asked
   // while the board is busy, -1 a cascade, -2 the game's raise not allowed)
   L_s(" sv="); L_i(__atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? 1 : 0); if (surviveAsked) L_s("/asked");   // (the survival job finished this decision; the backup asked of it)
-  if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); }   // (the threes the survival search found not needed, of those asked)
+  if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); } if (saveBlind) L_s(" saveBlind=1");   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
   L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1"); if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); L_s(" onDeep="); L_i(onLogDeep); if (onLogKept) L_s("/kept"); }
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
-             if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); }
+             if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); if (theBr.fresh) L_s("/fresh"); }
   else L_s("none");
   // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
   if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); }
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
-  L_s(" plan="); L_i((int64_t)S.planShare); L_s("/"); L_i((int64_t)S.planFirst); L_s("/"); L_i(S.wide); L_s("/"); L_i((int64_t)S.ap.ms);
+  L_s(" plan="); L_i((int64_t)S.planShare); L_s("/"); L_i((int64_t)S.planFirst); L_s("/"); L_i(S.wide); L_s("/"); L_i((int64_t)S.ap.ms); L_s("/d"); L_i(S.planDepth); L_s("/l"); L_i(S.planLong);
   // (the planner and the list's first entry: a line that meets it found, and how near its nearest line comes, the first entry's percent)
   if (S.haveAp) { L_s(" p0="); L_i(S.ap.perAim[0].set ? 1 : 0); L_s("/"); L_i(S.ap.nearest.set ? (int64_t)S.ap.nearest.near : -1); }
+  L_s(" cof="); L_i(carrySkip);
+  if (A->ended == 16) { L_s(" c16="); L_i(carryClr); }
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
   int any = 0;
@@ -589,10 +698,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!any) L_s("-");
   L_s(" live="); L_i(P.nlive); L_s("/"); L_i(P.ncands);
   if (cutWhy[1] + cutWhy[2] + cutWhy[3]) { L_s(" cutWhy="); for (int w = 1; w <= 3; w++) { if (w > 1) L_s("/"); L_i(cutWhy[w]); } L_s(":"); for (int w = 1; w <= 3; w++) { if (w > 1) L_s("/"); L_i(cutWhyBreak[w]); } }
-  if (unbroken.set) { L_s(" unbroken="); L_play(unbroken.play); L_s(":"); for (int i = 0; i < unbroken.nseq; i++) { if (i) L_s(";"); L_mv(unbroken.seq[i]); } L_s(":"); L_i(unbroken.said); L_s("/"); L_i(unbroken.judged); }
+  if (unbroken.set) { L_s(" unbroken="); L_play(unbroken.play); L_s(":"); for (int i = 0; i < unbroken.nseq; i++) { if (i) L_s(";"); L_mv(unbroken.seq[i]); } L_s(":"); L_i(unbroken.said); L_s("/"); L_i(unbroken.judged); L_s("/"); L_i(unbroken.alone); }
   // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it breaks)
   // (the line in progress offered and put down for another: the line played and the order's key that put it first, rank.c cmpKey)
-  if (carriedJ && top && top != carriedJ && compareJudged(top, carriedJ) < 0) { L_s(" putDown="); L_play(top->hold ? PLAY_HOLD : top->k.play); L_s(":k"); L_i(cmpKey); }
+  if (carriedJ && top && top != carriedJ && !top->carried && compareJudged(top, carriedJ) < 0) { L_s(" putDown="); L_play(top->hold ? PLAY_HOLD : top->k.play); L_s(":k"); L_i(cmpKey); }
   if (carryDrop) {
     L_s(" carryDrop="); L_i(carryDrop);
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
@@ -610,7 +719,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   // (THE MODE'S LIST, for the report: the entry the line played meets, whether it is a fallback -- an entry after the first that breaks
   // no garbage -- its loss, and of the lines offered that are no fallback the latest lost, L one that lives, - none; then a break's time,
-  // rankSave: mode=entry/fallback/lost/other/save)
+  // rankSave: mode=entry/fallback/lost/other/save[/kKEY][/c])
   if (top && !top->hold && top->met >= 0) {
     const Judge *alt = 0;
     for (int i = 0; i < P.ncands; i++) {
@@ -624,6 +733,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s("/"); L_i(rankSave);
     // (and the order's key that put the line played before that other: rank.c cmpKey, /kLINE)
     if (alt && top->met > 0 && !(top->apBroke > 0) && compareJudged(top, alt) < 0) { L_s("/k"); L_i(cmpKey); }
+    // (and /c where the board is chaining, or about to: a chain going is carried on -- the fallback the chain reaches is the mode's rule)
+    if (decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2)) L_s("/c");
   }
   // (THE LINE PLAYED OVER ONE LOST LATER: of the lines offered, the one lost latest when the line played does not live and it is lost
   // later -- its play, its loss and the order's key that put the played line first, rank.c cmpKey: sooner=play:lost:kLINE)
@@ -631,7 +742,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (top && !top->o.lives) {
     const Judge *late = 0;
     for (int i = 0; i < P.ncands; i++) { const Judge *j = order[i]; if (j != top && (j->o.lives || lostOf(j) > lostOf(top)) && (!late || (j->o.lives && !late->o.lives) || (j->o.lives == late->o.lives && lostOf(j) > lostOf(late)))) late = j; }
-    A->sooner = late && !late->o.lives && !lostAlike(top, late);
+    A->sooner = late && !late->o.lives && !lostAlike(top, late) && !(walkTurns(top, late) && diesAt(top) > diesAt(late));
     if (late && compareJudged(top, late) < 0) {
       L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey);
     }
@@ -639,12 +750,15 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   if (P.deferred) L_s(" deferred=1");
+  { static int32_t comboSeen; if (combosDropped != comboSeen) { L_s(" noFour=1"); comboSeen = combosDropped; } }
+  { static int32_t rescueSeen; if (rescues != rescueSeen) { L_s(" rescued=1"); rescueSeen = rescues; } }
   if (R.saving) L_s(" saving=1");
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
   L_s(" lifePeak="); L_i(lifePeakOf());
   if (R.full) L_s(" full=1");
   if (switchedNow) L_s(" switched=1");
   // (the enemy as the rules read it: its height, topped out, the frames of its stop -- what picked the rule)
+  if (fillN != NOT_ASKED) { L_s(" fill="); L_i(fillN); }
   if (theOpp.has) { L_s(" enemy="); L_i(theOpp.top); L_s("/"); L_i(theOpp.out); L_s("/"); L_i(theOpp.stopKnown ? theOpp.stop : -1); }
   if (P.line && P.line->k.grown) L_s(" grown=1");
   if (P.line && P.line->k.drop) L_s(" drop=1");
@@ -712,19 +826,22 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 // for the old mode's list), the dig, the line toward a break.
 static void modeLeft(void) {
   lifeLived = 0;
-  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext);
-  digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0;
+  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext); carryClr = 7;
+  digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0; carriedSunk = -1;
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); lifeDumps = 0; openerOver = 0;
-  lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; savingPanels = 0;
+  modeLeft(); lifeDumps = 0; openerOver = 0; openerChained = 0; openerAt = 0;
+  if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
+  lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; garbageSeen = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
   readyStop(); readyKeptClear();   // (a new game's boards are its own)
   memset(theIntents, 0, sizeof theIntents);
   memset(&thePlanKept, 0, sizeof thePlanKept);
   gb_back(0, 0, 0, 0, 0, 0, 0);
 }
+// THE MODE AFTER THE OPENER (the profile's `then`; -1 none): a game whose named mode is the opener plays it to the top-out, then this
+EXPORT(gb_then) void gb_then(int rule) { thenRule = rule; }
 EXPORT(gb_switch) void gb_switch(int min, int max) { switchMin = min > 0 ? min : 0; switchMax = max > switchMin ? max : switchMin; nswitch = 0; }
 // (the circuit: Hierholzer's walk of the complete directed graph on n rules -- n(n-1) steps, each ordered pair once)
 static int lapOf(int n, int32_t *lap) {
@@ -742,7 +859,27 @@ static int lapOf(int n, int32_t *lap) {
 EXPORT(gb_switch_game) void gb_switch_game(uint32_t seed) {
   nswitch = 0; modeRule = C2.GP.mode;
   int32_t rules[MAXRULES], nr = 0;
-  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) if (theTables.r[i].table == 1 && !asksNoEnemy(&theTables.r[i])) rules[nr++] = theTables.r[i].name;
+  // (the modes live play can reach: a rule that is the first whose `when` holds at some enemy height -- one that tests anything else is
+  // counted reachable; one every height of which an earlier rule takes is left out: the fill rule leaves big chain, pressure and build so)
+  for (int i = 0; i < theTables.n && nr < MAXRULES; i++) {
+    const Rule *r = &theTables.r[i];
+    if (r->table != 1 || asksNoEnemy(r)) continue;
+    int other = 0;
+    for (int w = 0; w < r->nwhen; w++) if (r->when[w].fact != FACT_ENEMY_HEIGHT) other = 1;
+    int reach = other;
+    for (int h = 0; h <= 12 && !reach; h++) {
+      int first = -1;
+      for (int j = 0; j < theTables.n && first < 0; j++) {
+        const Rule *q = &theTables.r[j];
+        if (q->table != 1 || asksNoEnemy(q)) continue;
+        int holds = 1;
+        for (int w = 0; w < q->nwhen; w++) if (q->when[w].fact == FACT_ENEMY_HEIGHT && !test(h, q->when[w].t)) holds = 0; else if (q->when[w].fact != FACT_ENEMY_HEIGHT) holds = 0;
+        if (holds) first = j;
+      }
+      if (first == i) reach = 1;
+    }
+    if (reach) rules[nr++] = r->name;
+  }
   if (!switchMin || nr < 2) return;
   static int32_t lap[MAXRULES * MAXRULES + 1];
   int nl = lapOf(nr, lap);
@@ -768,10 +905,15 @@ static int32_t modeAt(int32_t at) {
 static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, int oppTopKnown, int oppTop, int oppStopKnown, int oppStop,
                            int allowanceKnown, int allowance, int lineFrom, int linePressed, int canRaise, double due, double t0, double margin) {
   decQ = hostQ; decQ.b = hostBoard;
+  levelBreak = C2.reaction + 1 + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (outcome.c: the level's break, as rankSave)
+  if (levelBreak <= 0) levelBreak = LEVEL11_BREAK;
   ncache = 0; rootBuildable = NOT_ASKED;
   // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
+  // (the opener plays from the countdown to its end -- the top-out, or nobody across its chain thrown -- and the schedule runs from there)
   switchedNow = 0;
-  if (nswitch) { int32_t m = modeAt(at); if (m != modeRule) { if (modeRule >= 0) { modeLeft(); switchedNow = 1; } modeRule = m; } }
+  // (A SWITCH OF MODE clears nothing: the board is the same board, and every line kept is ranked again by the new mode's keys, which
+  // say whether it fits)
+  if (nswitch && openerOver) { int32_t m = modeAt(at - openerAt); if (m != modeRule) { if (modeRule >= 0) switchedNow = 1;  modeRule = m; } }
   hostTopped = topped;
   Opp o = { oppHas, oppOut, oppTopKnown, oppTop, oppStopKnown, oppStop }; theOpp = o;
   canRaiseNow = canRaise;

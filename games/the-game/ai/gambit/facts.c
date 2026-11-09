@@ -35,7 +35,8 @@ static double framesToTop(const Board *b) {
   int32_t h = b->height ? b->height : 12, rows = h - fullTop(b), stop = b->stopTime + b->preStopTime;
   if (rows <= 0) return stop;
   int32_t T = SPEED_TO_RISE_TIME[imin(99, imax(1, b->speed ? b->speed : 1)) - 1], disp = imax(1, b->displacement ? b->displacement : 16);
-  return stop + (b->riseTimer > 0 ? b->riseTimer : 0) + (disp - 1) * T + (rows - 1) * 16 * T;
+  // (T is a row's frames: the rise takes T / 16 a pixel, pa.c advancePassiveRaise -- the pixels left of this row, then whole rows)
+  return stop + (b->riseTimer > 0 ? b->riseTimer : 0) + (disp - 1) * T / 16.0 + (rows - 1) * (double)T;
 }
 // THE GARBAGE A BREAK TAKES: the lowest block and every block touching it -- its top row and its cells on screen (top 0: none)
 static void lowestGroupTop(const Board *b, int H, int32_t *top, int32_t *onScreen) {
@@ -183,12 +184,12 @@ static double leadOf(const List *L, Made m, int under) { return nearList(L, m) +
 // (nlist: the leading sub-keys that are the list's order -- what a line spends is weighed after them, never before: rank.c)
 typedef struct { int32_t tier, nsub, nlist; double sub[MAXSUB]; } Tier;
 enum { PLAY_ENTRY, PLAY_NEAREST, PLAY_BREAKLINE, PLAY_CARRY, PLAY_CARRYWAIT, PLAY_CLEAR, PLAY_EXTEND, PLAY_LINEUP, PLAY_BREAKSEARCH,
-       PLAY_LINEUPBREAK, PLAY_TOWARD, PLAY_READY, PLAY_LEVEL, PLAY_SETUP, PLAY_SURVIVE, PLAY_CONVERT, PLAY_HOLD, NPLAYS };
+       PLAY_LINEUPBREAK, PLAY_TOWARD, PLAY_READY, PLAY_LEVEL, PLAY_SETUP, PLAY_SURVIVE, PLAY_CONVERT, PLAY_HOLD, PLAY_ZIP, PLAY_CUT, NPLAYS };
 static const char *PLAY_NAME[NPLAYS] = { "entry", "nearest", "break line", "carry", "carry wait", "clear", "extend", "lineup", "break search",
-                                         "lineup break", "toward", "ready", "level", "setup", "survive", "convert", "hold" };
+                                         "lineup break", "toward", "ready", "level", "setup", "survive", "convert", "hold", "zip", "cut" };
 // the plays judged settle by settle; the set-ups (SETUPS)
 static int settledPlay(int p) { return p == PLAY_ENTRY || p == PLAY_NEAREST || p == PLAY_BREAKLINE || p == PLAY_CARRY || p == PLAY_CARRYWAIT || p == PLAY_CLEAR; }
-static int setupPlay(int p) { return p == PLAY_SETUP || p == PLAY_LEVEL || p == PLAY_READY || p == PLAY_TOWARD; }
+static int setupPlay(int p) { return p == PLAY_SETUP || p == PLAY_LEVEL || p == PLAY_READY || p == PLAY_TOWARD || p == PLAY_ZIP; }
 typedef struct { int32_t combo, chain, broke, cells, earned, done, near100, dropAt, floor; double near; } Xs;   // floor: -1 not said, 0, 1
 static Tier tierOf(int play, const Xs *x, int aim, int under, int enemyOut, int topped, int waits) {
   Tier t; memset(&t, 0, sizeof t);

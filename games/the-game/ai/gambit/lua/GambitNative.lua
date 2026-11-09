@@ -4,7 +4,7 @@
 --
 --   local G = dofile(<GameCreator>/games/the-game/ai/gambit/lua/GambitNative.lua)   -- once per process
 --   local bot = G.new({})
---   bot:startMatch(stack)                 -- once per match
+--   bot:startMatch(stack)                 -- once per match: a fresh Gambit, the last match's quit
 --   local char = bot:input(stack, sources, view)   -- every frame, before it is run (view: the opponent's shipped board, or nil)
 --
 -- Env: GC_GAMBIT_DIR (the gambit directory; default: this file's), GC_GAMBIT_WORDS (the profile as numbers, words.js; default
@@ -40,26 +40,32 @@ void gn_rule_name(int i, const char *name);
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff);
 void gn_switch(int min, int max);
 void gn_share(int under, int otherwise);
+void gn_then(int rule);
 int32_t *gn_tele(void);
+void gn_receiver_timed(int32_t on);
 int32_t *gn_ages(void);
 void gn_match(void);
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop);
-int gn_countdown(int left, int limit, int window);
+int gn_countdown(int left, int limit, int window, int oppHas, int oppOut, int oppTop, int oppStop);
 void gn_end(void);
+void gn_quit(void);
 void gn_log(const char *s);
 void gn_thread_stats(double *out);
 ]]
-local C = ffi.load(DIR .. "/libgambit.so")
 local B = dofile(DIR .. "/lua/board.lua")
 local NUL = B.NUL
-local HI, NH = {}, C.nb_nhead()
-for i = 0, NH - 1 do HI[ffi.string(C.nb_head_name(i))] = i end
+-- (the instance in play -- open: its library, its io's head names, and the io's head and body)
+local C, HI, NH, H, Bd
 
 -- the profile, as words.js wrote it
-do
+local function configure()
   local file = os.getenv("GC_GAMBIT_WORDS") or (DIR .. "/gambit.words")
   local f = assert(io.open(file), "GambitNative: no " .. file .. " (words.js writes it)")
   local setup, profile, rules, switch, share
+  -- (GC_GAMBIT_THEN: the mode a named opener gives way to at the top-out, `_` for a space -- answer.c gb_then)
+  local thenName, thenRule = os.getenv("GC_GAMBIT_THEN"), -1
+  if thenName == "" then thenName = nil end
+  if thenName then thenName = thenName:gsub("_", " ") end
   for line in f:lines() do
     local kind, rest = line:match("^(%S+) (.*)$")
     if kind == "setup" or kind == "profile" or kind == "rules" or kind == "switch" or kind == "share" then
@@ -69,6 +75,7 @@ do
     elseif kind == "name" then
       local i, name = rest:match("^(%d+) (.*)$")
       C.gn_rule_name(tonumber(i), name)
+      if name == thenName then thenRule = tonumber(i) end
     end
   end
   f:close()
@@ -80,7 +87,27 @@ do
   C.gn_profile(profile[1], profile[2], profile[3], profile[4], profile[5], profile[6], profile[7], profile[8])
   C.gn_switch(switch and switch[1] or 0, switch and switch[2] or 0)
   C.gn_share(share and share[1] or 0, share and share[2] or 0)
+  assert(not thenName or thenRule >= 0, "GambitNative: GC_GAMBIT_THEN names no rule: " .. tostring(thenName))
+  C.gn_then(thenRule)
 end
+
+-- A FRESH GAMBIT FOR EVERY MATCH (the owner: every game a fresh game, whoever it is against): a copy of the library loaded as an instance
+-- of its own -- every one of its statics new, its threads its own -- and set up as the first match's was. The last match's instance is
+-- quit before (native.c gn_quit: its threads joined, its memory freed) and let go. The process, its connection and its lobby stay.
+local function open()
+  local f = assert(io.open(DIR .. "/libgambit.so", "rb"), "GambitNative: no " .. DIR .. "/libgambit.so")
+  local bytes = f:read("*a"); f:close()
+  local path = os.tmpname()
+  local o = assert(io.open(path, "wb")); o:write(bytes); o:close()
+  C = ffi.load(path)
+  os.remove(path)   -- (loaded: the copy is mapped, its file no longer needed)
+  HI, NH = {}, C.nb_nhead()
+  for i = 0, NH - 1 do HI[ffi.string(C.nb_head_name(i))] = i end
+  H, Bd = C.nb_io_head(), C.nb_io_body()
+  configure()
+end
+open()
+local played = false   -- (the instance open has had a match)
 
 local GambitNative = {}
 GambitNative.__index = GambitNative
@@ -100,7 +127,16 @@ end
 -- (the stack loaded once before play, so the first frame does not pay for the first load: the library's functions bound, the tables made)
 function GambitNative:startMatch(stack, match)
   self.match, self.stack, self.frames = match, stack, 0
+  -- (a match's clock starts again at 0: budgets of its own, or the last match's presses, frames ahead of this one's clock, never leave
+  -- the window)
+  if self.ownThinking then self.thinking = ThinkBudget.standard() end
+  if self.ownInputs then self.inputs = InputBudget.standard() end
+  self.dropped, self.ages, self.pv, self.slowLogged = 0, {}, {}, nil
+  if played then C.gn_quit(); open() end
+  played = true
   C.gn_match()
+  -- (an engine without GarbageDelivery -- upstream's -- lands a transit due now before the frame runs: front.c receiverTimed)
+  C.gn_receiver_timed((pcall(require, "common.engine.GarbageDelivery")) and 0 or 1)
   if stack and stack.panels then pcall(self.load, self, stack) end
 end
 
@@ -109,8 +145,7 @@ end
 local KEEP_QUEUED = 192
 -- (the countdown frames left once its cursor has come to rest: Stack.runCountdown moves it for its first 40)
 local COUNTDOWN_ASK = 135
--- (the io's head and body, and the one writer of a head field: made once, so a frame's load makes nothing)
-local H, Bd = C.nb_io_head(), C.nb_io_body()
+-- (the one writer of a head field, into the io's head the instance made -- open: so a frame's load makes nothing)
 local function put(k, v)
   local i = HI[k]
   if i and v ~= nil then H[i] = v == true and 1 or v == false and 0 or v end
@@ -153,13 +188,16 @@ local function piece(T, x, g)
 end
 -- A SOURCE WHOSE GARBAGE COMES OVER THE WIRE: the engine's own routing (common/engine/GarbageDelivery.lua looseSyncActive) -- loose
 -- sync on and connected, the source not this client's: the server's relayed garbage is what lands, and the copy of the source played
--- here is no word on it (its outgoing queue is never delivered here). Anywhere else -- lockstep, Training, a local match -- the source
--- is played here exactly and delivers here, so its outgoing garbage is the garbage on its way and its board the opponent's own.
+-- here never delivers its own (its outgoing queue is never popped here). Anywhere else -- lockstep, Training, a local match -- the
+-- source is played here exactly and delivers here, so its outgoing garbage is the garbage on its way and its board the opponent's own.
+-- (THE WIRED SOURCE'S FORECAST: the copy is played from the opponent's relayed keys and the garbage this stack sends it (bot/BotClient),
+-- so its telegraph is the opponent's: what it stages, and each transit not yet finished on the copy's own stopWatch. A finished one is
+-- the server's to deliver -- it is in this stack's own queue once it comes, and never popped from the copy's, so it is left out.)
 local function wired(src)
   return LOOSE_SYNC_GARBAGE and GAME and GAME.netClient and GAME.netClient.isConnected and GAME.netClient:isConnected()
     and not src.is_local and true or false
 end
--- (a wired source's garbage is read off this stack's own queue only, what the server delivered: board.lua loads it)
+-- (a wired source's garbage delivered is read off this stack's own queue, what the server sent: board.lua loads it)
 -- (A SOURCE PLAYED HERE BEHIND THIS STACK: an opponent's stack copied from its relayed keys runs as far as its keys have come, so it
 -- can be frames behind this one -- its transits are timed on its own stopWatch, which the frame loop reads them against (front.c
 -- arrivalsOf), so its stopWatch is given as it will be once it has caught up: the frames it is behind added)
@@ -173,12 +211,80 @@ local function caughtUp(src, me)
   local lag = me and me.clock and src.clock and me.clock - src.clock or 0
   return src.stopWatch + (lag > 0 and lag or 0)
 end
-function GambitNative:telegraph(sources, me)
+-- (GC_GAMBIT_BLIND: training played as the live server plays it -- every source as if wired, its garbage known only once it is in
+-- this stack's own queue, as loose sync delivers it)
+local BLIND = os.getenv("GC_GAMBIT_BLIND") == "1"
+-- (THE WIRED SOURCE'S OWN TELEGRAPH: the opponent's client ships its outgoing garbage with every board it shows (DisplayEventCapture og,
+-- BotClient's view.og) -- the blocks a player sees at the top -- and that is the opponent's own, where the copy played here from its
+-- relayed keys runs behind it and can come apart from it. Each piece is told on the opponent's stopWatch (frameEarned); a board's
+-- frame, and the frame this stack saw it on, carry that onto this stack's (the two stacks' countdowns taken as one length). A piece
+-- still staged ships as the copy's would; one gone from the telegraph since is on its way: due LAND frames after the last board that
+-- still showed it staged, and forgotten once that frame is past.)
+local STAGING, LAND = 45 + 45 + 1, 60
+local function viewTelegraph(self, T, x, view, me)
+  local cd = (me.clock or 0) - (me.stopWatch or 0)
+  local snapSW = view.clock - cd
+  local nowSW = snapSW + (me.stopWatch - view.seenSW)
+  local mem = self.ogMem or {}; self.ogMem = mem
+  local seen = {}
+  for _, g in ipairs(view.og) do
+    -- (a chain grows, its frameEarned moving to its last link: it is known by its first)
+    local first = nil
+    if g.isChain then for f in pairs(g.links or EMPTY) do f = tonumber(f); if f and (not first or f < first) then first = f end end end
+    local k = g.isChain and ("c" .. tostring(first or g.frameEarned)) or (tostring(g.frameEarned) .. ":" .. tostring(g.rowEarned) .. ":" .. tostring(g.colEarned))
+    seen[k] = true
+    mem[k] = { g = g, last = snapSW }
+  end
+  T[x], T[x + 1] = nowSW, 0; x = x + 2
+  local at, nt, sent = x, 0, 0
+  x = x + 1
+  for k, e in pairs(mem) do
+    if not seen[k] then
+      local t = math.max((e.g.frameEarned or e.last) + STAGING, e.last) + LAND
+      if t < nowSW - 2 or sent >= SOURCE_PIECES then mem[k] = nil
+      else
+        T[x], T[x + 1] = t, 1; x = x + 2
+        x = piece(T, x, { width = e.g.width, height = e.g.height, isChain = e.g.isChain, isMetal = e.g.isMetal, frameEarned = e.g.frameEarned, finalized = true })
+        nt, sent = nt + 1, sent + 1
+      end
+    end
+  end
+  T[at] = nt
+  -- (still staged, the last to ship at the end, as the engine's staged list: the soonest earned last)
+  local staged = {}
+  for _, g in ipairs(view.og) do staged[#staged + 1] = g end
+  table.sort(staged, function(a, b) return (a.frameEarned or 0) > (b.frameEarned or 0) end)
+  local keep = math.max(0, math.min(#staged, SOURCE_PIECES - sent))
+  T[x] = keep; x = x + 1
+  for i = #staged - keep + 1, #staged do local g = staged[i]
+    x = piece(T, x, { width = g.width, height = g.height, isChain = g.isChain, isMetal = g.isMetal, frameEarned = g.frameEarned, finalized = not g.isChain or nil }) end
+  return x
+end
+function GambitNative:telegraph(sources, me, view)
   local T, x = C.gn_tele(), 1
   local n = 0
   for _, src in ipairs(sources or EMPTY) do
     local q = src.outgoingGarbage
-    if q and src.stopWatch ~= nil and not wired(src) then
+    local w = wired(src)
+    -- (THE FORECAST'S SOURCE, logged: what the opponent's board shipped of its telegraph, and the times read off it -- the first 60
+    -- frames a game it holds a piece, and every 600th frame)
+    if w then
+      if not self.teleClock or (me.clock or 0) < self.teleClock then self.teleLogged = 0 end
+      self.teleClock = me.clock or 0
+      local nog = view and view.og and #view.og or -1
+      if me.clock and ((nog > 0 and self.teleLogged < 60) or me.clock % 600 == 0) then
+        self.teleLogged = self.teleLogged + (nog > 0 and 1 or 0)
+        local first = view and view.og and view.og[1]
+        C.gn_log(string.format("TELE clock %d sw %d: view %s og %d seenSW %s snapClock %s seen %s; first %s",
+          me.clock, me.stopWatch or -1, view and "yes" or "no", nog, tostring(view and view.seenSW), tostring(view and view.clock),
+          tostring(view and view.seen), first and string.format("%dx%d chain %s earned %s", first.width or -1, first.height or -1,
+          tostring(first.isChain), tostring(first.frameEarned)) or "-"))
+      end
+    end
+    if w and view and view.og and view.seenSW and view.clock and me.stopWatch and not BLIND then
+      n = n + 1
+      x = viewTelegraph(self, T, x, view, me)
+    elseif q and src.stopWatch ~= nil and not BLIND then
       n = n + 1
       T[x], T[x + 1] = caughtUp(src, me), b01(q.illegalStuffIsAllowed); x = x + 2
       -- (every transit not yet delivered: one whose time has come waits while the stack has CAPPED_AT queued, GarbageDelivery; its count
@@ -188,7 +294,7 @@ function GambitNative:telegraph(sources, me)
       if q.transitTimers then
         for k = q.transitTimers.first, q.transitTimers.last do
           local t = q.transitTimers[k]
-          if t and sent < SOURCE_PIECES then
+          if t and sent < SOURCE_PIECES and (not w or t > src.stopWatch) then
             local list = q.garbageInTransit[t] or EMPTY
             T[x], T[x + 1] = t, #list; x = x + 2
             for i = 1, #list do x = piece(T, x, list[i]) end
@@ -218,17 +324,27 @@ end
 -- exactly is read off its own stack. (A panel counts as the engine's Panel:dangerous counts it: garbage still falling is not the
 -- stack's height, and does not top it out.)
 local VIEW_FRESH = 90   -- frames a shipped board of the opponent is read as its board
+local FIGHT = os.getenv("GC_GAMBIT_FIGHT") == "1"
+local FOUGHT = false
 local function counts(p) if not p then return false end if p.isGarbage then return p.state ~= "falling" end return (p.color or 0) ~= 0 end
 local function opponentOf(sources, view, clock)
   local anyWired = false
   for _, src in ipairs(sources or EMPTY) do if src.panels and wired(src) then anyWired = true end end
-  if view and clock and view.seen and (anyWired or clock - view.seen <= VIEW_FRESH) then
+  -- (a board shipped in this game only: the game's clock starts again at its countdown, and the last game's last board -- the enemy
+  -- topped out, as a game ends -- is not this one's)
+  -- (any opponent seen, by any of the three routes, makes this host a fighter for the session: FOUGHT)
+  if view and clock and view.seen and view.seen <= clock and (anyWired or clock - view.seen <= VIEW_FRESH) then
+    FOUGHT = true
     return 1, view.out and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
   end
-  if anyWired then return 1, 0, 0, 0 end
+  if anyWired then FOUGHT = true return 1, 0, 0, 0 end
   local has, out, top, stop = 0, 0, 0, 0
   for _, src in ipairs(sources or EMPTY) do
-    if type(src.game_ended) == "function" and src:game_ended() then return 0, 0, 0, 0 end
+    -- (a stack whose game has ended is the last game's: in a fight the next one's opponent is coming, low and not topped out)
+    if type(src.game_ended) == "function" and src:game_ended() then
+      if FIGHT or FOUGHT then return 1, 0, 0, 0 end
+      return 0, 0, 0, 0
+    end
     if type(src.isToppedOut) == "function" and src.panels then
       has = 1
       stop = math.max(stop, (src.stop_time or 0) + (src.pre_stop_time or 0), src.shake_time or 0)
@@ -240,9 +356,105 @@ local function opponentOf(sources, view, clock)
       end
     end
   end
+  -- (GC_GAMBIT_FIGHT: training played as a fight -- the attack engine stands in for a stack that is there, low, not topped, held up by
+  -- nothing, from the countdown on, so the opening is found the way a fight's is: the opener's table)
+  -- (and a host that has fought an opponent this session is in a fight from each game's countdown on, before the new game's stack is
+  -- wired: a match begins with the opponent not topped out, low, held up by nothing)
+  if has == 1 then FOUGHT = true end
+  if has == 0 and (FIGHT or FOUGHT) then return 1, 0, 0, 0, true end
   return has, out, top, stop
 end
 
+-- THE VIRTUAL ENEMY (GC_GAMBIT_ENEMY=virtual, training only -- the stand-in above made a stack that moves as players' do, so a rule that
+-- reads the enemy's room is played offline): its own stack drifts about VE_BASE rows (VE_LO to VE_HI), a row up or down every VE_STEP
+-- frames with chance VE_MOVE, pulled back toward VE_BASE; our garbage lands on it when it leaves our queue, a row a piece of each row
+-- it is; it digs a row out every VE_DIG frames while any is on it; topped at 12. Measured on Tanycanayt's own board over 46 live games
+-- (32,403 boards, one every 32 frames): its stack less its garbage rows median 7, sd 1.6, 3 to 11, moving 0.21 rows a sample; its
+-- garbage dug out 0.21 rows a second net while any was on it. Topped with no shake left, it dies (VENEMY in the log) and a new one
+-- begins. Seeded from PA_SEED: a run repeats.
+local VIRTUAL = os.getenv("GC_GAMBIT_ENEMY") == "virtual"
+local VE_BASE, VE_LO, VE_HI, VE_STEP, VE_MOVE, VE_DIG, VE_FLIGHT = 7, 3, 11, 32, 0.21, 285, 151
+local VE = { clock = -1 }
+local function veRand()   -- (a linear congruential stream, the same for a seed in any LuaJIT)
+  VE.r = (VE.r * 1103515245 + 12345) % 2147483648
+  return VE.r / 2147483648
+end
+local function virtualEnemy(me, clock)
+  if clock < VE.clock or not VE.r then
+    VE = { clock = clock, base = VE_BASE, garbage = 0, dig = 0, seen = {}, done = {}, r = (tonumber(os.getenv("PA_SEED") or "1") or 1) % 2147483648 }
+  end
+  local q, cur = me and me.outgoingGarbage, {}
+  if q then
+    for _, g in ipairs(q.stagedGarbage or EMPTY) do cur[g] = g.height or 1 end
+    if q.transitTimers then
+      for k = q.transitTimers.first, q.transitTimers.last do
+        local t = q.transitTimers[k]
+        for _, g in ipairs(t and q.garbageInTransit[t] or EMPTY) do cur[g] = g.height or 1 end
+      end
+    end
+  end
+  -- (A LANDING'S SHAKE, as the engine's onGarbageLand has it: by the piece's cells, 18 frames up to 4, 24 for 5, 42 to 11, 66 to 23, 76
+  -- from 24; a landing while it shakes renews the largest shake since it was last 0; garbage landing above its top row shakes nothing)
+  local function land(g, h)
+    local before = VE.base + VE.garbage
+    VE.garbage = VE.garbage + h; VE.landed = clock
+    if before < 12 then
+      local cells = (g.width or 6) * h
+      local sh = cells <= 4 and 18 or cells == 5 and 24 or cells <= 11 and 42 or cells <= 23 and 66 or 76
+      if (VE.shake or 0) <= 0 then VE.shakeMax = 0 end
+      VE.shakeMax = math.max(VE.shakeMax or 0, sh); VE.shake = VE.shakeMax
+    end
+  end
+  -- (a piece lands VE_FLIGHT frames after it is first seen on our queue, or as it leaves it -- training has no stack to take it, so it
+  -- may never leave; until then it is a row on its way)
+  local onWay, seen = 0, {}
+  for g, h in pairs(cur) do
+    local first = VE.seen[g] and VE.seen[g][1] or clock
+    seen[g] = { first, h }
+    if not VE.done[g] then
+      if clock - first >= VE_FLIGHT then land(g, h); VE.done[g] = true else onWay = onWay + h end
+    end
+  end
+  for g, e in pairs(VE.seen) do if not cur[g] and not VE.done[g] then land(g, e[2]) end end
+  VE.seen = seen
+  while VE.clock < clock do
+    VE.clock = VE.clock + 1
+    if VE.clock % VE_STEP == 0 and veRand() < VE_MOVE then
+      local up = 0.5 + 0.1 * (VE_BASE - VE.base)
+      VE.base = math.max(VE_LO, math.min(VE_HI, VE.base + (veRand() < up and 1 or -1)))
+    end
+    if (VE.shake or 0) > 0 then VE.shake = VE.shake - 1 end
+    if VE.garbage > 0 then VE.dig = VE.dig + 1; if VE.dig >= VE_DIG then VE.dig = 0; VE.garbage = VE.garbage - 1 end else VE.dig = 0 end
+  end
+  -- (DEAD as a stack is: topped out with no shake left -- logged with the frames
+  -- from its first top-out, and the next one begins: low, no garbage, as a new round's)
+  local h = VE.base + VE.garbage
+  if h >= 12 then
+    VE.topped = VE.topped or clock
+    if (VE.shake or 0) <= 0 then
+      C.gn_log(string.format("VENEMY clock %d: died, %d frames from its top-out, %d kills", clock, clock - VE.topped, (VE.kills or 0) + 1))
+      VE.kills = (VE.kills or 0) + 1; VE.base = VE_LO + math.floor(veRand() * (VE_BASE - VE_LO + 1)); VE.garbage = 0; VE.dig = 0; VE.topped = nil; VE.shake = 0
+      h = VE.base
+    end
+  else VE.topped = nil end
+  return math.min(12, h), h >= 12 and 1 or 0, onWay
+end
+
+-- (THE ENEMY AS OUR GARBAGE WILL LEAVE IT: the rows this stack has sent it that have not landed -- staged on the telegraph, or on their
+-- way -- each piece its height, added to its tallest column: the rules' enemy.height is the board it will have, so a big chain on its
+-- way brings on the mode that finishes it, and the next attack is sized to the room left)
+local function rowsOnItsWay(me)
+  local q, n = me and me.outgoingGarbage, 0
+  if not q then return 0 end
+  for _, g in ipairs(q.stagedGarbage or EMPTY) do n = n + (g.height or 1) end
+  if q.transitTimers then
+    for k = q.transitTimers.first, q.transitTimers.last do
+      local t = q.transitTimers[k]
+      for _, g in ipairs(t and q.garbageInTransit[t] or EMPTY) do n = n + (g.height or 1) end
+    end
+  end
+  return n
+end
 function GambitNative:think(stack, sources, view)
   local idle = KeyDataEncoding.base64encode[1]
   -- (the countdown: once the cursor has come to rest, the opening asked of the board as play will begin with it -- gn_countdown)
@@ -250,7 +462,8 @@ function GambitNative:think(stack, sources, view)
     local left = stack.countdown_timer
     if left and left > 1 and left <= COUNTDOWN_ASK then
       self:load(stack)
-      C.gn_countdown(left, self.inputs.limit or 0, self.inputs.window or 0)
+      local has, out, top, stop = opponentOf(sources, view, stack.clock)
+      C.gn_countdown(left, self.inputs.limit or 0, self.inputs.window or 0, has, out, top, stop)
     end
     return idle
   end
@@ -258,10 +471,13 @@ function GambitNative:think(stack, sources, view)
   local t0 = ThinkBudget.now()
   self:load(stack)
   local t1 = ThinkBudget.now()
-  self:telegraph(sources, stack)
+  self:telegraph(sources, stack, view)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
-  local has, out, top, stop = opponentOf(sources, view, stack.clock)
+  local has, out, top, stop, stand = opponentOf(sources, view, stack.clock)
+  local onWay
+  if stand and VIRTUAL then top, out, onWay = virtualEnemy(stack, stack.clock) end
+  if has == 1 then top = math.min(12, top + (onWay or rowsOnItsWay(stack))) end
   local t2 = ThinkBudget.now()
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
