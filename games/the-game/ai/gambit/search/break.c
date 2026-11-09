@@ -425,6 +425,10 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
       const Board *rb = ensureBoard(x, s->root);
       int starved = pressAllowance >= 0 && rb;
       int64_t bestB = -1; int32_t bestKey = 0, bestLen = 0, bestAt = 0, bestCarried = 0, bestPath[MAXPATH];
+      // (A BREAK THE MODE ASKS, ONE SWAP ON: the best break of the level is not one the list asks -- a three, or the last resort -- and the
+      // list has an entry: the level's lines that break nothing are kept and the level after it searched as well, and a break there that the
+      // list asks is put before the one held by the one rule (breakCat) -- finish them, 59% of the off-mode lines played with no on-mode
+      // line offered)
       for (int i = 0; i < ntl; i++) {
         for (int b = bAt[i]; b < bAt[i + 1]; b++) {
           int32_t mv = bMv[b];
@@ -440,13 +444,14 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
             if (bk > bestB) { bestB = bk; bestKey = tl[i]->key; bestCarried = tl[i]->carried; bestLen = nl->len; bestAt = NODE(x, t3)->t; for (int k = 0; k < nl->len; k++) bestPath[k] = nl->path[k]; }
             continue;
           }
-          if (bestB < 0 && within(s, t3)) tn[ntn++] = nl;
+          if ((bestB < 0 || (theList.n > 0 && ((bestB >> 32) & 255) < 2 && td < TOUCH_DEPTH)) && within(s, t3)) tn[ntn++] = nl;
         }
       }
       batchDone();
       if (bestB >= 0 && bestB > heldB) { found(o, bestKey); setPath(o, bestPath, bestLen); o->at = bestAt; heldB = bestB; o->fresh = s->resume && s->resume->n && !bestCarried; }
       if (bestB >= 0 && foundTd < 0) foundTd = td;
-      if (foundTd >= 0 && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == TOUCH_DEPTH)) tpath = 1;
+      int oneOn = theList.n > 0 && foundTd == td && ((heldB >> 32) & 255) < 2 && td < TOUCH_DEPTH;
+      if (foundTd >= 0 && !oneOn && (!starved || td > foundTd || 255 - ((heldB >> 24) & 255) <= CHEAP_BREAK || td == TOUCH_DEPTH)) tpath = 1;
       // (and the level expanded: its boards are its children's now -- the frontier the next decision carries on, in its parents' order)
       if (ntn) keepPaths(&o->keepOut, tn, ntn < KEEPN ? ntn : KEEPN);
       for (int i = 0; i < ntn; i++) tl[i] = tn[i];
