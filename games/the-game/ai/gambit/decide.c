@@ -704,9 +704,10 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.waits = waits; carriedSunk = -1;
-  // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
-  // tier, and its swaps after the first are the break it was chosen for)
-  carrySkip = !k ? 1 : (k->wait && k->k.play != PLAY_CARRYWAIT) ? 2 : k->k.nseq < first + 1 ? 3 : (k->t.tier > 4 && !(k->apBroke > 0) && !savesOverHold(k)) ? 4 : 0;
+  // (every line of two swaps or more is carried, whatever its tier: a line begun and not carried is judged again from nothing at the next
+  // decision, and one put down there for another is every swap of it pressed for nothing -- the cursor sent after the next one; a line
+  // carried stands while it survives as well, the order's keys for the line in progress)
+  carrySkip = !k ? 1 : (k->wait && k->k.play != PLAY_CARRYWAIT) ? 2 : k->k.nseq < first + 1 ? 3 : 0;
   if (carrySkip) { carryClr = carrySkip; return; }
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
