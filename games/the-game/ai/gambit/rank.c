@@ -399,6 +399,13 @@ static void markIdle(Judge **a, int n) {
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   double holdLost = H ? lostOf(H) : 0;
   for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  // (THE RESERVE IS THE NEXT BREAK'S: with garbage on the board or on its way, a line that clears nothing and leaves the window under a
+  // break's walk does nothing the hold does not, unless it buys a break's time of life -- the presses are the next break's; the test
+  // losses that ran the window to five or fewer spent it on level, set-up and zip lines too, ten level swaps in combo_storm 1)
+  int garbage = decF.under || decQ.narr > 0;
+  for (int i = 0; i < n && garbage; i++)
+    if (H && !a[i]->idle && clearsNothing(a[i]) && spendsReserve(a[i]) && !(a[i]->o.lives && !H->o.lives) && !(lostOf(a[i]) >= holdLost + rankSave))
+      { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
