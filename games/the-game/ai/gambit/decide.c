@@ -252,8 +252,6 @@ static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
-static int32_t savePlayed, saveKeptNow;   // (saveKeptNow: this decision kept the save in progress so)
-// (the line played last wastes a three the save found needed -- answer.c: the line in progress a save)
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
 // it could not be asked. The hold's board is the board left alone. A line lost before its end is lost where the judge saw it lost, and a
@@ -329,7 +327,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; orderN = 0; twoDropped = 0; twoWhy = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = saveKeptNow = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; orderN = 0; twoDropped = 0; twoWhy = 0; twoRemade = 0; backTrimmed = 0; noopTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -456,10 +454,10 @@ static int ranked(const Read *R, const Found *S) {
   // NO WASTED THREE (the owner: only when not doing it would kill it): a line whose clears break nothing and throw nothing is taken out
   // of the order -- unless every other line is lost within a break's time (rankSave) and a three lives, or is lost later: only there is
   // a three a save
-  { int keeps = 0, wasteLives = 0, keptLives = 0; double wasteLost = -1, keptLost = -1;
+  { int keeps = 0, wasteLives = 0; double wasteLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
       if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
-      else if (order[i]->o.lives) keeps = keptLives = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
+      else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
     // (with no garbage on the board or on its way the board is lost to its own rise, and a break's time is fewer rows the faster it
     // rises: a three is wasted only where the line without one keeps it a row's rise past that, at the speed it rises now)
@@ -512,13 +510,7 @@ static int ranked(const Read *R, const Found *S) {
     if (!keeps && !saveOk && (wasteLives || wasteLost >= 0) && !(saveAsked && saveCw >= 0 && saveCk >= 0)) { saveOk = 1; saveBlind = 1; }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
-    // (A SAVE BEGUN STANDS WHILE IT SAVES: the line in progress played as a save the check found needed is not put down as a wasted three
-    // while it is lost a break's time or more after every line that keeps its threes -- the check asked with the searches' reach, the
-    // rule here with the lines' own, and between the two a save begun was put down the next decision with every swap pressed of it)
-    // (never over a check that answered this decision: its searches reach further than either line's own)
-    int saveKept = saveKeptNow = !saveOk && savePlayed && carriedJ && wastesThree(carriedJ) && !carriedJ->o.dead && !keptLives && keptLost >= 0
-                   && !(saveAsked && saveCw >= 0 && saveCk >= 0) && (carriedJ->o.lives || lostOf(carriedJ) - keptLost >= rankSave);
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && !(saveKept && order[i] == carriedJ)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = 0; carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // NO 2x NOT TAKEN TO THREE (the owner: a 2x is taken to three, and one that cannot be is not made): a line whose chain ends at two
   // (rank.c shortChain) is taken out of the order -- unless every other line is lost within a break's time (rankSave) and a 2x lives,
   // or is lost later: only there is a 2x a save

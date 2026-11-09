@@ -82,7 +82,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_FOR 600
 #define FOLLOW_FOR 360   // (the frames a swap's three waits for a break by a later swap of its line: past them, unbroken, it was wasted)
 #define MOVE_FALL 60
-typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx, row, col, acts, pa, pb, overG; } MoveOpen;   // overG: unbroken garbage under the swap, in either of its columns (its panels fall when it breaks)   // pa, pb: the ids of the two cells swapped (0: none there)   // row, col: where it was pressed; acts: the actions pressed since the swap before, its own included   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
+typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx, row, col, acts, pa, pb; } MoveOpen;   // pa, pb: the ids of the two cells swapped (0: none there)   // row, col: where it was pressed; acts: the actions pressed since the swap before, its own included   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 // (the lines whose swaps are followed: each answer's swaps in all and how many of them were pressed, by the answer's id)
 #define LINE_RECS 64
 typedef struct { int32_t id, total, pressed, why, next, acts; } LineRec;   // why: what ended the line (END_*, or the order's key that put it down); next: the answer's line it was carried on as (END_ON)
@@ -827,12 +827,11 @@ static void countAttacks(const Board *b) {
 // after it, the swap set the clear up; a clear that breaks garbage, a break; none matched, a swap that did nothing.
 // EVERY SWAP, ONE LINE (GAMBITM): the frame it was pressed, where, the kind of line, what it came to (c a clear, s a set-up, b a break,
 // n nothing), its place in its line, the actions pressed for it since the swap before, what ended its line (front.c lineEnds; 0
-// not yet), the ids of the two cells it swapped (0 none: a swap of the same two ids twice running is a swap back), and 1 where
-// unbroken garbage is under it
+// not yet), and the ids of the two cells it swapped (0 none: a swap of the same two ids twice running is a swap back)
 static void moveLog(const MoveOpen *m, char outcome) {
   const LineRec *r = lineRec(m->lid);
-  char l[160]; snprintf(l, sizeof l, "GAMBITM %d %d,%d %s %c %d/%d %d %d %d %d %d", m->at, m->row, m->col, m->play > 0 && m->play <= NPLAYS ? PLAY_NAME[m->play - 1] : "-",
-                        outcome, m->idx + 1, r ? r->total : 0, m->acts, r ? r->why : -1, m->pa, m->pb, m->overG);
+  char l[160]; snprintf(l, sizeof l, "GAMBITM %d %d,%d %s %c %d/%d %d %d %d %d", m->at, m->row, m->col, m->play > 0 && m->play <= NPLAYS ? PLAY_NAME[m->play - 1] : "-",
+                        outcome, m->idx + 1, r ? r->total : 0, m->acts, r ? r->why : -1, m->pa, m->pb);
   flog(l);
 }
 static void noneOf(const MoveOpen *m) {
@@ -860,8 +859,6 @@ static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play,
     int32_t a = b->p[r0][b->curCol].f[ID], z = b->p[r0][b->curCol + 1].f[ID];
     m->pa = a == NUL ? 0 : a; m->pb = z == NUL ? 0 : z;
   }
-  for (int c = b->curCol; c <= b->curCol + 1 && c <= W && c >= 1; c++)
-    for (int r = 0; r < r0 && r < b->nrows; r++) if (b->p[r][c].f[ISGARBAGE]) m->overG = 1;
   for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
     for (int r = r0; r < b->nrows && m->n < MOVE_IDS; r++) {
       const int32_t *f = b->p[r][c].f;
