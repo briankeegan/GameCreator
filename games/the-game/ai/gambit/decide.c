@@ -701,12 +701,12 @@ static Played playOf(const Read *R, int n) {
       theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
     const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
     int32_t seq[PLAN_DEPTH + 1], c = 0; int ns = 0;
-    planned = -1;
+    planned = -1;   // (-1 none found, -2 no candidate, -3 not judged or lost, -4 not on the list, -5 a wasted three)
     if (chainPlan(&decQ, want, seq, &ns, &c) && ns > 0) {
-      static Judge PL; Cand k;
+      static Judge PL; Cand k; planned = -2;
       if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
-        k.settled = 1;
-        if (judgeCand(R, &k, &PL) && !PL.o.dead && PL.o.lives && PL.met >= 0 && !wastesThree(&PL)) { P.line = &PL; planned = c; }
+        k.settled = 1; planned = -3;
+        if (judgeCand(R, &k, &PL) && !PL.o.dead && PL.o.lives) { planned = PL.met < 0 ? -4 : wastesThree(&PL) ? -5 : c; if (planned > 0) P.line = &PL; }
       }
     }
   }
