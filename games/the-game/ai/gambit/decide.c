@@ -111,7 +111,7 @@ static int readBoard_(Read *R) {
   // the searches' and the rank's, and the floor's raise are the next break's material; with no garbage ever, endless, they hold the stack
   // seven rows high at forty-seven frames a row)
   if (F->known[FACT_US_CONTACT] || decQ.narr > 0 || decQ.b->ninc > 0) garbageSeen = 1;
-  int garbageGame = garbageSeen; rankGarbageGame = garbageGame;
+  int garbageGame = garbageSeen;
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on && garbageGame;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
@@ -189,6 +189,7 @@ static int readBoard_(Read *R) {
   // (the raise is held for as many rows as leave the board a plan once everything the game shows has landed -- and alive while they rise)
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;
+    raiseOpens = opening;
     int32_t rows = raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
     // (THE FLOOR'S RAISE ON A BOARD TOO SHORT TO BREAK: below the floor, no row count leaves a break once everything lands -- the panels
     // a break is made of are what the board lacks -- so the rows the board lives through once everything lands are raised all the same:

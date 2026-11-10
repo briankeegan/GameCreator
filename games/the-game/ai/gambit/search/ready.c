@@ -147,6 +147,7 @@ static int32_t raiseOpenIn(const Question *q, int32_t most, Board *at) {
   return NOT_ASKED;
 }
 static int32_t raiseAlive;   // (the rows raiseReady found the board alive through once everything lands, ready or not)
+static int raiseOpens;       // (the raise asked is the opening's: decide.c sets it before raiseReady)
 static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
   int32_t last = NOT_ASKED;
   raiseAlive = 0;
@@ -157,14 +158,17 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
   static Board *st, *at;
   if (!st) { st = nb_new(); at = nb_new(); }
   // (NOTHING ON ITS WAY: the rows the board, raised, lives through left alone to the judge's horizon (outcome.c HORIZON) -- a raise ends
-  // the stop it is held up by and brings the top nearer, and a stack raised to its top with no garbage to come still rises into it)
+  // the stop it is held up by and brings the top nearer, and a stack raised to its top with no garbage to come still rises into it. The
+  // opening's raise is held to more: a line with nothing coming lives by standing HORIZON + REST (outcome.c), so a board raised to stand
+  // only that long leaves no line that lives -- it stands that and one more REST, the time a line takes)
   if (last == NOT_ASKED) {
+    int32_t stand = raiseOpens ? HORIZON + 2 * REST : HORIZON;
     for (int k = 1; k <= rows; k++) {
       cloneBoard(st, q->b);
       int32_t f = 0;
       while (fullTop(st) < top0 + k && st->gameOverClock <= 0 && f < 40 * k) { st->input = RAISE_IN; run(st); f++; }
       if (st->gameOverClock > 0 || fullTop(st) < top0 + k) break;
-      for (int32_t g = f; g < HORIZON && st->gameOverClock <= 0; g++) { st->input = 0; run(st); }
+      for (int32_t g = f; g < stand && st->gameOverClock <= 0; g++) { st->input = 0; run(st); }
       if (st->gameOverClock > 0 || nowMs() - t0 > ms) break;
       ok = raiseAlive = k;
     }

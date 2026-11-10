@@ -344,15 +344,10 @@ static int setupKind(const Judge *J) {
 // own; a set-up across the board walks the window away for what a zip at hand makes. Of two zips, the nearer, then the stack left more
 // zipped -- its colours a swap apart, not touching (judge.c spreadOf). -1 x first, 1 y first, 0 neither)
 #define ZIP_NEAR 4
-static int rankGarbageGame;   // (garbage has been on the board or on its way this game: decide.c garbageGame -- endless never)
 static int zipOver(const Judge *x, const Judge *y) {
   int zx = x->k.play == PLAY_ZIP, zy = y->k.play == PLAY_ZIP;
   if (!zx && !zy) return 0;
-  // (in a game garbage has come to, the zip before a set-up aimed at no entry of the list -- a level, a line nearest nothing the mode asks:
-  // the owner, the zipper is the set-up, among the most important things it does; a set-up toward the mode's own chain or combo keeps its
-  // place, and in endless the stack's set-ups keep theirs)
-  if (zx != zy) { const Judge *z = zx ? x : y, *o = zx ? y : x;
-    int first = (rankGarbageGame && o->k.aim < 0) || lineWalk(o) - lineWalk(z) >= ZIP_NEAR ? z == x : o == x; return first ? -1 : 1; }
+  if (zx != zy) { const Judge *z = zx ? x : y, *o = zx ? y : x; int first = lineWalk(o) - lineWalk(z) >= ZIP_NEAR ? z == x : o == x; return first ? -1 : 1; }
   // (of two zips, the nearer by ZIP_NEAR actions or more, then the more zipped)
   { int wx = lineWalk(x), wy = lineWalk(y); if (iabs(wx - wy) >= ZIP_NEAR) return wx < wy ? -1 : 1; }
   if (x->o.j.spread != y->o.j.spread) return x->o.j.spread > y->o.j.spread ? -1 : 1;
