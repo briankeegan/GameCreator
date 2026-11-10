@@ -483,9 +483,11 @@ function GambitNative:think(stack, sources, view)
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
   if bits < 0 then error("GambitNative: the engine refused the board at clock " .. tostring(stack.clock)) end
-  -- (GC_STOP_AFTER_HANDOVER frames: the game ends alive that many frames after the enemy first tops out -- the opener's handover and the
-  -- seconds after it measured, nothing past them; the training loop reads GC_TRAINING_STOP_AT)
-  if STOP_AFTER and not self.stopSet and has == 1 and out == 1 then self.stopSet = true; rawset(_G, "GC_TRAINING_STOP_AT", stack.clock + STOP_AFTER) end
+  -- (GC_STOP_AFTER_HANDOVER frames: the game ends alive that many frames after the opener's handover -- either stack topped out first,
+  -- as answer.c ends the opener -- and the seconds after it measured, nothing past them; the training loop reads GC_TRAINING_STOP_AT)
+  if STOP_AFTER and not self.stopSet and (out == 1 or (stack.isToppedOut and stack:isToppedOut())) then
+    self.stopSet = true; rawset(_G, "GC_TRAINING_STOP_AT", stack.clock + STOP_AFTER)
+  end
   self.frames = self.frames + 1
   return KeyDataEncoding.base64encode[bits + 1] or idle
 end
