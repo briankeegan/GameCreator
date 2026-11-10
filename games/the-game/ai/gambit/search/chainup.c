@@ -51,3 +51,57 @@ static int chainUpSwap(const Question *q, int32_t *sw, int32_t *now, int32_t *af
   }
   return found;
 }
+// THE OPENER'S CHAIN PLANNED (the owner: the countdown's seconds plan the chains and set them going at once): a beam over set-up swaps
+// -- each clearing nothing -- PLAN_DEPTH deep, PLAN_BEAM boards a level, the nearest the cursor first, each board scored by the longest
+// chain one swap sets off on it (triggerChainOf). The shortest sequence whose trigger sets off `want` or more, else the one whose trigger
+// sets off the longest chain found, the trigger last: seq, *n its swaps, *chain what it sets off. 0: none found
+#define PLAN_DEPTH 5
+#define PLAN_BEAM 4
+#define PLAN_KIDS 24   // (the swaps tried from each board, the nearest the cursor first)
+static LOCAL Ctx *cuCtxC;
+static int chainPlan(const Question *q, int32_t want, int32_t *seq, int *n, int32_t *chain) {
+  Ctx *x = cuCtxC = ctxOf(cuCtxC);
+  int root = rootOf(x, q);
+  if (root < 0) return 0;
+  typedef struct { int node, len; int32_t path[PLAN_DEPTH], c; } Bm;
+  Bm beam[PLAN_BEAM], next[PLAN_BEAM]; int nb = 1, best = 0, bestLen = 0; int32_t bestSeq[PLAN_DEPTH + 1], bestC = 0;
+  beam[0].node = root; beam[0].len = 0;
+  { int32_t t = 0; int32_t c = triggerChainOf(q, &t); if (c > 0 && t) { bestSeq[0] = t; bestLen = 1; bestC = c; best = 1; if (c >= want) goto done; } }
+  for (int d = 0; d < PLAN_DEPTH && nb > 0 && !clockOut(); d++) {
+    int nn = 0;
+    for (int bi = 0; bi < nb && !clockOut(); bi++) {
+      const Board *b0 = ensureBoard(x, beam[bi].node);
+      if (!b0) continue;
+      int32_t ms[MAXROWS * W]; int m = swapsOfNode(x, beam[bi].node, ms), dd[MAXROWS * W];
+      int cr = b0->curRow, cc = b0->curCol;
+      if (beam[bi].len) { cr = CR(beam[bi].path[beam[bi].len - 1]); cc = CC(beam[bi].path[beam[bi].len - 1]); }
+      for (int i = 0; i < m; i++) dd[i] = iabs(CR(ms[i]) - cr) + iabs(CC(ms[i]) - cc);
+      for (int i = 1; i < m; i++) for (int j = i; j > 0 && dd[j] < dd[j - 1]; j--) { int t = dd[j]; dd[j] = dd[j - 1]; dd[j - 1] = t; int32_t u = ms[j]; ms[j] = ms[j - 1]; ms[j - 1] = u; }
+      for (int i = 0; i < m && i < PLAN_KIDS && !clockOut(); i++) {
+        int s1 = step(x, beam[bi].node, MK_SWAP, CR(ms[i]), CC(ms[i]), 0);
+        if (!liveNode(x, s1)) continue;
+        int out = settleOf(x, s1);
+        if (!liveNode(x, out)) continue;
+        Stats st;
+        if ((statsOf(x, s1, &st) && st.cleared > 0) || (statsOf(x, out, &st) && st.cleared > 0)) continue;   // (a set-up clears nothing)
+        Board *eb = ensureBoard(x, out);
+        if (!eb) continue;
+        Question q2 = *q; q2.b = eb; q2.narr = 0; q2.holdLeft = 0; q2.holdStarted = 0;
+        int32_t t = 0, c = triggerChainOf(&q2, &t);
+        Bm e = beam[bi]; e.node = out; e.path[e.len++] = ms[i]; e.c = c;
+        if (c > bestC && t) { bestC = c; bestLen = e.len + 1; for (int k = 0; k < e.len; k++) bestSeq[k] = e.path[k]; bestSeq[e.len] = t; best = 1; if (c >= want) goto done; }
+        // (kept: the PLAN_BEAM boards whose trigger chain is longest)
+        int at = nn < PLAN_BEAM ? nn++ : -1;
+        if (at < 0) { int w = 0; for (int k = 1; k < PLAN_BEAM; k++) if (next[k].c < next[w].c) w = k; if (next[w].c < c) at = w; }
+        if (at >= 0) next[at] = e;
+      }
+    }
+    for (int i = 0; i < nn; i++) beam[i] = next[i];
+    nb = nn;
+  }
+done:
+  if (!best) return 0;
+  for (int k = 0; k < bestLen; k++) seq[k] = bestSeq[k];
+  *n = bestLen; *chain = bestC;
+  return 1;
+}
