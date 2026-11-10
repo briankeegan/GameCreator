@@ -290,14 +290,10 @@ static int clearsNothing(const Judge *J) { return !J->hold && !clears(J); }
 // owner: a mode plays its first entry, builds toward it otherwise): the first entry 0, a set-up toward it or a break 1, the hold and
 // any other line that fires no fallback 2, then each fallback, 2 + its entry, and last a clear outside the list that breaks nothing --
 // the owner: a combo or chain the list does not ask for is the last resort, after every fallback)
-static int ruleOpener;    // (the rule in force is the opener's: decide.c)
 static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->apBroke > 0); }
-// (THE OPENER ATTACKS AT ONCE -- the owner: top the enemy out in its first moves: there every chain of its list is its goal, and a level
-// builds toward none of them)
 static int goalKeyOf(const Judge *J) {
   if (J->hold) return 2;
-  if (J->met == 0 || J->modeFirst || (ruleOpener && J->met > 0)) return 0;
-  if (ruleOpener && J->k.play == PLAY_LEVEL) return 2;   // (the mode's first entry, under garbage too where it breaks nothing: the mode is played there)
+  if (J->met == 0 || J->modeFirst) return 0;   // (the mode's first entry, under garbage too where it breaks nothing: the mode is played there)
   if (fallbackOf(J)) return 2 + J->met;
   if (J->outside && !(J->apBroke > 0) && (J->apCombo > 0 || J->apChain > 0)) return 3 + MAXAIMS;
   return J->apBroke > 0 || setupPlay(J->k.play) ? 1 : 2;
@@ -624,10 +620,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'e. FLAT, NO GARBAGE ON ITS WAY (the stack at speed: a well between towers is where the board dies -- a canyon is never dug out at
   // forty-seven frames a row): with no garbage on the board, held or due, and the board not chaining, of two that survive alike the
   // one that leaves the board flatter by FLAT_ROWS or more, whatever the window holds
-  // (not in the opener over a line that meets its list: the opener attacks at once -- the owner, top the enemy out in its first moves)
   if ((lx || lostAlike(x, y)) && !decF.under && decQ.narr == 0 && decF.next == NOT_ASKED && decQ.b->chainCounter < 2 &&
-      x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS &&
-      !(ruleOpener && goalKeyOf(x) != goalKeyOf(y)))
+      x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
     return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the

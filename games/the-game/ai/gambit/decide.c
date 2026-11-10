@@ -106,7 +106,7 @@ static int readBoard_(Read *R) {
   if (ri < 0) return 0;
   const Rule *rule = &theTables.r[ri];
   R->rule = ri;
-  ruleNoEnemy = asksNoEnemy(rule); ruleOpener = rule->table == 2;
+  ruleNoEnemy = asksNoEnemy(rule);
   // (A GAME WITH GARBAGE IN IT: garbage on the board once this game, or on its way -- a stack topped by its own rise is none. The floor,
   // the searches' and the rank's, and the floor's raise are the next break's material; with no garbage ever, endless, they hold the stack
   // seven rows high at forty-seven frames a row)
@@ -289,6 +289,7 @@ static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
+static int32_t planned;   // (the opener's planned chain this decision: its length, -1 none played, 0 not asked: the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
@@ -691,6 +692,23 @@ static Played playOf(const Read *R, int n) {
       }
     }
     clockDue = keepDue; clockShare = keepShare;
+  }
+  // (THE OPENER'S CHAIN PLANNED -- the owner: attack at once, the countdown's seconds plan the chain: in the opener, on a board with no
+  // garbage on it, where the move is not already a line that meets the list, the set-ups and the trigger of the longest chain within
+  // PLAN_DEPTH set-ups (search/chainup.c chainPlan) -- the whole line, judged as any line, played where it lives and meets the list)
+  planned = 0;
+  if ((!P.line || P.line->met < 0) && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
+      theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
+    const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
+    int32_t seq[PLAN_DEPTH + 1], c = 0; int ns = 0;
+    planned = -1;
+    if (chainPlan(&decQ, want, seq, &ns, &c) && ns > 0) {
+      static Judge PL; Cand k;
+      if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
+        k.settled = 1;
+        if (judgeCand(R, &k, &PL) && !PL.o.dead && PL.o.lives && PL.met >= 0 && !wastesThree(&PL)) { P.line = &PL; planned = c; }
+      }
+    }
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
