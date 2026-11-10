@@ -106,9 +106,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
     dropAs(play, DROP_UNBROKEN);
     if (!unbroken.set) { unbroken.set = 1; unbroken.play = play; unbroken.nseq = k->nseq; for (int i = 0; i < k->nseq; i++) unbroken.seq[i] = k->seq[i]; unbroken.said = k->x.broke; unbroken.judged = j->made.broke; unbroken.alone = j->base; }
   }
-  // (a swap back let through for a clear only where it is the clear -- a line of one swap -- or the line breaks garbage: a line of several
-  // whose clear comes later starts by undoing the last swap for nothing it needs then)
-  if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), m.broke > 0 ? 2 : k->nseq == 1 && (m.combo > 0 || m.chain > 0))) { dropAs(play, DROP_BACK); return 0; }
+  if (k->nseq && swapBack(CR(k->seq[0]), CC(k->seq[0]), m.broke > 0 ? 2 : m.combo > 0 || m.chain > 0)) { dropAs(play, DROP_BACK); return 0; }
   // (it fits the list -- the chain as the game counts it -- or it is outside it: ranked after every line within it that lives, and kept,
   // so a list never chooses a death. Below the rule's material floor a line that clears panels and breaks no garbage spends what the
   // board needs: outside too)
@@ -349,7 +347,10 @@ static int setupKind(const Judge *J) {
 static int zipOver(const Judge *x, const Judge *y) {
   int zx = x->k.play == PLAY_ZIP, zy = y->k.play == PLAY_ZIP;
   if (!zx && !zy) return 0;
-  if (zx != zy) { const Judge *z = zx ? x : y, *o = zx ? y : x; int first = lineWalk(o) - lineWalk(z) >= ZIP_NEAR ? z == x : o == x; return first ? -1 : 1; }
+  // (calm -- no garbage on the board or on its way -- the zip before any other set-up: the owner, the zipper is the set-up, and among the
+  // most important things it does; under garbage the set-up first unless the zip walks ZIP_NEAR actions fewer)
+  if (zx != zy) { const Judge *z = zx ? x : y, *o = zx ? y : x; int calm = !decF.under && decQ.narr == 0;
+    int first = calm || lineWalk(o) - lineWalk(z) >= ZIP_NEAR ? z == x : o == x; return first ? -1 : 1; }
   // (of two zips, the nearer by ZIP_NEAR actions or more, then the more zipped)
   { int wx = lineWalk(x), wy = lineWalk(y); if (iabs(wx - wy) >= ZIP_NEAR) return wx < wy ? -1 : 1; }
   if (x->o.j.spread != y->o.j.spread) return x->o.j.spread > y->o.j.spread ? -1 : 1;
@@ -475,6 +476,8 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
+#define ORGANIZE_WALK 6   // (the actions a zip or a level may walk to be played over the hold)
+#define CALM_BREAKS 3   // (breaks' time: a hold lost this far away or more is no danger -- rank.c not in danger, organize)
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
@@ -547,6 +550,24 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *h = x->hold ? x : y, *m = x->hold ? y : x;
     double a = diesAt(h), b = diesAt(m);   // (the frames each is lost, no walk charged: the walk's charge is the order's preference, not a loss)
     if (a >= 0 && a < rankSave && !m->o.dead && b < 1e299 && b - a >= NEAR_GAIN) return (cmpKey = __LINE__, (m == x ? -1 : 1));
+  }
+  // 1. NOT IN DANGER, ORGANIZE (the owner: if it is not needing to survive, zip and flatten; levelling gives more time -- never a chain
+  // in a mode that does not ask one over it): of a zip, a drop or a level of ORGANIZE_WALK actions or fewer and the hold, or a line that
+  // fires a fallback or an attack outside the list and breaks no garbage, the organizer first -- where the other lives, or is lost
+  // CALM_BREAKS breaks' time away or more, and the organizer is lost no sooner on the frame each is lost, keeping the reserve, the mode
+  // and the board's own chain: the wait buys nothing the zipper does not, and a zip across the board costs more presses than it saves
+  {
+    int ox = (x->k.play == PLAY_ZIP || x->k.play == PLAY_LEVEL) && !x->hold, oy = (y->k.play == PLAY_ZIP || y->k.play == PLAY_LEVEL) && !y->hold;
+    if (ox != oy) {
+      const Judge *m = ox ? x : y, *h = ox ? y : x;
+      int idle = h->hold || (goalKeyOf(h) > 2 && !(h->apBroke > 0) && goalKeyOf(m) <= 2);
+      int hlive = h == x ? lx : ly;
+      double a = diesAt(h), b = diesAt(m);
+      int safe = hlive || (a >= CALM_BREAKS * rankSave && a < 1e299);
+      int noSooner = livesOn(m) || (!m->o.dead && b < 1e299 && a < 1e299 && b >= a);
+      if (idle && lineWalk(m) <= ORGANIZE_WALK && safe && noSooner && !spendsReserve(m) && !offMode(m) && !wastesThree(m) && !cutsShort(m))
+        return (cmpKey = __LINE__, (m == x ? -1 : 1));
+    }
   }
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
   // the line in progress before the other, the hold too, where it breaks as much garbage: every swap pressed of a line put down is the input budget
