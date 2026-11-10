@@ -764,6 +764,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   { static int32_t rescueSeen; if (rescues != rescueSeen) { L_s(" rescued=1"); rescueSeen = rescues; } }
   if (R.saving) L_s(" saving=1");
   // (the panels the measured life peaks at, beside the owner's saving band, for the owner to read: core/material.h)
+  // (THE STACK AS IT IS: its bumpiness -- the steps between columns, garbage counted -- the tallest less the shortest, and how zipped
+  // its colours are (judge.c spreadOf): the owner's flatten and zip, read off every decision)
+  if (decQ.b) { const Board *sb = decQ.b; int hg[W + 1] = { 0 }, bump = 0;
+    for (int c = 1; c <= W; c++) for (int r = 1; r < sb->nrows; r++) if (sb->p[r][c].f[COLOR] > 0 || sb->p[r][c].f[ISGARBAGE]) hg[c] = r;
+    for (int c = 1; c < W; c++) bump += iabs(hg[c] - hg[c + 1]);
+    L_s(" stack="); L_i(bump); L_s("/"); L_i(evenOf(sb)); L_s("/"); L_i(spreadOf(sb)); }
   L_s(" lifePeak="); L_i(lifePeakOf());
   if (R.full) L_s(" full=1");
   if (switchedNow) L_s(" switched=1");
