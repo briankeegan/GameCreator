@@ -695,12 +695,12 @@ static Played playOf(const Read *R, int n) {
   }
   // (THE OPENER'S CHAIN PLANNED -- the owner: attack at once, the countdown's seconds plan the chain: in the opener, on a board with no
   // garbage on it, where the move is not already a line that meets the list, the set-ups and the trigger of the longest chain within
-  // PLAN_DEPTH set-ups (search/chainup.c chainPlan) -- the whole line, judged as any line, played where it lives and meets the list)
+  // OPEN_DEPTH set-ups (search/chainup.c chainPlan) -- the whole line, judged as any line, played where it lives and meets the list)
   planned = 0;
   if ((!P.line || P.line->met < 0) && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
       theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
     const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
-    int32_t seq[PLAN_DEPTH + 1], c = 0; int ns = 0;
+    int32_t seq[OPEN_DEPTH + 1], c = 0; int ns = 0;
     planned = -1;   // (-1 none found, -2 no candidate, -3 not judged (a swap not there), -4 not on the list, -5 a wasted three, -6 lost)
     if (chainPlan(&decQ, want, seq, &ns, &c) && ns > 0) {
       static Judge PL; Cand k; planned = -2;
