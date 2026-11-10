@@ -473,8 +473,6 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
-#define ORGANIZE_WALK 6   // (the actions a zip or a level may walk to be played over the hold)
-#define CALM_BREAKS 3   // (breaks' time: a hold lost this far away or more is no danger -- rank.c not in danger, organize)
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
@@ -548,24 +546,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     double a = diesAt(h), b = diesAt(m);   // (the frames each is lost, no walk charged: the walk's charge is the order's preference, not a loss)
     if (a >= 0 && a < rankSave && !m->o.dead && b < 1e299 && b - a >= NEAR_GAIN) return (cmpKey = __LINE__, (m == x ? -1 : 1));
   }
-  // 1. NOT IN DANGER, ORGANIZE (the owner: if it is not needing to survive, zip and flatten; levelling gives more time -- never a chain
-  // in a mode that does not ask one over it): of a zip, a drop or a level of ORGANIZE_WALK actions or fewer and the hold, or a line that
-  // fires a fallback or an attack outside the list and breaks no garbage, the organizer first -- where the other lives, or is lost
-  // CALM_BREAKS breaks' time away or more, and the organizer is lost no sooner on the frame each is lost, keeping the reserve, the mode
-  // and the board's own chain: the wait buys nothing the zipper does not, and a zip across the board costs more presses than it saves
-  {
-    int ox = (x->k.play == PLAY_ZIP || x->k.play == PLAY_LEVEL) && !x->hold, oy = (y->k.play == PLAY_ZIP || y->k.play == PLAY_LEVEL) && !y->hold;
-    if (ox != oy) {
-      const Judge *m = ox ? x : y, *h = ox ? y : x;
-      int idle = h->hold || (goalKeyOf(h) > 2 && !(h->apBroke > 0) && goalKeyOf(m) <= 2);
-      int hlive = h == x ? lx : ly;
-      double a = diesAt(h), b = diesAt(m);
-      int safe = hlive || (a >= CALM_BREAKS * rankSave && a < 1e299);
-      int noSooner = livesOn(m) || (!m->o.dead && b < 1e299 && a < 1e299 && b >= a);
-      if (idle && lineWalk(m) <= ORGANIZE_WALK && safe && noSooner && !spendsReserve(m) && !offMode(m) && !wastesThree(m) && !cutsShort(m))
-        return (cmpKey = __LINE__, (m == x ? -1 : 1));
-    }
-  }
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
   // the line in progress before the other, the hold too, where it breaks as much garbage: every swap pressed of a line put down is the input budget
   // spent for nothing, and only a break's time of life, or more garbage broken, is worth it
@@ -582,7 +562,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // stack down; the life an off-mode attack buys past that is the mode thrown away. Under garbage, only one that breaks as much of it
   if (offMode(x) != offMode(y)) {
     const Judge *f = offMode(x) ? x : y, *o = f == x ? y : x;
-    if ((livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) && (!decF.under || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
+    // (garbage on its way counts as garbage on the board: set 86 combo_storm 2, 14200, the hold lost at 245 put before a line breaking the
+    // garbage 81 frames off and lost at 409 -- the board lost at 14666 with no break)
+    if ((livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) && (!(decF.under || decQ.narr > 0) || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
       return (cmpKey = __LINE__, (f == x ? 1 : -1));
   }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
