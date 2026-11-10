@@ -702,13 +702,15 @@ static Played playOf(const Read *R, int n) {
     const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
     int32_t seq[OPEN_DEPTH + 1], c = 0; int ns = 0;
     planned = -1;   // (-1 none found, -2 no candidate, -3 not judged (a swap not there), -4 not on the list, -5 a wasted three, -6 lost)
+    // (one swap a decision, the plan made again on the board each time: a whole line planned settled between its swaps goes stale on a
+    // stack that rises while the cursor walks -- the trigger once the plan is one swap long, else its next set-up)
     if (chainPlan(&decQ, want, seq, &ns, &c) && ns > 0) {
-      static Judge PL; Cand k; planned = -2;
-      if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
-        k.settled = 1; planned = -3;
+      static Judge PL; Cand k; planned = -2; int trig = ns == 1;
+      if (candOf(&k, trig ? PLAY_ENTRY : PLAY_SETUP, seq, 1, -1, 0)) {
+        k.settled = 0; planned = -3;
         if (judgeCand(R, &k, &PL)) {
           if (PL.o.dead || !PL.o.lives) planned = -6;
-          else { planned = PL.met < 0 ? -4 : wastesThree(&PL) ? -5 : c; if (planned > 0) P.line = &PL; }
+          else { planned = trig && PL.met < 0 ? -4 : wastesThree(&PL) || cutsShort(&PL) ? -5 : c; if (planned > 0) P.line = &PL; }
         }
       }
     }
