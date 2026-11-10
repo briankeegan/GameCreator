@@ -584,11 +584,14 @@ static int ranked(const Read *R, const Found *S) {
   // (A SWAP OF ONE COLOUR -- two panels alike, the board left as it was: the line ranked first, judged once more without every such swap
   // and played so unless that is ranked after it -- a row walk built a cell at a time steps past a panel like the one walked, a press
   // and a walk for nothing)
-  if (n && order[0] && !order[0]->hold && order[0]->o.j.sames && order[0]->k.nseq >= 2 && !clockOut()) {
+  // (and a line of nothing but such swaps is the hold: the board it leaves is the board as it is)
+  if (n && order[0] && !order[0]->hold && order[0]->o.j.sames && order[0]->k.nseq >= 1) {
     static Cand w; static Judge JL; Judge *J = order[0];
     w = J->k; w.nseq = 0;
     for (int i = 0; i < J->k.nseq; i++) if (!(i < 64 && (J->o.j.sames >> i & 1))) w.seq[w.nseq++] = J->k.seq[i];
-    if (w.nseq >= 1 && judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; samesTrimmed++; }
+    if (w.nseq == 0) {
+      for (int i = 1; i < n; i++) if (order[i]->hold) { Judge *h = order[i]; for (int k = i; k > 0; k--) order[k] = order[k - 1]; order[0] = h; samesTrimmed = 2; break; }
+    } else if (!clockOut() && judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; samesTrimmed++; }
   }
   // (A SWAP BACK THE LINE DOES NOT NEED -- the owner: no flip and back: the line ranked first, its first swap swapping back the pair the
   // last swap pressed swapped (rank.c back), is judged once more without that swap and played so unless that is ranked after it)
