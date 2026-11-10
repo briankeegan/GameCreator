@@ -443,6 +443,7 @@ static int lineWalk(const Judge *J) {
 // (time attack, the rules' enemy.none) no break is ever needed and no reserve is kept)
 #define EARLIEST_LANDING 151   // (pa-engine.js: GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 staged, GARBAGE_DELAY_LAND_TIME landing)
 static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
+static int ruleOpener;    // (the rule in force is the opener's: decide.c)
 static int allowAtNeed(int walk) {
   if (decF.under) return pressAllowance - walk;
   int32_t t = EARLIEST_LANDING;
@@ -620,8 +621,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'e. FLAT, NO GARBAGE ON ITS WAY (the stack at speed: a well between towers is where the board dies -- a canyon is never dug out at
   // forty-seven frames a row): with no garbage on the board, held or due, and the board not chaining, of two that survive alike the
   // one that leaves the board flatter by FLAT_ROWS or more, whatever the window holds
+  // (not in the opener over a line that meets its list: the opener attacks at once -- the owner, top the enemy out in its first moves)
   if ((lx || lostAlike(x, y)) && !decF.under && decQ.narr == 0 && decF.next == NOT_ASKED && decQ.b->chainCounter < 2 &&
-      x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
+      x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS &&
+      !(ruleOpener && (x->met >= 0) != (y->met >= 0)))
     return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
