@@ -495,7 +495,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (d.kind == 0) for (int i = 0; i < n && !A->aim; i++) if (!order[i]->hold && order[i]->k.nseq > 0) A->aim = order[i]->k.seq[0];
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
-  A->holdLives = d.kind == 0 && top && top->o.lives;
+  // (CALM, FOR THE FRAME LOOP'S PACE (front.c calmGap: the next line waits the profile's gap and a jitter, a player's pause): the hold
+  // lives -- or, the owner's slower play, the line played lives, with no garbage on the board or on its way, nothing falling and the input
+  // window at PACE_WINDOW or more: nothing then can need an answer inside the pause)
+  #define PACE_WINDOW 60
+  A->holdLives = (d.kind == 0 && top && top->o.lives)
+                 || (d.kind == 1 && P.line && P.line->o.lives && !decF.under && decQ.narr == 0 && decQ.b && !hasActivePanels(decQ.b)
+                     && pressAllowance >= PACE_WINDOW);
   A->ended = carryDrop >= 1 && carryDrop <= 3 ? 3 + carryDrop : !carriedJ ? (carryNone ? carryNone : 3) : P.line && (P.line == carriedJ || P.line->carried) ? 1
            : top && top != carriedJ && compareJudged(top, carriedJ) < 0 && cmpKey >= 10 ? cmpKey : 2;
   A->wastes = !P.line || R.up ? 0 : wastesThree(P.line) && saveOk ? 1 : P.line->o.j.threes > 0 && P.line->apBroke > 0 ? 2 : 0;   // (a three the survival search found the board needed not to die, or one on the way to a break)
