@@ -562,9 +562,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // stack down; the life an off-mode attack buys past that is the mode thrown away. Under garbage, only one that breaks as much of it
   if (offMode(x) != offMode(y)) {
     const Judge *f = offMode(x) ? x : y, *o = f == x ? y : x;
-    // (garbage on its way counts as garbage on the board: set 86 combo_storm 2, 14200, the hold lost at 245 put before a line breaking the
-    // garbage 81 frames off and lost at 409 -- the board lost at 14666 with no break)
-    if ((livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) && (!(decF.under || decQ.narr > 0) || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
+    if ((livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) && (!decF.under || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
       return (cmpKey = __LINE__, (f == x ? 1 : -1));
   }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key

@@ -2,7 +2,6 @@
 // decision, the move. What carries from one decision to the next lives here: the break search's lines, the boards this dig has stood
 // on, the line toward a break begun, the line in progress, the pair the last swap swapped.
 
-#define CALM_BREAKS 3   // the breaks' time a hold is lost no sooner than for the board to be calm: the pace's pause taken
 #define BREAK_SHARE 0.4    // of the searches' time (propose.c leftMs), for the break search
 #define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
 // (the profile's own, in percent, where it gives one: gb_share)
@@ -496,14 +495,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (d.kind == 0) for (int i = 0; i < n && !A->aim; i++) if (!order[i]->hold && order[i]->k.nseq > 0) A->aim = order[i]->k.seq[0];
   const Judge *top = R.up ? 0 : P.top;
   A->verdict = R.up ? 3 : top ? (top->o.lives ? 1 : 2) : 0;
-  // (CALM, FOR THE FRAME LOOP'S PACE: the hold lives, or is lost no sooner than CALM_BREAKS breaks' time -- then the next line waits the
-  // profile's gap and a jitter after the swap before it (front.c calmGap), a player's pause between moves, never a key of a line in hand
-  // later than it was judged. Only a hold that lives was calm: 807 paced swaps in a set, the play a machine's)
-  { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
-    // (or the line played keeps the board that long itself: the pause comes after its swaps, between it and the next line, never inside it)
-    const Judge *Lp = d.kind == 1 ? P.line : 0;
-    A->holdLives = (d.kind == 0 && top && top->o.lives) || (H && !H->o.dead && (H->o.lives || diesAt(H) >= CALM_BREAKS * rankSave))
-                   || (Lp && !Lp->o.dead && (Lp->o.lives || diesAt(Lp) >= CALM_BREAKS * rankSave)); }
+  A->holdLives = d.kind == 0 && top && top->o.lives;
   A->ended = carryDrop >= 1 && carryDrop <= 3 ? 3 + carryDrop : !carriedJ ? (carryNone ? carryNone : 3) : P.line && (P.line == carriedJ || P.line->carried) ? 1
            : top && top != carriedJ && compareJudged(top, carriedJ) < 0 && cmpKey >= 10 ? cmpKey : 2;
   A->wastes = !P.line || R.up ? 0 : wastesThree(P.line) && saveOk ? 1 : P.line->o.j.threes > 0 && P.line->apBroke > 0 ? 2 : 0;   // (a three the survival search found the board needed not to die, or one on the way to a break)
