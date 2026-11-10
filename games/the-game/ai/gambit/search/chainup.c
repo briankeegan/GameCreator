@@ -88,8 +88,10 @@ static int chainPlan(const Question *q, int32_t want, int32_t *seq, int *n, int3
   typedef struct { int node, len; int32_t path[OPEN_DEPTH], c; } Bm;
   Bm beam[OPEN_BEAM], next[OPEN_BEAM]; int nb = 1, best = 0, bestLen = 0; int32_t bestSeq[OPEN_DEPTH + 1], bestC = 0;
   beam[0].node = root; beam[0].len = 0;
-  int32_t bestSent = 0; (void)want;
-  { int32_t t = 0, ch = 0; int32_t c = triggerSendOf(q, &t, &ch); if (c > 0 && t) { bestSeq[0] = t; bestLen = 1; bestC = ch; bestSent = c; best = 1; if (c >= OPEN_FILL) goto done; } }
+  int32_t bestSent = 0;
+  // (a trigger whose chain is shorter than `want` -- the list's shortest -- counts a quarter of what it sends: the opener's list asks chains)
+  #define OPEN_SCORE(c, ch) ((ch) >= want ? (c) : (c) / 4)
+  { int32_t t = 0, ch = 0; int32_t c = triggerSendOf(q, &t, &ch); c = OPEN_SCORE(c, ch); if (c > 0 && t) { bestSeq[0] = t; bestLen = 1; bestC = ch; bestSent = c; best = 1; if (c >= OPEN_FILL) goto done; } }
   for (int d = 0; d < OPEN_DEPTH && nb > 0 && !clockOut(); d++) {
     int nn = 0;
     for (int bi = 0; bi < nb && !clockOut(); bi++) {
@@ -111,7 +113,7 @@ static int chainPlan(const Question *q, int32_t want, int32_t *seq, int *n, int3
         Board *eb = ensureBoard(x, out);
         if (!eb) continue;
         Question q2 = *q; q2.b = eb; q2.narr = 0; q2.holdLeft = 0; q2.holdStarted = 0;
-        int32_t t = 0, ch = 0, c = triggerSendOf(&q2, &t, &ch);
+        int32_t t = 0, ch = 0, c = triggerSendOf(&q2, &t, &ch); c = OPEN_SCORE(c, ch);
         Bm e = beam[bi]; e.node = out; e.path[e.len++] = ms[i]; e.c = c;
         if (c > bestSent && t) { bestSent = c; bestC = ch; bestLen = e.len + 1; for (int k = 0; k < e.len; k++) bestSeq[k] = e.path[k]; bestSeq[e.len] = t; best = 1; if (c >= OPEN_FILL) goto done; }
         // (kept: the OPEN_BEAM boards whose trigger chain is longest)
