@@ -699,7 +699,9 @@ static Played playOf(const Read *R, int n) {
   planned = 0;
   if ((!P.line || P.line->met < 0) && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
       theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
-    const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
+    // (the list's shortest chain: what a trigger must set off to be played)
+    int32_t want = 0;
+    for (int i = 0; i < theList.n; i++) if (theList.aim[i].chain.op) { const Test *t = &theList.aim[i].chain; int32_t w = t->op == OP_GT ? t->n + 1 : t->n; if (!want || w < want) want = w; }
     int32_t seq[OPEN_DEPTH + 1], c = 0; int ns = 0;
     planned = -1;   // (-1 none found, -2 no candidate, -3 not judged (a swap not there), -4 not on the list, -5 a wasted three, -6 lost)
     // (one swap a decision, the plan made again on the board each time: a whole line planned settled between its swaps goes stale on a
