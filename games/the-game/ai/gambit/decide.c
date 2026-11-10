@@ -251,7 +251,7 @@ static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
 static int32_t carryRule(void);   // (the mode the line in progress was begun in)
-static int carriedFromReady(void), carryWaitsOut(void), carrySet(void);
+static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
@@ -289,7 +289,6 @@ static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
-static Arr carryArr[MAXARR]; static int32_t carryNarr, carryNewsAt = -1;   // (the garbage on its way when the line in progress was begun: rank.c nothing new)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
@@ -356,16 +355,6 @@ static int ranked(const Read *R, const Found *S) {
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0, cc = 0;
-  // (NOTHING NEW: every piece of garbage on its way now was on its way when the line in progress was begun -- rank.c 1 nothing new)
-  newsNone = 0;
-  if (carrySet() && carryNewsAt >= 0 && decQ.b) {
-    newsNone = 1;
-    for (int a = 0; a < decQ.narr && newsNone; a++) {
-      int32_t at = decQ.b->clock + decQ.arr[a].at, seen = 0;
-      for (int k = 0; k < carryNarr && !seen; k++) seen = carryArr[k].at == at && carryArr[k].width == decQ.arr[a].width && carryArr[k].height == decQ.arr[a].height;
-      if (!seen) newsNone = 0;
-    }
-  }
   carryNone = 21;
   if (R->guides.n && (cc = carriedCand(R, &ck, &cwait)) && !judgeCand(R, &ck, &theJudged[n])) carryNone = 19;
   if (R->guides.n && cc && carryNone != 19) {
@@ -595,11 +584,14 @@ static int ranked(const Read *R, const Found *S) {
   // (A SWAP OF ONE COLOUR -- two panels alike, the board left as it was: the line ranked first, judged once more without every such swap
   // and played so unless that is ranked after it -- a row walk built a cell at a time steps past a panel like the one walked, a press
   // and a walk for nothing)
-  if (n && order[0] && !order[0]->hold && order[0]->o.j.sames && order[0]->k.nseq >= 2 && !clockOut()) {
+  // (and a line of nothing but such swaps is the hold: the board it leaves is the board as it is)
+  if (n && order[0] && !order[0]->hold && order[0]->o.j.sames && order[0]->k.nseq >= 1) {
     static Cand w; static Judge JL; Judge *J = order[0];
     w = J->k; w.nseq = 0;
     for (int i = 0; i < J->k.nseq; i++) if (!(i < 64 && (J->o.j.sames >> i & 1))) w.seq[w.nseq++] = J->k.seq[i];
-    if (w.nseq >= 1 && judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; samesTrimmed++; }
+    if (w.nseq == 0) {
+      for (int i = 1; i < n; i++) if (order[i]->hold) { Judge *h = order[i]; for (int k = i; k > 0; k--) order[k] = order[k - 1]; order[0] = h; samesTrimmed = 2; break; }
+    } else if (!clockOut() && judgeCand(R, &w, &JL) && compareJudged(&JL, J) <= 0) { JL.carried = J->carried; *J = JL; samesTrimmed++; }
   }
   // (A SWAP BACK THE LINE DOES NOT NEED -- the owner: no flip and back: the line ranked first, its first swap swapping back the pair the
   // last swap pressed swapped (rank.c back), is judged once more without that swap and played so unless that is ranked after it)
@@ -761,12 +753,7 @@ static int savesOverHold(const Judge *k) {
   return k->o.lives || diesAt(k) > diesAt(H);
 }
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
-  if (k && !k->carried && !k->hold) {
-    carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play;
-    // (the garbage on its way when it was begun, at the frames it lands: what the line was chosen knowing)
-    carryNewsAt = carryBeganAt; carryNarr = 0;
-    for (int a = 0; a < decQ.narr && a < MAXARR && decQ.b; a++) { carryArr[carryNarr] = decQ.arr[a]; carryArr[carryNarr++].at = decQ.b->clock + decQ.arr[a].at; }
-  }
+  if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
   else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
@@ -787,7 +774,6 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.rule = R->rule;
 }
 static int32_t carryRule(void) { return theCarry.rule; }
-static int carrySet(void) { return theCarry.set; }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
 // as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the

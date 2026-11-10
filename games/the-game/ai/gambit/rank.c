@@ -443,7 +443,6 @@ static int lineWalk(const Judge *J) {
 // (time attack, the rules' enemy.none) no break is ever needed and no reserve is kept)
 #define EARLIEST_LANDING 151   // (pa-engine.js: GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 staged, GARBAGE_DELAY_LAND_TIME landing)
 static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
-static int newsNone;      // (no garbage queued or sent since the line in progress was begun: decide.c)
 static int allowAtNeed(int walk) {
   if (decF.under) return pressAllowance - walk;
   int32_t t = EARLIEST_LANDING;
@@ -474,8 +473,6 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
-#define ORGANIZE_WALK 6   // (the actions a zip or a level may walk to be played over the hold)
-#define CALM_BREAKS 3   // (breaks' time: a hold lost this far away or more is no danger -- rank.c not in danger, organize)
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
@@ -531,16 +528,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
   }
-  // 1. NOTHING NEW, NO CHANGE (the owner: nothing is going to change, there is no new information coming in, and it keeps changing its
-  // mind): with no garbage queued or sent since the line in progress was begun (decide.c newsNone), the line in progress before another
-  // -- the hold too -- unless the other lives where it does not, or is lost a break's time (rankSave) or more later. The search finds a
-  // different line each decision on the same board; switching on that is the window spent for nothing
-  if (newsNone && x->carried != y->carried) {
-    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    double dc = diesAt(c), dn = diesAt(o);
-    int better = (livesOn(o) && !livesOn(c)) || (!livesOn(c) && !o->o.dead && dc < 1e299 && dn < 1e299 && dn - dc >= rankSave) || c->o.dead;
-    if (!better) return (cmpKey = __LINE__, (c == x ? -1 : 1));
-  }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
   // lost a little later "alike" the hold, or off the mode, and held, and the board died of the holds (live p65, r661, 8097-8204: a
@@ -558,24 +545,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *h = x->hold ? x : y, *m = x->hold ? y : x;
     double a = diesAt(h), b = diesAt(m);   // (the frames each is lost, no walk charged: the walk's charge is the order's preference, not a loss)
     if (a >= 0 && a < rankSave && !m->o.dead && b < 1e299 && b - a >= NEAR_GAIN) return (cmpKey = __LINE__, (m == x ? -1 : 1));
-  }
-  // 1. NOT IN DANGER, ORGANIZE (the owner: if it is not needing to survive, zip and flatten; levelling gives more time -- never a chain
-  // in a mode that does not ask one over it): of a zip, a drop or a level of ORGANIZE_WALK actions or fewer and the hold, or a line that
-  // fires a fallback or an attack outside the list and breaks no garbage, the organizer first -- where the other lives, or is lost
-  // CALM_BREAKS breaks' time away or more, and the organizer is lost no sooner on the frame each is lost, keeping the reserve, the mode
-  // and the board's own chain: the wait buys nothing the zipper does not, and a zip across the board costs more presses than it saves
-  {
-    int ox = (x->k.play == PLAY_ZIP || x->k.play == PLAY_LEVEL) && !x->hold, oy = (y->k.play == PLAY_ZIP || y->k.play == PLAY_LEVEL) && !y->hold;
-    if (ox != oy) {
-      const Judge *m = ox ? x : y, *h = ox ? y : x;
-      int idle = h->hold || (goalKeyOf(h) > 2 && !(h->apBroke > 0) && goalKeyOf(m) <= 2);
-      int hlive = h == x ? lx : ly;
-      double a = diesAt(h), b = diesAt(m);
-      int safe = hlive || (a >= CALM_BREAKS * rankSave && a < 1e299);
-      int noSooner = livesOn(m) || (!m->o.dead && b < 1e299 && a < 1e299 && b >= a);
-      if (idle && lineWalk(m) <= ORGANIZE_WALK && safe && noSooner && !spendsReserve(m) && !offMode(m) && !wastesThree(m) && !cutsShort(m))
-        return (cmpKey = __LINE__, (m == x ? -1 : 1));
-    }
   }
   // 1. NO CHANGING MINDS (the owner: efficiency, no mistakes, no changing minds): of two that survive alike -- both live, or lost alike --
   // the line in progress before the other, the hold too, where it breaks as much garbage: every swap pressed of a line put down is the input budget
