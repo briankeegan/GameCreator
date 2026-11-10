@@ -106,7 +106,7 @@ static int readBoard_(Read *R) {
   if (ri < 0) return 0;
   const Rule *rule = &theTables.r[ri];
   R->rule = ri;
-  ruleNoEnemy = asksNoEnemy(rule);
+  ruleNoEnemy = asksNoEnemy(rule); ruleOpener = rule->table == 2;
   // (A GAME WITH GARBAGE IN IT: garbage on the board once this game, or on its way -- a stack topped by its own rise is none. The floor,
   // the searches' and the rank's, and the floor's raise are the next break's material; with no garbage ever, endless, they hold the stack
   // seven rows high at forty-seven frames a row)
