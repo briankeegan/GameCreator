@@ -708,8 +708,10 @@ static Played playOf(const Read *R, int n) {
       static Judge PL; Cand k; planned = -2; int trig = ns == 1;
       if (candOf(&k, trig ? PLAY_ENTRY : PLAY_SETUP, seq, 1, -1, 0)) {
         k.settled = 0; planned = -3;
+        const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
         if (judgeCand(R, &k, &PL)) {
-          if (PL.o.dead || !PL.o.lives) planned = -6;
+          // (lost no sooner than the hold, as every line is held to -- in the opener the raise tops the stack, and nothing lives)
+          if (PL.o.dead || !(PL.o.lives || (H && !H->o.lives && PL.o.lostAt != NOT_ASKED && diesAt(&PL) >= diesAt(H)))) planned = -6;
           else { planned = trig && PL.met < 0 ? -4 : wastesThree(&PL) || cutsShort(&PL) ? -5 : c; if (planned > 0) P.line = &PL; }
         }
       }
