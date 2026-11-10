@@ -251,7 +251,7 @@ static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
 static int32_t carryRule(void);   // (the mode the line in progress was begun in)
-static int carriedFromReady(void), carryWaitsOut(void);
+static int carriedFromReady(void), carryWaitsOut(void), carrySet(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
@@ -289,7 +289,7 @@ static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
-static int32_t planned;   // (the opener's planned chain this decision: its length, -1 none played, 0 not asked: the log's)
+static Arr carryArr[MAXARR]; static int32_t carryNarr, carryNewsAt = -1;   // (the garbage on its way when the line in progress was begun: rank.c nothing new)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
@@ -356,6 +356,16 @@ static int ranked(const Read *R, const Found *S) {
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0, cc = 0;
+  // (NOTHING NEW: every piece of garbage on its way now was on its way when the line in progress was begun -- rank.c 1 nothing new)
+  newsNone = 0;
+  if (carrySet() && carryNewsAt >= 0 && decQ.b) {
+    newsNone = 1;
+    for (int a = 0; a < decQ.narr && newsNone; a++) {
+      int32_t at = decQ.b->clock + decQ.arr[a].at, seen = 0;
+      for (int k = 0; k < carryNarr && !seen; k++) seen = carryArr[k].at == at && carryArr[k].width == decQ.arr[a].width && carryArr[k].height == decQ.arr[a].height;
+      if (!seen) newsNone = 0;
+    }
+  }
   carryNone = 21;
   if (R->guides.n && (cc = carriedCand(R, &ck, &cwait)) && !judgeCand(R, &ck, &theJudged[n])) carryNone = 19;
   if (R->guides.n && cc && carryNone != 19) {
@@ -693,37 +703,6 @@ static Played playOf(const Read *R, int n) {
     }
     clockDue = keepDue; clockShare = keepShare;
   }
-  // (THE OPENER'S CHAIN PLANNED -- the owner: attack at once, the countdown's seconds plan the chain: in the opener, on a board with no
-  // garbage on it, where the move is not already a line that meets the list, the set-ups and the trigger of the longest chain within
-  // OPEN_DEPTH set-ups (search/chainup.c chainPlan) -- the whole line, judged as any line, played where it lives and meets the list)
-  planned = 0;
-  if ((!P.line || P.line->met < 0) && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
-      theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
-    // (the list's shortest chain: what a trigger must set off to be played)
-    int32_t want = 0;
-    for (int i = 0; i < theList.n; i++) if (theList.aim[i].chain.op) { const Test *t = &theList.aim[i].chain; int32_t w = t->op == OP_GT ? t->n + 1 : t->n; if (!want || w < want) want = w; }
-    int32_t seq[OPEN_DEPTH + 1], c = 0; int ns = 0;
-    planned = -1;   // (-1 none found, -2 no candidate, -3 not judged (a swap not there), -4 not on the list, -5 a wasted three, -6 lost)
-    // (one swap a decision, the plan made again on the board each time: a whole line planned settled between its swaps goes stale on a
-    // stack that rises while the cursor walks -- the trigger once the plan is one swap long, else its next set-up)
-    // (the plan in a share of what is left, OPEN_MS at most: the judge of the swap it finds needs time after it)
-    // (the countdown's question has seconds: half of them)
-    double lft = leftMs(), give = lft > 200 ? 0.5 * lft : 0.5 * lft < OPEN_MS ? (0.5 * lft > 1 ? 0.5 * lft : 1) : OPEN_MS, oldShare = clockShareBegin(nowMs() + give);
-    int got = chainPlan(&decQ, want, seq, &ns, &c);
-    clockShareEnd(oldShare);
-    if (got && ns > 0) {
-      static Judge PL; Cand k; planned = -2; int trig = ns == 1;
-      if (candOf(&k, trig ? PLAY_ENTRY : PLAY_SETUP, seq, 1, -1, 0)) {
-        k.settled = 0; planned = -3; lastDrop = -1;
-        const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
-        if (judgeCand(R, &k, &PL)) {
-          // (lost no sooner than the hold, as every line is held to -- in the opener the raise tops the stack, and nothing lives)
-          if (PL.o.dead || !(PL.o.lives || (H && !H->o.lives && PL.o.lostAt != NOT_ASKED && diesAt(&PL) >= diesAt(H)))) planned = -6;
-          else { planned = trig && PL.met < 0 ? -4 : wastesThree(&PL) || cutsShort(&PL) ? -5 : c; if (planned > 0) P.line = &PL; }
-        } else if (lastDrop >= 0) planned = -10 - lastDrop;   // (not judged: -10 less the drop -- rank.c DROP_*: -10 back, -11 list, -12 late, -16 cut, -18 unjudged)
-      }
-    }
-  }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
   P.ncands = n; orderN = n;
@@ -782,7 +761,12 @@ static int savesOverHold(const Judge *k) {
   return k->o.lives || diesAt(k) > diesAt(H);
 }
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
-  if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
+  if (k && !k->carried && !k->hold) {
+    carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play;
+    // (the garbage on its way when it was begun, at the frames it lands: what the line was chosen knowing)
+    carryNewsAt = carryBeganAt; carryNarr = 0;
+    for (int a = 0; a < decQ.narr && a < MAXARR && decQ.b; a++) { carryArr[carryNarr] = decQ.arr[a]; carryArr[carryNarr++].at = decQ.b->clock + decQ.arr[a].at; }
+  }
   else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   memset(&theCarry, 0, sizeof theCarry);
@@ -803,6 +787,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.rule = R->rule;
 }
 static int32_t carryRule(void) { return theCarry.rule; }
+static int carrySet(void) { return theCarry.set; }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
 // as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the

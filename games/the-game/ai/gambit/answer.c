@@ -574,6 +574,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" done="); if (P.line && A->done >= 0) L_i(A->done); else L_s("-");
   L_s(" fire="); if (P.line && A->fire >= 0) L_i(A->fire); else L_s("-");
   if (P.line && P.line->carried && carryBeganAt >= 0 && carryBeganPlay >= 0 && carryBeganPlay < NPLAYS) { L_s(" from="); L_i(carryBeganAt); L_s(":"); L_play(carryBeganPlay); }   // (the line in progress: the frame it was begun and as what)
+  // (and what it is for: what it was judged to make when it was begun -- the combo, the chain, the garbage cells broken -- and what it
+  // is judged to make now, the swaps left of it: for=combo/chain/broke makes=combo/chain/broke)
+  if (P.line && P.line->carried && theCarry.set) {
+    L_s(" for="); L_i(theCarry.made.combo); L_s("/"); L_i(theCarry.made.chain); L_s("/"); L_i(theCarry.made.broke);
+    L_s(" makes="); L_i(imax(0, P.line->apCombo)); L_s("/"); L_i(imax(0, P.line->apChain)); L_s("/"); L_i(imax(0, P.line->apBroke));
+  }
   L_s(" ats="); if (P.line && P.line->apNats) { for (int i = 0; i < P.line->apNats; i++) { if (i) L_s("/"); L_i(P.line->apAts[i]); } } else L_s("-");
   L_s(" swaps="); L_i(P.line ? P.line->k.nseq : 0);
   if (P.line && P.line->k.nseq > 0) { L_s(" seq="); for (int q = 0; q < P.line->k.nseq; q++) { if (q) L_s(";"); L_mv(P.line->k.seq[q]); } }   // (the line played, every swap: whether the next decision carries it on)
@@ -589,7 +595,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
   if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); }
-  if (planned) { L_s(" planned="); L_i(planned); }
+  if (newsNone) L_s(" nothingNew=1");   // (no garbage queued or sent since the line in progress was begun: rank.c 1 nothing new)
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
   if (backTrimmed) L_s(" backTrimmed=1");
   if (windowCut) { L_s(" windowCut="); L_i(windowCut); }   // (lines taken out: the window not back before their board is lost)
