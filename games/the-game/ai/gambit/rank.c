@@ -443,6 +443,7 @@ static int lineWalk(const Judge *J) {
 // (time attack, the rules' enemy.none) no break is ever needed and no reserve is kept)
 #define EARLIEST_LANDING 151   // (pa-engine.js: GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 staged, GARBAGE_DELAY_LAND_TIME landing)
 static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
+static int newsNone;      // (no garbage queued or sent since the line in progress was begun: decide.c)
 static int allowAtNeed(int walk) {
   if (decF.under) return pressAllowance - walk;
   int32_t t = EARLIEST_LANDING;
@@ -527,6 +528,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *l = lx ? x : y, *o = lx ? y : x;
     if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
     lx = ly = 1;
+  }
+  // 1. NOTHING NEW, NO CHANGE (the owner: nothing is going to change, there is no new information coming in, and it keeps changing its
+  // mind): with no garbage queued or sent since the line in progress was begun (decide.c newsNone), the line in progress before another
+  // -- the hold too -- unless the other lives where it does not, or is lost a break's time (rankSave) or more later. The search finds a
+  // different line each decision on the same board; switching on that is the window spent for nothing
+  if (newsNone && x->carried != y->carried) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    double dc = diesAt(c), dn = diesAt(o);
+    int better = (livesOn(o) && !livesOn(c)) || (!livesOn(c) && !o->o.dead && dc < 1e299 && dn < 1e299 && dn - dc >= rankSave) || c->o.dead;
+    if (!better) return (cmpKey = __LINE__, (c == x ? -1 : 1));
   }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
