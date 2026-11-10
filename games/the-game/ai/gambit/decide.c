@@ -111,7 +111,7 @@ static int readBoard_(Read *R) {
   // the searches' and the rank's, and the floor's raise are the next break's material; with no garbage ever, endless, they hold the stack
   // seven rows high at forty-seven frames a row)
   if (F->known[FACT_US_CONTACT] || decQ.narr > 0 || decQ.b->ninc > 0) garbageSeen = 1;
-  int garbageGame = garbageSeen;
+  int garbageGame = garbageSeen; rankGarbageGame = garbageGame;
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on && garbageGame;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;

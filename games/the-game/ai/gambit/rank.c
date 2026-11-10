@@ -344,12 +344,14 @@ static int setupKind(const Judge *J) {
 // own; a set-up across the board walks the window away for what a zip at hand makes. Of two zips, the nearer, then the stack left more
 // zipped -- its colours a swap apart, not touching (judge.c spreadOf). -1 x first, 1 y first, 0 neither)
 #define ZIP_NEAR 4
+static int rankGarbageGame;   // (garbage has been on the board or on its way this game: decide.c garbageGame -- endless never)
 static int zipOver(const Judge *x, const Judge *y) {
   int zx = x->k.play == PLAY_ZIP, zy = y->k.play == PLAY_ZIP;
   if (!zx && !zy) return 0;
-  // (calm -- no garbage on the board or on its way -- the zip before any other set-up: the owner, the zipper is the set-up, and among the
-  // most important things it does; under garbage the set-up first unless the zip walks ZIP_NEAR actions fewer)
-  if (zx != zy) { const Judge *z = zx ? x : y, *o = zx ? y : x; int calm = !decF.under && decQ.narr == 0;
+  // (calm -- no garbage on the board or on its way, in a game garbage has come to -- the zip before any other set-up: the owner, the zipper
+  // is the set-up, and among the most important things it does; under garbage, and in endless, the set-up first unless the zip walks
+  // ZIP_NEAR actions fewer)
+  if (zx != zy) { const Judge *z = zx ? x : y, *o = zx ? y : x; int calm = rankGarbageGame && !decF.under && decQ.narr == 0;
     int first = calm || lineWalk(o) - lineWalk(z) >= ZIP_NEAR ? z == x : o == x; return first ? -1 : 1; }
   // (of two zips, the nearer by ZIP_NEAR actions or more, then the more zipped)
   { int wx = lineWalk(x), wy = lineWalk(y); if (iabs(wx - wy) >= ZIP_NEAR) return wx < wy ? -1 : 1; }
@@ -558,7 +560,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // and the board's own chain: the wait buys nothing the zipper does not, and a zip across the board costs more presses than it saves
   {
     int ox = (x->k.play == PLAY_ZIP || x->k.play == PLAY_LEVEL) && !x->hold, oy = (y->k.play == PLAY_ZIP || y->k.play == PLAY_LEVEL) && !y->hold;
-    if (ox != oy) {
+    if (ox != oy && rankGarbageGame) {
       const Judge *m = ox ? x : y, *h = ox ? y : x;
       int idle = h->hold || (goalKeyOf(h) > 2 && !(h->apBroke > 0) && goalKeyOf(m) <= 2);
       int hlive = h == x ? lx : ly;
