@@ -100,6 +100,7 @@ static int chainPlan(const Question *q, int32_t want, int32_t *seq, int *n, int3
       for (int i = 0; i < m; i++) dd[i] = iabs(CR(ms[i]) - cr) + iabs(CC(ms[i]) - cc);
       for (int i = 1; i < m; i++) for (int j = i; j > 0 && dd[j] < dd[j - 1]; j--) { int t = dd[j]; dd[j] = dd[j - 1]; dd[j - 1] = t; int32_t u = ms[j]; ms[j] = ms[j - 1]; ms[j - 1] = u; }
       for (int i = 0; i < m && i < OPEN_KIDS && !clockOut(); i++) {
+        if (d == 0 && swapBack(CR(ms[i]), CC(ms[i]), 0)) continue;   // (never the last swap pressed swapped back: the order refuses it)
         int s1 = step(x, beam[bi].node, MK_SWAP, CR(ms[i]), CC(ms[i]), 0);
         if (!liveNode(x, s1)) continue;
         int out = settleOf(x, s1);
