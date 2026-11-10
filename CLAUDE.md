@@ -6,6 +6,9 @@ Keep chat replies SHORT. Answer the question, state the recommendation,
 stop. No restating the ask, no summarising work already in a commit
 message, no tables or headed sections unless the answer needs structure.
 
+When something merges to `main`, announce it in the reply with big emojis
+(🎉) and say in plain words what it does and what it measured.
+
 Do not write the history of a decision into code comments, commit messages
 or this file. Say what the thing does and what still constrains it. "We
 chose X because Y went wrong" belongs nowhere — it confuses whoever reads
