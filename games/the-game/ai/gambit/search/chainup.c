@@ -79,6 +79,7 @@ static int32_t triggerSendOf(const Question *q, int32_t *sw, int32_t *chain) {
 #define OPEN_BEAM 4
 #define OPEN_KIDS 24   // (the swaps tried from each board, the nearest the cursor first)
 #define OPEN_FILL (12 * W)   // (the cells that fill the enemy's board)
+#define OPEN_MS 12   // (the ms a decision's plan may take: the judge of what it finds needs the rest)
 static LOCAL Ctx *cuCtxC;
 static int chainPlan(const Question *q, int32_t want, int32_t *seq, int *n, int32_t *chain) {
   Ctx *x = cuCtxC = ctxOf(cuCtxC);
