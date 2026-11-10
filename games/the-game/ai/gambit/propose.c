@@ -698,8 +698,8 @@ static int wayLines(Cand *out, int n, int cap) {
 }
 // THE STACK ZIPPED (the players' stacks: a colour left a swap from its partner, not beside it -- one swap then fires what the bot
 // chooses, and nothing lands into a match on its own): the single swaps of two panels at rest that clear nothing and leave the stack
-// more zipped by ZIP_GAIN or more (judge.c spreadOf, on the colours at rest), and the drops that leave it flatter and no less zipped,
-// the most gained first, then nearest the cursor -- on a stack with ZIP_ROOM rows free above it
+// more zipped by ZIP_GAIN or more (judge.c spreadOf, on the colours at rest), the most zipped first, then nearest the cursor -- on a
+// stack with ZIP_ROOM rows free above it
 #define ZIPN 10
 #define ZIP_GAIN 1
 #define ZIP_ROOM 3   // (the rows free above the stack a zip needs)
@@ -745,34 +745,6 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
     int dd = iabs(r - b->curRow) + iabs(c - b->curCol), at = nm;
     if (nm == ZIPN * 4) { at = -1; for (int i = 0; i < nm; i++) if (gain[i] < s || (gain[i] == s && d[i] > dd)) { if (at < 0 || gain[i] < gain[at] || (gain[i] == gain[at] && d[i] > d[at])) at = i; } if (at < 0) continue; } else nm++;
     mv[at] = r * 8 + c; gain[at] = s; d[at] = dd;
-  }
-  // (and the panel dropped: a panel at rest swapped into the empty cell beside it, falling to a lower column -- the stack flattened by it
-  // and no less zipped, the owner: flatten while making the zipper, drop the right piece down. Its gain the zip's and the flattening's)
-  {
-    int hgt[W + 2] = { 0 }, bump0 = 0;
-    for (int c = 1; c <= W; c++) for (int r = 1; r <= H; r++) if (g[r][c] != 0) hgt[c] = r;
-    for (int c = 1; c < W; c++) bump0 += iabs(hgt[c] - hgt[c + 1]);
-    static int32_t t[MAXROWS + 2][W + 2];
-    for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) for (int side = -1; side <= 1; side += 2) {
-      int c2 = c + side, lo = side < 0 ? c2 : c; int32_t cost;
-      if (c2 < 1 || c2 > W || !ok[r][c] || g[r][c2] != 0 || cellAt(b, r, c2) != 0) continue;
-      int lr = r; while (lr > 1 && g[lr - 1][c2] == 0) lr--;
-      if (lr == r) continue;   // (no drop: no flatter)
-      int clean = 1; for (int u = r + 1; u <= hgt[c]; u++) if (!(g[u][c] > 0 && g[u][c] < 8)) clean = 0;
-      if (!clean || !canSwapPanels(b, P(b, r, lo), P(b, r, lo + 1), &cost) || cost) continue;
-      for (int u = 0; u <= H + 1 && u < MAXROWS + 2; u++) for (int v = 0; v <= W + 1; v++) t[u][v] = g[u][v];
-      t[lr][c2] = g[r][c];
-      for (int u = r; u < hgt[c]; u++) t[u][c] = g[u + 1][c];
-      t[hgt[c]][c] = 0;
-      int hb[W + 2] = { 0 }, bump = 0;
-      for (int v = 1; v <= W; v++) for (int u = 1; u <= H; u++) if (t[u][v] != 0) hb[v] = u;
-      for (int v = 1; v < W; v++) bump += iabs(hb[v] - hb[v + 1]);
-      int32_t zs = zipSpread(t, top) - base, fl = bump0 - bump;
-      if (fl < 1 || zs < 0 || twinThree(t, top)) continue;
-      int32_t sg = zs + fl; int dd = iabs(r - b->curRow) + iabs(lo - b->curCol), at = nm;
-      if (nm == ZIPN * 4) { at = -1; for (int i = 0; i < nm; i++) if (gain[i] < sg || (gain[i] == sg && d[i] > dd)) { if (at < 0 || gain[i] < gain[at] || (gain[i] == gain[at] && d[i] > d[at])) at = i; } if (at < 0) continue; } else nm++;
-      mv[at] = r * 8 + lo; gain[at] = sg; d[at] = dd;
-    }
   }
   for (int i = 1; i < nm; i++) for (int j = i; j > 0 && (gain[j] > gain[j - 1] || (gain[j] == gain[j - 1] && d[j] < d[j - 1])); j--) {
     int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; u = gain[j]; gain[j] = gain[j - 1]; gain[j - 1] = u; int e = d[j]; d[j] = d[j - 1]; d[j - 1] = e; }
