@@ -704,7 +704,12 @@ static Played playOf(const Read *R, int n) {
     planned = -1;   // (-1 none found, -2 no candidate, -3 not judged (a swap not there), -4 not on the list, -5 a wasted three, -6 lost)
     // (one swap a decision, the plan made again on the board each time: a whole line planned settled between its swaps goes stale on a
     // stack that rises while the cursor walks -- the trigger once the plan is one swap long, else its next set-up)
-    if (chainPlan(&decQ, want, seq, &ns, &c) && ns > 0) {
+    // (the plan in a share of what is left, OPEN_MS at most: the judge of the swap it finds needs time after it)
+    // (the countdown's question has seconds: half of them)
+    double lft = leftMs(), give = lft > 200 ? 0.5 * lft : 0.5 * lft < OPEN_MS ? (0.5 * lft > 1 ? 0.5 * lft : 1) : OPEN_MS, oldShare = clockShareBegin(nowMs() + give);
+    int got = chainPlan(&decQ, want, seq, &ns, &c);
+    clockShareEnd(oldShare);
+    if (got && ns > 0) {
       static Judge PL; Cand k; planned = -2; int trig = ns == 1;
       if (candOf(&k, trig ? PLAY_ENTRY : PLAY_SETUP, seq, 1, -1, 0)) {
         k.settled = 0; planned = -3; lastDrop = -1;
