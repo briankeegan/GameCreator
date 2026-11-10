@@ -35,6 +35,11 @@ Four of these are measured every run beside survival (`target.sh`, from each gam
   stack, 7.7% for a 5-wide, 1.4% for one row, 0.5% for 2-3 rows, 0.3% for 4; with 1-2 rows free 2.3%, 3.5%, 1.0%, 0.4%, 0.2%. So finish
   them begins 2 rows from the top and asks for small pieces (the modes' table). Measured: frames from its first top-out to its death,
   and the shake and pop time our garbage handed it on the way. Target: the owner's.
+- **Aggressive: the enemy always topped out** (the owner: besides playing the mode, attack a lot -- send a lot of garbage and kill the
+  other player as quickly as possible; the other player should always be topped out). This is where every swap counts: an 8x combo
+  sends twice the garbage of a 5x or a 4x, and a wasted three is garbage never sent -- the efficiency measures above are how the attack
+  rate rises. Measured: garbage cells sent a minute (gambit_summary.js `aggression`), and the share of the game the enemy is topped
+  out. Target: the enemy topped out from the first top-out to its death.
 
 The 28 games: 8 combo_storm, 8 factory, 8 large_garbage, and 4 endless -- no garbage ever, six minutes, the board must not die of its own rise -- the real client's Training mode (`training-mode.yml`), the server's
 engine at **level 11**, the game's own think and input budgets. Live: Gambit against the default on the fork's server
@@ -85,7 +90,9 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
    pressure 23 in run 1555 and 21 in 1556 (factory 5 to 8 of 8, the other two 7 and 8); build 23 in run 1636 (combo_storm and
    large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). On the owner's lists (110143e3): pressure 22 in run 1669, build 22 in run 1672, finish 22 in run 1679, switching 22 in run 1789; each mode to 22 again, one at a time.
 
-THE OPENER'S OWN TARGET (the owner): 100%. It has the countdown's three seconds to itself, so it never dies. It is measured as a
+THE OPENER'S OWN TARGET (the owner): 100%. It has the countdown's three seconds to itself, so it never dies. And it attacks at once (the owner: the opener is the worst move now): the three seconds plan several chains and set-ups -- more
+than one idea, each continued on its own -- so they are fired as soon as the game starts and top the enemy out within its first five
+moves. Measured: the frames from the start to the enemy's first top-out, and the garbage sent in the first 15 s. It is measured as a
 handover: from the start to the top-out, that garbage broken, then 15 s (900 frames) in the mode it gives way to -- each of finish
 them, big chain, pressure and build on the same 8 seeds per pattern, never time attack (no garbage there). gambit-24.yml `then`
 `["finish_them","big_chain","pressure","build"]`, `profile` gambit-opener.json, `frames` 5400 (a game not switched by 90 s is
