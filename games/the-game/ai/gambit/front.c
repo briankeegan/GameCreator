@@ -1002,6 +1002,7 @@ static int frontCountdown(int32_t left) {
   return 1;
 }
 // ---------------------------------------------------------------- one frame
+static int32_t idleWin = -1, idleWins, idleWinsKeyed, idleKeyed;   // (the half-seconds in play and those with a key: frontFrame)
 static int frontFrame(void) {
   Board *t = F.truth;
   int32_t now = t->clock;
@@ -1103,9 +1104,13 @@ static int frontFrame(void) {
   if (bits & IN_SWAP) F.swapSince = 1;
   { FTrace *r = &ftrace[ftraceN++ % FTRACE];
     *r = (FTrace){ now, bits, p != 0, F.pending ? F.pAt : -1, F.nextAt, F.lineN, F.lineN ? F.lineAt[0] : -1, ftraceDrops }; ftraceDrops = 0; }
+  // (THE HALF-SECONDS PRESSED: of the game's half-seconds in play, those with any key pressed -- the goal's never idle, GAMBITI at the end)
+  { int32_t w = now / 30; if (w != idleWin) { idleWin = w; idleWins++; idleKeyed = 0; } if (bits && !idleKeyed) { idleKeyed = 1; idleWinsKeyed++; } }
   return bits;
 }
 static void frontTraceOut(void) {
+  if (idleWins) { char l[64]; snprintf(l, sizeof l, "GAMBITI %d %d", idleWins, idleWinsKeyed); flog(l); }
+  idleWins = idleWinsKeyed = idleKeyed = 0; idleWin = -1;
   int n = ftraceN < FTRACE ? ftraceN : FTRACE;
   for (int i = 0; i < n; i++) {
     const FTrace *r = &ftrace[(ftraceN - n + i) % FTRACE];
