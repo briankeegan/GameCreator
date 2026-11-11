@@ -18,8 +18,6 @@ static int32_t raiseRefill;   // (the raise asked is the floor's, not the openin
 static int32_t raiseOpening, raiseTo, raiseRows;   // (the raise asked this decision: the opening's, and the rows it raises to -- the log's raiseFor)
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
-#define BREAK_SAVE_SWAPS 4   // (a three on the way to a break let through near the end: the line short enough that its break follows it)
-static int breakSaves(const Judge *J) { return J->apBroke > 0 && J->k.nseq <= BREAK_SAVE_SWAPS; }
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
@@ -472,10 +470,9 @@ static int ranked(const Read *R, const Found *S) {
   // NO WASTED THREE (the owner: only when not doing it would kill it): a line whose clears break nothing and throw nothing is taken out
   // of the order -- unless every other line is lost within a break's time (rankSave) and a three lives, or is lost later: only there is
   // a three a save
-  { int keeps = 0, wasteLives = 0, breakLives = 0; double wasteLost = -1, keptLost = -1, breakLost = -1;
+  { int keeps = 0, wasteLives = 0; double wasteLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
-      if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]);
-        if (breakSaves(order[i])) { if (order[i]->o.lives) breakLives = 1; else if (lostOf(order[i]) > breakLost) breakLost = lostOf(order[i]); } }
+      if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
     // (with no garbage on the board or on its way the board is lost to its own rise, and a break's time is fewer rows the faster it
@@ -487,12 +484,11 @@ static int ranked(const Read *R, const Found *S) {
     // Live p65, r661, 8348: the hold lost in 104 frames, a break's time and seven, the line that would have lived 242 frames longer
     // dropped as a wasted three, and the board lost 50 frames later)
     int nearSave = raceOn && keptLost >= 0 && keptLost < NEAR_SAVE * rankSave && (wasteLives || wasteLost - keptLost >= rankSave);
-    // (A THREE ON THE WAY TO A BREAK NEAR THE END, race or not: every line that keeps its threes lost within NEAR_SAVE breaks' time, and a
-    // line whose three opens the garbage it then breaks lives or is lost a break's time later -- that line follows through, and only lines
-    // that break are let through: a break dropped there is often the last the board has)
-    int breakSave = !nearSave && !keeps && keptLost >= 0 && keptLost < NEAR_SAVE * rankSave && (breakLives || (breakLost >= 0 && breakLost - keptLost >= rankSave));
-    if (breakSave) keeps = 1;
-    if (!keeps && keptLost >= keepFor && !nearSave) keeps = 1;
+    // (with no garbage on the board or on its way and no line living, the board is lost to its own rise whatever the frames left: the
+    // three is asked of the survival search below rather than kept out by the break's time -- every line lost, a three that outlasts is
+    // the save, one that does not is wasted)
+    int riseOnly = !decF.under && decQ.narr == 0 && keptLost >= 0;
+    if (!keeps && keptLost >= keepFor && !nearSave && !riseOnly) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     if (!keeps && nearSave) saveOk = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
@@ -534,7 +530,7 @@ static int ranked(const Read *R, const Found *S) {
     if (!keeps && !saveOk && (wasteLives || wasteLost >= 0) && !(saveAsked && saveCw >= 0 && saveCk >= 0)) { saveOk = 1; saveBlind = 1; }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && !(breakSave && breakSaves(order[i]))) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i])) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
