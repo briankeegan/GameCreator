@@ -484,11 +484,10 @@ static int ranked(const Read *R, const Found *S) {
     // Live p65, r661, 8348: the hold lost in 104 frames, a break's time and seven, the line that would have lived 242 frames longer
     // dropped as a wasted three, and the board lost 50 frames later)
     int nearSave = raceOn && keptLost >= 0 && keptLost < NEAR_SAVE * rankSave && (wasteLives || wasteLost - keptLost >= rankSave);
-    // (with no garbage on the board or on its way and no line living, the board is lost to its own rise whatever the frames left: the
-    // three is asked of the survival search below rather than kept out by the break's time -- every line lost, a three that outlasts is
-    // the save, one that does not is wasted)
-    int riseOnly = !decF.under && decQ.narr == 0 && keptLost >= 0;
-    if (!keeps && keptLost >= keepFor && !nearSave && !riseOnly) keeps = 1;
+    // (no line living, the three is asked of the survival search below rather than kept out by the break's time -- every line lost, a
+    // three that outlasts is the save, one that does not is wasted)
+    int noneLives = keptLost >= 0;
+    if (!keeps && keptLost >= keepFor && !nearSave && !noneLives) keeps = 1;
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     if (!keeps && nearSave) saveOk = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
