@@ -448,6 +448,21 @@ local function virtualEnemy(me, clock)
   return math.min(12, h), h >= 12 and 1 or 0, onWay
 end
 
+-- (THE ENEMY AS OUR GARBAGE WILL LEAVE IT: the rows this stack has sent it that have not landed -- staged on the telegraph, or on their
+-- way -- each piece its height, added to its tallest column: the rules' enemy.height is the board it will have, so a big chain on its
+-- way brings on the mode that finishes it, and the next attack is sized to the room left)
+local function rowsOnItsWay(me)
+  local q, n = me and me.outgoingGarbage, 0
+  if not q then return 0 end
+  for _, g in ipairs(q.stagedGarbage or EMPTY) do n = n + (g.height or 1) end
+  if q.transitTimers then
+    for k = q.transitTimers.first, q.transitTimers.last do
+      local t = q.transitTimers[k]
+      for _, g in ipairs(t and q.garbageInTransit[t] or EMPTY) do n = n + (g.height or 1) end
+    end
+  end
+  return n
+end
 function GambitNative:think(stack, sources, view)
   local idle = KeyDataEncoding.base64encode[1]
   -- (the countdown: once the cursor has come to rest, the opening asked of the board as play will begin with it -- gn_countdown)
@@ -470,9 +485,9 @@ function GambitNative:think(stack, sources, view)
   local has, out, top, stop, stand = opponentOf(sources, view, stack.clock)
   local onWay
   if stand and VIRTUAL then top, out, onWay = virtualEnemy(stack, stack.clock) end
-  -- (the enemy as it stands: our garbage still in the air is not counted -- it lands when it lands, and a board it has not reached is
-  -- not near the top; the training's stand-in enemy keeps its own count of what is on its way)
-  if has == 1 and onWay then top = math.min(12, top + onWay) end
+  -- (the enemy as our garbage will leave it: most of its board, and every row we have sent it that has not landed -- a combo lands on
+  -- top of them, so finish them is the board a combo's row tops out: the owner, a combo only where it can kill)
+  if has == 1 then top = math.min(12, top + (onWay or rowsOnItsWay(stack))) end
   local t2 = ThinkBudget.now()
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
