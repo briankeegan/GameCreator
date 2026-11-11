@@ -58,6 +58,10 @@ A:connectSignal("matched", {}, function(_, _s, _g, isChain, comboSize, metal, ga
   -- (a clear that breaks garbage: how the attacker digs -- the clear's size, whether it is a link of a chain, the garbage it touches)
   if (garbage or 0) > 0 then emit({ t = "break", f = A.clock, n = comboSize or 0, link = isChain and (A.chain_counter or 0) or 0, g = garbage }) end
 end)
+-- (the attacker's keys, as the engine sees them: a cursor move or a swap -- the half-seconds with none are its idle ones)
+local acted, halves, idle, lastHalf = false, 0, 0, -1
+A:connectSignal("cursorMoved", {}, function() acted = true end)
+A:connectSignal("panelsSwapped", {}, function() acted = true end)
 local lastTick, prevChain = -1, 0
 local guard = 0
 while not A:game_ended() and not D:game_ended() do
@@ -68,11 +72,13 @@ while not A:game_ended() and not D:game_ended() do
   if pendingChain and cc > pendingChain.n then pendingChain.n = cc end
   if pendingChain and cc == 0 then emit(pendingChain); pendingChain = nil end
   prevChain = cc
+  local half = math.floor(A.clock / 30)
+  if half ~= lastHalf then if lastHalf >= 0 then halves = halves + 1; if not acted then idle = idle + 1 end end; lastHalf = half; acted = false end
   if math.floor(A.clock / 30) ~= lastTick then lastTick = math.floor(A.clock / 30); emit({ t = "tick", f = A.clock, d = def(), m = mine() }) end
 end
 if pendingChain then emit(pendingChain) end
 local won = D:game_ended() and not A:game_ended()
 if R.metadata and R.metadata.winnerId and R.metadata.stacks then won = R.metadata.stacks[seat].publicId == R.metadata.winnerId end
 local nIn = R.stacks and R.stacks[seat] and #(R.stacks[seat].inputs or "") or -1
-emit({ t = "end", f = A.clock, won = won, aEnd = A:game_ended() and true or false, dEnd = D:game_ended() and true or false, nIn = nIn })
+emit({ t = "end", f = A.clock, won = won, halves = halves, idle = idle, aEnd = A:game_ended() and true or false, dEnd = D:game_ended() and true or false, nIn = nIn })
 print(table.concat(out, "\n"))
