@@ -8,6 +8,7 @@
 -- REPLAY.json is one match from the public archive (panelattack.com/replays/v049/...); NAME the attacker. Lines:
 --   {"t":"combo","f":F,"n":SIZE,"d":DEF}          a combo of 4 or more, no chain link
 --   {"t":"chain","f":F,"n":LINKS,"d":DEF}         a chain, at the frame its second link matched (the attack begun); n its length at the end
+--   {"t":"break","f":F,"n":SIZE,"link":L,"g":CELLS}   a clear that breaks garbage: its size, its link of a chain (0 none), garbage cells
 --   {"t":"tick","f":F,"d":DEF,"m":MINE}           every 30 frames; MINE the attacker's own board: {"pan":colour panels,"gar":garbage cells,
 --                                                  "h":[column heights],"stop":frames,"q":pieces queued for it}
 --   {"t":"end","f":F,"won":bool}
@@ -52,8 +53,10 @@ end
 local out = {}
 local function emit(t) out[#out + 1] = djson.encode(t) end
 local pendingChain
-A:connectSignal("matched", {}, function(_, _s, _g, isChain, comboSize)
+A:connectSignal("matched", {}, function(_, _s, _g, isChain, comboSize, metal, garbage)
   if not isChain and (comboSize or 0) >= 4 then emit({ t = "combo", f = A.clock, n = comboSize, d = def() }) end
+  -- (a clear that breaks garbage: how the attacker digs -- the clear's size, whether it is a link of a chain, the garbage it touches)
+  if (garbage or 0) > 0 then emit({ t = "break", f = A.clock, n = comboSize or 0, link = isChain and (A.chain_counter or 0) or 0, g = garbage }) end
 end)
 local lastTick, prevChain = -1, 0
 local guard = 0
