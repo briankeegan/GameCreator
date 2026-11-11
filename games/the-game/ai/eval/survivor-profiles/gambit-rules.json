@@ -38,7 +38,7 @@
   {
    "name": "finish them",
    "when": {
-    "enemy.height": ">=10"
+    "enemy.height": ">=11"
    },
    "aims": [
     {
@@ -64,7 +64,7 @@
   {
    "name": "fill",
    "when": {
-    "enemy.height": "<10"
+    "enemy.height": "<11"
    },
    "aims": [
     {
