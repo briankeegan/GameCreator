@@ -444,7 +444,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   readMs = nowMs() - tStart;
   double brMs;
   // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
-  judgeFrac = cascadeLive(decQ.b) ? JUDGE_CASCADE : 0.25;
   double searchShare = clockShareBegin(searchesEnd());
   static Found S;
   searchPrep(&R, &S);
