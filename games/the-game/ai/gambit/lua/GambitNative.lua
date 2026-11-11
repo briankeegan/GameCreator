@@ -336,7 +336,7 @@ local function opponentOf(sources, view, clock)
   -- (any opponent seen, by any of the three routes, makes this host a fighter for the session: FOUGHT)
   if view and clock and view.seen and view.seen <= clock and (anyWired or clock - view.seen <= VIEW_FRESH) then
     FOUGHT = true
-    return 1, view.out and 1 or 0, view.top or 0, math.max(0, (view.stop or 0) - (clock - view.seen))
+    return 1, view.out and 1 or 0, view.out and 12 or (view.top4 or view.top or 0), math.max(0, (view.stop or 0) - (clock - view.seen))
   end
   if anyWired then FOUGHT = true return 1, 0, 0, 0 end
   local has, out, top, stop = 0, 0, 0, 0
@@ -350,11 +350,18 @@ local function opponentOf(sources, view, clock)
       has = 1
       stop = math.max(stop, (src.stop_time or 0) + (src.pre_stop_time or 0), src.shake_time or 0)
       if src:isToppedOut() then out = 1 end
-      for row = src.height or 12, 1, -1 do
-        local found = false
-        for col = 1, src.width or 6 do if counts(src.panels[row] and src.panels[row][col]) then found = true break end end
-        if found then if row > top then top = row end break end
+      -- (THE BOARD'S HEIGHT, AS STRONG PLAYERS READ IT: the row four of its six columns reach -- most of the board, not its one tall
+      -- column; topped out is the top. plans/gambit-goal.md, Tanycanayt's finishes)
+      local hs = {}
+      for col = 1, src.width or 6 do
+        local h = 0
+        for row = src.height or 12, 1, -1 do if counts(src.panels[row] and src.panels[row][col]) then h = row break end end
+        hs[#hs + 1] = h
       end
+      table.sort(hs, function(a, b) return a > b end)
+      local most = hs[4] or hs[#hs] or 0
+      if src:isToppedOut() then most = src.height or 12 end
+      if most > top then top = most end
     end
   end
   -- (GC_GAMBIT_FIGHT: training played as a fight -- the attack engine stands in for a stack that is there, low, not topped, held up by
@@ -441,21 +448,6 @@ local function virtualEnemy(me, clock)
   return math.min(12, h), h >= 12 and 1 or 0, onWay
 end
 
--- (THE ENEMY AS OUR GARBAGE WILL LEAVE IT: the rows this stack has sent it that have not landed -- staged on the telegraph, or on their
--- way -- each piece its height, added to its tallest column: the rules' enemy.height is the board it will have, so a big chain on its
--- way brings on the mode that finishes it, and the next attack is sized to the room left)
-local function rowsOnItsWay(me)
-  local q, n = me and me.outgoingGarbage, 0
-  if not q then return 0 end
-  for _, g in ipairs(q.stagedGarbage or EMPTY) do n = n + (g.height or 1) end
-  if q.transitTimers then
-    for k = q.transitTimers.first, q.transitTimers.last do
-      local t = q.transitTimers[k]
-      for _, g in ipairs(t and q.garbageInTransit[t] or EMPTY) do n = n + (g.height or 1) end
-    end
-  end
-  return n
-end
 function GambitNative:think(stack, sources, view)
   local idle = KeyDataEncoding.base64encode[1]
   -- (the countdown: once the cursor has come to rest, the opening asked of the board as play will begin with it -- gn_countdown)
@@ -478,7 +470,9 @@ function GambitNative:think(stack, sources, view)
   local has, out, top, stop, stand = opponentOf(sources, view, stack.clock)
   local onWay
   if stand and VIRTUAL then top, out, onWay = virtualEnemy(stack, stack.clock) end
-  if has == 1 then top = math.min(12, top + (onWay or rowsOnItsWay(stack))) end
+  -- (the enemy as it stands: our garbage still in the air is not counted -- it lands when it lands, and a board it has not reached is
+  -- not near the top; the training's stand-in enemy keeps its own count of what is on its way)
+  if has == 1 and onWay then top = math.min(12, top + onWay) end
   local t2 = ThinkBudget.now()
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2

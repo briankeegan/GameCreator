@@ -31,7 +31,8 @@ static Keep floorKeep; static int32_t floorKeepOn;
 // THE CHAIN THE ENEMY'S ROOM ASKS (the owner: modes are dynamic -- fill with chains, top out with a small combo, keep the next coming):
 // a list's aim {"chain":"fill"} is the chains that fit the rows the enemy will have free when they land, leaving it one -- an n-chain
 // lands as n - 1 rows, FILL_FLIGHT frames after it is made and FILL_LINK more a link, and the enemy rises a row every
-// SPEED_TO_RISE_TIME frames of it not held by its stop (its height already counts the rows on their way: GambitNative rowsOnItsWay).
+// SPEED_TO_RISE_TIME frames of it not held by its stop (its height is the row four of its six columns reach, our garbage in the air not
+// counted: GambitNative opponentOf).
 // Every chain of three or more that fits is the mode's -- one that fills the room exactly first, then the longer -- never a 2x (the
 // owner: a 3x and a 4x, or two 3x, as well as a 6x). No three-chain fits: the list's other aims, its small combos, in their order.
 #define FILL_FLIGHT 151
