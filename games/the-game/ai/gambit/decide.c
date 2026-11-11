@@ -337,14 +337,6 @@ static int ranked(const Read *R, const Found *S) {
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
-  // (GARBAGE ON THE BOARD, THE BREAKS JUDGED FIRST: a decision the clock stops mid-judging has looked at the lines that break before the
-  // rest -- the order below is made from what was judged, so only a decision short of time sees the difference)
-  if (R->under) {
-    static Cand tmp[MAXCANDS]; int m = 0;
-    for (int i = 0; i < nc; i++) { int p = theCands[i].play; if (p == PLAY_BREAKSEARCH || p == PLAY_LINEUPBREAK || p == PLAY_BREAKLINE) tmp[m++] = theCands[i]; }
-    for (int i = 0; i < nc; i++) { int p = theCands[i].play; if (!(p == PLAY_BREAKSEARCH || p == PLAY_LINEUPBREAK || p == PLAY_BREAKLINE)) tmp[m++] = theCands[i]; }
-    memcpy(theCands, tmp, sizeof(Cand) * (unsigned long)nc);
-  }
   double t1 = nowMs();
   for (int i = 0; i < nc; i++) offered[theCands[i].play]++;
   readyDefer = 1;   // (the proposers above ask readiness whole; the judging below ranks first)
