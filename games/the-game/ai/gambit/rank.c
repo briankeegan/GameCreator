@@ -490,6 +490,8 @@ static int boughtWithPanels(const Judge *x, const Judge *y) {
 }
 // (A COMBO OF FOUR OUTSIDE THE LIST: panels spent for a small piece the mode does not ask for -- the owner: a last resort)
 static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
+// (A BREAK THAT IS A COMBO: the line breaks garbage and makes a combo of four or more doing it)
+static int comboBreak(const Judge *J) { return !J->hold && !J->o.dead && J->apBroke > 0 && J->o.j.made.combo >= 4; }
 // (THE CHAIN FALLING GROWN: the longest chain the mode's list asks -- an entry of "or more" its target, the length it asks at least: a
 // link past the target is presses and panels the list does not ask for)
 #define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
@@ -740,8 +742,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
     // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
-    // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
-    else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
+    // (of two that break: one whose break is a combo of four or more, breaking as much garbage, before a three -- the best players dig
+    // with combos, an attack thrown while digging: Tanycanayt, a third of his breaks combos of 4+, plans/gambit-goal.md)
+    else if (comboBreak(x) != comboBreak(y) && (comboBreak(x) ? x : y)->apBroke >= (comboBreak(x) ? y : x)->apBroke) return (cmpKey = __LINE__, (comboBreak(x) ? -1 : 1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
     // (of two that break: the one that meets the earlier combo entry of the mode's list -- the combo the mode asks goes with the break)
     else if (comboEntry(x) != comboEntry(y)) return (cmpKey = __LINE__, (comboEntry(x) - comboEntry(y)));
