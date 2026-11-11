@@ -484,9 +484,23 @@ static int32_t cmpKey;
 // panels the next break is made from. Beside one that spends none and leaves the next decision a break's time (rankSave), the two
 // survive alike, and the list puts the one that keeps its panels first -- under garbage too: a chain fired for its stop leaves the
 // garbage where it is and fewer panels to break it with)
+// (THE NEXT BREAK'S PANELS: under garbage below the floor, the panels a break leaves under the lowest garbage once everything shown has
+// landed -- what the next break is made of; -1 not known)
+static int32_t panelsLeft(const Judge *J) { return J->o.j.readyMat >= 0 ? J->o.j.readyMat : J->o.matLeft; }
+static int shortOfPanels(const Judge *x, const Judge *y) {
+  return decF.under && decF.belowFloor && x->apBroke > 0 && y->apBroke > 0 && panelsLeft(x) >= 0 && panelsLeft(y) >= 0 &&
+         iabs(panelsLeft(x) - panelsLeft(y)) >= 3;
+}
 static int boughtWithPanels(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
-  return lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends;
+  if (lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends) return 1;
+  // (and two breaks below the floor: the later loss bought by spending a three's worth of panels more, within two breaks' time -- a board
+  // short of panels that spends them for a little more life finds no next break)
+  if (lo >= rankSave && shortOfPanels(x, y)) {
+    const Judge *late = lostOf(x) > lostOf(y) ? x : y, *early = late == x ? y : x;
+    if (panelsLeft(late) < panelsLeft(early) && lostOf(late) - lostOf(early) < 2 * rankSave) return 1;
+  }
+  return 0;
 }
 // (A COMBO OF FOUR OUTSIDE THE LIST: panels spent for a small piece the mode does not ask for -- the owner: a last resort)
 static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outside && J->o.j.made.combo == 4 && J->o.j.made.chain < 2; }
@@ -587,6 +601,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
+  // more panels -- before the mode and the walk
+  if (!lx && shortOfPanels(x, y) && lostOf(x) >= rankSave && lostOf(y) >= rankSave) return (cmpKey = __LINE__, (panelsLeft(x) > panelsLeft(y) ? -1 : 1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
   // none and breaks as much
@@ -821,14 +838,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // break's (run 444: large_garbage 7 to 3 of 8 with the break held to the later loss everywhere)
     int bx = x->apBroke > 0 && lostOf(x) >= rankSave, by = y->apBroke > 0 && lostOf(y) >= rankSave;
     if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return (cmpKey = __LINE__, (bx ? -1 : 1)); }
-    // 2''. (neither lives, under garbage, below the floor) THE NEXT BREAK'S PANELS: of two that break, lost alike, the one that leaves
-    // more panels under the lowest garbage once everything shown has landed -- by a three's worth or more -- before the rows it converts
-    // and before the list: a board short of panels that spends them on a bigger clear finds no next break
-    if (decF.under && decF.belowFloor && bx && by && lostAlike(x, y)) {
-      int both = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
-      int32_t mx = both ? x->o.j.readyMat : x->o.matLeft, my = both ? y->o.j.readyMat : y->o.matLeft;
-      if (mx >= 0 && my >= 0 && iabs(mx - my) >= 3) return (cmpKey = __LINE__, (mx > my ? -1 : 1));
-    }
     // 2'. (neither lives, under garbage) THE LINEUP FIRST: of two that break, the one that converts more full rows of the block -- the
     // lineup that keeps a slab breaking, row after row -- unless it is lost a break's time sooner: a row a line leaves is a row a later
     // break must make, and the board dies when the rows on it and coming outrun the rows broken (1d596973)
