@@ -821,6 +821,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // break's (run 444: large_garbage 7 to 3 of 8 with the break held to the later loss everywhere)
     int bx = x->apBroke > 0 && lostOf(x) >= rankSave, by = y->apBroke > 0 && lostOf(y) >= rankSave;
     if (bx != by) { const Judge *b = bx ? x : y, *o = bx ? y : x; if (decF.belowFloor || lostOf(o) - lostOf(b) < rankSave) return (cmpKey = __LINE__, (bx ? -1 : 1)); }
+    // 2''. (neither lives, under garbage, below the floor) THE NEXT BREAK'S PANELS: of two that break, lost alike, the one that leaves
+    // more panels under the lowest garbage once everything shown has landed -- by a three's worth or more -- before the rows it converts
+    // and before the list: a board short of panels that spends them on a bigger clear finds no next break
+    if (decF.under && decF.belowFloor && bx && by && lostAlike(x, y)) {
+      int both = x->o.j.readyMat >= 0 && y->o.j.readyMat >= 0;
+      int32_t mx = both ? x->o.j.readyMat : x->o.matLeft, my = both ? y->o.j.readyMat : y->o.matLeft;
+      if (mx >= 0 && my >= 0 && iabs(mx - my) >= 3) return (cmpKey = __LINE__, (mx > my ? -1 : 1));
+    }
     // 2'. (neither lives, under garbage) THE LINEUP FIRST: of two that break, the one that converts more full rows of the block -- the
     // lineup that keeps a slab breaking, row after row -- unless it is lost a break's time sooner: a row a line leaves is a row a later
     // break must make, and the board dies when the rows on it and coming outrun the rows broken (1d596973)
