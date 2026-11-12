@@ -351,11 +351,12 @@ local function opponentOf(sources, view, clock)
       stop = math.max(stop, (src.stop_time or 0) + (src.pre_stop_time or 0), src.shake_time or 0)
       if src:isToppedOut() then out = 1 end
       -- (THE BOARD'S HEIGHT, AS STRONG PLAYERS READ IT: the row four of its six columns reach -- most of the board, not its one tall
-      -- column; topped out is the top. plans/gambit-goal.md, Tanycanayt's finishes)
+      -- column; topped out is the top. plans/gambit-goal.md, Tanycanayt's finishes. A column's height is the cells it holds, as if the
+      -- board had settled: a slab resting on one tall column over empty ones is not the others' height)
       local hs = {}
       for col = 1, src.width or 6 do
         local h = 0
-        for row = src.height or 12, 1, -1 do if counts(src.panels[row] and src.panels[row][col]) then h = row break end end
+        for row = 1, src.height or 12 do if counts(src.panels[row] and src.panels[row][col]) then h = h + 1 end end
         hs[#hs + 1] = h
       end
       table.sort(hs, function(a, b) return a > b end)
