@@ -38,6 +38,7 @@ typedef struct {
   int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
+  int32_t lengthens;            // time attack: the line makes the board's chain longer than it makes alone, below 13 (in the mode)
 } Judge;
 static int32_t aloneChain; static int ruleNoEnemy;   // (below: the chain the board makes alone, and time attack's rule)
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
@@ -118,6 +119,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (TIME ATTACK: a line that makes the board's chain longer than it makes alone is within the list, whatever length the list asks --
   // a chain is taken there a link at a time, up to 13)
   int lengthens = ruleNoEnemy && j && aloneChain < CB_TOP && j->whole.chain > imax(1, aloneChain);
+  J->lengthens = lengthens;
   if (!lengthens && !(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = J->spends = 1;
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
@@ -526,7 +528,7 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 // (OFF THE MODE: a line whose attack the mode's list does not ask -- a chain where it asks combos, a 2x or a chain past its length, a combo
 // of four or more it does not ask -- the board's own chain going on counted, as every line has it alike)
 #define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
-static int offMode(const Judge *J) { return !J->hold && !J->o.dead && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
+static int offMode(const Judge *J) { return !J->hold && !J->o.dead && !J->lengthens && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
 // (A BOARD THAT OUTLIVES ANOTHER: c's is lost -- past the horizon or not -- and o's lives, stands the whole judging, or is lost a break's
 // time (rankSave) or more later, on the frame each is lost, no walk charged; a loss not asked outlives nothing)
