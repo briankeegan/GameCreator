@@ -709,8 +709,13 @@ static Played playOf(const Read *R, int n) {
     if (sw) {
       static Judge CU; Cand k; int32_t one[1] = { sw };
       if (candOf(&k, fire ? PLAY_ENTRY : PLAY_SETUP, one, 1, -1, 0)) {
-        k.settled = 0; chainUp = -1;
-        if (judgeCand(R, &k, &CU) && !CU.o.dead && CU.o.lives && (fire || !wastesThree(&CU))) { P.line = &CU; chainUp = fire ? 2 : 1; if (!fire) opPressed = sw; else openingReset(); }
+        k.settled = 0;
+        // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live, -4 a
+        // wasted three -- the log's)
+        lastDrop = -1;
+        int jok = judgeCand(R, &k, &CU);
+        chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : (!fire && wastesThree(&CU)) ? -4 : 0;
+        if (!chainUp) { P.line = &CU; chainUp = fire ? 2 : 1; if (!fire) opPressed = sw; else openingReset(); }
       }
     }
     clockDue = keepDue; clockShare = keepShare;
