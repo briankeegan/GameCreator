@@ -328,6 +328,7 @@ EXPORT(gb_design_check) int gb_design_check(int n, int rows, int colours, int ms
 // rise held off (rows < 0: left on), designed (`ms` of the wall clock) and its swaps then trigger played on the engine one after another, each settled.
 // Into out: the chain designed, the swaps, the chain the engine made, the panels it cleared, the swap the engine first refused or
 // matched on (-1 none).
+static int32_t designSkill; static double designSkillMs;
 EXPORT(gb_design_engine) int gb_design_engine(int nbytes, int rows, int colours, int ms, uint32_t seed, int32_t *out) {
   if (gb_question_bytes(nbytes, 0) != 0) return -1;
   int rise = rows < 0; if (rise) rows = -rows;
@@ -374,5 +375,33 @@ EXPORT(gb_design_engine) int gb_design_engine(int nbytes, int rows, int colours,
     if (i == n - 1) { out[2] = ch; out[3] = cl; }
     at = o;
   }
+  // (THE CHAIN CONTINUED, designSkill: the trigger pressed again from the board before it, and while the chain falls the extension asked
+  // every few frames, its longest line's first swap pressed -- the chain it reaches into out[5], the swaps pressed into out[6])
+  out[5] = 0; out[6] = 0;
+  if (designSkill && n > 0 && out[4] < 0) {
+    int pre = rootOf(x, &q);
+    for (int i = 0; i < n - 1 && liveNode(x, pre); i++) { int s1 = step(x, pre, MK_SWAP, CR(seq[i]), CC(seq[i]), 0); pre = liveNode(x, s1) ? settleOf(x, s1) : -1; }
+    int cur = liveNode(x, pre) ? step(x, pre, MK_SWAP, CR(seq[n - 1]), CC(seq[n - 1]), 0) : -1;
+    int best = 0, pressed = 0;
+    List L; memset(&L, 0, sizeof L); L.n = 1; L.aim[0].chain.op = OP_GE; L.aim[0].chain.n = 2; L.aim[0].brk = -1;
+    for (int it = 0; it < 200 && liveNode(x, cur); it++) {
+      Board *eb = ensureBoard(x, cur);
+      if (!eb) break;
+      if (eb->chainCounter > best) best = eb->chainCounter;
+      if (it > 0 && eb->chainCounter == 0 && !hasActivePanels(eb)) break;
+      Question qq = hostQ; qq.b = eb; qq.narr = 0; qq.holdLeft = 0; qq.holdStarted = 0;
+      decQ = qq; ncache = 0;
+      ExtOpts eo = { 40, 6, &L, NOT_ASKED, 0, designSkillMs };
+      static Ext E; extend(&qq, &eo, &E);
+      if (E.longest.set && E.longest.nseq > 0) {
+        int s1 = step(x, cur, MK_SWAP, CR(E.longest.seq[0]), CC(E.longest.seq[0]), 0);
+        if (liveNode(x, s1)) { cur = s1; pressed++; continue; }
+      }
+      cur = step(x, cur, MK_LONG, 0, 0, 6);
+    }
+    out[5] = best; out[6] = pressed;
+  }
   return n;
 }
+static int32_t designSkill; static double designSkillMs = 60;
+EXPORT(gb_design_skill) void gb_design_skill(int on, int ms) { designSkill = on; designSkillMs = ms > 0 ? ms : 60; }
