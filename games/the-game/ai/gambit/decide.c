@@ -21,9 +21,11 @@ static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise 
 static int32_t opLineOn;
 #define TA_LINKS 13        // a design this long is built at once
 #define TA_DESIGN_MS 2500  // the time searched on a design before it is built, at most
-#define TA_TOP 10          // the stack's top at which a design is built whatever it holds
+#define TA_TOP 9           // the stack's top at which a design is built whatever it holds, and the raise's
+#define TA_MARGIN 30       // the frames to spare when the trigger goes down
+#define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
 #define TA_STEP 4          // the design's swaps handed on a decision
-static int32_t taLog;      // (the log's: 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
+static int32_t taLog;      // (the log's: 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
 #define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
@@ -183,7 +185,7 @@ static int readBoard_(Read *R) {
   int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
   // (TIME ATTACK'S RAISE: no design being built and the stack under TA_TOP -- the owner: raise to the top, then the chain; no garbage is
   // coming, so the rows are raised as they are, never held to a break's readiness)
-  int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !taOn && panelTop(decQ.b) < TA_TOP;
+  int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !R->dying && !taOn && panelTop(decQ.b) < TA_TOP;
   if (taRaise) to = TA_TOP;
   raiseRefill = refill; raiseOpening = opening; raiseTo = to;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
@@ -762,7 +764,12 @@ static Played playOf(const Read *R, int n) {
     }
     if (taOn) {
       int32_t seq[CB_MAXSWAPS + 1]; int n = cbOrder(&G, &taD, taTr, seq, CB_MAXSWAPS + 1);
-      if (n <= 0) { taReset(); taLog = -2; }
+      // (never a build the board does not live through -- the owner: you can't choose to die: the swaps left and the trigger, walked and
+      // pressed, inside the frames the board has left alone with TA_MARGIN to spare -- the chain's clears stop the rise; else the design is
+      // let go and the board is played for its life)
+      int32_t dies = R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0 ? (int32_t)R->F.v[FACT_US_DIES] : NOT_ASKED;
+      if (n > 0 && dies != NOT_ASKED && dies < n * TA_SWAP_FRAMES + TA_MARGIN) { taReset(); taLog = -3; n = 0; }
+      else if (n <= 0) { taReset(); taLog = -2; }
       else {
         int hand = n == 1 ? 1 : imin(TA_STEP, n - 1);
         static Judge CU; Cand k;
