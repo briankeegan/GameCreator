@@ -30,6 +30,7 @@ static int32_t opLineOn;
 #define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
 #define TA_STEP 4          // the design's swaps handed on a decision
 #define TA_FULL 6          // the full rows a board has before a design is searched on it
+static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: the chain left alone, the longest found, its swaps, the ms given)
 static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
 #define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
@@ -753,7 +754,7 @@ static Played playOf(const Read *R, int n) {
   // again; the score is all there is, a combo is worth nothing: the design searched on in each decision's time (search/chainbuild.c) until
   // it holds TA_LINKS links, TA_DESIGN_MS have gone on it, or the stack is at the top; then its swaps are pressed TA_STEP at a time, worked
   // out afresh each decision from the board as it is, and its trigger last. A design the board no longer holds is let go.)
-  taLog = 0;
+  taLog = 0; taxMs = -1;
   // (A CHAIN GOING, TIME ATTACK: the extension given the decision's time, and its longest line -- up to 13 -- played, every decision the
   // chain falls; the panel-game puzzles' way: a chain is taken a link at a time, a swap a link, in the time its own clears stop the rise)
   if (ruleNoEnemy && !R->under && !R->topped && clockFrameOut && !clockFrameOut() && (cascadeLive(decQ.b) || decQ.b->chainCounter > 0)) {
@@ -763,6 +764,7 @@ static Played playOf(const Read *R, int n) {
     List L; memset(&L, 0, sizeof L); L.n = 1; L.aim[0].chain.op = OP_GE; L.aim[0].chain.n = 2; L.aim[0].brk = -1;
     ExtOpts eo = { TA_EXT_WIDTH, TA_EXT_DEPTH, &L, NOT_ASKED, 0, ms };
     static Ext E; extend(&decQ, &eo, &E);
+    taxBase = E.best.chain; taxLong = E.longest.set ? E.longest.chain : 0; taxN = E.longest.set ? E.longest.nseq : 0; taxMs = (int32_t)ms;
     if (E.longest.set && E.longest.nseq > 0) {
       static Judge CU; Cand k;
       if (candOf(&k, PLAY_EXTEND, E.longest.seq, E.longest.nseq, -1, 1)) {
