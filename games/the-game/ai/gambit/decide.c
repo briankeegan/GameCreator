@@ -654,6 +654,13 @@ static int ranked(const Read *R, const Found *S) {
 // 5. PLAY: the raise when the opening calls for it, a hold while the raise waits for a busy board, else the first candidate in the one
 // order -- a line's first swap, or the hold
 typedef struct { const Judge *top, *line; int32_t name, nlive, ncands, urgent, wait, deferred; } Played;
+// (the hold put in a line's place only where the board it leaves is lost no sooner, as the engine has it: the owner -- you can't choose to
+// die)
+static int taHoldNoSooner(const Judge *line, int n) {
+  if (!line) return 1;
+  for (int i = 0; i < n; i++) if (order[i]->k.play == PLAY_HOLD) return diesAt(order[i]) >= diesAt(line);
+  return 0;
+}
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -811,11 +818,13 @@ static Played playOf(const Read *R, int n) {
       if (taHave && (taLinks >= TA_LINKS || taMs >= TA_DESIGN_MS || panelTop(decQ.b) >= TA_TOP)) taOn = 1;
       // (and while it is searched, the board is left as it is -- a swap played meanwhile changes the rows the design is of -- unless it
       // is dying or raised: a raise only lifts the rows)
-      else if (taHave && !R->taDying && !R->up) P.line = 0;
+      else if (taHave && !R->taDying && !R->up && taHoldNoSooner(P.line, n)) P.line = 0;
     }
+    // (both held to the engine's clock: the hold is put in the line's place only where it tops the board out no sooner -- an uneven stack
+    // whose tall column a clear brings down is never held up while the rise takes it to the top)
     // (and till a design is on, nothing cleared on a board that lives -- the owner: flatten, raise, then the chain that uses every block; a
     // clear made on the way spends the panels the design is made of, and starts a chain too short to take to 13)
-    if (!taOn && !R->taDying && P.line && taClears(P.line)) P.line = 0;
+    if (!taOn && !R->taDying && P.line && taClears(P.line) && taHoldNoSooner(P.line, n)) P.line = 0;
     if (taOn) {
       int32_t seq[CB_MAXSWAPS + 1]; int n = cbOrder(&G, &taD, taTr, seq, CB_MAXSWAPS + 1);
       // (never a build the board does not live through -- the owner: you can't choose to die: the swaps left and the trigger, walked and
