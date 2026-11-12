@@ -144,7 +144,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
         if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineLives(kseq, k->nseq, 0)) XFILL(E->three, -1);
         // (THE CHAIN MADE LONGEST, a link at a time -- the owner: in time attack a chain is all there is; whatever the list asks, the
         // longest the cascade is taken to, up to 13 (CB_TOP), in the fewest swaps)
-        if (base.ok && base.chain < CB_TOP && g.chain > base.chain && (!E->longest.set || imin(g.chain, CB_TOP) > imin(E->longest.chain, CB_TOP) ||
+        if (ruleNoEnemy && base.ok && base.chain < CB_TOP && g.chain > base.chain && (!E->longest.set || imin(g.chain, CB_TOP) > imin(E->longest.chain, CB_TOP) ||
             (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq)) && lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1);
       }
       #undef XFILL
