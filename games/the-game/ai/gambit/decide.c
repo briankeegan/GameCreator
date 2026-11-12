@@ -25,7 +25,8 @@ static int32_t opLineOn;
 #define TA_MARGIN 30       // the frames to spare when the trigger goes down
 #define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
 #define TA_STEP 4          // the design's swaps handed on a decision
-static int32_t taLog;      // (the log's: 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
+#define TA_FULL 6          // the full rows a board has before a design is searched on it
+static int32_t taLog;      // (the log's: 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
 #define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
@@ -753,7 +754,11 @@ static Played playOf(const Read *R, int n) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     static CbGrid G; cbOfBoard(decQ.b, &G);
     if (taHave) { int sft = cbShiftOf(&G, &taD); if (sft < 0) { taReset(); taLog = -1; } else cbShiftUp(&taD, &G, sft); }
-    if (!taOn) {
+    int nfull = 0; for (int r = 1; r <= G.rows; r++) nfull += cbFull(&G, r);
+    // (flattened and raised first -- the owner's order: a design is searched only on a board with TA_FULL full rows; till then the board
+    // is played as any is, levelled and raised)
+    if (!taOn && nfull < TA_FULL) { if (taHave) { taReset(); taLog = -4; } }
+    else if (!taOn) {
       double left = C2.due ? C2.due - C2.margin - nowMs() : 100, ms = left * 0.7; if (ms < 2) ms = 2;
       readyStop();
       static CbGrid D; int32_t tr = 0; int links = 0, sw = 0;
