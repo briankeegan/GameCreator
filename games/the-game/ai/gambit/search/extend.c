@@ -1,9 +1,11 @@
 // A CHAIN GOING IS CONTINUED (as Gambit asks it: a list of aims): from a board mid-cascade (stop time running) or a slab
-// popping, the swaps made while it falls that make it longer. A beam over swaps played as the cascade runs, each board ranked by the
-// chain the cascade makes once it settles, then what it sends; per entry of the list the cascade that meets it with the longest chain, and beside them the one nearest
+// popping, the swaps made while it falls that make it longer. A beam over swaps played as the cascade runs, each board ranked by what
+// the cascade sends once it settles -- in time attack by its chain first; per entry of the list the cascade that meets it sending the
+// most (in time attack, with the longest chain), and beside them the one nearest
 // the list (near). A line is kept for an aim only when its board keeps the floor and its line passes the shared line check, its last
 // swap in time (by).
 
+static int ruleNoEnemy;   // (time attack's rule in force: decide.c read)
 #define CB_TOP 13   // the owner: a chain is taken to 13 -- the score table's last step -- and no further; the panels past it are the next chain's
 typedef struct {
   int32_t set, nseq, seq[MAXLINE];
@@ -136,7 +138,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
         double xn = nearList(o->aims, made);
         if (xn > 0 && (!E->nearest.set || xn > E->nearest.near || (xn == E->nearest.near && g.cells > E->nearest.cells)) && lineFits(kseq, k->nseq, 0)) { XFILL(E->nearest, -1); E->nearest.near = xn; }
         for (int ai = 0; ai < na; ai++)
-          if (meets(&o->aims->aim[ai], made) && (!per[ai].set || g.chain > per[ai].chain || (g.chain == per[ai].chain && g.cells > per[ai].cells)) && lineFits(kseq, k->nseq, 0)) XFILL(per[ai], ai);
+          if (meets(&o->aims->aim[ai], made) && (!per[ai].set || (ruleNoEnemy && g.chain != per[ai].chain ? g.chain > per[ai].chain : g.cells > per[ai].cells)) && lineFits(kseq, k->nseq, 0)) XFILL(per[ai], ai);
         // (A 2x GOING TAKEN TO THREE -- the owner: at least a 3x over a 2x: the line that makes the chain three or more and breaks the most
         // garbage, whatever the list asks)
         if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineLives(kseq, k->nseq, 0)) XFILL(E->three, -1);
@@ -146,10 +148,10 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
             (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq)) && lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1);
       }
       #undef XFILL
-      k->h = connectedOf(ensureBoard(x, k->n)); k->set = g.chain * 1000 + g.cells;   // (set: its score -- its chain, then what it sends)
+      k->h = connectedOf(ensureBoard(x, k->n)); k->set = ruleNoEnemy ? g.chain * 1000 + g.cells : g.cells;   // (set: its score -- what it sends; in time attack its chain first)
       next[nk++] = *k;
     }
-    // each board once, its best line: ranked by its chain, then what it sends, then how connected
+    // each board once, its best line: ranked by what it sends (in time attack its chain first), then how connected
     int nd = 0;
     for (int i = 0; i < nk; i++) {
       Node *kn = NODE(x, next[i].n);
