@@ -114,14 +114,14 @@ static int cbSwapsTo(const CbGrid *A, const CbGrid *B) {
 static int cbStable(const CbGrid *G) { static LOCAL uint8_t m[CB_ROWS][W + 2]; return cbMark(G, m) == 0; }
 // (a row the design may order: full, nothing in it that does not move)
 static int cbFull(const CbGrid *G, int r) { for (int c = 1; c <= W; c++) if (G->g[r][c] <= 0) return 0; return 1; }
-static uint32_t cbRand;
+static LOCAL uint32_t cbRand;
 static double cbExp(double x) { return x >= 0 ? 1 : 1 / (1 - x + x * x / 2 - x * x * x / 6); }   // (e^x for x <= 0, near enough to anneal by)
 static uint32_t cbNext(void) { cbRand ^= cbRand << 13; cbRand ^= cbRand >> 17; cbRand ^= cbRand << 5; return cbRand; }
 // THE SWAPS IN AN ORDER THAT SETS NOTHING OFF: each row's swaps (cbRowSwaps) kept in their row's order, the rows interleaved -- searched
 // depth first, a swap whose board would match not taken, CB_ORDER_TRIES boards tried at most; the trigger last. Into seq (r * 8 + c); the
 // count, -1 where no order is found.
 #define CB_ORDER_TRIES 20000
-static cb8 cbSw[CB_ROWS][CB_MAXSWAPS]; static int cbNs[CB_ROWS], cbAt[CB_ROWS], cbTries;
+static LOCAL cb8 cbSw[CB_ROWS][CB_MAXSWAPS]; static LOCAL int cbNs[CB_ROWS], cbAt[CB_ROWS], cbTries;
 static int cbOrderFrom(CbGrid *G, int left, int32_t *seq, int n) {
   if (!left) return n;
   if (++cbTries > CB_ORDER_TRIES) return -1;
@@ -161,7 +161,7 @@ static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid
   CbGrid cur = start ? *start : *G0, best = *G0;
   int32_t t0 = 0, l0 = 0, bestV = 0, bestT = 0; int bestL = 0, bestS = 0;
   int32_t curV = cbStable(&cur) ? cbBest(&cur, &t0, &l0) - CB_SWAP_COST * cbSwapsTo(G0, &cur) : -100000;
-  { static int32_t ord0[CB_MAXSWAPS + 1];
+  { static LOCAL int32_t ord0[CB_MAXSWAPS + 1];
     if (curV > 0 && t0 && cbOrder(G0, &cur, t0, ord0, CB_MAXSWAPS + 1) > 0) { best = cur; bestV = curV; bestT = t0; bestL = l0; bestS = cbSwapsTo(G0, &cur); } }
   double end = nowMs() + ms, temp = 400;
   for (int it = 0; ; it++) {
@@ -175,7 +175,7 @@ static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid
     if (v >= curV || (double)(cbNext() % 100000) / 100000.0 < cbExp((v - curV) / temp)) {
       curV = v;
       // (a new best only where its swaps can be played setting nothing off on the way)
-      static int32_t ord[CB_MAXSWAPS + 1];
+      static LOCAL int32_t ord[CB_MAXSWAPS + 1];
       if (v > bestV && cbOrder(G0, &cur, tt, ord, CB_MAXSWAPS + 1) > 0) { bestV = v; best = cur; bestT = tt; bestL = ll; bestS = cbSwapsTo(G0, &cur); }
     } else { cur.g[r][b] = cur.g[r][a]; cur.g[r][a] = t; }
   }
@@ -189,6 +189,29 @@ static void cbOfBoard(const Board *b, CbGrid *G) {
   for (int r = 1; r <= G->rows; r++) for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, r, c); G->g[r][c] = (cb8)(v > 0 && v < 100 ? v : v < 0 ? -1 : 0); }
 }
 
+// THE DESIGN SEARCHED ON EVERY THREAD (cbDesignAll): a search of its own on each, from a seed of its own, the best of them kept
+#define CB_JOBS 5
+static CbGrid cbJG, cbJStart, cbJOut[CB_JOBS]; static int cbJHasStart, cbJL[CB_JOBS], cbJS[CB_JOBS]; static double cbJMs;
+static int32_t cbJTr[CB_JOBS], cbJV[CB_JOBS];
+static Ctx *cbJobCtx;   // (the phase's own: each search makes no nodes)
+static void cbJob(int32_t i) {
+  cbRand = 2463534242u ^ ((uint32_t)i * 2654435761u) ^ (uint32_t)nowMs();
+  if (!cbRand) cbRand = 1;
+  cbJV[i] = cbDesign(&cbJG, cbJHasStart ? &cbJStart : 0, cbJMs, &cbJOut[i], &cbJTr[i], &cbJL[i], &cbJS[i]);
+}
+static int32_t cbDesignAll(const CbGrid *G, const CbGrid *start, double ms, CbGrid *out, int32_t *tr, int *links, int *swaps) {
+  cbJG = *G; cbJHasStart = start != 0; if (start) cbJStart = *start; cbJMs = ms;
+  int n = 1 + imin(pool.nworkers, CB_JOBS - 1);
+  for (int i = 0; i < CB_JOBS; i++) cbJV[i] = -1000000;
+  if (n > 1 && !poolBusy) {
+    if (!cbJobCtx) cbJobCtx = ctxOf(0);
+    if (startJobs(cbJobCtx, cbJob, n)) { finishPhase(cbJobCtx); pool.job = 0; __atomic_store_n(&poolBusy, 0, __ATOMIC_RELEASE); }
+    else { n = 1; cbJob(0); }
+  } else { n = 1; cbJob(0); }
+  int b = 0; for (int i = 1; i < n; i++) if (cbJV[i] > cbJV[b]) b = i;
+  *out = cbJOut[b]; *tr = cbJTr[b]; *links = cbJL[b]; *swaps = cbJS[b];
+  return cbJV[b];
+}
 // THE DESIGN KEPT ACROSS DECISIONS (time attack, decide.c): the board it is building toward (taD), its trigger, its links and the time
 // searched on it; taOn once its swaps are being pressed. Each decision finds it again on the board as it is -- the stack risen s rows,
 // each row of the design the same panels as the board's row s above it (cbShiftOf) -- and the rest of its swaps are worked out afresh

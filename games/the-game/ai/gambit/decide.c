@@ -20,7 +20,7 @@ static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: t
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
 static int32_t opLineOn;
 #define TA_LINKS 13        // a design this long is built at once
-#define TA_DESIGN_MS 2500  // the time searched on a design before it is built, at most
+#define TA_DESIGN_MS 1500  // the time searched on a design before it is built, at most
 #define TA_TOP 9           // the stack's top at which a design is built whatever it holds, and the raise's
 #define TA_MARGIN 30       // the frames to spare when the trigger goes down
 #define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
@@ -757,10 +757,13 @@ static Played playOf(const Read *R, int n) {
       double left = C2.due ? C2.due - C2.margin - nowMs() : 100, ms = left * 0.7; if (ms < 2) ms = 2;
       readyStop();
       static CbGrid D; int32_t tr = 0; int links = 0, sw = 0;
-      int32_t v = cbDesign(&G, taHave ? &taD : 0, ms, &D, &tr, &links, &sw);
+      int32_t v = cbDesignAll(&G, taHave ? &taD : 0, ms, &D, &tr, &links, &sw);
       taMs += ms;
       if (tr && v > 0 && (!taHave || v >= taVal)) { taD = D; taTr = tr; taLinks = links; taSwaps = sw; taVal = v; taHave = 1; }
       if (taHave && (taLinks >= TA_LINKS || taMs >= TA_DESIGN_MS || panelTop(decQ.b) >= TA_TOP)) taOn = 1;
+      // (and while it is searched, the board is left as it is -- a swap played meanwhile changes the rows the design is of -- unless it
+      // is dying or raised: a raise only lifts the rows)
+      else if (taHave && !R->dying && !R->up) P.line = 0;
     }
     if (taOn) {
       int32_t seq[CB_MAXSWAPS + 1]; int n = cbOrder(&G, &taD, taTr, seq, CB_MAXSWAPS + 1);

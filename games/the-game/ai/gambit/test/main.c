@@ -129,6 +129,7 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
   if (argc > 2 && !strcmp(argv[2], "design")) {
     int n = argc > 3 ? atoi(argv[3]) : 6, rows = argc > 4 ? atoi(argv[4]) : 10, cols = argc > 5 ? atoi(argv[5]) : 6, ms = argc > 6 ? atoi(argv[6]) : 2000;
+    char path[4096]; snprintf(path, sizeof path, "%s/rules.words", dir); if (!loadWords(path)) return 1;   // (the setup: the workers)
     static int32_t out[4 * 64]; gb_design_check(n, rows, cols, ms, 7, out);
     for (int i = 0; i < n; i++) printf("board %d: chain %d, %d swaps, worth %d, order %d\n", i, out[4 * i], out[4 * i + 1], out[4 * i + 2], out[4 * i + 3]);
     return 0;
