@@ -861,12 +861,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   // (never while a slab pops -- its first swap waits out the pop; on a board at rest only, unless topped or under garbage: panels walked
   // while a chain falls spoil what the board makes alone)
   if (!R->pop && (R->topped || R->under || (!hasActivePanels(decQ.b) && decQ.b->chainCounter == 0))) {
-    // (planned on the board once it has settled -- clears finished, panels fallen -- the board a settled line is pressed on: a line
-    // planned on the board as it stands names rows its swaps are no longer at once a clear under it has popped)
-    static LOCAL Ctx *lvCtx; const Board *lb = decQ.b;
-    { Ctx *lx = lvCtx = ctxOf(lvCtx); int lr = rootOf(lx, &decQ); int ls = lr >= 0 ? settleOf(lx, lr) : -1;
-      if (ls >= 0 && liveNode(lx, ls)) { const Board *sb = ensureBoard(lx, ls); if (sb) lb = sb; } }
-    static int32_t lv[MAXLINE]; int nl = levelLine(lb, lv, MAXLINE);
+    static int32_t lv[MAXLINE]; int nl = levelLine(decQ.b, lv, MAXLINE);
     if (nl > 0) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; } }
   if (R->topped || R->under) {
     static Perches pd; perchedDrops(decQ.b, &pd);

@@ -18,6 +18,9 @@ static int32_t raiseRefill;   // (the raise asked is the floor's, not the openin
 static int32_t raiseOpening, raiseTo, raiseRows;   // (the raise asked this decision: the opening's, and the rows it raises to -- the log's raiseFor)
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
+static int32_t opLineOn;   // (the planned opener handed on and not yet done: carried, not grown over)
+static int carryHeld(void);
+#define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
@@ -687,19 +690,39 @@ static Played playOf(const Read *R, int n) {
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
   chainUp = chainNow = chainAfter = 0;
-  if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
+  // (the plan takes the move whenever the move chosen lives and breaks nothing -- a level, a set-up, a line in progress, the hold -- not
+  // only where the hold was chosen: the opening's whole time is the plan's)
+  const Judge *opTop = P.line ? P.line : P.top;
+  // (the planned opener in progress goes on: no plan is grown or begun over it -- the carry presses it, and survival alone puts it down)
+  if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
+  if (!opLineOn && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
       theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
-    const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
-    int32_t sw = 0, trig = 0;
-    chainNow = triggerChainOf(&decQ, &trig);
-    int fire = chainNow >= want && trig;
-    if (fire) sw = trig; else if (!chainUpSwap(&decQ, &sw, &chainNow, &chainAfter)) sw = 0;
-    if (sw) {
-      static Judge CU; Cand k; int32_t one[1] = { sw };
-      if (candOf(&k, fire ? PLAY_ENTRY : PLAY_SETUP, one, 1, -1, 0)) {
-        k.settled = 0; chainUp = -1;
-        if (judgeCand(R, &k, &CU) && !CU.o.dead && CU.o.lives && (fire || !wastesThree(&CU))) { P.line = &CU; chainUp = fire ? 2 : 1; }
+    // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
+    // pressed while the plan sends more than the trigger the board has now and its set-ups can be pressed before the next block lands;
+    // else that trigger fires)
+    double left = C2.due ? C2.due - C2.margin - nowMs() : 100;
+    double grow = left * 0.7; if (grow < 2) grow = 2;
+    { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
+    int32_t trig = 0, trigCh = 0;
+    int32_t sentNow = triggerSendOf(&decQ, &trig, &trigCh);
+    chainNow = trigCh; chainAfter = opHave ? opBest.sent : 0;
+    // (ONE MOVE, START TO FINISH -- the owner: the opener is a continuous move; once started it goes on, nothing stops or replans it but
+    // survival: the plan's set-ups and its trigger handed on as one line, judged whole, then carried as the line in progress)
+    int late = decF.next != NOT_ASKED && opHave && decF.next <= (opBest.len + 1) * OPEN_SWAP_FRAMES;
+    int usePlan = opHave && opBest.len > 0 && opBest.sent > sentNow && !late;
+    int32_t seq[OP_DEPTH + 1]; int ns = 0;
+    if (usePlan) { for (int k = 0; k < opBest.len; k++) seq[ns++] = opBest.path[k]; seq[ns++] = opBest.trig; }
+    else if (trig) seq[ns++] = trig;
+    if (ns) {
+      static Judge CU; Cand k;
+      if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
+        k.settled = usePlan ? 1 : 0;
+        // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live -- the log's)
+        lastDrop = -1;
+        int jok = judgeCand(R, &k, &CU);
+        chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
+        if (!chainUp) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
       }
     }
     clockDue = keepDue; clockShare = keepShare;
@@ -722,6 +745,7 @@ static Played playOf(const Read *R, int n) {
 // during it (rank.c judgeCand): the rest of such a line is read on it too, carriedCand)
 typedef struct { int32_t set, id, nrest, rest[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; } Carry;   // (rule: the mode it was begun in)
 static Carry theCarry;
+static int carryHeld(void) { return theCarry.set; }
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
 static Carry theCarryNext;
