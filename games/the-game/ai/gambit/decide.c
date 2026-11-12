@@ -25,7 +25,7 @@ static int32_t opLineOn;
 #define TA_MAXSW 10        // the swaps a design may take
 #define TA_EXT_WIDTH 80    // the chain going's search: the lines a level keeps, and its swaps deep (the chain puzzles: 80 and 9 went
 #define TA_EXT_DEPTH 8     // furthest on the huge tower, 12 links where 40 and 6 reached 8 to 11)
-#define TA_TOP 11          // the stack's top at which a design is built whatever it holds, and the raise's -- a chain is taken to 13 only
+#define TA_TOP 10          // the stack's top at which a design is built whatever it holds, and the raise's -- a chain is taken to 13 only
                            // with the panels for it: the chain going finds its next link 46% of the time at 8 links, 25% at 10
 #define TA_MARGIN 30       // the frames to spare when the trigger goes down
 #define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
