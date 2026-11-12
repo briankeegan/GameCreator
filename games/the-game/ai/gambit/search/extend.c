@@ -4,6 +4,7 @@
 // the list (near). A line is kept for an aim only when its board keeps the floor and its line passes the shared line check, its last
 // swap in time (by).
 
+#define CB_TOP 13   // the owner: a chain is taken to 13 -- the score table's last step -- and no further; the panels past it are the next chain's
 typedef struct {
   int32_t set, nseq, seq[MAXLINE];
   int32_t cells, chain, combo, broke, done, fire, floor, base, aimIndex;
@@ -140,8 +141,9 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
         // garbage, whatever the list asks)
         if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineLives(kseq, k->nseq, 0)) XFILL(E->three, -1);
         // (THE CHAIN MADE LONGEST, a link at a time -- the owner: in time attack a chain is all there is; whatever the list asks, the
-        // longest the cascade is taken to, in the fewest swaps)
-        if (base.ok && g.chain > base.chain && (!E->longest.set || g.chain > E->longest.chain || (g.chain == E->longest.chain && k->nseq < E->longest.nseq)) && lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1);
+        // longest the cascade is taken to, up to 13 (CB_TOP), in the fewest swaps)
+        if (base.ok && base.chain < CB_TOP && g.chain > base.chain && (!E->longest.set || imin(g.chain, CB_TOP) > imin(E->longest.chain, CB_TOP) ||
+            (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq)) && lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1);
       }
       #undef XFILL
       k->h = connectedOf(ensureBoard(x, k->n)); k->set = g.chain * 1000 + g.cells;   // (set: its score -- its chain, then what it sends)

@@ -10,7 +10,7 @@ typedef signed char cb8;
 #define CB_MAXSWAPS 96
 typedef struct { cb8 g[CB_ROWS][W + 2]; int rows; } CbGrid;   // g[r][c]: a colour, 0 empty, -1 what does not move or match (garbage)
 static const int32_t CB_CHAIN_TA[14] = { 0, 0, 50, 80, 150, 300, 400, 500, 700, 900, 1100, 1300, 1500, 1800 };   // panel-game checkMatches
-static int32_t cbChainScore(int n) { int32_t s = 0; for (int k = 2; k <= n; k++) s += CB_CHAIN_TA[k < 13 ? k : 13]; return s; }
+static int32_t cbChainScore(int n) { int32_t s = 0; for (int k = 2; k <= n && k <= CB_TOP; k++) s += CB_CHAIN_TA[k]; return s; }
 // (the cells in a run of three or more of one colour, across or up and down: marked, their count returned)
 static LOCAL int32_t cbAcross, cbUpDown;   // (the runs marked across and up and down: the shape of a chain, for the log and the checks)
 static int cbMark(const CbGrid *G, uint8_t m[CB_ROWS][W + 2]) {
