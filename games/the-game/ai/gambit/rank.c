@@ -807,7 +807,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // fires no fallback, then each fallback in the list's order (goalKeyOf)
   if (cutsShort(x) == cutsShort(y)) {
     double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
-    if (lx || (lo >= rankSave && hi - lo < rankSave)) {
+    // (time attack: nothing coming, the rise never still -- of two that do not live the later loss decides, never the goal: a board held
+    // for the mode's goal while it climbs is one that runs out of ways to live)
+    if (lx || (!ruleNoEnemy && lo >= rankSave && hi - lo < rankSave)) {
       int gx = goalKeyOf(x), gy = goalKeyOf(y);
       if (gx != gy) return (cmpKey = __LINE__, (gx - gy));
       // (and of two that make the first entry, or two set-ups toward it, the fewer presses: the owner, the goal first and the shortest
