@@ -4,7 +4,7 @@
 // clears nothing. Half the beam is the boards whose trigger sends the most, the other half the boards with the most promise (opPot) --
 // a chain is built for swaps before any trigger is there. Every decision grows it a level at a time in the time it has (the countdown's is
 // the longest), re-rooted under the swap pressed: a path that begins with the swap pressed goes on without it, any other is let go. The
-// plan is the best path with a trigger, and its trigger.
+// plan is the path with a trigger sending the most for the frames it takes (opPacier), and its trigger.
 #define OP_BEAM 48       // the boards a level keeps
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_DEPTH 20      // the set-ups a plan may hold
@@ -72,11 +72,23 @@ static uint32_t opHash(const Board *b) {
   for (int r = 1; r <= b->height; r++) for (int c = 1; c <= W; c++) { h ^= (uint32_t)(cellAt(b, r, c) + 16); h *= 16777619u; }
   return h;
 }
-// (a board's score: the garbage its best trigger sends, the panels that trigger clears beside it)
-static int opBetter(int32_t s, int32_t c, int len, const OpPath *o) {
-  if (s != o->sent) return s > o->sent;
-  if (c != o->cleared) return c > o->cleared;
-  return len < o->len;
+// (A PLAN'S PACE: the garbage it sends for the frames it takes -- its swaps walked to from the cursor and pressed, then a chain's
+// beginning, OP_FIRE frames. Of two plans the one sending more for its time; tied, the one sending more.)
+#define OP_FIRE 120
+static int32_t opCurR, opCurC;   // (the cursor on the board the beam is grown on)
+static int32_t opFrames(const OpPath *p) {
+  int32_t f = OP_FIRE, r = opCurR, c = opCurC;
+  for (int k = 0; k <= p->len; k++) {
+    int32_t sw = k < p->len ? p->path[k] : p->trig;
+    f += (iabs(CR(sw) - r) + iabs(CC(sw) - c)) * cfgCursor + cfgSwapGap; r = CR(sw); c = CC(sw);
+  }
+  return f;
+}
+static int opPacier(const OpPath *a, const OpPath *o) {
+  int64_t x = (int64_t)a->sent * opFrames(o), y = (int64_t)o->sent * opFrames(a);
+  if (x != y) return x > y;
+  if (a->sent != o->sent) return a->sent > o->sent;
+  return a->len < o->len;
 }
 static int32_t opClearedOf(const Question *q, int32_t sw) {
   Ctx *x = cuCtxB = ctxOf(cuCtxB);
@@ -166,6 +178,7 @@ static void openingGrow(const Question *q) {
   Ctx *x = opCtx = ctxOf(opCtx);
   int root = rootOf(x, q);
   if (root < 0) return;
+  opCurR = q->b->curRow; opCurC = q->b->curCol;
   // (re-rooted: the paths that began with the swap pressed, without it; the others let go)
   if (opPressed) {
     int m = 0;
@@ -185,7 +198,7 @@ static void openingGrow(const Question *q) {
   if (clockOut()) return;
   opN = m; for (int i = 0; i < m; i++) opBeam[i] = opNext[i];
   opHave = 0;
-  for (int i = 0; i < opN; i++) if (opBeam[i].trig && (!opHave || opBetter(opBeam[i].sent, opBeam[i].cleared, opBeam[i].len, &opBest))) { opBest = opBeam[i]; opHave = 1; }
+  for (int i = 0; i < opN; i++) if (opBeam[i].trig && (!opHave || opPacier(&opBeam[i], &opBest))) { opBest = opBeam[i]; opHave = 1; }
   // (grown a level at a time: every path's set-ups one swap on, the nearest its last swap first, each scored on whichever thread takes
   // its path (opKids); the OP_BEAM best kept and played again here, where the next level grows from them)
   opLevels = 0; opOnPool = 0;
@@ -213,9 +226,9 @@ static void openingGrow(const Question *q) {
     int nc = 0;
     for (int p = 0; p < np; p++) for (int i = 0; i < opJGot[p]; i++) {
       const OpKid *c = &opJRes[p][i]; const OpPath *par = &opBeam[from[p]];
-      if (c->trig && (!opHave || opBetter(c->sent, c->cleared, par->len + 1, &opBest))) {
-        opBest = *par; opBest.path[opBest.len++] = c->sw; opBest.sent = c->sent; opBest.cleared = c->cleared; opBest.trig = c->trig; opBest.ch = c->ch;
-        opBest.pot = c->pot; opHave = 1; }
+      if (c->trig) {
+        OpPath e = *par; e.path[e.len++] = c->sw; e.sent = c->sent; e.cleared = c->cleared; e.trig = c->trig; e.ch = c->ch; e.pot = c->pot;
+        if (!opHave || opPacier(&e, &opBest)) { opBest = e; opHave = 1; } }
       int dup = 0; for (int j = 0; j < nc && !dup; j++) dup = opJRes[cp[j]][ci[j]].h == c->h;
       if (!dup) { cp[nc] = p; ci[nc] = i; taken[nc++] = 0; }
     }
