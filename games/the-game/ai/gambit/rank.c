@@ -116,8 +116,8 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // board needs: outside too)
   if (m.chain > MAXCHAIN) { dropAs(play, DROP_LIST); return 0; }
   // (TIME ATTACK: a line that makes the board's chain longer than it makes alone is within the list, whatever length the list asks --
-  // a chain is taken there a link at a time)
-  int lengthens = ruleNoEnemy && j && j->whole.chain > imax(1, aloneChain);
+  // a chain is taken there a link at a time, up to 13)
+  int lengthens = ruleNoEnemy && j && aloneChain < CB_TOP && j->whole.chain > imax(1, aloneChain);
   if (!lengthens && !(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0)) J->outside = J->spends = 1;
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
