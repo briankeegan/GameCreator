@@ -12,15 +12,18 @@ typedef struct { cb8 g[CB_ROWS][W + 2]; int rows; } CbGrid;   // g[r][c]: a colo
 static const int32_t CB_CHAIN_TA[14] = { 0, 0, 50, 80, 150, 300, 400, 500, 700, 900, 1100, 1300, 1500, 1800 };   // panel-game checkMatches
 static int32_t cbChainScore(int n) { int32_t s = 0; for (int k = 2; k <= n; k++) s += CB_CHAIN_TA[k < 13 ? k : 13]; return s; }
 // (the cells in a run of three or more of one colour, across or up and down: marked, their count returned)
+static LOCAL int32_t cbAcross, cbUpDown;   // (the runs marked across and up and down: the shape of a chain, for the log and the checks)
 static int cbMark(const CbGrid *G, uint8_t m[CB_ROWS][W + 2]) {
   int n = 0;
   memset(m, 0, sizeof(uint8_t) * CB_ROWS * (W + 2));
   for (int r = 1; r <= G->rows; r++) for (int c = 1; c <= W - 2; c++) {
     cb8 a = G->g[r][c];
+    if (a > 0 && G->g[r][c + 1] == a && G->g[r][c + 2] == a && (c == 1 || G->g[r][c - 1] != a)) cbAcross++;
     if (a > 0 && G->g[r][c + 1] == a && G->g[r][c + 2] == a) { int k = c; while (k <= W && G->g[r][k] == a) { if (!m[r][k]) { m[r][k] = 1; n++; } k++; } }
   }
   for (int c = 1; c <= W; c++) for (int r = 1; r <= G->rows - 2; r++) {
     cb8 a = G->g[r][c];
+    if (a > 0 && G->g[r + 1][c] == a && G->g[r + 2][c] == a && (r == 1 || G->g[r - 1][c] != a)) cbUpDown++;
     if (a > 0 && G->g[r + 1][c] == a && G->g[r + 2][c] == a) { int k = r; while (k <= G->rows && G->g[k][c] == a) { if (!m[k][c]) { m[k][c] = 1; n++; } k++; } }
   }
   return n;
