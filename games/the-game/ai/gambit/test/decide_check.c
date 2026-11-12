@@ -301,3 +301,77 @@ EXPORT(gb_opening_check) int gb_opening_check(int nbytes, int ms, int32_t *out) 
   out[0] = opLevels; out[1] = opHave ? opBest.len : -1; out[2] = opHave ? opBest.sent : 0;
   return 0;
 }
+// THE CHAIN DESIGNED (search/chainbuild.c) on `n` boards of `rows` full rows of `colours` colours, none matching, dealt from `seed`, each
+// searched `ms` of the wall clock: per board into out (links, swaps, score), the boards designed returned
+EXPORT(gb_design_check) int gb_design_check(int n, int rows, int colours, int ms, uint32_t seed, int32_t *out) {
+  uint32_t s = seed ? seed : 1;
+  for (int i = 0; i < n; i++) {
+    CbGrid G; memset(&G, 0, sizeof G); G.rows = 12;
+    for (int r = 1; r <= rows; r++) for (int c = 1; c <= W; c++) {
+      for (int tries = 0; tries < 50; tries++) {
+        s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+        G.g[r][c] = (cb8)(1 + s % (unsigned)colours);
+        if (cbStable(&G)) break;
+      }
+    }
+    CbGrid D; int32_t tr = 0; int links = 0, swaps = 0;
+    cbRand = s;
+    clockStart(0); clockNowOf = 0;
+    int32_t v = cbDesign(&G, 0, ms, &D, &tr, &links, &swaps);
+    int32_t seq[CB_MAXSWAPS + 1]; int ord = cbOrder(&G, &D, tr, seq, CB_MAXSWAPS + 1);
+    out[4 * i] = links; out[4 * i + 1] = swaps; out[4 * i + 2] = v; out[4 * i + 3] = ord;
+  }
+  return n;
+}
+// THE DESIGN ON THE ENGINE: the question's board cut to `rows` full rows of `colours` colours dealt from `seed` (none matching), the
+// rise held off (rows < 0: left on), designed (`ms` of the wall clock) and its swaps then trigger played on the engine one after another, each settled.
+// Into out: the chain designed, the swaps, the chain the engine made, the panels it cleared, the swap the engine first refused or
+// matched on (-1 none).
+EXPORT(gb_design_engine) int gb_design_engine(int nbytes, int rows, int colours, int ms, uint32_t seed, int32_t *out) {
+  if (gb_question_bytes(nbytes, 0) != 0) return -1;
+  int rise = rows < 0; if (rise) rows = -rows;
+  Board *b = hostBoard;
+  if (rows + 2 >= b->nrows) return -2;
+  const Panel *full = 0, *empty = 0;
+  for (int r = 1; r < b->nrows && (!full || !empty); r++) for (int c = 1; c <= W; c++) {
+    const Panel *p = &b->p[r][c];
+    if (!full && p->f[COLOR] > 0 && !p->f[ISGARBAGE] && p->f[STATE] == NORMAL) full = p;
+    if (!empty && !p->f[COLOR] && !p->f[ISGARBAGE]) empty = p;
+  }
+  if (!full || !empty) return -3;
+  Panel pf = *full, pe = *empty;   // (copies: the board's own cells are written over below)
+  CbGrid G; memset(&G, 0, sizeof G); G.rows = b->height;
+  uint32_t s = seed ? seed : 1;
+  for (int r = 1; r <= rows; r++) for (int c = 1; c <= W; c++)
+    for (int tries = 0; tries < 50; tries++) { s ^= s << 13; s ^= s >> 17; s ^= s << 5; G.g[r][c] = (cb8)(1 + s % (unsigned)colours); if (cbStable(&G)) break; }
+  for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    int32_t id = b->p[r][c].f[ID];
+    b->p[r][c] = r <= rows ? pf : pe; b->p[r][c].f[ROW] = r; b->p[r][c].f[COL] = c; b->p[r][c].f[ID] = id;
+    if (r <= rows) b->p[r][c].f[COLOR] = G.g[r][c];
+  }
+  b->ninc = 0; b->nstall = 0; b->chainCounter = 0; b->shakeTime = 0; b->stopWatch = 0; b->nActive = 0; b->nPrevActive = 0;
+  b->stopTime = rise ? 0 : 1 << 20; b->preStopTime = 0;   // (the rise held off unless asked: rows < 0)
+  for (int r = 0; r < b->nrows; r++) { b->rowActive[r] = -1; for (int c = 1; c <= W; c++) b->p[r][c].f[CHAINING] = 0; }
+  gb_new_game(); curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
+  CbGrid D; int32_t tr = 0; int links = 0, swaps = 0;
+  cbRand = s;
+  cbDesign(&G, 0, ms, &D, &tr, &links, &swaps);
+  int32_t seq[CB_MAXSWAPS + 1]; int n = cbOrder(&G, &D, tr, seq, CB_MAXSWAPS + 1);
+  out[0] = links; out[1] = swaps; out[2] = 0; out[3] = 0; out[4] = -1;
+  if (n <= 0) return 0;
+  Question q = hostQ; q.narr = 0;
+  Ctx *x = ctxOf(0); int at = rootOf(x, &q);
+  for (int i = 0; i < n && at >= 0; i++) {
+    int s1 = step(x, at, MK_SWAP, CR(seq[i]), CC(seq[i]), 0);
+    if (!liveNode(x, s1)) { out[4] = 1000 + i; out[2] = s1; break; }
+    int o = settleOf(x, s1);
+    if (!liveNode(x, o)) { out[4] = 2000 + i; break; }
+    Stats st; int cl = 0, ch = 0;
+    if (statsOf(x, s1, &st)) { cl += st.cleared; if (chainOfStats(&st) > ch) ch = chainOfStats(&st); }
+    if (statsOf(x, o, &st)) { cl += st.cleared; if (chainOfStats(&st) > ch) ch = chainOfStats(&st); }
+    if (i < n - 1 && cl > 0) { out[4] = 3000 + i; out[2] = ch; out[3] = cl; break; }
+    if (i == n - 1) { out[2] = ch; out[3] = cl; }
+    at = o;
+  }
+  return n;
+}

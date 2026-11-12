@@ -18,7 +18,12 @@ static int32_t raiseRefill;   // (the raise asked is the floor's, not the openin
 static int32_t raiseOpening, raiseTo, raiseRows;   // (the raise asked this decision: the opening's, and the rows it raises to -- the log's raiseFor)
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
-static int32_t opLineOn;   // (the planned opener handed on and not yet done: carried, not grown over)
+static int32_t opLineOn;
+#define TA_LINKS 13        // a design this long is built at once
+#define TA_DESIGN_MS 2500  // the time searched on a design before it is built, at most
+#define TA_TOP 10          // the stack's top at which a design is built whatever it holds
+#define TA_STEP 4          // the design's swaps handed on a decision
+static int32_t taLog;      // (the log's: 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
 #define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
@@ -176,10 +181,14 @@ static int readBoard_(Read *R) {
   // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
   // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
   int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
+  // (TIME ATTACK'S RAISE: no design being built and the stack under TA_TOP -- the owner: raise to the top, then the chain; no garbage is
+  // coming, so the rows are raised as they are, never held to a break's readiness)
+  int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !taOn && panelTop(decQ.b) < TA_TOP;
+  if (taRaise) to = TA_TOP;
   raiseRefill = refill; raiseOpening = opening; raiseTo = to;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
   raiseRows = rowsUp;
-  R->low = to && (opening || refill) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
+  R->low = to && (opening || refill || taRaise) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
   refillAsked = refillReady = refillAlive = 0; raiseWait = 0;
   // (THE FLOOR'S RAISE, TIMED: a board busy now -- a cascade, panels moving, the shake -- is one the engine would not raise; it is run on,
   // left alone with the garbage shown landing as the game lands it, to the first frame it would (search/ready.c raiseOpenIn), and the
@@ -200,7 +209,7 @@ static int readBoard_(Read *R) {
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;
     raiseOpens = opening;
-    int32_t rows = raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
+    int32_t rows = taRaise ? rowsUp : raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
     // (THE FLOOR'S RAISE ON A BOARD TOO SHORT TO BREAK: below the floor, no row count leaves a break once everything lands -- the panels
     // a break is made of are what the board lacks -- so the rows the board lives through once everything lands are raised all the same:
     // the panels are the next break's material, and the opening's raise is held to readiness, never the floor's)
@@ -729,6 +738,40 @@ static Played playOf(const Read *R, int n) {
         int jok = judgeCand(R, &k, &CU);
         chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
         if (!chainUp) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
+      }
+    }
+    clockDue = keepDue; clockShare = keepShare;
+  }
+  // (TIME ATTACK, THE CHAIN DESIGNED -- the owner: flatten, raise to the top, then one chain that uses every block, up to 13, again and
+  // again; the score is all there is, a combo is worth nothing: the design searched on in each decision's time (search/chainbuild.c) until
+  // it holds TA_LINKS links, TA_DESIGN_MS have gone on it, or the stack is at the top; then its swaps are pressed TA_STEP at a time, worked
+  // out afresh each decision from the board as it is, and its trigger last. A design the board no longer holds is let go.)
+  taLog = 0;
+  if (ruleNoEnemy && !R->under && !R->topped && clockFrameOut && !clockFrameOut() && !cascadeLive(decQ.b) && !R->pop) {
+    double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
+    static CbGrid G; cbOfBoard(decQ.b, &G);
+    if (taHave) { int sft = cbShiftOf(&G, &taD); if (sft < 0) { taReset(); taLog = -1; } else cbShiftUp(&taD, &G, sft); }
+    if (!taOn) {
+      double left = C2.due ? C2.due - C2.margin - nowMs() : 100, ms = left * 0.7; if (ms < 2) ms = 2;
+      readyStop();
+      static CbGrid D; int32_t tr = 0; int links = 0, sw = 0;
+      int32_t v = cbDesign(&G, taHave ? &taD : 0, ms, &D, &tr, &links, &sw);
+      taMs += ms;
+      if (tr && v > 0 && (!taHave || v >= taVal)) { taD = D; taTr = tr; taLinks = links; taSwaps = sw; taVal = v; taHave = 1; }
+      if (taHave && (taLinks >= TA_LINKS || taMs >= TA_DESIGN_MS || panelTop(decQ.b) >= TA_TOP)) taOn = 1;
+    }
+    if (taOn) {
+      int32_t seq[CB_MAXSWAPS + 1]; int n = cbOrder(&G, &taD, taTr, seq, CB_MAXSWAPS + 1);
+      if (n <= 0) { taReset(); taLog = -2; }
+      else {
+        int hand = n == 1 ? 1 : imin(TA_STEP, n - 1);
+        static Judge CU; Cand k;
+        if (candOf(&k, PLAY_ENTRY, seq, hand, -1, 0)) {
+          k.settled = 1; lastDrop = -1;
+          int jok = judgeCand(R, &k, &CU);
+          if (jok && !CU.o.dead) { P.line = &CU; taStep = hand; taLog = n == 1 ? 2 : 1; if (n == 1) taReset(); }
+          else { taLog = -10 - lastDrop; if (n == 1) taReset(); }
+        }
       }
     }
     clockDue = keepDue; clockShare = keepShare;

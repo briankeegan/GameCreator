@@ -55,27 +55,17 @@ static int32_t triggerSendOf(const Question *q, int32_t *sw, int32_t *chain) {
   }
   return best;
 }
-// (A HALF-BUILT CHAIN'S PROMISE -- the horizontal chain, panel-game's puzzles: a pair side by side waits for its third, a panel of its
-// colour higher in the column beside it that drops into place once the panels under it clear -- each such pair a link waiting. Twice
-// the links waiting, and the pairs of one colour side by side or one on the other beside them. A path whose board has no trigger yet is
-// kept by it.)
+// (A HALF-BUILT CHAIN'S PROMISE: the pairs of one colour side by side or one on the other -- the set-ups a chain is made of before any of
+// its links can go off. A path whose board has no trigger yet is kept by it.)
 static int32_t opPot(const Board *b) {
-  int32_t pairs = 0, links = 0;
+  int32_t n = 0;
   for (int r = 1; r <= b->height; r++) for (int c = 1; c <= W; c++) {
     int32_t a = cellAt(b, r, c);
     if (a <= 0) continue;
-    if (r < b->height && cellAt(b, r + 1, c) == a) pairs++;
-    if (c < W && cellAt(b, r, c + 1) == a) {
-      pairs++;
-      // (the third of a pair at c, c+1: in column c-1 or c+2, above row r, the nearest panel of the column there being its colour)
-      for (int side = 0; side < 2; side++) {
-        int k = side ? c + 2 : c - 1;
-        if (k < 1 || k > W || cellAt(b, r, k) == a) continue;
-        for (int q = r + 1; q <= b->height; q++) { int32_t v = cellAt(b, q, k); if (v == 0) continue; if (v == a) links++; break; }
-      }
-    }
+    if (c < W && cellAt(b, r, c + 1) == a) n++;
+    if (r < b->height && cellAt(b, r + 1, c) == a) n++;
   }
-  return 2 * links + pairs;
+  return n;
 }
 static uint32_t opHash(const Board *b) {
   uint32_t h = 2166136261u;

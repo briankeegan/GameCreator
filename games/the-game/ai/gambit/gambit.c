@@ -13,6 +13,7 @@
 #include "search/extend.c"
 #include "search/chainup.c"
 #include "search/opening.c"
+#include "search/chainbuild.c"
 #include "search/ready.c"
 #include "search/level.c"
 #include "search/outlive.c"
