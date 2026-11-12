@@ -477,6 +477,11 @@ function GambitNative:think(stack, sources, view)
     return idle
   end
   if not stack.stopWatchIsRunning or stack:game_ended() then return idle end
+  -- (the game's score, each time it changes: time attack is measured by it -- gambit_summary.js)
+  if stack.score and stack.score ~= self.lastScore then
+    self.lastScore = stack.score
+    C.gn_log(string.format("SCORE clock %d score %d chain %d", stack.clock or 0, stack.score, stack.chain_counter or 0))
+  end
   local t0 = ThinkBudget.now()
   self:load(stack)
   local t1 = ThinkBudget.now()
