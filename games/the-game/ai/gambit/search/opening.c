@@ -11,7 +11,7 @@
 typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot; } OpPath;
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
 static int opN, opHave;            // the beam's paths, and whether a plan is held
-static int32_t opLevels, opGrowMs;   // (the levels the last decision grew and the ms it had: the log's)
+static int32_t opLevels, opGrowMs, opOnPool;   // (the levels the last decision grew, the ms it had, the levels scored on the workers: the log's)
 static int32_t opPressed;          // the plan's set-up the last decision played (0: none) -- the beam is re-rooted under it
 static LOCAL Ctx *opCtx;
 // (A SWAP THAT CAN SET SOMETHING OFF, read off the cells before it is played: a panel swapped into an empty cell falls and may match
@@ -156,7 +156,7 @@ static void opKidsAll(int n) {
   if (pool.nworkers > 0 && !poolBusy) {
     if (!opJobCtx) opJobCtx = ctxOf(0);
     __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
-    if (startJobs(opJobCtx, opKids, n)) { finishPhase(opJobCtx); pool.job = 0; __atomic_store_n(&poolBusy, 0, __ATOMIC_RELEASE); return; }
+    if (startJobs(opJobCtx, opKids, n)) { opOnPool++; finishPhase(opJobCtx); pool.job = 0; __atomic_store_n(&poolBusy, 0, __ATOMIC_RELEASE); return; }
   }
   for (int p = 0; p < n && !clockOut(); p++) opKids(p);
 }
@@ -188,7 +188,7 @@ static void openingGrow(const Question *q) {
   for (int i = 0; i < opN; i++) if (opBeam[i].trig && (!opHave || opBetter(opBeam[i].sent, opBeam[i].cleared, opBeam[i].len, &opBest))) { opBest = opBeam[i]; opHave = 1; }
   // (grown a level at a time: every path's set-ups one swap on, the nearest its last swap first, each scored on whichever thread takes
   // its path (opKids); the OP_BEAM best kept and played again here, where the next level grows from them)
-  opLevels = 0;
+  opLevels = 0; opOnPool = 0;
   while (!clockOut()) {
     int np = 0, from[OP_BEAM];
     for (int bi = 0; bi < opN && np < OP_BEAM; bi++) {

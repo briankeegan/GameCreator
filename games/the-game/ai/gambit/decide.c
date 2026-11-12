@@ -704,6 +704,8 @@ static Played playOf(const Read *R, int n) {
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100;
     double grow = left * 0.7; if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow;
+    // (the pool taken back from the readiness beside the decision, which would search on past it: the beam is scored on every thread)
+    readyStop();
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
     int32_t trig = 0, trigCh = 0;
     int32_t sentNow = triggerSendOf(&decQ, &trig, &trigCh);
