@@ -18,7 +18,6 @@ static int32_t raiseRefill;   // (the raise asked is the floor's, not the openin
 static int32_t raiseOpening, raiseTo, raiseRows;   // (the raise asked this decision: the opening's, and the rows it raises to -- the log's raiseFor)
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
-#define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
@@ -688,34 +687,19 @@ static Played playOf(const Read *R, int n) {
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
   chainUp = chainNow = chainAfter = 0;
-  // (the plan takes the move whenever the move chosen lives and breaks nothing -- a level, a set-up, a line in progress, the hold -- not
-  // only where the hold was chosen: the opening's whole time is the plan's)
-  const Judge *opTop = P.line ? P.line : P.top;
-  if (opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
+  if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
       theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
-    // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
-    // pressed while the plan sends more than the trigger the board has now and its set-ups can be pressed before the next block lands;
-    // else that trigger fires)
-    double left = C2.due ? C2.due - C2.margin - nowMs() : 100;
-    double grow = left * 0.7; if (grow < 2) grow = 2;
-    { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
-    int32_t sw = 0, trig = 0, trigCh = 0;
-    int32_t sentNow = triggerSendOf(&decQ, &trig, &trigCh);
-    chainNow = trigCh; chainAfter = opHave ? opBest.sent : 0;
-    int late = decF.next != NOT_ASKED && opHave && decF.next <= (opBest.len + 1) * OPEN_SWAP_FRAMES;
-    int fire = trig && (!opHave || opBest.len == 0 || opBest.sent <= sentNow || late);
-    if (fire) sw = trig; else if (opHave && opBest.len > 0) sw = opBest.path[0];
+    const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
+    int32_t sw = 0, trig = 0;
+    chainNow = triggerChainOf(&decQ, &trig);
+    int fire = chainNow >= want && trig;
+    if (fire) sw = trig; else if (!chainUpSwap(&decQ, &sw, &chainNow, &chainAfter)) sw = 0;
     if (sw) {
       static Judge CU; Cand k; int32_t one[1] = { sw };
       if (candOf(&k, fire ? PLAY_ENTRY : PLAY_SETUP, one, 1, -1, 0)) {
-        k.settled = 0;
-        // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live, -4 a
-        // wasted three -- the log's)
-        lastDrop = -1;
-        int jok = judgeCand(R, &k, &CU);
-        chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : (!fire && wastesThree(&CU)) ? -4 : 0;
-        if (!chainUp) { P.line = &CU; chainUp = fire ? 2 : 1; if (!fire) opPressed = sw; else openingReset(); }
+        k.settled = 0; chainUp = -1;
+        if (judgeCand(R, &k, &CU) && !CU.o.dead && CU.o.lives && (fire || !wastesThree(&CU))) { P.line = &CU; chainUp = fire ? 2 : 1; }
       }
     }
     clockDue = keepDue; clockShare = keepShare;

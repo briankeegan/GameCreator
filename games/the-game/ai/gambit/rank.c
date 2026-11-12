@@ -43,8 +43,7 @@ typedef struct {
 // the judge could not press, w a wasted three, j the clock stopped its judging, 2 a 2x not taken to three)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, DROP_TWO, NDROPS };
 static int32_t dropped[NPLAYS][NDROPS], offered[NPLAYS];
-static int32_t lastDrop = -1;   // (the last drop's why: the opening plan's log)
-static void dropAs(int play, int why) { dropped[play][why]++; lastDrop = why; }
+static void dropAs(int play, int why) { dropped[play][why]++; }
 // (the lines cut, by why the judge cut them: judge.c cutWhy -- 1 a first walk over the allowance, 2 no swap there, 3 a walk not begun
 // within a reaction -- and how many of them the break search found)
 static int32_t cutWhy[4], cutWhyBreak[4];
