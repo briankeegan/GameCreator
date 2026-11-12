@@ -11,10 +11,13 @@
    "name": "opener",
    "aims": [
     {
-     "chain": ">=4"
+     "chain": ">=8"
     },
     {
-     "chain": ">=3"
+     "chain": ">=6"
+    },
+    {
+     "chain": ">=4"
     }
    ],
    "by": 600
