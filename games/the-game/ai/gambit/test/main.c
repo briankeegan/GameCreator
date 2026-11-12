@@ -33,6 +33,7 @@ int gb_opening_check(int nbytes, int ms, int32_t *out);
 int gb_design_check(int n, int rows, int colours, int ms, unsigned seed, int32_t *out);
 int gb_design_engine(int nbytes, int rows, int colours, int ms, unsigned seed, int32_t *out);
 void gb_design_skill(int on, int ms);
+int gb_puzzle_engine(int nbytes, const char *rows, int ms, int32_t *out);
 void paThreadId(int id);
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath);
 int32_t *gn_io(void);
@@ -133,6 +134,23 @@ int main(int argc, char **argv) {
     char path[4096]; snprintf(path, sizeof path, "%s/rules.words", dir); if (!loadWords(path)) return 1;   // (the setup: the workers)
     static int32_t out[4 * 64]; gb_design_check(n, rows, cols, ms, 7, out);
     for (int i = 0; i < n; i++) printf("board %d: chain %d, %d swaps, worth %d, order %d\n", i, out[4 * i], out[4 * i + 1], out[4 * i + 2], out[4 * i + 3]);
+    return 0;
+  }
+  if (argc > 3 && !strcmp(argv[2], "puzzle")) {
+    char path[4096]; static char line[1 << 17], pz[4096];
+    snprintf(path, sizeof path, "%s/rules.words", dir); if (!loadWords(path)) return 1;
+    snprintf(path, sizeof path, "%s/boards.txt", dir); FILE *o = fopen(path, "r"); int nb = -1;
+    while (o && fgets(line, sizeof line, o)) { if (!strncmp(line, "GAMBITB ", 8)) { int narr; nb = loadLine(line, &narr); break; } }
+    if (o) fclose(o);
+    FILE *f = fopen(argv[3], "r"); int ms = argc > 4 ? atoi(argv[4]) : 60;
+    static unsigned char saved[1 << 17]; extern int32_t *gb_io(void); memcpy(saved, gb_io(), (size_t)(nb > 0 ? nb : 0));
+    while (f && fgets(pz, sizeof pz, f)) {
+      char name[256], rows[512]; if (sscanf(pz, "%255s %511s", name, rows) != 2) continue;
+      memcpy(gb_io(), saved, (size_t)nb);
+      int32_t r[5] = { 0 }; int k = gb_puzzle_engine(nb, rows, ms, r);
+      printf("%s: %s alone chain %d, %d panels left; continued chain %d, %d panels left, %d swaps\n", name, k ? "FAIL" : "", r[0], r[1], r[2], r[3], r[4]);
+    }
+    if (f) fclose(f);
     return 0;
   }
   if (argc > 2 && !strcmp(argv[2], "engine")) {

@@ -405,3 +405,63 @@ EXPORT(gb_design_engine) int gb_design_engine(int nbytes, int rows, int colours,
 }
 static int32_t designSkill; static double designSkillMs = 60;
 EXPORT(gb_design_skill) void gb_design_skill(int on, int ms) { designSkill = on; designSkillMs = ms > 0 ? ms : 60; }
+
+// A PUZZLE ON THE ENGINE (panel-game's chain puzzles: test DIR puzzle FILE): the question's board replaced by the puzzle's rows (top
+// first, '0' empty), the rise held off; the swap that sets off the longest chain on the abstract board pressed, then the chain left alone
+// (out[0] its chain, out[1] the panels it leaves) and again continued -- the extension asked every few frames as it falls, its longest
+// line's first swap pressed (out[2] the chain, out[3] the panels left, out[4] the swaps pressed)
+EXPORT(gb_puzzle_engine) int gb_puzzle_engine(int nbytes, const char *rows, int ms, int32_t *out) {
+  if (gb_question_bytes(nbytes, 0) != 0) return -1;
+  Board *b = hostBoard;
+  const Panel *full = 0, *empty = 0;
+  for (int r = 1; r < b->nrows && (!full || !empty); r++) for (int c = 1; c <= W; c++) {
+    const Panel *p = &b->p[r][c];
+    if (!full && p->f[COLOR] > 0 && !p->f[ISGARBAGE] && p->f[STATE] == NORMAL) full = p;
+    if (!empty && !p->f[COLOR] && !p->f[ISGARBAGE]) empty = p;
+  }
+  if (!full || !empty) return -3;
+  Panel pf = *full, pe = *empty;
+  int nr = 0; const char *q0 = rows; while (*q0) { if (*q0 == '|') nr++; q0++; } nr++;
+  CbGrid G; memset(&G, 0, sizeof G); G.rows = b->height;
+  for (int i = 0; i < nr; i++) { int r = nr - i; for (int c = 1; c <= W; c++) { char ch = rows[i * 7 + c - 1]; if (r <= G.rows) G.g[r][c] = (cb8)(ch - '0'); } }
+  for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    int32_t id = b->p[r][c].f[ID]; int v = r <= G.rows ? G.g[r][c] : 0;
+    b->p[r][c] = v ? pf : pe; b->p[r][c].f[ROW] = r; b->p[r][c].f[COL] = c; b->p[r][c].f[ID] = id;
+    if (v) b->p[r][c].f[COLOR] = v;
+  }
+  b->ninc = 0; b->nstall = 0; b->chainCounter = 0; b->shakeTime = 0; b->stopWatch = 0; b->nActive = 0; b->nPrevActive = 0;
+  b->stopTime = 1 << 20; b->preStopTime = 0;
+  for (int r = 0; r < b->nrows; r++) { b->rowActive[r] = -1; for (int c = 1; c <= W; c++) b->p[r][c].f[CHAINING] = 0; }
+  gb_new_game(); curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
+  int32_t tr = 0; int links = 0; cbBest(&G, &tr, &links);
+  if (!tr) return -4;
+  Question q = hostQ; q.narr = 0;
+  Ctx *x = ctxOf(0); int root = rootOf(x, &q);
+  // (left alone)
+  int s1 = step(x, root, MK_SWAP, CR(tr), CC(tr), 0), o = liveNode(x, s1) ? settleOf(x, s1) : -1;
+  Stats st; int ch = 0; if (liveNode(x, o) && statsOf(x, o, &st)) ch = chainOfStats(&st);
+  { Board *eb = liveNode(x, o) ? ensureBoard(x, o) : 0; out[1] = eb ? panelsOn(eb) : -1; }
+  out[0] = imax(ch, links ? 1 : 0);
+  // (continued)
+  root = rootOf(x, &q);
+  int cur = step(x, root, MK_SWAP, CR(tr), CC(tr), 0), best = 0, pressed = 0;
+  List L; memset(&L, 0, sizeof L); L.n = 1; L.aim[0].chain.op = OP_GE; L.aim[0].chain.n = 2; L.aim[0].brk = -1;
+  for (int it = 0; it < 300 && liveNode(x, cur); it++) {
+    Board *eb = ensureBoard(x, cur);
+    if (!eb) break;
+    if (eb->chainCounter > best) best = eb->chainCounter;
+    if (it > 0 && eb->chainCounter == 0 && !hasActivePanels(eb)) break;
+    Question qq = hostQ; qq.b = eb; qq.narr = 0; qq.holdLeft = 0; qq.holdStarted = 0;
+    decQ = qq; ncache = 0;
+    ExtOpts eo = { 40, 6, &L, NOT_ASKED, 0, ms };
+    static Ext E; extend(&qq, &eo, &E);
+    if (E.longest.set && E.longest.nseq > 0) {
+      int n1 = step(x, cur, MK_SWAP, CR(E.longest.seq[0]), CC(E.longest.seq[0]), 0);
+      if (liveNode(x, n1)) { cur = n1; pressed++; continue; }
+    }
+    cur = step(x, cur, MK_LONG, 0, 0, 6);
+  }
+  { Board *eb = liveNode(x, cur) ? ensureBoard(x, cur) : 0; out[3] = eb ? panelsOn(eb) : -1; }
+  out[2] = best; out[4] = pressed;
+  return 0;
+}
