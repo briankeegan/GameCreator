@@ -32,6 +32,7 @@ int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, in
 int gb_opening_check(int nbytes, int ms, int32_t *out);
 int gb_design_check(int n, int rows, int colours, int ms, unsigned seed, int32_t *out);
 int gb_design_engine(int nbytes, int rows, int colours, int ms, unsigned seed, int32_t *out);
+void gb_design_skill(int on, int ms);
 void paThreadId(int id);
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath);
 int32_t *gn_io(void);
@@ -141,10 +142,11 @@ int main(int argc, char **argv) {
     snprintf(path, sizeof path, "%s/boards.txt", dir); FILE *o = fopen(path, "r"); int done = 0;
     while (o && done < n && fgets(line, sizeof line, o)) {
       if (strncmp(line, "GAMBITB ", 8)) continue;
-      int narr, nb = loadLine(line, &narr); int32_t r[5];
+      int narr, nb = loadLine(line, &narr); int32_t r[8] = { 0 };
+      gb_design_skill(argc > 7 ? atoi(argv[7]) : 0, argc > 8 ? atoi(argv[8]) : 60);
       int k = gb_design_engine(nb, rows, cols, ms, 11 + done, r);
       if (k < 0) continue;
-      printf("board %d: designed %d links in %d swaps; the engine made a chain of %d, %d panels cleared; stopped at swap %d of %d\n", done, r[0], r[1], r[2], r[3], r[4], k);
+      printf("board %d: designed %d links in %d swaps; the engine made a chain of %d, %d panels cleared; stopped at swap %d of %d; continued: chain %d, %d swaps pressed\n", done, r[0], r[1], r[2], r[3], r[4], k, r[5], r[6]);
       done++;
     }
     if (o) fclose(o);
