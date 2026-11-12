@@ -680,15 +680,6 @@ static int taHoldNoSooner(const Judge *line, int n) {
   for (int i = 0; i < n; i++) if (order[i]->k.play == PLAY_HOLD) return diesAt(order[i]) >= diesAt(line);
   return 0;
 }
-// (the first level line in the order that clears nothing and is not lost, and the hold's loss frame: time attack's flattening)
-static const Judge *taLevelOf(int n) {
-  for (int i = 0; i < n; i++) if (order[i]->k.play == PLAY_LEVEL && !order[i]->o.dead && !taClears(order[i])) return order[i];
-  return 0;
-}
-static double taHoldDies(int n) {
-  for (int i = 0; i < n; i++) if (order[i]->k.play == PLAY_HOLD) return diesAt(order[i]);
-  return 1e300;
-}
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -853,12 +844,6 @@ static Played playOf(const Read *R, int n) {
     // (and till a design is on, nothing cleared on a board that lives -- the owner: flatten, raise, then the chain that uses every block; a
     // clear made on the way spends the panels the design is made of, and starts a chain too short to take to 13)
     if (!taOn && !R->taDying && P.line && taClears(P.line) && taHoldNoSooner(P.line, n)) P.line = 0;
-    // (FLATTENED FIRST -- the owner's order: an uneven stack with no design on it is levelled before anything else is built on it: the
-    // level line that clears nothing put in the move's place, where it tops the board out no sooner)
-    if (!taOn && !taHave && !R->taDying && evenOf(decQ.b) > TA_EVEN) {
-      const Judge *lv = taLevelOf(n);
-      if (lv && lv != P.line && diesAt(lv) >= (P.line ? diesAt(P.line) : taHoldDies(n))) P.line = lv;
-    }
     if (taOn) {
       int32_t seq[CB_MAXSWAPS + 1]; int n = cbOrder(&G, &taD, taTr, seq, CB_MAXSWAPS + 1);
       // (never a build the board does not live through -- the owner: you can't choose to die: the swaps left and the trigger, walked and
