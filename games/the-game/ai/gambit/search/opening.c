@@ -3,14 +3,34 @@
 // it is scored by the garbage the best trigger on it sends (triggerSendOf) and, tied, by the panels that trigger clears; each set-up
 // clears nothing. Every decision grows it a level at a time in the time it has (the countdown's is the longest), re-rooted under the swap
 // pressed: a path that begins with the swap pressed goes on without it, any other is let go. The plan is the best path and its trigger.
-#define OP_BEAM 24       // the boards a level keeps
-#define OP_KIDS 18       // the set-ups tried from each, the nearest the cursor first
+#define OP_BEAM 48       // the boards a level keeps
+#define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_DEPTH 20      // the set-ups a plan may hold
 typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig; } OpPath;
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
 static int opN, opHave;            // the beam's paths, and whether a plan is held
 static int32_t opPressed;          // the plan's set-up the last decision played (0: none) -- the beam is re-rooted under it
 static LOCAL Ctx *opCtx;
+// (A SWAP THAT CAN SET SOMETHING OFF, read off the cells before it is played: a panel swapped into an empty cell falls and may match
+// where it lands, so it is played; else one of the two cells must finish a run of three, across or up and down -- the rest set nothing off
+// and are not played)
+static int opRun(const Board *b, int r, int c, int32_t col, int skipC) {
+  if (col <= 0) return 0;
+  int n = 1;
+  for (int k = c - 1; k >= 1 && k != skipC && cellAt(b, r, k) == col; k--) n++;
+  for (int k = c + 1; k <= W && k != skipC && cellAt(b, r, k) == col; k++) n++;
+  if (n >= 3) return 1;
+  n = 1;
+  for (int q = r - 1; q >= 1 && cellAt(b, q, c) == col; q--) n++;
+  for (int q = r + 1; q <= b->height && cellAt(b, q, c) == col; q++) n++;
+  return n >= 3;
+}
+static int opMaySet(const Board *b, int r, int c) {
+  int32_t a = cellAt(b, r, c), d = cellAt(b, r, c + 1);
+  if (a == 0 || d == 0) return 1;
+  if (a < 0 || d < 0 || a == d) return 0;
+  return opRun(b, r, c + 1, a, c) || opRun(b, r, c, d, c + 1);
+}
 // the most garbage one swap sets off from the question's board -- its chain's slabs and every clear's combo garbage (plan.c sentCells),
 // the swap in *sw, that clear's chain in *chain (0: none sends any)
 static int32_t triggerSendOf(const Question *q, int32_t *sw, int32_t *chain) {
@@ -18,7 +38,9 @@ static int32_t triggerSendOf(const Question *q, int32_t *sw, int32_t *chain) {
   int root = rootOf(x, q);
   if (root < 0) return 0;
   int32_t ms[MAXROWS * W]; int m = swapsOfNode(x, root, ms); int32_t best = 0;
+  const Board *b0 = ensureBoard(x, root);
   for (int i = 0; i < m && !clockOut(); i++) {
+    if (b0 && !opMaySet(b0, CR(ms[i]), CC(ms[i]))) continue;
     int n = step(x, root, MK_SWAP, CR(ms[i]), CC(ms[i]), 0);
     if (!liveNode(x, n)) continue;
     int out = settleOf(x, n);
