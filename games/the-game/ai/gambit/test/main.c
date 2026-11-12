@@ -30,6 +30,8 @@ int gb_frames(int mr, int mc, int frames, int32_t *out);
 int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
 int gb_opening_check(int nbytes, int ms, int32_t *out);
+int gb_design_check(int n, int rows, int colours, int ms, unsigned seed, int32_t *out);
+int gb_design_engine(int nbytes, int rows, int colours, int ms, unsigned seed, int32_t *out);
 void paThreadId(int id);
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath);
 int32_t *gn_io(void);
@@ -125,6 +127,28 @@ int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
+  if (argc > 2 && !strcmp(argv[2], "design")) {
+    int n = argc > 3 ? atoi(argv[3]) : 6, rows = argc > 4 ? atoi(argv[4]) : 10, cols = argc > 5 ? atoi(argv[5]) : 6, ms = argc > 6 ? atoi(argv[6]) : 2000;
+    static int32_t out[4 * 64]; gb_design_check(n, rows, cols, ms, 7, out);
+    for (int i = 0; i < n; i++) printf("board %d: chain %d, %d swaps, worth %d, order %d\n", i, out[4 * i], out[4 * i + 1], out[4 * i + 2], out[4 * i + 3]);
+    return 0;
+  }
+  if (argc > 2 && !strcmp(argv[2], "engine")) {
+    int n = argc > 3 ? atoi(argv[3]) : 4, rows = argc > 4 ? atoi(argv[4]) : 10, cols = argc > 5 ? atoi(argv[5]) : 6, ms = argc > 6 ? atoi(argv[6]) : 1000;
+    char path[4096]; static char line[1 << 17];
+    snprintf(path, sizeof path, "%s/rules.words", dir); if (!loadWords(path)) return 1;
+    snprintf(path, sizeof path, "%s/boards.txt", dir); FILE *o = fopen(path, "r"); int done = 0;
+    while (o && done < n && fgets(line, sizeof line, o)) {
+      if (strncmp(line, "GAMBITB ", 8)) continue;
+      int narr, nb = loadLine(line, &narr); int32_t r[5];
+      int k = gb_design_engine(nb, rows, cols, ms, 11 + done, r);
+      if (k < 0) continue;
+      printf("board %d: designed %d links in %d swaps; the engine made a chain of %d, %d panels cleared; stopped at swap %d of %d\n", done, r[0], r[1], r[2], r[3], r[4], k);
+      done++;
+    }
+    if (o) fclose(o);
+    return 0;
+  }
   int golden = argc > 2 && !strcmp(argv[2], "golden"), fail = 0;
   char path[4096];
   static char line[1 << 17];
