@@ -9,6 +9,7 @@
 typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch; } OpPath;
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
 static int opN, opHave;            // the beam's paths, and whether a plan is held
+static int32_t opLevels;           // (the levels the last decision grew: the log's)
 static int32_t opPressed;          // the plan's set-up the last decision played (0: none) -- the beam is re-rooted under it
 static LOCAL Ctx *opCtx;
 // (A SWAP THAT CAN SET SOMETHING OFF, read off the cells before it is played: a panel swapped into an empty cell falls and may match
@@ -124,6 +125,7 @@ static void openingGrow(const Question *q) {
   opHave = opBest.trig != 0;
   // (grown a level at a time: every path's set-ups one swap on, the nearest its last swap first; the OP_BEAM best kept)
   int nodesNext[OP_BEAM];
+  opLevels = 0;
   while (!clockOut()) {
     int nn = 0, grew = 0;
     for (int bi = 0; bi < opN && !clockOut(); bi++) {
@@ -154,5 +156,6 @@ static void openingGrow(const Question *q) {
     }
     if (clockOut() || !grew || !nn) break;
     opN = nn; for (int i = 0; i < nn; i++) { opBeam[i] = opNext[i]; nodes[i] = nodesNext[i]; }
+    opLevels++;
   }
 }
