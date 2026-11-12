@@ -256,9 +256,6 @@ static void onStop(void) {
 static Broke theBr;
 static int32_t brCut, brResumed;
 static Paths brResume; static int brHave;
-// (A FRONTIER RESUMED AND NOTHING FOUND: the next decision searches its board fresh -- a resumed beam crowds out the lines a fresh one
-// tries first, and a break near the root is found by those)
-static int32_t brResumedMissed;
 // (the search itself, on whichever thread runs it: what it reads is the question, the read and the kept paths, its nodes its thread's)
 static void breakRunTo(const Read *R, double by, Broke *into);
 static void breakRun(const Read *R, double by) { breakRunTo(R, by, &theBr); }
@@ -292,7 +289,7 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
   // at 13038: a one-swap break, found in 3 ms, not searched for))
   double t = nowMs(), room = C2.due ? C2.due - C2.margin - t : 1e9;
   if (C2.due && room < BREAK_MIN_MS) return 0;
-  brHave = !brResumedMissed && carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
+  brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   // (its share of what the searches have, propose.c leftMs: the other searches the rest, the judging its quarter)
   double by = C2.due ? t + (BREAK_MIN_MS > leftMs() * share ? BREAK_MIN_MS : leftMs() * share) : t + BREAK_MAX_MS;
   breakRun(R, by);
@@ -338,7 +335,7 @@ static void breakJob(int32_t i) {
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
   brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
-  brHave = !brResumedMissed && carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
+  brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
   if (!brCtx) brCtx = ctxOf(0);
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
@@ -463,7 +460,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   searchMerge(&R, &S);
   S.searchMs = nowMs() - ts;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
-  brResumedMissed = ran && brHave && !theBr.depth;
   clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
   int n = ranked(&R, &S);
@@ -858,7 +854,7 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 // for the old mode's list), the dig, the line toward a break.
 static void modeLeft(void) {
   lifeLived = 0;
-  brResumedMissed = 0; memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext); carryClr = 7;
+  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext); carryClr = 7;
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0; carriedSunk = -1;
 }
 // A new game: nothing of the last one is carried on.
