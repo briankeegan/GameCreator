@@ -72,6 +72,7 @@ static int readBoard_(Read *R) {
   // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
   factSet(F, FACT_ENEMY_NONE, !theOpp.has);
   R->enemyTopped = theOpp.has && theOpp.out; raceOn = R->enemyTopped;
+  if (theOpp.has && theOpp.topKnown && theOpp.top >= 11) { if (oppToppedSince < 0) oppToppedSince = decQ.b->clock; } else oppToppedSince = -1;
   // (the frames until the board is lost if nothing is done, from the engine with the garbage the game shows landing when it lands:
   // sooner than the rise alone takes, the garbage on its way decides it -- queueKills)
   int32_t alone = diesIn(&decQ, F->v[FACT_US_DIES]);
