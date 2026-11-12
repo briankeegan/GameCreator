@@ -410,6 +410,8 @@ EXPORT(gb_design_skill) void gb_design_skill(int on, int ms) { designSkill = on;
 // first, '0' empty), the rise held off; the swap that sets off the longest chain on the abstract board pressed, then the chain left alone
 // (out[0] its chain, out[1] the panels it leaves) and again continued -- the extension asked every few frames as it falls, its longest
 // line's first swap pressed (out[2] the chain, out[3] the panels left, out[4] the swaps pressed)
+static int puzWidth = 40, puzDepth = 6;
+EXPORT(gb_puzzle_opts) void gb_puzzle_opts(int width, int depth) { puzWidth = width > 0 ? width : 40; puzDepth = depth > 0 ? depth : 6; }
 EXPORT(gb_puzzle_engine) int gb_puzzle_engine(int nbytes, const char *rows, int ms, int32_t *out) {
   if (gb_question_bytes(nbytes, 0) != 0) return -1;
   Board *b = hostBoard;
@@ -453,7 +455,7 @@ EXPORT(gb_puzzle_engine) int gb_puzzle_engine(int nbytes, const char *rows, int 
     if (it > 0 && eb->chainCounter == 0 && !hasActivePanels(eb)) break;
     Question qq = hostQ; qq.b = eb; qq.narr = 0; qq.holdLeft = 0; qq.holdStarted = 0;
     decQ = qq; ncache = 0;
-    ExtOpts eo = { 40, 6, &L, NOT_ASKED, 0, ms };
+    ExtOpts eo = { puzWidth, puzDepth, &L, NOT_ASKED, 0, ms };
     static Ext E; extend(&qq, &eo, &E);
     if (E.longest.set && E.longest.nseq > 0) {
       int n1 = step(x, cur, MK_SWAP, CR(E.longest.seq[0]), CC(E.longest.seq[0]), 0);

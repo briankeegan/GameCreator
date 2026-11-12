@@ -34,6 +34,7 @@ int gb_design_check(int n, int rows, int colours, int ms, unsigned seed, int32_t
 int gb_design_engine(int nbytes, int rows, int colours, int ms, unsigned seed, int32_t *out);
 void gb_design_skill(int on, int ms);
 int gb_puzzle_engine(int nbytes, const char *rows, int ms, int32_t *out);
+void gb_puzzle_opts(int width, int depth);
 void paThreadId(int id);
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath);
 int32_t *gn_io(void);
@@ -143,6 +144,7 @@ int main(int argc, char **argv) {
     while (o && fgets(line, sizeof line, o)) { if (!strncmp(line, "GAMBITB ", 8)) { int narr; nb = loadLine(line, &narr); break; } }
     if (o) fclose(o);
     FILE *f = fopen(argv[3], "r"); int ms = argc > 4 ? atoi(argv[4]) : 60;
+    gb_puzzle_opts(argc > 5 ? atoi(argv[5]) : 40, argc > 6 ? atoi(argv[6]) : 6);
     static unsigned char saved[1 << 17]; extern int32_t *gb_io(void); memcpy(saved, gb_io(), (size_t)(nb > 0 ? nb : 0));
     while (f && fgets(pz, sizeof pz, f)) {
       char name[256], rows[512]; if (sscanf(pz, "%255s %511s", name, rows) != 2) continue;

@@ -23,6 +23,8 @@ static int32_t opLineOn;
 #define TA_DESIGN_MS 600   // the time searched on a design before it is built, at most -- a short start fired soon; the chain is
                            // taken on while it falls
 #define TA_MAXSW 10        // the swaps a design may take
+#define TA_EXT_WIDTH 80    // the chain going's search: the lines a level keeps, and its swaps deep (the chain puzzles: 80 and 9 went
+#define TA_EXT_DEPTH 8     // furthest on the huge tower, 12 links where 40 and 6 reached 8 to 11)
 #define TA_TOP 8           // the stack's top at which a design is built whatever it holds, and the raise's
 #define TA_MARGIN 30       // the frames to spare when the trigger goes down
 #define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
@@ -759,7 +761,7 @@ static Played playOf(const Read *R, int n) {
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, ms = left * 0.8; if (ms < 2) ms = 2;
     readyStop();
     List L; memset(&L, 0, sizeof L); L.n = 1; L.aim[0].chain.op = OP_GE; L.aim[0].chain.n = 2; L.aim[0].brk = -1;
-    ExtOpts eo = { 40, 6, &L, NOT_ASKED, 0, ms };
+    ExtOpts eo = { TA_EXT_WIDTH, TA_EXT_DEPTH, &L, NOT_ASKED, 0, ms };
     static Ext E; extend(&decQ, &eo, &E);
     if (E.longest.set && E.longest.nseq > 0) {
       static Judge CU; Cand k;
