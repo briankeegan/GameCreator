@@ -283,3 +283,21 @@ EXPORT(gb_frames_kept_info) int gb_frames_kept_info(int32_t *out) {
   out[0] = b->clock; out[1] = b->stopTime + b->preStopTime; out[2] = b->shakeTime; out[3] = b->ninc; out[4] = b->garbageCreatedCount; out[5] = fullTop(b);
   return 6;
 }
+// THE OPENING PLANNED (search/opening.c) on the question's board cut to six rows, as an opening's is, its garbage on the way left off, for `ms` of the wall clock: the levels
+// grown, the plan's set-ups and the cells its trigger sends into out[0..2]; the mode's list one chain of four or longer. On workers
+// (./build.sh tsan) its paths are scored on every thread.
+EXPORT(gb_opening_check) int gb_opening_check(int nbytes, int ms, int32_t *out) {
+  if (gb_question_bytes(nbytes, 0) != 0) return -1;
+  if (!lowered(hostBoard, 6)) return -2;
+  gb_new_game();
+  curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
+  List keep = theList;
+  memset(&theList, 0, sizeof theList); theList.n = 1; theList.aim[0].chain.op = OP_GE; theList.aim[0].chain.n = 4; theList.aim[0].brk = -1;
+  Question q = hostQ; q.narr = 0;
+  double sh = clockShareBegin(clock_ms() + ms);
+  openingGrow(&q);
+  clockShareEnd(sh);
+  theList = keep;
+  out[0] = opLevels; out[1] = opHave ? opBest.len : -1; out[2] = opHave ? opBest.sent : 0;
+  return 0;
+}

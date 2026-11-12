@@ -17,12 +17,13 @@ fi
 # search a worker runs beside Gambit's thread is raced against it; any data race fails (exit 66)
 if [ "${1:-}" = tsan ]; then
   gcc -O1 -g -fsanitize=thread -pthread -DPA_HEAP -DGB_TEST -w native.c host.c test/main.c -lm -lz -o /tmp/gambit-tsan &&
-    GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-4} TSAN_OPTIONS="halt_on_error=1 exitcode=66 report_signal_unsafe=0 history_size=2" /tmp/gambit-tsan test
+    GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-4} TSAN_OPTIONS="halt_on_error=1 exitcode=66 report_signal_unsafe=0 history_size=2" /tmp/gambit-tsan test &&
+    GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-4} TSAN_OPTIONS="halt_on_error=1 exitcode=66 report_signal_unsafe=0 history_size=2" /tmp/gambit-tsan test opening
   exit
 fi
 if [ "${1:-}" = test ]; then
   clang -O2 -pthread -DPA_HEAP -DGB_TEST -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes \
-    native.c host.c test/main.c -lm -lz -o /tmp/gambit-test && GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-0} /tmp/gambit-test test "${2:-}"
+    native.c host.c test/main.c -lm -lz -o /tmp/gambit-test && GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-0} /tmp/gambit-test test "${2:-}" && { [ -n "${2:-}" ] || GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-4} /tmp/gambit-test test opening; }
   exit
 fi
 # ./build.sh material DIR...: core/material.h, the life a board has by its panels, measured on the games in DIR... (material.c, on the
