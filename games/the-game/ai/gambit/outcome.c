@@ -11,8 +11,8 @@ static double leftMsOf(void);   // (propose.c leftMs: the time the decision's se
 static int32_t levelBreak = 97;
 #define LEVEL11_BREAK 97
 #define AT_LEVEL(f) ((int32_t)((int64_t)(f) * levelBreak / LEVEL11_BREAK))
-#define HORIZON AT_LEVEL(240)   // a board stands when it is alive this long after now
-#define REST AT_LEVEL(120)      // and this long after the line's last swap
+#define HORIZON AT_LEVEL(240)   // the frames ahead the searches that keep a board alive (outlive, the save, the raise) look
+#define REST AT_LEVEL(120)      // a line lives when its board stands this long once its clears are over -- the time to do something after
 
 typedef struct {
   int32_t land;        // frames until the last block shown lands (NOT_ASKED: none coming) -- JUDGE.lastLanding
@@ -137,7 +137,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
-  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
+  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, 0, REST, !waitTo, waitAt, waitTo, 1 };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
