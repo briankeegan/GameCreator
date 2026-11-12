@@ -29,6 +29,8 @@ static int32_t opLineOn;
                            // with the panels for it: the chain going finds its next link 46% of the time at 8 links, 25% at 10
 #define TA_MARGIN 30       // the frames to spare when the trigger goes down
 #define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
+#define TA_HIGH 8           // the rows raised to whatever the board holds
+#define TA_GOOD 4           // the links a design holds for the board to be raised past TA_HIGH
 #define TA_STEP 4          // the design's swaps handed on a decision
 #define TA_FULL 6          // the full rows a board has before a design is searched on it
 static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: the chain left alone, the longest found, its swaps, the ms given)
@@ -192,7 +194,10 @@ static int readBoard_(Read *R) {
   int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
   // (TIME ATTACK'S RAISE: no design being built and the stack under TA_TOP -- the owner: raise to the top, then the chain; no garbage is
   // coming, so the rows are raised as they are, never held to a break's readiness)
-  int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !R->dying && !taOn && panelTop(decQ.b) < TA_TOP;
+  // (and past TA_HIGH rows only on a board a chain of TA_GOOD links or more has been designed on: a board with none in it is not taken to
+  // the top -- the rise ends it there)
+  int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !R->dying && !taOn && panelTop(decQ.b) < TA_TOP &&
+                (panelTop(decQ.b) < TA_HIGH || (taHave && taLinks >= TA_GOOD));
   if (taRaise) to = TA_TOP;
   raiseRefill = refill; raiseOpening = opening; raiseTo = to;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
