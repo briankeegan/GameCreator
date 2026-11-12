@@ -11,7 +11,7 @@ typedef struct {
   double near;
 } XLine;
 typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; } ExtOpts;
-typedef struct { XLine best, nearest, three, longest; double ms; } Ext;   // three: the chain taken to three or more, breaking the most;
+typedef struct { XLine best, nearest, three, longest; double ms; int32_t baseChain; } Ext;   // baseChain: the cascade's chain left alone   // three: the chain taken to three or more, breaking the most;
                                                                        // longest: the chain made longest, in the fewest swaps
 // a node's cascade once it settles: what it sends, its chain and largest match, the garbage it converted, and whether its board keeps
 // the floor (kept: with what it broke, floor: as if it broke nothing)
@@ -78,7 +78,7 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   PItem none; memset(&none, 0, sizeof none);
   Sent base = sendsOf(x, root, o->keep, &none);
   E->best.cells = base.ok ? base.cells : 0; E->best.chain = base.ok ? base.chain : 0; E->best.base = E->best.cells; E->best.aimIndex = -1;
-  int32_t baseCells = E->best.cells;
+  int32_t baseCells = E->best.cells; E->baseChain = base.ok ? base.chain : 0;
   int na = o->aims ? o->aims->n : 0;
   XLine per[MAXAIMS]; memset(per, 0, sizeof per);
   static LOCAL PItem poolA[PLAN_POOL], poolB[PLAN_POOL];
