@@ -32,6 +32,8 @@ static int32_t opLineOn;
 #define TA_EVEN 2          // the rows the tallest column may stand over the shortest with the stack still raised to TA_TOP
 #define TA_DANGER 120      // the frames left alone under which a time-attack board is played for its life: about two and a half rows of
                            // the level-11 rise (45 frames a row at rest, measured: 281 at seven rows, 374 at four)
+#define TA_STAND 190      // the frames a time-attack board, raised, still stands left alone: a design's TA_MAXSW swaps walked and pressed,
+                           // TA_MARGIN to spare
 #define TA_STEP 4          // the design's swaps handed on a decision
 #define TA_FULL 6          // the full rows a board has before a design is searched on it
 // (a judged line that clears anything: a combo, a chain, a three, a clear of its own)
@@ -80,6 +82,23 @@ static void fillList(List *L) {
   *L = out; fillN = nmax;
 }
 static int decisionFloor(const Board *b) { return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1; }
+// (TIME ATTACK'S RAISE, ON THE ENGINE'S CLOCK: the rows the board, raised, still stands `stand` frames through left alone -- the rise never
+// stops, and a raise brings the top nearer by every row it lifts: a board raised into its last frames has no time left to build on)
+static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
+  static Board *st; if (!st) st = nb_new();
+  if (!st || rows <= 0) return 0;
+  int32_t ok = 0, top0 = fullTop(b);
+  for (int k = 1; k <= rows; k++) {
+    cloneBoard(st, b);
+    int32_t f = 0;
+    while (fullTop(st) < top0 + k && st->gameOverClock <= 0 && f < 40 * k) { st->input = RAISE_IN; run(st); f++; }
+    if (st->gameOverClock > 0 || fullTop(st) < top0 + k) break;
+    for (int32_t g = 0; g < stand && st->gameOverClock <= 0; g++) { st->input = 0; run(st); }
+    if (st->gameOverClock > 0) break;
+    ok = k;
+  }
+  return ok;
+}
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -231,7 +250,7 @@ static int readBoard_(Read *R) {
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;
     raiseOpens = opening;
-    int32_t rows = taRaise ? rowsUp : raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
+    int32_t rows = taRaise ? taRaiseRows(rq.b, rowsUp, AT_LEVEL(TA_STAND)) : raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
     // (THE FLOOR'S RAISE ON A BOARD TOO SHORT TO BREAK: below the floor, no row count leaves a break once everything lands -- the panels
     // a break is made of are what the board lacks -- so the rows the board lives through once everything lands are raised all the same:
     // the panels are the next break's material, and the opening's raise is held to readiness, never the floor's)
