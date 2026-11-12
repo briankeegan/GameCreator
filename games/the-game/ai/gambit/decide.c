@@ -20,13 +20,15 @@ static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: t
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
 static int32_t opLineOn;
 #define TA_LINKS 13        // a design this long is built at once
-#define TA_DESIGN_MS 1500  // the time searched on a design before it is built, at most
+#define TA_DESIGN_MS 600   // the time searched on a design before it is built, at most -- a short start fired soon; the chain is
+                           // taken on while it falls
+#define TA_MAXSW 10        // the swaps a design may take
 #define TA_TOP 8           // the stack's top at which a design is built whatever it holds, and the raise's
 #define TA_MARGIN 30       // the frames to spare when the trigger goes down
 #define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
 #define TA_STEP 4          // the design's swaps handed on a decision
 #define TA_FULL 6          // the full rows a board has before a design is searched on it
-static int32_t taLog;      // (the log's: 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
+static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
 #define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
@@ -750,7 +752,26 @@ static Played playOf(const Read *R, int n) {
   // it holds TA_LINKS links, TA_DESIGN_MS have gone on it, or the stack is at the top; then its swaps are pressed TA_STEP at a time, worked
   // out afresh each decision from the board as it is, and its trigger last. A design the board no longer holds is let go.)
   taLog = 0;
-  if (ruleNoEnemy && !R->under && !R->topped && clockFrameOut && !clockFrameOut() && !cascadeLive(decQ.b) && !R->pop) {
+  // (A CHAIN GOING, TIME ATTACK: the extension given the decision's time, and its longest line -- up to 13 -- played, every decision the
+  // chain falls; the panel-game puzzles' way: a chain is taken a link at a time, a swap a link, in the time its own clears stop the rise)
+  if (ruleNoEnemy && !R->under && !R->topped && clockFrameOut && !clockFrameOut() && (cascadeLive(decQ.b) || decQ.b->chainCounter > 0)) {
+    double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
+    double left = C2.due ? C2.due - C2.margin - nowMs() : 100, ms = left * 0.8; if (ms < 2) ms = 2;
+    readyStop();
+    List L; memset(&L, 0, sizeof L); L.n = 1; L.aim[0].chain.op = OP_GE; L.aim[0].chain.n = 2; L.aim[0].brk = -1;
+    ExtOpts eo = { 40, 6, &L, NOT_ASKED, 0, ms };
+    static Ext E; extend(&decQ, &eo, &E);
+    if (E.longest.set && E.longest.nseq > 0) {
+      static Judge CU; Cand k;
+      if (candOf(&k, PLAY_EXTEND, E.longest.seq, E.longest.nseq, -1, 1)) {
+        k.settled = 0; lastDrop = -1;
+        if (judgeCand(R, &k, &CU) && !CU.o.dead) { P.line = &CU; taLog = 3; }
+        else taLog = -20 - lastDrop;
+      }
+    }
+    clockDue = keepDue; clockShare = keepShare;
+  }
+  else if (ruleNoEnemy && !R->under && !R->topped && clockFrameOut && !clockFrameOut() && !cascadeLive(decQ.b) && !R->pop) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     static CbGrid G; cbOfBoard(decQ.b, &G);
     if (taHave) { int sft = cbShiftOf(&G, &taD); if (sft < 0) { taReset(); taLog = -1; } else cbShiftUp(&taD, &G, sft); }
@@ -764,7 +785,7 @@ static Played playOf(const Read *R, int n) {
       static CbGrid D; int32_t tr = 0; int links = 0, sw = 0;
       // (no more swaps than the board lives to press: the frames it has left alone, a swap's frames each, TA_MARGIN to spare)
       int32_t dies = R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0 ? (int32_t)R->F.v[FACT_US_DIES] : NOT_ASKED;
-      cbJMaxSw = dies == NOT_ASKED ? CB_MAXSWAPS : imax(1, imin(CB_MAXSWAPS, (dies - TA_MARGIN) / TA_SWAP_FRAMES - 1));
+      cbJMaxSw = imin(TA_MAXSW, dies == NOT_ASKED ? CB_MAXSWAPS : imax(1, (dies - TA_MARGIN) / TA_SWAP_FRAMES - 1));
       if (taHave && cbSwapsTo(&G, &taD) > cbJMaxSw) { taReset(); taLog = -3; }
       int32_t v = cbDesignAll(&G, taHave ? &taD : 0, ms, &D, &tr, &links, &sw);
       taMs += ms;
