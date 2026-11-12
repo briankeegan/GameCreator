@@ -319,7 +319,8 @@ EXPORT(gb_design_check) int gb_design_check(int n, int rows, int colours, int ms
     clockStart(0); clockNowOf = 0;
     int32_t v = cbDesign(&G, 0, ms, &D, &tr, &links, &swaps);
     int32_t seq[CB_MAXSWAPS + 1]; int ord = cbOrder(&G, &D, tr, seq, CB_MAXSWAPS + 1);
-    out[4 * i] = links; out[4 * i + 1] = swaps; out[4 * i + 2] = v; out[4 * i + 3] = ord;
+    { int cl; cbAcross = cbUpDown = 0; if (tr) cbRun(&D, CR(tr), CC(tr), &cl); }
+    out[4 * i] = links; out[4 * i + 1] = swaps; out[4 * i + 2] = cbAcross * 100 + cbUpDown; out[4 * i + 3] = ord;
   }
   return n;
 }
