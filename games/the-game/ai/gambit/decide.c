@@ -179,7 +179,7 @@ static int readBoard_(Read *R) {
   decF.under = R->under;
   // (the owner: the reason is dying -- the rise tops the board out as surely as garbage lands on it, and the moves that keep it alive are
   // the same)
-  R->dying = R->under || (F->known[FACT_US_DIES] && F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < HORIZON + REST);
+  R->dying = R->under || (F->known[FACT_US_DIES] && F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < REST);
   // (time attack's own line: the rise is never still, so at level 11 a board under eight rows is within HORIZON + REST of its top all
   // the time; the raise, the design and the hold give way to the board's life inside TA_DANGER frames only)
   R->taDying = R->under || (F->known[FACT_US_DIES] && F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < AT_LEVEL(TA_DANGER));
