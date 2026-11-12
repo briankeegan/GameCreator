@@ -186,8 +186,11 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     if (!got || nowMs() - t0 > ms) break;
     // (and once landed, alive a REST left alone (outcome.c): a raise that leaves the board only a break found in its last frames is one
     // it dies of -- the decisions after it have no time to press it)
+    // (the opening's raise, more: once landed, alive the horizon and a REST -- more garbage follows what is shown, and a board raised to
+    // live a REST past the last block shown is lost to the next)
     { static Board *rest; if (!rest) rest = nb_new(); cloneBoard(rest, got);
-      for (int g = 0; g < REST && rest->gameOverClock <= 0; g++) { rest->input = 0; run(rest); }
+      int32_t stand = raiseOpens ? HORIZON + REST : REST;
+      for (int g = 0; g < stand && rest->gameOverClock <= 0; g++) { rest->input = 0; run(rest); }
       if (rest->gameOverClock > 0) break; }
     raiseAlive = k;
     // (a plan once landed: the readiness every move is held to -- a break within two swaps that the list allows)
