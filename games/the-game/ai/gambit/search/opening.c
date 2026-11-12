@@ -1,10 +1,10 @@
 // THE OPENING, PLANNED (plans/gambit-opener.md -- the owner: the opener has the whole board and the most time it will ever have; it plans
 // something amazing, with every piece): one beam over set-up sequences, kept from decision to decision through the opening. Each board in
-// it is scored by the garbage the best trigger on it sends (triggerSendOf) and, tied, by the panels that trigger clears; each set-up
-// clears nothing. Half the beam is the boards whose trigger sends the most, the other half the boards with the most promise (opPot) --
+// it is scored by the chain its best trigger sets off (triggerSendOf), then the garbage it sends and the panels it clears; each set-up
+// clears nothing. Half the beam is the boards whose trigger's chain is longest, the other half the boards with the most promise (opPot) --
 // a chain is built for swaps before any trigger is there. Every decision grows it a level at a time in the time it has (the countdown's is
 // the longest), re-rooted under the swap pressed: a path that begins with the swap pressed goes on without it, any other is let go. The
-// plan is the path with a trigger sending the most for the frames it takes (opPacier), and its trigger.
+// plan is the path with a trigger whose chain is longest (opPacier), and its trigger.
 #define OP_BEAM 48       // the boards a level keeps
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_DEPTH 20      // the set-ups a plan may hold
@@ -34,13 +34,13 @@ static int opMaySet(const Board *b, int r, int c) {
   if (a < 0 || d < 0 || a == d) return 0;
   return opRun(b, r, c + 1, a, c) || opRun(b, r, c, d, c + 1);
 }
-// the most garbage one swap sets off from the question's board -- its chain's slabs and every clear's combo garbage (plan.c sentCells),
-// the swap in *sw, that clear's chain in *chain (0: none sends any)
+// the longest chain one swap sets off from the question's board, of two as long the one sending more -- its chain's slabs and every
+// clear's combo garbage (plan.c sentCells): what it sends returned, the swap in *sw, its chain in *chain (0: none sends any)
 static int32_t triggerSendOf(const Question *q, int32_t *sw, int32_t *chain) {
   Ctx *x = cuCtxB = ctxOf(cuCtxB);
   int root = rootOf(x, q);
   if (root < 0) return 0;
-  int32_t ms[MAXROWS * W]; int m = swapsOfNode(x, root, ms); int32_t best = 0;
+  int32_t ms[MAXROWS * W]; int m = swapsOfNode(x, root, ms); int32_t best = 0, bestCh = 0;
   const Board *b0 = ensureBoard(x, root);
   for (int i = 0; i < m && !clockOut(); i++) {
     if (b0 && !opMaySet(b0, CR(ms[i]), CC(ms[i]))) continue;
@@ -51,29 +51,39 @@ static int32_t triggerSendOf(const Question *q, int32_t *sw, int32_t *chain) {
     Stats s; int32_t c = 0, ch = 0;
     if (statsOf(x, n, &s)) { c = sentCells(&s); ch = chainOfStats(&s); }
     if (statsOf(x, out, &s) && sentCells(&s) > c) { c = sentCells(&s); ch = chainOfStats(&s); }
-    if (c > best) { best = c; if (sw) *sw = ms[i]; if (chain) *chain = ch; }
+    if (c > 0 && (ch > bestCh || (ch == bestCh && c > best))) { best = c; bestCh = ch; if (sw) *sw = ms[i]; if (chain) *chain = ch; }
   }
   return best;
 }
-// (A HALF-BUILT CHAIN'S PROMISE: the pairs of one colour side by side or one on the other -- the set-ups a chain is made of before any of
-// its links can go off. A path whose board has no trigger yet is kept by it.)
+// (A HALF-BUILT CHAIN'S PROMISE -- the horizontal chain, panel-game's puzzles: a pair side by side waits for its third, a panel of its
+// colour higher in the column beside it that drops into place once the panels under it clear -- each such pair a link waiting. Twice
+// the links waiting, and the pairs of one colour side by side or one on the other beside them. A path whose board has no trigger yet is
+// kept by it.)
 static int32_t opPot(const Board *b) {
-  int32_t n = 0;
+  int32_t pairs = 0, links = 0;
   for (int r = 1; r <= b->height; r++) for (int c = 1; c <= W; c++) {
     int32_t a = cellAt(b, r, c);
     if (a <= 0) continue;
-    if (c < W && cellAt(b, r, c + 1) == a) n++;
-    if (r < b->height && cellAt(b, r + 1, c) == a) n++;
+    if (r < b->height && cellAt(b, r + 1, c) == a) pairs++;
+    if (c < W && cellAt(b, r, c + 1) == a) {
+      pairs++;
+      // (the third of a pair at c, c+1: in column c-1 or c+2, above row r, the nearest panel of the column there being its colour)
+      for (int side = 0; side < 2; side++) {
+        int k = side ? c + 2 : c - 1;
+        if (k < 1 || k > W || cellAt(b, r, k) == a) continue;
+        for (int q = r + 1; q <= b->height; q++) { int32_t v = cellAt(b, q, k); if (v == 0) continue; if (v == a) links++; break; }
+      }
+    }
   }
-  return n;
+  return 2 * links + pairs;
 }
 static uint32_t opHash(const Board *b) {
   uint32_t h = 2166136261u;
   for (int r = 1; r <= b->height; r++) for (int c = 1; c <= W; c++) { h ^= (uint32_t)(cellAt(b, r, c) + 16); h *= 16777619u; }
   return h;
 }
-// (A PLAN'S PACE: the garbage it sends for the frames it takes -- its swaps walked to from the cursor and pressed, then a chain's
-// beginning, OP_FIRE frames. Of two plans the one sending more for its time; tied, the one sending more.)
+// (A PLAN'S WORTH: the longest chain (the owner: an opener is ranked by its chain, always); of two as long, the garbage it sends for the
+// frames it takes -- its swaps walked to from the cursor and pressed, then a chain's beginning, OP_FIRE frames; tied, the one sending more)
 #define OP_FIRE 120
 static int32_t opCurR, opCurC;   // (the cursor on the board the beam is grown on)
 static int32_t opFrames(const OpPath *p) {
@@ -85,6 +95,7 @@ static int32_t opFrames(const OpPath *p) {
   return f;
 }
 static int opPacier(const OpPath *a, const OpPath *o) {
+  if (a->ch != o->ch) return a->ch > o->ch;
   int64_t x = (int64_t)a->sent * opFrames(o), y = (int64_t)o->sent * opFrames(a);
   if (x != y) return x > y;
   if (a->sent != o->sent) return a->sent > o->sent;
@@ -243,7 +254,7 @@ static void openingGrow(const Question *q) {
           if (!half && !c->trig) continue;
           if (w < 0) { w = j; continue; }
           const OpKid *d = &opJRes[cp[w]][ci[w]];
-          if (!half ? (c->sent != d->sent ? c->sent > d->sent : c->cleared > d->cleared) : (c->pot != d->pot ? c->pot > d->pot : c->sent > d->sent)) w = j;
+          if (!half ? (c->ch != d->ch ? c->ch > d->ch : c->sent != d->sent ? c->sent > d->sent : c->cleared > d->cleared) : (c->pot != d->pot ? c->pot > d->pot : c->sent > d->sent)) w = j;
         }
         if (w < 0) break;
         taken[w] = 1;
