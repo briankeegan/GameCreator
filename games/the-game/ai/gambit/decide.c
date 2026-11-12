@@ -119,9 +119,6 @@ static int readBoard_(Read *R) {
   fillList(&R->list);
   R->guides = R->list;
   R->by = deadlineOf(F, rule);
-  // (THE OPENER BEFORE THE GARBAGE: an opening chain fires before the next block lands, or it is not begun -- a chain the block lands on
-  // spends the panels the board digs out with)
-  if (oi >= 0 && ri == oi && decF.next != NOT_ASKED && decF.next > 0 && (R->by == NOT_ASKED || decF.next < R->by)) R->by = decF.next;
   // (below the material floor a step that clears and breaks nothing is out, as the judge drops it)
   R->belowFloor = garbageGame && R->keepOn && R->keep.t[KEEP_MATERIAL].op && !test(F->v[FACT_US_MATERIAL], R->keep.t[KEEP_MATERIAL]);
   theList = R->list; listOn = 1; decF.belowFloor = R->belowFloor;
