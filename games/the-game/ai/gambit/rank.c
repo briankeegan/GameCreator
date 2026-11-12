@@ -64,6 +64,7 @@ typedef struct {
   int32_t under, topped, breakWaits, belowFloor;
   int32_t dying;                   // the board is on its way to its loss: under garbage, or lost left alone -- the rise's countdown as
                                    // much as a block's -- within the horizon and a rest (decide.c read)
+  int32_t taDying;                 // time attack: under garbage, or lost left alone inside TA_DANGER frames (decide.c read)
   int32_t saving;                  // saving panels up: breaks that leave the most come before the list (decide.c read)
   int32_t full;                    // more panels than the board lives longest with (outcome.c lifePeakOf): every line's life by them before the list
   Keep keep; int32_t keepOn;
