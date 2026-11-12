@@ -32,6 +32,11 @@ static int32_t opLineOn;
 #define TA_EVEN 2          // the rows the tallest column may stand over the shortest with the stack still raised to TA_TOP
 #define TA_STEP 4          // the design's swaps handed on a decision
 #define TA_FULL 6          // the full rows a board has before a design is searched on it
+// (a judged line that clears anything: a combo, a chain, a three, a clear of its own)
+static int taClears(const Judge *J) {
+  const Judged *j = &J->o.j;
+  return j->made.cells > 0 || j->made.combo > 0 || j->made.chain > 0 || j->threes > 0 || j->nsingles > 0 || j->chainAll > 0;
+}
 static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: the chain left alone, the longest found, its swaps, the ms given)
 static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
@@ -803,6 +808,9 @@ static Played playOf(const Read *R, int n) {
       // is dying or raised: a raise only lifts the rows)
       else if (taHave && !R->dying && !R->up) P.line = 0;
     }
+    // (and till a design is on, nothing cleared on a board that lives -- the owner: flatten, raise, then the chain that uses every block; a
+    // clear made on the way spends the panels the design is made of, and starts a chain too short to take to 13)
+    if (!taOn && !R->dying && P.line && taClears(P.line)) P.line = 0;
     if (taOn) {
       int32_t seq[CB_MAXSWAPS + 1]; int n = cbOrder(&G, &taD, taTr, seq, CB_MAXSWAPS + 1);
       // (never a build the board does not live through -- the owner: you can't choose to die: the swaps left and the trigger, walked and
