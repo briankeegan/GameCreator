@@ -18,6 +18,7 @@ static int32_t raiseRefill;   // (the raise asked is the floor's, not the openin
 static int32_t raiseOpening, raiseTo, raiseRows;   // (the raise asked this decision: the opening's, and the rows it raises to -- the log's raiseFor)
 static int32_t refillAsked, refillReady, refillAlive;   // (the floor's raise: the rows asked, ready, alive -- the log's)
 static int32_t raiseWait; static Board *raiseWaitBoard;   // (the floor's raise put off to the frame the stack takes one, and that board)
+#define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
@@ -690,16 +691,23 @@ static Played playOf(const Read *R, int n) {
   if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
       theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
-    const Test *t = &theList.aim[0].chain; int32_t want = t->op == OP_GT ? t->n + 1 : t->n;
-    int32_t sw = 0, trig = 0;
-    chainNow = triggerChainOf(&decQ, &trig);
-    int fire = chainNow >= want && trig;
-    if (fire) sw = trig; else if (!chainUpSwap(&decQ, &sw, &chainNow, &chainAfter)) sw = 0;
+    // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
+    // pressed while the plan sends more than the trigger the board has now and its set-ups can be pressed before the next block lands;
+    // else that trigger fires)
+    double left = C2.due ? C2.due - C2.margin - nowMs() : 100;
+    double grow = left * 0.7; if (grow < 2) grow = 2;
+    { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
+    int32_t sw = 0, trig = 0, trigCh = 0;
+    int32_t sentNow = triggerSendOf(&decQ, &trig, &trigCh);
+    chainNow = trigCh; chainAfter = opHave ? opBest.sent : 0;
+    int late = decF.next != NOT_ASKED && opHave && decF.next <= (opBest.len + 1) * OPEN_SWAP_FRAMES;
+    int fire = trig && (!opHave || opBest.len == 0 || opBest.sent <= sentNow || late);
+    if (fire) sw = trig; else if (opHave && opBest.len > 0) sw = opBest.path[0];
     if (sw) {
       static Judge CU; Cand k; int32_t one[1] = { sw };
       if (candOf(&k, fire ? PLAY_ENTRY : PLAY_SETUP, one, 1, -1, 0)) {
         k.settled = 0; chainUp = -1;
-        if (judgeCand(R, &k, &CU) && !CU.o.dead && CU.o.lives && (fire || !wastesThree(&CU))) { P.line = &CU; chainUp = fire ? 2 : 1; }
+        if (judgeCand(R, &k, &CU) && !CU.o.dead && CU.o.lives && (fire || !wastesThree(&CU))) { P.line = &CU; chainUp = fire ? 2 : 1; if (!fire) opPressed = sw; else openingReset(); }
       }
     }
     clockDue = keepDue; clockShare = keepShare;
