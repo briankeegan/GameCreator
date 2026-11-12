@@ -11,7 +11,7 @@
 typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot; } OpPath;
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
 static int opN, opHave;            // the beam's paths, and whether a plan is held
-static int32_t opLevels;           // (the levels the last decision grew: the log's)
+static int32_t opLevels, opGrowMs;   // (the levels the last decision grew and the ms it had: the log's)
 static int32_t opPressed;          // the plan's set-up the last decision played (0: none) -- the beam is re-rooted under it
 static LOCAL Ctx *opCtx;
 // (A SWAP THAT CAN SET SOMETHING OFF, read off the cells before it is played: a panel swapped into an empty cell falls and may match
