@@ -30,6 +30,8 @@ static int32_t opLineOn;
 #define TA_MARGIN 30       // the frames to spare when the trigger goes down
 #define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
 #define TA_EVEN 2          // the rows the tallest column may stand over the shortest with the stack still raised to TA_TOP
+#define TA_DANGER 120      // the frames left alone under which a time-attack board is played for its life: about two and a half rows of
+                           // the level-11 rise (45 frames a row at rest, measured: 281 at seven rows, 374 at four)
 #define TA_STEP 4          // the design's swaps handed on a decision
 #define TA_FULL 6          // the full rows a board has before a design is searched on it
 // (a judged line that clears anything: a combo, a chain, a three, a clear of its own)
@@ -159,6 +161,9 @@ static int readBoard_(Read *R) {
   // (the owner: the reason is dying -- the rise tops the board out as surely as garbage lands on it, and the moves that keep it alive are
   // the same)
   R->dying = R->under || (F->known[FACT_US_DIES] && F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < HORIZON + REST);
+  // (time attack's own line: the rise is never still, so at level 11 a board under eight rows is within HORIZON + REST of its top all
+  // the time; the raise, the design and the hold give way to the board's life inside TA_DANGER frames only)
+  R->taDying = R->under || (F->known[FACT_US_DIES] && F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < AT_LEVEL(TA_DANGER));
   // (and after its entries, the one rule's three that breaks (rules.c withRule): the list as the board asks it, the searches' and the
   // rank's alike)
   // (the rank's list is the mode's as written -- a combo of eight is ranked before one of six whatever the searches are led toward)
@@ -200,7 +205,7 @@ static int readBoard_(Read *R) {
   // garbage is coming, so the rows are raised as they are, never held to a break's readiness. The top is TA_TOP less each row the tallest
   // column stands over the shortest past TA_EVEN: an uneven stack raised to TA_TOP puts its tallest column where the rise ends it)
   int32_t taTo = TA_TOP - imax(0, evenOf(decQ.b) - TA_EVEN);
-  int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !R->dying && !taOn && panelTop(decQ.b) < taTo;
+  int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !R->taDying && !taOn && panelTop(decQ.b) < taTo;
   if (taRaise) to = taTo;
   raiseRefill = refill; raiseOpening = opening; raiseTo = to;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
@@ -806,11 +811,11 @@ static Played playOf(const Read *R, int n) {
       if (taHave && (taLinks >= TA_LINKS || taMs >= TA_DESIGN_MS || panelTop(decQ.b) >= TA_TOP)) taOn = 1;
       // (and while it is searched, the board is left as it is -- a swap played meanwhile changes the rows the design is of -- unless it
       // is dying or raised: a raise only lifts the rows)
-      else if (taHave && !R->dying && !R->up) P.line = 0;
+      else if (taHave && !R->taDying && !R->up) P.line = 0;
     }
     // (and till a design is on, nothing cleared on a board that lives -- the owner: flatten, raise, then the chain that uses every block; a
     // clear made on the way spends the panels the design is made of, and starts a chain too short to take to 13)
-    if (!taOn && !R->dying && P.line && taClears(P.line)) P.line = 0;
+    if (!taOn && !R->taDying && P.line && taClears(P.line)) P.line = 0;
     if (taOn) {
       int32_t seq[CB_MAXSWAPS + 1]; int n = cbOrder(&G, &taD, taTr, seq, CB_MAXSWAPS + 1);
       // (never a build the board does not live through -- the owner: you can't choose to die: the swaps left and the trigger, walked and
