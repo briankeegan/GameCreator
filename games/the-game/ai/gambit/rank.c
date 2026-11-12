@@ -128,6 +128,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // and leaving it alone -- the hold -- meets what it makes)
   int entry = metOf(&R->asked, j ? (Made){ j->whole.combo, j->whole.chain, j->whole.broke, m.cells } : m);
   J->met = j ? entry : -1;
+  if (J->lengthens && J->met < 0) J->met = 0;   // (time attack: lengthening the chain is the mode's first entry, for every key)
   { int nl = R->list.n; J->modeFirst = J->met == 0 || (R->topped && nl > 0 && J->met == nl + 1); }   // (the one rule's three that breaks is the mode's first only topped out -- the owner: a three is for survival)
   J->saving = R->saving && R->under && m.broke > 0;
   // (the next break's material, as the engine leaves the board: a break to build, the floor kept -- outcome.c nextBuild, floorKept)
