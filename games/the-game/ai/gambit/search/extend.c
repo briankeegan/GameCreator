@@ -138,19 +138,17 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
         double xn = nearList(o->aims, made);
         if (xn > 0 && (!E->nearest.set || xn > E->nearest.near || (xn == E->nearest.near && g.cells > E->nearest.cells)) && lineFits(kseq, k->nseq, 0)) { XFILL(E->nearest, -1); E->nearest.near = xn; }
         for (int ai = 0; ai < na; ai++)
-          if (meets(&o->aims->aim[ai], made) && (!per[ai].set || (ruleNoEnemy ? (g.chain != per[ai].chain ? g.chain > per[ai].chain : g.cells < per[ai].cells) : g.cells > per[ai].cells)) && lineFits(kseq, k->nseq, 0)) XFILL(per[ai], ai);
+          if (meets(&o->aims->aim[ai], made) && (!per[ai].set || (ruleNoEnemy && g.chain != per[ai].chain ? g.chain > per[ai].chain : g.cells > per[ai].cells)) && lineFits(kseq, k->nseq, 0)) XFILL(per[ai], ai);
         // (A 2x GOING TAKEN TO THREE -- the owner: at least a 3x over a 2x: the line that makes the chain three or more and breaks the most
         // garbage, whatever the list asks)
         if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineLives(kseq, k->nseq, 0)) XFILL(E->three, -1);
         // (THE CHAIN MADE LONGEST, a link at a time -- the owner: in time attack a chain is all there is; whatever the list asks, the
-        // longest the cascade is taken to, up to 13 (CB_TOP), in the fewest swaps, then spending the fewest panels -- a link of three)
+        // longest the cascade is taken to, up to 13 (CB_TOP), in the fewest swaps)
         if (ruleNoEnemy && base.ok && base.chain < CB_TOP && g.chain > base.chain && (!E->longest.set || imin(g.chain, CB_TOP) > imin(E->longest.chain, CB_TOP) ||
-            (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && (k->nseq < E->longest.nseq || (k->nseq == E->longest.nseq && g.cells < E->longest.cells))))
-            && lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1);
+            (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq)) && lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1);
       }
       #undef XFILL
-      k->h = connectedOf(ensureBoard(x, k->n)); k->set = ruleNoEnemy ? g.chain * 1000 - imin(g.cells, 999) : g.cells;   // (set: its score -- what it sends; in time attack its chain first, then the fewest
-      // cells sent beside it: a link of a combo spends panels the next link is made of)
+      k->h = connectedOf(ensureBoard(x, k->n)); k->set = ruleNoEnemy ? g.chain * 1000 + g.cells : g.cells;   // (set: its score -- what it sends; in time attack its chain first)
       next[nk++] = *k;
     }
     // each board once, its best line: ranked by what it sends (in time attack its chain first), then how connected

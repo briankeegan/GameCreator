@@ -29,8 +29,7 @@ static int32_t opLineOn;
                            // with the panels for it: the chain going finds its next link 46% of the time at 8 links, 25% at 10
 #define TA_MARGIN 30       // the frames to spare when the trigger goes down
 #define TA_SWAP_FRAMES 16  // a design's swap, walked to and pressed: the frames it takes, near enough to know a build will be in time
-#define TA_HIGH 8           // the rows raised to whatever the board holds
-#define TA_GOOD 4           // the links a design holds for the board to be raised past TA_HIGH
+#define TA_EVEN 2          // the rows the tallest column may stand over the shortest with the stack still raised to TA_TOP
 #define TA_STEP 4          // the design's swaps handed on a decision
 #define TA_FULL 6          // the full rows a board has before a design is searched on it
 static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: the chain left alone, the longest found, its swaps, the ms given)
@@ -192,13 +191,12 @@ static int readBoard_(Read *R) {
   // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
   // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
   int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
-  // (TIME ATTACK'S RAISE: no design being built and the stack under TA_TOP -- the owner: raise to the top, then the chain; no garbage is
-  // coming, so the rows are raised as they are, never held to a break's readiness)
-  // (and past TA_HIGH rows only on a board a chain of TA_GOOD links or more has been designed on: a board with none in it is not taken to
-  // the top -- the rise ends it there)
-  int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !R->dying && !taOn && panelTop(decQ.b) < TA_TOP &&
-                (panelTop(decQ.b) < TA_HIGH || (taHave && taLinks >= TA_GOOD));
-  if (taRaise) to = TA_TOP;
+  // (TIME ATTACK'S RAISE: no design being built and the stack under its top -- the owner: flatten, raise to the top, then the chain; no
+  // garbage is coming, so the rows are raised as they are, never held to a break's readiness. The top is TA_TOP less each row the tallest
+  // column stands over the shortest past TA_EVEN: an uneven stack raised to TA_TOP puts its tallest column where the rise ends it)
+  int32_t taTo = TA_TOP - imax(0, evenOf(decQ.b) - TA_EVEN);
+  int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !R->dying && !taOn && panelTop(decQ.b) < taTo;
+  if (taRaise) to = taTo;
   raiseRefill = refill; raiseOpening = opening; raiseTo = to;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
   raiseRows = rowsUp;
