@@ -688,7 +688,10 @@ static Played playOf(const Read *R, int n) {
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
   chainUp = chainNow = chainAfter = 0;
-  if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
+  // (the plan takes the move whenever the move chosen lives and breaks nothing -- a level, a set-up, a line in progress, the hold -- not
+  // only where the hold was chosen: the opening's whole time is the plan's)
+  const Judge *opTop = P.line ? P.line : P.top;
+  if (opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
       theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
