@@ -60,6 +60,8 @@ typedef struct {
   // three that breaks -- the searches', a proposal's aim indexes it; asked: the same, the rank's)
   int32_t by;                      // NOT_ASKED: none
   int32_t under, topped, breakWaits, belowFloor;
+  int32_t dying;                   // the board is on its way to its loss: under garbage, or lost left alone -- the rise's countdown as
+                                   // much as a block's -- within the horizon and a rest (decide.c read)
   int32_t saving;                  // saving panels up: breaks that leave the most come before the list (decide.c read)
   int32_t full;                    // more panels than the board lives longest with (outcome.c lifePeakOf): every line's life by them before the list
   Keep keep; int32_t keepOn;
@@ -572,14 +574,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int modeOver = goalKeyOf(o) == 0 && goalKeyOf(c) > 0 && imax(0, brokeSeen(o)) >= imax(0, brokeSeen(c));
     if (!c->hold && !modeOver && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead && !outlives(o, c)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
-  // 1. THE MODE, NOT THE MOST LIFE (the owner: the mode is respected always, garbage on the board or not; a lower stack is more time): a
-  // line off the mode after one that keeps to it and leaves the board OFF_MODE_LIFE breaks' time or more -- the next decisions keep the
-  // stack down; the life an off-mode attack buys past that is the mode thrown away. Under garbage, only one that breaks as much of it
+  // 1. THE MODE, AMONG LINES THAT LIVE (the owner: just don't die; the mode is respected, garbage on the board or not): a line off the
+  // mode after one that keeps to it and lives -- where the one keeping to it does not live, the later loss decides. Under garbage, only
+  // one that breaks as much of it
   if (offMode(x) != offMode(y)) {
     const Judge *f = offMode(x) ? x : y, *o = f == x ? y : x;
     // (garbage on its way counts as garbage on the board: set 86 combo_storm 2, 14200, the hold lost at 245 put before a line breaking the
     // garbage 81 frames off and lost at 409 -- the board lost at 14666 with no break)
-    if ((livesOn(o) || (!o->o.dead && diesAt(o) >= OFF_MODE_LIFE * rankSave)) && (!(decF.under || decQ.narr > 0) || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
+    if (livesOn(o) && (!(decF.under || decQ.narr > 0) || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
       return (cmpKey = __LINE__, (f == x ? 1 : -1));
   }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
