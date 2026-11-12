@@ -6,7 +6,7 @@
 #define OP_BEAM 48       // the boards a level keeps
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_DEPTH 20      // the set-ups a plan may hold
-typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig; } OpPath;
+typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch; } OpPath;
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
 static int opN, opHave;            // the beam's paths, and whether a plan is held
 static int32_t opPressed;          // the plan's set-up the last decision played (0: none) -- the beam is re-rooted under it
@@ -83,11 +83,16 @@ static int opReplay(Ctx *x, int root, const OpPath *p) {
 // a board's trigger, scored into p (sent, cleared, trig): the question q's board replaced by the node's
 static void opScore(const Question *q, Ctx *x, int node, OpPath *p) {
   Board *eb = ensureBoard(x, node);
-  p->sent = 0; p->cleared = 0; p->trig = 0;
+  p->sent = 0; p->cleared = 0; p->trig = 0; p->ch = 0;
   if (!eb) return;
   Question q2 = *q; q2.b = eb; q2.narr = 0; q2.holdLeft = 0; q2.holdStarted = 0;
   int32_t t = 0, ch = 0, c = triggerSendOf(&q2, &t, &ch);
-  if (c > 0 && t) { p->sent = c; p->trig = t; p->cleared = opClearedOf(&q2, t); }
+  if (c > 0 && t) { p->sent = c; p->trig = t; p->ch = ch; p->cleared = opClearedOf(&q2, t); }
+}
+// (a chain the mode's list asks for: the opener throws nothing smaller -- a short chain only feeds the enemy)
+static int opAsked(int32_t ch) {
+  for (int i = 0; i < theList.n; i++) if (theList.aim[i].chain.op && test(ch, theList.aim[i].chain)) return 1;
+  return 0;
 }
 // A new game: nothing held
 static void openingReset(void) { opN = 0; opHave = 0; opPressed = 0; }
