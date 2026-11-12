@@ -699,8 +699,8 @@ static Played playOf(const Read *R, int n) {
       theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
-    // pressed while the plan sends more than the trigger the board has now and its set-ups can be pressed before the next block lands;
-    // else that trigger fires)
+    // pressed while the plan sends more than the trigger the board has now, its set-ups can be pressed before the next block lands and
+    // its chain is one the mode asks for; else that trigger fires, if its chain is one the mode asks for)
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100;
     double grow = left * 0.7; if (grow < 2) grow = 2;
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
@@ -710,10 +710,10 @@ static Played playOf(const Read *R, int n) {
     // (ONE MOVE, START TO FINISH -- the owner: the opener is a continuous move; once started it goes on, nothing stops or replans it but
     // survival: the plan's set-ups and its trigger handed on as one line, judged whole, then carried as the line in progress)
     int late = decF.next != NOT_ASKED && opHave && decF.next <= (opBest.len + 1) * OPEN_SWAP_FRAMES;
-    int usePlan = opHave && opBest.len > 0 && opBest.sent > sentNow && !late;
+    int usePlan = opHave && opBest.len > 0 && opBest.sent > sentNow && !late && opAsked(opBest.ch);
     int32_t seq[OP_DEPTH + 1]; int ns = 0;
     if (usePlan) { for (int k = 0; k < opBest.len; k++) seq[ns++] = opBest.path[k]; seq[ns++] = opBest.trig; }
-    else if (trig) seq[ns++] = trig;
+    else if (trig && opAsked(trigCh)) seq[ns++] = trig;
     if (ns) {
       static Judge CU; Cand k;
       if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
