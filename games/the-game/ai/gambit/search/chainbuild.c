@@ -147,16 +147,19 @@ static int cbOrder(const CbGrid *G0, const CbGrid *D, int32_t tr, int32_t *seq, 
   return n;
 }
 #define CB_SWAP_COST 120   // a swap's worth in score: the time it takes against the score a link's time brings (measured: time attack runs)
-// THE DESIGN SEARCHED, from the board's own order, in `ms` of the wall clock: the best design into *out, its trigger, links and score
-static int32_t cbDesign(const CbGrid *G0, double ms, CbGrid *out, int32_t *tr, int *links, int *swaps) {
+// THE DESIGN SEARCHED, from `start` (the board's own order, or a design of it kept), in `ms` of the wall clock: the best design into *out,
+// its trigger, links and score
+static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid *out, int32_t *tr, int *links, int *swaps) {
   int full[CB_ROWS], nf = 0;
   for (int r = 1; r <= G0->rows; r++) if (cbFull(G0, r)) full[nf++] = r;
   *out = *G0; *tr = 0; *links = 0; *swaps = 0;
   if (!nf) return 0;
   if (!cbRand) cbRand = 2463534242u;
-  CbGrid cur = *G0, best = *G0;
-  int32_t t0 = 0, l0 = 0;
-  int32_t curV = cbStable(&cur) ? cbBest(&cur, &t0, &l0) : -100000, bestV = curV > 0 ? curV : 0; int32_t bestT = t0; int bestL = l0, bestS = 0;
+  CbGrid cur = start ? *start : *G0, best = *G0;
+  int32_t t0 = 0, l0 = 0, bestV = 0, bestT = 0; int bestL = 0, bestS = 0;
+  int32_t curV = cbStable(&cur) ? cbBest(&cur, &t0, &l0) - CB_SWAP_COST * cbSwapsTo(G0, &cur) : -100000;
+  { static int32_t ord0[CB_MAXSWAPS + 1];
+    if (curV > 0 && t0 && cbOrder(G0, &cur, t0, ord0, CB_MAXSWAPS + 1) > 0) { best = cur; bestV = curV; bestT = t0; bestL = l0; bestS = cbSwapsTo(G0, &cur); } }
   double end = nowMs() + ms, temp = 400;
   for (int it = 0; ; it++) {
     if ((it & 63) == 0) { double now = nowMs(); if (now >= end) break; temp = 400 * (end - now) / ms + 5; }
@@ -182,3 +185,36 @@ static void cbOfBoard(const Board *b, CbGrid *G) {
   G->rows = imin(b->height, CB_ROWS - 2);
   for (int r = 1; r <= G->rows; r++) for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, r, c); G->g[r][c] = (cb8)(v > 0 && v < 100 ? v : v < 0 ? -1 : 0); }
 }
+
+// THE DESIGN KEPT ACROSS DECISIONS (time attack, decide.c): the board it is building toward (taD), its trigger, its links and the time
+// searched on it; taOn once its swaps are being pressed. Each decision finds it again on the board as it is -- the stack risen s rows,
+// each row of the design the same panels as the board's row s above it (cbShiftOf) -- and the rest of its swaps are worked out afresh
+// from there (cbOrder), so the rise never leaves a swap on the wrong row.
+static CbGrid taD; static int32_t taHave, taOn, taTr, taLinks, taSwaps, taStep, taVal; static double taMs;
+static int cbSameRow(const cb8 *a, const cb8 *b, int exact) {
+  if (exact) { for (int c = 1; c <= W; c++) if (a[c] != b[c]) return 0; return 1; }
+  int na[16] = { 0 }, nb[16] = { 0 };
+  for (int c = 1; c <= W; c++) { na[a[c] & 15]++; nb[b[c] & 15]++; }
+  for (int k = 0; k < 16; k++) if (na[k] != nb[k]) return 0;
+  return 1;
+}
+static int cbShiftOf(const CbGrid *G, const CbGrid *D) {
+  for (int sft = 0; sft <= 3; sft++) {
+    int ok = 1;
+    for (int r = 1; r <= D->rows && ok; r++) {
+      int any = 0; for (int c = 1; c <= W; c++) if (D->g[r][c]) any = 1;
+      if (!any) continue;
+      if (r + sft > G->rows) { ok = 0; break; }
+      ok = cbSameRow(G->g[r + sft], D->g[r], !cbFull(D, r));
+    }
+    if (ok) return sft;
+  }
+  return -1;
+}
+// (the design moved up `sft` rows on the board G: its rows under them the board's own)
+static void cbShiftUp(CbGrid *D, const CbGrid *G, int sft) {
+  if (sft <= 0) return;
+  for (int r = D->rows; r >= 1; r--) for (int c = 1; c <= W; c++) D->g[r][c] = r - sft >= 1 ? D->g[r - sft][c] : G->g[r][c];
+  taTr += sft * 8;
+}
+static void taReset(void) { taHave = taOn = 0; taTr = taLinks = taSwaps = taStep = taVal = 0; taMs = 0; }

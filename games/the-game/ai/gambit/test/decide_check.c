@@ -317,18 +317,19 @@ EXPORT(gb_design_check) int gb_design_check(int n, int rows, int colours, int ms
     CbGrid D; int32_t tr = 0; int links = 0, swaps = 0;
     cbRand = s;
     clockStart(0); clockNowOf = 0;
-    int32_t v = cbDesign(&G, ms, &D, &tr, &links, &swaps);
+    int32_t v = cbDesign(&G, 0, ms, &D, &tr, &links, &swaps);
     int32_t seq[CB_MAXSWAPS + 1]; int ord = cbOrder(&G, &D, tr, seq, CB_MAXSWAPS + 1);
     out[4 * i] = links; out[4 * i + 1] = swaps; out[4 * i + 2] = v; out[4 * i + 3] = ord;
   }
   return n;
 }
 // THE DESIGN ON THE ENGINE: the question's board cut to `rows` full rows of `colours` colours dealt from `seed` (none matching), the
-// rise held off, designed (`ms` of the wall clock) and its swaps then trigger played on the engine one after another, each settled.
+// rise held off (rows < 0: left on), designed (`ms` of the wall clock) and its swaps then trigger played on the engine one after another, each settled.
 // Into out: the chain designed, the swaps, the chain the engine made, the panels it cleared, the swap the engine first refused or
 // matched on (-1 none).
 EXPORT(gb_design_engine) int gb_design_engine(int nbytes, int rows, int colours, int ms, uint32_t seed, int32_t *out) {
   if (gb_question_bytes(nbytes, 0) != 0) return -1;
+  int rise = rows < 0; if (rise) rows = -rows;
   Board *b = hostBoard;
   if (rows + 2 >= b->nrows) return -2;
   const Panel *full = 0, *empty = 0;
@@ -349,12 +350,12 @@ EXPORT(gb_design_engine) int gb_design_engine(int nbytes, int rows, int colours,
     if (r <= rows) b->p[r][c].f[COLOR] = G.g[r][c];
   }
   b->ninc = 0; b->nstall = 0; b->chainCounter = 0; b->shakeTime = 0; b->stopWatch = 0; b->nActive = 0; b->nPrevActive = 0;
-  b->stopTime = 1 << 20; b->preStopTime = 0;   // (the rise held off: the design is checked on the board it was made on)
+  b->stopTime = rise ? 0 : 1 << 20; b->preStopTime = 0;   // (the rise held off unless asked: rows < 0)
   for (int r = 0; r < b->nrows; r++) { b->rowActive[r] = -1; for (int c = 1; c <= W; c++) b->p[r][c].f[CHAINING] = 0; }
   gb_new_game(); curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
   CbGrid D; int32_t tr = 0; int links = 0, swaps = 0;
   cbRand = s;
-  cbDesign(&G, ms, &D, &tr, &links, &swaps);
+  cbDesign(&G, 0, ms, &D, &tr, &links, &swaps);
   int32_t seq[CB_MAXSWAPS + 1]; int n = cbOrder(&G, &D, tr, seq, CB_MAXSWAPS + 1);
   out[0] = links; out[1] = swaps; out[2] = 0; out[3] = 0; out[4] = -1;
   if (n <= 0) return 0;
