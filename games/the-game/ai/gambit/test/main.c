@@ -29,6 +29,7 @@ int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out);
 int gb_frames(int mr, int mc, int frames, int32_t *out);
 int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
+int gb_opening_check(int nbytes, int ms, int32_t *out);
 void paThreadId(int id);
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath);
 int32_t *gn_io(void);
@@ -102,9 +103,28 @@ static int speed(const char *dir) {
   printf("speed: %d decisions in the wall clock's time, %lld frames stepped a decision\n", nq, nq ? work / nq : 0);
   return 0;
 }
+// THE OPENING PLANNED (test DIR opening, its own process: no other thread has run on the boards' pools): the first boards of the
+// games, each grown 300 ms -- a plan found on every one, on every thread there is
+static int opening(const char *dir) {
+  char path[4096]; static char line[1 << 17]; int fail = 0;
+  snprintf(path, sizeof path, "%s/rules.words", dir);
+  if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+  { snprintf(path, sizeof path, "%s/boards.txt", dir); FILE *o = fopen(path, "r"); int tried = 0, found = 0, lv = 0, most = 0;
+    while (o && tried < 6 && fgets(line, sizeof line, o)) {
+      if (strncmp(line, "GAMBITB ", 8)) continue;
+      int narr, n = loadLine(line, &narr); int32_t r[3];
+      if (n < 0 || gb_opening_check(n, 300, r) != 0) continue;
+      tried++; found += r[1] >= 0; lv += r[0]; if (r[2] > most) most = r[2];
+    }
+    if (o) fclose(o);
+    printf("%s: the opening planned -- %d of %d boards with a plan, %d levels grown in all, the best sending %d cells\n", tried && found ? "ok" : "FAIL", found, tried, lv, most);
+    fail |= !tried || !found; }
+  return fail;
+}
 int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
+  if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
   int golden = argc > 2 && !strcmp(argv[2], "golden"), fail = 0;
   char path[4096];
   static char line[1 << 17];
