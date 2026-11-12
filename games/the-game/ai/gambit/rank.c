@@ -60,6 +60,8 @@ typedef struct {
   // three that breaks -- the searches', a proposal's aim indexes it; asked: the same, the rank's)
   int32_t by;                      // NOT_ASKED: none
   int32_t under, topped, breakWaits, belowFloor;
+  int32_t dying;                   // the board is on its way to its loss: under garbage, or lost left alone -- the rise's countdown as
+                                   // much as a block's -- within the horizon and a rest (decide.c read)
   int32_t saving;                  // saving panels up: breaks that leave the most come before the list (decide.c read)
   int32_t full;                    // more panels than the board lives longest with (outcome.c lifePeakOf): every line's life by them before the list
   Keep keep; int32_t keepOn;
