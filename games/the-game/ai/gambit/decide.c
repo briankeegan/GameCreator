@@ -136,6 +136,9 @@ static int readBoard_(Read *R) {
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];
   if (R->under) { for (int i = 0; i < R->guides.n; i++) R->guides.aim[i].brk = 1; R->end = 1; }
   decF.under = R->under;
+  // (the owner: the reason is dying -- the rise tops the board out as surely as garbage lands on it, and the moves that keep it alive are
+  // the same)
+  R->dying = R->under || (F->known[FACT_US_DIES] && F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < HORIZON + REST);
   // (and after its entries, the one rule's three that breaks (rules.c withRule): the list as the board asks it, the searches' and the
   // rank's alike)
   // (the rank's list is the mode's as written -- a combo of eight is ranked before one of six whatever the searches are led toward)

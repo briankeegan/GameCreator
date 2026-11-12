@@ -212,7 +212,7 @@ static void searchAll(const Read *R, Found *S) {
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
   }
   int32_t nl = R->F.known[FACT_US_NEXTLANDS] ? (int32_t)R->F.v[FACT_US_NEXTLANDS] : 0;
-  S->lvU = R->under ? level(&decQ, nl > 0 ? nl : (R->by ? R->by : NOT_ASKED)) : 0;
+  S->lvU = R->dying ? level(&decQ, nl > 0 ? nl : (R->by ? R->by : NOT_ASKED)) : 0;
   if (!R->under && R->readyAt != NOT_ASKED && decQ.narr) { double m2 = leftMs() < 60 ? leftMs() : 60; S->rd = readyFor(&decQ, m2 > 1 ? m2 : 1); S->haveRd = 1; }
   // (the board left alone with no plan once everything shown has landed: a line of one or two swaps that leaves one)
   int32_t lastLand = NOT_ASKED;
@@ -224,7 +224,7 @@ static void searchAll(const Read *R, Found *S) {
   S->lvG = !R->under && R->readyAt != NOT_ASKED && !(S->haveRd && !S->rd.ready && S->rd.setup) ? level(&decQ, R->readyAt ? R->readyAt : NOT_ASKED) : 0;
 }
 
-// THE LEVEL BUILT: topped or under garbage, the line that walks the tallest column's top panel onto a lower
+// THE LEVEL BUILT: topped or dying, the line that walks the tallest column's top panel onto a lower
 // column beside it, panel after panel, until the stack is level (no column more than one above another) -- each step settled, the
 // whole line judged on the engine; a column taller than the cursor's top row is walked from that row, the panels above falling into
 // its place. Its length into seq; 0 for none
@@ -857,11 +857,11 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   if (S->haveRd && !S->rd.ready && S->rd.setup) { int32_t one = S->rd.setup; ADD(PLAY_READY, &one, 1, -1, 0); }
   if (S->haveRl) { int m0 = n; ADD(PLAY_READY, S->rl, S->rlN, -1, 0); if (n > m0) out[m0].xDone = S->rlAt; }
   // (LOWERING THE STACK: the tallest column's top walked onto a lower one, each step settled -- on any board with a column two above
-  // its neighbour, the move when there is nothing better to do (rank.c markIdle); topped or under garbage, a perched block let down too
+  // its neighbour, the move when there is nothing better to do (rank.c markIdle); topped or dying (Read.dying), a perched block let down too
   // -- its supports walked out from under it (search/break.c perchedDrops). Each judged as any line: a lower stack is a later loss)
-  // (never while a slab pops -- its first swap waits out the pop; on a board at rest only, unless topped or under garbage: panels walked
+  // (never while a slab pops -- its first swap waits out the pop; on a board at rest only, unless topped or dying: panels walked
   // while a chain falls spoil what the board makes alone)
-  if (!R->pop && (R->topped || R->under || (!hasActivePanels(decQ.b) && decQ.b->chainCounter == 0))) {
+  if (!R->pop && (R->topped || R->dying || (!hasActivePanels(decQ.b) && decQ.b->chainCounter == 0))) {
     // (planned on the board once it has settled -- clears finished, panels fallen -- the board a settled line is pressed on: a line
     // planned on the board as it stands names rows its swaps are no longer at once a clear under it has popped)
     static LOCAL Ctx *lvCtx; const Board *lb = decQ.b;
@@ -869,11 +869,11 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
       if (ls >= 0 && liveNode(lx, ls)) { const Board *sb = ensureBoard(lx, ls); if (sb) lb = sb; } }
     static int32_t lv[MAXLINE]; int nl = levelLine(lb, lv, MAXLINE);
     if (nl > 0) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; } }
-  if (R->topped || R->under) {
+  if (R->topped || R->dying) {
     static Perches pd; perchedDrops(decQ.b, &pd);
     for (int i = 0; i < pd.n; i++) { int m0 = n; ADD(PLAY_LEVEL, pd.seq[i], pd.len[i], -1, 0); if (n > m0) out[m0].drop = 1; }
   }
-  // LEVEL: the swap that flattens the stack, under garbage or before a block lands
+  // LEVEL: the swap that flattens the stack, dying (under garbage or lost to the rise) or before a block lands
   // (a swap that clears nothing and brings back a board this dig has stood on goes nowhere: not offered)
   if (S->lvU && !seenDigHas(decQ.b, S->lvU)) { int32_t one = S->lvU; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
   if (S->lvG && !seenDigHas(decQ.b, S->lvG)) { int32_t one = S->lvG; ADD(PLAY_LEVEL, &one, 1, -1, 0); }
