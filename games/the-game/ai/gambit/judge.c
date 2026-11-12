@@ -499,7 +499,12 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
-  if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));
+  // (A LINE THAT STARTS NOTHING -- no clear, no chain, no break of its own -- leaves the board to start one after it, and that one its
+  // own rest after: with no fixed horizon (lifeTo 0) it stands twice the rest, the owner's rule: start the clear before time runs out and
+  // be able to do something after)
+  int32_t rest = o->lifeRest;
+  if (o->lifeTo == 0 && !(j->made.combo > 0 || j->made.chain > 0 || j->made.broke > 0)) rest = 2 * o->lifeRest;
+  if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + rest));
   // (readiness, the dearer check, only when the board left alone does not stand to lifeTo -- always, or for a line that breaks)
   int standsOut = j->lostAt == FOREVER && (o->readyIfLost || (o->readyIfBreak && j->made.broke > 0));
   if (o->readyAt != NOT_ASKED && !j->dead && !standsOut) {
