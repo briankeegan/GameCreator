@@ -250,7 +250,10 @@ static int readBoard_(Read *R) {
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;
     raiseOpens = opening;
-    int32_t rows = taRaise ? taRaiseRows(rq.b, rowsUp, AT_LEVEL(TA_STAND)) : raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
+    // (time attack's raise stands the frames the work in hand takes: a design held, its swaps and its trigger walked and pressed, TA_MARGIN
+    // to spare -- the owner: flatten, raise to the top, then the chain; none held yet, a whole design's TA_STAND)
+    int32_t taNeed = taHave ? (taSwaps + 1) * TA_SWAP_FRAMES + TA_MARGIN : TA_STAND;
+    int32_t rows = taRaise ? taRaiseRows(rq.b, rowsUp, AT_LEVEL(taNeed)) : raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
     // (THE FLOOR'S RAISE ON A BOARD TOO SHORT TO BREAK: below the floor, no row count leaves a break once everything lands -- the panels
     // a break is made of are what the board lacks -- so the rows the board lives through once everything lands are raised all the same:
     // the panels are the next break's material, and the opening's raise is held to readiness, never the floor's)
@@ -680,12 +683,6 @@ static int taHoldNoSooner(const Judge *line, int n) {
   for (int i = 0; i < n; i++) if (order[i]->k.play == PLAY_HOLD) return diesAt(order[i]) >= diesAt(line);
   return 0;
 }
-static int32_t idleZips;   // (holds played as a zip: the log's)
-// (the hold's loss frame, as the order reads it)
-static double holdDiesOf(int n) {
-  for (int i = 0; i < n; i++) if (order[i]->k.play == PLAY_HOLD) return diesAt(order[i]);
-  return 1e300;
-}
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -722,9 +719,7 @@ static Played playOf(const Read *R, int n) {
   // is gone -- a line that saves it is played now)
   int holdLives = 0;
   for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.dead) { holdLost = lostOf(order[i]); holdLives = !!order[i]->o.lives; }
-  // (once only -- the owner: never idle: a swap the last decision put off is pressed now, or the next plan puts it off again, and again)
-  static int deferredLast;
-  if (P.line && holdLives && !deferredLast && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
+  if (P.line && holdLives && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
       firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
     const Judge *L = P.line;
     Outcome d = outcomeOf(L->k.seq, L->k.nseq, L->settled, 0, L->apAts[1] - rankReact);
@@ -732,7 +727,6 @@ static Played playOf(const Read *R, int n) {
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
   }
-  deferredLast = P.deferred;
   // (THE SECOND HAND -- the owner: set up between moves, never at the cost of the board's life: where the decision is the hold, the next
   // swap toward the eight kept as the target (propose.c twinNextSwap), judged on the engine, is pressed instead -- only where it lives
   // as the hold does or is lost no sooner, breaks the board's chain no shorter, wastes no three and keeps the window's reserve)
@@ -875,34 +869,6 @@ static Played playOf(const Read *R, int n) {
       }
     }
     clockDue = keepDue; clockShare = keepShare;
-  }
-  // (NEVER IDLE -- the owner: had it filled or zipped, it would never have happened: a hold is a zip where a zip that clears nothing, cuts
-  // no chain of the board's short and is lost no sooner than the hold; the colours staged a swap apart are the next break's and the next attack's)
-  // (only a true hold -- the order put the hold first, nothing deferred: a line waiting for its own swap's moment is a plan, not idle)
-  if (!P.line && !R->up && !P.wait && !P.deferred && (!P.top || P.top->hold) && !ruleNoEnemy) {
-    for (int i = 0; i < n; i++) {
-      const Judge *z = order[i];
-      if (z->k.play != PLAY_ZIP || z->o.dead || taClears(z) || cutsShort(z)) continue;
-      // (under garbage, never a zip that takes the next break further away or spends what it is made of: the break is what saves the board)
-      const Judge *h = 0; for (int k = 0; k < n; k++) if (order[k]->k.play == PLAY_HOLD) { h = order[k]; break; }
-      if (R->under && h && ((z->o.nearAfter >= 0 && h->o.nearAfter >= 0 && z->o.nearAfter > h->o.nearAfter) ||
-                            (z->o.matLeft >= 0 && h->o.matLeft >= 0 && z->o.matLeft < h->o.matLeft))) break;
-      // (with time to do it and come back -- on the engine's clock: under garbage, the zip pressed first and then the best break the order
-      // has, judged as one line; it is played only where that break still breaks as much and the board is lost no sooner than with the break
-      // pressed now. No break offered: lost no sooner than the hold)
-      const Judge *bk = 0;
-      for (int k = 0; k < n && !bk; k++) if (order[k]->apBroke > 0 && !order[k]->o.dead && !order[k]->hold) bk = order[k];
-      if (R->under && bk) {
-        static Judge ZB; Cand c = bk->k; int m = 0; int32_t sq[MAXLINE];
-        sq[m++] = z->k.seq[0]; for (int k = 0; k < bk->k.nseq && m < MAXLINE; k++) sq[m++] = bk->k.seq[k];
-        if (!candOf(&c, bk->k.play, sq, m, bk->k.aim, bk->k.extend)) break;
-        c.settled = bk->k.settled; lastDrop = -1;
-        if (!judgeCand(R, &c, &ZB) || ZB.o.dead || ZB.apBroke < bk->apBroke || diesAt(&ZB) < diesAt(bk)) break;
-        P.line = z; idleZips++; break;
-      }
-      if (diesAt(z) >= holdDiesOf(n)) { P.line = z; idleZips++; }
-      break;
-    }
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;

@@ -5,6 +5,50 @@
 Each line: the ask, then where it stands. A fix ships to main only when it holds survival over two runs; one that costs survival is
 narrowed, not dropped.
 
+### Now, in this order (the owner, 2026-11-12/13 -- repeated; worked top first, every session)
+
+- [ ] **A. Efficiency.** No wasted threes; no set-ups that build nothing or walk far for little (TODO 8, 9). Every set-up names what
+      it builds -- `aim=` on the log (`c6`, `x4`, `none`): in test (neveridle8). Next: count `aim=none` set-ups and wasted threes per
+      mode, then price them in the rank so a set-up for nothing loses to doing less.
+- [ ] **B. Respect the modes.** Fill goes for chains, finish them for combos -- under garbage too, the break in the mode's shape when
+      it lives as long. Fill's list cut to its chain: in test (fillchains). Measured on main: the chains finish them sends are by-products
+      (garbage converting after a combo, threes that break, survival), never its choice -- next: break shape by mode under garbage.
+- [ ] **C. Never idle -- move when you can.** Zip and flatten between everything: pops, chains, combos, under garbage; wait only for a
+      timed swap, and fit a zip in when there is time to do it and come back. In test (neveridle8): a hold played as a zip, under garbage
+      only where the best break still breaks as much after it. Zips under garbage unchecked cost survival (18-19 of 28). Next after it:
+      zips fitted into a planned wait.
+- [ ] **D. The opener does nothing for 1-5 s.** Its first swap was put off decision after decision (median first swap frame 242, 10 of
+      24 live games 320-479). In test (neveridle8): a swap put off once at most.
+- [ ] **E. Live deaths read every session.** r1104, r1107, r1118, r1120 (all Tai, finish them, under garbage 86-92% of the game, the
+      hold ~40% of plays there): read; their fix is C.
+- [ ] **F. Finish them kills a topped enemy.** r1118: Tai at 12 for 1,000+ frames absorbed a 4-, 5- and 3-chain -- attacks timed to
+      its stop running out, or too big to absorb. Open.
+- [ ] **G. Time attack: a 13-chain, over and over** (the owner). The measure is 13s per game: now 0.2-0.4 (5-12 in 28 games, of
+      about 300 chains each run); median score 27,000, 56/56 (on main). The owner's method -- flatten, raise to the top, a chain that uses
+      every block, continued a link at a time to 13 -- and every chain aimed at 13. Open:
+      - FIRST: the panels never run out on a board flattened and raised (the owner) -- 60 panels hold a 13 (40-45). Chains start on
+        24-47 panels: small clears and accidental chains taken on before the board is full, and the raise stopped near row 8 to leave a
+        design's 190 frames. Fix: nothing started or taken on before the board is flat and raised; the chain designed while the stack
+        is lower, then the raise to the top, then the trigger;
+      - chains past 8: the next link found 25-50% of the time -- the panels run out; continue horizontally (the panel-game horizontal
+        puzzles: 6 of 7 solved; huge tower #2 not);
+      - chains still begun on 24-35 panels: start on a full board;
+      - the chain designer (search/chainbuild.c): designs reach 4-7 links before they fire; aim for 13;
+      - every run reported with the score and every chain.
+- [ ] **H. The opener: big chains from the first frame.** The owner: a machine has the 3-second countdown -- plan a big chain then,
+      ranked by chain length always (on main), 8+ and building toward it even from under 8. Open:
+      - nothing happens for 1-5 s (D, in test);
+      - the opener's chain lengths and time to first attack measured on every run, and pushed toward 8+ (shared with G);
+      - the opener stays on while the enemy is at row 11+: hand over to finish them at once.
+- [x] **Time attack: flatten, raise, chain to 13; danger on the engine's clock; never a sooner death.** On main (0117cb44): median
+      19,800 to 27,000, 56/56 over seeds 86 and 87.
+- [x] **The opener ranks by chain length, never by garbage sent.** On main.
+- [x] **Show every chain and the score for each time-attack run.** Reported every run.
+- [x] **Fill's break search gets 90% of the time under garbage.** On main (593b6904): fill 23-24 to 27, 27, 27.
+- [x] **The owner's standing rules written down** (`ai/eval/plans/gambit-goal.md`, "The rules set for it"): on main.
+- [x] **Hand-off notes for the dashboard agent** (the log's fields, `aim=`, where the live data is): given.
+- [ ] **Owner action:** merge panel-game `claude/newsey-game-ask-qa8u5e` (BotClient top4 by cells) into `bramp/multi-player`.
+
 1. **No 2x chains it does not continue.** A 2x is taken to three, or not made, unless doing otherwise kills the board.
    - On main: a 2x going is taken to three among lines that survive alike, and at least to three in every mode; the extension offers
      the three that breaks the most; a line making a 2x not taken to three is taken out unless every other is lost within a break's
@@ -25,9 +69,9 @@ narrowed, not dropped.
    - A swap whose pair stays locked over 20 frames is not there, so lines that use what can be swapped now are played: on main
      (8354a299).
    - Still 13% of gaps between swaps over a second: they are decisions that hold. Waits filled with setup and flattening: next.
-4. **Every round a new game, nothing carried over.** Every match a fresh Gambit -- the library loaded anew, the last match's quit
+4. ✅ **Every round a new game, nothing carried over.** Every match a fresh Gambit -- the library loaded anew, the last match's quit
    (030c5f11); the live deploy (Ranmaru_TEST_CPU) is on it.
-5. **No early deaths in a live fight.** Every line unjudged at the first garbage, the planner having taken the decision's time: the
+5. ✅ **No early deaths in a live fight.** Every line unjudged at the first garbage, the planner having taken the decision's time: the
    planner takes half when garbage is on the board or the loss is near, on main (8354a299).
 6. **Look further ahead, in general.** The next break in reach after the next landing ranked right after survival: not better yet
    (switching 18/24), not shipped.
