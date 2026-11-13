@@ -6,6 +6,7 @@
 import os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+HEADING = re.compile(r"^  // (\d+'?[a-zA-Z]?\.) (.*)")
 
 def rank_rules(sha=None):
     """line number of each `return (cmpKey = __LINE__` -> the comment just above it, first sentence"""
@@ -28,7 +29,20 @@ def rank_rules(sha=None):
         text = ' '.join(block).strip()
         text = re.sub(r'^\(|\)$', '', text)
         text = re.split(r'(?<=[a-z0-9)]) -- |: (?=[a-z])', text)[0] if text else ''
-        rules[i + 1] = text[:160] if text else 'rank.c line %d' % (i + 1)
+        # (the rule the line belongs to: the nearest numbered heading above it, "1'a. THE ALLOWANCE'S RESERVE")
+        head = ''
+        for k in range(i, -1, -1):
+            m = HEADING.match(lines[k])
+            if m:
+                head = m.group(1) + ' ' + re.split(r' \(|:| --', m.group(2))[0].strip()
+                break
+        if head and re.match(r'(but|and|or) ', text):   # (an exception to the rule, not why it decided)
+            text = head
+        elif head and text and not text.startswith(head.split(' ')[0]):
+            text = head + ' / ' + text
+        elif head and not text:
+            text = head
+        rules[i + 1] = text[:200] if text else 'rank.c line %d' % (i + 1)
     return rules
 
 def fields(l):
