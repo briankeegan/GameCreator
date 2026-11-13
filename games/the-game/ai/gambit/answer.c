@@ -3,7 +3,7 @@
 // on, the line toward a break begun, the line in progress, the pair the last swap swapped.
 
 #define BREAK_SHARE 0.4    // of the searches' time (propose.c leftMs), for the break search
-#define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
+#define UNDER_SHARE 0.9    // with garbage on the board: there the break is what saves the board
 // (the profile's own, in percent, where it gives one: gb_share)
 static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
 #define BREAK_MIN_MS 5
