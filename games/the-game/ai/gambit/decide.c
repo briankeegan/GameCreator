@@ -680,6 +680,12 @@ static int taHoldNoSooner(const Judge *line, int n) {
   for (int i = 0; i < n; i++) if (order[i]->k.play == PLAY_HOLD) return diesAt(order[i]) >= diesAt(line);
   return 0;
 }
+static int32_t idleZips;   // (holds played as a zip: the log's)
+// (the hold's loss frame, as the order reads it)
+static double holdDiesOf(int n) {
+  for (int i = 0; i < n; i++) if (order[i]->k.play == PLAY_HOLD) return diesAt(order[i]);
+  return 1e300;
+}
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -866,6 +872,16 @@ static Played playOf(const Read *R, int n) {
       }
     }
     clockDue = keepDue; clockShare = keepShare;
+  }
+  // (NEVER IDLE -- the owner: had it filled or zipped, it would never have happened: a hold at rest is a zip where a zip that clears nothing
+  // is lost no sooner than the hold; the colours staged a swap apart are the next break's and the next attack's)
+  if (!P.line && !R->up && !P.wait && !ruleNoEnemy && !cascadeLive(decQ.b) && !R->pop) {
+    for (int i = 0; i < n; i++) {
+      const Judge *z = order[i];
+      if (z->k.play != PLAY_ZIP || z->o.dead || taClears(z)) continue;
+      if (diesAt(z) >= holdDiesOf(n)) { P.line = z; idleZips++; }
+      break;
+    }
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
