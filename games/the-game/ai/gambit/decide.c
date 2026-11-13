@@ -879,6 +879,10 @@ static Played playOf(const Read *R, int n) {
     for (int i = 0; i < n; i++) {
       const Judge *z = order[i];
       if (z->k.play != PLAY_ZIP || z->o.dead || taClears(z) || cutsShort(z)) continue;
+      // (under garbage, never a zip that takes the next break further away or spends what it is made of: the break is what saves the board)
+      const Judge *h = 0; for (int k = 0; k < n; k++) if (order[k]->k.play == PLAY_HOLD) { h = order[k]; break; }
+      if (R->under && h && ((z->o.nearAfter >= 0 && h->o.nearAfter >= 0 && z->o.nearAfter > h->o.nearAfter) ||
+                            (z->o.matLeft >= 0 && h->o.matLeft >= 0 && z->o.matLeft < h->o.matLeft))) break;
       if (diesAt(z) >= holdDiesOf(n)) { P.line = z; idleZips++; }
       break;
     }
