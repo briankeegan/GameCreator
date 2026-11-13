@@ -79,7 +79,7 @@ def describe(l, rules):
     elif play == 'hold':
         if f.get('deferred') == '1':
             what = 'holding: timing -- its next swap does as well pressed later (%s wanted)' % f.get('want')
-        elif f.get('want') == 'raise' or 'raiseFor' in f and f.get('want') == 'hold' and f.get('raiseFor', '').endswith(':0'):
+        elif f.get('want') == 'raise':
             what = 'holding: waiting for the raise to open'
         elif f.get('cands') in ('-', None) or f.get('live', '').endswith('/1'):
             what = 'holding: nothing else was offered'
