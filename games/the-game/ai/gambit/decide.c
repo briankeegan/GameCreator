@@ -884,6 +884,19 @@ static Played playOf(const Read *R, int n) {
       const Judge *h = 0; for (int k = 0; k < n; k++) if (order[k]->k.play == PLAY_HOLD) { h = order[k]; break; }
       if (R->under && h && ((z->o.nearAfter >= 0 && h->o.nearAfter >= 0 && z->o.nearAfter > h->o.nearAfter) ||
                             (z->o.matLeft >= 0 && h->o.matLeft >= 0 && z->o.matLeft < h->o.matLeft))) break;
+      // (with time to do it and come back -- on the engine's clock: under garbage, the zip pressed first and then the best break the order
+      // has, judged as one line; it is played only where that break still breaks as much and the board is lost no sooner than with the break
+      // pressed now. No break offered: lost no sooner than the hold)
+      const Judge *bk = 0;
+      for (int k = 0; k < n && !bk; k++) if (order[k]->apBroke > 0 && !order[k]->o.dead && !order[k]->hold) bk = order[k];
+      if (R->under && bk) {
+        static Judge ZB; Cand c = bk->k; int m = 0; int32_t sq[MAXLINE];
+        sq[m++] = z->k.seq[0]; for (int k = 0; k < bk->k.nseq && m < MAXLINE; k++) sq[m++] = bk->k.seq[k];
+        if (!candOf(&c, bk->k.play, sq, m, bk->k.aim, bk->k.extend)) break;
+        c.settled = bk->k.settled; lastDrop = -1;
+        if (!judgeCand(R, &c, &ZB) || ZB.o.dead || ZB.apBroke < bk->apBroke || diesAt(&ZB) < diesAt(bk)) break;
+        P.line = z; idleZips++; break;
+      }
       if (diesAt(z) >= holdDiesOf(n)) { P.line = z; idleZips++; }
       break;
     }
