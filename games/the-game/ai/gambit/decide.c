@@ -250,7 +250,10 @@ static int readBoard_(Read *R) {
   if (R->up) {
     double l = leftMs(); if (l < 1) l = 1;
     raiseOpens = opening;
-    int32_t rows = taRaise ? taRaiseRows(rq.b, rowsUp, AT_LEVEL(TA_STAND)) : raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
+    // (time attack's raise stands the frames the work in hand takes: a design held, its swaps and its trigger walked and pressed, TA_MARGIN
+    // to spare -- the owner: flatten, raise to the top, then the chain; none held yet, a whole design's TA_STAND)
+    int32_t taNeed = taHave ? (taSwaps + 1) * TA_SWAP_FRAMES + TA_MARGIN : TA_STAND;
+    int32_t rows = taRaise ? taRaiseRows(rq.b, rowsUp, AT_LEVEL(taNeed)) : raiseReady(&rq, rowsUp, l < RAISE_MS ? l : RAISE_MS);
     // (THE FLOOR'S RAISE ON A BOARD TOO SHORT TO BREAK: below the floor, no row count leaves a break once everything lands -- the panels
     // a break is made of are what the board lacks -- so the rows the board lives through once everything lands are raised all the same:
     // the panels are the next break's material, and the opening's raise is held to readiness, never the floor's)
