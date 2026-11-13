@@ -66,7 +66,12 @@ def describe(l, rules):
     key = f.get('won', '')
     km = re.match(r'k(\d+):(\S+)', key)
     rule = ('rule: %s (over %s)' % (rules.get(int(km.group(1)), 'rank.c %s' % km.group(1)), km.group(2))) if km else ''
-    if play == 'hold':
+    if play == 'hold' and f.get('held'):
+        h = f['held']
+        what = {'raise': 'holding: waiting for the raise to open',
+                'timing': 'holding: timing -- its next swap does as well pressed later (%s wanted)' % f.get('want'),
+                'nothing': 'holding: nothing else was offered'}.get(h, 'holding -- ' + rule if rule else 'holding: the hold ranked first')
+    elif play == 'hold':
         if f.get('deferred') == '1':
             what = 'holding: timing -- its next swap does as well pressed later (%s wanted)' % f.get('want')
         elif f.get('want') == 'raise' or 'raiseFor' in f and f.get('want') == 'hold' and f.get('raiseFor', '').endswith(':0'):
