@@ -800,7 +800,9 @@ static Played playOf(const Read *R, int n) {
   taLog = 0; taxMs = -1;
   // (A CHAIN GOING, TIME ATTACK: the extension given the decision's time, and its longest line -- up to 13 -- played, every decision the
   // chain falls; the panel-game puzzles' way: a chain is taken a link at a time, a swap a link, in the time its own clears stop the rise)
-  if (ruleNoEnemy && !R->under && !R->topped && clockFrameOut && !clockFrameOut() && (cascadeLive(decQ.b) || decQ.b->chainCounter > 0)) {
+  // (taken on only on a board with the panels for a 13, or one in danger: the chain's stop holds the rise)
+  if (ruleNoEnemy && !R->under && !R->topped && clockFrameOut && !clockFrameOut() && (cascadeLive(decQ.b) || decQ.b->chainCounter > 0) &&
+      (panelsOn(decQ.b) >= 3 * CB_TOP || R->taDying)) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, ms = left * 0.8; if (ms < 2) ms = 2;
     readyStop();
