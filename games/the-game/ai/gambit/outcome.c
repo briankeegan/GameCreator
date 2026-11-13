@@ -129,15 +129,18 @@ static int32_t aloneBuildable(void) {
 static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
+static int32_t promiseJudge;   // (judging a promised break: answered by the owner's standard, outcomeOf)
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
-  Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
+  Outcome *hit = waitTo || promiseJudge ? 0 : cached(seq, n, settled, 0);
   if (hit) return *hit;
   // (the board left alone asked first: its judging is the judge's own nodes, which the line's end board is read from below)
   int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
-  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
+  // (the promised break judged by the owner's standard: begun in time, and the board standing REST once its clears are over -- no fixed
+  // horizon, no second break owed: promiseJudge, below)
+  JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, promiseJudge ? 0 : HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
@@ -174,14 +177,18 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
         int32_t ext[MAXLINE];
         for (int k = 0; k < n; k++) ext[k] = seq[k];
         for (int k = 0; k < o.j.readyN; k++) ext[n + k] = o.j.readyLine[k];
+        promiseJudge++;
         Outcome e = outcomeOf(ext, n + o.j.readyN, settled, n, o.j.readyWait);
+        promiseJudge--;
         if (e.late) o.late = 1;
-        if (e.late || !e.lives) o.lives = 0;
+        // (lives: the break begun before the board is lost and the board standing after it -- the owner: start the clear before time runs
+        // out and be able to do something after)
+        if (e.late || e.dead || (!e.lives && e.lostAt != FOREVER)) o.lives = 0;
       } else o.lives = 0;
     }
   }
   // (a judging the clock stopped is no answer: it is not kept, and the next asking judges it again)
-  if (!o.late && !waitTo && !endNoKeep) keep(seq, n, settled, 0, &o);
+  if (!o.late && !waitTo && !endNoKeep && !promiseJudge) keep(seq, n, settled, 0, &o);
   return o;
 }
 // THE BOARD A LINE ENDS ON, as the judge plays it (the land a proposer reads what falls from: search/fill.c), judged as the proposers
