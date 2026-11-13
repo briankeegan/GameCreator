@@ -14,6 +14,7 @@ typedef struct {
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
   int32_t twin;    // two columns sorted row by row, then one swap that clears both (propose.c twinLines): 1 the line, 2 the set-up alone
+  int32_t readyGain;   // a swap that brings the break nearer on the board the garbage on its way lands on: the swaps it saves (propose.c readyBuild)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -413,7 +414,7 @@ static void markIdle(Judge **a, int n) {
   for (int i = 0; i < n && !H; i++) if (a[i]->hold) H = a[i];
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   double holdLost = H ? lostOf(H) : 0;
-  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H) && !(a[i]->k.readyGain > 0 && !a[i]->o.dead && diesAt(a[i]) >= diesAt(H))) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
