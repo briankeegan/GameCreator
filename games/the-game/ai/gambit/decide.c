@@ -884,6 +884,9 @@ static Played playOf(const Read *R, int n) {
       const Judge *h = 0; for (int k = 0; k < n; k++) if (order[k]->k.play == PLAY_HOLD) { h = order[k]; break; }
       if (R->under && h && ((z->o.nearAfter >= 0 && h->o.nearAfter >= 0 && z->o.nearAfter > h->o.nearAfter) ||
                             (z->o.matLeft >= 0 && h->o.matLeft >= 0 && z->o.matLeft < h->o.matLeft))) break;
+      // (and under garbage only with the time to do it and come back: a board within REST of its loss keeps the cursor for the break --
+      // measured: under 120 frames left, a zip played over the hold left the next decision 20 frames less of life; over it, the same)
+      if (R->under && holdDiesOf(n) < REST) break;
       if (diesAt(z) >= holdDiesOf(n)) { P.line = z; idleZips++; }
       break;
     }
