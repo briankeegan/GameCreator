@@ -598,7 +598,7 @@ static int convertLines(const Read *R, Cand *out, int n, int cap) {
 #define WAY_MIN 3     // the cursor's actions to a line's first swap before its way is searched
 #define WAY_PER 2     // lines on the way, a line
 #define WAY_LINES 6   // the lines whose way is searched, in the order offered
-static int32_t readyBuilt;   // (swaps offered for the slab on its way: the log's)
+static int32_t readyBuilt, readyBuildWhy;   // (swaps offered for the slab on its way, and why none: 1 none coming, 2 the clock, 3 lost before it lands, 4 a break a swap away already, 5 no swap brings one nearer -- the log's)
 static int32_t wayOffered, wayPlayed;   // (the lines on the way this decision offered, and whether one was played: the log's)
 static int32_t pairOffered;              // (the lines firing two ideas this decision offered: the log's)
 static int waySharesCell(int32_t a, int32_t b) { return CR(a) == CR(b) && iabs(CC(a) - CC(b)) <= 1; }
@@ -728,14 +728,15 @@ static int32_t zipSpread(int32_t g[][W + 2], int top) {
 #define READY_BUILD 3
 static LOCAL Ctx *rbCtx;
 static int readyBuild(const Read *R, Cand *out, int n, int cap) {
-  (void)R; readyBuilt = 0;
-  if (decQ.narr <= 0 || clockOut() || n >= cap) return n;
+  (void)R; readyBuilt = 0; readyBuildWhy = 0;
+  if (decQ.narr <= 0) { readyBuildWhy = 1; return n; }
+  if (clockOut() || n >= cap) { readyBuildWhy = 2; return n; }
   int32_t last = 0; for (int i = 0; i < decQ.narr; i++) last = imax(last, decQ.arr[i].at);
   static Board *st; if (!st) st = nb_new(); if (!st) return n;
   Board *l0 = landedAll(decQ.b, decQ.arr, decQ.narr, last, st);
-  if (!l0) return n;
+  if (!l0) { readyBuildWhy = 3; return n; }
   int32_t near0 = nearOf(l0);
-  if (near0 <= 1) return n;   // (a break a swap away already waits for it)
+  if (near0 <= 1) { readyBuildWhy = 4; return n; }   // (a break a swap away already waits for it)
   Ctx *x = rbCtx = ctxOf(rbCtx);
   int root = rootOf(x, &decQ);
   if (root < 0) return n;
@@ -757,6 +758,7 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
     if (g > 0) { ms[ng] = ms[j]; gain[ng] = g; idx[ng] = ng; ng++; }
   }
   batchDone();
+  if (!ng) readyBuildWhy = 5;
   sortByKeyDesc(idx, ng, gain, tmp);
   for (int q = 0; q < ng && q < READY_BUILD && n < cap; q++) {
     int32_t s1 = ms[idx[q]];
@@ -826,10 +828,13 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
   for (int i = 0; i < nm && i < CUTN && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &mv[i], 1, -1, 0)) { n++; cutOffered++; }
   return n;
 }
+static int readyBuild(const Read *R, Cand *out, int n, int cap);
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
+  // READY FOR THE SLAB ON ITS WAY first, while the decision still has its time (readyBuild)
+  n = readyBuild(R, out, n, cap);
   // AN ENTRY: the planner's line for each entry of the list it found one for
   if (S->haveAp) for (int i = 0; i < R->guides.n; i++) if (S->ap.perAim[i].set) { int m0 = n; ADD(PLAY_ENTRY, S->ap.perAim[i].seq, S->ap.perAim[i].nseq, i, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.perAim[i]); }
   // TWO IDEAS FIRED (search/plan.c pair): the planner's line that fires two entries of the list, each step once the board settles -- and
@@ -937,7 +942,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = twinLines(R, out, n, cap);
   n = wayLines(out, n, cap);
   n = zipLines(R, out, n, cap);
-  n = readyBuild(R, out, n, cap);
   n = cutLines(R, out, n, cap);
   return n;
 }

@@ -681,6 +681,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   }
   L_s(" casc="); L_i(cascadeLive(decQ.b)); L_s(" pop="); L_i(popLeft(decQ.b)); L_s(" hp="); L_i(decQ.b->health); L_s(" stop="); L_d(R.F.v[FACT_US_STOP]);
   if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
+  if (!readyBuilt && readyBuildWhy) { L_s(" rb=0:"); L_i(readyBuildWhy); }
   if (readyBuilt) { L_s(" rb="); L_i(readyBuilt); if (P.line && P.line->k.readyGain > 0) { L_s("/played:"); L_i(P.line->k.readyGain); } }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
   if (routeOffered) { L_s(" route="); L_i(routeOffered); if (routePlayed) L_s("/played"); }
