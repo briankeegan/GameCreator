@@ -606,8 +606,7 @@ static int onWay(int r0, int c0, int32_t s, int32_t first, int d) {
 }
 static int wayLines(Cand *out, int n, int cap) {
   wayOffered = 0;
-  if (clockOut()) return n;
-  int busy = hasActivePanels(decQ.b);   // (panels moving: a pop, a chain -- the way's swaps pressed straight through, never waiting a settle)
+  if (hasActivePanels(decQ.b) || clockOut()) return n;
   Ctx *x = fillCtx = ctxOf(fillCtx);
   int root = rootOf(x, &decQ);
   if (root < 0) return n;
@@ -627,16 +626,12 @@ static int wayLines(Cand *out, int n, int cap) {
   for (int j = 0; j < nm; j++) {
     int any = 0;
     for (int w = 0; w < nw && !any; w++) any = onWay(r0, c0, ms[j], out[want[w]].seq[0], wantD[w]);
-    // (and on the walk between a line's own swaps: the gaps between them are the cursor's too)
-    for (int w = 0; w < nw && !any; w++) { const Cand *k = &out[want[w]];
-      for (int m = 1; m < k->nseq && !any; m++) { int dd = actionsFor(CR(k->seq[m - 1]), CC(k->seq[m - 1]), CR(k->seq[m]), CC(k->seq[m]), HOLDTIGHT + 1);
-        if (dd >= WAY_MIN) any = onWay(CR(k->seq[m - 1]), CC(k->seq[m - 1]), ms[j], k->seq[m], dd); } }
     if (any) { on[no] = ms[j]; par[no++] = root; }
   }
   if (!no) return n;
   const Board *b0 = ensureBoard(x, root);
   int under = garbageOn(decQ.b);
-  int32_t near0 = under ? nearOf(b0) : 0, conn0 = connectedOf(b0), spread0 = spreadOf(b0), even0 = evenOf(b0);
+  int32_t near0 = under ? nearOf(b0) : 0, conn0 = connectedOf(b0);
   stepBatch(x, par, on, MK_SETTLE, no);
   int nu = 0;
   for (int j = 0; j < no; j++) {
@@ -646,10 +641,8 @@ static int wayLines(Cand *out, int n, int cap) {
     const Board *b = ensureBoard(x, o);
     if (!b) continue;
     int32_t nearer = under ? near0 - nearOf(b) : 0, joined = connectedOf(b) - conn0;
-    // (and zipped or flattened on the way -- the owner: zip something, drop something down as it goes by: colours a swap apart, the
-    // tallest column nearer the shortest; a clear of three that breaks nothing is no work: a wasted three)
-    int32_t zipped = st.cleared > 0 ? 0 : spreadOf(b) - spread0, flatter = st.cleared > 0 ? 0 : even0 - evenOf(b);
-    int32_t sc = st.cleared > 3 || st.broke > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : joined > 0 ? joined : zipped > 0 ? zipped : flatter > 0 ? flatter : 0;
+    // (a clear of three that breaks nothing is no work: a wasted three)
+    int32_t sc = st.cleared > 3 || st.broke > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : joined > 0 ? joined : 0;
     if (sc > 0) { on[nu] = on[j]; score[nu++] = sc; }
   }
   batchDone();
@@ -669,32 +662,13 @@ static int wayLines(Cand *out, int n, int cap) {
       // (twice: each swap pressed once the board settles, and pressed straight through -- the cursor walks on while the swap on its
       // way still clears, so the line it was on its way to is not put off by that clear's time)
       int got = 0;
-      for (int at = busy ? 1 : 0; at < 2 && n < cap; at++) {
+      for (int at = 0; at < 2 && n < cap; at++) {
         Cand *c = &out[n];
         if (!candOf(c, k0.play, seq, k0.nseq + 1, k0.aim, 0)) continue;
         c->settled = !at; c->way = 1; c->x = k0.x; c->xFire = -1; c->xDone = -1;
         n++; got = 1; wayOffered++;
       }
       added += got;
-    }
-    // (on a later leg: the most useful swap on the walk from one of the line's swaps to the next, pressed there)
-    for (int m = 1; m < k0.nseq && n < cap && k0.nseq + 1 <= MAXLINE; m++) {
-      int dd = actionsFor(CR(k0.seq[m - 1]), CC(k0.seq[m - 1]), CR(k0.seq[m]), CC(k0.seq[m]), HOLDTIGHT + 1);
-      if (dd < WAY_MIN) continue;
-      for (int q = 0; q < nu && n < cap; q++) {
-        int32_t s = on[idx[q]];
-        if (!onWay(CR(k0.seq[m - 1]), CC(k0.seq[m - 1]), s, k0.seq[m], dd)) continue;
-        int shared = 0;
-        for (int t = 0; t < k0.nseq && !shared; t++) shared = waySharesCell(s, k0.seq[t]);
-        if (shared) continue;
-        int32_t seq[MAXLINE], z = 0;
-        for (int t = 0; t < m; t++) seq[z++] = k0.seq[t];
-        seq[z++] = s;
-        for (int t = m; t < k0.nseq; t++) seq[z++] = k0.seq[t];
-        Cand *c = &out[n];
-        if (candOf(c, k0.play, seq, z, k0.aim, 0)) { c->settled = busy ? 0 : k0.settled; c->way = 1; c->x = k0.x; c->xFire = -1; c->xDone = -1; n++; wayOffered++; }
-        break;
-      }
     }
     // (and two on the way: the two most useful the cursor passes in turn, a step aside at most for each)
     for (int q = 0, done2 = 0; q < nu && !done2 && n < cap && k0.nseq + 2 <= MAXLINE; q++) {
@@ -748,6 +722,7 @@ static int32_t zipSpread(int32_t g[][W + 2], int top) {
 }
 static int zipLines(const Read *R, Cand *out, int n, int cap) {
   zipOffered = 0;
+  if (R->pop) return n;
   Board *b = decQ.b;
   static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2];
   int H = imin(gridLen(b) - 2, MAXROWS), top = 0;
@@ -758,9 +733,7 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
     if (v != 0) top = r;
     ok[r][c] = v > 0 && v < 8 && f[STATE] == NORMAL && (r == 1 || (cellAt(b, r - 1, c) != 0 && b->p[r - 1][c].f[STATE] == NORMAL));
   }
-  // (a stack this high is lowered, not sorted -- its panels' height: under garbage the slabs on top are no reason not to sort what is under them)
-  { int ptop = top; if (R->under) { ptop = 0; for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, r, c); if (v > 0 && v < 8) ptop = r; } }
-    if (ptop > (b->height ? b->height : 12) - ZIP_ROOM) return n; }
+  if (top > (b->height ? b->height : 12) - ZIP_ROOM) return n;   // (a stack this high is lowered, not sorted)
   if (top > b->topCurRow) top = b->topCurRow;
   int32_t base = zipSpread(g, top), mv[ZIPN * 4], gain[ZIPN * 4]; int d[ZIPN * 4], nm = 0;
   for (int r = 1; r <= top; r++) for (int c = 1; c < W; c++) {
@@ -776,8 +749,7 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
   }
   for (int i = 1; i < nm; i++) for (int j = i; j > 0 && (gain[j] > gain[j - 1] || (gain[j] == gain[j - 1] && d[j] < d[j - 1])); j--) {
     int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; u = gain[j]; gain[j] = gain[j - 1]; gain[j - 1] = u; int e = d[j]; d[j] = d[j - 1]; d[j - 1] = e; }
-  // (while a slab pops, pressed now -- the panels it sorts are at rest beside the pop; settled, it would wait the pop out)
-  for (int i = 0; i < nm && i < ZIPN && n < cap; i++) if (candOf(&out[n], PLAY_ZIP, &mv[i], 1, -1, 0)) { out[n].settled = R->pop ? 0 : 1; n++; zipOffered++; }
+  for (int i = 0; i < nm && i < ZIPN && n < cap; i++) if (candOf(&out[n], PLAY_ZIP, &mv[i], 1, -1, 0)) { out[n].settled = 1; n++; zipOffered++; }
   return n;
 }
 // THE BOARD'S OWN CHAIN CUT AT THE MODE'S LENGTH: with the board about to chain on its own (decide.c, the read's aloneChain) longer than

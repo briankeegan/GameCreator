@@ -124,6 +124,7 @@ where it meets the new mode's first entry or breaks garbage.
 | --- | --- | --- | --- | --- |
 | opener | a fight's start, until either board tops out (its top row reached by panels or landed garbage, as the engine has it -- garbage queued or falling does not count) | pressure from the start: big chains only | 8+ chain | chain 6+, 4+ |
 | time attack | no enemy | score alone: set up the biggest chain there is | 8+ chain | none: nothing under 8 |
+| fill | the enemy's stack under 11 rows, not topped | fill the enemy to the top with chains (the owner: fill goes for chains) | the chain that fills it | none: chains only -- combos are finish them's |
 | finish them | the enemy 2 rows from the top or topped out (its tallest column, garbage or panels, as the engine has it) -- whatever its stop time | small pieces it cannot absorb: each landing's shake under the stop it burns | combo 8, 9, 10 (two small pieces each) | combo 5, combo 6, then combo 4 (allowed, the least of them); chains last |
 | big chain | the enemy's stack under 5 rows | it has room: one huge block, no combos | 8+ chain | chain 4+, carried on as far as it goes |
 | build | the enemy's stack under 9 rows | steady medium attacks, no combos | 5-chain | 3-chain, 4-chain |
@@ -161,6 +162,22 @@ where it meets the new mode's first entry or breaks garbage.
   (`gambit/lua/board.lua` `shown`, held by `board.test.lua` in every run).
 - **Everything runs on GitHub Actions** -- the games, the reports, any experiment. Nothing is run in the sandbox: it edits code and
   pushes.
+- **Fill goes for chains, finish them for combos** (the owner) -- under garbage too: of two breaks lost alike, the one in the mode's
+  shape. A clear of the other shape is a by-product, never a choice.
+- **Never idle** (the owner): if there is time, do something -- zip, flatten, set up -- between everything: during pops, during the
+  board's own chains and combos, under garbage. Wait only to keep inputs for a swap that must be pressed at a set moment, and even
+  then fit a zip in where there is time to do it and come back. Every such move is judged on the engine: never a sooner loss, never
+  the next break pushed out of reach, never the board's own chain cut short.
+- **Danger is the engine's clock** (the owner): how soon the rise or the garbage tops the board out at its speed, against the time the
+  move in hand needs -- never a fixed frame count. A board is in danger when it tops out before the work in hand is done.
+- **The opener never waits** (the owner): the first swap as soon as the game starts; a swap is put off once at most.
+- **Efficiency** (the owner): no wasted threes; no set-ups that build nothing or walk far for little. Every set-up names what it builds
+  (`aim=` on the log: `c<size>` or `x<length>`, the list entry, the ideas ready).
+- **Time attack** (the owner): the score is all; 13-chains again and again -- flatten, raise to the top, then a chain that uses every
+  block, continued a link at a time up to 13; combos worth nothing; never a sooner death.
+- **Live deaths are read every session** (the owner): `https://ranmaru-stats.pages.dev/data/replay_r<N>.json.gz`, a loss's last
+  decision carries `dies=1`. Every loss since the last session is read before other work, and reported.
+- **A change is judged over three runs or more per build, alternated** -- the same code scores 28 and 23 an hour apart.
 
 ## How -- infra, not patches
 
