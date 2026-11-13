@@ -61,7 +61,7 @@ static Keep floorKeep; static int32_t floorKeepOn;
 // SPEED_TO_RISE_TIME frames of it not held by its stop (its height is the row four of its six columns reach and the rows on their way:
 // GambitNative opponentOf, rowsOnItsWay).
 // Every chain of three or more that fits is the mode's -- one that fills the room exactly first, then the longer -- never a 2x (the
-// owner: a 3x and a 4x, or two 3x, as well as a 6x). No three-chain fits: the list's other aims, its small combos, in their order.
+// owner: a 3x and a 4x, or two 3x, as well as a 6x). No three-chain fits: a three-chain all the same -- fill plays chains, never combos.
 #define FILL_FLIGHT 151
 // (a link: its three flashing, faced and popped, the panels above hovering and falling a row -- FILL_FALL, the engine's -- read off the
 // board, so every level's own: 66 at level 11)
@@ -77,8 +77,7 @@ static void fillList(List *L) {
   int32_t perRow = decQ.b->speed >= 1 && decQ.b->speed <= 99 ? SPEED_TO_RISE_TIME[decQ.b->speed - 1] : 120, nmax = 0;
   for (int n = MAXCHAIN; n >= 3 && !nmax; n--) { int32_t risen = imax(0, FILL_FLIGHT + FILL_LINK * (n - 1) - stop) / perRow; if (n - 1 <= free - risen - 1) nmax = n; }
   List out; memset(&out, 0, sizeof out);
-  if (nmax >= 3) for (int n = nmax; n >= 3 && out.n < MAXAIMS; n--) { Aim a; memset(&a, 0, sizeof a); a.chain.op = OP_EQ; a.chain.n = n; a.chain.near = 1; a.brk = -1; out.aim[out.n++] = a; }
-  else for (int i = 0; i < L->n; i++) if (i != at) out.aim[out.n++] = L->aim[i];
+  for (int n = imax(3, nmax); n >= 3 && out.n < MAXAIMS; n--) { Aim a; memset(&a, 0, sizeof a); a.chain.op = OP_EQ; a.chain.n = n; a.chain.near = 1; a.brk = -1; out.aim[out.n++] = a; }
   *L = out; fillN = nmax;
 }
 static int decisionFloor(const Board *b) { return floorKeepOn ? keepsFloor(&floorKeep, b, 0) : -1; }
