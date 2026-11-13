@@ -3,9 +3,12 @@
 // on, the line toward a break begun, the line in progress, the pair the last swap swapped.
 
 #define BREAK_SHARE 0.4    // of the searches' time (propose.c leftMs), for the break search
-#define UNDER_SHARE 0.9    // with garbage on the board: there the break is what saves the board
+#define UNDER_SHARE 0.75   // with garbage on the board: there the break is what saves the board
 // (the profile's own, in percent, where it gives one: gb_share)
 static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
+#define FILL_UNDER_SHARE 0.9   // in fill, with garbage on the board: fill buries the board in slabs, and only breaks keep it (seed 86: 27 and 27 of 28
+                               // at 0.9, 23, 24 and 24 at 0.75; finish them at 0.9 for every mode: 22, at 0.75: 27)
+static int32_t fillName = -1;  // the host's index of the fill rule's name (native.c gn_rule_name), -1 none
 #define BREAK_MIN_MS 5
 #define BREAK_MAX_MS 400
 #define ROW_STEPS 16
@@ -282,7 +285,8 @@ static void breakRunTo(const Read *R, double by, Broke *into) {
   clockShareEnd(old);
 }
 static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  double share = R->under ? underShare : breakShare;
+  int fill = fillName >= 0 && R->rule >= 0 && R->rule < theTables.n && theTables.r[R->rule].name == fillName;
+  double share = R->under ? (fill ? FILL_UNDER_SHARE : underShare) : breakShare;
   *ms = 0; brCut = 0; brResumed = 0;
   // (no break search on a question due sooner than it could take: the answer would come late -- the searches' time is what it takes
   // first, and short of that, the judging's quarter: a board this near its end has a break one swap away or none (run 447, combo_storm-2

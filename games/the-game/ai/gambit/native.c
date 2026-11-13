@@ -288,7 +288,11 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
 // The rules, as the loader encodes them (gambit.js rulesWords), in gn_io; set before the first question.
 int32_t *gn_io(void) { return gbIo; }
 int gn_rules(int n) { return gb_rules(n); }
-void gn_rule_name(int i, const char *name) { if (i >= 0 && i < MAXRULES) snprintf(ruleNames[i], sizeof ruleNames[i], "%s", name); }
+void gn_rule_name(int i, const char *name) {
+  if (i >= 0 && i < MAXRULES) snprintf(ruleNames[i], sizeof ruleNames[i], "%s", name);
+  // (the fill rule's name found: its break search's share, answer.c FILL_UNDER_SHARE)
+  if (name && name[0] == 'f' && name[1] == 'i' && name[2] == 'l' && name[3] == 'l' && name[4] == 0) fillName = i;
+}
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff) {
   gb_profile(mode, ms, extendMs, width, depth, pool, extendDepth, extendOff, cfgReaction, cfgSwapGap, cfgCursor);
 }
