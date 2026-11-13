@@ -23,8 +23,18 @@ narrowed, not dropped.
       hold ~40% of plays there): read; their fix is C.
 - [ ] **F. Finish them kills a topped enemy.** r1118: Tai at 12 for 1,000+ frames absorbed a 4-, 5- and 3-chain -- attacks timed to
       its stop running out, or too big to absorb. Open.
-- [ ] **G. Time attack: chains past 8.** Median 27,000, 56/56 (on main). Past 8 links the next link is found 25-50% of the time: the
-      panels run out. Horizontal continuation (puzzles: 6 of 7 solved; huge tower #2 open). Open.
+- [ ] **G. Time attack: 13-chains on repeat, the score up.** Median 27,000, 56/56 (on main); the owner's method -- flatten, raise to
+      the top, a chain that uses every block, continued a link at a time to 13. Open:
+      - chains past 8: the next link found 25-50% of the time -- the panels run out; continue horizontally (the panel-game horizontal
+        puzzles: 6 of 7 solved; huge tower #2 not);
+      - chains still begun on 24-35 panels: start on a full board;
+      - the chain designer (search/chainbuild.c): designs reach 4-7 links before they fire; aim for 13;
+      - every run reported with the score and every chain.
+- [ ] **H. The opener: big chains from the first frame.** The owner: a machine has the 3-second countdown -- plan a big chain then,
+      ranked by chain length always (on main), 8+ and building toward it even from under 8. Open:
+      - nothing happens for 1-5 s (D, in test);
+      - the opener's chain lengths and time to first attack measured on every run, and pushed toward 8+ (shared with G);
+      - the opener stays on while the enemy is at row 11+: hand over to finish them at once.
 - [x] **Time attack: flatten, raise, chain to 13; danger on the engine's clock; never a sooner death.** On main (0117cb44): median
       19,800 to 27,000, 56/56 over seeds 86 and 87.
 - [x] **The opener ranks by chain length, never by garbage sent.** On main.
