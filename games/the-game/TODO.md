@@ -30,6 +30,9 @@ narrowed, not dropped.
         24-47 panels: small clears and accidental chains taken on before the board is full, and the raise stopped near row 8 to leave a
         design's 190 frames. Fix: nothing started or taken on before the board is flat and raised; the chain designed while the stack
         is lower, then the raise to the top, then the trigger;
+        Measured (seed 86): the raise as high as the held design stands -- 27,355, three 13s, 28/28 (main 27,022, five 13s); with no chain
+        taken on below 39 panels as well -- 20,827, three 13s, 26/28. At level 11 the rise does not wait: the early chains' stop is what
+        holds the board while it fills. Next: build the 13 during them -- each chain leaving the board ready for a bigger one;
       - chains past 8: the next link found 25-50% of the time -- the panels run out; continue horizontally (the panel-game horizontal
         puzzles: 6 of 7 solved; huge tower #2 not);
       - chains still begun on 24-35 panels: start on a full board;
