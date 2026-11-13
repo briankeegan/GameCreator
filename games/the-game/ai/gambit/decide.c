@@ -873,12 +873,12 @@ static Played playOf(const Read *R, int n) {
     }
     clockDue = keepDue; clockShare = keepShare;
   }
-  // (NEVER IDLE -- the owner: had it filled or zipped, it would never have happened: a hold at rest is a zip where a zip that clears nothing
-  // is lost no sooner than the hold; the colours staged a swap apart are the next break's and the next attack's)
-  if (!P.line && !R->up && !P.wait && !ruleNoEnemy && !cascadeLive(decQ.b) && !R->pop) {
+  // (NEVER IDLE -- the owner: had it filled or zipped, it would never have happened: a hold is a zip where a zip that clears nothing, cuts
+  // no chain of the board's short and is lost no sooner than the hold; the colours staged a swap apart are the next break's and the next attack's)
+  if (!P.line && !R->up && !P.wait && !ruleNoEnemy) {
     for (int i = 0; i < n; i++) {
       const Judge *z = order[i];
-      if (z->k.play != PLAY_ZIP || z->o.dead || taClears(z)) continue;
+      if (z->k.play != PLAY_ZIP || z->o.dead || taClears(z) || cutsShort(z)) continue;
       if (diesAt(z) >= holdDiesOf(n)) { P.line = z; idleZips++; }
       break;
     }
