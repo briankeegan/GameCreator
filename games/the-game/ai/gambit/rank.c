@@ -14,6 +14,7 @@ typedef struct {
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
   int32_t twin;    // two columns sorted row by row, then one swap that clears both (propose.c twinLines): 1 the line, 2 the set-up alone
+  int32_t readyGain;   // a swap that brings the break nearer on the board the garbage on its way lands on: the swaps it saves (propose.c readyBuild)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)
@@ -335,6 +336,13 @@ static int finishAsked(void) {
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
 // (the lowest garbage row of the decision's board, read once a board: search/break.c lowestG)
 #define GARBAGE_AWAY 4
+// (READIER, rank 1'r: -1 x, 1 y, 0 neither -- a break in reach once the next block lands, else a swap that brings the nearest nearer)
+static int readier(const Judge *x, const Judge *y) {
+  if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return x->readyNext == 1 ? -1 : 1;
+  if (!decF.under) return 0;
+  int gx = x->k.readyGain > 0 && !x->o.dead, gy = y->k.readyGain > 0 && !y->o.dead;
+  return gx == gy ? 0 : gx ? -1 : 1;
+}
 static int awayFromGarbage(const Judge *J) {
   static LOCAL const Board *forB; static LOCAL int32_t forClock = -1, lowG = 0;
   if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || !decQ.b) return 0;
@@ -413,7 +421,7 @@ static void markIdle(Judge **a, int n) {
   for (int i = 0; i < n && !H; i++) if (a[i]->hold) H = a[i];
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   double holdLost = H ? lostOf(H) : 0;
-  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H) && !(a[i]->k.readyGain > 0 && !a[i]->o.dead && diesAt(a[i]) >= diesAt(H))) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
@@ -668,6 +676,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
+  // 1'r. READY FOR THE NEXT BLOCK (the owner: there should always be pieces): of two that survive alike, the readier before the other
+  // where it breaks no less and the other meets no goal it misses -- readier is a break in reach once the next block lands (readyNext,
+  // asked where none lives), else, under garbage, a swap that brings the nearest break nearer (propose.c readyBuild), the hold included
+  if (lx || lostAlike(x, y)) {
+    int rx = readier(x, y);
+    if (rx) {
+      const Judge *r = rx < 0 ? x : y, *o = rx < 0 ? y : x;
+      if (imax(0, brokeSeen(r)) >= imax(0, brokeSeen(o)) && !(goalLine(o) && !goalLine(r)) && !cutsShort(r)) return (cmpKey = __LINE__, rx);
+    }
+  }
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
   // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
   // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
@@ -677,13 +695,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
       const Judge *f = fx ? x : y, *o = fx ? y : x;
       if (imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f)) && !(goalLine(f) && !goalLine(o)) && (lx || diesAt(o) >= diesAt(f))) return (cmpKey = __LINE__, (fx ? 1 : -1));
     }
-  }
-  // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
-  // (readyNext) before one that does not and breaks no more garbage now -- a board that cannot break what lands next is the loss
-  // survival's horizon does not reach yet; a break now is never given up for it
-  if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) {
-    const Judge *r = x->readyNext == 1 ? x : y, *o = x->readyNext == 1 ? y : x;
-    if (imax(0, r->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
   }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
   // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the
@@ -710,7 +721,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = x->back ? x : y, *o = x->back ? y : x;
     if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
   }
-  // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
+  // 1'h. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
   // worked where the cursor is, and left only for what survives better or breaks where the near one does not
   // (of two that break garbage, begun nearer is no saving where the nearer walks more for the break -- a swap put in front of the break the
