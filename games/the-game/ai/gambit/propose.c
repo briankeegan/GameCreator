@@ -722,7 +722,6 @@ static int32_t zipSpread(int32_t g[][W + 2], int top) {
 }
 static int zipLines(const Read *R, Cand *out, int n, int cap) {
   zipOffered = 0;
-  if (R->pop) return n;
   Board *b = decQ.b;
   static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2];
   int H = imin(gridLen(b) - 2, MAXROWS), top = 0;
@@ -733,7 +732,9 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
     if (v != 0) top = r;
     ok[r][c] = v > 0 && v < 8 && f[STATE] == NORMAL && (r == 1 || (cellAt(b, r - 1, c) != 0 && b->p[r - 1][c].f[STATE] == NORMAL));
   }
-  if (top > (b->height ? b->height : 12) - ZIP_ROOM) return n;   // (a stack this high is lowered, not sorted)
+  // (a stack this high is lowered, not sorted -- its panels' height: under garbage the slabs on top are no reason not to sort what is under them)
+  { int ptop = top; if (R->under) { ptop = 0; for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, r, c); if (v > 0 && v < 8) ptop = r; } }
+    if (ptop > (b->height ? b->height : 12) - ZIP_ROOM) return n; }
   if (top > b->topCurRow) top = b->topCurRow;
   int32_t base = zipSpread(g, top), mv[ZIPN * 4], gain[ZIPN * 4]; int d[ZIPN * 4], nm = 0;
   for (int r = 1; r <= top; r++) for (int c = 1; c < W; c++) {
@@ -749,7 +750,8 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
   }
   for (int i = 1; i < nm; i++) for (int j = i; j > 0 && (gain[j] > gain[j - 1] || (gain[j] == gain[j - 1] && d[j] < d[j - 1])); j--) {
     int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; u = gain[j]; gain[j] = gain[j - 1]; gain[j - 1] = u; int e = d[j]; d[j] = d[j - 1]; d[j - 1] = e; }
-  for (int i = 0; i < nm && i < ZIPN && n < cap; i++) if (candOf(&out[n], PLAY_ZIP, &mv[i], 1, -1, 0)) { out[n].settled = 1; n++; zipOffered++; }
+  // (while a slab pops, pressed now -- the panels it sorts are at rest beside the pop; settled, it would wait the pop out)
+  for (int i = 0; i < nm && i < ZIPN && n < cap; i++) if (candOf(&out[n], PLAY_ZIP, &mv[i], 1, -1, 0)) { out[n].settled = R->pop ? 0 : 1; n++; zipOffered++; }
   return n;
 }
 // THE BOARD'S OWN CHAIN CUT AT THE MODE'S LENGTH: with the board about to chain on its own (decide.c, the read's aloneChain) longer than
