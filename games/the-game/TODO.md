@@ -26,6 +26,10 @@ narrowed, not dropped.
 - [ ] **G. Time attack: a 13-chain, over and over** (the owner). The measure is 13s per game: now 0.2-0.4 (5-12 in 28 games, of
       about 300 chains each run); median score 27,000, 56/56 (on main). The owner's method -- flatten, raise to the top, a chain that uses
       every block, continued a link at a time to 13 -- and every chain aimed at 13. Open:
+      - FIRST: the panels never run out on a board flattened and raised (the owner) -- 60 panels hold a 13 (40-45). Chains start on
+        24-47 panels: small clears and accidental chains taken on before the board is full, and the raise stopped near row 8 to leave a
+        design's 190 frames. Fix: nothing started or taken on before the board is flat and raised; the chain designed while the stack
+        is lower, then the raise to the top, then the trigger;
       - chains past 8: the next link found 25-50% of the time -- the panels run out; continue horizontally (the panel-game horizontal
         puzzles: 6 of 7 solved; huge tower #2 not);
       - chains still begun on 24-35 panels: start on a full board;
