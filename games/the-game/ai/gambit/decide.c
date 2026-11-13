@@ -809,7 +809,9 @@ static Played playOf(const Read *R, int n) {
       static Judge CU; Cand k;
       if (candOf(&k, PLAY_EXTEND, E.longest.seq, E.longest.nseq, -1, 1)) {
         k.settled = 0; lastDrop = -1;
-        if (judgeCand(R, &k, &CU) && !CU.o.dead) { P.line = &CU; taLog = 3; }
+        // (never a sooner death: the extension in the rank's place only where it lives or its board is lost no sooner than the rank's line's
+        // -- a chain taken on over a tower ends with the tower at the top)
+        if (judgeCand(R, &k, &CU) && !CU.o.dead && (CU.o.lives || !P.line || diesAt(&CU) >= diesAt(P.line))) { P.line = &CU; taLog = 3; }
         else taLog = -20 - lastDrop;
       }
     }
