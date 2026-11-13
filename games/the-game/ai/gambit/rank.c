@@ -602,9 +602,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // held or not, and a hold that leaves no more of them keeps nothing -- outcome.c matLeft)
   if (!lx && (decF.under || decQ.narr > 0) && x->spends != y->spends) {
     const Judge *o = x->spends ? y : x, *sp = x->spends ? x : y;
-    // (and only where the spend buys less than two breaks' time more: one that keeps the board alive that much longer buys the next
+    // (and only where the spend buys less than a break's time more: one that keeps the board alive a break's time longer buys the next
     // break's chance -- death is never an option)
-    if (diesAt(o) >= rankSave && o->o.matLeft >= 0 && sp->o.matLeft >= 0 && o->o.matLeft > sp->o.matLeft && diesAt(sp) - diesAt(o) < 2 * rankSave)
+    if (diesAt(o) >= rankSave && o->o.matLeft >= 0 && sp->o.matLeft >= 0 && o->o.matLeft > sp->o.matLeft && diesAt(sp) - diesAt(o) < rankSave)
       return (cmpKey = __LINE__, (x->spends ? 1 : -1));
   }
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
