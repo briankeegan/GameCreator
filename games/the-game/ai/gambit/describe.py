@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 # describe.py LOG [FROM [TO]]: every GAMBITD decision of a survivor.log (or a replay's dec lines on stdin with '-') in plain words --
 # what the move does, what it continues, what a set-up builds, why a hold holds -- read from the line's own fields and nothing else.
-# The rank rule a decision names (won=k<line>) is quoted from rank.c: the comment above that line.
-import os, re, sys
+# The rank rule a decision names (won=k<line>) is quoted from rank.c: the comment above that line -- rank.c as the build that played
+# the game had it (--sha SHA: read from git), since a key is a line number and the lines move from build to build.
+import os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-def rank_rules(path=os.path.join(HERE, 'rank.c')):
+def rank_rules(sha=None):
     """line number of each `return (cmpKey = __LINE__` -> the comment just above it, first sentence"""
-    lines = open(path, errors='replace').read().splitlines()
+    if sha:
+        text = subprocess.run(['git', '-C', HERE, 'show', sha + ':./rank.c'], capture_output=True, text=True, check=True).stdout
+    else:
+        text = open(os.path.join(HERE, 'rank.c'), errors='replace').read()
+    lines = text.splitlines()
     rules = {}
     for i, l in enumerate(lines):
         if 'cmpKey = __LINE__' not in l:
@@ -104,7 +109,10 @@ def describe(l, rules):
     return '%s %-11s %s%s%s' % (frame, mode, what, ' [%s]' % tail if tail else '', ('  ' + rule) if rule and play != 'hold' else '')
 
 def main():
-    rules = rank_rules()
+    sha = None
+    if '--sha' in sys.argv:
+        k = sys.argv.index('--sha'); sha = sys.argv[k + 1]; del sys.argv[k:k + 2]
+    rules = rank_rules(sha)
     src = sys.stdin if sys.argv[1] == '-' else open(sys.argv[1], errors='replace')
     lo = int(sys.argv[2]) if len(sys.argv) > 2 else -1
     hi = int(sys.argv[3]) if len(sys.argv) > 3 else 1 << 30
