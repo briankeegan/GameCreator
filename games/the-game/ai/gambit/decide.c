@@ -892,6 +892,9 @@ static Played playOf(const Read *R, int n) {
       // pressed now. No break offered: lost no sooner than the hold)
       const Judge *bk = 0;
       for (int k = 0; k < n && !bk; k++) if (order[k]->apBroke > 0 && !order[k]->o.dead && !order[k]->hold) bk = order[k];
+      // (under garbage with no break offered yet, the cursor is kept for the one coming: measured, zips there were 22% of the last ten
+      // seconds of lost games, 8% of won ones)
+      if (R->under && !bk) break;
       if (R->under && bk) {
         static Judge ZB; Cand c = bk->k; int m = 0; int32_t sq[MAXLINE];
         sq[m++] = z->k.seq[0]; for (int k = 0; k < bk->k.nseq && m < MAXLINE; k++) sq[m++] = bk->k.seq[k];
