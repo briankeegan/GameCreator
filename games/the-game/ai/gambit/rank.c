@@ -669,6 +669,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
+  // 1'f. THE NEXT BREAK PUT IN PLACE (the owner: there should always be pieces): under garbage, of two that survive alike, a line that brings
+  // the nearest break nearer (propose.c readyBuild) before one that breaks nothing and meets nothing the mode asks -- the hold included:
+  // the walk is the time the next break is built in
+  if (decF.under && (lx || lostAlike(x, y))) {
+    int gx = x->k.readyGain > 0 && !x->o.dead, gy = y->k.readyGain > 0 && !y->o.dead;
+    if (gx != gy) {
+      const Judge *g = gx ? x : y, *o = gx ? y : x;
+      if (imax(0, brokeSeen(o)) == 0 && !goalLine(o) && !cutsShort(g)) return (cmpKey = __LINE__, (gx ? -1 : 1));
+    }
+  }
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
   // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
   // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
