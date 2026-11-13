@@ -598,7 +598,6 @@ static int convertLines(const Read *R, Cand *out, int n, int cap) {
 #define WAY_MIN 3     // the cursor's actions to a line's first swap before its way is searched
 #define WAY_PER 2     // lines on the way, a line
 #define WAY_LINES 6   // the lines whose way is searched, in the order offered
-static int32_t readyBuilt;   // (swaps offered for the slab on its way: the log's)
 static int32_t wayOffered, wayPlayed;   // (the lines on the way this decision offered, and whether one was played: the log's)
 static int32_t pairOffered;              // (the lines firing two ideas this decision offered: the log's)
 static int waySharesCell(int32_t a, int32_t b) { return CR(a) == CR(b) && iabs(CC(a) - CC(b)) <= 1; }
@@ -720,49 +719,6 @@ static int32_t zipSpread(int32_t g[][W + 2], int top) {
   }
   #undef ZC
   return staged - touching;
-}
-// READY FOR THE SLAB ON ITS WAY (the owner: there should always be pieces): with garbage shown on its way, each swap the board offers,
-// settled, and the garbage landed on the board it leaves as the game lands it -- the swaps to the nearest break then (search/break.c
-// nearOf) against the board left alone's; the swaps that bring it nearer offered, most saved first: the time before a slab lands spent
-// putting its break in place
-#define READY_BUILD 3
-static LOCAL Ctx *rbCtx;
-static int readyBuild(const Read *R, Cand *out, int n, int cap) {
-  (void)R; readyBuilt = 0;
-  if (decQ.narr <= 0 || clockOut() || n >= cap) return n;
-  int32_t last = 0; for (int i = 0; i < decQ.narr; i++) last = imax(last, decQ.arr[i].at);
-  static Board *st; if (!st) st = nb_new(); if (!st) return n;
-  Board *l0 = landedAll(decQ.b, decQ.arr, decQ.narr, last, st);
-  if (!l0) return n;
-  int32_t near0 = nearOf(l0);
-  if (near0 <= 1) return n;   // (a break a swap away already waits for it)
-  Ctx *x = rbCtx = ctxOf(rbCtx);
-  int root = rootOf(x, &decQ);
-  if (root < 0) return n;
-  static int32_t ms[MAXROWS * W], par[MAXROWS * W], gain[MAXROWS * W], idx[MAXROWS * W], tmp[MAXROWS * W];
-  int nm = swapsOfNode(x, root, ms), ng = 0;
-  for (int j = 0; j < nm; j++) par[j] = root;
-  stepBatch(x, par, ms, MK_SETTLE, nm);
-  for (int j = 0; j < nm && !clockOut(); j++) {
-    int o = stepTake(x, j, root, MK_SETTLE, ms[j]);
-    if (!liveNode(x, o)) continue;
-    const Board *b = ensureBoard(x, o);
-    if (!b) continue;
-    int32_t t = NODE(x, o)->t;
-    Arr left[MAXARR]; int nl = 0;
-    for (int i = 0; i < decQ.narr; i++) { left[nl] = decQ.arr[i]; left[nl].at = imax(0, decQ.arr[i].at - t); nl++; }
-    Board *lb = landedAll(b, left, nl, imax(0, last - t), st);
-    if (!lb) continue;
-    int32_t g = near0 - nearOf(lb);
-    if (g > 0) { ms[ng] = ms[j]; gain[ng] = g; idx[ng] = ng; ng++; }
-  }
-  batchDone();
-  sortByKeyDesc(idx, ng, gain, tmp);
-  for (int q = 0; q < ng && q < READY_BUILD && n < cap; q++) {
-    int32_t s1 = ms[idx[q]];
-    if (candOf(&out[n], PLAY_READY, &s1, 1, -1, 0)) { out[n].settled = 1; out[n].readyGain = gain[idx[q]]; n++; readyBuilt++; }
-  }
-  return n;
 }
 static int zipLines(const Read *R, Cand *out, int n, int cap) {
   zipOffered = 0;
@@ -937,7 +893,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = twinLines(R, out, n, cap);
   n = wayLines(out, n, cap);
   n = zipLines(R, out, n, cap);
-  n = readyBuild(R, out, n, cap);
   n = cutLines(R, out, n, cap);
   return n;
 }
