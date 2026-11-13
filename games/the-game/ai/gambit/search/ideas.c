@@ -4,8 +4,13 @@
 // fired on its own and the rest stay ready. The garbage on its way is left out: an idea is the board's own colours.
 #define IDEA_CANDS 64
 static LOCAL Ctx *ideaCtx;
+// (the biggest idea found, by the cells it sends -- what a set-up names as its aim: answer.c aim=; ideaNoClock: asked by the log, past the
+// decision's clock)
+static Made ideaBest; static int32_t ideaBestMet, ideaNoClock;
+#define IDEA_CLOCK() (!ideaNoClock && clockOut())
 static int ideasOn(const Board *b, const List *aims) {
-  if (!b || !aims || !aims->n || clockOut()) return -1;
+  ideaBestMet = -1; memset(&ideaBest, 0, sizeof ideaBest);
+  if (!b || !aims || !aims->n || IDEA_CLOCK()) return -1;
   Ctx *x = ideaCtx = ctxOf(ideaCtx);
   Question q; memset(&q, 0, sizeof q); q.b = (Board *)b; q.tight = decQ.tight;
   int root = rootOf(x, &q);
@@ -28,7 +33,9 @@ static int ideasOn(const Board *b, const List *aims) {
     Stats st;
     if (!liveNode(x, out) || !statsOf(x, out, &st) || st.cleared <= 0 || !stepFitsAt(x, out)) continue;
     Made m = { biggestOf(&st), chainOfStats(&st), st.broke, sentCells(&st) };
-    if (metOf(aims, m) < 0) continue;
+    int met = metOf(aims, m);
+    if (met < 0) continue;
+    if (ideaBestMet < 0 || m.cells > ideaBest.cells) { ideaBest = m; ideaBestMet = met; }
     const Board *e = ensureBoard(x, out);
     if (!e) continue;
     int nk = 0;
@@ -37,7 +44,7 @@ static int ideasOn(const Board *b, const List *aims) {
     cells[ni] = m.cells; idx[ni] = ni; ni++;
   }
   batchDone();
-  if (clockOut()) return -1;
+  if (IDEA_CLOCK()) return -1;
   // (the most sent first, each kept only when it clears no panel one kept already does)
   sortByKeyDesc(idx, ni, cells, tmp);
   static LOCAL uint8_t used[MAXROWS * W];
