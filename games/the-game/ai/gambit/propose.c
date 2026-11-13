@@ -606,7 +606,8 @@ static int onWay(int r0, int c0, int32_t s, int32_t first, int d) {
 }
 static int wayLines(Cand *out, int n, int cap) {
   wayOffered = 0;
-  if (hasActivePanels(decQ.b) || clockOut()) return n;
+  if (clockOut()) return n;
+  int busy = hasActivePanels(decQ.b);   // (panels moving: a pop, a chain -- the way's swaps pressed straight through, never waiting a settle)
   Ctx *x = fillCtx = ctxOf(fillCtx);
   int root = rootOf(x, &decQ);
   if (root < 0) return n;
@@ -626,12 +627,16 @@ static int wayLines(Cand *out, int n, int cap) {
   for (int j = 0; j < nm; j++) {
     int any = 0;
     for (int w = 0; w < nw && !any; w++) any = onWay(r0, c0, ms[j], out[want[w]].seq[0], wantD[w]);
+    // (and on the walk between a line's own swaps: the gaps between them are the cursor's too)
+    for (int w = 0; w < nw && !any; w++) { const Cand *k = &out[want[w]];
+      for (int m = 1; m < k->nseq && !any; m++) { int dd = actionsFor(CR(k->seq[m - 1]), CC(k->seq[m - 1]), CR(k->seq[m]), CC(k->seq[m]), HOLDTIGHT + 1);
+        if (dd >= WAY_MIN) any = onWay(CR(k->seq[m - 1]), CC(k->seq[m - 1]), ms[j], k->seq[m], dd); } }
     if (any) { on[no] = ms[j]; par[no++] = root; }
   }
   if (!no) return n;
   const Board *b0 = ensureBoard(x, root);
   int under = garbageOn(decQ.b);
-  int32_t near0 = under ? nearOf(b0) : 0, conn0 = connectedOf(b0);
+  int32_t near0 = under ? nearOf(b0) : 0, conn0 = connectedOf(b0), spread0 = spreadOf(b0), even0 = evenOf(b0);
   stepBatch(x, par, on, MK_SETTLE, no);
   int nu = 0;
   for (int j = 0; j < no; j++) {
@@ -641,8 +646,10 @@ static int wayLines(Cand *out, int n, int cap) {
     const Board *b = ensureBoard(x, o);
     if (!b) continue;
     int32_t nearer = under ? near0 - nearOf(b) : 0, joined = connectedOf(b) - conn0;
-    // (a clear of three that breaks nothing is no work: a wasted three)
-    int32_t sc = st.cleared > 3 || st.broke > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : joined > 0 ? joined : 0;
+    // (and zipped or flattened on the way -- the owner: zip something, drop something down as it goes by: colours a swap apart, the
+    // tallest column nearer the shortest; a clear of three that breaks nothing is no work: a wasted three)
+    int32_t zipped = st.cleared > 0 ? 0 : spreadOf(b) - spread0, flatter = st.cleared > 0 ? 0 : even0 - evenOf(b);
+    int32_t sc = st.cleared > 3 || st.broke > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : joined > 0 ? joined : zipped > 0 ? zipped : flatter > 0 ? flatter : 0;
     if (sc > 0) { on[nu] = on[j]; score[nu++] = sc; }
   }
   batchDone();
@@ -662,13 +669,32 @@ static int wayLines(Cand *out, int n, int cap) {
       // (twice: each swap pressed once the board settles, and pressed straight through -- the cursor walks on while the swap on its
       // way still clears, so the line it was on its way to is not put off by that clear's time)
       int got = 0;
-      for (int at = 0; at < 2 && n < cap; at++) {
+      for (int at = busy ? 1 : 0; at < 2 && n < cap; at++) {
         Cand *c = &out[n];
         if (!candOf(c, k0.play, seq, k0.nseq + 1, k0.aim, 0)) continue;
         c->settled = !at; c->way = 1; c->x = k0.x; c->xFire = -1; c->xDone = -1;
         n++; got = 1; wayOffered++;
       }
       added += got;
+    }
+    // (on a later leg: the most useful swap on the walk from one of the line's swaps to the next, pressed there)
+    for (int m = 1; m < k0.nseq && n < cap && k0.nseq + 1 <= MAXLINE; m++) {
+      int dd = actionsFor(CR(k0.seq[m - 1]), CC(k0.seq[m - 1]), CR(k0.seq[m]), CC(k0.seq[m]), HOLDTIGHT + 1);
+      if (dd < WAY_MIN) continue;
+      for (int q = 0; q < nu && n < cap; q++) {
+        int32_t s = on[idx[q]];
+        if (!onWay(CR(k0.seq[m - 1]), CC(k0.seq[m - 1]), s, k0.seq[m], dd)) continue;
+        int shared = 0;
+        for (int t = 0; t < k0.nseq && !shared; t++) shared = waySharesCell(s, k0.seq[t]);
+        if (shared) continue;
+        int32_t seq[MAXLINE], z = 0;
+        for (int t = 0; t < m; t++) seq[z++] = k0.seq[t];
+        seq[z++] = s;
+        for (int t = m; t < k0.nseq; t++) seq[z++] = k0.seq[t];
+        Cand *c = &out[n];
+        if (candOf(c, k0.play, seq, z, k0.aim, 0)) { c->settled = busy ? 0 : k0.settled; c->way = 1; c->x = k0.x; c->xFire = -1; c->xDone = -1; n++; wayOffered++; }
+        break;
+      }
     }
     // (and two on the way: the two most useful the cursor passes in turn, a step aside at most for each)
     for (int q = 0, done2 = 0; q < nu && !done2 && n < cap && k0.nseq + 2 <= MAXLINE; q++) {
