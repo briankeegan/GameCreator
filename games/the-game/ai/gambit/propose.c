@@ -729,13 +729,18 @@ static int32_t zipSpread(int32_t g[][W + 2], int top) {
 static LOCAL Ctx *rbCtx;
 static int readyBuild(const Read *R, Cand *out, int n, int cap) {
   (void)R; readyBuilt = 0; readyBuildWhy = 0;
-  if (decQ.narr <= 0) { readyBuildWhy = 1; return n; }
+  int under = garbageOn(decQ.b);
+  if (decQ.narr <= 0 && !under) { readyBuildWhy = 1; return n; }
   if (clockOut() || n >= cap) { readyBuildWhy = 2; return n; }
   int32_t last = 0; for (int i = 0; i < decQ.narr; i++) last = imax(last, decQ.arr[i].at);
   static Board *st; if (!st) st = nb_new(); if (!st) return n;
-  Board *l0 = landedAll(decQ.b, decQ.arr, decQ.narr, last, st);
-  if (!l0) { readyBuildWhy = 3; return n; }
-  int32_t near0 = nearOf(l0);
+  // (the board the next break is made on: the one the garbage on its way lands on -- or, none on its way or the board lost before it
+  // lands, the board as it stands, its garbage the break's)
+  int landing = decQ.narr > 0;
+  Board *l0 = landing ? landedAll(decQ.b, decQ.arr, decQ.narr, last, st) : 0;
+  if (landing && !l0) { readyBuildWhy = 3; landing = 0; }
+  if (!landing && !under) return n;
+  int32_t near0 = nearOf(landing ? l0 : decQ.b);
   if (near0 <= 1) { readyBuildWhy = 4; return n; }   // (a break a swap away already waits for it)
   Ctx *x = rbCtx = ctxOf(rbCtx);
   int root = rootOf(x, &decQ);
@@ -750,10 +755,13 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
     const Board *b = ensureBoard(x, o);
     if (!b) continue;
     int32_t t = NODE(x, o)->t;
-    Arr left[MAXARR]; int nl = 0;
-    for (int i = 0; i < decQ.narr; i++) { left[nl] = decQ.arr[i]; left[nl].at = imax(0, decQ.arr[i].at - t); nl++; }
-    Board *lb = landedAll(b, left, nl, imax(0, last - t), st);
-    if (!lb) continue;
+    const Board *lb = b;
+    if (landing) {
+      Arr left[MAXARR]; int nl = 0;
+      for (int i = 0; i < decQ.narr; i++) { left[nl] = decQ.arr[i]; left[nl].at = imax(0, decQ.arr[i].at - t); nl++; }
+      lb = landedAll(b, left, nl, imax(0, last - t), st);
+      if (!lb) continue;
+    }
     int32_t g = near0 - nearOf(lb);
     if (g > 0) { ms[ng] = ms[j]; gain[ng] = g; idx[ng] = ng; ng++; }
   }
