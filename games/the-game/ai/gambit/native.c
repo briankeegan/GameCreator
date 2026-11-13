@@ -292,7 +292,6 @@ void gn_rule_name(int i, const char *name) {
   if (i >= 0 && i < MAXRULES) snprintf(ruleNames[i], sizeof ruleNames[i], "%s", name);
   // (the fill rule's name found: its break search's share, answer.c FILL_UNDER_SHARE)
   if (name && name[0] == 'f' && name[1] == 'i' && name[2] == 'l' && name[3] == 'l' && name[4] == 0) fillName = i;
-  { const char *f = "finish them"; int k = 0; while (name && f[k] && name[k] == f[k]) k++; if (name && !f[k] && !name[k]) finishName = i; }
 }
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff) {
   gb_profile(mode, ms, extendMs, width, depth, pool, extendDepth, extendOff, cfgReaction, cfgSwapGap, cfgCursor);
