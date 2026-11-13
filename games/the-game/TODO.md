@@ -43,6 +43,9 @@ narrowed, not dropped.
       - nothing happens for 1-5 s (D, in test);
       - the opener's chain lengths and time to first attack measured on every run, and pushed toward 8+ (shared with G);
       - the opener stays on while the enemy is at row 11+: hand over to finish them at once.
+      - the opener answers garbage: r1143 (javi, lost at 0:17) -- still the opener at 17 s, raised to 52-58 panels, setting up and
+        holding from 0:12 while javi's garbage was on its way; from 0:15.7 one survival move left, then none. A slab due before the
+        opener's chain fires: fire what it has, or break and survive -- never build on a full board into a landing.
 - [x] **Time attack: flatten, raise, chain to 13; danger on the engine's clock; never a sooner death.** On main (0117cb44): median
       19,800 to 27,000, 56/56 over seeds 86 and 87.
 - [x] **The opener ranks by chain length, never by garbage sent.** On main.
