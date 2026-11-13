@@ -336,6 +336,13 @@ static int finishAsked(void) {
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
 // (the lowest garbage row of the decision's board, read once a board: search/break.c lowestG)
 #define GARBAGE_AWAY 4
+// (READIER, rank 1'r: -1 x, 1 y, 0 neither -- a break in reach once the next block lands, else a swap that brings the nearest nearer)
+static int readier(const Judge *x, const Judge *y) {
+  if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return x->readyNext == 1 ? -1 : 1;
+  if (!decF.under) return 0;
+  int gx = x->k.readyGain > 0 && !x->o.dead, gy = y->k.readyGain > 0 && !y->o.dead;
+  return gx == gy ? 0 : gx ? -1 : 1;
+}
 static int awayFromGarbage(const Judge *J) {
   static LOCAL const Board *forB; static LOCAL int32_t forClock = -1, lowG = 0;
   if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || !decQ.b) return 0;
@@ -669,14 +676,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
-  // 1'f. THE NEXT BREAK PUT IN PLACE (the owner: there should always be pieces): under garbage, of two that survive alike, a line that brings
-  // the nearest break nearer (propose.c readyBuild) before one that breaks nothing and meets nothing the mode asks -- the hold included:
-  // the walk is the time the next break is built in
-  if (decF.under && (lx || lostAlike(x, y))) {
-    int gx = x->k.readyGain > 0 && !x->o.dead, gy = y->k.readyGain > 0 && !y->o.dead;
-    if (gx != gy) {
-      const Judge *g = gx ? x : y, *o = gx ? y : x;
-      if (imax(0, brokeSeen(o)) == 0 && !goalLine(o) && !cutsShort(g)) return (cmpKey = __LINE__, (gx ? -1 : 1));
+  // 1'r. READY FOR THE NEXT BLOCK (the owner: there should always be pieces): of two that survive alike, the readier before the other
+  // where it breaks no less and the other meets no goal it misses -- readier is a break in reach once the next block lands (readyNext,
+  // asked where none lives), else, under garbage, a swap that brings the nearest break nearer (propose.c readyBuild), the hold included
+  if (lx || lostAlike(x, y)) {
+    int rx = readier(x, y);
+    if (rx) {
+      const Judge *r = rx < 0 ? x : y, *o = rx < 0 ? y : x;
+      if (imax(0, brokeSeen(r)) >= imax(0, brokeSeen(o)) && !(goalLine(o) && !goalLine(r)) && !cutsShort(r)) return (cmpKey = __LINE__, rx);
     }
   }
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
@@ -688,13 +695,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
       const Judge *f = fx ? x : y, *o = fx ? y : x;
       if (imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f)) && !(goalLine(f) && !goalLine(o)) && (lx || diesAt(o) >= diesAt(f))) return (cmpKey = __LINE__, (fx ? 1 : -1));
     }
-  }
-  // 1'r. READY FOR THE NEXT BLOCK: of two lost alike, neither living, the line that leaves a break in reach once the next block lands
-  // (readyNext) before one that does not and breaks no more garbage now -- a board that cannot break what lands next is the loss
-  // survival's horizon does not reach yet; a break now is never given up for it
-  if (!lx && lostAlike(x, y) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) {
-    const Judge *r = x->readyNext == 1 ? x : y, *o = x->readyNext == 1 ? y : x;
-    if (imax(0, r->apBroke) >= imax(0, o->apBroke)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
   }
   // 1'b. COMBOS ONLY WHERE THE MODE ASKS (the owner): of two that survive alike, a combo the mode does not ask for after a line that makes
   // none and breaks as much garbage -- a combo that breaks more is the break, a combo that breaks no more is the panels of an attack the
@@ -721,7 +721,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = x->back ? x : y, *o = x->back ? y : x;
     if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
   }
-  // 1'f. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
+  // 1'h. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
   // worked where the cursor is, and left only for what survives better or breaks where the near one does not
   // (of two that break garbage, begun nearer is no saving where the nearer walks more for the break -- a swap put in front of the break the
