@@ -722,7 +722,9 @@ static Played playOf(const Read *R, int n) {
   // is gone -- a line that saves it is played now)
   int holdLives = 0;
   for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.dead) { holdLost = lostOf(order[i]); holdLives = !!order[i]->o.lives; }
-  if (P.line && holdLives && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
+  // (once only -- the owner: never idle: a swap the last decision put off is pressed now, or the next plan puts it off again, and again)
+  static int deferredLast;
+  if (P.line && holdLives && !deferredLast && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
       firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
     const Judge *L = P.line;
     Outcome d = outcomeOf(L->k.seq, L->k.nseq, L->settled, 0, L->apAts[1] - rankReact);
@@ -730,6 +732,7 @@ static Played playOf(const Read *R, int n) {
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
   }
+  deferredLast = P.deferred;
   // (THE SECOND HAND -- the owner: set up between moves, never at the cost of the board's life: where the decision is the hold, the next
   // swap toward the eight kept as the target (propose.c twinNextSwap), judged on the engine, is pressed instead -- only where it lives
   // as the hold does or is lost no sooner, breaks the board's chain no shorter, wastes no three and keeps the window's reserve)
