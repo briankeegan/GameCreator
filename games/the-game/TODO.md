@@ -23,8 +23,9 @@ narrowed, not dropped.
       hold ~40% of plays there): read; their fix is C.
 - [ ] **F. Finish them kills a topped enemy.** r1118: Tai at 12 for 1,000+ frames absorbed a 4-, 5- and 3-chain -- attacks timed to
       its stop running out, or too big to absorb. Open.
-- [ ] **G. Time attack: 13-chains on repeat, the score up.** Median 27,000, 56/56 (on main); the owner's method -- flatten, raise to
-      the top, a chain that uses every block, continued a link at a time to 13. Open:
+- [ ] **G. Time attack: a 13-chain, over and over** (the owner). The measure is 13s per game: now 0.2-0.4 (5-12 in 28 games, of
+      about 300 chains each run); median score 27,000, 56/56 (on main). The owner's method -- flatten, raise to the top, a chain that uses
+      every block, continued a link at a time to 13 -- and every chain aimed at 13. Open:
       - chains past 8: the next link found 25-50% of the time -- the panels run out; continue horizontally (the panel-game horizontal
         puzzles: 6 of 7 solved; huge tower #2 not);
       - chains still begun on 24-35 panels: start on a full board;
