@@ -121,14 +121,15 @@ static int readBoard_(Read *R) {
   if (alone >= 0 && alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
   // (the rule: the mode in force, else the first whose `when` the facts hold -- with no opponent to read, the rule asking `enemy.none`;
   // else the first of the rules, so a board with nobody across still plays)
-  // (THE OPENER: in a fight with no mode named, from the game's start until either board tops out -- garbage landed above its top row,
-  // not garbage sent -- the opener's rule, big chains; then the mode the enemy's board picks)
+  // (THE OPENER: in a fight with no mode named, from the game's start until its chain is thrown or either board tops out -- garbage
+  // landed above its top row, not garbage sent -- the opener's rule, big chains; then the mode the enemy's board picks)
   // (the opener named and a mode to follow it -- the profile's `then`, answer.c gb_then: at the top-out the named mode becomes that one,
   // nothing carried let go, as the opener gives way to the enemy's mode in a fight)
-  // (TIME ATTACK OPENS WITH THE OPENER too -- the owner: the same opening with nobody across; with no board across to top out, the opener
-  // is over once its chain is thrown: the board's chain counter at two or more, then ended)
-  if (!theOpp.has && decQ.b->chainCounter >= 2) openerChained = 1;
-  int thrown = !theOpp.has && openerChained && decQ.b->chainCounter == 0;
+  // (THE OPENER IS OVER ONCE ITS CHAIN IS THROWN -- the owner: after it does what it did in the beginning, it moves on to the actual thing,
+  // topping the enemy out: the board's chain counter at two or more, then ended; in a fight and with nobody across alike -- or a board
+  // topped out first)
+  if (decQ.b->chainCounter >= 2) openerChained = 1;
+  int thrown = openerChained && decQ.b->chainCounter == 0;
   if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
