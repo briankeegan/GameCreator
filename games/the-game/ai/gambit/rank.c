@@ -414,6 +414,11 @@ static void markIdle(Judge **a, int n) {
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   double holdLost = H ? lostOf(H) : 0;
   for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H)) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  // (A SET-UP FOR NOTHING -- the owner: no set-ups that build nothing: one whose board holds no attack of the mode's a swap on (aim=none,
+  // search/ideas.c) is idle like any line that does no better than the hold -- the hold is then a zip or a flattening (decide.c, never
+  // idle). The two-column eight is built over several set-ups and is no set-up for nothing; a known count only)
+  for (int i = 0; i < n; i++) if (H && !a[i]->idle && a[i]->k.play == PLAY_SETUP && !a[i]->k.twin && clearsNothing(a[i]) && !beatsHold(a[i], H) &&
+                                   ideasOf(a[i]) == 0) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
