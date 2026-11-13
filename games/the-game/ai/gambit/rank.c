@@ -688,8 +688,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
   // alike, a line that breaks nothing and whose first swap is GARBAGE_AWAY rows or more under the lowest garbage after one that does not
-  // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing
-  if (decF.under && (lx || lostAlike(x, y))) {
+  // go there, breaks as much, meets the mode as much and is lost no sooner -- the walk down and back is the window spent for nothing. Two
+  // moves, never a move and the hold: the hold goes nowhere either
+  if (decF.under && !x->hold && !y->hold && (lx || lostAlike(x, y))) {
     int fx = awayFromGarbage(x), fy = awayFromGarbage(y);
     if (fx != fy) {
       const Judge *f = fx ? x : y, *o = fx ? y : x;
