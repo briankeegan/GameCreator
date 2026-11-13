@@ -46,7 +46,9 @@ static int meets(const Aim *a, Made m) {
 static int fits(const List *L, Made m) {
   if (m.chain > MAXCHAIN) return 0;
   if (m.combo == 0 && m.chain == 0) return 1;
-  if (m.combo <= 3 && m.chain <= 1 && m.broke > 0) return 1;
+  // (a clear that breaks garbage fits whatever its shape -- the board's life first: the list names what a mode attacks with, and of two
+  // breaks alike the one in the mode's shape is ranked first, rank.c)
+  if (m.broke > 0) return 1;
   for (int i = 0; i < L->n; i++) { Aim plain = L->aim[i]; plain.brk = -1; if (meets(&plain, m)) return 1; }
   return 0;
 }
