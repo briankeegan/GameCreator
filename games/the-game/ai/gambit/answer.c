@@ -774,6 +774,22 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
+  // (WHAT A SET-UP IS BUILDING: on the board the played set-up leaves, the biggest attack one swap from firing that meets the mode's list --
+  // c<size> a combo, x<length> a chain -- the list entry it meets, and how many such ideas the board holds; eight: the two-column eight)
+  if (P.line && (P.line->k.play == PLAY_SETUP || P.line->k.play == PLAY_ZIP || P.line->k.play == PLAY_TOWARD || P.line->k.play == PLAY_READY ||
+                 P.line->k.play == PLAY_LEVEL)) {
+    L_s(" aim=");
+    if (P.line->k.twin) L_s("eight");
+    else {
+      ideaNoClock = 1; endNoKeep = 1;
+      const Board *e = P.line->o.dead ? 0 : lineEnd(P.line->k.seq, P.line->k.nseq, P.line->settled);
+      endNoKeep = 0;
+      int ni = e ? ideasOn(e, &R.list) : -1;
+      ideaNoClock = 0;
+      if (ni <= 0 || ideaBestMet < 0) L_s("none");
+      else { if (ideaBest.chain >= 2) { L_s("x"); L_i(ideaBest.chain); } else { L_s("c"); L_i(ideaBest.combo); } L_s(":e"); L_i(ideaBestMet); L_s("/"); L_i(ni); }
+    }
+  }
   // (A RAISE, AND WHY: asked as the opening's (o) or the floor's refill (r), the rows to raise to and the rows short of them, and whether the
   // engine could raise now (1) or a cascade held it (0) -- on every decision a raise was asked)
   if (R.low) { L_s(" raiseFor="); L_s(raiseOpening ? "o" : raiseRefill ? "r" : "-"); L_s(":"); L_i(raiseTo); L_s(":"); L_i(raiseRows); L_s(":"); L_i(R.up ? 1 : 0); }
