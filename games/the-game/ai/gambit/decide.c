@@ -876,8 +876,7 @@ static Played playOf(const Read *R, int n) {
   // (NEVER IDLE -- the owner: had it filled or zipped, it would never have happened: a hold is a zip where a zip that clears nothing, cuts
   // no chain of the board's short and is lost no sooner than the hold; the colours staged a swap apart are the next break's and the next attack's)
   // (only a true hold -- the order put the hold first, nothing deferred: a line waiting for its own swap's moment is a plan, not idle)
-  // (and with no garbage on the board: under it, the board's time is the next break's)
-  if (!P.line && !R->up && !P.wait && !P.deferred && (!P.top || P.top->hold) && !ruleNoEnemy && !R->under) {
+  if (!P.line && !R->up && !P.wait && !P.deferred && (!P.top || P.top->hold) && !ruleNoEnemy) {
     for (int i = 0; i < n; i++) {
       const Judge *z = order[i];
       if (z->k.play != PLAY_ZIP || z->o.dead || taClears(z) || cutsShort(z)) continue;
@@ -885,6 +884,9 @@ static Played playOf(const Read *R, int n) {
       const Judge *h = 0; for (int k = 0; k < n; k++) if (order[k]->k.play == PLAY_HOLD) { h = order[k]; break; }
       if (R->under && h && ((z->o.nearAfter >= 0 && h->o.nearAfter >= 0 && z->o.nearAfter > h->o.nearAfter) ||
                             (z->o.matLeft >= 0 && h->o.matLeft >= 0 && z->o.matLeft < h->o.matLeft))) break;
+      // (and under garbage only with the time to do it and come back: a board within REST of its loss keeps the cursor for the break --
+      // measured: under 120 frames left, a zip played over the hold left the next decision 20 frames less of life; over it, the same)
+      if (R->under && holdDiesOf(n) < REST) break;
       if (diesAt(z) >= holdDiesOf(n)) { P.line = z; idleZips++; }
       break;
     }
