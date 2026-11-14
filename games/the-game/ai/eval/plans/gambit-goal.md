@@ -273,6 +273,8 @@ MERGED (readiness): under garbage only about 43% of landings found a break ready
 
 MERGED (1'g, the hold): the rule that keeps a move near the garbage ranks two moves, never a move against the hold -- it held still for seconds over a cut or a set-up low on the board while the stack neared the top (the factory and combo-storm losses). Seed 86: fill 26/28 (23 the build before), switching 25 (24).
 
+MERGED (holding for nothing): under garbage the input reserve is kept only where some line of the decision breaks garbage -- holding the inputs for a break that is not on the board builds none; and the hold wins on fewer actions only where the move would spend that reserve. Seed 86: finish them 24 (main 24), fill 26 (main 26); holds 28% and 30% of decisions (main 35% and 38%).
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
