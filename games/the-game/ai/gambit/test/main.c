@@ -29,7 +29,7 @@ int gb_front_sim(int frames, int msPerFrame, int mode, int32_t *out);
 int gb_frames(int mr, int mc, int frames, int32_t *out);
 int gb_clock_work(void);
 int gb_switch_check(int games, int frames, int min, int max, int32_t *counts, int *nrules);
-int gb_opening_check(int nbytes, int ms, int32_t *out);
+int gb_opening_check(int nbytes, int ms, int32_t *out); void gb_opening_lower(int on);
 int gb_design_check(int n, int rows, int colours, int ms, unsigned seed, int32_t *out);
 int gb_design_engine(int nbytes, int rows, int colours, int ms, unsigned seed, int32_t *out);
 void gb_design_skill(int on, int ms);
@@ -116,9 +116,18 @@ static int opening(const char *dir) {
   if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
   { snprintf(path, sizeof path, "%s/boards.txt", dir); FILE *o = fopen(path, "r"); int tried = 0, found = 0, lv = 0, most = 0;
     while (o && tried < 6 && fgets(line, sizeof line, o)) {
-      if (strncmp(line, "GAMBITB ", 8)) continue;
-      int narr, n = loadLine(line, &narr); int32_t r[3];
+      if (strncmp(line, "GAMBITB ", 8) && strncmp(line, "GAMBITO ", 8)) continue;
+      int narr, n = loadLine(line, &narr); int32_t r[6];
       if (n < 0 || gb_opening_check(n, 300, r) != 0) continue;
+      printf("  opening: plan of %d set-ups, scored %d cells; played back %d cells; judged chain %d combo %d\n", r[1], r[2], r[3], r[4], r[5]);
+      if (getenv("GC_OPENING_WHOLE")) {
+        int32_t w[6];
+        gb_opening_lower(0);
+        n = loadLine(line, &narr);
+        if (n >= 0 && gb_opening_check(n, 300, w) == 0)
+          printf("  opening, the board whole: plan of %d set-ups, scored %d cells; played back %d cells; judged chain %d combo %d\n", w[1], w[2], w[3], w[4], w[5]);
+        gb_opening_lower(1);
+      }
       tried++; found += r[1] >= 0; lv += r[0]; if (r[2] > most) most = r[2];
     }
     if (o) fclose(o);
