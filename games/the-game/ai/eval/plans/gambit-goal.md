@@ -275,6 +275,10 @@ MERGED (1'g, the hold): the rule that keeps a move near the garbage ranks two mo
 
 MERGED (holding for nothing): under garbage the input reserve is kept only where some line of the decision breaks garbage -- holding the inputs for a break that is not on the board builds none; and the hold wins on fewer actions only where the move would spend that reserve. Seed 86: finish them 24 (main 24), fill 26 (main 26); holds 28% and 30% of decisions (main 35% and 38%).
 
+MERGED (set-ups lost alike): under garbage a set-up or a line toward the next break goes before the hold whenever the two are lost alike -- no longer only where it tops out no sooner by a frame. Seed 86: finish them 24 (main 24), switching 24 (main 23); holds under garbage unchanged (28-29%): the condition seldom decided.
+
+WHAT THE LOSSES ARE (runs 3226-3242, seed 86): floods -- combo storm, factory, large garbage; combo_storm-6 lost 8 of 15. Wins and losses of those patterns are alike on every count kept: time under garbage 73% and 77%, held under garbage 25% and 26%, breaking under garbage 42% and 42%, material under garbage median 36 both. The same game won and lost parts at its second decision (3.4 s): the searches are timed, the runner's speed decides what they find, and the two games are different games from there. What separates them is the end: a break ready after a landing in the last ten seconds 8-18% of the time in losses, 38-43% in wins.
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.
