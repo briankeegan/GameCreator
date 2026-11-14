@@ -779,7 +779,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
       // (of two set-ups: the one that leaves more crossed seams -- a swap finishing two colours at once, the players' 8+ combo)
       if (sx && sy && x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
-      int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy));
+      // (then the fewer actions -- against the hold only where the move spends the reserve: a window that keeps a break's walk either way
+      // buys nothing by holding)
+      int wx = lineWalk(x), wy = lineWalk(y);
+      if (wx != wy && ((!x->hold && !y->hold) || spendsReserve(x->hold ? y : x))) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
     // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
