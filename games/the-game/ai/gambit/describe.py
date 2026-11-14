@@ -6,7 +6,7 @@
 import os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-HEADING = re.compile(r"^  // (\d+'?[a-zA-Z]?\.) (.*)")
+HEADING = re.compile(r"^  // (\d+[a-z]?'{0,2}[a-zA-Z0-9]?\.) (.*)")
 
 def rank_rules(sha=None):
     """line number of each `return (cmpKey = __LINE__` -> the comment just above it, first sentence"""
@@ -26,6 +26,19 @@ def rank_rules(sha=None):
         while j >= 0 and lines[j].strip().startswith('//'):
             block.insert(0, lines[j].strip()[2:].strip())
             j -= 1
+        # (an exception note -- "(and only ...", "(but never ..." -- is not why the key decided: the comment above it, within the same
+        # rule, is)
+        while block and re.match(r'\(?(but|and|or|only) ', block[0]) and j > 0 and not HEADING.match(lines[j + 1]):
+            k = j
+            while k >= 0 and not lines[k].strip().startswith('//') and j - k < 8:
+                k -= 1
+            above = []
+            while k >= 0 and lines[k].strip().startswith('//'):
+                above.insert(0, lines[k].strip()[2:].strip())
+                k -= 1
+            if not above:
+                break
+            block, j = above, k
         text = ' '.join(block).strip()
         text = re.sub(r'^\(|\)$', '', text)
         text = re.split(r'(?<=[a-z0-9)]) -- |: (?=[a-z])', text)[0] if text else ''
@@ -36,6 +49,11 @@ def rank_rules(sha=None):
             if m:
                 head = m.group(1) + ' ' + re.split(r' \(|:| --', m.group(2))[0].strip()
                 break
+        # (a key of its own between two rules -- written at the function's own indent, `  if (...) return`, under a comment of its own --
+        # belongs to no heading above it)
+        own = re.match(r'^  if ', lines[i]) and block and not HEADING.match('  // ' + block[0])
+        if own:
+            head = ''
         if head and re.match(r'(but|and|or) ', text):   # (an exception to the rule, not why it decided)
             text = head
         elif head and text and not text.startswith(head.split(' ')[0]):
