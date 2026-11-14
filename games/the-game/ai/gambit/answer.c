@@ -641,6 +641,14 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (li > 0) { int32_t keep = cmpKey; compareJudged(order[0], order[li]);
       L_s(" holdLate=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[li]->k.play]); L_s(":"); L_i((int32_t)diesAt(order[0])); L_s("/"); L_i(order[li]->o.lives ? -1 : (int32_t)diesAt(order[li]));
       cmpKey = keep; }
+    // (and over the set-up -- a set-up, lineup, line toward a break or nearest the list, level or zip -- whose board is lost latest, lost
+    // no sooner than the hold's, no walk charged: holdSet=kKEY:play:lost/lost:walk)
+    int si = -1;
+    for (int i = 1; i < n; i++) if (setupKind(order[i]) && order[i]->k.nseq && (order[i]->o.lives || diesAt(order[i]) >= diesAt(order[0])) &&
+                                    (si < 0 || order[i]->o.lives || (!order[si]->o.lives && diesAt(order[i]) > diesAt(order[si])))) si = i;
+    if (si > 0) { int32_t keep = cmpKey; compareJudged(order[0], order[si]);
+      L_s(" holdSet=k"); L_i(cmpKey); L_s(":"); L_s(PLAY_NAME[order[si]->k.play]); L_s(":"); L_i((int32_t)diesAt(order[0])); L_s("/"); L_i(order[si]->o.lives ? -1 : (int32_t)diesAt(order[si]));
+      L_s(":"); L_i(lineWalk(order[si])); cmpKey = keep; }
   }
   // (THE MODE PASSED OVER: the line played does not meet the mode's first entry, and a line offered that does lives as it does, or is
   // lost no sooner -- the key that put the line played first, the line's play and the two's losses: goalMiss=kKEY:play:lost/lost.
