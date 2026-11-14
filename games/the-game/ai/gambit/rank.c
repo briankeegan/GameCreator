@@ -495,11 +495,10 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
-#define ALIKE_FAR 5   // (lost this many breaks' time away or more, two lines are lost alike whatever lies between)
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
-  return lo >= rankSave && (tlo == thi || tlo >= ALIKE_FAR || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
+  return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
 }
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
 static int32_t cmpKey;
@@ -725,6 +724,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if ((lx || (lostAlike(x, y) && (lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y)) >= BACK_CALM * rankSave)) && !x->hold && !y->hold && x->back != y->back) {
     const Judge *b = x->back ? x : y, *o = x->back ? y : x;
     if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
+  }
+  // 1'p. UNDER GARBAGE, THE MOST GARBAGE FOR THE INPUTS: of two that survive alike and both break garbage, the one that breaks more of it
+  // for each action it walks -- the board digs at the rate its inputs allow, and a flood outpaces a dig that spends them for less
+  if (decF.under && (lx || lostAlike(x, y)) && x->apBroke > 0 && y->apBroke > 0) {
+    int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x));
+    if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
   }
   // 1'h. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
