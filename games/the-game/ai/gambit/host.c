@@ -10,10 +10,23 @@
 
 // THE INSTANCE'S MEMORY: every block the heap gives is kept, and all of it freed when the instance quits (hostQuit) -- a match is played
 // by an instance of its own (lua/GambitNative.lua), nothing of the last left behind
+// THE CAP: past GC_GAMBIT_HEAP_MB (default 4096) the instance says so in its log and aborts, so the game ends with its log kept rather than
+// taking the runner's memory and the runner with it (a lost runner keeps no log at all).
 static void **heapBlocks; static long heapN, heapCap;
+static unsigned long heapBytes;
 static pthread_mutex_t heapMu = PTHREAD_MUTEX_INITIALIZER;
+void hostLog(const char *s);
+// The bytes the heap has given this instance, in MB
+int hostHeapMB(void) { return (int)(__atomic_load_n(&heapBytes, __ATOMIC_RELAXED) >> 20); }
 void *paHeap(unsigned long n) {
-  void *p = calloc(1, (n + 15) & ~15ul);
+  static unsigned long capBytes;
+  if (!capBytes) { const char *e = getenv("GC_GAMBIT_HEAP_MB"); long mb = e && *e ? atol(e) : 4096; capBytes = (unsigned long)(mb > 0 ? mb : 4096) << 20; }
+  unsigned long sz = (n + 15) & ~15ul;
+  if (__atomic_add_fetch(&heapBytes, sz, __ATOMIC_RELAXED) > capBytes) {
+    char m[160]; snprintf(m, sizeof m, "GAMBITHEAP over the cap: %lu MB held, %lu MB asked, cap %lu MB", heapBytes >> 20, n >> 20, capBytes >> 20);
+    hostLog(m); fprintf(stderr, "%s\n", m); abort();
+  }
+  void *p = calloc(1, sz);
   if (!p) return 0;
   pthread_mutex_lock(&heapMu);
   if (heapN == heapCap) {
@@ -137,7 +150,7 @@ int hostOpenLog(const char *path) { if (!logFile) logFile = fopen(path, "a"); re
 void hostQuit(void) {
   pthread_mutex_lock(&heapMu);
   for (long i = 0; i < heapN; i++) free(heapBlocks[i]);
-  free(heapBlocks); heapBlocks = 0; heapN = heapCap = 0;
+  free(heapBlocks); heapBlocks = 0; heapN = heapCap = 0; heapBytes = 0;
   pthread_mutex_unlock(&heapMu);
   pthread_mutex_lock(&logMu);
   if (logFile) { fclose(logFile); logFile = 0; }
