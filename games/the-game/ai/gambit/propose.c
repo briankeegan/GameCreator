@@ -776,12 +776,8 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
 }
 static int zipLines(const Read *R, Cand *out, int n, int cap) {
   zipOffered = 0;
+  if (R->pop) return n;
   Board *b = decQ.b;
-  // (UNDER GARBAGE, THE ROWS BELOW IT: the owner -- the zippers done before the break is needed, so it is there. The panels at rest under
-  // the lowest garbage are zipped while it lies there and while it pops; the stack's height is the garbage's, not theirs)
-  int lowG = 0;
-  for (int r = 1; r < b->nrows && !lowG; r++) for (int c = 1; c <= W; c++) if (b->p[r][c].f[ISGARBAGE]) { lowG = r; break; }
-  if (R->pop && !lowG) return n;
   static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2];
   int H = imin(gridLen(b) - 2, MAXROWS), top = 0;
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) { g[r][c] = 0; ok[r][c] = 0; }
@@ -791,8 +787,7 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
     if (v != 0) top = r;
     ok[r][c] = v > 0 && v < 8 && f[STATE] == NORMAL && (r == 1 || (cellAt(b, r - 1, c) != 0 && b->p[r - 1][c].f[STATE] == NORMAL));
   }
-  if (lowG) top = imin(top, lowG - 1);
-  else if (top > (b->height ? b->height : 12) - ZIP_ROOM) return n;   // (a stack this high is lowered, not sorted)
+  if (top > (b->height ? b->height : 12) - ZIP_ROOM) return n;   // (a stack this high is lowered, not sorted)
   if (top > b->topCurRow) top = b->topCurRow;
   int32_t base = zipSpread(g, top), mv[ZIPN * 4], gain[ZIPN * 4]; int d[ZIPN * 4], nm = 0;
   for (int r = 1; r <= top; r++) for (int c = 1; c < W; c++) {
