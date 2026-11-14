@@ -462,14 +462,17 @@ static int lineWalk(const Judge *J) {
 // (time attack, the rules' enemy.none) no break is ever needed and no reserve is kept)
 #define EARLIEST_LANDING 151   // (pa-engine.js: GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 staged, GARBAGE_DELAY_LAND_TIME landing)
 static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
+// (under garbage a reserve is kept only for a break some line of the decision makes: with none offered, the inputs kept are for a break
+// that is not there, and the board that holds them builds none -- decide.c sets it before the order is made)
+static int breakOffered = 1;
 static int allowAtNeed(int walk) {
   if (decF.under) return pressAllowance - walk;
   int32_t t = EARLIEST_LANDING;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
   return allowLeftAt(t, walk);
 }
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 || ruleNoEnemy ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 || ruleNoEnemy || (decF.under && !breakOffered) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !(decF.under && !breakOffered) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer

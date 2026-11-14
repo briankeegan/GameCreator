@@ -271,6 +271,8 @@ MERGED (idea326): every level its own timing -- the survival horizon, its rest a
 
 MERGED (readiness): under garbage only about 43% of landings found a break ready, and losses came where several slabs landed unready. propose.c readyBuild offers the one-swap moves that bring the nearest break nearer -- on the board the incoming garbage lands on, or on the board as it stands -- and one rank rule (1'r, READY FOR THE NEXT BLOCK) puts the readier of two moves first: a break in reach once the next block lands, else, under garbage, a swap that brings the nearest break nearer, the hold included; it replaces the separate readiness rule it was built beside. Fill's aim never empties: where the enemy has no room for a three-chain, fill still plays a three-chain (an empty list let combos through). Seed 86: finish them 26/27 (one runner shut down; main 23-25 that afternoon), switching 24 (main 20, 21, 22), fill 23 (main 20, 21, 22, 22); readiness swaps played about 200 times a run (45 before the rank rule).
 
+MERGED (1'g, the hold): the rule that keeps a move near the garbage ranks two moves, never a move against the hold -- it held still for seconds over a cut or a set-up low on the board while the stack neared the top (the factory and combo-storm losses). Seed 86: fill 26/28 (23 the build before), switching 25 (24).
+
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
 Those runs were not at level 10: nothing set the level, so the client's default, 5 (51 health), was played. `7ab7a861` sets it.

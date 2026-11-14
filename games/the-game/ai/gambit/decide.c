@@ -442,6 +442,7 @@ static int ranked(const Read *R, const Found *S) {
   if (rescue) { clockDue = rescueDue; clockShare = rescueShare; rescues++; }
   order[n] = H; n++;
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
+  breakOffered = 0; for (int i = 0; i < n && !breakOffered; i++) breakOffered = order[i]->apBroke > 0;
   sortJudged(order, n);
   // (THE ROUTE: the best lines that make something, two on columns apart made one line, judged whole and ranked with the rest)
   { int n0 = n; n = routeJudged(R, n); if (n > n0) sortJudged(order, n); }
