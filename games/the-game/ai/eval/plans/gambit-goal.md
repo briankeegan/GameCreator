@@ -215,20 +215,6 @@ where it meets the new mode's first entry or breaks garbage.
   once: it plays nothing.
 - **Bot fights and deploys are the owner's**: not this work's.
 
-## How -- infra, not patches
-
-- **Gambit is its own program, in C**, in `games/the-game/ai/gambit/` -- its layout: `gambit/README.md`.
-
-- **One of each**: one judge (`judge.c`, `outcome.c`), one ranking (`rank.c`), one shared line check every play keeps its lines
-  through (`lineFits`), one set of rules handed to every search (`rules.c`), one clock (`core/clock.h`: in the client, the game's own
-  frame).
-- **When something fails, find where two things measure the same fact differently, and make them one.**
-- **The true test is that things survive**: the 24 games. A test is kept only where it holds something the games cannot.
-- **Each change is measured once on the real game**, all 24, and reported: survived per mode and the frames lost at; the combos and
-  chains made; the budgets (frames over, keys dropped, late moves); the loss report (`gambit_losses.js`), the reach report and the turn
-  (`gambit_reach.js`) -- written by the run on Actions; and the time it finishes, in ET on the 24-hour clock.
-- Commit and push every change. Never rerun code that has not changed.
-
 ## Where it stands
 
 A SET is the 28 games a panel seed base gives (gambit-24.yml `seed`: 3 garbage patterns of 8 games and endless's 4, each its own panels) -- set 86 is those 28 games every run. A mode is measured on a set, never on a single game.
@@ -277,7 +263,7 @@ MERGED (holding for nothing): under garbage the input reserve is kept only where
 
 MERGED (set-ups lost alike): under garbage a set-up or a line toward the next break goes before the hold whenever the two are lost alike -- no longer only where it tops out no sooner by a frame. Seed 86: finish them 24 (main 24), switching 24 (main 23); holds under garbage unchanged (28-29%): the condition seldom decided.
 
-WHAT THE LOSSES ARE (runs 3226-3242, seed 86): floods -- combo storm, factory, large garbage; combo_storm-6 lost 8 of 15. Wins and losses of those patterns are alike on every count kept: time under garbage 73% and 77%, held under garbage 25% and 26%, breaking under garbage 42% and 42%, material under garbage median 36 both. The same game won and lost parts at its second decision (3.4 s): the searches are timed, the runner's speed decides what they find, and the two games are different games from there. What separates them is the end: a break ready after a landing in the last ten seconds 8-18% of the time in losses, 38-43% in wins. NOT MERGED (lost alike from five breaks' time, rank.c lostAlike, three on main): finish them 27 and 24, fill 25, switching 22 -- 98 of 112, main's runs beside it 98. NOT MERGED (under garbage, of two breaks lost alike, the more garbage for each action before FOCUS): finish them 23, fill 25 (main 24, 26); garbage cells per input 0.94 and 0.97, main's 0.94 and 0.96 -- the order does not change what a dig gets for its inputs.
+WHAT THE LOSSES ARE (runs 3226-3242, seed 86): floods -- combo storm, factory, large garbage; combo_storm-6 lost 8 of 15. Wins and losses of those patterns are alike on every count kept: time under garbage 73% and 77%, held under garbage 25% and 26%, breaking under garbage 42% and 42%, material under garbage median 36 both. The same game won and lost parts at its second decision (3.4 s): the searches are timed, the runner's speed decides what they find, and the two games are different games from there. What separates them is the end: a break ready after a landing in the last ten seconds 8-18% of the time in losses, 38-43% in wins. NOT MERGED (lost alike from five breaks' time, rank.c lostAlike, three on main): finish them 27 and 24, fill 25, switching 22 -- 98 of 112, main's runs beside it 98. NOT MERGED (under garbage, of two breaks lost alike, the more garbage for each action before FOCUS): finish them 23, fill 25 (main 24, 26); garbage cells per input 0.94 and 0.97, main's 0.94 and 0.96 -- the order does not change what a dig gets for its inputs. NOT MERGED (1'' -- the set-up, zip and level before the hold -- from the slab told of, not only landed): finish them 25 of 27, fill 25 (main 24, 25-26); before a landing the hold 24-36% and set-ups 7%, as main: nearly every decision before a landing is on a board lost inside eight seconds unless a break comes, where the survival keys decide before 1'' is reached.
 
 What is done next, and in what order: `plans/gambit-next.md` -- the one plan; the infra under it (threads, intentions, the schedule, the shape math, the warm start): `plans/gambit-infra.md`.
 
