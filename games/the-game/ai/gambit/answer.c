@@ -757,7 +757,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
   }
   // (WHAT EACH SWAP OF THE LINE PLAYED DOES: the line judged again without it -- n nothing lost without it (it does nothing), else what
-  // is lost: Lf the board lost f frames sooner, bN N garbage cells fewer broken, cN a chain N links shorter, d the board dies; ? the clock
+  // is lost: Lf the board lost f frames sooner, bN N garbage cells fewer broken, cN a chain N links shorter, kN a combo N panels smaller,
+  // rN the next break N swaps farther once the line is played, d the board dies; ? the clock
   // left no time to ask. Read off the judge alone: nothing here changes the move)
   if (top && !top->hold && top->k.nseq >= 2 && top->k.nseq <= MAXLINE) {
     static Judge pj; int32_t keepKey = cmpKey, keepDrop = lastDrop;
@@ -773,6 +774,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       else if (!pj.o.lives && (top->o.lives || diesAt(&pj) < diesAt(top))) { L_s("L"); L_i(top->o.lives ? -1 : (int64_t)(diesAt(top) - diesAt(&pj))); any = 1; }
       if (imax(0, pj.apBroke) < imax(0, top->apBroke)) { L_s("b"); L_i(imax(0, top->apBroke) - imax(0, pj.apBroke)); any = 1; }
       if (pj.apChain < top->apChain) { L_s("c"); L_i(top->apChain - pj.apChain); any = 1; }
+      if (pj.apCombo < top->apCombo) { L_s("k"); L_i(top->apCombo - pj.apCombo); any = 1; }
+      if (top->o.nearAfter >= 0 && pj.o.nearAfter > top->o.nearAfter) { L_s("r"); L_i(pj.o.nearAfter - top->o.nearAfter); any = 1; }
       if (!any) L_s("n");
     }
     cmpKey = keepKey; lastDrop = keepDrop;
