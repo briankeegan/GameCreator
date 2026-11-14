@@ -725,12 +725,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *b = x->back ? x : y, *o = x->back ? y : x;
     if (imax(0, o->apBroke) >= imax(0, b->apBroke)) return (cmpKey = __LINE__, (x->back ? 1 : -1));
   }
-  // 1'p. UNDER GARBAGE, THE MOST GARBAGE FOR THE INPUTS: of two that survive alike and both break garbage, the one that breaks more of it
-  // for each action it walks -- the board digs at the rate its inputs allow, and a flood outpaces a dig that spends them for less
-  if (decF.under && (lx || lostAlike(x, y)) && x->apBroke > 0 && y->apBroke > 0) {
-    int64_t px = (int64_t)x->apBroke * imax(1, lineWalk(y)), py = (int64_t)y->apBroke * imax(1, lineWalk(x));
-    if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
-  }
   // 1'h. FOCUS (the owner: precise, efficient -- the cursor kept where the work is): of two that survive alike and both break garbage or
   // both do not, the one begun nearer the cursor -- within FOCUS_NEAR cells, then short of FOCUS_FAR, then farther: the board is
   // worked where the cursor is, and left only for what survives better or breaks where the near one does not
@@ -753,8 +747,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
-  // and the rest wait for it to give some back
-  if (decF.under && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
+  // and the rest wait for it to give some back. Garbage on its way counts as garbage on the board (the owner: set-ups ready and the
+  // zippers done before it lands, so a break is there when it does)
+  if ((decF.under || decQ.narr > 0) && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int bx = breaksFirst(x, lx), by = breaksFirst(y, lx);
     // (but not over the mode's first entry thrown where the break meets none of it: the mode is played under garbage too -- the goal
     // decides between them, 1b)
