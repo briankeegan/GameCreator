@@ -16,10 +16,10 @@ local here = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$")
 local G = dofile(here .. "/GambitNative.lua")
 
 local MODE, FRAMES, SEED = arg[1] or "factory", tonumber(arg[2]) or 600, tonumber(arg[3]) or 1
-local SIZES = { combo_storm = { 4, 1 }, factory = { 6, 2 }, large_garbage = { 6, 12 } }
+local SIZES = { combo_storm = { 4, 1 }, factory = { 6, 2 }, large_garbage = { 6, 12 }, endless = { 0, 0 } }   -- (endless: nothing sent, the stack's own rise)
 local size = assert(SIZES[MODE], "check: no mode " .. tostring(MODE))
 local patterns = {}
-for i = 1, 50 do patterns[#patterns + 1] = { width = size[1], height = size[2], startTime = i, metal = false, chain = false, endsChain = false } end
+for i = 1, 50 do patterns[#patterns + 1] = { width = math.max(size[1], 1), height = math.max(size[2], 1), startTime = size[1] > 0 and i or 1e9 + i, metal = false, chain = false, endsChain = false } end
 local mode = GameModes.getPreset(GameModes.IDs.ONE_PLAYER_TRAINING)
 local match = Match(GeneratorSource(SEED, true), mode.matchRules)
 local a = match:createStackWithSettings(LevelPresets.getModern(tonumber(os.getenv("PA_LEVEL")) or 11), true, "controller")   -- (the level the games play)

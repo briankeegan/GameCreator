@@ -70,7 +70,7 @@ static int extSwaps(Ctx *x, int n, int32_t *ms) {
   }
   return m;
 }
-static void extend(const Question *q, const ExtOpts *o, Ext *E) {
+static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
   memset(E, 0, sizeof *E);
   double t0 = nowMs(), shareOld = clockShareBegin(t0 + o->ms);
   Ctx *x = extCtx = ctxOf(extCtx);
@@ -170,3 +170,5 @@ static void extend(const Question *q, const ExtOpts *o, Ext *E) {
   E->ms = nowMs() - t0;
   clockShareEnd(shareOld);
 }
+// (its boards let go once it has answered: every thread that searches has a context of its own, and a tree held is thousands of boards)
+static void extend(const Question *q, const ExtOpts *o, Ext *E) { extendIn(q, o, E); if (extCtx) ns_reset(extCtx); }

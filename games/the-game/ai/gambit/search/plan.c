@@ -133,7 +133,7 @@ static int readyAfter(Ctx *x, int n, int32_t readyAt) {
   return any;
 }
 
-static void plan(const Question *q, const PlanOpts *o, Plan *P) {
+static void planIn(const Question *q, const PlanOpts *o, Plan *P) {
   memset(P, 0, sizeof *P);
   double t0 = nowMs(), shareOld = clockShareBegin(t0 + o->ms);
   Ctx *x = planCtx = ctxOf(planCtx);
@@ -346,6 +346,8 @@ static void plan(const Question *q, const PlanOpts *o, Plan *P) {
   clockShareEnd(shareOld);
   #undef BROKE_OF
 }
+// (its boards let go once it has answered: every thread that searches has a context of its own, and a tree held is thousands of boards)
+static void plan(const Question *q, const PlanOpts *o, Plan *P) { planIn(q, o, P); if (planCtx) ns_reset(planCtx); }
 
 // ---- for a host's check: the planner on the question set (gb_question), the list set (gb_list), its numbers given; back into the io:
 // per entry of the list whether a line meets it, its swaps and chain, then the nearest line's near and chain, and the planner's ms
