@@ -598,7 +598,7 @@ static int convertLines(const Read *R, Cand *out, int n, int cap) {
 #define WAY_MIN 3     // the cursor's actions to a line's first swap before its way is searched
 #define WAY_PER 2     // lines on the way, a line
 #define WAY_LINES 6   // the lines whose way is searched, in the order offered
-static int32_t readyBuilt, readyBuildWhy;   // (swaps offered for the slab on its way, and why none: 1 none coming, 2 the clock, 3 lost before it lands, 4 a break a swap away already, 5 no swap brings one nearer -- the log's)
+static int32_t readyBuilt, readyBuildWhy, readyPairs;   // (swaps offered for the slab on its way, and why none: 1 none coming, 2 the clock, 3 lost before it lands, 4 a break a swap away already, 5 no swap brings one nearer -- the log's)
 static int32_t wayOffered, wayPlayed;   // (the lines on the way this decision offered, and whether one was played: the log's)
 static int32_t pairOffered;              // (the lines firing two ideas this decision offered: the log's)
 static int waySharesCell(int32_t a, int32_t b) { return CR(a) == CR(b) && iabs(CC(a) - CC(b)) <= 1; }
@@ -728,7 +728,7 @@ static int32_t zipSpread(int32_t g[][W + 2], int top) {
 #define READY_BUILD 3
 static LOCAL Ctx *rbCtx;
 static int readyBuild(const Read *R, Cand *out, int n, int cap) {
-  (void)R; readyBuilt = 0; readyBuildWhy = 0;
+  (void)R; readyBuilt = 0; readyBuildWhy = 0; readyPairs = 0;
   int under = garbageOn(decQ.b);
   if (decQ.narr <= 0 && !under) { readyBuildWhy = 1; return n; }
   if (clockOut() || n >= cap) { readyBuildWhy = 2; return n; }
@@ -746,6 +746,9 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
   int root = rootOf(x, &decQ);
   if (root < 0) return n;
   static int32_t ms[MAXROWS * W], par[MAXROWS * W], gain[MAXROWS * W], idx[MAXROWS * W], tmp[MAXROWS * W];
+  static int32_t kidN[MAXROWS * W], kidM[MAXROWS * W], kidNear[MAXROWS * W], kidI[MAXROWS * W], ms2[MAXROWS * W], par2[MAXROWS * W];
+  static int32_t pairA[READY_BUILD * 4], pairB[READY_BUILD * 4], pairG[READY_BUILD * 4], pairI[READY_BUILD * 4];
+  int nk = 0; readyPairs = 0;
   int nm = swapsOfNode(x, root, ms), ng = 0;
   for (int j = 0; j < nm; j++) par[j] = root;
   stepBatch(x, par, ms, MK_SETTLE, nm);
@@ -762,11 +765,49 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
       lb = landedAll(b, left, nl, imax(0, last - t), st);
       if (!lb) continue;
     }
-    int32_t g = near0 - nearOf(lb);
+    int32_t na = nearOf(lb), g = near0 - na;
+    if (nk < MAXROWS * W) { kidN[nk] = o; kidM[nk] = ms[j]; kidNear[nk] = na; kidI[nk] = nk; nk++; }
     if (g > 0) { ms[ng] = ms[j]; gain[ng] = g; idx[ng] = ng; ng++; }
   }
   batchDone();
-  if (!ng) readyBuildWhy = 5;
+  // (TWO SWAPS, where one brings it no nearer -- the owner: do one, wait, set up another: the wait before the slab lands is time for a
+  // set-up of two. Each swap's board, the ones the break is nearest on first, given each of its own swaps, settled and the garbage landed
+  // as before; a pair that brings the break nearer is offered as a line, most saved first. The clock decides how many are tried.)
+  int np2 = 0;
+  if (!ng && nk) {
+    int32_t keyN[MAXROWS * W]; for (int i = 0; i < nk; i++) keyN[i] = -kidNear[i];
+    sortByKeyDesc(kidI, nk, keyN, tmp);
+    for (int q = 0; q < nk && !clockOut() && np2 < READY_BUILD * 4; q++) {
+      int o1 = kidI[q], p1 = kidN[o1];
+      if (!liveNode(x, p1)) continue;
+      int nm2 = swapsOfNode(x, p1, ms2);
+      for (int j = 0; j < nm2; j++) par2[j] = p1;
+      stepBatch(x, par2, ms2, MK_SETTLE, nm2);
+      for (int j = 0; j < nm2 && !clockOut(); j++) {
+        int o = stepTake(x, j, p1, MK_SETTLE, ms2[j]);
+        if (!liveNode(x, o)) continue;
+        const Board *b = ensureBoard(x, o);
+        if (!b) continue;
+        int32_t t = NODE(x, o)->t;
+        const Board *lb = b;
+        if (landing) {
+          Arr left[MAXARR]; int nl = 0;
+          for (int i = 0; i < decQ.narr; i++) { left[nl] = decQ.arr[i]; left[nl].at = imax(0, decQ.arr[i].at - t); nl++; }
+          lb = landedAll(b, left, nl, imax(0, last - t), st);
+          if (!lb) continue;
+        }
+        int32_t g = near0 - nearOf(lb);
+        if (g > 0 && np2 < READY_BUILD * 4) { pairA[np2] = kidM[o1]; pairB[np2] = ms2[j]; pairG[np2] = g; pairI[np2] = np2; np2++; }
+      }
+      batchDone();
+    }
+    sortByKeyDesc(pairI, np2, pairG, tmp);
+    for (int q = 0; q < np2 && q < READY_BUILD && n < cap; q++) {
+      int32_t s2[2] = { pairA[pairI[q]], pairB[pairI[q]] };
+      if (candOf(&out[n], PLAY_READY, s2, 2, -1, 0)) { out[n].settled = 1; out[n].readyGain = pairG[pairI[q]]; n++; readyBuilt++; readyPairs++; }
+    }
+  }
+  if (!ng && !readyPairs) readyBuildWhy = 5;
   sortByKeyDesc(idx, ng, gain, tmp);
   for (int q = 0; q < ng && q < READY_BUILD && n < cap; q++) {
     int32_t s1 = ms[idx[q]];
