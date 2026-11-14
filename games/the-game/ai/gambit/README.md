@@ -19,4 +19,7 @@ differ. Its only imports are the host's abort flag and clock (`abort_poll`, `clo
   (the heap, clock, lock, thread and log). `lua/GambitNative.lua` writes the stack into the engine (`lua/board.lua`, as the player sees
   it) and presses what comes back; `words.js` hands it the profile as numbers; `lua/check.lua` checks the hookup headless.
 
+- Reading a run's logs (no engine): `describe.py` (a rank key's line to its rule), `turn.py` (each lost game's last decision with a
+  line living or a break offered), `landing.py` (each landing: a break offered after it or not, and what was played before it).
+
 What survives is the test: `gambit-24.yml` plays 24 Training games and reports them (`plans/gambit-goal.md`).
