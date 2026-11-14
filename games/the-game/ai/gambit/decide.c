@@ -350,6 +350,7 @@ static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t backTrimmed;   // (the line played judged again without its first swap, a swap back -- the log's)
+static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t noopTrimmed;   // (the line played judged again without a swap and its swap back: the log's)
@@ -750,14 +751,23 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0;
+  chainUp = chainNow = chainAfter = 0; opGrew = 0;
+  int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut();
+  // (THE OPENING GROWN WHILE THE STACK IS RAISED: nothing on its way and the raise asked, the plan is grown in the decision's time and
+  // nothing pressed -- the first decision free of the raise has the plan the raise's decisions grew, kept through the rows risen)
+  if (opWants && !opLineOn && R->up && decQ.narr == 0) {
+    double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
+    double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * 0.7; if (grow < 2) grow = 2;
+    opGrowMs = (int32_t)grow; readyStop();
+    { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
+    opGrew = 2; clockDue = keepDue; clockShare = keepShare;
+  }
   // (the plan takes the move whenever the move chosen lives and breaks nothing -- a level, a set-up, a line in progress, the hold -- not
   // only where the hold was chosen: the opening's whole time is the plan's)
   const Judge *opTop = P.line ? P.line : P.top;
   // (the planned opener in progress goes on: no plan is grown or begun over it -- the carry presses it, and survival alone puts it down)
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
-  if (!opLineOn && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait && !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 &&
-      theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut()) {
+  if (opWants && !opLineOn && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
     // pressed while the plan's chain is longer than the chain of the trigger the board has now, its set-ups can be pressed before the next block lands and
@@ -768,6 +778,7 @@ static Played playOf(const Read *R, int n) {
     // (the pool taken back from the readiness beside the decision, which would search on past it: the beam is scored on every thread)
     readyStop();
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
+    opGrew = 1;
     int32_t trig = 0, trigCh = 0;
     triggerSendOf(&decQ, &trig, &trigCh);
     chainNow = trigCh; chainAfter = opHave ? opBest.sent : 0;
