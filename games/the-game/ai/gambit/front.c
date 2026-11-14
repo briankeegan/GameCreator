@@ -671,21 +671,31 @@ static int32_t lineDue(void) { return imax(F.nextAt, F.lineAt[0]); }
 // (a line it cannot press on is dropped, and the run's log says why)
 // (THE LINE THE BOARD DROPPED: a line whose next swap has no key left planned once a board not foreseen cleared the plan is marked,
 // and if it then ends not played out it ends as END_DROPPED -- whatever the next answer says, the board took it, not the answer)
+static int32_t swapsPlanned(const LineRec *r);
 static void boardTookLine(void) {
   LineRec *r = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
-  if (!r || r->why || r->pressed >= r->total) return;
-  for (int i = 0; i < PLANN; i++) if (F.planAt[i] != NUL && F.plan[i].swap && F.plan[i].lid == r->id) return;
+  if (!r || r->why || r->pressed >= r->total || swapsPlanned(r)) return;
   r->dropped = 1;
+}
+// (A LINE'S SWAPS STILL COMING: those whose keys are planned and not yet pressed -- an answer comes ahead of the frame it is for, and the
+// line before it is ended while its last keys are still to press)
+static int32_t swapsPlanned(const LineRec *r) {
+  uint32_t seen = 0;
+  for (int i = 0; i < PLANN; i++) if (F.planAt[i] != NUL && F.plan[i].swap && F.plan[i].lid == r->id && F.plan[i].idx < 32) seen |= 1u << F.plan[i].idx;
+  int32_t n = 0; while (seen) { n += seen & 1; seen >>= 1; }
+  return n;
 }
 static void lineEnds(int32_t why) {
   LineRec *r = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
   if (r && !r->why) {
     r->why = why > 0 && why < NEND ? why : END_NOTCARRIED;
-    if (r->why != END_ON && r->dropped && r->pressed < r->total) r->why = END_DROPPED;
-    if (r->why != END_ON && r->pressed < r->total) F.st.actsLost[r->why] += r->acts;
+    int32_t done = r->pressed + swapsPlanned(r);
+    if (r->why != END_ON && r->dropped && done < r->total) r->why = END_DROPPED;
+    if (r->why != END_ON && done < r->total) F.st.actsLost[r->why] += r->acts;
     // (THE LINE NOT PLAYED OUT, one line each (GAMBITE): the frame, what ended it, its swaps pressed of its total, the actions charged
-    // to it, those it took over from the line it carried on, and its kind -- the actions of its own are the walk spent on it alone)
-    if (r->why != END_ON && r->pressed < r->total) { char l[120]; snprintf(l, sizeof l, "GAMBITE %d %d %d/%d %d %d", F.now, r->why, r->pressed, r->total, r->acts, r->inh); flog(l); }
+    // to it, those it took over from the line it carried on, and its kind -- the actions of its own are the walk spent on it alone. A
+    // line whose swaps not pressed are all still planned is played out)
+    if (r->why != END_ON && done < r->total) { char l[120]; snprintf(l, sizeof l, "GAMBITE %d %d %d/%d %d %d", F.now, r->why, r->pressed, r->total, r->acts, r->inh); flog(l); }
   }
 }
 static int lineDropped(int32_t due, const char *why, int32_t code) {
