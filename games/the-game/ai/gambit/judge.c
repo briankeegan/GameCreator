@@ -42,6 +42,7 @@ typedef struct {
                                 // the board left alone throws
   int32_t dropAt;               // the frame garbage can next drop once the line is over
   int32_t dead, deadAt, done, fire, nats, ats[MAXLINE];
+  int32_t risen[MAXLINE];         // the rows the stack has risen, from the root, by the frame each swap is pressed: its row less this is its row on the root's board
   int32_t lostAt;               // FOREVER, a frame, or NOT_ASKED
   int32_t ready;                // 1, 0, or NOT_ASKED
   int32_t readyLine[MAXLINE], readyN; // the swaps the readiness found (why), as r * 8 + c
@@ -346,12 +347,20 @@ static int32_t seamsOf(const Board *b) {
 #undef SC
   return n;
 }
+// (the rows a node's board has risen since the root's: the row the root's panel `id` is in now, less 1 -- 0 where it is gone)
+static int risenTo(Ctx *x, int node, int32_t id) {
+  const Board *b = id == NUL ? 0 : ensureBoard(x, node);
+  for (int r = 1; b && r < b->nrows; r++) for (int c = 1; c <= W; c++) if (b->p[r][c].f[ID] == id) return r - 1;
+  return 0;
+}
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
   j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->noops = 0; j->sames = 0;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
+  // (a bottom-row panel of the root's board, found again on each board a swap is pressed from: the rows risen by then)
+  int32_t rid = NUL; { const Board *rb = ensureBoard(x, root); for (int c = 1; rb && c <= W && rid == NUL; c++) if (rb->nrows > 1 && rb->p[1][c].f[ID] > 0) rid = rb->p[1][c].f[ID]; }
   int base = settleOf(x, root);
   int32_t baseChain = 0, baseCombo = 0, baseBroke = 0;
   Stats bs;
@@ -395,6 +404,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       spent += acts;
     }
     int kind = last || o->settled ? MK_SETTLE : MK_SWAP, out;
+    if (last && k < MAXLINE) j->risen[k] = risenTo(x, n, rid);
     if (last) out = step(x, n, kind, mr, mc, 0);
     else {
       // (pressed as the frame loop presses it, core/nodes.h pressWalk: a swap whose pair still moves is walked to from the first frame its
@@ -419,7 +429,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
             if (k < 64 && fa[COLOR] > 0 && fa[COLOR] == fb[COLOR] && !fa[ISGARBAGE] && !fb[ISGARBAGE]) j->sames |= (int64_t)1 << k; }
           prevA = a; prevB = b;
         } else prevA = prevB = NUL; }
-      if (j->nats < MAXLINE) j->ats[j->nats++] = NODE(x, n)->t;
+      if (j->nats < MAXLINE) { j->risen[j->nats] = risenTo(x, n, rid); j->ats[j->nats++] = NODE(x, n)->t; }
     }
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
     if (out == STEP_NULL && clockOut()) { j->late = 1; break; }

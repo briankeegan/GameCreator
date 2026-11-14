@@ -939,8 +939,12 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
   if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carrySkip = 5; carryClr = 5; return; }
+  // (each swap kept in the rows of the board it was begun on: a swap the judge pressed after the stack rose is named in the rows of the
+  // board it is pressed on, so the rows risen by then are taken off, and only the rows risen since the line began beyond those are put
+  // back when it is carried on -- a rise foreseen is never counted twice)
+  for (int i = first; i < k->k.nseq; i++) if (i < MAXLINE && CR(k->k.seq[i]) - k->o.j.risen[i] < 0) { carrySkip = 5; carryClr = 5; return; }
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
-  for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = k->k.seq[i];
+  for (int i = first; i < k->k.nseq; i++) theCarry.rest[i - first] = (CR(k->k.seq[i]) - (i < MAXLINE ? k->o.j.risen[i] : 0)) * 8 + CC(k->k.seq[i]);
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
   theCarry.made = (Made){ k->apCombo, k->apChain, k->apBroke, k->k.x.cells };
   carriedSunk = lineWalk(k);
