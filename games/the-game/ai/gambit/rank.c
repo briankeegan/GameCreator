@@ -1078,4 +1078,10 @@ static void sortJudged(Judge **a, int n) {
       while (j < hi) tmp[k++] = a[j++];
       for (k = lo; k < hi; k++) a[k] = tmp[k];
     }
+  // THE HOLD IS PLAYED ONLY OVER LINES IT BEATS: the order is not transitive (the hold outlasts a cut, the cut goes before a set-up, the
+  // set-up before the hold), so the merge can put the hold first over a line the order itself puts before it. The first such line
+  // goes first instead -- it is put before the hold by the same keys, survival among them
+  if (n > 1 && a[0]->hold)
+    for (int i = 1; i < n; i++)
+      if (!a[i]->hold && compareJudged(a[i], a[0]) < 0) { Judge *b = a[i]; for (int k = i; k > 0; k--) a[k] = a[k - 1]; a[0] = b; break; }
 }
