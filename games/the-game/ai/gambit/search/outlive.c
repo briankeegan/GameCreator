@@ -26,7 +26,7 @@ static int outBetter(int32_t l, int32_t a, int32_t ol, int32_t oa) {
   double v = l - (double)OUT_ACT * a, ov = ol - (double)OUT_ACT * oa;
   return v > ov || (v == ov && a < oa);
 }
-static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
+static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best, over; memset(&best, 0, sizeof best); memset(&over, 0, sizeof over);
   double t0 = nowMs(), perStep = 0;
   Ctx *x = outCtx = ctxOf(outCtx);
@@ -97,6 +97,8 @@ static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, 
   if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt + OUT_LATER))) return over;
   return best;
 }
+// (its boards let go once it has answered: every thread that searches has a context of its own, and a tree held is thousands of boards)
+static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) { Outlived r = outliveIn(q, to, rest, ms, depth, width); if (outCtx) ns_reset(outCtx); return r; }
 // THE SAVE (the owner: death is never an option): where no line held to the list lives, the search again in the time left with its steps
 // free of the list -- a plain three is the only move a board topped by its own panels has. Its line is offered only; the decision's no
 // wasted three (decide.c) plays it only where every line within the rule is lost and the save, asked, outlasts them
@@ -112,10 +114,12 @@ static Outlived outliveSave(const Question *q, int32_t to, int32_t rest, double 
   if (f.set && f.nseq && (!best.set || (f.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && f.lostAt > best.lostAt))) return f;
   return best;
 }
-static int32_t diesIn(const Question *q, double horizon) {
+static int32_t diesInOn(const Question *q, double horizon) {
   Ctx *x = outCtx = ctxOf(outCtx);
   int root = rootOf(x, q);
   if (root < 0) return 0;
   int32_t h = (int32_t)horizon; if (h < horizon) h++;
   return lostAlone(x, root, imax(1, h));
 }
+// (its boards let go once it has answered: every thread that searches has a context of its own, and a tree held is thousands of boards)
+static int32_t diesIn(const Question *q, double horizon) { int32_t r = diesInOn(q, horizon); if (outCtx) ns_reset(outCtx); return r; }

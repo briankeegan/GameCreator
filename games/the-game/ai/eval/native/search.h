@@ -951,7 +951,7 @@ static void finishPhase(Ctx *x) {
   x->later.n = 0;
   // (under the spares' lock: a thread outside the pool -- Gambit's search between decisions -- may be taking one now)
   while (__atomic_exchange_n(&spareLock, 1, __ATOMIC_ACQUIRE)) {}
-  while (spareOf) { Board *b = spareOf; spareOf = *(Board **)b; spareCount--; *(Board **)b = freeOf(0); freeOf(0) = b; freeCount(0)++; }
+  while (spareOf && freeCount(0) < FREE_CAP) { Board *b = spareOf; spareOf = *(Board **)b; spareCount--; *(Board **)b = freeOf(0); freeOf(0) = b; freeCount(0)++; }
   __atomic_store_n(&spareLock, 0, __ATOMIC_RELEASE);
   if (x->n > x->cap) x->n = x->cap;
 }
