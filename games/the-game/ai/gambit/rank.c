@@ -495,8 +495,10 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
+// (LOST ALIKE on the frame each board is lost (diesAt), no walk charged: the walk is the order's preference for the nearer, and charged
+// here a set-up lost on the hold's own frame was lost sooner than it)
 static int lostAlike(const Judge *x, const Judge *y) {
-  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+  double dx = diesAt(x), dy = diesAt(y), lo = dx < dy ? dx : dy, hi = dx < dy ? dy : dx;
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
   return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
 }

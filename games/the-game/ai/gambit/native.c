@@ -21,6 +21,7 @@ int hostWorkers(void *(*fn)(void *), int most);
 int hostIdleThread(void *(*fn)(void *), const char *name);
 int hostOpenLog(const char *path);
 void hostLog(const char *s);
+int hostHeapMB(void);
 int snprintf(char *s, unsigned long n, const char *fmt, ...);
 int strncmp(const char *a, const char *b, unsigned long n);
 char *strchr(const char *s, int c);
@@ -191,7 +192,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
       s = at + 2; while (*s >= '0' && *s <= '9') s++;
     }
   }
-  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0);
+  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0, hostHeapMB());
   flog(line);
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
   if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last], ringAllow[last]); hostUnlock(); }

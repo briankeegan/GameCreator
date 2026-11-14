@@ -137,7 +137,19 @@ static int opAsked(int32_t ch) {
   return 0;
 }
 // A new game: nothing held
-static void openingReset(void) { opN = 0; opHave = 0; opPressed = 0; }
+static int32_t opAnchorCol, opAnchorId = -1;   // (a bottom-row panel of the board the beam was grown on: the rows risen since read off it)
+static void openingReset(void) { opN = 0; opHave = 0; opPressed = 0; opAnchorId = -1; }
+// (THE BEAM KEPT THROUGH A RISE: the rows the stack has risen since the beam was grown, read off the anchor panel -- NOT_ASKED where it
+// is gone -- added to every swap of every path, so a plan made a row lower is pressed where its panels now are)
+static int32_t opRisen(const Board *b) {
+  if (opAnchorId < 0) return NOT_ASKED;
+  for (int r = 1; r < b->nrows; r++) if (b->p[r][opAnchorCol].f[ID] == opAnchorId) return r - 1;
+  return NOT_ASKED;
+}
+static void opAnchor(const Board *b) {
+  opAnchorId = -1;
+  for (int c = 1; c <= W; c++) if (b->nrows > 1 && b->p[1][c].f[ID] > 0 && cellAt(b, 1, c) != 0) { opAnchorCol = c; opAnchorId = b->p[1][c].f[ID]; return; }
+}
 // ONE PATH'S SET-UPS SCORED (opKids, a job: on whichever thread takes it, on that thread's own nodes): the path's board opJPar[p], each
 // of its set-ups opJSw[p] played on it, those setting nothing off scored by their best trigger and their promise into opJRes[p]. Its
 // own share, the decision's (opJEnd); the thread's clock as it was after.
@@ -193,6 +205,10 @@ static void openingGrow(const Question *q) {
       OpPath p = opBeam[i]; for (int k = 1; k < p.len; k++) p.path[k - 1] = p.path[k]; p.len--; opBeam[m++] = p; }
     opN = m; opPressed = 0;
   }
+  { int32_t dr = opN ? opRisen(q->b) : 0;
+    if (dr == NOT_ASKED) opN = 0;
+    else if (dr) for (int i = 0; i < opN; i++) { for (int k = 0; k < opBeam[i].len; k++) opBeam[i].path[k] += dr * 8; if (opBeam[i].trig) opBeam[i].trig += dr * 8; } }
+  opAnchor(q->b);
   // (the board as it is: the empty path, and every path still there to press)
   int nodes[OP_BEAM]; int m = 0;
   { OpPath e; memset(&e, 0, sizeof e); opScore(q, x, root, &e); opNext[m] = e; nodes[m++] = root; }
