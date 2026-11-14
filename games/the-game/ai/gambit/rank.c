@@ -768,12 +768,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // it to finish: a set-up that keeps the chain as far as the hold does, the same)
       // (and every other time too -- the owner: hold is dumb, a set-up or flattening is better 90% of the time; swaps over distance, the
       // set-up is key: a set-up, a lineup, a line toward the next break or nearest the list, or a level, before the hold and before a
-      // line of another kind, whatever either walks)
+      // line of another kind, whatever either walks -- lost alike is safe enough: the frames its walk costs are no break's time)
       int chaining = decQ.b && (decQ.b->chainCounter >= 2 || aloneChain >= 2);
       int sx = setupKind(x), sy = setupKind(y);
       if (sx != sy) {
         const Judge *m = sx ? x : y, *h = sx ? y : x;
-        if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (lx || diesAt(m) >= diesAt(h)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
+        if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
       if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
