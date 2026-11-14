@@ -286,9 +286,11 @@ EXPORT(gb_frames_kept_info) int gb_frames_kept_info(int32_t *out) {
 // THE OPENING PLANNED (search/opening.c) on the question's board cut to six rows, as an opening's is, its garbage on the way left off, for `ms` of the wall clock: the levels
 // grown, the plan's set-ups and the cells its trigger sends into out[0..2]; the mode's list one chain of four or longer. On workers
 // (./build.sh tsan) its paths are scored on every thread.
+static int openingLower = 1;   // (0: the board as the game gave it, not cut to six rows)
+EXPORT(gb_opening_lower) void gb_opening_lower(int on) { openingLower = on; }
 EXPORT(gb_opening_check) int gb_opening_check(int nbytes, int ms, int32_t *out) {
   if (gb_question_bytes(nbytes, 0) != 0) return -1;
-  if (!lowered(hostBoard, 6)) return -2;
+  if (openingLower && !lowered(hostBoard, 6)) return -2;
   gb_new_game();
   curQid = abortId + 1; clockNowOf = 0; clockFrameOut = 0; clockStart(0);
   List keep = theList;
@@ -299,6 +301,16 @@ EXPORT(gb_opening_check) int gb_opening_check(int nbytes, int ms, int32_t *out) 
   clockShareEnd(sh);
   theList = keep;
   out[0] = opLevels; out[1] = opHave ? opBest.len : -1; out[2] = opHave ? opBest.sent : 0;
+  // (the plan played back: its set-ups replayed from the board as the beam does, then its trigger swapped and settled -- the cells that
+  // sends, and the plan's whole line judged as the decision judges it (outcome.c, each swap settled): its chain and what it throws)
+  out[3] = out[4] = out[5] = -1;
+  if (opHave) {
+    Ctx *x = ctxOf(0); int root = rootOf(x, &q), at = opReplay(x, root, &opBest);
+    if (at >= 0) { int n = step(x, at, MK_SWAP, CR(opBest.trig), CC(opBest.trig), 0); int o = liveNode(x, n) ? settleOf(x, n) : -1;
+      Stats s; out[3] = 0; if (o >= 0 && liveNode(x, o) && statsOf(x, o, &s)) out[3] = sentCells(&s); }
+    int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < opBest.len; k++) seq[ns++] = opBest.path[k]; seq[ns++] = opBest.trig;
+    decQ = q; Outcome oc = outcome(seq, ns, 1); out[4] = oc.dead ? -2 : imax(oc.j.made.chain, oc.j.chainAll); out[5] = oc.dead ? -2 : oc.j.made.combo;
+  }
   return 0;
 }
 // THE CHAIN DESIGNED (search/chainbuild.c) on `n` boards of `rows` full rows of `colours` colours, none matching, dealt from `seed`, each
