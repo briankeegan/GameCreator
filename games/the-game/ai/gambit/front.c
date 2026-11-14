@@ -86,12 +86,12 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx, row, col, acts, pa, pb; } MoveOpen;   // pa, pb: the ids of the two cells swapped (0: none there)   // row, col: where it was pressed; acts: the actions pressed since the swap before, its own included   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
 // (the lines whose swaps are followed: each answer's swaps in all and how many of them were pressed, by the answer's id)
 #define LINE_RECS 64
-typedef struct { int32_t id, total, pressed, why, next, acts, inh, q; } LineRec;   // q: the frame of the decision that played the line   // inh: the actions it took over from the line it carried on   // why: what ended the line (END_*, or the order's key that put it down); next: the answer's line it was carried on as (END_ON)
+typedef struct { int32_t id, total, pressed, why, next, acts, inh, q, dropped; } LineRec;   // dropped: its swap's keys cleared by a board not foreseen (dropFrom, dropAll) before it was pressed   // q: the frame of the decision that played the line   // inh: the actions it took over from the line it carried on   // why: what ended the line (END_*, or the order's key that put it down); next: the answer's line it was carried on as (END_ON)
 static LineRec lineRecs[LINE_RECS];
 static LineRec *lineRec(int32_t lid) { LineRec *r = lid > 0 ? &lineRecs[(lid - 1) % LINE_RECS] : 0; return r && r->id == lid ? r : 0; }
 // WHAT ENDED A LINE, for the swaps of it that came to nothing (noneWhy): the answer's word (answer.c ended: carried on, held, not
 // carried, dropped by the carry -- or the line number of the order's key that put it down, rank.c cmpKey), or the frame loop's own drop
-enum { END_ON = 1, END_HELD, END_NOTCARRIED, END_ANCHOR, END_STEP, END_NOBREAK, END_RAISE, END_MODE = 10, END_NOBOARD, END_NOKEYS, END_NOFIT, END_OVERWALK, NEND = 1024 };   // (16-21: answer.c ended, decide.c carryNone)
+enum { END_ON = 1, END_HELD, END_NOTCARRIED, END_ANCHOR, END_STEP, END_NOBREAK, END_RAISE, END_MODE = 10, END_NOBOARD, END_NOKEYS, END_NOFIT, END_OVERWALK, END_DROPPED, NEND = 1024 };   // (16-21: answer.c ended, decide.c carryNone)
 static void lineEnds(int32_t why);
 
 static struct {
@@ -354,8 +354,9 @@ typedef struct { int32_t clock, bits, planned, pend, nextAt, lineN, lineAt, drop
 static FTrace ftrace[FTRACE]; static int32_t ftraceN, ftraceDrops;
 static void planClearFrom(int32_t t) { ftraceDrops |= 4; for (int i = 0; i < PLANN; i++) if (F.planAt[i] != NUL && F.planAt[i] >= t) F.planAt[i] = NUL; }
 // Everything planned and asked is dropped: the board is not the one it was made for.
+static void boardTookLine(void);
 static void dropAll(void) {
-  ftraceDrops |= 1; F.nunseen = 0;
+  ftraceDrops |= 1; F.nunseen = 0; boardTookLine();
   if (F.pending) abortTo(F.pId);
   F.epoch++; planClearFrom(NUL + 1); F.nextAt = 0; F.lineN = 0; F.pending = 0;
 }
@@ -365,7 +366,7 @@ static void dropFrom(int32_t t) {
   if (t <= F.now + 1) { dropAll(); return; }
   ftraceDrops |= 2;
   if (F.pending) abortTo(F.pId);
-  F.epoch++; planClearFrom(t); if (F.nextAt > t) F.nextAt = t; F.lineN = 0; F.pending = 0;
+  F.epoch++; planClearFrom(t); boardTookLine(); if (F.nextAt > t) F.nextAt = t; F.lineN = 0; F.pending = 0;
   // (the garbage now on its way is what the keys kept are pressed knowing: told once, not again every frame till they end)
   memcpy(F.knew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.nknew = F.narr;
 }
@@ -652,7 +653,7 @@ static void take(void) {
     for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play >= 0 ? a.play + 1 : 0, a.kind == 1 ? a.id + 1 : 0, 0 });
     { LineRec *o = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
       lineEnds(a.ended);
-      if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->q = a.at; r->total = a.nhand + 1; r->pressed = 0; r->why = 0; r->next = 0;
+      if (a.kind == 1) { LineRec *r = &lineRecs[a.id % LINE_RECS]; r->id = a.id + 1; r->q = a.at; r->total = a.nhand + 1; r->pressed = 0; r->why = 0; r->next = 0; r->dropped = 0;
         if (o && o->why == END_ON && o != r) { o->next = r->id; r->acts = r->inh = o->acts; } else r->acts = r->inh = 0; } }
     F.nextAt = at + k.n;
     if (a.kind == 1) { F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1; }
@@ -668,10 +669,19 @@ static void take(void) {
 static int32_t lineDue(void) { return imax(F.nextAt, F.lineAt[0]); }
 // The line behind the move, its next swap played from the frame it is due, on the board predicted for then.
 // (a line it cannot press on is dropped, and the run's log says why)
+// (THE LINE THE BOARD DROPPED: a line whose next swap has no key left planned once a board not foreseen cleared the plan is marked,
+// and if it then ends not played out it ends as END_DROPPED -- whatever the next answer says, the board took it, not the answer)
+static void boardTookLine(void) {
+  LineRec *r = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
+  if (!r || r->why || r->pressed >= r->total) return;
+  for (int i = 0; i < PLANN; i++) if (F.planAt[i] != NUL && F.plan[i].swap && F.plan[i].lid == r->id) return;
+  r->dropped = 1;
+}
 static void lineEnds(int32_t why) {
   LineRec *r = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
   if (r && !r->why) {
     r->why = why > 0 && why < NEND ? why : END_NOTCARRIED;
+    if (r->why != END_ON && r->dropped && r->pressed < r->total) r->why = END_DROPPED;
     if (r->why != END_ON && r->pressed < r->total) F.st.actsLost[r->why] += r->acts;
     // (THE LINE NOT PLAYED OUT, one line each (GAMBITE): the frame, what ended it, its swaps pressed of its total, the actions charged
     // to it, those it took over from the line it carried on, and its kind -- the actions of its own are the walk spent on it alone)
