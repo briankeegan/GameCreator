@@ -306,7 +306,7 @@ EXPORT(gb_opening_check) int gb_opening_check(int nbytes, int ms, int32_t *out) 
   out[3] = out[4] = out[5] = -1;
   if (opHave) {
     Ctx *x = ctxOf(0); int root = rootOf(x, &q), at = opReplay(x, root, &opBest);
-    if (at >= 0) { int n = step(x, at, MK_SWAP, CR(opBest.trig), CC(opBest.trig), 0); int o = liveNode(x, n) ? settleOf(x, n) : -1;
+    if (at >= 0) { int o = opPress(x, at, opBest.trig);
       Stats s; out[3] = 0; if (o >= 0 && liveNode(x, o) && statsOf(x, o, &s)) out[3] = sentCells(&s); }
     int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < opBest.len; k++) seq[ns++] = opBest.path[k]; seq[ns++] = opBest.trig;
     decQ = q; Outcome oc = outcome(seq, ns, 1); out[4] = oc.dead ? -2 : imax(oc.j.made.chain, oc.j.chainAll); out[5] = oc.dead ? -2 : oc.j.made.combo;
