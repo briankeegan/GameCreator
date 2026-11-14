@@ -747,8 +747,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   // 1''. UNDER GARBAGE, THE WINDOW SPENT ON BREAKS: of two that survive alike, a line that breaks before one that breaks nothing, then
   // the one that walks fewer actions -- the hold walks none: under garbage only a break is worth what it spends from the input window,
-  // and the rest wait for it to give some back
-  if (decF.under && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
+  // and the rest wait for it to give some back. Garbage on its way counts as garbage on the board (the owner: set-ups ready and the
+  // zippers done before it lands, so a break is there when it does)
+  if ((decF.under || decQ.narr > 0) && pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int bx = breaksFirst(x, lx), by = breaksFirst(y, lx);
     // (but not over the mode's first entry thrown where the break meets none of it: the mode is played under garbage too -- the goal
     // decides between them, 1b)
