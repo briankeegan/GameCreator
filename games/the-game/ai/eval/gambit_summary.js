@@ -17,6 +17,7 @@ var aims = {};   // by the mode a game played throughout: { met, all }
 var carrySkip = { n: 0, by: {}, c16n: 0, c16: {} };   // (the lines of two swaps or more played, and why each was not handed on to the next decision: answer.c cof=)
 var sentIn = {};    // (THE GARBAGE SENT: each mode's attacks by kind and size -- chain n as 2x..13x, combo n -- their count, the rows each sends and whether the mode asked it)
 var wrongIn = {};   // (THE WRONG ATTACKS: each mode's attacks that met none of its aims, by what they were and what made them -- the swap pressed within 120 frames before, or the board alone)
+var heapMost = { mb: -1, game: '', over: 0 };   // (GAMBITD heapMB=: the most memory a game's instance held; GAMBITHEAP: an instance stopped at the cap)
 var purp = { lines: 0, swaps: 0, none: 0, firstNone: 0, asked: 0 };   // (GAMBITD purpose=: each swap of the line played judged without it -- n where nothing is lost; the first swap is the one pressed now)
 var aimsIn = {}, goalMiss = { n: 0, dec: 0, keys: {} }, outMiss = { n: 0, keys: {} }, brkOver = { n: 0, keys: {} }, dips = { n: 0, none: 0, up: 0, upNone: 0 };   var overG = { n: 0, none: 0, all: 0, acts: 0, useful: 0 };   var lostOwn = { lines: 0, acts: 0, own: 0, never: 0, neverOwn: 0, by: {} };   var idleM = { wins: 0, keyed: 0, games: 0 };   // (GAMBITI: the half-seconds in play and those with a key pressed -- the goal's never idle)
    var stackM = { n: 0, bump: 0, even: 0, zip: 0, under: 0, bumpU: 0, zipU: 0, calm: 0, bumpC: 0, zipC: 0 };   // (GAMBITD stack=: the stack's bumpiness, tallest less shortest and zip, every decision; under garbage apart)   // (GAMBITE: the lines not played out, the actions charged, those of their own -- not taken over from the line they carried on -- and those never pressed a swap)   // (swaps over unbroken garbage, GAMBITM's last field: their share and what they came to; the actions a swap that came to something)   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
@@ -180,6 +181,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       }); }
     // (the decisions the clock cut: what a faster or slower machine would have played differently)
     lines.forEach(function (l) { if (l.indexOf('GAMBITD ') !== 0) return; var c = / out=(\d+)/.exec(l); if (!c) return; budget.decisions++; if (+c[1]) budget.out++; });
+    // (the memory Gambit's instance held, heapMB=: the most in any game, and the game)
+    lines.forEach(function (l) { if (l.indexOf('GAMBITHEAP') === 0) heapMost.over++; if (l.indexOf('GAMBITD ') !== 0) return; var h = / heapMB=(\d+)/.exec(l); if (h && +h[1] > heapMost.mb) { heapMost.mb = +h[1]; heapMost.game = lf; } });
     // (A LIFE KEPT: a line played under garbage that lives, then nothing new told -- the next block lands on the same frame, as many
     // queued -- and whether the next decision has a line that lives: the engine predicts every frame, so it should)
     var ds = lines.filter(function (l) { return l.indexOf('GAMBITD ') === 0; }), num = function (l, k) { var m = new RegExp(' ' + k + '=(-?\\d+)').exec(l); return m ? +m[1] : null; };
@@ -634,6 +637,7 @@ console.log('put back after a colour shown: ' + putBackShown + ' swaps refused a
 function idleRate(k) { return idleQ[k].frames ? (idleQ[k].idle * 3600 / idleQ[k].frames).toFixed(0) : '-'; }
 console.log('idle with garbage queued: ' + idleRate('lost') + ' frames a minute in games lost, ' + idleRate('survived') + ' in games survived (each one a block landing)');
 console.log('categorised: ' + catd.missing + ' of ' + catd.n + ' decisions offered lines with no category or no ledger');
+if (heapMost.mb >= 0) console.log('memory: the most a game held ' + heapMost.mb + ' MB (' + heapMost.game.replace(/.*\/([^/]+)\/[^/]+$/, '$1') + ')' + (heapMost.over ? ', ' + heapMost.over + ' stopped at the cap' : ''));
 console.log('truth: ' + budget.diverged + ' boards predicted otherwise than the game made them, in ' + budget.divergedGames + ' of ' + budget.games + ' games');
 // THE LINE AS JUDGED: every swap of a line handed on is keyed from the frame the judge pressed it from; one keyed later is pressed on a board
 // the judge never judged
