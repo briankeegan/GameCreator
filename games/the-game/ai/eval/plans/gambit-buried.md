@@ -8,6 +8,14 @@ stretch the flood gets ahead in. The same game won and lost parts at its second 
 Searched again with more time, 58 of 60 boards after a loss's turn had no break to find (run 374). The board is lost at the turn,
 by the line played there -- not by the decisions after it, which is where every rank change since has worked.
 
+## Asked again (step 2, done -- the record and the tool already exist)
+
+The game writes the board it searched under garbage and found no break on (GAMBITB: native.c dumpBoard, every 30 frames), and
+`eval/gambit_reach.js RUN 600 2000` searches each again with 2000 ms. Runs 3236, 3239, 3241, 3246 (main and the builds around it):
+of 455 such boards in the last ten seconds of losses, 19 had a break the live search missed, 88 had one only under a full input
+window, and the rest -- about four in five -- had none at all. The move at the turn (the last board a break was found on) was a
+hold in 18 of 33 losses. The flood is lost on boards that hold no break, not on breaks passed over.
+
 ## The turn, found and asked
 
 1. **Find the turn.** For each lost flood game: the last decision after which some line still lived, or a break was offered
