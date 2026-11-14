@@ -70,7 +70,19 @@ EXPORT(nb_new) Board *nb_new(void) {
   else if (!(b = takeSpare())) b = (Board *)grab(sizeof(Board));
   return b;
 }
-EXPORT(nb_free) void nb_free(Board *b) { *(Board **)b = freeOf(thId); freeOf(thId) = b; freeCount(thId)++; }
+// A thread's own list holds FREE_CAP boards at most; one freed past that goes to SPARES, so a thread that frees what another took
+// (Gambit's thread resets the contexts its search between decisions grew) hands it back rather than keeping it while the other grows
+// the heap.
+#define FREE_CAP 4096
+EXPORT(nb_free) void nb_free(Board *b) {
+  if (freeCount(thId) >= FREE_CAP) {
+    while (__atomic_exchange_n(&spareLock, 1, __ATOMIC_ACQUIRE)) {}
+    *(Board **)b = spareOf; spareOf = b; spareCount++;
+    __atomic_store_n(&spareLock, 0, __ATOMIC_RELEASE);
+    return;
+  }
+  *(Board **)b = freeOf(thId); freeOf(thId) = b; freeCount(thId)++;
+}
 // Spare boards on thread k's list; k = -1: the heap's top, in 64 KiB pages; k = -2: SPARES.
 EXPORT(nb_pool_stat) int nb_pool_stat(int k) { return k == -2 ? spareCount : k < 0 ? (int)(heapTop >> 16) : k < MAXTHREADS ? freeCount(k) : 0; }
 #ifdef COPY_BOARD
