@@ -476,6 +476,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (order[0]->apBroke > 0 || (H && !order[0]->hold && lostOf(order[0]) >= lostOf(H) + rankSave)) R.up = R.low = 0;
   }
   Played P = playOf(&R, n);
+  if (opFlatPlayed) R.up = R.low = 0;   // (the opener's flattening before its raise: decide.c opTarget)
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
@@ -600,6 +601,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
   if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); }
   if (opGrew) { L_s(" opgrew="); L_i(opLevels); L_s("/"); L_i(opHave ? opBest.len : -1); L_s("/"); L_i(opGrowMs); L_s("/"); L_i(opOnPool); L_s("/"); L_i(opHave ? opBest.ch : 0); L_s("/"); L_i(opN); if (opGrew == 2) L_s("/raise"); }
+  if (opGrew == 2) { L_s(" opflat="); L_i(opFlatN); if (opFlatPlayed) L_s("/played"); }
   if (taxMs >= 0) { L_s(" tx="); L_i(taxBase); L_s("/"); L_i(taxLong); L_s("/"); L_i(taxN); L_s("/"); L_i(taxMs); }
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
