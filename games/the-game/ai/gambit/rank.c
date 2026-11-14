@@ -495,8 +495,10 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
+// (LOST ALIKE on the frame each board is lost (diesAt), no walk charged: the walk is the order's preference for the nearer, and charged
+// here a set-up lost on the hold's own frame was lost sooner than it)
 static int lostAlike(const Judge *x, const Judge *y) {
-  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+  double dx = diesAt(x), dy = diesAt(y), lo = dx < dy ? dx : dy, hi = dx < dy ? dy : dx;
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
   return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
 }
@@ -1078,10 +1080,4 @@ static void sortJudged(Judge **a, int n) {
       while (j < hi) tmp[k++] = a[j++];
       for (k = lo; k < hi; k++) a[k] = tmp[k];
     }
-  // THE HOLD IS PLAYED ONLY OVER LINES IT BEATS: the order is not transitive (the hold outlasts a cut, the cut goes before a set-up, the
-  // set-up before the hold), so the merge can put the hold first over a line the order itself puts before it. The first such line
-  // goes first instead -- it is put before the hold by the same keys, survival among them
-  if (n > 1 && a[0]->hold)
-    for (int i = 1; i < n; i++)
-      if (!a[i]->hold && compareJudged(a[i], a[0]) < 0) { Judge *b = a[i]; for (int k = i; k > 0; k--) a[k] = a[k - 1]; a[0] = b; break; }
 }
