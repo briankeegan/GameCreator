@@ -14,7 +14,7 @@ The game writes the board it searched under garbage and found no break on (GAMBI
 `eval/gambit_reach.js RUN 600 2000` searches each again with 2000 ms. Runs 3236, 3239, 3241, 3246 (main and the builds around it):
 of 455 such boards in the last ten seconds of losses, 19 had a break the live search missed, 88 had one only under a full input
 window, and the rest -- about four in five -- had none at all. The move at the turn (the last board a break was found on) was a
-hold in 18 of 33 losses. The flood is lost on boards that hold no break, not on breaks passed over.
+hold in 14 of 34 turns (3, 1, 5 and 5). The flood is lost on boards that hold no break, not on breaks passed over.
 
 ## The turn, found and asked
 
