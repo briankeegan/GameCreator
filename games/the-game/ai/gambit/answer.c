@@ -476,6 +476,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (order[0]->apBroke > 0 || (H && !order[0]->hold && lostOf(order[0]) >= lostOf(H) + rankSave)) R.up = R.low = 0;
   }
   Played P = playOf(&R, n);
+  if (opFlatPlayed) R.up = R.low = 0;   // (the opener's flattening before its raise: decide.c opTarget)
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
@@ -600,6 +601,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
   if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); }
   if (opGrew) { L_s(" opgrew="); L_i(opLevels); L_s("/"); L_i(opHave ? opBest.len : -1); L_s("/"); L_i(opGrowMs); L_s("/"); L_i(opOnPool); L_s("/"); L_i(opHave ? opBest.ch : 0); L_s("/"); L_i(opN); if (opGrew == 2) L_s("/raise"); }
+  if (opGrew == 2) { L_s(" opflat="); L_i(opFlatN); if (opFlatPlayed) L_s("/played"); }
   if (taxMs >= 0) { L_s(" tx="); L_i(taxBase); L_s("/"); L_i(taxLong); L_s("/"); L_i(taxN); L_s("/"); L_i(taxMs); }
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
@@ -691,7 +693,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" casc="); L_i(cascadeLive(decQ.b)); L_s(" pop="); L_i(popLeft(decQ.b)); L_s(" hp="); L_i(decQ.b->health); L_s(" stop="); L_d(R.F.v[FACT_US_STOP]);
   if (readyAsked) { L_s(" rdy="); L_i(readyHit); L_s("/"); L_i(readyAsked); }
   if (!readyBuilt && readyBuildWhy) { L_s(" rb=0:"); L_i(readyBuildWhy); }
-  if (readyBuilt) { L_s(" rb="); L_i(readyBuilt); if (readyPairs) { L_s("p"); L_i(readyPairs); } if (P.line && P.line->k.readyGain > 0) { L_s("/played:"); L_i(P.line->k.readyGain); } }
+  if (readyBuilt) { L_s(" rb="); L_i(readyBuilt); if (P.line && P.line->k.readyGain > 0) { L_s("/played:"); L_i(P.line->k.readyGain); } }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
   if (routeOffered) { L_s(" route="); L_i(routeOffered); if (routePlayed) L_s("/played"); }
   if (planSeeded) { L_s(" seed="); L_i(planSeeded); }
@@ -742,7 +744,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (WHY THIS LINE: the order's key that put the line played before the best line it passed over, and what that line was -- rank.c's
   // line number, named by eval/rank_keys.js; none where nothing else was offered)
   if (top && P.ncands > 1) { const Judge *ru = order[0] == top ? order[1] : order[0]; int32_t keepKey = cmpKey;
-    if (ru && ru != top && compareJudged(top, ru) < 0) { L_s(" won=k"); L_i(cmpKey); L_s(":"); L_play(ru->hold ? PLAY_HOLD : ru->k.play); } cmpKey = keepKey; }
+    if (ru && ru != top && compareJudged(top, ru) < 0) { L_s(" won=k"); L_i(cmpKey); L_s(":"); L_play(ru->hold ? PLAY_HOLD : ru->k.play);
+      // (both sides as the order read them: the frame each board is lost on, then that less the walk charged -- inf a board that lives)
+      const Judge *s2[2] = { top, ru };
+      L_s(" wonBy=");
+      for (int q = 0; q < 2; q++) { if (q) L_s(":"); if (s2[q]->o.lives) L_s("inf"); else { L_i((int64_t)diesAt(s2[q])); L_s("/"); L_i((int64_t)lostOf(s2[q])); } L_s("/w"); L_i(s2[q]->hold ? 0 : lineWalk(s2[q])); } }
+    cmpKey = keepKey; }
   L_s(" opts=");
   for (int i = 0; i < P.ncands && i < 8; i++) {
     const Judge *j = order[i];
@@ -751,6 +758,27 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
     L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
+  }
+  // (WHAT EACH SWAP OF THE LINE PLAYED DOES: the line judged again without it -- n nothing lost without it (it does nothing), else what
+  // is lost: Lf the board lost f frames sooner, bN N garbage cells fewer broken, cN a chain N links shorter, d the board dies; ? the clock
+  // left no time to ask. Read off the judge alone: nothing here changes the move)
+  if (top && !top->hold && top->k.nseq >= 2 && top->k.nseq <= MAXLINE) {
+    static Judge pj; int32_t keepKey = cmpKey, keepDrop = lastDrop;
+    L_s(" purpose=");
+    for (int i = 0; i < top->k.nseq; i++) {
+      if (i) L_s(",");
+      if (clockOut()) { L_s("?"); continue; }
+      Cand c = top->k; c.nseq = top->k.nseq - 1; c.xNats = 0;
+      for (int q = i; q < c.nseq; q++) c.seq[q] = top->k.seq[q + 1];
+      if (!judgeCand(&R, &c, &pj)) { L_s("x"); continue; }
+      int any = 0;
+      if (pj.o.dead && !top->o.dead) { L_s("d"); any = 1; }
+      else if (!pj.o.lives && (top->o.lives || diesAt(&pj) < diesAt(top))) { L_s("L"); L_i(top->o.lives ? -1 : (int64_t)(diesAt(top) - diesAt(&pj))); any = 1; }
+      if (imax(0, pj.apBroke) < imax(0, top->apBroke)) { L_s("b"); L_i(imax(0, top->apBroke) - imax(0, pj.apBroke)); any = 1; }
+      if (pj.apChain < top->apChain) { L_s("c"); L_i(top->apChain - pj.apChain); any = 1; }
+      if (!any) L_s("n");
+    }
+    cmpKey = keepKey; lastDrop = keepDrop;
   }
   L_s(" lost="); if (top) { if (top->o.lostAt == FOREVER) L_s("inf"); else L_i(top->o.lostAt); } else L_s("-");
   // (THE MODE'S LIST, for the report: the entry the line played meets, whether it is a fallback -- an entry after the first that breaks
