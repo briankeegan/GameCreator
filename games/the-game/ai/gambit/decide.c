@@ -429,9 +429,11 @@ static int ranked(const Read *R, const Found *S) {
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
-    // (A WAIT THAT DOES NOT END: a line that has waited CARRY_WAITS decisions for a board making nothing that has not settled -- under garbage it may
-    // never -- waits no more: only the same line pressed straight through is offered, below -- the owner: no lazy waits)
-    if (cwait && carryWaitsOut()) carryNone = 22;
+    // (A WAIT THAT DOES NOT END: a line that has waited CARRY_WAITS decisions for a board that has not settled -- under garbage it may
+    // never -- waits no more: only the same line pressed straight through is offered, below -- the owner: no lazy waits. Where that
+    // cannot be judged, the line waiting is offered still, ranked with the hold: a line is put down only when it is no longer there)
+    int waitedOut = cwait && carryWaitsOut();
+    if (waitedOut) carryNone = 22;
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
     else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
@@ -441,6 +443,7 @@ static int ranked(const Read *R, const Found *S) {
     static Judge thru;
     Cand k2 = ck; k2.settled = 0; k2.play = PLAY_CARRY;
     if (cwait && judgeCand(R, &k2, &thru)) { thru.carried = 1; order[n] = &thru; n++; }
+    else if (waitedOut) { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; carryNone = 24; }
   }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
@@ -965,7 +968,7 @@ static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) 
 }
 static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anchorInto(&theCarry, row1, seq, n); }
 // (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
-// (waits: the decisions in a row the line has waited for a board making nothing to settle -- carryWaitsOut)
+// (waits: the decisions in a row the line has waited for the board to settle -- carryWaitsOut)
 // (WHY THE LINE PLAYED WAS NOT HANDED ON, for the log: 0 it was, 1 no line, 2 it waits, 3 nothing of it left, 4 a tier past the set-ups
 // that breaks nothing, 5 no bottom-row panel to anchor it to; -1 none asked)
 static int32_t carrySkip = -1;
@@ -987,9 +990,7 @@ static int savesOverHold(const Judge *k) {
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
   else if (!k) carryBeganAt = carryBeganPlay = -1;
-  // (a wait while the board's own chain runs is no lazy wait: the board is at work, and a step pressed into it would spoil it -- only a
-  // wait on a board making nothing counts toward CARRY_WAITS)
-  int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + !cascadeLive(decQ.b) : 0;
+  int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   Why keepWhy = k && k->carried ? theCarry.why : (Why){ WHY_NONE, 0, 0 };
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.why = keepWhy;
@@ -1165,7 +1166,8 @@ static int carryLate;   // (the line in progress dropped only because the clock 
 static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, carryDropWhy, carryDropNats;
 // (WHY NO LINE IN PROGRESS WAS OFFERED, for the frame loop's count of what ended its line -- answer.c ended: 0 one was; 16 none was
 // carried by the last answer; 17 the frame loop asked on another line than the one carried; 18 every swap of it pressed; 19 the judge
-// gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing)
+// gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing; 22 it waited out, pressed straight
+// through instead; 24 it waited out and is offered waiting, nothing of it able to be pressed straight through)
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0; carryLate = 0;
