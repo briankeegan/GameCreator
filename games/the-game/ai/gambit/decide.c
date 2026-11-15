@@ -826,10 +826,11 @@ static Played playOf(const Read *R, int n) {
       static Judge CU; Cand k;
       if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
         k.settled = usePlan ? 1 : 0;
-        // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live -- the log's)
+        // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live, -4 it
+        // leaves the window no break's walk where the next break is due -- the opener hands over with its reserve: the log's)
         lastDrop = -1;
         int jok = judgeCand(R, &k, &CU);
-        chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
+        chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : spendsReserve(&CU) ? -4 : 0;
         if (!chainUp) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
       }
     }
