@@ -686,7 +686,7 @@ static int taHoldNoSooner(const Judge *line, int n) {
 // while one is found, OP_FLAT at most, into opFlat -- then raised `rows` rows on the engine, the raise key held as the game would take
 // it. 0 where the board is lost on the way.
 #define OP_FLAT 8
-static int32_t opFlat[OP_FLAT], opFlatN, opFlatPlayed;
+static int32_t opFlat[OP_FLAT], opFlatN, opFlatPlayed, opFlatAsked, opFlatWhy;   // (why: 0 played, 1 no candidate, 2 its board lost, 3 lost sooner than the move chosen, 10 + the judge's drop code)
 static Ctx *opTCtx;
 static int opTarget(const Question *q, int32_t rows, Question *out) {
   static Board *cur, *tgt; if (!cur) { cur = nb_new(); tgt = nb_new(); } if (!cur || !tgt) return 0;
@@ -788,19 +788,22 @@ static Played playOf(const Read *R, int n) {
   // it is flat: while the opening raise is due and done before the next block lands, the plan is made on the board it will build on -- the stack
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
   // is pressed first, as one line; with none left, the raise; then the plan, kept through the rows risen)
-  opFlatPlayed = 0;
+  opFlatPlayed = 0; opFlatAsked = 0;
   if (opWants && !opLineOn && raiseOpening) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * 0.7; if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow; readyStop();
     static Question tq; tq = decQ;
     // (the flattening and the raise done before the next block lands: the plan is built on the board raised, the block judged with it)
-    if (opTarget(&decQ, raiseRows, &tq) && (R->readyAt == NOT_ASKED || R->readyAt > tq.b->clock - decQ.b->clock)) {
-      double sh = clockShareBegin(nowMs() + grow); openingGrow(&tq); clockShareEnd(sh);
-      opGrew = 2;
+    // (the flattening pressed whenever there is one; the plan grown on the board raised only where the flattening and the raise are done
+    // before the next block lands)
+    opFlatAsked = 1;
+    if (opTarget(&decQ, raiseRows, &tq)) {
+      if (R->readyAt == NOT_ASKED || R->readyAt > tq.b->clock - decQ.b->clock) { double sh = clockShareBegin(nowMs() + grow); openingGrow(&tq); clockShareEnd(sh); opGrew = 2; }
       if (opFlatN > 0) {
         static Judge FL; Cand k;
-        if (candOf(&k, PLAY_LEVEL, opFlat, opFlatN, -1, 0)) { k.settled = 1; if (judgeCand(R, &k, &FL) && !FL.o.dead && (FL.o.lives || !P.top || diesAt(&FL) >= diesAt(P.top))) { P.line = P.top = &FL; P.wait = 0; opFlatPlayed = 1; } }
+        if (candOf(&k, PLAY_LEVEL, opFlat, opFlatN, -1, 0)) { k.settled = 1; lastDrop = -1; int jok = judgeCand(R, &k, &FL); opFlatWhy = !jok ? 10 + lastDrop : FL.o.dead ? 2 : !(FL.o.lives || !P.top || diesAt(&FL) >= diesAt(P.top)) ? 3 : 0; if (!opFlatWhy) { P.line = P.top = &FL; P.wait = 0; opFlatPlayed = 1; } }
+        else opFlatWhy = 1;
       }
     }
     clockDue = keepDue; clockShare = keepShare;
