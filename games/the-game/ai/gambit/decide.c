@@ -254,8 +254,11 @@ static int readBoard_(Read *R) {
     // (THE FLOOR'S RAISE ON A BOARD TOO SHORT TO BREAK: below the floor, no row count leaves a break once everything lands -- the panels
     // a break is made of are what the board lacks -- so the rows the board lives through once everything lands are raised all the same:
     // the panels are the next break's material, and the opening's raise is held to readiness, never the floor's)
+    // (and THE OPENER'S RAISE, the same -- the owner: the opener raises the moment it is flat; its plan is built on the board raised and
+    // fired before the block lands, so the readiness it is held to is its own, not the raise's)
     refillAsked = refill ? rowsUp : 0; refillReady = rows; refillAlive = raiseAlive;
-    if (rows <= 0 && refill) rows = raiseAlive;
+    int opRaise = opening && R->rule >= 0 && theTables.r[R->rule].table == 2;
+    if (rows <= 0 && (refill || opRaise)) rows = raiseAlive;
     // (and, the opening's raise and the floor's alike: garbage on its way or on the board, never more than the board lives through once
     // it lands -- a raise ends the stop the board is held up by -- and never the stack's top, garbage on it counted, up to the top row: a
     // raise into the garbage is a death)
