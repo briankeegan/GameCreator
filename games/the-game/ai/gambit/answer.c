@@ -784,6 +784,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
     if (carryDrop >= 2) { L_s(" carryRest="); for (int i = 0; i < carryDropN; i++) { if (i) L_s(";"); L_mv(carryDropRest[i]); } }
   }
+  // (the line in progress the last answer carried, not offered on this board: carriedCand's carryNone -- 17 asked on another line, 18 every
+  // swap pressed, 19 the judging dropped it (the drop's letter, rank.c DROP_CODE), 20 a wasted three, 25 the window -- none carried, or
+  // the list asking nothing, is not said)
+  if (!carriedJ && !carryDrop && carryNone && carryNone != 16 && carryNone != 21) {
+    L_s(" carryNone="); L_i(carryNone);
+    if (carryNone == 19 && carryJudgeDrop >= 0 && carryJudgeDrop < NDROPS) { char c[3] = { ':', "botfrucwj2"[carryJudgeDrop], 0 }; L_s(c); }
+  }
   // (WHY THIS LINE: the order's key that put the line played before the best line it passed over, and what that line was -- rank.c's
   // line number, named by eval/rank_keys.js; none where nothing else was offered)
   if (top && P.ncands > 1) { const Judge *ru = order[0] == top ? order[1] : order[0]; int32_t keepKey = cmpKey;

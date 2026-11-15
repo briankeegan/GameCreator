@@ -10,6 +10,7 @@ static int32_t openerAt;     // (and the frame it was played out on: a fight's s
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
 static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
+static int32_t carryJudgeDrop = -1;   // (and for 19, why the judging dropped it: rank.c DROP_*, -1 none said)
 static int32_t rescues;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
@@ -423,7 +424,8 @@ static int ranked(const Read *R, const Found *S) {
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0, cc = 0;
   carryNone = 21;
-  if (R->guides.n && (cc = carriedCand(R, &ck, &cwait)) && !judgeCand(R, &ck, &theJudged[n])) carryNone = 19;
+  carryJudgeDrop = -1;
+  if (R->guides.n && (cc = carriedCand(R, &ck, &cwait))) { lastDrop = -1; if (!judgeCand(R, &ck, &theJudged[n])) { carryNone = 19; carryJudgeDrop = lastDrop; } }
   if (R->guides.n && cc && carryNone != 19) {
     carryNone = 0;
     Judge *cj = &theJudged[n];
