@@ -940,7 +940,7 @@ static Played playOf(const Read *R, int n) {
 // on a board the stack is not yet)
 // (made: what the line was ranked as making when it was played -- the judge's count, or the search's word for a line whose board is lost
 // during it (rank.c judgeCand): the rest of such a line is read on it too, carriedCand)
-enum { WHY_NONE, WHY_CHAIN, WHY_COMBO, WHY_BREAK, WHY_TWIN, WHY_FLAT, WHY_ZIP, WHY_DROP, WHY_LIVE, WHY_READY, WHY_CONN };
+enum { WHY_NONE, WHY_CHAIN, WHY_COMBO, WHY_BREAK, WHY_TWIN, WHY_FLAT, WHY_ZIP, WHY_DROP, WHY_LIVE, WHY_READY };   // (WHY_NONE: no reason -- a bug)
 typedef struct { int32_t kind, a, b; } Why;
 typedef struct { int32_t set, id, nrest, rest[MAXLINE], risen[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; Why why; } Carry;   // (rule: the mode it was begun in; why: the reason it was begun, the log's aim=)
 static Carry theCarry;
@@ -1232,6 +1232,9 @@ static int32_t bumpOf(const Board *b) {
   return bump;
 }
 static Ctx *whyCtx;
+#define WHY_TRIES 6   // (the lines after the one chosen asked for a reason, where it has none)
+static int32_t noReason;
+static Why whyPlayed;   // (the reason of the move played, measured when it was chosen: the log's aim=)   // (the log's: 1 the line chosen had no reason and the next with one was played, 2 none had one and the hold was)
 static Why moveWhy(const Judge *L) {
   Why w = { WHY_NONE, 0, 0 };
   if (!L || L->hold || L->k.nseq < 1) return w;
@@ -1245,7 +1248,7 @@ static Why moveWhy(const Judge *L) {
   }
   if (L->k.drop) { w.kind = WHY_DROP; return w; }
   // (the board it leaves: every swap played, settled -- after the decision, outside its clock)
-  double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
+  clockIgnore = 1;
   Ctx *x = whyCtx = ctxOf(whyCtx);
   int nd = rootOf(x, &decQ), n0 = nd;
   for (int q = 0; q < L->k.nseq && liveNode(x, nd); q++) { int o = step(x, nd, MK_SETTLE, CR(L->k.seq[q]), CC(L->k.seq[q]), 0); if (!liveNode(x, o)) break; nd = o; }
@@ -1271,8 +1274,7 @@ static Why moveWhy(const Judge *L) {
     else if (bestC >= 3) { w.kind = WHY_COMBO; w.a = bestC; }
   }
   if (w.kind == WHY_NONE && L->k.aimC > 0) { w.kind = WHY_TWIN; w.a = L->k.aimC; w.b = L->k.aimLeft; }
-  if (w.kind == WHY_NONE) w.kind = WHY_CONN;
   ns_reset(x);
-  clockDue = keepDue; clockShare = keepShare;
+  clockIgnore = 0;
   return w;
 }

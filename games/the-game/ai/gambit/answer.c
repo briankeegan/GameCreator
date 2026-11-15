@@ -480,6 +480,25 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   Played P = playOf(&R, n);
   if (opFlatPlayed) R.up = R.low = 0;   // (the opener's flattening before its raise: decide.c opTarget)
   if (opLineOn && P.line && P.line->carried) R.up = R.low = 0;   // (the opener's line in progress pressed through: no raise in its middle)
+  // (NO MOVE WITHOUT ITS REASON -- the owner: a move made for nothing is a bug. The line chosen that makes nothing, shapes nothing and leaves
+  // nothing one swap on gives way to the best after it in the order that has a reason and is lost no sooner -- of the next WHY_TRIES --
+  // else to the hold: a swap for nothing spends the window the next break is pressed from)
+  noReason = 0; whyPlayed = (Why){ WHY_NONE, 0, 0 };
+  if (!R.up && P.line && !P.line->hold && !P.line->carried) whyPlayed = moveWhy(P.line);
+  if (!R.up && P.line && !P.line->hold && !P.line->carried && whyPlayed.kind == WHY_NONE) {
+    const Judge *alt = 0, *H = 0;
+    for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
+    for (int i = 0, tries = 0; i < n && !alt && tries < WHY_TRIES; i++) {
+      const Judge *J = order[i];
+      if (J == P.line || J->hold || J->wait || J->o.dead) continue;
+      if (!(J->o.lives || (!P.line->o.lives && diesAt(J) >= diesAt(P.line)))) continue;
+      tries++;
+      Why wj = moveWhy(J);
+      if (wj.kind != WHY_NONE) { alt = J; whyPlayed = wj; }
+    }
+    noReason = alt ? 1 : 2;
+    P.line = alt; P.top = alt ? alt : H;
+  }
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
@@ -565,9 +584,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // THE LOG LINE
   const Rule *rule = &theTables.r[R.rule];
   L_s("GAMBITD "); L_i(at); L_s(" @"); L_i(rule->name); L_s(" play="); L_play(P.name);
+  if (noReason) { L_s(" noreason="); L_i(noReason); }
   if (!R.up && P.line && !P.line->hold) {
     // (a line in progress, for the reason it was begun; one begun now, its reason kept with it)
-    Why wy = P.line->carried && theCarry.why.kind != WHY_NONE ? theCarry.why : moveWhy(P.line);
+    Why wy = P.line->carried ? (theCarry.why.kind != WHY_NONE ? theCarry.why : moveWhy(P.line)) : whyPlayed;
     if (!P.line->carried && theCarry.set) theCarry.why = wy;
     L_s(" aim=");
     switch (wy.kind) {
