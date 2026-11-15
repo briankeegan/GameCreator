@@ -320,8 +320,8 @@ static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 // (THE OPENER'S LINE IN PROGRESS -- the owner: the opener is one continuous string; only a line no longer possible is put down: the
-// carried line, whatever the filters after its judging take out, while it lives or presses its last swap before the next block lands)
-static const Judge *opCarried;
+// carried line, whatever the filters after its judging take out)
+static const Judge *opCarried, *carriedFirst;   // (carriedFirst: the line in progress as judged, before any filter)
 static const Judge *strippedCarry;   // (the line in progress without the swap that makes its three: THE THREE TAKEN OUT)
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
@@ -399,7 +399,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; opCarried = 0; carriedFirst = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -435,7 +435,7 @@ static int ranked(const Read *R, const Found *S) {
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
     else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
-    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; if (opLineOn && (cj->o.lives || decF.next == NOT_ASKED || (cj->apNats > 0 && cj->apAts[cj->apNats - 1] < decF.next))) opCarried = cj; }
+    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; carriedFirst = cj; if (opLineOn) opCarried = cj; }
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
     static Judge thru;
@@ -799,7 +799,7 @@ static Played playOf(const Read *R, int n) {
     // before the next block lands)
     opFlatAsked = 1;
     if (opTarget(&decQ, raiseRows, &tq)) {
-      if (R->readyAt == NOT_ASKED || R->readyAt > tq.b->clock - decQ.b->clock) { double sh = clockShareBegin(nowMs() + grow); openingGrow(&tq); clockShareEnd(sh); opGrew = 2; }
+      if (R->readyAt == NOT_ASKED || R->readyAt > tq.b->clock - decQ.b->clock) { opFitLen = -1; double sh = clockShareBegin(nowMs() + grow); openingGrow(&tq); clockShareEnd(sh); opGrew = 2; }
       if (opFlatN > 0) {
         static Judge FL; Cand k;
         if (candOf(&k, PLAY_LEVEL, opFlat, opFlatN, -1, 0)) { k.settled = 1; lastDrop = -1; int jok = judgeCand(R, &k, &FL); opFlatWhy = !jok ? 10 + lastDrop : FL.o.dead ? 2 : !(FL.o.lives || !P.top || diesAt(&FL) >= diesAt(P.top)) ? 3 : 0; if (!opFlatWhy) { P.line = P.top = &FL; P.wait = 0; opFlatPlayed = 1; } }
@@ -814,8 +814,11 @@ static Played playOf(const Read *R, int n) {
   // (the planned opener in progress goes on: no plan is grown or begun over it -- the carry presses it, and survival alone puts it down)
   // (and no other line takes its place while it can still be pressed and either lives or presses its last swap before the next block
   // lands -- one that cannot fire in time is survival's to decide)
-  if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
-  if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
+  // (survival alone puts it down: kept where it lives, or where nothing chosen lives and it is lost no more than a break's time sooner
+  // -- late for a block on its way is no reason: its chain may fire after the block lands, and break it)
+  int opKeeps = opCarried && (opCarried->o.lives || (P.line && !P.line->o.lives && !P.line->o.dead && !opCarried->o.dead && diesAt(opCarried) + rankSave > diesAt(P.line)) || (!P.line && P.top && !P.top->o.lives));
+  if (opLineOn && opCarried && !(P.line && P.line->carried) && opKeeps) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
+  if (opLineOn && !(carryHeld() && P.line && P.line->carried)) { if (carriedFirst && !carriedFirst->o.dead) opKeepPath(decQ.b, carriedFirst->k.seq, carriedFirst->k.nseq); opLineOn = 0; }
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
   if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
@@ -827,6 +830,7 @@ static Played playOf(const Read *R, int n) {
     opGrowMs = (int32_t)grow;
     // (the pool taken back from the readiness beside the decision, which would search on past it: the beam is scored on every thread)
     readyStop();
+    opFitLen = decF.next != NOT_ASKED ? decF.next / OPEN_SWAP_FRAMES - 1 : -1;
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
     opGrew = 1;
     int32_t trig = 0, trigCh = 0;
@@ -834,7 +838,9 @@ static Played playOf(const Read *R, int n) {
     chainNow = trigCh; chainAfter = opHave ? opBest.sent : 0;
     // (ONE MOVE, START TO FINISH -- the owner: the opener is a continuous move; once started it goes on, nothing stops or replans it but
     // survival: the plan's set-ups and its trigger handed on as one line, judged whole, then carried as the line in progress)
+    // (a block on its way and the best plan too long for the time: the best that fits is played, the other kept)
     int late = decF.next != NOT_ASKED && opHave && decF.next <= (opBest.len + 1) * OPEN_SWAP_FRAMES;
+    if (late && opHaveFit) { opBest = opBestFit; late = 0; }
     int usePlan = opHave && opBest.len > 0 && opBest.ch > trigCh && !late && opAsked(opBest.ch);
     int32_t seq[OP_DEPTH + 1]; int ns = 0;
     if (usePlan) { for (int k = 0; k < opBest.len; k++) seq[ns++] = opBest.path[k]; seq[ns++] = opBest.trig; }
@@ -848,7 +854,7 @@ static Played playOf(const Read *R, int n) {
         lastDrop = -1;
         int jok = judgeCand(R, &k, &CU);
         chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
-        if (!chainUp) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
+        if (!chainUp) { P.line = &CU; chainUp = usePlan ? 3 : 2; opLineOn = usePlan; }
       }
     }
     clockDue = keepDue; clockShare = keepShare;
