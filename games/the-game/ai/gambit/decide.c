@@ -786,7 +786,7 @@ static Played playOf(const Read *R, int n) {
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
   // is pressed first, as one line; with none left, the raise; then the plan, kept through the rows risen)
   opFlatPlayed = 0;
-  if (opWants && !opLineOn && raiseOpening && R->low) {
+  if (opWants && !opLineOn && raiseOpening) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * 0.7; if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow; readyStop();
@@ -810,7 +810,8 @@ static Played playOf(const Read *R, int n) {
   // lands -- one that cannot fire in time is survival's to decide)
   if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
-  if (opWants && !opLineOn && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
+  // (in its order: the flattening pressed, then the raise -- no plan begun over either)
+  if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
     // pressed while the plan's chain is longer than the chain of the trigger the board has now, its set-ups can be pressed before the next block lands and
