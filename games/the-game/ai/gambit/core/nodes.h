@@ -192,8 +192,9 @@ static Vec batchTasks, batchRes, batchDead;
 static LOCAL int batchN;
 static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int kind, int n) {
   batchN = 0;
-  if (!inJob && pool.nworkers > 0) { if (__atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE)) batBusy += n; else if (n < 8) batSmall += n; }
-  if (inJob || __atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE) || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
+  int busy = __atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE);
+  if (!inJob && pool.nworkers > 0 && n < 8) batSmall += n;
+  if (inJob || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
   batchTasks.n = 0;
   for (int j = 0; j < n; j++) {
     int mr = CR(moves[j]), mc = CC(moves[j]);
@@ -203,10 +204,11 @@ static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int 
     batchTasks.a[batchTasks.n++] = 0; batchTasks.a[batchTasks.n++] = j;
     batchRes.a[j] = PENDING;
   }
-  pool.deadAt = batchDead.a; pool.moves = 0;
-  int ok = runPhase(x, &batchTasks, batchRes.a);
-  pool.deadAt = 0;
-  if (!ok) return;
+  // (while jobs hold the pool, on the side: the workers done with their jobs take its steps -- search.h sideBatch)
+  int ok;
+  if (busy) { ok = sideBatch(x, &batchTasks, batchRes.a, batchDead.a); if (!ok) batBusy += n; }
+  else { pool.deadAt = batchDead.a; pool.moves = 0; ok = runPhase(x, &batchTasks, batchRes.a); pool.deadAt = 0; }
+  if (!ok) { for (int j = 0; j < n; j++) batchRes.a[j] = UNBATCHED; return; }
   batchN = n;
 }
 // the batch's step j (its parent pi, its move), as step() would make it now
