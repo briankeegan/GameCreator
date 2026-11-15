@@ -480,6 +480,25 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   Played P = playOf(&R, n);
   if (opFlatPlayed) R.up = R.low = 0;   // (the opener's flattening before its raise: decide.c opTarget)
   if (opLineOn && P.line && P.line->carried) R.up = R.low = 0;   // (the opener's line in progress pressed through: no raise in its middle)
+  // (NO MOVE WITHOUT ITS REASON -- the owner: a move made for nothing is a bug. The line chosen that makes nothing, shapes nothing and leaves
+  // nothing one swap on gives way to the best after it in the order that has a reason and is lost no sooner -- of the next WHY_TRIES --
+  // else to the hold: a swap for nothing spends the window the next break is pressed from)
+  noReason = 0; whyPlayed = (Why){ WHY_NONE, 0, 0 };
+  if (!R.up && P.line && !P.line->hold && !P.line->carried) whyPlayed = moveWhy(P.line);
+  if (!R.up && P.line && !P.line->hold && !P.line->carried && whyPlayed.kind == WHY_NONE) {
+    const Judge *alt = 0, *H = 0;
+    for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
+    for (int i = 0, tries = 0; i < n && !alt && tries < WHY_TRIES; i++) {
+      const Judge *J = order[i];
+      if (J == P.line || J->hold || J->wait || J->o.dead) continue;
+      if (!(J->o.lives || (!P.line->o.lives && diesAt(J) >= diesAt(P.line)))) continue;
+      tries++;
+      Why wj = moveWhy(J);
+      if (wj.kind != WHY_NONE) { alt = J; whyPlayed = wj; }
+    }
+    noReason = alt ? 1 : 2;
+    P.line = alt; P.top = alt ? alt : H;
+  }
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
@@ -531,7 +550,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
   carryNextOf(P.line);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
-  seenCount(P.ncands);
   keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
   if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
   else if (d.kind == 1 && P.line && P.line->k.nseq == 1 && !theCarry.set) carryReady(P.line, qid);
@@ -566,6 +584,25 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // THE LOG LINE
   const Rule *rule = &theTables.r[R.rule];
   L_s("GAMBITD "); L_i(at); L_s(" @"); L_i(rule->name); L_s(" play="); L_play(P.name);
+  if (noReason) { L_s(" noreason="); L_i(noReason); }
+  if (!R.up && P.line && !P.line->hold) {
+    // (a line in progress, for the reason it was begun; one begun now, its reason kept with it)
+    Why wy = P.line->carried ? (theCarry.why.kind != WHY_NONE ? theCarry.why : moveWhy(P.line)) : whyPlayed;
+    if (!P.line->carried && theCarry.set) theCarry.why = wy;
+    L_s(" aim=");
+    switch (wy.kind) {
+      case WHY_CHAIN: L_s("x"); L_i(wy.a); break;
+      case WHY_COMBO: L_s("c"); L_i(wy.a); break;
+      case WHY_BREAK: L_s("b"); L_i(wy.a); break;
+      case WHY_TWIN: L_s("c"); L_i(wy.a); L_s("/"); L_i(wy.b); break;
+      case WHY_FLAT: L_s("flat"); L_i(wy.a); L_s(">"); L_i(wy.b); break;
+      case WHY_ZIP: L_s("zip"); L_i(wy.a); L_s(">"); L_i(wy.b); break;
+      case WHY_DROP: L_s("drop"); break;
+      case WHY_LIVE: L_s("live+"); L_i(wy.a); break;
+      case WHY_READY: L_s("ready-"); L_i(wy.a); break;
+      default: L_s("none"); break;   // (a move with no reason: a bug to find)
+    }
+  }
   L_s(" want="); if (R.up) L_s("raise"); else if (P.wait) L_s("hold"); else if (!n) L_s("-"); else if (order[0]->hold || order[0]->wait) L_s("hold"); else L_mv(order[0]->k.seq[0]);
   L_s(" got="); if (d.kind == 1) L_mv(d.move); else L_s(d.kind == 2 ? "raise" : "hold");
   L_s(" src=gambit v="); L_s(A->verdict == 1 ? "lives" : A->verdict == 2 ? "dies" : A->verdict == 3 ? "raise" : "none");
@@ -607,7 +644,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     // (the opening's line as the judge played it: its chain and the cells it throws -- beside chainAfter, the cells the plan said)
     if (chainUp >= 2 && P.line) { L_s(" opJudged="); L_i(P.line->apChain); L_s("/"); L_i(thrownOf(P.line)); } }
   if (opGrew) { L_s(" opgrew="); L_i(opLevels); L_s("/"); L_i(opHave ? opBest.len : -1); L_s("/"); L_i(opGrowMs); L_s("/"); L_i(opOnPool); L_s("/"); L_i(opHave ? opBest.ch : 0); L_s("/"); L_i(opN); if (opGrew == 2) L_s("/raise"); }
-  if (opFlatAsked) { L_s(" opflat="); L_i(opFlatN); if (opFlatPlayed) L_s("/played"); else if (opFlatN) { L_s("/no"); L_i(opFlatWhy); } }
+  if (opGrew == 2) { L_s(" opflat="); L_i(opFlatN); if (opFlatPlayed) L_s("/played"); }
   if (taxMs >= 0) { L_s(" tx="); L_i(taxBase); L_s("/"); L_i(taxLong); L_s("/"); L_i(taxN); L_s("/"); L_i(taxMs); }
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
@@ -700,7 +737,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!readyBuilt && readyBuildWhy) { L_s(" rb=0:"); L_i(readyBuildWhy); }
   if (readyBuilt) { L_s(" rb="); L_i(readyBuilt); if (P.line && P.line->k.readyGain > 0) { L_s("/played:"); L_i(P.line->k.readyGain); } }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
-  L_s(" again="); L_i(seenAgain); L_s("/"); L_i(seenAll);
   if (routeOffered) { L_s(" route="); L_i(routeOffered); if (routePlayed) L_s("/played"); }
   if (planSeeded) { L_s(" seed="); L_i(planSeeded); }
   if (readyPre) { L_s(" pre="); L_i(readyPre); L_s("/"); L_i(readyPendN); }

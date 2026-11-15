@@ -320,11 +320,8 @@ static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 // (THE OPENER'S LINE IN PROGRESS -- the owner: the opener is one continuous string; only a line no longer possible is put down: the
-// carried line, whatever the filters after its judging take out -- while it is the line it was begun as: one that now makes a shorter
-// chain than it was begun for, or a clear for nothing (a row risen since, its colours not known when it was planned), has changed, and
-// goes back to the beam to be scored again on the board as it is)
-static int32_t carryMadeChain(void);
-static const Judge *opCarried, *carriedFirst;   // (carriedFirst: the line in progress as judged, before any filter)
+// carried line, whatever the filters after its judging take out, while it lives or presses its last swap before the next block lands)
+static const Judge *opCarried;
 static const Judge *strippedCarry;   // (the line in progress without the swap that makes its three: THE THREE TAKEN OUT)
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
@@ -402,7 +399,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; opCarried = 0; carriedFirst = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -438,7 +435,7 @@ static int ranked(const Read *R, const Found *S) {
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
     else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
-    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; carriedFirst = cj; if (opLineOn && !(cj->apChain < carryMadeChain() || wastesThree(cj))) opCarried = cj; }
+    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; if (opLineOn && (cj->o.lives || decF.next == NOT_ASKED || (cj->apNats > 0 && cj->apAts[cj->apNats - 1] < decF.next))) opCarried = cj; }
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
     static Judge thru;
@@ -689,7 +686,7 @@ static int taHoldNoSooner(const Judge *line, int n) {
 // while one is found, OP_FLAT at most, into opFlat -- then raised `rows` rows on the engine, the raise key held as the game would take
 // it. 0 where the board is lost on the way.
 #define OP_FLAT 8
-static int32_t opFlat[OP_FLAT], opFlatN, opFlatPlayed, opFlatAsked, opFlatWhy;   // (why: 0 played, 1 no candidate, 2 its board lost, 3 lost sooner than the move chosen, 10 + the judge's drop code)
+static int32_t opFlat[OP_FLAT], opFlatN, opFlatPlayed;
 static Ctx *opTCtx;
 static int opTarget(const Question *q, int32_t rows, Question *out) {
   static Board *cur, *tgt; if (!cur) { cur = nb_new(); tgt = nb_new(); } if (!cur || !tgt) return 0;
@@ -705,13 +702,10 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
     const Board *b = ensureBoard(x, nd); if (!b) break;
     cloneBoard(cur, b); opFlat[opFlatN++] = sw;
   }
-  // (the raise counted on the board flattened: up to the raise's row, and never past the row under the top -- a raise that would top
-  // the board out is no raise, the flattening kept all the same)
-  (void)rows;
-  int32_t h = cur->height ? cur->height : 12, top0 = fullTop(cur), up = imin(raiseTo - top0, h - 1 - top0);
   cloneBoard(tgt, cur);
-  for (int32_t f = 0; up > 0 && fullTop(tgt) < top0 + up && tgt->gameOverClock <= 0 && f < 60 * up; f++) { tgt->input = RAISE_IN; run(tgt); }
-  if (tgt->gameOverClock > 0) cloneBoard(tgt, cur);
+  int32_t top0 = fullTop(tgt);
+  for (int32_t f = 0; fullTop(tgt) < top0 + rows && tgt->gameOverClock <= 0 && f < 60 * rows; f++) { tgt->input = RAISE_IN; run(tgt); }
+  if (tgt->gameOverClock > 0) return 0;
   tgt->input = 0;
   *out = *q; out->b = tgt; out->narr = 0;
   return 1;
@@ -791,22 +785,19 @@ static Played playOf(const Read *R, int n) {
   // it is flat: while the opening raise is due and done before the next block lands, the plan is made on the board it will build on -- the stack
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
   // is pressed first, as one line; with none left, the raise; then the plan, kept through the rows risen)
-  opFlatPlayed = 0; opFlatAsked = 0;
+  opFlatPlayed = 0;
   if (opWants && !opLineOn && raiseOpening) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * 0.7; if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow; readyStop();
     static Question tq; tq = decQ;
     // (the flattening and the raise done before the next block lands: the plan is built on the board raised, the block judged with it)
-    // (the flattening pressed whenever there is one; the plan grown on the board raised only where the flattening and the raise are done
-    // before the next block lands)
-    opFlatAsked = 1;
-    if (opTarget(&decQ, raiseRows, &tq)) {
-      if (R->readyAt == NOT_ASKED || R->readyAt > tq.b->clock - decQ.b->clock) { opFitLen = -1; double sh = clockShareBegin(nowMs() + grow); openingGrow(&tq); clockShareEnd(sh); opGrew = 2; }
+    if (opTarget(&decQ, raiseRows, &tq) && (R->readyAt == NOT_ASKED || R->readyAt > tq.b->clock - decQ.b->clock)) {
+      double sh = clockShareBegin(nowMs() + grow); openingGrow(&tq); clockShareEnd(sh);
+      opGrew = 2;
       if (opFlatN > 0) {
         static Judge FL; Cand k;
-        if (candOf(&k, PLAY_LEVEL, opFlat, opFlatN, -1, 0)) { k.settled = 1; lastDrop = -1; int jok = judgeCand(R, &k, &FL); opFlatWhy = !jok ? 10 + lastDrop : FL.o.dead ? 2 : !(FL.o.lives || !P.top || diesAt(&FL) >= diesAt(P.top)) ? 3 : 0; if (!opFlatWhy) { P.line = P.top = &FL; P.wait = 0; opFlatPlayed = 1; } }
-        else opFlatWhy = 1;
+        if (candOf(&k, PLAY_LEVEL, opFlat, opFlatN, -1, 0)) { k.settled = 1; if (judgeCand(R, &k, &FL) && !FL.o.dead && (FL.o.lives || !P.top || diesAt(&FL) >= diesAt(P.top))) { P.line = P.top = &FL; P.wait = 0; opFlatPlayed = 1; } }
       }
     }
     clockDue = keepDue; clockShare = keepShare;
@@ -817,11 +808,8 @@ static Played playOf(const Read *R, int n) {
   // (the planned opener in progress goes on: no plan is grown or begun over it -- the carry presses it, and survival alone puts it down)
   // (and no other line takes its place while it can still be pressed and either lives or presses its last swap before the next block
   // lands -- one that cannot fire in time is survival's to decide)
-  // (survival alone puts it down: kept where it lives, or where nothing chosen lives and it is lost no more than a break's time sooner
-  // -- late for a block on its way is no reason: its chain may fire after the block lands, and break it)
-  int opKeeps = opCarried && (opCarried->o.lives || (P.line && !P.line->o.lives && !P.line->o.dead && !opCarried->o.dead && diesAt(opCarried) + rankSave > diesAt(P.line)) || (!P.line && P.top && !P.top->o.lives));
-  if (opLineOn && opCarried && !(P.line && P.line->carried) && opKeeps) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
-  if (opLineOn && !(carryHeld() && P.line && P.line->carried)) { if (carriedFirst && !carriedFirst->o.dead) opKeepPath(decQ.b, carriedFirst->k.seq, carriedFirst->k.nseq); opLineOn = 0; }
+  if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
+  if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
   if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
@@ -833,7 +821,6 @@ static Played playOf(const Read *R, int n) {
     opGrowMs = (int32_t)grow;
     // (the pool taken back from the readiness beside the decision, which would search on past it: the beam is scored on every thread)
     readyStop();
-    opFitLen = decF.next != NOT_ASKED ? decF.next / OPEN_SWAP_FRAMES - 1 : -1;
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
     opGrew = 1;
     int32_t trig = 0, trigCh = 0;
@@ -841,9 +828,7 @@ static Played playOf(const Read *R, int n) {
     chainNow = trigCh; chainAfter = opHave ? opBest.sent : 0;
     // (ONE MOVE, START TO FINISH -- the owner: the opener is a continuous move; once started it goes on, nothing stops or replans it but
     // survival: the plan's set-ups and its trigger handed on as one line, judged whole, then carried as the line in progress)
-    // (a block on its way and the best plan too long for the time: the best that fits is played, the other kept)
     int late = decF.next != NOT_ASKED && opHave && decF.next <= (opBest.len + 1) * OPEN_SWAP_FRAMES;
-    if (late && opHaveFit) { opBest = opBestFit; late = 0; }
     int usePlan = opHave && opBest.len > 0 && opBest.ch > trigCh && !late && opAsked(opBest.ch);
     int32_t seq[OP_DEPTH + 1]; int ns = 0;
     if (usePlan) { for (int k = 0; k < opBest.len; k++) seq[ns++] = opBest.path[k]; seq[ns++] = opBest.trig; }
@@ -857,7 +842,7 @@ static Played playOf(const Read *R, int n) {
         lastDrop = -1;
         int jok = judgeCand(R, &k, &CU);
         chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
-        if (!chainUp) { P.line = &CU; chainUp = usePlan ? 3 : 2; opLineOn = usePlan; }
+        if (!chainUp) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
       }
     }
     clockDue = keepDue; clockShare = keepShare;
@@ -955,7 +940,9 @@ static Played playOf(const Read *R, int n) {
 // on a board the stack is not yet)
 // (made: what the line was ranked as making when it was played -- the judge's count, or the search's word for a line whose board is lost
 // during it (rank.c judgeCand): the rest of such a line is read on it too, carriedCand)
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], risen[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; } Carry;   // (rule: the mode it was begun in)
+enum { WHY_NONE, WHY_CHAIN, WHY_COMBO, WHY_BREAK, WHY_TWIN, WHY_FLAT, WHY_ZIP, WHY_DROP, WHY_LIVE, WHY_READY };   // (WHY_NONE: no reason -- a bug)
+typedef struct { int32_t kind, a, b; } Why;
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], risen[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; Why why; } Carry;   // (rule: the mode it was begun in; why: the reason it was begun, the log's aim=)
 static Carry theCarry;
 static int carryHeld(void) { return theCarry.set; }
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
@@ -1001,7 +988,9 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
   else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
+  Why keepWhy = k && k->carried ? theCarry.why : (Why){ WHY_NONE, 0, 0 };
   memset(&theCarry, 0, sizeof theCarry);
+  theCarry.why = keepWhy;
   theCarry.waits = waits; carriedSunk = -1;
   // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
   // tier, and its swaps after the first are the break it was chosen for)
@@ -1022,7 +1011,6 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.rule = R->rule;
 }
 static int32_t carryRule(void) { return theCarry.rule; }
-static int32_t carryMadeChain(void) { return theCarry.made.chain; }   // (the chain the line in progress was begun for)
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
 // as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the
@@ -1087,31 +1075,6 @@ static int anchorFor(const int32_t *row1, const int32_t *seq, int n, int32_t *ro
     if (!touched) { *row = 1; *col = c; *id = row1[c]; return 1; }
   }
   return 0;
-}
-// (THE LINES JUDGED AGAIN, for the log -- what a store of judged lines would save: of this decision's judged lines, how many the decision
-// before judged too, the same swaps pressed the same way on the same panels, its rows found again by a bottom-row panel)
-#define SEENMAX 512
-static uint32_t seenKey[SEENMAX]; static int32_t seenN, seenCol, seenId = -1, seenAgain, seenAll;
-static uint32_t lineKey(const Judge *J, int32_t dr) {
-  uint32_t h = 2166136261u ^ (uint32_t)J->settled;
-  for (int q = 0; q < J->k.nseq; q++) { h = (h ^ (uint32_t)((CR(J->k.seq[q]) - dr) * 8 + CC(J->k.seq[q]))) * 16777619u; }
-  return h ^ (uint32_t)J->k.nseq;
-}
-static void seenCount(int n) {
-  int32_t dr = NOT_ASKED;
-  if (seenId >= 0) for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][seenCol].f[ID] == seenId) dr = r - 1;
-  seenAgain = 0; seenAll = 0;
-  static uint32_t now[SEENMAX]; int nn = 0;
-  for (int i = 0; i < n; i++) {
-    const Judge *J = order[i];
-    if (J->hold || J->k.nseq < 1) continue;
-    seenAll++;
-    if (dr != NOT_ASKED) { uint32_t key = lineKey(J, dr); for (int q = 0; q < seenN; q++) if (seenKey[q] == key) { seenAgain++; break; } }
-    if (nn < SEENMAX) now[nn++] = lineKey(J, 0);
-  }
-  for (int q = 0; q < nn; q++) seenKey[q] = now[q];
-  seenN = nn; seenId = -1;
-  for (int c = 1; c <= W && seenId < 0; c++) { int32_t id = anchorIdAt(decQ.b, c); if (id != NUL) { seenCol = c; seenId = id; } }
 }
 static void keepIntents(int n, const Judge *played) {
   memset(theIntents, 0, sizeof theIntents);
@@ -1258,4 +1221,60 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   k->x.combo = x.combo; k->x.chain = x.chain; k->x.broke = x.broke; k->x.cells = x.cells; k->xDone = done; k->xFire = fire;
   k->xNats = nats; for (int i = 0; i < nats; i++) k->xAts[i] = ats[i];
   return 1;
+}
+// WHY THE MOVE PLAYED (the log's aim=, every decision that presses a swap -- the owner: no move without its reason): what the line makes,
+// or for a move that shapes the stack the shape it leaves, or what the board it leaves fires one swap on, or the combo a set-up sorts;
+// none of them is a move made for nothing -- a bug, logged as such
+static int32_t bumpOf(const Board *b) {
+  int32_t hg[W + 2] = { 0 }, bump = 0;
+  for (int c = 1; c <= W; c++) for (int r = 1; r < b->nrows; r++) if (b->p[r][c].f[COLOR] > 0 || b->p[r][c].f[ISGARBAGE]) hg[c] = r;
+  for (int c = 1; c < W; c++) bump += iabs(hg[c] - hg[c + 1]);
+  return bump;
+}
+static Ctx *whyCtx;
+#define WHY_TRIES 6   // (the lines after the one chosen asked for a reason, where it has none)
+static int32_t noReason;
+static Why whyPlayed;   // (the reason of the move played, measured when it was chosen: the log's aim=)   // (the log's: 1 the line chosen had no reason and the next with one was played, 2 none had one and the hold was)
+static Why moveWhy(const Judge *L) {
+  Why w = { WHY_NONE, 0, 0 };
+  if (!L || L->hold || L->k.nseq < 1) return w;
+  int play = L->k.play;
+  // (what it makes, the line itself)
+  int shapes = play == PLAY_LEVEL || play == PLAY_ZIP || play == PLAY_SURVIVE || play == PLAY_READY || play == PLAY_TOWARD;
+  if (!shapes || L->apBroke > 0) {
+    if (L->apChain >= 2) { w.kind = WHY_CHAIN; w.a = L->apChain; return w; }
+    if (L->apBroke > 0) { w.kind = WHY_BREAK; w.a = L->apBroke; return w; }
+    if (L->apCombo >= 3 && !shapes) { w.kind = WHY_COMBO; w.a = L->apCombo; return w; }
+  }
+  if (L->k.drop) { w.kind = WHY_DROP; return w; }
+  // (the board it leaves: every swap played, settled -- after the decision, outside its clock)
+  clockIgnore = 1;
+  Ctx *x = whyCtx = ctxOf(whyCtx);
+  int nd = rootOf(x, &decQ), n0 = nd;
+  for (int q = 0; q < L->k.nseq && liveNode(x, nd); q++) { int o = step(x, nd, MK_SETTLE, CR(L->k.seq[q]), CC(L->k.seq[q]), 0); if (!liveNode(x, o)) break; nd = o; }
+  const Board *eb = liveNode(x, nd) ? ensureBoard(x, nd) : 0;
+  if (eb && play == PLAY_LEVEL) { w.kind = WHY_FLAT; w.a = bumpOf(decQ.b); w.b = bumpOf(eb); }
+  else if (eb && play == PLAY_ZIP) { w.kind = WHY_ZIP; w.a = spreadOf(decQ.b); w.b = spreadOf(eb); }
+  else if (play == PLAY_READY || play == PLAY_TOWARD) { w.kind = WHY_READY; w.a = L->k.readyGain > 0 ? L->k.readyGain : 1; }
+  else if (play == PLAY_SURVIVE) {
+    const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
+    w.kind = WHY_LIVE; w.a = H && !H->o.lives && !L->o.lives ? (int32_t)(diesAt(L) - diesAt(H)) : 0;
+  }
+  if (w.kind == WHY_NONE && eb && nd != n0) {
+    // (what the board it leaves fires one swap on: the longest chain, else the biggest combo)
+    static int32_t ms[MAXROWS * W];
+    int m = swapsOfNode(x, nd, ms), bestX = 0, bestC = 0;
+    for (int i = 0; i < m; i++) {
+      int o = step(x, nd, MK_SETTLE, CR(ms[i]), CC(ms[i]), 0);
+      Stats st; if (!liveNode(x, o) || !statsOf(x, o, &st)) continue;
+      for (int c = 0; c < st.n && c < MAXCOMBOS; c++) { if (st.chainAt[c] > bestX) bestX = st.chainAt[c]; if (st.size[c] > bestC) bestC = st.size[c]; }
+    }
+    if (bestX >= 2) { w.kind = WHY_CHAIN; w.a = bestX; }
+    else if (L->k.aimC > 0 && L->k.aimLeft > 1) { w.kind = WHY_TWIN; w.a = L->k.aimC; w.b = L->k.aimLeft; }
+    else if (bestC >= 3) { w.kind = WHY_COMBO; w.a = bestC; }
+  }
+  if (w.kind == WHY_NONE && L->k.aimC > 0) { w.kind = WHY_TWIN; w.a = L->k.aimC; w.b = L->k.aimLeft; }
+  ns_reset(x);
+  clockIgnore = 0;
+  return w;
 }

@@ -9,9 +9,8 @@
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_DEPTH 20      // the set-ups a plan may hold
 typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot; } OpPath;
-static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest, opBestFit;
-static int opN, opHave, opHaveFit;   // the beam's paths, and whether a plan is held -- and one that fits
-static int32_t opFitLen = -1;        // (THE PLAN THAT FITS: the most set-ups a plan may hold to be pressed before the next block lands, -1 no block shown)
+static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
+static int opN, opHave;            // the beam's paths, and whether a plan is held
 static int32_t opLevels, opGrowMs, opOnPool;   // (the levels the last decision grew, the ms it had, the levels scored on the workers: the log's)
 static int32_t opPressed;          // the plan's set-up the last decision played (0: none) -- the beam is re-rooted under it
 static LOCAL Ctx *opCtx;
@@ -104,12 +103,6 @@ static int opPacier(const OpPath *a, const OpPath *o) {
   if (a->sent != o->sent) return a->sent > o->sent;
   return a->len < o->len;
 }
-// (the best plan held, and beside it the best whose set-ups and trigger are pressed before the next block lands: a plan too long for
-// the time now is kept, and the one that fits is played -- the time can change with what is played)
-static void opConsider(const OpPath *e) {
-  if (!opHave || opPacier(e, &opBest)) { opBest = *e; opHave = 1; }
-  if (opFitLen >= 0 && e->len <= opFitLen && (!opHaveFit || opPacier(e, &opBestFit))) { opBestFit = *e; opHaveFit = 1; }
-}
 static int32_t opClearedOf(const Question *q, int32_t sw) {
   Ctx *x = cuCtxB = ctxOf(cuCtxB);
   int root = rootOf(x, q);
@@ -145,7 +138,7 @@ static int opAsked(int32_t ch) {
 }
 // A new game: nothing held
 static int32_t opAnchorCol, opAnchorId = -1;   // (a bottom-row panel of the board the beam was grown on: the rows risen since read off it)
-static void openingReset(void) { opN = 0; opHave = 0; opHaveFit = 0; opPressed = 0; opAnchorId = -1; }
+static void openingReset(void) { opN = 0; opHave = 0; opPressed = 0; opAnchorId = -1; }
 // (THE BEAM KEPT THROUGH A RISE: the rows the stack has risen since the beam was grown, read off the anchor panel -- NOT_ASKED where it
 // is gone -- added to every swap of every path, so a plan made a row lower is pressed where its panels now are)
 static int32_t opRisen(const Board *b) {
@@ -156,20 +149,6 @@ static int32_t opRisen(const Board *b) {
 static void opAnchor(const Board *b) {
   opAnchorId = -1;
   for (int c = 1; c <= W; c++) if (b->nrows > 1 && b->p[1][c].f[ID] > 0 && cellAt(b, 1, c) != 0) { opAnchorCol = c; opAnchorId = b->p[1][c].f[ID]; return; }
-}
-// A LINE KEPT IN THE BEAM (the owner: an idea is not thrown out while it is still possible): the swaps of a line put down, named on board
-// b, its last the trigger -- the beam brought to b's rows first; replayed and scored again with every path the next time the beam grows,
-// and let go only there, where its set-ups are no longer there to press
-static void opKeepPath(const Board *b, const int32_t *seq, int n) {
-  if (n < 1 || n > OP_DEPTH + 1) return;
-  int32_t dr = opN ? opRisen(b) : 0;
-  if (dr == NOT_ASKED) opN = 0;
-  else if (dr) for (int i = 0; i < opN; i++) { for (int k = 0; k < opBeam[i].len; k++) opBeam[i].path[k] += dr * 8; if (opBeam[i].trig) opBeam[i].trig += dr * 8; }
-  opAnchor(b);
-  if (opN >= OP_BEAM) opN = OP_BEAM - 1;
-  OpPath p; memset(&p, 0, sizeof p);
-  p.len = n - 1; for (int k = 0; k < n - 1; k++) p.path[k] = seq[k]; p.trig = seq[n - 1];
-  opBeam[opN++] = p;
 }
 // ONE PATH'S SET-UPS SCORED (opKids, a job: on whichever thread takes it, on that thread's own nodes): the path's board opJPar[p], each
 // of its set-ups opJSw[p] played on it, those setting nothing off scored by their best trigger and their promise into opJRes[p]. Its
@@ -241,8 +220,8 @@ static void openingGrow(const Question *q) {
   }
   if (clockOut()) return;
   opN = m; for (int i = 0; i < m; i++) opBeam[i] = opNext[i];
-  opHave = 0; opHaveFit = 0;
-  for (int i = 0; i < opN; i++) if (opBeam[i].trig) opConsider(&opBeam[i]);
+  opHave = 0;
+  for (int i = 0; i < opN; i++) if (opBeam[i].trig && (!opHave || opPacier(&opBeam[i], &opBest))) { opBest = opBeam[i]; opHave = 1; }
   // (grown a level at a time: every path's set-ups one swap on, the nearest its last swap first, each scored on whichever thread takes
   // its path (opKids); the OP_BEAM best kept and played again here, where the next level grows from them)
   opLevels = 0; opOnPool = 0;
@@ -272,7 +251,7 @@ static void openingGrow(const Question *q) {
       const OpKid *c = &opJRes[p][i]; const OpPath *par = &opBeam[from[p]];
       if (c->trig) {
         OpPath e = *par; e.path[e.len++] = c->sw; e.sent = c->sent; e.cleared = c->cleared; e.trig = c->trig; e.ch = c->ch; e.pot = c->pot;
-        opConsider(&e); }
+        if (!opHave || opPacier(&e, &opBest)) { opBest = e; opHave = 1; } }
       int dup = 0; for (int j = 0; j < nc && !dup; j++) dup = opJRes[cp[j]][ci[j]].h == c->h;
       if (!dup) { cp[nc] = p; ci[nc] = i; taken[nc++] = 0; }
     }
