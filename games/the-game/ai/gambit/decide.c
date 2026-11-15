@@ -776,16 +776,17 @@ static Played playOf(const Read *R, int n) {
   chainUp = chainNow = chainAfter = 0; opGrew = 0;
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut();
   // (THE OPENER AS ONE PLAN -- the owner: the opener includes everything it is going to do, the flattening too, and raises the moment
-  // it is flat: while the opening raise is due and nothing is on its way, the plan is made on the board it will build on -- the stack
+  // it is flat: while the opening raise is due and done before the next block lands, the plan is made on the board it will build on -- the stack
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
   // is pressed first, as one line; with none left, the raise; then the plan, kept through the rows risen)
   opFlatPlayed = 0;
-  if (opWants && !opLineOn && raiseOpening && R->low && decQ.narr == 0) {
+  if (opWants && !opLineOn && raiseOpening && R->low) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * 0.7; if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow; readyStop();
     static Question tq; tq = decQ;
-    if (opTarget(&decQ, raiseRows, &tq)) {
+    // (the flattening and the raise done before the next block lands: the plan is built on the board raised, the block judged with it)
+    if (opTarget(&decQ, raiseRows, &tq) && (R->readyAt == NOT_ASKED || R->readyAt > tq.b->clock - decQ.b->clock)) {
       double sh = clockShareBegin(nowMs() + grow); openingGrow(&tq); clockShareEnd(sh);
       opGrew = 2;
       if (opFlatN > 0) {
@@ -826,11 +827,11 @@ static Played playOf(const Read *R, int n) {
       static Judge CU; Cand k;
       if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
         k.settled = usePlan ? 1 : 0;
-        // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live, -4 it
-        // leaves the window no break's walk where the next break is due -- the opener hands over with its reserve: the log's)
+        // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live, -4 its
+        // board falls below the floor -- the panels the garbage that comes back is broken with: the log's)
         lastDrop = -1;
         int jok = judgeCand(R, &k, &CU);
-        chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : spendsReserve(&CU) ? -4 : 0;
+        chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : R->keep.t[KEEP_MATERIAL].op && CU.o.matLeft >= 0 && !test(CU.o.matLeft, R->keep.t[KEEP_MATERIAL]) ? -4 : 0;
         if (!chainUp) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
       }
     }
