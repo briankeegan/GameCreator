@@ -1078,6 +1078,31 @@ static int anchorFor(const int32_t *row1, const int32_t *seq, int n, int32_t *ro
   }
   return 0;
 }
+// (THE LINES JUDGED AGAIN, for the log -- what a store of judged lines would save: of this decision's judged lines, how many the decision
+// before judged too, the same swaps pressed the same way on the same panels, its rows found again by a bottom-row panel)
+#define SEENMAX 512
+static uint32_t seenKey[SEENMAX]; static int32_t seenN, seenCol, seenId = -1, seenAgain, seenAll;
+static uint32_t lineKey(const Judge *J, int32_t dr) {
+  uint32_t h = 2166136261u ^ (uint32_t)J->settled;
+  for (int q = 0; q < J->k.nseq; q++) { h = (h ^ (uint32_t)((CR(J->k.seq[q]) - dr) * 8 + CC(J->k.seq[q]))) * 16777619u; }
+  return h ^ (uint32_t)J->k.nseq;
+}
+static void seenCount(int n) {
+  int32_t dr = NOT_ASKED;
+  if (seenId >= 0) for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][seenCol].f[ID] == seenId) dr = r - 1;
+  seenAgain = 0; seenAll = 0;
+  static uint32_t now[SEENMAX]; int nn = 0;
+  for (int i = 0; i < n; i++) {
+    const Judge *J = order[i];
+    if (J->hold || J->k.nseq < 1) continue;
+    seenAll++;
+    if (dr != NOT_ASKED) { uint32_t key = lineKey(J, dr); for (int q = 0; q < seenN; q++) if (seenKey[q] == key) { seenAgain++; break; } }
+    if (nn < SEENMAX) now[nn++] = lineKey(J, 0);
+  }
+  for (int q = 0; q < nn; q++) seenKey[q] = now[q];
+  seenN = nn; seenId = -1;
+  for (int c = 1; c <= W && seenId < 0; c++) { int32_t id = anchorIdAt(decQ.b, c); if (id != NUL) { seenCol = c; seenId = id; } }
+}
 static void keepIntents(int n, const Judge *played) {
   memset(theIntents, 0, sizeof theIntents);
   int32_t row1[W + 1];
