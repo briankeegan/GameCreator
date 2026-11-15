@@ -531,6 +531,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
   carryNextOf(P.line);
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
+  seenCount(P.ncands);
   keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
   if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
   else if (d.kind == 1 && P.line && P.line->k.nseq == 1 && !theCarry.set) carryReady(P.line, qid);
@@ -699,6 +700,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (!readyBuilt && readyBuildWhy) { L_s(" rb=0:"); L_i(readyBuildWhy); }
   if (readyBuilt) { L_s(" rb="); L_i(readyBuilt); if (P.line && P.line->k.readyGain > 0) { L_s("/played:"); L_i(P.line->k.readyGain); } }
   if (keptOffered) { L_s(" kept="); L_i(keptOffered); if (keptPlayed) L_s("/played"); }
+  L_s(" again="); L_i(seenAgain); L_s("/"); L_i(seenAll);
   if (routeOffered) { L_s(" route="); L_i(routeOffered); if (routePlayed) L_s("/played"); }
   if (planSeeded) { L_s(" seed="); L_i(planSeeded); }
   if (readyPre) { L_s(" pre="); L_i(readyPre); L_s("/"); L_i(readyPendN); }
