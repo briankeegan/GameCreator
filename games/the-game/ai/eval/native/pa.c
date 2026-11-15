@@ -793,6 +793,20 @@ static int orderBefore(const Incoming *a, const Incoming *b) {
 }
 static void receiveGarbage(Board *b, const Incoming *g) {
   if (b->ninc >= MAXINC) { b->err |= ERR_INC; return; }
+  int n = b->ninc;
+  // (the insertion sort's result in its own time: a queue in order takes the new one where the sort would stop it -- after the last
+  // entry it is not before, found by halves, the order being lexicographic. An entry's place changes only with a chain's finalized, and
+  // the chains are queued after every other entry: the queue is in order when its chains at the end are. A host's queue out of order
+  // anywhere else would show as a board the search predicts and the game does not make -- gambit_summary.js, truth)
+  int ordered = 1;
+  for (int a = n - 1; a > 0 && b->inc[a].isChain && ordered; a--) if (orderBefore(&b->inc[a], &b->inc[a - 1])) ordered = 0;
+  if (ordered) {
+    int lo = 0, hi = n;
+    while (lo < hi) { int mid = (lo + hi) >> 1; if (orderBefore(g, &b->inc[mid])) hi = mid; else lo = mid + 1; }
+    __builtin_memmove(&b->inc[lo + 1], &b->inc[lo], (unsigned long)(n - lo) * sizeof b->inc[0]);
+    b->inc[lo] = *g; b->ninc = n + 1;
+    return;
+  }
   b->inc[b->ninc++] = *g;
   for (int a = 1; a < b->ninc; a++) {
     Incoming x = b->inc[a]; int k = a - 1;

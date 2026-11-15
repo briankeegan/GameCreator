@@ -96,7 +96,7 @@ static int raisePresses(const FQuestion *q, Board *b) {
   return r != STEP_NULL && r != STEP_ERR;
 }
 // (THE LAST BOARDS, ringKeep below)
-#define RINGN 32
+#define RINGN 128
 static Board *ring[RINGN]; static int32_t ringAt[RINGN], ringNarr[RINGN], ringAllow[RINGN]; static Arr ringArr[RINGN][MAXARR]; static int ringHead, ringCount;
 // The board as base64 of its bytes (the head, the queue, the rows), for the reach report (GAMBITB)
 static int b64(const unsigned char *p, int n, char *out) {

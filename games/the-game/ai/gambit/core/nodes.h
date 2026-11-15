@@ -151,8 +151,13 @@ static int32_t pressDelay(Ctx *x, int pi, int mr, int mc) {
 // The child of node pi by one step (search.h advance: MK_SWAP, MK_SETTLE, MK_LONG, MK_HOLD), STEP_NULL when the clock is out or the
 // step is refused, STEP_DEAD when the board is lost on it (deadAt). A swap is pressed as the frame loop presses it: with the input
 // budget tight, the frames its held walk is later by are waited first -- every search and the judge on the one press clock.
+// (THE STEPS BY THREAD, the decision's -- answer.c logs them, bat=TAKEN/OWN:SEARCH/BUSY/SMALL/TIGHT/JOBS: steps taken from a batch the
+// workers made; steps made on the decision's thread, and of them those made before the judging; of the batches asked, the steps refused
+// for the pool busy with jobs, for a batch under 8, and for a press waiting its walk; the steps the jobs made on the workers meanwhile)
+static int32_t batTaken, batOwn, batSearch, batBusy, batSmall, batTight, batJobs;
 static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
   if (clockOut()) return STEP_NULL;
+  if (!inJob) batOwn++; else __atomic_add_fetch(&batJobs, 1, __ATOMIC_RELAXED);
   int32_t t0 = NODE(x, pi)->t;
   if (pressTight && mr && (kind == MK_SWAP || kind == MK_SETTLE)) {
     pressHave = 0;
@@ -187,26 +192,30 @@ static Vec batchTasks, batchRes, batchDead;
 static LOCAL int batchN;
 static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int kind, int n) {
   batchN = 0;
-  if (inJob || __atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE) || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
+  int busy = __atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE);
+  if (!inJob && pool.nworkers > 0 && n < 8) batSmall += n;
+  if (inJob || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
   batchTasks.n = 0;
   for (int j = 0; j < n; j++) {
     int mr = CR(moves[j]), mc = CC(moves[j]);
     batchRes.a[j] = UNBATCHED;
-    if ((pressTight && mr && pressDelay(x, parents[j], mr, mc) > 0) || !ensureBoard(x, parents[j])) continue;
+    if ((pressTight && mr && pressDelay(x, parents[j], mr, mc) > 0) || !ensureBoard(x, parents[j])) { batTight++; continue; }
     batchTasks.a[batchTasks.n++] = parents[j]; batchTasks.a[batchTasks.n++] = ADVANCE_TASK - ((((mr << 3) | mc) << 3) | kind);
     batchTasks.a[batchTasks.n++] = 0; batchTasks.a[batchTasks.n++] = j;
     batchRes.a[j] = PENDING;
   }
-  pool.deadAt = batchDead.a; pool.moves = 0;
-  int ok = runPhase(x, &batchTasks, batchRes.a);
-  pool.deadAt = 0;
-  if (!ok) return;
+  // (while jobs hold the pool, on the side: the workers done with their jobs take its steps -- search.h sideBatch)
+  int ok;
+  if (busy) { ok = sideBatch(x, &batchTasks, batchRes.a, batchDead.a); if (!ok) batBusy += n; }
+  else { pool.deadAt = batchDead.a; pool.moves = 0; ok = runPhase(x, &batchTasks, batchRes.a); pool.deadAt = 0; }
+  if (!ok) { for (int j = 0; j < n; j++) batchRes.a[j] = UNBATCHED; return; }
   batchN = n;
 }
 // the batch's step j (its parent pi, its move), as step() would make it now
 static int stepTake(Ctx *x, int j, int pi, int kind, int32_t mv) {
   if (j >= batchN || batchRes.a[j] == UNBATCHED || batchRes.a[j] == PENDING) return clockOut() ? STEP_NULL : step(x, pi, kind, CR(mv), CC(mv), 0);
   if (clockOut()) return STEP_NULL;
+  batTaken++;
   int32_t r = batchRes.a[j], t0 = NODE(x, pi)->t;
   clockCharge(r >= 0 ? NODE(x, r)->t - t0 : r == STEP_DEAD ? batchDead.a[j] - t0 : 1);
   if (r == STEP_DEAD) deadAt = batchDead.a[j];

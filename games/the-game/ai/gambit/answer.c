@@ -446,6 +446,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   readyAsked = readyHit = 0; readyStop(); readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   readMs = nowMs() - tStart;
+  batTaken = batOwn = batBusy = batSmall = batTight = 0;
   double brMs;
   // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
   double searchShare = clockShareBegin(searchesEnd());
@@ -463,6 +464,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
   searchMerge(&R, &S);
   S.searchMs = nowMs() - ts;
+  batSearch = batOwn;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
   clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
@@ -476,7 +478,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     if (order[0]->apBroke > 0 || (H && !order[0]->hold && lostOf(order[0]) >= lostOf(H) + rankSave)) R.up = R.low = 0;
   }
   Played P = playOf(&R, n);
-  if (opFlatPlayed) R.up = R.low = 0;   // (the opener's flattening before its raise: decide.c opTarget)
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
@@ -598,15 +599,14 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (twinOffered || (P.line && P.line->k.twin)) { L_s(" twin="); L_i(twinOffered); if (P.line && P.line->k.twin) L_s(P.line->k.twin == 2 ? "/setup" : "/played"); }
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
-  if (needlessTrimmed) { L_s(" needless="); L_i(needlessTrimmed); }
-  if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter);
+  if (noopTrimmed) { L_s(" trimmed="); L_i(noopTrimmed); }
+  if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); L_s(" opgrew="); L_i(opLevels); L_s("/"); L_i(opHave ? opBest.len : -1); L_s("/"); L_i(opGrowMs); L_s("/"); L_i(opOnPool);
     // (the opening's line as the judge played it: its chain and the cells it throws -- beside chainAfter, the cells the plan said)
     if (chainUp >= 2 && P.line) { L_s(" opJudged="); L_i(P.line->apChain); L_s("/"); L_i(thrownOf(P.line)); } }
-  if (opGrew) { L_s(" opgrew="); L_i(opLevels); L_s("/"); L_i(opHave ? opBest.len : -1); L_s("/"); L_i(opGrowMs); L_s("/"); L_i(opOnPool); L_s("/"); L_i(opHave ? opBest.ch : 0); L_s("/"); L_i(opN); if (opGrew == 2) L_s("/raise"); }
-  if (opGrew == 2) { L_s(" opflat="); L_i(opFlatN); if (opFlatPlayed) L_s("/played"); }
   if (taxMs >= 0) { L_s(" tx="); L_i(taxBase); L_s("/"); L_i(taxLong); L_s("/"); L_i(taxN); L_s("/"); L_i(taxMs); }
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
+  if (backTrimmed) L_s(" backTrimmed=1");
   if (windowCut) { L_s(" windowCut="); L_i(windowCut); }   // (lines taken out: the window not back before their board is lost)
   if (samesTrimmed) L_s(" samesTrimmed=1");   // (the line played had its swaps of one colour taken out)
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); L_s(" twoWhy="); L_i(twoWhy); L_s("/"); L_i(twoLostLog >= 1e299 ? -2 : (int64_t)twoLostLog); L_s("/"); L_i((int64_t)twoKeptLog); }
@@ -714,6 +714,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   else L_s("none");
   // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
   if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); }
+  L_s(" bat="); L_i(batTaken); L_s("/"); L_i(batOwn); L_s(":"); L_i(batSearch); L_s("/"); L_i(batBusy); L_s("/"); L_i(batSmall); L_s("/"); L_i(batTight); L_s("/"); L_i(__atomic_exchange_n(&batJobs, 0, __ATOMIC_RELAXED));
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" plan="); L_i((int64_t)S.planShare); L_s("/"); L_i((int64_t)S.planFirst); L_s("/"); L_i(S.wide); L_s("/"); L_i((int64_t)S.ap.ms); L_s("/d"); L_i(S.planDepth); L_s("/l"); L_i(S.planLong);
   // (the planner and the list's first entry: a line that meets it found, and how near its nearest line comes, the first entry's percent)

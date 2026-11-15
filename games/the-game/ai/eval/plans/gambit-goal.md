@@ -1995,3 +1995,14 @@ own conversion with it (base cells were taken off, base garbage not): every line
 cells sent, not garbage broken.
 A LINEUP'S BREAK ITS OWN: the extension's broke net of the board alone, as its cells are; and its beam ranked by the garbage converted
 beyond the board alone, then what it sends (search/extend.c).
+THE LOSSES REPLAYED (`./build.sh test replay LOG MODE`, a lost game's last 128 boards each answered at half to four times a decision's
+work): on 25 to 30 of the last 128 boards of each of three finish losses (main `a4e2f556`, 3309), four times the work finds a line lost
+30 frames or more later than the one played -- near the end too (combo_storm-8, 84 frames from its loss: twice the work, a line lost
+at 173 where the one played was lost at 62). Nearly every loss reads "no break found, the search cut by the clock". The time binds.
+THE QUEUE BY HALVES: a slab queued at its place found by halves, the order checked over the chains at the queue's end only (pa.c
+receiveGarbage) -- the insertion sort's own result. A storm's queue holds 130 slabs and the search queued one on each arriving frame:
+two thirds of the instructions on combo_storm's last boards.
+Measured (`1b4d1b88`, 3313-3316, set 86): finish 26, fill 23, switching 22, opener 100/100 -- against `a4e2f556` (3309-3312): 23, 24,
+26, 100/100. The answers on a given work are byte for byte the same: the gap between the two is the clock's, not the play's -- what one
+run per mode cannot see past. Instructions on the profiled boards 12.7 G to 4.7 G; what is left is the boards copied (27%) and the
+engine's frame (31%).

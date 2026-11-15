@@ -135,8 +135,31 @@ static int opening(const char *dir) {
     fail |= !tried || !found; }
   return fail;
 }
+// THE LOSS REPLAYED (test DIR replay LOG MODE): each of a game's last boards (GAMBITL) answered at half, once, twice and four times a
+// decision's work -- whether the answer, and the break it plays, waits on the time the decision had
+static int replayLoss(const char *dir, const char *log, int mode) {
+  char path[4096]; static char line[1 << 17], rec[4096];
+  snprintf(path, sizeof path, "%s/rules.words", dir);
+  if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+  FILE *f = fopen(log, "r");
+  if (!f) return 2;
+  static const int mult[4] = { 1, 2, 4, 8 };
+  while (fgets(line, sizeof line, f)) {
+    const char *b = strstr(line, "GAMBITL ");
+    if (!b) continue;
+    int at = atoi(b + 8);
+    for (int m = 0; m < 4; m++) {
+      int narr, n = loadLine(b, &narr);
+      if (n < 0 || gb_replay(n, narr, mode, (int64_t)REPLAY_WORK * mult[m] / 2, rec, sizeof rec) < 0) { printf("%d x%.1f: does not load\n", at, mult[m] / 2.0); break; }
+      printf("%d x%.1f: %s\n", at, mult[m] / 2.0, rec);
+    }
+  }
+  fclose(f);
+  return 0;
+}
 int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
+  if (argc > 4 && !strcmp(argv[2], "replay")) return replayLoss(dir, argv[3], atoi(argv[4]));
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
   if (argc > 2 && !strcmp(argv[2], "design")) {
