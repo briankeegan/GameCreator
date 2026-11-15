@@ -15,6 +15,7 @@ typedef struct {
   int32_t pair;    // a line that fires two ideas, one after the other (search/plan.c pair; decide.c routeJudged)
   int32_t twin;    // two columns sorted row by row, then one swap that clears both (propose.c twinLines): 1 the line, 2 the set-up alone
   int32_t readyGain;   // a swap that brings the break nearer on the board the garbage on its way lands on: the swaps it saves (propose.c readyBuild)
+  int32_t aimC, aimLeft;   // a set-up's combo when it is fired, and the swaps from the line's end to it (propose.c twinLines: the log's aim)
   Xs x; int32_t xFire, xDone, xNats, xAts[MAXLINE];   // xFire/xDone: -1 not said
 } Cand;
 // A JUDGED CANDIDATE: its place (tier, sub), its outcome, and what the move played reads (ap)

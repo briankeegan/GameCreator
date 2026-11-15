@@ -565,6 +565,24 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // THE LOG LINE
   const Rule *rule = &theTables.r[R.rule];
   L_s("GAMBITD "); L_i(at); L_s(" @"); L_i(rule->name); L_s(" play="); L_play(P.name);
+  if (!R.up && P.line && !P.line->hold) {
+    // (a line in progress, for the reason it was begun; one begun now, its reason kept with it)
+    Why wy = P.line->carried && theCarry.why.kind != WHY_NONE ? theCarry.why : moveWhy(P.line);
+    if (!P.line->carried && theCarry.set) theCarry.why = wy;
+    L_s(" aim=");
+    switch (wy.kind) {
+      case WHY_CHAIN: L_s("x"); L_i(wy.a); break;
+      case WHY_COMBO: L_s("c"); L_i(wy.a); break;
+      case WHY_BREAK: L_s("b"); L_i(wy.a); break;
+      case WHY_TWIN: L_s("c"); L_i(wy.a); L_s("/"); L_i(wy.b); break;
+      case WHY_FLAT: L_s("flat"); L_i(wy.a); L_s(">"); L_i(wy.b); break;
+      case WHY_ZIP: L_s("zip"); L_i(wy.a); L_s(">"); L_i(wy.b); break;
+      case WHY_DROP: L_s("drop"); break;
+      case WHY_LIVE: L_s("live+"); L_i(wy.a); break;
+      case WHY_READY: L_s("ready-"); L_i(wy.a); break;
+      default: L_s("none"); break;   // (a move with no reason: a bug to find)
+    }
+  }
   L_s(" want="); if (R.up) L_s("raise"); else if (P.wait) L_s("hold"); else if (!n) L_s("-"); else if (order[0]->hold || order[0]->wait) L_s("hold"); else L_mv(order[0]->k.seq[0]);
   L_s(" got="); if (d.kind == 1) L_mv(d.move); else L_s(d.kind == 2 ? "raise" : "hold");
   L_s(" src=gambit v="); L_s(A->verdict == 1 ? "lives" : A->verdict == 2 ? "dies" : A->verdict == 3 ? "raise" : "none");
