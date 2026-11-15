@@ -36,6 +36,21 @@ static int opMaySet(const Board *b, int r, int c) {
 }
 // the longest chain one swap sets off from the question's board, of two as long the one sending more -- its chain's slabs and every
 // clear's combo garbage (plan.c sentCells): what it sends returned, the swap in *sw, its chain in *chain (0: none sends any)
+// A SWAP PRESSED AS THE FRAME LOOP PRESSES IT (judge.c's way, core/nodes.h pressWalk): walked to while the board still settles from the
+// last, pressed the first frame the pair can be taken -- waited for a frame at a time while it moves, PRESS_WAIT at most -- and run on
+// through what it sets off. A plan timed any other way is a plan the game does not play.
+static int opPress(Ctx *x, int n, int32_t sw) {
+  for (int k = 0;; k++) {
+    int r = step(x, n, MK_SETTLE, CR(sw), CC(sw), 0);
+    if (r != STEP_NULL) return r;
+    Board *b = ensureBoard(x, n);
+    if (k >= PRESS_WAIT || !b || !(hasActivePanels(b) || b->swappingCount > 0)) return STEP_NULL;
+    int w = step(x, n, MK_LONG, 0, 0, 1);
+    if (w < 0) return w;
+    if (NODE(x, w)->dead) return STEP_DEAD;
+    n = w;
+  }
+}
 static int32_t triggerSendOf(const Question *q, int32_t *sw, int32_t *chain) {
   Ctx *x = cuCtxB = ctxOf(cuCtxB);
   int root = rootOf(x, q);
@@ -44,13 +59,10 @@ static int32_t triggerSendOf(const Question *q, int32_t *sw, int32_t *chain) {
   const Board *b0 = ensureBoard(x, root);
   for (int i = 0; i < m && !clockOut(); i++) {
     if (b0 && !opMaySet(b0, CR(ms[i]), CC(ms[i]))) continue;
-    int n = step(x, root, MK_SWAP, CR(ms[i]), CC(ms[i]), 0);
-    if (!liveNode(x, n)) continue;
-    int out = settleOf(x, n);
+    int out = opPress(x, root, ms[i]);
     if (!liveNode(x, out)) continue;
     Stats s; int32_t c = 0, ch = 0;
-    if (statsOf(x, n, &s)) { c = sentCells(&s); ch = chainOfStats(&s); }
-    if (statsOf(x, out, &s) && sentCells(&s) > c) { c = sentCells(&s); ch = chainOfStats(&s); }
+    if (statsOf(x, out, &s)) { c = sentCells(&s); ch = chainOfStats(&s); }
     if (c > 0 && (ch > bestCh || (ch == bestCh && c > best))) { best = c; bestCh = ch; if (sw) *sw = ms[i]; if (chain) *chain = ch; }
   }
   return best;
@@ -95,18 +107,14 @@ static int32_t opClearedOf(const Question *q, int32_t sw) {
   Ctx *x = cuCtxB = ctxOf(cuCtxB);
   int root = rootOf(x, q);
   if (root < 0 || !sw) return 0;
-  int n = step(x, root, MK_SWAP, CR(sw), CC(sw), 0);
-  if (!liveNode(x, n)) return 0;
-  int out = settleOf(x, n);
+  int out = opPress(x, root, sw);
   Stats s; return liveNode(x, out) && statsOf(x, out, &s) ? s.cleared : 0;
 }
 // a path played from the question's board, its set-ups each clearing nothing: the node it ends on, -1 where one is not there to press
 static int opReplay(Ctx *x, int root, const OpPath *p) {
   int at = root;
   for (int k = 0; k < p->len && !clockOut(); k++) {
-    int s1 = step(x, at, MK_SWAP, CR(p->path[k]), CC(p->path[k]), 0);
-    if (!liveNode(x, s1)) return -1;
-    int out = settleOf(x, s1);
+    int out = opPress(x, at, p->path[k]);
     if (!liveNode(x, out)) return -1;
     Stats st; if (statsOf(x, out, &st) && st.cleared > 0) return -1;
     at = out;
@@ -129,7 +137,19 @@ static int opAsked(int32_t ch) {
   return 0;
 }
 // A new game: nothing held
-static void openingReset(void) { opN = 0; opHave = 0; opPressed = 0; }
+static int32_t opAnchorCol, opAnchorId = -1;   // (a bottom-row panel of the board the beam was grown on: the rows risen since read off it)
+static void openingReset(void) { opN = 0; opHave = 0; opPressed = 0; opAnchorId = -1; }
+// (THE BEAM KEPT THROUGH A RISE: the rows the stack has risen since the beam was grown, read off the anchor panel -- NOT_ASKED where it
+// is gone -- added to every swap of every path, so a plan made a row lower is pressed where its panels now are)
+static int32_t opRisen(const Board *b) {
+  if (opAnchorId < 0) return NOT_ASKED;
+  for (int r = 1; r < b->nrows; r++) if (b->p[r][opAnchorCol].f[ID] == opAnchorId) return r - 1;
+  return NOT_ASKED;
+}
+static void opAnchor(const Board *b) {
+  opAnchorId = -1;
+  for (int c = 1; c <= W; c++) if (b->nrows > 1 && b->p[1][c].f[ID] > 0 && cellAt(b, 1, c) != 0) { opAnchorCol = c; opAnchorId = b->p[1][c].f[ID]; return; }
+}
 // ONE PATH'S SET-UPS SCORED (opKids, a job: on whichever thread takes it, on that thread's own nodes): the path's board opJPar[p], each
 // of its set-ups opJSw[p] played on it, those setting nothing off scored by their best trigger and their promise into opJRes[p]. Its
 // own share, the decision's (opJEnd); the thread's clock as it was after.
@@ -150,11 +170,9 @@ static void opKids(int32_t p) {
   int root = rootOf(x, &q);
   for (int i = 0; root >= 0 && i < opJN[p] && !clockOut(); i++) {
     int32_t sw = opJSw[p][i];
-    int s1 = step(x, root, MK_SWAP, CR(sw), CC(sw), 0);
-    if (!liveNode(x, s1)) continue;
-    int out = settleOf(x, s1);
+    int out = opPress(x, root, sw);
     if (!liveNode(x, out)) continue;
-    Stats st; if ((statsOf(x, s1, &st) && st.cleared > 0) || (statsOf(x, out, &st) && st.cleared > 0)) continue;
+    Stats st; if (statsOf(x, out, &st) && st.cleared > 0) continue;
     OpPath e; e.len = 0; opScore(&opJQ, x, out, &e);
     const Board *ob = ensureBoard(x, out);
     if (!ob) continue;
@@ -187,6 +205,10 @@ static void openingGrow(const Question *q) {
       OpPath p = opBeam[i]; for (int k = 1; k < p.len; k++) p.path[k - 1] = p.path[k]; p.len--; opBeam[m++] = p; }
     opN = m; opPressed = 0;
   }
+  { int32_t dr = opN ? opRisen(q->b) : 0;
+    if (dr == NOT_ASKED) opN = 0;
+    else if (dr) for (int i = 0; i < opN; i++) { for (int k = 0; k < opBeam[i].len; k++) opBeam[i].path[k] += dr * 8; if (opBeam[i].trig) opBeam[i].trig += dr * 8; } }
+  opAnchor(q->b);
   // (the board as it is: the empty path, and every path still there to press)
   int nodes[OP_BEAM]; int m = 0;
   { OpPath e; memset(&e, 0, sizeof e); opScore(q, x, root, &e); opNext[m] = e; nodes[m++] = root; }
@@ -257,9 +279,7 @@ static void openingGrow(const Question *q) {
     // (the kept played again here, from their paths' nodes)
     int m = 0, nodesNext[OP_BEAM];
     for (int i = 0; i < nn && !clockOut(); i++) {
-      int s1 = step(x, nodes[kp[i]], MK_SWAP, CR(kk[i]), CC(kk[i]), 0);
-      if (!liveNode(x, s1)) continue;
-      int out = settleOf(x, s1);
+      int out = opPress(x, nodes[kp[i]], kk[i]);
       if (!liveNode(x, out)) continue;
       opNext[m] = opNext[i]; nodesNext[m++] = out;
     }
