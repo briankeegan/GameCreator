@@ -806,13 +806,12 @@ static Played playOf(const Read *R, int n) {
   // only where the hold was chosen: the opening's whole time is the plan's)
   const Judge *opTop = P.line ? P.line : P.top;
   // (the planned opener in progress goes on: no plan is grown or begun over it -- the carry presses it, and survival alone puts it down)
-  // (and no other line takes its place while it can still be pressed and either lives or presses its last swap before the next block
-  // lands -- one that cannot fire in time is survival's to decide)
-  if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
+  // (and no other line takes its place while it can still be pressed and lives -- one the judge loses the board on is ranked with the
+  // rest, its place survival's to decide)
+  if (opLineOn && opCarried && opCarried->o.lives && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
-  // (in its order: the flattening pressed, then the raise -- no plan begun over either, nor while the raise is asked and the engine
-  // will not raise yet: the plan is made on the rows it will have)
-  if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->low && !P.wait) {
+  // (in its order: the flattening pressed, then the raise -- no plan begun over either)
+  if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
     // pressed while the plan's chain is longer than the chain of the trigger the board has now, its set-ups can be pressed before the next block lands and
