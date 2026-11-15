@@ -547,11 +547,16 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   keepFrontier(ran ? &theBr : 0, d.kind, d.move, A->hand, A->nhand, qid);
   keepPlan(d.kind, d.move, A->hand, A->nhand, qid);   // (and the planner's: search/plan.c planOut)
   carrySkip = -1;
-  if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
-  carryNextOf(P.line);
+  // (an empty answer -- the clock left no time to judge -- is no answer: the frame loop presses on the line in hand, so the line in
+  // progress stays as it was, for the next decision to find again by the line the frame loop says it is on)
+  if (!A->empty) {
+    if (!(d.kind == 0 && P.top && P.top->wait && !P.line)) carryOf(&R, P.line, qid, timed ? 0 : 1);
+    carryNextOf(P.line);
+  }
   keptPlayed = P.line && P.line->k.kept; routePlayed = P.line && P.line->k.route; wayPlayed = P.line && P.line->k.way;
   keepIntents(P.ncands, P.line);   // (the best lines that make something, kept for the next decision: decide.c keepIntents)
-  if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
+  if (A->empty) ;
+  else if (d.kind == 0 && P.top && P.top->hold) carryReady(P.top, qid);
   else if (d.kind == 1 && P.line && P.line->k.nseq == 1 && !theCarry.set) carryReady(P.line, qid);
   // (no swap back: the pair the last swap swapped is kept out for a second when it is swapped three times running)
   int32_t pa = NUL, pb = NUL;
@@ -783,6 +788,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(" carryDrop="); L_i(carryDrop);
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
     if (carryDrop >= 2) { L_s(" carryRest="); for (int i = 0; i < carryDropN; i++) { if (i) L_s(";"); L_mv(carryDropRest[i]); } }
+  }
+  // (the line in progress the last answer carried, not offered on this board: carriedCand's carryNone -- 17 asked on another line, 18 every
+  // swap pressed, 19 the judging dropped it (the drop's letter, rank.c DROP_CODE), 20 a wasted three, 25 the window -- none carried, or
+  // the list asking nothing, is not said)
+  if (!carriedJ && !carryDrop && carryNone && carryNone != 16 && carryNone != 21) {
+    L_s(" carryNone="); L_i(carryNone);
+    if (carryNone == 19 && carryJudgeDrop >= 0 && carryJudgeDrop < NDROPS) { char c[3] = { ':', "botfrucwj2"[carryJudgeDrop], 0 }; L_s(c); }
   }
   // (WHY THIS LINE: the order's key that put the line played before the best line it passed over, and what that line was -- rank.c's
   // line number, named by eval/rank_keys.js; none where nothing else was offered)
