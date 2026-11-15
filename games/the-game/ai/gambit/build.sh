@@ -13,7 +13,8 @@ if [ "${1:-}" = native ]; then
 fi
 # ./build.sh test [golden|speed]: the C checks, natively (test/main.c: the board as bits, perched blocks, the decisions replayed against the
 # golden; "golden" writes it from this build; "speed" answers questions on the wall clock and prints the engine work a decision does;
-# "replay LOG MODE" answers each of a lost game's last boards (GAMBITL) at half, once, twice and four times a decision's work).
+# "replay LOG MODE" answers each of a lost game's last boards (GAMBITL) at half, once, twice and four times a decision's work;
+# "board LOG FRAME" draws the logged board of that frame).
 # ./build.sh tsan: the C checks built with ThreadSanitizer (gcc's runtime) and run on GC_GAMBIT_WORKERS (default 4) workers -- every
 # search a worker runs beside Gambit's thread is raced against it; any data race fails (exit 66)
 if [ "${1:-}" = tsan ]; then
