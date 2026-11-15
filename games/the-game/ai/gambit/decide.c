@@ -320,7 +320,10 @@ static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
 // (THE OPENER'S LINE IN PROGRESS -- the owner: the opener is one continuous string; only a line no longer possible is put down: the
-// carried line, whatever the filters after its judging take out)
+// carried line, whatever the filters after its judging take out -- while it is the line it was begun as: one that now makes a shorter
+// chain than it was begun for, or a clear for nothing (a row risen since, its colours not known when it was planned), has changed, and
+// goes back to the beam to be scored again on the board as it is)
+static int32_t carryMadeChain(void);
 static const Judge *opCarried, *carriedFirst;   // (carriedFirst: the line in progress as judged, before any filter)
 static const Judge *strippedCarry;   // (the line in progress without the swap that makes its three: THE THREE TAKEN OUT)
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
@@ -435,7 +438,7 @@ static int ranked(const Read *R, const Found *S) {
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
     else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
-    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; carriedFirst = cj; if (opLineOn) opCarried = cj; }
+    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; carriedFirst = cj; if (opLineOn && !(cj->apChain < carryMadeChain() || wastesThree(cj))) opCarried = cj; }
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
     static Judge thru;
@@ -1019,6 +1022,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   theCarry.rule = R->rule;
 }
 static int32_t carryRule(void) { return theCarry.rule; }
+static int32_t carryMadeChain(void) { return theCarry.made.chain; }   // (the chain the line in progress was begun for)
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
 // of that break, kept by carrying it -- anchored to a bottom-row panel of the board it was found on -- so the next decision plays it on
 // as soon as it lives. A swap played for the break it leaves in reach once everything lands (one swap: nothing of it handed on) is the
