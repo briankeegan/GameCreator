@@ -446,6 +446,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   readyAsked = readyHit = 0; readyStop(); readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   readMs = nowMs() - tStart;
+  batTaken = batOwn = batBusy = batSmall = batTight = 0;
   double brMs;
   // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
   double searchShare = clockShareBegin(searchesEnd());
@@ -463,6 +464,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
   searchMerge(&R, &S);
   S.searchMs = nowMs() - ts;
+  batSearch = batOwn;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
   clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
@@ -712,6 +714,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   else L_s("none");
   // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
   if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); }
+  L_s(" bat="); L_i(batTaken); L_s("/"); L_i(batOwn); L_s(":"); L_i(batSearch); L_s("/"); L_i(batBusy); L_s("/"); L_i(batSmall); L_s("/"); L_i(batTight); L_s("/"); L_i(__atomic_exchange_n(&batJobs, 0, __ATOMIC_RELAXED));
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" plan="); L_i((int64_t)S.planShare); L_s("/"); L_i((int64_t)S.planFirst); L_s("/"); L_i(S.wide); L_s("/"); L_i((int64_t)S.ap.ms); L_s("/d"); L_i(S.planDepth); L_s("/l"); L_i(S.planLong);
   // (the planner and the list's first entry: a line that meets it found, and how near its nearest line comes, the first entry's percent)
