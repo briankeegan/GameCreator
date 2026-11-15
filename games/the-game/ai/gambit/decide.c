@@ -429,7 +429,7 @@ static int ranked(const Read *R, const Found *S) {
     Judge *cj = &theJudged[n];
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
-    // (A WAIT THAT DOES NOT END: a line that has waited CARRY_WAITS decisions for a board that has not settled -- under garbage it may
+    // (A WAIT THAT DOES NOT END: a line that has waited CARRY_WAITS decisions for a board making nothing that has not settled -- under garbage it may
     // never -- waits no more: only the same line pressed straight through is offered, below -- the owner: no lazy waits)
     if (cwait && carryWaitsOut()) carryNone = 22;
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
@@ -806,9 +806,9 @@ static Played playOf(const Read *R, int n) {
   // only where the hold was chosen: the opening's whole time is the plan's)
   const Judge *opTop = P.line ? P.line : P.top;
   // (the planned opener in progress goes on: no plan is grown or begun over it -- the carry presses it, and survival alone puts it down)
-  // (and no other line takes its place while it can still be pressed and lives -- one the judge loses the board on is ranked with the
-  // rest, its place survival's to decide)
-  if (opLineOn && opCarried && opCarried->o.lives && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
+  // (and no other line takes its place while it can still be pressed and either lives or presses its last swap before the next block
+  // lands -- one that cannot fire in time is survival's to decide)
+  if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
   if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
@@ -965,7 +965,7 @@ static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) 
 }
 static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anchorInto(&theCarry, row1, seq, n); }
 // (first: the line's first swap left to carry -- 1 when it is the move played, 0 when the whole line is handed on, nothing pressed now)
-// (waits: the decisions in a row the line has waited for the board to settle -- carryWaitsOut)
+// (waits: the decisions in a row the line has waited for a board making nothing to settle -- carryWaitsOut)
 // (WHY THE LINE PLAYED WAS NOT HANDED ON, for the log: 0 it was, 1 no line, 2 it waits, 3 nothing of it left, 4 a tier past the set-ups
 // that breaks nothing, 5 no bottom-row panel to anchor it to; -1 none asked)
 static int32_t carrySkip = -1;
@@ -987,7 +987,9 @@ static int savesOverHold(const Judge *k) {
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
   else if (!k) carryBeganAt = carryBeganPlay = -1;
-  int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
+  // (a wait while the board's own chain runs is no lazy wait: the board is at work, and a step pressed into it would spoil it -- only a
+  // wait on a board making nothing counts toward CARRY_WAITS)
+  int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + !cascadeLive(decQ.b) : 0;
   Why keepWhy = k && k->carried ? theCarry.why : (Why){ WHY_NONE, 0, 0 };
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.why = keepWhy;
