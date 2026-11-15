@@ -208,10 +208,9 @@ static int readBoard_(Read *R) {
     R->full = !savingPanels && panels > lifePeakOf();
   }
   if (R->under || R->topped) R->by = NOT_ASKED;
-  // (ready: garbage on its way and none on the board -- the frames until the next block lands; one queued drops when the stop the board
-  // is held up by runs out, so it lands no sooner)
+  // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
   R->readyAt = NOT_ASKED;
-  if (!R->under) { for (int i = 0; i < decQ.narr; i++) if (R->readyAt == NOT_ASKED || decQ.arr[i].at < R->readyAt) R->readyAt = decQ.arr[i].at; if (R->readyAt == NOT_ASKED && decQ.b->ninc) R->readyAt = decQ.b->stopTime + decQ.b->preStopTime; }
+  if (!R->under) { for (int i = 0; i < decQ.narr; i++) if (R->readyAt == NOT_ASKED || decQ.arr[i].at < R->readyAt) R->readyAt = decQ.arr[i].at; if (R->readyAt == NOT_ASKED && decQ.b->ninc) R->readyAt = 0; }
   // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- and after it, the rules' material
   // floor kept by raising, a reserve: below it, not topped, the panels under `to` -- garbage on them aside, a slab is no panel to break
   // with -- the rows the next break is made of brought in)
@@ -811,8 +810,9 @@ static Played playOf(const Read *R, int n) {
   // lands -- one that cannot fire in time is survival's to decide)
   if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
-  // (in its order: the flattening pressed, then the raise -- no plan begun over either)
-  if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
+  // (in its order: the flattening pressed, then the raise -- no plan begun over either, nor while the raise is asked and the engine
+  // will not raise yet: the plan is made on the rows it will have)
+  if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->low && !P.wait) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
     // pressed while the plan's chain is longer than the chain of the trigger the board has now, its set-ups can be pressed before the next block lands and
