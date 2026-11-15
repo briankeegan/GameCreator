@@ -430,8 +430,10 @@ static int ranked(const Read *R, const Found *S) {
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
     // (A WAIT THAT DOES NOT END: a line that has waited CARRY_WAITS decisions for a board that has not settled -- under garbage it may
-    // never -- waits no more: only the same line pressed straight through is offered, below -- the owner: no lazy waits)
-    if (cwait && carryWaitsOut()) carryNone = 22;
+    // never -- waits no more: only the same line pressed straight through is offered, below -- the owner: no lazy waits. Where that
+    // cannot be judged, the line waiting is offered still, ranked with the hold: a line is put down only when it is no longer there)
+    int waitedOut = cwait && carryWaitsOut();
+    if (waitedOut) carryNone = 22;
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
     else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
@@ -441,6 +443,7 @@ static int ranked(const Read *R, const Found *S) {
     static Judge thru;
     Cand k2 = ck; k2.settled = 0; k2.play = PLAY_CARRY;
     if (cwait && judgeCand(R, &k2, &thru)) { thru.carried = 1; order[n] = &thru; n++; }
+    else if (waitedOut) { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; carryNone = 24; }
   }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
@@ -1163,7 +1166,8 @@ static int carryLate;   // (the line in progress dropped only because the clock 
 static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, carryDropWhy, carryDropNats;
 // (WHY NO LINE IN PROGRESS WAS OFFERED, for the frame loop's count of what ended its line -- answer.c ended: 0 one was; 16 none was
 // carried by the last answer; 17 the frame loop asked on another line than the one carried; 18 every swap of it pressed; 19 the judge
-// gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing)
+// gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing; 22 it waited out, pressed straight
+// through instead; 24 it waited out and is offered waiting, nothing of it able to be pressed straight through)
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0; carryLate = 0;
