@@ -861,6 +861,40 @@ static void poolEnd(void) {
   __atomic_add_fetch(&pool.gen, 1, __ATOMIC_SEQ_CST);
   __builtin_wasm_memory_atomic_notify(&pool.gen, -1);
 }
+// THE SIDE BATCH: steps a search batches while jobs hold the pool (startJobs), taken by the searching thread and by every worker whose
+// jobs are done, until the jobs' phase ends (finishPhase closes it). A task is claimed off one word, the batch's number and the next
+// task, by compare-and-swap: a worker late from one batch never takes a task of the next.
+static struct { Ctx *ctx; const int32_t *tasks; int32_t *res, *dead; int32_t n, done, gen, open; long long word; } side;
+static void sideTask(int32_t i) {
+  const int32_t *t = side.tasks + 4 * i;
+  int32_t m = ADVANCE_TASK - t[1], r = advance(side.ctx, t[0], m & 7, CR(m >> 3), CC(m >> 3), t[2]);
+  if (side.dead) side.dead[t[3]] = r == STEP_DEAD ? deadAt : 0;
+  __atomic_store_n(&side.res[t[3]], r, __ATOMIC_RELEASE);
+  __atomic_add_fetch(&side.done, 1, __ATOMIC_ACQ_REL);
+}
+static int32_t sideTake(int32_t g) {
+  long long w = __atomic_load_n(&side.word, __ATOMIC_ACQUIRE);
+  for (;;) {
+    if ((int32_t)(w >> 32) != g || (int32_t)(w & 0xffffffff) >= __atomic_load_n(&side.n, __ATOMIC_ACQUIRE)) return -1;
+    if (__atomic_compare_exchange_n(&side.word, &w, w + 1, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return (int32_t)(w & 0xffffffff);
+  }
+}
+#define SIDE_SPIN 2000
+static void sideHelp(void) {
+  for (;;) {
+    int32_t g = __atomic_load_n(&side.gen, __ATOMIC_ACQUIRE);
+    if (!__atomic_load_n(&side.open, __ATOMIC_ACQUIRE)) return;
+    if (g & 1) { int32_t i; while ((i = sideTake(g)) >= 0) sideTask(i); }
+    for (int spin = 0; spin < SIDE_SPIN && __atomic_load_n(&side.gen, __ATOMIC_ACQUIRE) == g; spin++) {}
+    while (__atomic_load_n(&side.gen, __ATOMIC_ACQUIRE) == g) __builtin_wasm_memory_atomic_wait32(&side.gen, g, -1);
+  }
+}
+static void sideClose(void) {
+  if (!__atomic_load_n(&side.open, __ATOMIC_ACQUIRE)) return;
+  __atomic_store_n(&side.open, 0, __ATOMIC_RELEASE);
+  __atomic_add_fetch(&side.gen, 2, __ATOMIC_ACQ_REL);
+  __builtin_wasm_memory_atomic_notify(&side.gen, (unsigned)-1);
+}
 static void workerLoop(void) {
   int32_t last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
   __atomic_add_fetch(&pool.nworkers, 1, __ATOMIC_SEQ_CST);
@@ -872,6 +906,7 @@ static void workerLoop(void) {
     last = __atomic_load_n(&pool.gen, __ATOMIC_SEQ_CST);
     if (__atomic_load_n(&poolQuit, __ATOMIC_SEQ_CST)) return;
     runTasks();
+    if (__atomic_load_n(&side.open, __ATOMIC_ACQUIRE)) sideHelp();
     __atomic_add_fetch(&pool.ack, 1, __ATOMIC_SEQ_CST);
     __builtin_wasm_memory_atomic_notify(&pool.ack, 1);
   }
@@ -944,6 +979,7 @@ static int startPhase(Ctx *x, Vec *tasks, int32_t *res, int32_t extra) {
 static void finishPhase(Ctx *x) {
   int32_t a, w = pool.nworkers;
   runTasks();
+  sideClose();
   for (int spin = 0; spin < SPIN && __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST) < w; spin++) {}
   while ((a = __atomic_load_n(&pool.ack, __ATOMIC_SEQ_CST)) < w) __builtin_wasm_memory_atomic_wait32(&pool.ack, a, -1);
   x->par = 0;
@@ -982,8 +1018,31 @@ static int startJobs(Ctx *x, void (*job)(int32_t), int32_t n) {
   jobTasks.n = 0;
   for (int32_t i = 0; i < n; i++) { jobTasks.a[jobTasks.n++] = i; jobTasks.a[jobTasks.n++] = JOB_TASK; jobTasks.a[jobTasks.n++] = 0; jobTasks.a[jobTasks.n++] = i; jobRes.a[i] = PENDING; }
   pool.job = job;
-  if (!startPhase(x, &jobTasks, jobRes.a, 0)) { pool.job = 0; return 0; }
+  __atomic_store_n(&side.open, 1, __ATOMIC_RELEASE);
+  if (!startPhase(x, &jobTasks, jobRes.a, 0)) { pool.job = 0; sideClose(); return 0; }
   __atomic_store_n(&poolBusy, 1, __ATOMIC_RELEASE);
+  return 1;
+}
+// A batch while jobs hold the pool: published to the side, taken here and by the workers done with their jobs, back when all are made.
+static int sideBatch(Ctx *x, Vec *tasks, int32_t *res, int32_t *dead) {
+  int32_t n = tasks->n / 4;
+  if (!n) return 1;
+  if (!__atomic_load_n(&side.open, __ATOMIC_ACQUIRE) || !reserveNodes(x, n)) return 0;
+  x->par = 1;
+  side.ctx = x; side.tasks = tasks->a; side.res = res; side.dead = dead; side.done = 0;
+  __atomic_store_n(&side.n, n, __ATOMIC_RELEASE);
+  int32_t g = __atomic_load_n(&side.gen, __ATOMIC_ACQUIRE) + 1;
+  __atomic_store_n(&side.word, (long long)g << 32, __ATOMIC_RELEASE);
+  __atomic_store_n(&side.gen, g, __ATOMIC_RELEASE);
+  __builtin_wasm_memory_atomic_notify(&side.gen, (unsigned)-1);
+  int32_t i;
+  while ((i = sideTake(g)) >= 0) sideTask(i);
+  while (__atomic_load_n(&side.done, __ATOMIC_ACQUIRE) < n) {}
+  __atomic_store_n(&side.gen, g + 1, __ATOMIC_RELEASE);
+  x->par = 0;
+  for (int32_t q = 0; q < x->later.n; q++) release(x, x->later.a[q]);
+  x->later.n = 0;
+  if (x->n > x->cap) x->n = x->cap;
   return 1;
 }
 static void jobsDone(Ctx *x) {
