@@ -208,9 +208,10 @@ static int readBoard_(Read *R) {
     R->full = !savingPanels && panels > lifePeakOf();
   }
   if (R->under || R->topped) R->by = NOT_ASKED;
-  // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
+  // (ready: garbage on its way and none on the board -- the frames until the next block lands; one queued drops when the stop the board
+  // is held up by runs out, so it lands no sooner)
   R->readyAt = NOT_ASKED;
-  if (!R->under) { for (int i = 0; i < decQ.narr; i++) if (R->readyAt == NOT_ASKED || decQ.arr[i].at < R->readyAt) R->readyAt = decQ.arr[i].at; if (R->readyAt == NOT_ASKED && decQ.b->ninc) R->readyAt = 0; }
+  if (!R->under) { for (int i = 0; i < decQ.narr; i++) if (R->readyAt == NOT_ASKED || decQ.arr[i].at < R->readyAt) R->readyAt = decQ.arr[i].at; if (R->readyAt == NOT_ASKED && decQ.b->ninc) R->readyAt = decQ.b->stopTime + decQ.b->preStopTime; }
   // (the opening raise: until garbage first reaches the board, below `to` rows and no chain running -- and after it, the rules' material
   // floor kept by raising, a reserve: below it, not topped, the panels under `to` -- garbage on them aside, a slab is no panel to break
   // with -- the rows the next break is made of brought in)
