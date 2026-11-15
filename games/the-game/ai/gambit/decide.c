@@ -430,8 +430,9 @@ static int ranked(const Read *R, const Found *S) {
     cj->wait = cwait;
     if (cwait) cj->waitMax = 1; else if (!carriedFromReady()) cj->first = 1;   // (its place: rank.c tierView)
     // (A WAIT THAT DOES NOT END: a line that has waited CARRY_WAITS decisions for a board that has not settled -- under garbage it may
-    // never -- waits no more: only the same line pressed straight through is offered, below -- the owner: no lazy waits)
-    if (cwait && carryWaitsOut()) carryNone = 22;
+    // never -- is offered beside the same line pressed straight through, below, ranked with the hold as every wait is: the owner, no lazy
+    // waits -- a wait is taken only where it outranks every line that presses -- and a line is put down only when it is no longer there)
+    if (cwait && carryWaitsOut()) { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; carryNone = 22; }
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
     else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
