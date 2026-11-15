@@ -157,8 +157,34 @@ static int replayLoss(const char *dir, const char *log, int mode) {
   fclose(f);
   return 0;
 }
+int gb_cells(void);
+// THE BOARD DRAWN (test DIR board LOG FRAME): the logged board (GAMBITL, GAMBITQ...) of that frame, top row first -- a colour's digit,
+// garbage G, empty '.', a dimmed (rising) row in lower case; then the garbage on its way
+static int drawBoard(const char *log, int frame) {
+  FILE *f = fopen(log, "r");
+  if (!f) return 2;
+  static char line[1 << 17];
+  while (fgets(line, sizeof line, f)) {
+    const char *b = strstr(line, "GAMBITL "); if (!b) b = strstr(line, "GAMBITQ "); if (!b) continue;
+    if (atoi(b + 8) != frame) continue;
+    int narr, n = loadLine(b, &narr);
+    if (n < 0 || gb_question_bytes(n, narr) != 0) continue;
+    int k = gb_cells(); int32_t *v = gb_io();
+    int rows = v[0];
+    printf("frame %d: %d rows, stop %d, shake %d\n", frame, rows, v[1], v[2]);
+    for (int r = rows - 1; r >= 0; r--) {
+      printf("%2d ", r);
+      for (int c = 1; c <= 6; c++) { int o = 3 + (r * 6 + c - 1) * 3, col = v[o], g = v[o + 1]; printf("%c", g ? 'G' : col == 0 ? '.' : col >= 1 && col <= 9 ? '0' + col : '?'); }
+      printf("\n");
+    }
+    const char *a = strstr(b, " ["); if (a) printf("on its way: %.200s", a);
+    (void)k; fclose(f); return 0;
+  }
+  fclose(f); printf("no board at %d\n", frame); return 1;
+}
 int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
+  if (argc > 4 && !strcmp(argv[2], "board")) return drawBoard(argv[3], atoi(argv[4]));
   if (argc > 4 && !strcmp(argv[2], "replay")) return replayLoss(dir, argv[3], atoi(argv[4]));
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
