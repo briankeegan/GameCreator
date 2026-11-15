@@ -702,10 +702,13 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
     const Board *b = ensureBoard(x, nd); if (!b) break;
     cloneBoard(cur, b); opFlat[opFlatN++] = sw;
   }
+  // (the raise counted on the board flattened: up to the raise's row, and never past the row under the top -- a raise that would top
+  // the board out is no raise, the flattening kept all the same)
+  (void)rows;
+  int32_t h = cur->height ? cur->height : 12, top0 = fullTop(cur), up = imin(raiseTo - top0, h - 1 - top0);
   cloneBoard(tgt, cur);
-  int32_t top0 = fullTop(tgt);
-  for (int32_t f = 0; fullTop(tgt) < top0 + rows && tgt->gameOverClock <= 0 && f < 60 * rows; f++) { tgt->input = RAISE_IN; run(tgt); }
-  if (tgt->gameOverClock > 0) return 0;
+  for (int32_t f = 0; up > 0 && fullTop(tgt) < top0 + up && tgt->gameOverClock <= 0 && f < 60 * up; f++) { tgt->input = RAISE_IN; run(tgt); }
+  if (tgt->gameOverClock > 0) cloneBoard(tgt, cur);
   tgt->input = 0;
   *out = *q; out->b = tgt; out->narr = 0;
   return 1;
