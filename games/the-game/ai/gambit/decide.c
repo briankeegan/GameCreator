@@ -737,6 +737,7 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 // and every panel under them in their columns, where they will be once the chain lands and none of them moving -- and only where the
 // chain falls on as long as it does left alone. 0 where there is none.
 #define OP_SECOND_SHARE 0.5
+static int opDesign(const Board *b, double ms, OpPath *out);
 static int32_t opSecondCh, opSecondWhy;   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 a landed board, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed: the log's)
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
@@ -760,8 +761,13 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   { double sh = clockShareBegin(nowMs() + ms); openingGrow(&lq, decQ.b); clockShareEnd(sh); }
   clockDue = keepDue; clockShare = keepShare;
   opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1;
-  if (!opHave || opBest.len < 1 || opBest.ch < OP_TWO_FROM) return 0;
-  int32_t sw = opBest.path[0], r = CR(sw), c = CC(sw);
+  // (the designer's chain first: its whole plan in a few milliseconds; the beam's where it finds none)
+  static OpPath dp; const OpPath *pl = 0;
+  if (opDesign(landed, ms * 0.5, &dp) && dp.len >= 1) pl = &dp;
+  else if (opHave && opBest.len >= 1 && opBest.ch >= OP_TWO_FROM) pl = &opBest;
+  if (!pl) return 0;
+  opSecondCh = pl->ch;
+  int32_t sw = pl->path[0], r = CR(sw), c = CC(sw);
   const Board *b = decQ.b;
   opSecondWhy = 5;
   if (r < 1 || r >= b->nrows || c < 1 || c >= W) return 0;
@@ -971,11 +977,13 @@ static Played playOf(const Read *R, int n) {
         if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
         k.settled = 1;
         // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live,
-        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then: the log's, the first plan's)
+        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor: the log's, the first plan's)
         lastDrop = -1;
         int jok = judgeCand(R, &k, &CU);
         int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
         if (!why && pass < 2 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > OPEN_FIRE_BY) why = -4;
+        // (-5 a second chain, in a garbage game, that leaves the board under its material floor: the panels the garbage is dug with)
+        if (!why && openerThrown >= 1 && garbageSeen && CU.o.floorKept == 0) why = -5;
         if (!why) { P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
         else if (!chainUp) chainUp = why;
       }
