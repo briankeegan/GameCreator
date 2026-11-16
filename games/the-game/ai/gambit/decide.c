@@ -983,6 +983,7 @@ static int carriedFromReady(void) { return theCarry.ready; }
 #define CARRY_WAITS 2
 static int carryWaitsOut(void) { return theCarry.waits >= CARRY_WAITS; }
 static int32_t carryFrom = -1, carryPressed;
+static Judged carryJ;   // (the line in progress as its own judging found it: the log's cj=)
 // THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
 // into theCarry; 0 when every one is touched. carryOf and carryReady ask it.
 static int anchorInto(Carry *C, const int32_t *row1, const int32_t *seq, int n) {
@@ -1226,6 +1227,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
   for (int i = 0; i < j.nats && i < nrest; i++) rest[i] = (CR(rest[i]) + j.risen[i]) * 8 + CC(rest[i]);
+  carryJ = j;
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];
   // (a step no longer legal: the judge pressed fewer than the line has. A line the board is lost on is offered all the same -- judged
   // lost, as any line is, and ranked by its loss: where every line is lost, the line in progress may be lost latest)
