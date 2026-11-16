@@ -318,7 +318,7 @@ static int32_t orderN;   // (the lines in the order the move was picked from: de
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
-static void pvKeep(const Judge *k, int first, int32_t qid); static int32_t pvSet, pvId, pvKind, pvV[5];   // (pvKind: 0 not asked, 1 same, 2 not played, 3 the line ends past this frame, 4 lost, 5 clock, 6 rows, 9 a cell -- pvV its row, column, field, foreseen, real -- 10 a head field -- its index in pa.c HEAD from 1, foreseen, real -- 11 the rise timer, thousandths)
+static void pvKeep(const Judge *k, int first, int32_t qid); static int32_t pvSet, pvId, pvNew, pvKind, pvV[5];   // (pvKind: 0 not asked, 1 same, 2 not played, 3 the line ends past this frame, 4 lost, 5 clock, 6 rows, 9 a cell -- pvV its row, column, field, foreseen, real -- 10 a head field -- its index in pa.c HEAD from 1, foreseen, real -- 11 the rise timer, thousandths)
 static int32_t carryRule(void);   // (the mode the line in progress was begun in)
 static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
@@ -1209,8 +1209,9 @@ static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, 
 // thing that differs
 static Board *pvBoard; static Question pvQ; static int32_t pvSeq[MAXLINE], pvN, pvFirst;
 static void pvKeep(const Judge *k, int first, int32_t qid) {
-  pvSet = 0; pvId = qid;
+  // (a hold or a wait keeps the line before it: nothing is pressed, and the board it foresaw is checked on)
   if (!k || k->hold || !decQ.b) return;
+  pvSet = 0; pvId = qid; pvNew = 1;
   if (!pvBoard) pvBoard = nb_new();
   if (!pvBoard) return;
   cloneBoard(pvBoard, decQ.b); pvQ = decQ; pvQ.b = pvBoard; pvN = imin(k->k.nseq, MAXLINE); for (int i = 0; i < pvN; i++) pvSeq[i] = k->k.seq[i]; pvFirst = first; pvSet = 1;

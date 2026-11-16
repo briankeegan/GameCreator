@@ -433,7 +433,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
   carryFrom = lineFrom; carryPressed = linePressed;
-  pvKind = 0; if (pvSet && pvId == lineFrom) pvCheck(linePressed);
+  // (the line the board was last foreseen by: this answer's line in progress, its swaps pressed as the frame loop says; past it -- a
+  // hold, a wait -- the swaps it had pressed when last asked)
+  { static int32_t lastSkip; pvKind = 0; if (pvSet) { if (pvNew) { lastSkip = 0; pvNew = 0; } if (pvId == lineFrom) lastSkip = linePressed; pvCheck(lastSkip); } }
   planSeedsHave = plannedPaths(decQ.b, lineFrom, linePressed, &planSeeds); planOut.n = 0; planSeeded = 0;
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)
   int32_t gid = digTargetOf(decQ.b);
