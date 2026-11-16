@@ -141,7 +141,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (in time: the line's last swap begun by the deadline -- the frame the judge pressed it; the search's own word only when the judge
   // could not play the line out)
   int32_t fire = j && j->fire >= 0 ? j->fire : (k->xFire >= 0 ? k->xFire : k->xDone);
-  if (R->by != NOT_ASKED && R->by && fire >= 0 && fire > R->by) { dropAs(play, DROP_LATE); return 0; }
+  // (never the line in progress: late is a frame that moves with what the board does next -- it is put down only when it can no longer be
+  // pressed or no longer makes what it was begun for, and ranked by survival as any line is)
+  if (R->by != NOT_ASKED && R->by && fire >= 0 && fire > R->by && play != PLAY_CARRY && play != PLAY_CARRYWAIT) { dropAs(play, DROP_LATE); return 0; }
   // (a set-up is to clear nothing: it ends before its first step that clears panels and breaks nothing; when that is its first, the
   // play is a clear)
   Xs x = k->x;
