@@ -788,7 +788,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it breaks)
   // (the line in progress offered and put down for another: the line played and the order's key that put it first, rank.c cmpKey)
   if (carriedJ && top && top != carriedJ && !top->carried && compareJudged(top, carriedJ) < 0) { L_s(" putDown="); L_play(top->hold ? PLAY_HOLD : top->k.play); L_s(":k"); L_i(cmpKey); }
-  if (opFallHeld) { L_s(" fallHeld=1"); if (opSecondCh) { L_s(" second="); L_i(opSecondCh); } }
+  if (opFallHeld) { L_s(" fallHeld=1"); if (opSecondWhy) { L_s(" second="); L_i(opSecondWhy); L_s(":"); L_i(opSecondCh); } }
   if (pvKind) { L_s(" pv="); L_i(pvKind); if (pvKind >= 3) { L_s(":"); L_i(pvV[0]); } if (pvKind >= 5) { L_s("/"); L_i(pvV[1]); } if (pvKind == 9) { L_s(":f"); L_i(pvV[2]); L_s(":"); L_i(pvV[3]); L_s("/"); L_i(pvV[4]); } if (pvKind == 10) { L_s(":"); L_i(pvV[2]); } }
   if (carryDrop) {
     L_s(" carryDrop="); L_i(carryDrop);
