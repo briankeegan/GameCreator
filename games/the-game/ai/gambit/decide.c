@@ -957,8 +957,16 @@ static Played playOf(const Read *R, int n) {
     else if (!opFalling && R->rule >= 0 && theTables.r[R->rule].table == 2) { opFalling = 1; opFallAt = decQ.b->clock; } }
   if (opFalling && !(P.line && (P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND)))) {
     // (the best extension the order holds is played; with none, the hold)
-    const Judge *ext = 0;
-    for (int i = 0; i < n && !ext; i++) if (!order[i]->hold && !order[i]->o.dead && (order[i]->k.play == PLAY_EXTEND || (order[i]->carried && carryBeganPlay == PLAY_EXTEND))) ext = order[i];
+    // (an extension only where it keeps the chain as long as the hold does -- the chain all of it, as judged -- the longest of them: a line
+    // called an extension that breaks garbage and cuts the chain short is no extension)
+    const Judge *ext = 0; int32_t bar = 0;
+    for (int i = 0; i < n; i++) if (order[i]->hold) bar = order[i]->apChainAll;
+    for (int i = 0; i < n; i++) {
+      const Judge *J = order[i];
+      if (J->hold || J->o.dead || !(J->k.play == PLAY_EXTEND || (J->carried && carryBeganPlay == PLAY_EXTEND))) continue;
+      if (J->apChainAll < bar || J->apChainAll <= 0) continue;
+      if (!ext || J->apChainAll > ext->apChainAll) ext = J;
+    }
     P.wait = 0; P.deferred = 0; opFallHeld++;
     const Judge *two = ext ? 0 : opSecondSwap(R, n);
     if (ext) P.line = P.top = ext;
