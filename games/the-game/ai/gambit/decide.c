@@ -720,10 +720,10 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
 // its set-ups pressed before the next block lands)
 // (and, no garbage shown yet, its trigger pressed by OPEN_FIRE_BY: the opener's chain goes before anything can land on it)
 static int opBefore(void) { return decF.next == NOT_ASKED && decQ.b->clock < OPEN_FIRE_BY; }
-static int opFits(const OpPath *p, int32_t trigCh) {
+static int opFits(const OpPath *p, int32_t trigCh, int by) {
   int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES;
   return p->len > 0 && p->ch > trigCh && opAsked(p->ch) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
-         !(opBefore() && decQ.b->clock + frames > OPEN_FIRE_BY + OPEN_SWAP_FRAMES);
+         !(by && opBefore() && decQ.b->clock + frames > OPEN_FIRE_BY + OPEN_SWAP_FRAMES);
 }
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
@@ -847,14 +847,18 @@ static Played playOf(const Read *R, int n) {
     // gives way to the next; with none, the board's own trigger)
     const OpPath *tries[OP_TRIES]; int nt = 0;
     // (every plan that fits, the best of each length, ranked as the plan is (search/opening.c opPacier); the first OP_TRIES judged)
-    if (opHave && opFits(&opBest, trigCh)) tries[nt++] = &opBest;
-    for (int ln = 1; ln <= OP_DEPTH; ln++) {
-      const OpPath *c = &opByLen[ln];
-      if (!opByLenHave[ln] || !opFits(c, trigCh) || (nt && tries[0] == &opBest && !memcmp(c, &opBest, sizeof *c))) continue;
-      int at = nt < OP_TRIES ? nt++ : OP_TRIES;
-      if (at == OP_TRIES) { if (!opPacier(c, tries[OP_TRIES - 1])) continue; at = OP_TRIES - 1; }
-      tries[at] = c;
-      for (int j = at; j > 0 && opPacier(tries[j], tries[j - 1]) && !(tries[j - 1] == &opBest); j--) { const OpPath *t = tries[j]; tries[j] = tries[j - 1]; tries[j - 1] = t; }
+    // (where none fits the frame it fires by, the best plan all the same: a chain begun late is a chain; none begun is nothing)
+    for (int by = 1;; by = 0) {
+      if (opHave && opFits(&opBest, trigCh, by)) tries[nt++] = &opBest;
+      for (int ln = 1; ln <= OP_DEPTH; ln++) {
+        const OpPath *c = &opByLen[ln];
+        if (!opByLenHave[ln] || !opFits(c, trigCh, by) || (nt && tries[0] == &opBest && !memcmp(c, &opBest, sizeof *c))) continue;
+        int at = nt < OP_TRIES ? nt++ : OP_TRIES;
+        if (at == OP_TRIES) { if (!opPacier(c, tries[OP_TRIES - 1])) continue; at = OP_TRIES - 1; }
+        tries[at] = c;
+        for (int j = at; j > 0 && opPacier(tries[j], tries[j - 1]) && !(tries[j - 1] == &opBest); j--) { const OpPath *t = tries[j]; tries[j] = tries[j - 1]; tries[j - 1] = t; }
+      }
+      if (nt || !by) break;
     }
     opTried = 0;
     for (int t = 0; t <= nt && chainUp <= 0; t++) {
@@ -865,13 +869,10 @@ static Played playOf(const Read *R, int n) {
       static Judge CU; Cand k;
       if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
       k.settled = usePlan ? 1 : 0;
-      // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live, -4 it fires
-      // too late: the log's, the first plan's)
+      // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live: the log's, the first plan's)
       lastDrop = -1;
       int jok = judgeCand(R, &k, &CU);
       int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
-      // (-4 the plan's trigger, as judged, pressed after OPEN_FIRE_BY)
-      if (!why && usePlan && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > OPEN_FIRE_BY) why = -4;
       if (!why) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
       else if (!chainUp) chainUp = why;
     }
