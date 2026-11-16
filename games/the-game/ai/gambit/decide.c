@@ -45,6 +45,7 @@ static int taClears(const Judge *J) {
 static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: the chain left alone, the longest found, its swaps, the ms given)
 static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
+#define OP_TRIES 3            // (the opening plans judged in a decision, the best first)
 #define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
@@ -360,6 +361,7 @@ static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
+static int32_t opTried;   // (the opening plans judged this decision: the log's)
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
@@ -713,6 +715,11 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
   *out = *q; out->b = tgt; out->narr = 0;
   return 1;
 }
+// (an opening plan the decision may press: set-ups to press, a chain longer than the board's own trigger's and one the mode asks for,
+// its set-ups pressed before the next block lands)
+static int opFits(const OpPath *p, int32_t trigCh) {
+  return p->len > 0 && p->ch > trigCh && opAsked(p->ch) && !(decF.next != NOT_ASKED && decF.next <= (p->len + 1) * OPEN_SWAP_FRAMES);
+}
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -782,7 +789,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opGrew = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opGrew = 0;
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut();
   // (THE OPENER AS ONE PLAN -- the owner: the opener includes everything it is going to do, the flattening too, and raises the moment
   // it is flat: while the opening raise is due and done before the next block lands, the plan is made on the board it will build on -- the stack
@@ -831,22 +838,27 @@ static Played playOf(const Read *R, int n) {
     chainNow = trigCh; chainAfter = opHave ? opBest.sent : 0;
     // (ONE MOVE, START TO FINISH -- the owner: the opener is a continuous move; once started it goes on, nothing stops or replans it but
     // survival: the plan's set-ups and its trigger handed on as one line, judged whole, then carried as the line in progress)
-    int late = decF.next != NOT_ASKED && opHave && decF.next <= (opBest.len + 1) * OPEN_SWAP_FRAMES;
-    int usePlan = opHave && opBest.len > 0 && opBest.ch > trigCh && !late && opAsked(opBest.ch);
-    int32_t seq[OP_DEPTH + 1]; int ns = 0;
-    if (usePlan) { for (int k = 0; k < opBest.len; k++) seq[ns++] = opBest.path[k]; seq[ns++] = opBest.trig; }
-    else if (trig && opAsked(trigCh)) seq[ns++] = trig;
-    if (ns) {
+    // (the plans tried in turn, OP_TRIES at most: the best, then the best of each shorter length -- a plan that does not live gives way to
+    // a shorter one that does; with none, the board's own trigger)
+    const OpPath *tries[OP_TRIES]; int nt = 0;
+    if (opHave && opFits(&opBest, trigCh)) tries[nt++] = &opBest;
+    for (int ln = opHave ? opBest.len - 1 : 0; ln > 0 && nt < OP_TRIES; ln--) if (opByLenHave[ln] && opFits(&opByLen[ln], trigCh)) tries[nt++] = &opByLen[ln];
+    opTried = 0;
+    for (int t = 0; t <= nt && chainUp <= 0; t++) {
+      int32_t seq[OP_DEPTH + 1]; int ns = 0, usePlan = t < nt;
+      if (usePlan) { const OpPath *pl = tries[t]; for (int k = 0; k < pl->len; k++) seq[ns++] = pl->path[k]; seq[ns++] = pl->trig; opTried++; }
+      else if (trig && opAsked(trigCh)) seq[ns++] = trig;
+      if (!ns) break;
       static Judge CU; Cand k;
-      if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
-        k.settled = usePlan ? 1 : 0;
-        // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live: the
-        // log's)
-        lastDrop = -1;
-        int jok = judgeCand(R, &k, &CU);
-        chainUp = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
-        if (!chainUp) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
-      }
+      if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
+      k.settled = usePlan ? 1 : 0;
+      // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live: the
+      // log's, the first plan's)
+      lastDrop = -1;
+      int jok = judgeCand(R, &k, &CU);
+      int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
+      if (!why) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
+      else if (!chainUp) chainUp = why;
     }
     clockDue = keepDue; clockShare = keepShare;
   }
