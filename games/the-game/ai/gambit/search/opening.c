@@ -9,7 +9,7 @@
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_KIDS_CD 64    // in the countdown, every set-up: the board is still and the time is the countdown's
 #define OP_DEPTH 20      // the set-ups a plan may hold
-typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot, blind, ch2; } OpPath;   // blind: the rows dealt, unseen, by its trigger (OP_BLIND)
+typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot, blind, ch2, chx; } OpPath;   // chx: the chain its fall reaches extended (decide.c opExtendAll)   // blind: the rows dealt, unseen, by its trigger (OP_BLIND)
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
 static int opN, opHave;            // the beam's paths, and whether a plan is held
 static int32_t opLevels, opGrowMs, opOnPool;   // (the levels the last decision grew, the ms it had, the levels scored on the workers: the log's)
@@ -113,6 +113,8 @@ static int opPacier(const OpPath *a, const OpPath *o) {
   if ((a->blind >= OP_BLIND) != (o->blind >= OP_BLIND)) return a->blind < OP_BLIND;
   // (then two chains of OP_TWO_FROM or more, the second ready once the first lands -- the owner: two 4-chains top the enemy out)
   { int ta = a->ch >= OP_TWO_FROM && a->ch2 >= OP_TWO_FROM, to = o->ch >= OP_TWO_FROM && o->ch2 >= OP_TWO_FROM; if (ta != to) return ta; }
+  // (then the chain the fall reaches extended, where the countdown measured it: the owner's eight, one chain grown while it falls)
+  { int32_t xa = imax(a->ch, a->chx), xo = imax(o->ch, o->chx); if (xa != xo && (a->chx || o->chx)) return xa > xo; }
   // (the list's entry first -- what the mode asks; of two meeting the same, the longer chain, then the one pressed sooner -- a chain
   // falling is a board that cannot top out, so the sooner it fires the sooner the board is safe -- then the one that clears fewer
   // panels, the board's own to dig with when the garbage comes)
