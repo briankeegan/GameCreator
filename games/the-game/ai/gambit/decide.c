@@ -797,14 +797,15 @@ static Played playOf(const Read *R, int n) {
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
   chainUp = chainNow = chainAfter = 0; opTried = 0; opGrew = 0;
-  int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut();
+  // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
+  int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
+                !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
   // (THE OPENER AS ONE PLAN -- the owner: the opener includes everything it is going to do, the flattening too, and raises the moment
   // it is flat: while the opening raise is due and done before the next block lands, the plan is made on the board it will build on -- the stack
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
   // is pressed first, as one line; with none left, the raise; then the plan, kept through the rows risen)
   opFlatPlayed = 0;
-  // (not while a chain falls: the stack is still then and cannot top out, and the chain is extended, never flattened under)
-  if (opWants && !opLineOn && raiseOpening && !cascadeLive(decQ.b) && decQ.b->chainCounter == 0) {
+  if (opWants && !opLineOn && raiseOpening) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * 0.7; if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow; readyStop();
