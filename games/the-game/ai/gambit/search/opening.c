@@ -96,7 +96,17 @@ static int32_t opFrames(const OpPath *p) {
   }
   return f;
 }
+// (the entry of the mode's list a chain meets -- its first; past the list where it meets none)
+static int opEntryOf(int32_t ch) {
+  for (int i = 0; i < theList.n; i++) if (theList.aim[i].chain.op && test(ch, theList.aim[i].chain)) return i;
+  return theList.n;
+}
 static int opPacier(const OpPath *a, const OpPath *o) {
+  // (the list's entry first -- what the mode asks; of two meeting the same, the one that clears fewer panels -- the board's own to dig
+  // with when the garbage comes -- then the longer chain)
+  int ea = opEntryOf(a->ch), eo = opEntryOf(o->ch);
+  if (ea != eo) return ea < eo;
+  if (a->cleared != o->cleared && a->cleared > 0 && o->cleared > 0) return a->cleared < o->cleared;
   if (a->ch != o->ch) return a->ch > o->ch;
   int64_t x = (int64_t)a->sent * opFrames(o), y = (int64_t)o->sent * opFrames(a);
   if (x != y) return x > y;
