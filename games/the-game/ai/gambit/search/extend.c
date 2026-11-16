@@ -13,7 +13,7 @@ typedef struct {
   double near;
 } XLine;
 typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; } ExtOpts;
-typedef struct { XLine best, nearest, three, longest; double ms; int32_t baseChain; } Ext;   // baseChain: the cascade's chain left alone   // three: the chain taken to three or more, breaking the most;
+typedef struct { XLine best, nearest, three, longest; double ms; int32_t baseChain, seen, kept, top, topKept, late, floorLost; } Ext;   // seen..floorLost: the log's xs= -- boards settled, kept, the longest chain of any and of a kept one, put down for firing past `by`, for losing the floor   // baseChain: the cascade's chain left alone   // three: the chain taken to three or more, breaking the most;
                                                                        // longest: the chain made longest, in the fewest swaps
 // a node's cascade once it settles: what it sends, its chain and largest match, the garbage it converted, and whether its board keeps
 // the floor (kept: with what it broke, floor: as if it broke nothing)
@@ -128,7 +128,10 @@ static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
       g.broke = imax(0, g.broke - (base.ok ? base.broke : 0));
       // (a link added to a falling chain is in time when its swap is: pressed before the link it joins lands, and by the deadline)
       int32_t fire = NODE(x, k->n)->t;
-      if (o->by != NOT_ASKED && fire > o->by) g.kept = 0;
+      E->seen++; if (g.chain > E->top) E->top = g.chain;
+      if (!g.kept) E->floorLost++;
+      if (g.kept && o->by != NOT_ASKED && fire > o->by) { g.kept = 0; E->late++; }
+      if (g.kept) { E->kept++; if (g.chain > E->topKept) E->topKept = g.chain; }
       Made made = { g.combo, g.chain, g.broke, g.cells - baseCells };
       int32_t kseq[MAXLINE]; pathRead(&extTree, k->path, k->nseq, kseq, 0);
       #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) (L).seq[s_] = kseq[s_]; \

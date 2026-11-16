@@ -105,6 +105,8 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
   }
   return ok;
 }
+#define OP_FIRE_HOLD 120   // (the frames after the opener's trigger is handed on that its first clear and fall are its chain's, a link or not)
+static int32_t opFiredAt;   // (the clock the opener's trigger was handed on, -1 none: defined with the opener's falling rule)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -137,7 +139,10 @@ static int readBoard_(Read *R) {
   if (decQ.b->chainCounter > openerChained) openerChained = decQ.b->chainCounter;
   else if (openerChained && decQ.b->chainCounter == 0) { if (openerChained >= OPENER_LEAST) { openerSum += openerChained; openerThrown++; } openerChained = 0; }
   int thrown = openerSum >= OPENER_SUM || openerThrown >= OPENER_CHAINS;
-  if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
+  // (our board topped out with the opener's own chain still falling: the opener goes on until it lands -- the chain's stop time holds the
+  // board, and the mode after it would play on the falling chain as if it were not the opener's)
+  int ownFalling = decQ.b->chainCounter > 0 || (opFiredAt >= 0 && decQ.b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0));
+  if (((F->v[FACT_US_TOPPED] && !ownFalling) || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
@@ -368,7 +373,6 @@ static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
-#define OP_FIRE_HOLD 120   // (the frames after the opener's trigger is handed on that its first clear and fall are its chain's, a link or not)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
@@ -912,7 +916,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opDesigned = 0; opGrew = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; extLogged = 0; opDesigned = 0; opGrew = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
