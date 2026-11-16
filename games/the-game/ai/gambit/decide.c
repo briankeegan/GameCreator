@@ -133,11 +133,12 @@ static int readBoard_(Read *R) {
   // nothing carried let go, as the opener gives way to the enemy's mode in a fight)
   // (THE OPENER IS OVER ONCE ITS CHAINS ADD UP -- the owner: chains to eight or more, a 3x and a 5x or two 4x alike, and a 2x counts for
   // nothing: each chain thrown its longest link, the board's chain counter at its height before it ends, counted where it is
-  // OPENER_LEAST or more; over at OPENER_SUM, or OPENER_CHAINS such chains thrown, or a board topped out first)
+  // OPENER_LEAST or more; over at OPENER_SUM, or OPENER_CHAINS such chains thrown, or the enemy topped out first)
   if (decQ.b->chainCounter > openerChained) openerChained = decQ.b->chainCounter;
   else if (openerChained && decQ.b->chainCounter == 0) { if (openerChained >= OPENER_LEAST) { openerSum += openerChained; openerThrown++; } openerChained = 0; }
   int thrown = openerSum >= OPENER_SUM || openerThrown >= OPENER_CHAINS;
-  if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
+  // (our own board topped out ends nothing: survival comes first in the opener's own order, and its chains are still the goal while it digs)
+  if (((theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
