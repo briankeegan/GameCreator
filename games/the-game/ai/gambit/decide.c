@@ -373,6 +373,7 @@ static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
+static int32_t opFallBar, opFallExt;   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
@@ -916,7 +917,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; extLogged = 0; opDesigned = 0; opGrew = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; extLogged = 0; opFallBar = opFallExt = 0; opDesigned = 0; opGrew = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
@@ -959,8 +960,8 @@ static Played playOf(const Read *R, int n) {
     int falling = decQ.b->chainCounter > 0 || ours;
     if (!falling) { opFalling = 0; if (opFiredAt >= 0 && decQ.b->clock - opFiredAt > OP_FIRE_HOLD) opFiredAt = -1; }
     else if (!opFalling && R->rule >= 0 && theTables.r[R->rule].table == 2) { opFalling = 1; opFallAt = decQ.b->clock; } }
-  if (opFalling && !(P.line && (P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND)))) {
-    // (the best extension the order holds is played; with none, the hold)
+  if (opFalling) {
+    // (the best extension the order holds is played, the line on top too, whatever it is called; with none, the second chain's set-up or the hold)
     // (AN EXTENSION ONLY PAST THE CHAIN PLANNED -- the owner: planned for a 4x, the extension is only needed at the 5x: a line is played
     // only where its chain, as judged all of it, is longer than the chain left alone reaches -- the longest of them; anything else holds,
     // and the planned links fall untouched)
@@ -972,6 +973,7 @@ static Played playOf(const Read *R, int n) {
       if (J->apChainAll <= bar) continue;
       if (!ext || J->apChainAll > ext->apChainAll) ext = J;
     }
+    opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
     P.wait = 0; P.deferred = 0; opFallHeld++;
     const Judge *two = ext ? 0 : opSecondSwap(R, n);
     if (ext) P.line = P.top = ext;
