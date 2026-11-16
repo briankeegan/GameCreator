@@ -1213,18 +1213,19 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   for (int r = 0; r < decQ.b->nrows && dr == NOT_ASKED; r++) if (decQ.b->p[r][C->anchorCol].f[ID] == C->anchorId) dr = r - C->anchorRow;
   if (dr == NOT_ASKED) { carryDrop = 1; return 0; }
   int32_t rest[MAXLINE], nrest = C->nrest - skip;
-  // (a swap the judge pressed after a rise still to come is named on the board it is pressed on: the rows put back are the rise it was
-  // pressed after or the rows risen since, whichever is more)
-  for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + imax(dr, C->risen[skip + i])) * 8 + CC(C->rest[skip + i]);
+  // (each swap named on the board as it is now: the rows risen since; the judge presses it where its panels have risen to by the frame
+  // it is pressed -- rooted -- and the line is handed on named so, the rows the stack rose while it was pressed put back)
+  for (int i = 0; i < nrest; i++) rest[i] = (CR(C->rest[skip + i]) + dr) * 8 + CC(C->rest[skip + i]);
   // (judged as every line is -- one replayer, what the line makes counted one way -- each step settled when the line was begun so; a
   // settled line waits while the board still moves)
   // (a settled line's next step is pressed on the board settled from the step before, as it was judged: on a board still moving the
   // step is judged once it has settled -- waitTo -- not cut for a walk that cannot begin within a reaction; and a break the readiness
   // found, on the board once everything lands, is pressed on that board: on one still moving it waits as a settled line does)
   int moving = (C->settled || C->ready) && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
-  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0 };
+  JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0, 1 };
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
+  for (int i = 0; i < j.nats && i < nrest; i++) rest[i] = (CR(rest[i]) + j.risen[i]) * 8 + CC(rest[i]);
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];
   // (a step no longer legal: the judge pressed fewer than the line has. A line the board is lost on is offered all the same -- judged
   // lost, as any line is, and ranked by its loss: where every line is lost, the line in progress may be lost latest)
