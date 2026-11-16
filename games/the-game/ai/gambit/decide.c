@@ -723,9 +723,12 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
 // its set-ups pressed before the next block lands)
 // (and, no garbage shown yet, its trigger pressed by OPEN_FIRE_BY: the opener's chain goes before anything can land on it)
 static int opBefore(void) { return decF.next == NOT_ASKED && decQ.b->clock < OPEN_FIRE_BY; }
-static int opFits(const OpPath *p, int32_t trigCh, int by) {
-  int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES;
-  return p->len > 0 && p->ch > trigCh && opAsked(p->ch) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
+// (pass 0: a chain the mode asks for, fired by OPEN_FIRE_BY; 1: a chain of OP_FAST_CH or more fired by then -- a chain going is a board
+// that cannot top out, and the extension grows it while it falls; 2: a chain the mode asks for, fired when it can)
+#define OP_FAST_CH 3
+static int opFits(const OpPath *p, int32_t trigCh, int pass) {
+  int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES; int by = pass < 2;
+  return p->len > 0 && p->ch > trigCh && (pass == 1 ? p->ch >= OP_FAST_CH : opAsked(p->ch)) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
          !(by && opBefore() && decQ.b->clock + frames > OPEN_FIRE_BY + OPEN_SWAP_FRAMES);
 }
 static Played playOf(const Read *R, int n) {
@@ -862,18 +865,17 @@ static Played playOf(const Read *R, int n) {
     // gives way to the next; with none, the board's own trigger)
     const OpPath *tries[OP_TRIES]; int nt = 0;
     // (every plan that fits, the best of each length, ranked as the plan is (search/opening.c opPacier); the first OP_TRIES judged)
-    // (where none fits the frame it fires by, the best plan all the same: a chain begun late is a chain; none begun is nothing)
-    for (int by = 1;; by = 0) {
-      if (opHave && opFits(&opBest, trigCh, by)) tries[nt++] = &opBest;
+    // (the passes of opFits in turn: the first that finds a plan is tried)
+    for (int pass = 0; pass < 3 && !nt; pass++) {
+      if (opHave && opFits(&opBest, trigCh, pass)) tries[nt++] = &opBest;
       for (int ln = 1; ln <= OP_DEPTH; ln++) {
         const OpPath *c = &opByLen[ln];
-        if (!opByLenHave[ln] || !opFits(c, trigCh, by) || (nt && tries[0] == &opBest && !memcmp(c, &opBest, sizeof *c))) continue;
+        if (!opByLenHave[ln] || !opFits(c, trigCh, pass) || (nt && tries[0] == &opBest && !memcmp(c, &opBest, sizeof *c))) continue;
         int at = nt < OP_TRIES ? nt++ : OP_TRIES;
         if (at == OP_TRIES) { if (!opPacier(c, tries[OP_TRIES - 1])) continue; at = OP_TRIES - 1; }
         tries[at] = c;
         for (int j = at; j > 0 && opPacier(tries[j], tries[j - 1]) && !(tries[j - 1] == &opBest); j--) { const OpPath *t = tries[j]; tries[j] = tries[j - 1]; tries[j - 1] = t; }
       }
-      if (nt || !by) break;
     }
     opTried = 0;
     for (int t = 0; t <= nt && chainUp <= 0; t++) {
