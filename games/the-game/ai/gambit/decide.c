@@ -47,7 +47,8 @@ static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: 
 static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
 #define OP_TRIES 3            // (the opening plans judged in a decision, the best first)
-#define OPEN_SWAP_FRAMES 12   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands)
+#define OPEN_SWAP_FRAMES 16   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands -- 16.5 measured, the countdown plans of 100 opener games, their trigger's frame over their swaps)
+#define OPEN_FIRE_BY 330      // (the frame the opener's trigger is pressed by while no garbage is shown: the first garbage lands at 339 in every pattern, 99 opener games)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
@@ -443,7 +444,7 @@ static int ranked(const Read *R, const Found *S) {
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
     else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
-    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; if (opLineOn && (cj->o.lives || decF.next == NOT_ASKED || (cj->apNats > 0 && cj->apAts[cj->apNats - 1] < diesAt(cj)))) opCarried = cj; }
+    else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; if (opLineOn && (cj->o.lives || decF.next == NOT_ASKED || (cj->apNats > 0 && cj->apAts[cj->apNats - 1] < decF.next))) opCarried = cj; }
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
     static Judge thru;
@@ -718,8 +719,12 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
 }
 // (an opening plan the decision may press: set-ups to press, a chain longer than the board's own trigger's and one the mode asks for,
 // its set-ups pressed before the next block lands)
+// (and, no garbage shown yet, its trigger pressed by OPEN_FIRE_BY: the opener's chain goes before anything can land on it)
+static int opBefore(void) { return decF.next == NOT_ASKED && decQ.b->clock < OPEN_FIRE_BY; }
 static int opFits(const OpPath *p, int32_t trigCh) {
-  return p->len > 0 && p->ch > trigCh && opAsked(p->ch) && !(decF.next != NOT_ASKED && decF.next <= (p->len + 1) * OPEN_SWAP_FRAMES);
+  int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES;
+  return p->len > 0 && p->ch > trigCh && opAsked(p->ch) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
+         !(opBefore() && decQ.b->clock + frames > OPEN_FIRE_BY + OPEN_SWAP_FRAMES);
 }
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
@@ -818,9 +823,8 @@ static Played playOf(const Read *R, int n) {
   // only where the hold was chosen: the opening's whole time is the plan's)
   const Judge *opTop = P.line ? P.line : P.top;
   // (the planned opener in progress goes on: no plan is grown or begun over it -- the carry presses it, and survival alone puts it down)
-  // (and no other line takes its place while it can still be pressed and either lives or presses its last swap before the board is lost
-  // -- a chain going is a board that cannot top out, so garbage due before its trigger is no reason to put it down; one that cannot fire
-  // before the loss is survival's to decide)
+  // (and no other line takes its place while it can still be pressed and either lives or presses its last swap before the next block
+  // lands -- one that cannot fire in time is survival's to decide)
   if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
@@ -855,11 +859,13 @@ static Played playOf(const Read *R, int n) {
       static Judge CU; Cand k;
       if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
       k.settled = usePlan ? 1 : 0;
-      // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live: the
-      // log's, the first plan's)
+      // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live, -4 it fires
+      // too late: the log's, the first plan's)
       lastDrop = -1;
       int jok = judgeCand(R, &k, &CU);
       int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
+      // (-4 the plan's trigger, as judged, pressed after OPEN_FIRE_BY)
+      if (!why && usePlan && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > OPEN_FIRE_BY) why = -4;
       if (!why) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
       else if (!chainUp) chainUp = why;
     }
