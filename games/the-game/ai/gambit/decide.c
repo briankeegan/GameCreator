@@ -4,6 +4,7 @@
 typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
+static int32_t cdAsk;   // (the question is the countdown's: the board frozen, the decision's time the countdown's -- the opener's chain planned and begun on it as it is)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 static int32_t openerOver, openerChained;   // (the opener played out: a board has topped out this game -- or, nobody across, its chain thrown)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
@@ -726,7 +727,7 @@ static Played playOf(const Read *R, int n) {
   // is never passed over for a raise to come)
   int holdLivesNow = 0;
   for (int i = 0; i < n; i++) if (order[i]->hold && order[i]->o.lives) holdLivesNow = 1;
-  P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow;
+  P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow && !cdAsk;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
   // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
   P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
@@ -796,7 +797,8 @@ static Played playOf(const Read *R, int n) {
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
   // is pressed first, as one line; with none left, the raise; then the plan, kept through the rows risen)
   opFlatPlayed = 0;
-  if (opWants && !opLineOn && raiseOpening) {
+  // (not in the countdown: there the chain is begun on the board as it is, the raise left to play)
+  if (opWants && !opLineOn && raiseOpening && !cdAsk) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * 0.7; if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow; readyStop();
