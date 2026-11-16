@@ -318,7 +318,7 @@ static int32_t orderN;   // (the lines in the order the move was picked from: de
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
-static void pvKeep(const Judge *k, int first); static int32_t pvSet, pvKind, pvV[5];   // (pvKind: 0 not asked, 1 same, 2 not played, 3 the line ends past this frame, 4 lost, 5 clock, 6 rows, 9 a cell -- pvV its row, column, field, foreseen, real -- 10 a head field -- its index in pa.c HEAD from 1, foreseen, real -- 11 the rise timer, thousandths)
+static void pvKeep(const Judge *k, int first, int32_t qid); static int32_t pvSet, pvId, pvKind, pvV[5];   // (pvKind: 0 not asked, 1 same, 2 not played, 3 the line ends past this frame, 4 lost, 5 clock, 6 rows, 9 a cell -- pvV its row, column, field, foreseen, real -- 10 a head field -- its index in pa.c HEAD from 1, foreseen, real -- 11 the rise timer, thousandths)
 static int32_t carryRule(void);   // (the mode the line in progress was begun in)
 static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
@@ -407,7 +407,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; opCarried = 0; orderN = 0; pvKind = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -1022,7 +1022,7 @@ static int savesOverHold(const Judge *k) {
   return k->o.lives || diesAt(k) > diesAt(H);
 }
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
-  pvSet = 0;
+  pvKeep(k, first, qid);
   if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
   else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
@@ -1049,7 +1049,6 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   carriedSunk = lineWalk(k);
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
   theCarry.rule = R->rule;
-  pvKeep(k, first);
 }
 static int32_t carryRule(void) { return theCarry.rule; }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
@@ -1209,8 +1208,8 @@ static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, 
 // pressed since pressed on it as soon as the board lets them, run on to this frame -- against the board as it is: pv=same, or the first
 // thing that differs
 static Board *pvBoard; static int32_t pvSeq[MAXLINE], pvN, pvFirst;
-static void pvKeep(const Judge *k, int first) {
-  pvSet = 0;
+static void pvKeep(const Judge *k, int first, int32_t qid) {
+  pvSet = 0; pvId = qid;
   if (!k || k->hold || !decQ.b) return;
   if (!pvBoard) pvBoard = nb_new();
   if (!pvBoard) return;
@@ -1256,7 +1255,6 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   *wait = 0; carryDrop = 0; carryLate = 0;
   carryNone = !C->set ? 16 : C->id != carryFrom ? 17 : 0;
   int skip = C->id == carryFrom ? carryPressed : 0;
-  if (C->set && C->id == carryFrom) pvCheck(skip);
   if (C->set && C->nrest <= skip && theCarryNext.set) {
     // (the line's own swaps all pressed: the break it lived by is the line in progress now, popping or not as the board is now)
     *C = theCarryNext; memset(&theCarryNext, 0, sizeof theCarryNext); carriedSunk = -1; C->popping = popLeft(decQ.b) > 0; skip = 0;
