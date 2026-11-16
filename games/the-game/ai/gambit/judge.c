@@ -43,6 +43,7 @@ typedef struct {
   int32_t dropAt;               // the frame garbage can next drop once the line is over
   int32_t dead, deadAt, done, fire, nats, ats[MAXLINE];
   int32_t risen[MAXLINE];         // the rows the stack has risen, from the root, by the frame each swap is pressed: its row less this is its row on the root's board
+  int32_t clearStep;              // the first step of the line after which something clears, -1 none (the log's cstep=)
   int32_t lostAt;               // FOREVER, a frame, or NOT_ASKED
   int32_t ready;                // 1, 0, or NOT_ASKED
   int32_t readyLine[MAXLINE], readyN; // the swaps the readiness found (why), as r * 8 + c
@@ -356,7 +357,7 @@ static int risenTo(Ctx *x, int node, int32_t id) {
 }
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->noops = 0; j->sames = 0;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->clearStep = -1; j->noops = 0; j->sames = 0;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -456,6 +457,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     }
     Stats st;
     statsOf(x, out, &st);
+    if (st.cleared > 0 && j->clearStep < 0) j->clearStep = k;
     for (int i = 0; i < st.n; i++) { if (st.size[i] > combo) combo = st.size[i]; if (!(st.chainAt[i] > 1) && st.size[i] >= 4 && st.size[i] < MAXCOMBOS + 64) single[st.size[i]] = 1; }
     for (int i = 0; i < st.n; i++) if (!(st.chainAt[i] > 1)) pieces += blocksOf(st.size[i], 0);
     // (a settled step's chain ends in it, so each is an attack of its own; steps pressed at once are one chain, counted at its longest)
