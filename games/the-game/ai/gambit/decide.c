@@ -364,7 +364,8 @@ static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
-static int32_t opTried;   // (the opening plans judged this decision: the log's)
+static int32_t opTried, opFallHeld;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's)
+static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
@@ -797,7 +798,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opGrew = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opGrew = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
@@ -829,6 +830,10 @@ static Played playOf(const Read *R, int n) {
   // (and no other line takes its place while it can still be pressed and either lives or presses its last swap before the next block
   // lands -- one that cannot fire in time is survival's to decide)
   if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
+  // (THE OPENER'S CHAIN FALLING -- the owner: as long as you extend, you can't die: the stack is still while it falls and the garbage
+  // waits for it, so nothing is pressed under it but its extension -- a swap of anything else is a link taken from it)
+  if (R->rule >= 0 && theTables.r[R->rule].table == 2 && (cascadeLive(decQ.b) || decQ.b->chainCounter > 0) && P.line &&
+      !(P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND))) { P.line = 0; P.wait = 0; P.deferred = 0; opFallHeld++; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
   if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
@@ -1008,7 +1013,6 @@ static int anchorOf(const int32_t *row1, const int32_t *seq, int n) { return anc
 static int32_t carrySkip = -1;
 // (THE LINE IN PROGRESS, WHERE IT BEGAN: the frame and the kind of line it was begun as -- carried on, it is played as `carry` from then on;
 // the log's `from`, so a reader sees what the swap pressed now is for)
-static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (WHAT LAST LET THE LINE IN PROGRESS GO, for the log of a decision that found none carried (answer.c ended 16): 1-5 the decision before
 // played no line to hand on (carrySkip's), 6 a hold's break in reach not anchored, 7 the mode changed, 8 a new game)
 static int32_t carryClr;
@@ -1217,12 +1221,12 @@ static void pvKeep(const Judge *k, int first, int32_t qid) {
   cloneBoard(pvBoard, decQ.b); pvQ = decQ; pvQ.b = pvBoard; pvN = imin(k->k.nseq, MAXLINE); for (int i = 0; i < pvN; i++) pvSeq[i] = k->k.seq[i]; pvFirst = first; pvSet = 1;
 }
 #define PV_UNSEEN_ROWS 70   // (unseenRows' place in pa.c HEAD, unseenBreaks after it)
-static void pvCheck(int32_t skip) {
+static void pvCheckIn(int32_t skip) {
   pvKind = 0;
   int32_t pressed = pvFirst + skip;
   if (!pvSet || pressed <= 0 || pressed > pvN) return;
   Question q = pvQ;
-  Ctx *x = judgeCtx = ctxOf(judgeCtx);
+  static Ctx *pvCtx; Ctx *x = pvCtx = ctxOf(pvCtx);   // (its own nodes: the judge's are read on after it)
   int n = rootOf(x, &q);
   for (int i = 0; n >= 0 && i < pressed; i++) {
     int from, out = pressWalk(x, n, MK_SWAP, CR(pvSeq[i]), CC(pvSeq[i]), stepTapped, &from);
@@ -1252,6 +1256,14 @@ static void pvCheck(int32_t skip) {
     if (p->p[r][c].f[f] != b->p[r][c].f[f]) { pvKind = 9; pvV[0] = r; pvV[1] = c; pvV[2] = f; pvV[3] = p->p[r][c].f[f]; pvV[4] = b->p[r][c].f[f]; return; }
   }
   pvKind = 1;
+}
+// (a log's check, never the decision's: run whatever the clock says, and its work not charged to the decision)
+static void pvCheck(int32_t skip) {
+  int64_t w0 = clockWork;
+  __atomic_store_n(&clockIgnore, 1, __ATOMIC_RELAXED);
+  pvCheckIn(skip);
+  __atomic_store_n(&clockIgnore, 0, __ATOMIC_RELAXED);
+  clockWork = w0;
 }
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
