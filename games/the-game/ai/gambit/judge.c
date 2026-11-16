@@ -23,6 +23,7 @@ typedef struct {
                                      // played where the readiness found it
   int32_t lifeStop;                  // lostAt asked past the stop and shake the line ends on too (dropAt + lifeRest): a board held up by a
                                      // stop stands only if it outlives it
+  int32_t rooted;                    // each swap's row named on the root's board: pressed in the row its panels have risen to by then
 } JudgeOpts;
 typedef struct {
   Made made;                    // beyond the board left alone: { combo, chain, broke }
@@ -394,6 +395,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         broke += sc.broke; clearedAll += sc.cleared;
       }
     }
+    // (a rooted line's swap pressed where its panels are now: its row on the root's board, and the rows risen since)
+    if (!last && o->rooted) mr = CR(seq[k]) + risenTo(x, n, rid);
     // (the allowance this swap is pressed under: the input window at the frame its walk begins, less what the line's swaps before it
     // spent -- core/nodes.h allowLeftAt, actionsFor)
     if (!last && pressAllowance >= 0) {
