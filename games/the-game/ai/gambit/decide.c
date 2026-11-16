@@ -324,6 +324,7 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 // carried line, whatever the filters after its judging take out, while it lives or presses its last swap before the next block lands)
 static const Judge *opCarried;
 static int32_t carrySave;   // (the line in progress was begun on a three let through as the save: carryOf -- it keeps that leave while it is carried on)
+static int32_t carryTwo;   // (and begun on a 2x let through: it keeps that leave too)
 static const Judge *strippedCarry;   // (the line in progress without the swap that makes its three: THE THREE TAKEN OUT)
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
@@ -640,7 +641,8 @@ static int ranked(const Read *R, const Found *S) {
     if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1, why = 3;
     twoWhy = why; twoLostLog = twoLives ? 1e300 : twoLost; twoKeptLog = keptLost;
     // (not where the list asks no chain: a 2x taken to three is a bigger slab the mode does not ask)
-    if (keeps && listChainCap() > 0) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i]) && order[i] != opCarried) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 24; } } else order[m++] = order[i]; } n = m; } }
+    // (nor the line in progress begun on its 2x: the input pressed of it is spent, and taken out now it is spent for nothing)
+    if (keeps && listChainCap() > 0) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carryTwo)) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 24; } } else order[m++] = order[i]; } n = m; } }
   // (NO COMBO THE MODE DOES NOT ASK FOR, where a three does as well: the line ranked first making one is played with each of its swaps
   // left out in turn, and one that makes none, lives as long, breaks as much and makes as much of the list is the line -- a fourth panel
   // walked in by a swap the break did not need is a panel and a walk for nothing (the owner: no mode asks a combo of four))
@@ -991,6 +993,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   Why keepWhy = k && k->carried ? theCarry.why : (Why){ WHY_NONE, 0, 0 };
   carrySave = k && !k->hold && ((k->carried && carrySave) || wastesThree(k));
+  carryTwo = k && !k->hold && ((k->carried && carryTwo) || shortChain(k));
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.why = keepWhy;
   theCarry.waits = waits; carriedSunk = -1;
