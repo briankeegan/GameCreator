@@ -324,7 +324,34 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 // carried line, whatever the filters after its judging take out, while it lives or presses its last swap before the next block lands)
 static const Judge *opCarried;
 static const Judge *strippedCarry;   // (the line in progress without the swap that makes its three: THE THREE TAKEN OUT)
-static int32_t saveOk;   // (a three let through as the save this decision)
+// THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
+// the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
+// it could not be asked. The hold's board is the board left alone. A line lost before its end is lost where the judge saw it lost, and a
+// board the search finds no line on is lost where it is lost left alone.
+#define SAVE_MS 10
+#define SAVE_KEEP_MS 4
+static int32_t saveAsked, saveNot, saveOk;   // (saves asked of the survival search this decision, the threes it found not needed, and whether it found one needed: the log's, and the frame loop's count)
+static int32_t saveBlind;   // (a three kept as the save because the save check gave no answer this decision: the log's)
+static double saveCw = -1, saveCk = -1;
+static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
+static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
+static double contLostOf(const Judge *J, double give) {
+  static Board *eb; if (!eb) eb = nb_new();
+  if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
+  if (!eb) return -1;
+  endNoKeep = 1;
+  const Board *e = J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
+  endNoKeep = 0;
+  if (!e) return -1;
+  cloneBoard(eb, e);
+  int32_t dt = imax(0, eb->clock - decQ.b->clock);
+  Question q2 = decQ; q2.b = eb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
+  Outlived c = outlive(&q2, HORIZON + REST, REST, give, OUT_DEPTH, 30);
+  int32_t lost = c.set ? c.lostAt : diesIn(&q2, HORIZON + REST);
+  if (lost < 0) return -1;
+  return lost == FOREVER ? 1e9 : (double)dt + lost;
+}
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
 static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
@@ -373,7 +400,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveOk = 0;
+  carriedJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -477,7 +504,8 @@ static int ranked(const Read *R, const Found *S) {
     Outlived sv = svDone ? svJob : outliveSave(&decQ, HORIZON + REST, REST, leftMs(), OUT_DEPTH, 30);
     offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
     Cand sk;
-    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
+    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
+    if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps
@@ -525,9 +553,43 @@ static int ranked(const Read *R, const Found *S) {
     // (the owner: don't die -- a three is kept out only where a line that keeps it lives, or is lost no sooner than the best that wastes one)
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     if (!keeps && nearSave) saveOk = 1;
-    // (THE THREE AS THE SAVE: a line that wastes one and lives where none that keeps it does, or is lost later than all of them, is played
-    // -- the owner: don't die, then send what the mode asks)
-    if (!keeps && !saveOk && (wasteLives || wasteLost >= 0)) saveOk = 1;
+    // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
+    // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way
+    // landing as it would. A three whose board, with the best line on, outlasts the other's by nothing was not needed not to die: it
+    // is wasted)
+    if (!keeps && !saveOk && saveRoomMs() > SAVE_KEEP_MS + 2) {
+      const Judge *bw = 0, *bk = 0;
+      for (int i = 0; i < n; i++) {
+        const Judge *J = order[i];
+        if (wastesThree(J)) { if (!bw || J->o.lives > bw->o.lives || (J->o.lives == bw->o.lives && lostOf(J) > lostOf(bw))) bw = J; }
+        else if (!bk || lostOf(J) > lostOf(bk)) bk = J;
+      }
+      if (bw && bk) {
+        // (the side without a three: the survival search's own line from now when it wastes none -- searched already, on a worker -- else
+        // the best line without one played to its end and searched on; the decision's time all the three's side's when it need not)
+        // (the three's side first, with the time; then the side without, bounded below by what is known already -- the best line's own
+        // loss, the survival line's when it wastes none: a three that does not beat that is not needed, and only
+        // otherwise is the side without searched, in what time is left)
+        int have = svLost >= 0 && svClean;
+        double kLow = lostOf(bk); if (have && svLost > kLow) kLow = svLost;
+        double give = saveRoomMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
+        double cw = contLostOf(bw, give), ck = -1;
+        if (cw >= 0 && kLow >= cw) ck = kLow;
+        else if (cw >= 0) {
+          double give2 = saveRoomMs() - SAVE_KEEP_MS; if (give2 > SAVE_MS) give2 = SAVE_MS;
+          double c2 = give2 >= 1 ? contLostOf(bk, give2) : -1;
+          ck = c2 > kLow ? c2 : (c2 >= 0 ? kLow : -1);
+        }
+        saveAsked++;
+        saveCw = cw; saveCk = ck;
+        if (cw >= 0 && ck >= 0 && ck >= cw) { keeps = 1; saveNot++; }
+        else if (cw >= 0 && ck >= 0) saveOk = 1;
+      }
+    }
+    // (A SAVE THE CHECK COULD NOT ANSWER -- no time left to ask it, or no answer in the time it had: every line that keeps its threes is
+    // lost within a break's time and the three lives or is lost later, so the three is the save -- death is never an option. Only a
+    // check that answered takes a three out)
+    if (!keeps && !saveOk && (wasteLives || wasteLost >= 0) && !(saveAsked && saveCw >= 0 && saveCk >= 0)) { saveOk = 1; saveBlind = 1; }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
