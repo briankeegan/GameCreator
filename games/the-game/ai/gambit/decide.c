@@ -920,7 +920,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; extLogged = 0; opFallBar = opFallExt = 0; opDesigned = 0; opGrew = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opFallBar = opFallExt = 0; opDesigned = 0; opGrew = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;

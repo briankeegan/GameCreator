@@ -455,6 +455,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   double searchShare = clockShareBegin(searchesEnd());
   static Found S;
   searchPrep(&R, &S);
+  extLogged = 0; extSkip = 0;   // (the extension's log is this decision's: cleared before any search begins, the ones beside this thread too)
   int beside = breakBegin(&R, &S, lineFrom, linePressed);
   if (!beside) searchUnsplit();
   searchBeside = beside;
@@ -806,6 +807,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the extension searched: its boards settled/kept, the chain left alone, the longest of any and of a kept one, put down late/for the floor, its ms)
   if (extLogged) { L_s(" xs="); L_i(extLog.seen); L_s("/"); L_i(extLog.kept); L_s("/"); L_i(extLog.baseChain); L_s("/"); L_i(extLog.top); L_s("/"); L_i(extLog.topKept);
     L_s("/"); L_i(extLog.late); L_s("/"); L_i(extLog.floorLost); L_s("/"); L_i((int32_t)extLog.ms); }
+  else if (extSkip) { L_s(" xs=-"); L_i(extSkip); }
   if (opFallHeld) { L_s(" fallBar="); L_i(opFallBar); L_s("/"); L_i(opFallExt); }
   if (opFallHeld) { L_s(" fallHeld=1"); if (opSecondWhy) { L_s(" second="); L_i(opSecondWhy); L_s(":"); L_i(opSecondCh); } }
   if (pvKind) { L_s(" pv="); L_i(pvKind); if (pvKind >= 3) { L_s(":"); L_i(pvV[0]); } if (pvKind >= 5) { L_s("/"); L_i(pvV[1]); } if (pvKind == 9) { L_s(":f"); L_i(pvV[2]); L_s(":"); L_i(pvV[3]); L_s("/"); L_i(pvV[4]); } if (pvKind == 10) { L_s(":"); L_i(pvV[2]); } }
