@@ -590,22 +590,34 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   const Rule *rule = &theTables.r[R.rule];
   L_s("GAMBITD "); L_i(at); L_s(" @"); L_i(rule->name); L_s(" play="); L_play(P.name);
   if (noReason) { L_s(" noreason="); L_i(noReason); }
-  if (!R.up && P.line && !P.line->hold) {
-    // (a line in progress, for the reason it was begun; one begun now, its reason kept with it)
-    Why wy = P.line->carried ? (theCarry.why.kind != WHY_NONE ? theCarry.why : moveWhy(P.line)) : whyPlayed;
-    if (!P.line->carried && theCarry.set) theCarry.why = wy;
+  // (THE GOAL, EVERY DECISION -- the owner: not only why, the intention -- the log's aim=: the line played, for the goal it was begun or chosen
+  // for; with none played: raise (the raise pressed or waited for), the line in progress that waits for the board -- its own goal --, the
+  // line chosen and held for its timing -- its goal --, fall (our chain falling: let it land), settle (panels falling or a slab popping),
+  // keep (the hold ranked first: the board as it is -- won= says by which key))
+  { Why wy = { WHY_NONE, 0, 0 }; const char *as = 0;
+    if (R.up || P.wait) as = "raise";
+    else if (P.line && !P.line->hold) {
+      wy = P.line->carried ? (theCarry.why.kind != WHY_NONE ? theCarry.why : moveWhy(P.line)) : whyPlayed;
+      if (!P.line->carried && theCarry.set) theCarry.why = wy;
+    }
+    else if (theCarry.set && theCarry.why.kind != WHY_NONE) wy = theCarry.why;
+    else if (P.deferred && P.top && !P.top->hold) wy = moveWhy(P.top);
+    else if (decQ.b && decQ.b->chainCounter > 0) as = "fall";
+    else if (decQ.b && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0)) as = "settle";
+    else as = "keep";
     L_s(" aim=");
-    switch (wy.kind) {
+    if (as) L_s(as);
+    else switch (wy.kind) {
       case WHY_CHAIN: L_s("x"); L_i(wy.a); break;
       case WHY_COMBO: L_s("c"); L_i(wy.a); break;
       case WHY_BREAK: L_s("b"); L_i(wy.a); break;
-      case WHY_TWIN: L_s("c"); L_i(wy.a); L_s("/"); L_i(wy.b); break;
+      case WHY_TWIN: L_s("eight"); break;
       case WHY_FLAT: L_s("flat"); L_i(wy.a); L_s(">"); L_i(wy.b); break;
       case WHY_ZIP: L_s("zip"); L_i(wy.a); L_s(">"); L_i(wy.b); break;
       case WHY_DROP: L_s("drop"); break;
-      case WHY_LIVE: L_s("live+"); L_i(wy.a); break;
+      case WHY_LIVE: if (wy.b == 1) L_s("live"); else if (wy.b == 2) L_s("survive"); else { L_s("live+"); L_i(wy.a); } break;
       case WHY_READY: L_s("ready-"); L_i(wy.a); break;
-      default: L_s("none"); break;   // (a move with no reason: a bug to find)
+      default: L_s("none"); break;   // (a move with no goal: a bug to find)
     }
   }
   L_s(" want="); if (R.up) L_s("raise"); else if (P.wait) L_s("hold"); else if (!n) L_s("-"); else if (order[0]->hold || order[0]->wait) L_s("hold"); else L_mv(order[0]->k.seq[0]);
@@ -620,7 +632,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(" ownKept="); L_i(keeps); }
   L_s(" tier="); L_i(P.line ? P.line->t.tier : d.kind == 0 ? HOLD_TIER : 0);
   // (the part of the one rule the line played is (judge.c): e an entry of the list, t the three that breaks, l a last resort, - none)
-  L_s(" rule="); L_s(!P.line || P.line->met < 0 ? (P.line && P.line->outside ? "l" : "-") : P.line->met < R.list.n ? "e" : "t");
+  // (rule=: e the line meets an entry of the mode's list, t a later one, l it is outside the list (the default's move), c a line in
+  // progress carried on that meets none -- aim= its reason --, n a line that meets none played for its own reason -- aim= --, - none played)
+  L_s(" rule="); L_s(!P.line ? "-" : P.line->met >= 0 ? (P.line->met < R.list.n ? "e" : "t") : P.line->outside ? "l" : P.line->carried ? "c" : "n");
   L_s(" by="); if (R.by != NOT_ASKED && R.by) L_i(R.by); else L_s("-");
   L_s(" done="); if (P.line && A->done >= 0) L_i(A->done); else L_s("-");
   L_s(" fire="); if (P.line && A->fire >= 0) L_i(A->fire); else L_s("-");
