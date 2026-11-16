@@ -737,38 +737,44 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 // and every panel under them in their columns, where they will be once the chain lands and none of them moving -- and only where the
 // chain falls on as long as it does left alone. 0 where there is none.
 #define OP_SECOND_SHARE 0.5
-static int32_t opSecondCh;   // (the second chain's plan, its chain, where a set-up of it was pressed: the log's)
+static int32_t opSecondCh, opSecondWhy;   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 a landed board, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed: the log's)
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
+  opSecondWhy = 1;
   if (!landed || clockOut()) return 0;
   sx = ctxOf(sx);
   int root = rootOf(sx, &decQ), calm = root >= 0 ? settleOf(sx, root) : -1;
   const Board *lb = liveNode(sx, calm) ? ensureBoard(sx, calm) : 0;
+  opSecondWhy = 2;
   if (!lb || lb->chainCounter != 0 || lb->nrows != decQ.b->nrows) return 0;
   cloneBoard(landed, lb);
   Question lq = decQ; lq.b = landed;
   double left = C2.due ? C2.due - C2.margin - nowMs() : 50, ms = left * OP_SECOND_SHARE;
+  opSecondWhy = 3;
   if (ms < 2) return 0;
   double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
   openingReset();
   { double sh = clockShareBegin(nowMs() + ms); openingGrow(&lq, decQ.b); clockShareEnd(sh); }
   clockDue = keepDue; clockShare = keepShare;
+  opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1;
   if (!opHave || opBest.len < 1 || opBest.ch < OP_TWO_FROM) return 0;
   int32_t sw = opBest.path[0], r = CR(sw), c = CC(sw);
   const Board *b = decQ.b;
+  opSecondWhy = 5;
   if (r < 1 || r >= b->nrows || c < 1 || c >= W) return 0;
   for (int cc = c; cc <= c + 1; cc++) for (int rr = 1; rr <= r; rr++) {
     const int32_t *now = b->p[rr][cc].f, *then = landed->p[rr][cc].f;
     if (now[ID] != then[ID] || (now[ID] > 0 && now[STATE] != NORMAL)) return 0;
   }
+  opSecondWhy = 6;
   // (and the chain no shorter for it: the hold's chain, all of it, is the bar)
   int32_t bar = 0; for (int i = 0; i < n; i++) if (order[i]->hold) bar = order[i]->apChainAll;
   static Judge J; Cand k; int32_t one[1] = { sw };
   if (!candOf(&k, PLAY_SETUP, one, 1, -1, 0)) return 0;
   k.settled = 0; lastDrop = -1;
   if (!judgeCand(R, &k, &J) || J.o.dead || J.apChainAll < bar) return 0;
-  opSecondCh = opBest.ch;
+  opSecondWhy = 7;
   return &J;
 }
 static Played playOf(const Read *R, int n) {
@@ -841,7 +847,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opGrew = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opGrew = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
@@ -881,8 +887,7 @@ static Played playOf(const Read *R, int n) {
   // (a chain: the chain counter running -- a slab popping or panels falling with no chain going are not one)
   { int falling = decQ.b->chainCounter > 0;
     if (!falling) opFalling = 0; else if (R->rule >= 0 && theTables.r[R->rule].table == 2) opFalling = 1; }
-  if (opFalling && P.line &&
-      !(P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND))) {
+  if (opFalling && !(P.line && (P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND)))) {
     // (the best extension the order holds is played; with none, the hold)
     const Judge *ext = 0;
     for (int i = 0; i < n && !ext; i++) if (!order[i]->hold && !order[i]->o.dead && (order[i]->k.play == PLAY_EXTEND || (order[i]->carried && carryBeganPlay == PLAY_EXTEND))) ext = order[i];
