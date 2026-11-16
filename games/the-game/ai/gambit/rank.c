@@ -476,7 +476,9 @@ static int allowAtNeed(int walk) {
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
   return allowLeftAt(t, walk);
 }
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || J->apBroke > 0 || ruleNoEnemy || (decF.under && !breakOffered) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
+// (how far below a break's walk a line leaves the allowance -- a break too: of two breaks the board survives alike, the one that leaves
+// the next break its walk; spendsReserve, which sets a line that breaks nothing after one that keeps the reserve, never counts a break)
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || (decF.under && !breakOffered) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !(decF.under && !breakOffered) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
@@ -712,9 +714,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *cb = comboOutside(x) ? x : y, *o = comboOutside(x) ? y : x;
     if (imax(0, o->apBroke) >= imax(0, cb->apBroke)) return (cmpKey = __LINE__, (comboOutside(x) ? 1 : -1));
   }
-  // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that breaks nothing and walks the input
-  // allowance below a break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter
-  // after -- the next break is pressed out of what is left, and what is spent comes back only a window later, the garbage it is needed
+  // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that walks the input allowance below a
+  // break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter after -- two
+  // breaks as two of anything else -- the next break is pressed out of what is left, and what is spent comes back only a window later, the garbage it is needed
   // for may be told of by then or not
   if (pressAllowance >= 0 && (lx || lostAlike(x, y))) {
     int rx = reserveShort(x), ry = reserveShort(y);
@@ -891,8 +893,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!alike && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
     // (neither lives, lost alike) the board's own chain kept before cut short, as for two that live
     if (cutsShort(x) != cutsShort(y)) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1));
-    // (neither lives, lost alike) THE ALLOWANCE'S RESERVE: a line that breaks nothing and walks the input allowance below a break's walk
-    // (BREAK_WALK) after one that keeps it -- the break the next decisions find has to be pressed out of what is left
+    // (neither lives, lost alike) THE ALLOWANCE'S RESERVE: a line that walks the input allowance below a break's walk (BREAK_WALK) after
+    // one that keeps it, two breaks as two of anything else -- the break the next decisions find has to be pressed out of what is left
     if (pressAllowance >= 0) {
       int rx = reserveShort(x), ry = reserveShort(y);
       if (rx != ry) return (cmpKey = __LINE__, (rx - ry));
