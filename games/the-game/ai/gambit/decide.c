@@ -861,12 +861,12 @@ static Played playOf(const Read *R, int n) {
     chainNow = trigCh; chainAfter = opHave ? opBest.sent : 0;
     // (ONE MOVE, START TO FINISH -- the owner: the opener is a continuous move; once started it goes on, nothing stops or replans it but
     // survival: the plan's set-ups and its trigger handed on as one line, judged whole, then carried as the line in progress)
-    // (the plans tried in turn, OP_TRIES at most: the best, then the next best that fit -- a plan that does not live or fires too late
-    // gives way to the next; with none, the board's own trigger)
-    const OpPath *tries[OP_TRIES]; int nt = 0;
-    // (every plan that fits, the best of each length, ranked as the plan is (search/opening.c opPacier); the first OP_TRIES judged)
-    // (the passes of opFits in turn: the first that finds a plan is tried)
-    for (int pass = 0; pass < 3 && !nt; pass++) {
+    // (THE PLANS TRIED, a pass at a time (opFits): each pass's plans, OP_TRIES at most, the best first -- the best of each length, ranked as
+    // the plan is (search/opening.c opPacier) -- judged in turn; a plan that does not live, or as judged fires past OPEN_FIRE_BY in a pass
+    // that asks it by then, gives way to the next, and a pass that plays none to the next pass; with none in any, the board's own trigger)
+    opTried = 0;
+    for (int pass = 0; pass < 3 && chainUp <= 0; pass++) {
+      const OpPath *tries[OP_TRIES]; int nt = 0;
       if (opHave && opFits(&opBest, trigCh, pass)) tries[nt++] = &opBest;
       for (int ln = 1; ln <= OP_DEPTH; ln++) {
         const OpPath *c = &opByLen[ln];
@@ -876,22 +876,25 @@ static Played playOf(const Read *R, int n) {
         tries[at] = c;
         for (int j = at; j > 0 && opPacier(tries[j], tries[j - 1]) && !(tries[j - 1] == &opBest); j--) { const OpPath *t = tries[j]; tries[j] = tries[j - 1]; tries[j - 1] = t; }
       }
+      for (int t = 0; t < nt && chainUp <= 0; t++) {
+        int32_t seq[OP_DEPTH + 1]; int ns = 0;
+        const OpPath *pl = tries[t]; for (int k = 0; k < pl->len; k++) seq[ns++] = pl->path[k]; seq[ns++] = pl->trig; opTried++;
+        static Judge CU; Cand k;
+        if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
+        k.settled = 1;
+        // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live,
+        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then: the log's, the first plan's)
+        lastDrop = -1;
+        int jok = judgeCand(R, &k, &CU);
+        int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
+        if (!why && pass < 2 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > OPEN_FIRE_BY) why = -4;
+        if (!why) { P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
+        else if (!chainUp) chainUp = why;
+      }
     }
-    opTried = 0;
-    for (int t = 0; t <= nt && chainUp <= 0; t++) {
-      int32_t seq[OP_DEPTH + 1]; int ns = 0, usePlan = t < nt;
-      if (usePlan) { const OpPath *pl = tries[t]; for (int k = 0; k < pl->len; k++) seq[ns++] = pl->path[k]; seq[ns++] = pl->trig; opTried++; }
-      else if (trig && opAsked(trigCh)) seq[ns++] = trig;
-      if (!ns) break;
-      static Judge CU; Cand k;
-      if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
-      k.settled = usePlan ? 1 : 0;
-      // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live: the log's, the first plan's)
-      lastDrop = -1;
-      int jok = judgeCand(R, &k, &CU);
-      int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
-      if (!why) { P.line = &CU; chainUp = usePlan ? 3 : 2; openingReset(); opLineOn = usePlan; }
-      else if (!chainUp) chainUp = why;
+    if (chainUp <= 0 && trig && opAsked(trigCh)) {
+      static Judge CT; Cand k; int32_t one[1] = { trig };
+      if (candOf(&k, PLAY_ENTRY, one, 1, -1, 0)) { k.settled = 0; lastDrop = -1; if (judgeCand(R, &k, &CT) && !CT.o.dead && CT.o.lives) { P.line = &CT; chainUp = 2; openingReset(); opLineOn = 0; } }
     }
     clockDue = keepDue; clockShare = keepShare;
   }
