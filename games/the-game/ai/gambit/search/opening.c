@@ -222,7 +222,9 @@ static void opKidsAll(int n) {
   for (int p = 0; p < n && !clockOut(); p++) opKids(p);
 }
 // (the best plan, and the best of each length -- the shorter ones the decision falls back on where the best does not live)
+static int32_t opSightCh, opSightLen;   // (the longest chain of a plan pressed on rows known, and its set-ups: the log's opgrew /s)
 static void opConsider(const OpPath *e) {
+  if (e->blind < OP_BLIND && e->ch > opSightCh) { opSightCh = e->ch; opSightLen = e->len; }
   if (!opHave || opPacier(e, &opBest)) { opBest = *e; opHave = 1; }
   if (!opByLenHave[e->len] || opPacier(e, &opByLen[e->len])) { opByLen[e->len] = *e; opByLenHave[e->len] = 1; }
 }
@@ -265,7 +267,7 @@ static void openingGrowIn(const Question *q, const Board *now) {
   }
   if (clockOut()) return;
   opN = m; for (int i = 0; i < m; i++) opBeam[i] = opNext[i];
-  opHave = 0; memset(opByLenHave, 0, sizeof opByLenHave);
+  opHave = 0; opSightCh = 0; opSightLen = 0; memset(opByLenHave, 0, sizeof opByLenHave);
   for (int i = 0; i < opN; i++) if (opBeam[i].trig) opConsider(&opBeam[i]);
   // (grown a level at a time: every path's set-ups one swap on, the nearest its last swap first, each scored on whichever thread takes
   // its path (opKids); the OP_BEAM best kept and played again here, where the next level grows from them)
@@ -311,7 +313,7 @@ static void openingGrowIn(const Question *q, const Board *now) {
           if (!half && !c->trig) continue;
           if (w < 0) { w = j; continue; }
           const OpKid *d = &opJRes[cp[w]][ci[w]];
-          if (!half ? (c->ch != d->ch ? c->ch > d->ch : c->sent != d->sent ? c->sent > d->sent : c->cleared > d->cleared) : (c->pot != d->pot ? c->pot > d->pot : c->sent > d->sent)) w = j;
+          if (!half ? ((c->blind < OP_BLIND) != (d->blind < OP_BLIND) ? c->blind < OP_BLIND : c->ch != d->ch ? c->ch > d->ch : c->sent != d->sent ? c->sent > d->sent : c->cleared > d->cleared) : (c->pot != d->pot ? c->pot > d->pot : c->sent > d->sent)) w = j;
         }
         if (w < 0) break;
         taken[w] = 1;
