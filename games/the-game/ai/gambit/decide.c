@@ -1251,7 +1251,7 @@ static Why moveWhy(const Judge *L) {
   }
   if (L->k.drop) { w.kind = WHY_DROP; return w; }
   // (the board it leaves: every swap played, settled -- after the decision, outside its clock)
-  clockIgnore = 1;
+  __atomic_store_n(&clockIgnore, 1, __ATOMIC_RELAXED);
   Ctx *x = whyCtx = ctxOf(whyCtx);
   int nd = rootOf(x, &decQ), n0 = nd;
   for (int q = 0; q < L->k.nseq && liveNode(x, nd); q++) { int o = step(x, nd, MK_SETTLE, CR(L->k.seq[q]), CC(L->k.seq[q]), 0); if (!liveNode(x, o)) break; nd = o; }
@@ -1278,6 +1278,6 @@ static Why moveWhy(const Judge *L) {
   }
   if (w.kind == WHY_NONE && L->k.aimC > 0) { w.kind = WHY_TWIN; w.a = L->k.aimC; w.b = L->k.aimLeft; }
   ns_reset(x);
-  clockIgnore = 0;
+  __atomic_store_n(&clockIgnore, 0, __ATOMIC_RELAXED);
   return w;
 }

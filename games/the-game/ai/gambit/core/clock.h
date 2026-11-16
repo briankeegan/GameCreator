@@ -34,7 +34,7 @@ static int32_t jobStop;
 static int32_t onStopReq;
 static int32_t clockIgnore;   // (a fixed piece of work run whatever the clock says: decide.c moveWhy, its few steps measured once)
 static int clockOut(void) {
-  if (clockIgnore && !inJob) return 0;
+  if (!inJob && __atomic_load_n(&clockIgnore, __ATOMIC_RELAXED)) return 0;
   if (inJob == 2) return __atomic_load_n(&onStopReq, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (clockAborted) return 1;
