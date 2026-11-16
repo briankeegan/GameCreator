@@ -127,7 +127,7 @@ static void searchUnsplit(void) { planSplit = 0; extBeside = 0; }
 // this one keeping back a fifth for the level and the readiness lines after it, rather than half of what is left)
 static int32_t searchBeside;
 // (the chain extended or begun, wherever it runs: S->ex or S->start)
-static Ext extLog; static int32_t extLogged;   // (the last extension searched this decision: the log's xs=)
+static Ext extLog; static int32_t extLogged, extSkip;   // extSkip: why it was not searched -- 1 off, 2 nothing falling or popping, 3 short of time   // (the last extension searched this decision: the log's xs=)
 static void searchExt(const Read *R, Found *S, double ms) {
   Profile *GP = &C2.GP;
   Board *board = decQ.b;
@@ -136,7 +136,7 @@ static void searchExt(const Read *R, Found *S, double ms) {
   if ((cascadeLive(board) || R->pop) && !GP->extendOff && (ms >= 20 || (opFall && ms >= 2))) {
     ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0, ms };
     extend(&decQ, &eo, &S->ex); S->haveEx = 1; extLog = S->ex; extLogged = 1;
-  }
+  } else if (!extLogged) extSkip = GP->extendOff ? 1 : !(cascadeLive(board) || R->pop) ? 2 : 3;
   // (A CHAIN IS BEGUN AND CONTINUED: on a board at rest, each swap that starts a clear, then the links its fall is continued by -- the
   // extension's own search, from the board the swap leaves falling; a beginning whose chain ends in the list is a line)
   if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->guides)) startChains(R, S, ms);
