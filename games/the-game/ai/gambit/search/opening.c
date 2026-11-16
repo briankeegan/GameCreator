@@ -12,6 +12,7 @@ typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, c
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
 static int opN, opHave;            // the beam's paths, and whether a plan is held
 static int32_t opLevels, opGrowMs, opOnPool;   // (the levels the last decision grew, the ms it had, the levels scored on the workers: the log's)
+static int32_t opGrewLen, opGrewCh, opGrewN;   // (the best plan as the growing left it -- its set-ups, -1 none, and chain -- and the paths kept: the log's, whatever is pressed after)
 static int32_t opPressed;          // the plan's set-up the last decision played (0: none) -- the beam is re-rooted under it
 static LOCAL Ctx *opCtx;
 // (A SWAP THAT CAN SET SOMETHING OFF, read off the cells before it is played: a panel swapped into an empty cell falls and may match
@@ -204,7 +205,7 @@ static void opKidsAll(int n) {
 }
 // THE PLAN GROWN in the time the clock gives: the beam re-rooted under the swap the last decision pressed, every path replayed on the board
 // as it is (a path whose set-ups are no longer there is let go), then grown a level at a time. The best plan into opBest.
-static void openingGrow(const Question *q) {
+static void openingGrowIn(const Question *q) {
   Ctx *x = opCtx = ctxOf(opCtx);
   int root = rootOf(x, q);
   if (root < 0) return;
@@ -298,4 +299,8 @@ static void openingGrow(const Question *q) {
     opN = m; for (int i = 0; i < m; i++) { opBeam[i] = opNext[i]; nodes[i] = nodesNext[i]; }
     opLevels++;
   }
+}
+static void openingGrow(const Question *q) {
+  openingGrowIn(q);
+  opGrewLen = opHave ? opBest.len : -1; opGrewCh = opHave ? opBest.ch : 0; opGrewN = opN;
 }
