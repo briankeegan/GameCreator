@@ -790,7 +790,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(" carryDrop="); L_i(carryDrop);
     if (carryDrop == 2) { L_s(":d"); L_i(carryDropDead); L_s(":c"); L_i(carryDropCut); if (carryDropWhy) L_s(carryDropWhy == 1 ? "a" : carryDropWhy == 2 ? "n" : "w"); L_s(":n"); L_i(carryDropNats); }
     if (carryDrop >= 2) { L_s(" carryRest="); for (int i = 0; i < carryDropN; i++) { if (i) L_s(";"); L_mv(carryDropRest[i]); } }
-    if (carryDrop >= 2) { L_s(" cj="); L_i(carryJ.made.chain); L_s("/"); L_i(carryJ.chainAll); L_s("/c"); L_i(carryJ.clearStep); L_s("/f"); L_i(carryJ.fire); L_s("/ats");
+    if (carryDrop >= 2) { L_s(" cj="); L_i(carryJ.made.chain); L_s("/"); L_i(carryJ.chainAll); L_s("/w"); L_i(carryJ.whole.chain); L_s("/d"); L_i(carryJ.done); L_s("/s"); L_i(theCarry.settled); L_s("/c"); L_i(carryJ.clearStep); L_s("/f"); L_i(carryJ.fire); L_s("/ats");
       for (int i = 0; i < carryJ.nats; i++) { L_s(i ? "," : ":"); L_i(carryJ.ats[i]); L_s("r"); L_i(carryJ.risen[i]); } }
   }
   // (the line in progress the last answer carried, not offered on this board: carriedCand's carryNone -- 17 asked on another line, 18 every
