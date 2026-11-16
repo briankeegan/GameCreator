@@ -1468,6 +1468,7 @@ static Why moveWhy(const Judge *L) {
   else if (play == PLAY_SURVIVE) {
     const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
     w.kind = WHY_LIVE; w.a = H && !H->o.lives && !L->o.lives ? (int32_t)(diesAt(L) - diesAt(H)) : 0;
+    w.b = H && !H->o.lives && L->o.lives ? 1 : !H || H->o.lives || w.a <= 0 ? 2 : 0;   // (1 it lives where the hold does not, 2 it gains nothing on the hold: the log's)
   }
   if (w.kind == WHY_NONE && eb && nd != n0) {
     // (what the board it leaves fires one swap on: the longest chain, else the biggest combo)
@@ -1488,7 +1489,7 @@ static Why moveWhy(const Judge *L) {
   // (and the board's life: a line that lives where the hold does not, or is lost later than the hold, is pressed for the frames it buys)
   if (w.kind == WHY_NONE && !L->o.dead) {
     const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
-    if (H && !H->o.lives && (L->o.lives || diesAt(L) > diesAt(H))) { w.kind = WHY_LIVE; w.a = L->o.lives ? 0 : (int32_t)(diesAt(L) - diesAt(H)); }
+    if (H && !H->o.lives && (L->o.lives || diesAt(L) > diesAt(H))) { w.kind = WHY_LIVE; w.a = L->o.lives ? 0 : (int32_t)(diesAt(L) - diesAt(H)); w.b = L->o.lives ? 1 : 0; }
   }
   return w;
 }
