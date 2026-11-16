@@ -58,6 +58,7 @@ typedef struct {
   int32_t cut;                  // the step a swap was not there to press at (the line played no further), -1 none
   int32_t cutWhy;               // why: 1 its walk over the allowance, 2 no swap there to press, 3 a first walk not begun within a reaction
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
+  int32_t clearedPanels;        // the panels the line clears beyond those the board left alone clears
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
   int32_t even;                 // the board it ends on: its tallest column less its lowest, in rows (evenOf; -1 not known)
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
@@ -365,7 +366,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   int32_t baseChain = 0, baseCombo = 0, baseBroke = 0;
   Stats bs;
   int32_t baseThrees = 0, threes = 0;
-  if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; baseThrees = threesOf(&bs); if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
+  int32_t baseCleared = 0, clearedAll = 0;
+  if (liveNode(x, base) && statsOf(x, base, &bs)) { baseBroke = bs.broke; baseCleared = bs.cleared; baseThrees = threesOf(&bs); if (bs.cleared > 0) { baseChain = chainOfStats(&bs); baseCombo = biggestOf(&bs); } }
   j->base = baseBroke;
   int32_t combo = 0, chain = 0, broke = 0, lastAt = 0, single[MAXCOMBOS + 64] = { 0 }, pieces = 0, links = 0;
   int32_t spent = 0, tight0 = pressTight;   // (the actions the line's swaps spend, and the decision's tightness, put back at the end)
@@ -388,7 +390,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       if (liveNode(x, calm) && statsOf(x, calm, &sc)) {
         for (int i = 0; i < sc.n; i++) if (sc.size[i] > combo) combo = sc.size[i];
         if (chainOfStats(&sc) > chain) chain = chainOfStats(&sc);
-        broke += sc.broke;
+        broke += sc.broke; clearedAll += sc.cleared;
       }
     }
     // (the allowance this swap is pressed under: the input window at the frame its walk begins, less what the line's swaps before it
@@ -447,7 +449,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         if (liveNode(x, w) && statsOf(x, w, &sd)) {
           for (int i = 0; i < sd.n; i++) if (sd.size[i] > combo) combo = sd.size[i];
           if (chainOfStats(&sd) > chain) chain = chainOfStats(&sd);
-          broke += sd.broke;
+          broke += sd.broke; clearedAll += sd.cleared;
         }
       }
       break;
@@ -459,7 +461,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     // (a settled step's chain ends in it, so each is an attack of its own; steps pressed at once are one chain, counted at its longest)
     if (o->settled || last) links += imax(0, chainOfStats(&st) - 1);
     if (chainOfStats(&st) > chain) chain = chainOfStats(&st);
-    broke += st.broke; threes += threesOf(&st);
+    broke += st.broke; clearedAll += st.cleared; threes += threesOf(&st);
     // (A SWAP THAT SPOILS THE BOARD'S OWN CHAIN, a swap at a time: the board it is pressed on left alone to rest makes a chain of two or
     // more, and with the swap pressed and let rest a shorter one, no more garbage broken -- the three that began that chain made for
     // nothing, whatever the line's later swaps make; the press guard's test, front.c wastedSwap)
@@ -493,6 +495,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
 #undef KB
   j->late = j->late || clockOut();
   // (the garbage the line breaks is what it breaks beyond the board left alone: a slab popping converts its panels whatever is pressed)
+  j->clearedPanels = imax(0, clearedAll - baseCleared);
   j->made.combo = combo > baseCombo ? combo : 0; j->made.chain = chain > baseChain ? chain : 0; j->made.broke = imax(0, broke - baseBroke);
   j->whole = (Made){ combo, chain, j->made.broke, 0 }; j->aloneChain = baseChain;
   j->chainAll = imax(chain, q->b->chainCounter);
