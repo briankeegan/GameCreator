@@ -574,6 +574,9 @@ static int ranked(const Read *R, const Found *S) {
         double kLow = lostOf(bk); if (have && svLost > kLow) kLow = svLost;
         double give = saveRoomMs() - SAVE_KEEP_MS; if (give > SAVE_MS) give = SAVE_MS;
         double cw = contLostOf(bw, give), ck = -1;
+        // (and the survival search's own loss on the three's side where its line wastes one: each side is bounded below by what the
+        // decision's longer search already found for it, not only the one without)
+        if (svLost >= 0 && !svClean && cw >= 0 && svLost > cw) cw = svLost;
         if (cw >= 0 && kLow >= cw) ck = kLow;
         else if (cw >= 0) {
           double give2 = saveRoomMs() - SAVE_KEEP_MS; if (give2 > SAVE_MS) give2 = SAVE_MS;
