@@ -1207,19 +1207,20 @@ static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, 
 // THE PLAN'S BOARD CHECKED (the log's pv=): the board the decision that played the line in progress was asked on, the swaps of it
 // pressed since pressed on it as soon as the board lets them, run on to this frame -- against the board as it is: pv=same, or the first
 // thing that differs
-static Board *pvBoard; static int32_t pvSeq[MAXLINE], pvN, pvFirst;
+static Board *pvBoard; static Question pvQ; static int32_t pvSeq[MAXLINE], pvN, pvFirst;
 static void pvKeep(const Judge *k, int first, int32_t qid) {
   pvSet = 0; pvId = qid;
   if (!k || k->hold || !decQ.b) return;
   if (!pvBoard) pvBoard = nb_new();
   if (!pvBoard) return;
-  cloneBoard(pvBoard, decQ.b); pvN = imin(k->k.nseq, MAXLINE); for (int i = 0; i < pvN; i++) pvSeq[i] = k->k.seq[i]; pvFirst = first; pvSet = 1;
+  cloneBoard(pvBoard, decQ.b); pvQ = decQ; pvQ.b = pvBoard; pvN = imin(k->k.nseq, MAXLINE); for (int i = 0; i < pvN; i++) pvSeq[i] = k->k.seq[i]; pvFirst = first; pvSet = 1;
 }
+#define PV_UNSEEN_ROWS 70   // (unseenRows' place in pa.c HEAD, unseenBreaks after it)
 static void pvCheck(int32_t skip) {
   pvKind = 0;
   int32_t pressed = pvFirst + skip;
   if (!pvSet || pressed <= 0 || pressed > pvN) return;
-  Question q = decQ; q.b = pvBoard; q.narr = 0;
+  Question q = pvQ;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int n = rootOf(x, &q);
   for (int i = 0; n >= 0 && i < pressed; i++) {
@@ -1237,9 +1238,10 @@ static void pvCheck(int32_t skip) {
   if (p->nrows != b->nrows) PV(6, p->nrows, b->nrows);
   if (p->riseTimer != b->riseTimer) PV(11, (int32_t)(p->riseTimer * 1000), (int32_t)(b->riseTimer * 1000));
 #undef PV
-  // (every field of the stack's head, as the host loads it -- pa.c HEAD: 10 its index there, riseTimer first)
+  // (every field of the stack's head, as the host loads it -- pa.c HEAD: 10 its index there, riseTimer first -- but the count of rows
+  // and breaks dealt unseen, which the host does not keep)
   { int hi = 1;
-#define PVH(f, lua) if ((double)p->f != (double)b->f) { pvKind = 10; pvV[0] = hi; pvV[1] = (int32_t)p->f; pvV[2] = (int32_t)b->f; return; } hi++;
+#define PVH(f, lua) if ((double)p->f != (double)b->f && hi != PV_UNSEEN_ROWS && hi != PV_UNSEEN_ROWS + 1) { pvKind = 10; pvV[0] = hi; pvV[1] = (int32_t)p->f; pvV[2] = (int32_t)b->f; return; } hi++;
     HEAD(PVH)
 #undef PVH
   }
