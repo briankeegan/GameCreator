@@ -791,16 +791,16 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(" carryNone="); L_i(carryNone);
     if (carryNone == 19 && carryJudgeDrop >= 0 && carryJudgeDrop < NDROPS) { char c[3] = { ':', "botfrucwj2"[carryJudgeDrop], 0 }; L_s(c); }
   }
-  // (A LATER BREAK PASSED OVER: where nothing lives and the line played breaks nothing, the line offered that breaks garbage and is lost
-  // latest, where that is a break's time (rankSave) or more after the line played -- its play, the frames to its loss, the garbage cells
-  // it breaks, and the order's key that put the line played before it)
-  if (top && !top->o.lives && !(top->apBroke > 0)) {
+  // (A LATER LOSS PASSED OVER: where nothing lives, the line offered that is lost latest, where that is a break's time (rankSave) or more
+  // after the line played -- its play, the frames to its loss, the garbage cells it breaks, and the order's key that put the line played
+  // before it)
+  if (top && !top->o.lives) {
     const Judge *pb = 0;
-    for (int i = 0; i < P.ncands; i++) { const Judge *J = order[i]; if (J == top || J->hold || J->o.dead || J->o.lives || !(J->apBroke > 0)) continue; if (!pb || diesAt(J) > diesAt(pb)) pb = J; }
+    for (int i = 0; i < P.ncands; i++) { const Judge *J = order[i]; if (J == top || J->o.dead || J->o.lives) continue; if (!pb || diesAt(J) > diesAt(pb)) pb = J; }
     if (pb && diesAt(pb) < 1e299 && diesAt(top) >= 0 && diesAt(pb) - diesAt(top) >= rankSave) {
       int32_t keepKey = cmpKey;
       compareJudged(top, pb);
-      L_s(" passed="); L_play(pb->k.play); L_s(":"); L_i((int64_t)diesAt(pb)); L_s(":"); L_i(pb->apBroke); L_s(":k"); L_i(cmpKey);
+      L_s(" passed="); L_play(pb->hold ? PLAY_HOLD : pb->k.play); L_s(":"); L_i((int64_t)diesAt(pb)); L_s(":"); L_i(pb->apBroke); L_s(":k"); L_i(cmpKey);
       cmpKey = keepKey;
     }
   }
