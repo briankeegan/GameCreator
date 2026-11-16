@@ -211,6 +211,7 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
     // (THE MODE'S AIM, IN THE MODE IT WAS MADE IN: each attack (GAMBITA) read against the aims of the mode of the decision before it --
     // a game switched at the top-out is read for each mode it played; and the decisions that passed the mode over)
     var inMode = null, lastSwapAt = -1, lastSwapPlay = '', lastPopAt = -1e9;
+    var comboOpen = null;   // (a wrong combo whose cascade is still falling: the chain it sets off, if one is sent before the stack is still, notes it apart)
     // (THE WALK DOWN AND BACK: a swap 4 or more rows under the swaps pressed either side of it, all three within 240 frames, and what it came to)
     var mv = lines.map(function (l) { var m = /^GAMBITM (\d+) (\d+),\d+ .*? ([csbn]) \d+\/\d+/.exec(l); return m && { at: +m[1], r: +m[2], o: m[3] }; }).filter(Boolean).sort(function (a, b) { return a.at - b.at; });
     lines.forEach(function (l) { var m = /^GAMBITI (\d+) (\d+)$/.exec(l); if (m) { idleM.games++; idleM.wins += +m[1]; idleM.keyed += +m[2]; } });
@@ -237,9 +238,11 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         var cf = / cof=(-?\d+)/.exec(l), sw = / swaps=(\d+)/.exec(l);
         if (cf && +cf[1] >= 0 && sw && +sw[1] >= 2) { carrySkip.n++; carrySkip.by[cf[1]] = (carrySkip.by[cf[1]] || 0) + 1; }
         var c16 = / c16=(\d+)/.exec(l); if (c16) { carrySkip.c16n++; carrySkip.c16[c16[1]] = (carrySkip.c16[c16[1]] || 0) + 1; }
+        if (comboOpen && pf && +pf[1] > comboOpen.at + 5 && !/ casc=1/.test(l)) comboOpen = null;
         return; }
       var mm = /^GAMBITM (\d+) \d+,\d+ (.*?) [csbn] \d+\/\d+/.exec(l); if (mm) { lastSwapAt = +mm[1]; lastSwapPlay = mm[2]; return; }
       var a = /^GAMBITA (\d+) ([cx]) (\d+)/.exec(l); if (!a || !inMode) return;
+      if (comboOpen) { if (a[2] === 'x') comboOpen.w.chainStart = (comboOpen.w.chainStart || 0) + 1; comboOpen = null; }
       var o = { combo: {}, chain: {} }; o[a[2] === 'c' ? 'combo' : 'chain'][a[3]] = 1;
       var before = (aimsIn[inMode] || { met: 0 }).met;
       aimOf(inMode, o, aimsIn);
@@ -255,6 +258,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
         // (noted apart, still counted -- the owner: a chain the garbage makes falling on its own, no swap of ours in the 120 frames before
         // it and garbage popping within 600, is one a swap may not have been able to stop)
         if (by === 'alone' && +a[1] - lastPopAt <= 600) w.garbage = (w.garbage || 0) + 1;
+        // (noted apart, still counted: a combo that is the first clear of a chain -- the chain sent after it, the stack falling the whole way)
+        if (a[2] === 'c') comboOpen = { w: w, at: +a[1] };
       }
     });
     // (SWITCHING: each switch by its direction -- the mode before it to the mode after -- and the mode a lost game was lost in)
@@ -476,7 +481,7 @@ Object.keys(sentIn).sort().forEach(function (k) { var m = sentIn[k];
     return z + ' x' + e.n + ' (' + Math.round(100 * e.n / m.n) + '%, ' + e.rows + ' rows, ' + (e.asked === e.n ? 'asked' : e.asked ? e.asked + ' asked' : 'extra') + ')'; }).join(', ')); });
 Object.keys(wrongIn).sort().forEach(function (k) { var w = wrongIn[k], t = aimsIn[k] || { all: 0 }, top = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; }).map(function (z) { return z + ' x' + o[z]; }).join(', '); };
   console.log('the wrong attacks, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' -- ' + top(w.what) + '; made by ' + top(w.by));
-  console.log('the extra, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' (target 0%) -- of them ' + (w.garbage || 0) + ' the garbage made falling on its own'); });
+  console.log('the extra, ' + k + ': ' + w.n + ' of ' + t.all + (t.all ? ' (' + Math.round(100 * w.n / t.all) + '%)' : '') + ' (target 0%) -- of them ' + (w.garbage || 0) + ' the garbage made falling on its own, ' + (w.chainStart || 0) + ' a combo that set off a chain sent after it'); });
 { var nmv0 = moves.clear + moves.setup + moves.break + moves.none + moves.open;
   console.log('the measure, waste: the mode passed over in ' + goalMiss.n + ' of ' + goalMiss.dec + ' decisions; ' + (nmv0 ? Math.round(100 * moves.none / nmv0) : '-') + '% of ' + nmv0 +
               ' swaps came to nothing; ' + moves.wasted + ' wasted threes' + (aggr.frames ? ' (' + (moves.wasted * 3600 / aggr.frames).toFixed(2) + ' a minute)' : '') +

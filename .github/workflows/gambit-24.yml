@@ -33,6 +33,9 @@ on:
       patterns:
         description: 'The patterns played, a JSON list (one pattern worked on alone: its 8 games, endless 4; the goal is measured on all four -- endless: no garbage ever, the board must not die of its own rise)'
         default: '["combo_storm","factory","large_garbage","endless"]'
+      games:
+        description: 'The games of each pattern played, a JSON list of their numbers (one game worked on alone: [4]); endless has 1 to 4'
+        default: '[1,2,3,4,5,6,7,8]'
       gambit_from:
         description: 'A commit whose Gambit (games/the-game/ai/gambit) is played instead of this one, on these seeds and this harness -- a build before measured again on the same games; empty for this commit'
         default: ''
@@ -69,7 +72,7 @@ jobs:
       max-parallel: 29   # (the runners are shared: one run at a time, 30 jobs at most with the report)
       matrix:
         pattern: ${{ fromJSON(inputs.patterns || '["combo_storm","factory","large_garbage","endless"]') }}
-        game: [1, 2, 3, 4, 5, 6, 7, 8]
+        game: ${{ fromJSON(inputs.games || '[1,2,3,4,5,6,7,8]') }}
         # (endless plays 4 games: 28 a run with the three garbage patterns' 24)
         exclude:
           - { pattern: endless, game: 5 }
