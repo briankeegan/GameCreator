@@ -376,6 +376,7 @@ static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
+static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opFallBar, opFallExt;   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
@@ -986,6 +987,13 @@ static Played playOf(const Read *R, int n) {
     if (ext) P.line = P.top = ext;
     else if (two) P.line = P.top = two;
     else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
+  // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
+  // as judged still a chain of OPENER_LEAST or more and its board not lost while it is pressed, is played over any line ranked above it
+  // for a loss after it -- what comes after the chain is the next decision's, and its stop time is the board's)
+  opKept = 0;
+  if (opLineOn && carriedJ && carriedJ->carried && P.line != carriedJ && !carriedJ->o.dead && carriedJ->apChainAll >= OPENER_LEAST && !R->up && !opFalling) {
+    P.line = P.top = carriedJ; P.wait = 0; P.deferred = 0; opKept = 1;
+  }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
   if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
