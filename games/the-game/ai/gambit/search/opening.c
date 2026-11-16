@@ -4,7 +4,7 @@
 // clears nothing. Half the beam is the boards whose trigger's chain is longest, the other half the boards with the most promise (opPot) --
 // a chain is built for swaps before any trigger is there. Every decision grows it a level at a time in the time it has (the countdown's is
 // the longest), re-rooted under the swap pressed: a path that begins with the swap pressed goes on without it, any other is let go. The
-// plan is the path with a trigger whose chain is longest (opPacier), and its trigger.
+// plan is the path with a trigger the mode's list ranks first, clearing fewest panels among those (opPacier), and its trigger.
 #define OP_BEAM 48       // the boards a level keeps
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_DEPTH 20      // the set-ups a plan may hold
@@ -84,8 +84,9 @@ static uint32_t opHash(const Board *b) {
   for (int r = 1; r <= b->height; r++) for (int c = 1; c <= W; c++) { h ^= (uint32_t)(cellAt(b, r, c) + 16); h *= 16777619u; }
   return h;
 }
-// (A PLAN'S WORTH: the longest chain (the owner: an opener is ranked by its chain, always); of two as long, the garbage it sends for the
-// frames it takes -- its swaps walked to from the cursor and pressed, then a chain's beginning, OP_FIRE frames; tied, the one sending more)
+// (A PLAN'S WORTH -- the owner: don't die, send what I ask: the entry of the mode's list its chain meets; of two meeting the same, the one
+// clearing fewer panels, then the longer chain; of two as long, the garbage it sends for the frames it takes -- its swaps walked to from
+// the cursor and pressed, then a chain's beginning, OP_FIRE frames; tied, the one sending more)
 #define OP_FIRE 120
 static int32_t opCurR, opCurC;   // (the cursor on the board the beam is grown on)
 static int32_t opFrames(const OpPath *p) {

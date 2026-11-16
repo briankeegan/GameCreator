@@ -1230,12 +1230,6 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
 // WHY THE MOVE PLAYED (the log's aim=, every decision that presses a swap -- the owner: no move without its reason): what the line makes,
 // or for a move that shapes the stack the shape it leaves, or what the board it leaves fires one swap on, or the combo a set-up sorts;
 // none of them is a move made for nothing -- a bug, logged as such
-static int32_t bumpOf(const Board *b) {
-  int32_t hg[W + 2] = { 0 }, bump = 0;
-  for (int c = 1; c <= W; c++) for (int r = 1; r < b->nrows; r++) if (b->p[r][c].f[COLOR] > 0 || b->p[r][c].f[ISGARBAGE]) hg[c] = r;
-  for (int c = 1; c < W; c++) bump += iabs(hg[c] - hg[c + 1]);
-  return bump;
-}
 static Ctx *whyCtx;
 #define WHY_TRIES 6   // (the lines after the one chosen asked for a reason, where it has none)
 static int32_t noReason;
@@ -1258,7 +1252,9 @@ static Why moveWhy(const Judge *L) {
   int nd = rootOf(x, &decQ), n0 = nd;
   for (int q = 0; q < L->k.nseq && liveNode(x, nd); q++) { int o = step(x, nd, MK_SETTLE, CR(L->k.seq[q]), CC(L->k.seq[q]), 0); if (!liveNode(x, o)) break; nd = o; }
   const Board *eb = liveNode(x, nd) ? ensureBoard(x, nd) : 0;
-  if (eb && play == PLAY_LEVEL) { w.kind = WHY_FLAT; w.a = bumpOf(decQ.b); w.b = bumpOf(eb); }
+  // (flatter as the level search reads it -- the stack under the lowest garbage, each column's shortfall from the tallest, squared
+  // (search/break.c uneven) -- and only where it is: a level line that flattens nothing has no reason of its own)
+  if (eb && play == PLAY_LEVEL && uneven(eb) < uneven(decQ.b)) { w.kind = WHY_FLAT; w.a = uneven(decQ.b); w.b = uneven(eb); }
   else if (eb && play == PLAY_ZIP) { w.kind = WHY_ZIP; w.a = spreadOf(decQ.b); w.b = spreadOf(eb); }
   else if (play == PLAY_READY || play == PLAY_TOWARD) { w.kind = WHY_READY; w.a = L->k.readyGain > 0 ? L->k.readyGain : 1; }
   else if (play == PLAY_SURVIVE) {
