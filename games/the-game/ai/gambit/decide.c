@@ -1258,11 +1258,7 @@ static Why moveWhy(const Judge *L) {
   int nd = rootOf(x, &decQ), n0 = nd;
   for (int q = 0; q < L->k.nseq && liveNode(x, nd); q++) { int o = step(x, nd, MK_SETTLE, CR(L->k.seq[q]), CC(L->k.seq[q]), 0); if (!liveNode(x, o)) break; nd = o; }
   const Board *eb = liveNode(x, nd) ? ensureBoard(x, nd) : 0;
-  // (flatter: with garbage on the board, as the level search reads it -- the stack under the lowest garbage, each column's shortfall from
-  // the tallest, squared (search/break.c uneven), and only where it is flatter: a level line under garbage that flattens nothing has no
-  // reason of its own; with none on it, the stack's tops a column to the next)
-  if (eb && play == PLAY_LEVEL && !garbageOn(decQ.b)) { w.kind = WHY_FLAT; w.a = bumpOf(decQ.b); w.b = bumpOf(eb); }
-  else if (eb && play == PLAY_LEVEL && uneven(eb) < uneven(decQ.b)) { w.kind = WHY_FLAT; w.a = uneven(decQ.b); w.b = uneven(eb); }
+  if (eb && play == PLAY_LEVEL) { w.kind = WHY_FLAT; w.a = bumpOf(decQ.b); w.b = bumpOf(eb); }
   else if (eb && play == PLAY_ZIP) { w.kind = WHY_ZIP; w.a = spreadOf(decQ.b); w.b = spreadOf(eb); }
   else if (play == PLAY_READY || play == PLAY_TOWARD) { w.kind = WHY_READY; w.a = L->k.readyGain > 0 ? L->k.readyGain : 1; }
   else if (play == PLAY_SURVIVE) {

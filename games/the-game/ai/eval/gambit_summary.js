@@ -314,6 +314,10 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       // (THE BREAK THE LINEUP MAKES: of the lines played under garbage that break it, the ones that make a chain on the way)
       var bk = / broke=(\d+)/.exec(l), ch = / chain=(\d+)/.exec(l);
       if (um && +um[1] && bk && +bk[1] > 0) { t.breaks = (t.breaks || 0) + 1; if (ch && +ch[1] >= 2) t.chainBreaks = (t.chainBreaks || 0) + 1; }
+      // (THE GARBAGE A PANEL BUYS: of the lines begun under garbage that break it -- a line carried on is counted where it began -- the
+      // garbage cells broken for the panels cleared, clr=)
+      var cl = / clr=(\d+)/.exec(l);
+      if (um && +um[1] && bk && +bk[1] > 0 && cl && +cl[1] > 0 && !(pl && /^carry/.test(pl[1]))) { t.gbCells = (t.gbCells || 0) + +bk[1]; t.gbPanels = (t.gbPanels || 0) + +cl[1]; }
       // (A SLAB POPPING: the decisions made while one pops, the lineups the extension offered there (cands= lineup:N), and the plays --
       // a lineup, and a full row broken beyond the board left alone)
       var po = / pop=(\d+)/.exec(l);
@@ -457,6 +461,7 @@ Object.keys(modes).sort().forEach(function (k) {
               '; combos ' + fmt(t.combo) + '; chains ' + fmt(t.chain) +
               (t.dec ? '; under garbage ' + Math.round(100 * t.under / t.dec) + '% of decisions, material there ' + (t.under ? (t.mat / t.under).toFixed(1) : '-') : '') +
               (t.breaks ? '; breaks by a chain ' + (t.chainBreaks || 0) + ' of ' + t.breaks + ' (' + Math.round(100 * (t.chainBreaks || 0) / t.breaks) + '%)' : '') +
+              (t.gbPanels ? '; garbage a panel cleared breaks ' + (t.gbCells / t.gbPanels).toFixed(2) + ' (' + t.gbCells + ' cells for ' + t.gbPanels + ' panels)' : '') +
               (t.pop ? '; while a slab pops ' + t.pop + ' decisions, lineups offered ' + ((t.popLineups || 0) / t.pop).toFixed(2) + ' a decision, a lineup played ' +
                 Math.round(100 * (t.popLineupPlayed || 0) / t.pop) + '%, a full row broken ' + Math.round(100 * (t.popFull || 0) / t.pop) + '%' : ''));
 });
