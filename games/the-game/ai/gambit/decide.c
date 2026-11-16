@@ -317,7 +317,7 @@ static int32_t orderN;   // (the lines in the order the move was picked from: de
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
-static void pvKeep(const Judge *k, int first); static int32_t pvSet, pvKind, pvV[5];   // (pvKind: 0 not asked, 1 same, 2 not played, 3 the line ends past this frame, 4 lost, 5 clock, 6 rows, 7 displacement, 8 cursor, 9 a cell -- pvV its row, column, field, foreseen, real)
+static void pvKeep(const Judge *k, int first); static int32_t pvSet, pvKind, pvV[5];   // (pvKind: 0 not asked, 1 same, 2 not played, 3 the line ends past this frame, 4 lost, 5 clock, 6 rows, 9 a cell -- pvV its row, column, field, foreseen, real -- 10 a head field -- its index in pa.c HEAD from 1, foreseen, real -- 11 the rise timer, thousandths)
 static int32_t carryRule(void);   // (the mode the line in progress was begun in)
 static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
@@ -1232,12 +1232,17 @@ static void pvCheck(int32_t skip) {
 #define PV(k, a, bb) do { pvKind = (k); pvV[0] = (a); pvV[1] = (bb); return; } while (0)
   if (p->clock != b->clock) PV(5, p->clock, b->clock);
   if (p->nrows != b->nrows) PV(6, p->nrows, b->nrows);
-  if (p->displacement != b->displacement) PV(7, p->displacement, b->displacement);
-  if (p->curRow != b->curRow || p->curCol != b->curCol) PV(8, p->curRow * 8 + p->curCol, b->curRow * 8 + b->curCol);
+  if (p->riseTimer != b->riseTimer) PV(11, (int32_t)(p->riseTimer * 1000), (int32_t)(b->riseTimer * 1000));
 #undef PV
-  static const int fs[] = { COLOR, STATE, TIMER, ISGARBAGE, CHAINING, YOFF };
-  for (int r = 1; r < p->nrows; r++) for (int c = 1; c <= W; c++) for (unsigned k = 0; k < sizeof fs / sizeof fs[0]; k++) {
-    int f = fs[k];
+  // (every field of the stack's head, as the host loads it -- pa.c HEAD: 10 its index there, riseTimer first)
+  { int hi = 1;
+#define PVH(f, lua) if ((double)p->f != (double)b->f) { pvKind = 10; pvV[0] = hi; pvV[1] = (int32_t)p->f; pvV[2] = (int32_t)b->f; return; } hi++;
+    HEAD(PVH)
+#undef PVH
+  }
+  // (and every field of every panel, the row coming up included -- 9: row, column, field, foreseen, real)
+  for (int r = 0; r < p->nrows; r++) for (int c = 1; c <= W; c++) for (int f = 0; f < NF; f++) {
+    if (f == COLOR && p->p[r][c].f[COLOR] >= 30) continue;
     if (p->p[r][c].f[f] != b->p[r][c].f[f]) { pvKind = 9; pvV[0] = r; pvV[1] = c; pvV[2] = f; pvV[3] = p->p[r][c].f[f]; pvV[4] = b->p[r][c].f[f]; return; }
   }
   pvKind = 1;
