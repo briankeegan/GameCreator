@@ -364,7 +364,7 @@ static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
-static int32_t opTried, opFallHeld;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's)
+static int32_t opTried, opFallHeld, opFalling;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
@@ -834,7 +834,10 @@ static Played playOf(const Read *R, int n) {
   if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
   // (THE OPENER'S CHAIN FALLING -- the owner: as long as you extend, you can't die: the stack is still while it falls and the garbage
   // waits for it, so nothing is pressed under it but its extension -- a swap of anything else is a link taken from it)
-  if (R->rule >= 0 && theTables.r[R->rule].table == 2 && (cascadeLive(decQ.b) || decQ.b->chainCounter > 0) && P.line &&
+  // (the opener's chain: one falling while the opener is the mode, held to until it lands whatever mode comes after it)
+  { int falling = cascadeLive(decQ.b) || decQ.b->chainCounter > 0;
+    if (!falling) opFalling = 0; else if (R->rule >= 0 && theTables.r[R->rule].table == 2) opFalling = 1; }
+  if (opFalling && P.line &&
       !(P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND))) { P.line = 0; P.wait = 0; P.deferred = 0; opFallHeld++; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
