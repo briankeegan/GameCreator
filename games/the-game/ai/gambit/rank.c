@@ -794,7 +794,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (wx != wy && ((!x->hold && !y->hold) || spendsReserve(x->hold ? y : x))) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
-    // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
+    // break it did not keep; then the one that breaks more garbage for each action it walks and each panel it clears -- the window
+    // pays for every cell walked, and the board's panels are what the next break is made of)
     // (of two that break: one that breaks as much garbage without a combo of four the list does not ask for, before one that spends it)
     else if (wastesFour(x) != wastesFour(y) && (wastesFour(x) ? y : x)->apBroke >= (wastesFour(x) ? x : y)->apBroke) return (cmpKey = __LINE__, (wastesFour(x) ? 1 : -1));
     else if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && (x->readyNext == 1) != (y->readyNext == 1)) return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
@@ -811,7 +812,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (THE DIG ZIPPED -- the owner: digging goes for the zipper: of two that break as much garbage, walking within ZIP_WALK actions of
       // each other, the one that leaves the colours more zippered -- fewer of a colour touching, more a swap apart: judge.c spreadOf)
       if (x->apBroke == y->apBroke && iabs(sx - sy) <= ZIP_WALK && x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
-      int64_t px = (int64_t)x->apBroke * imax(1, sy), py = (int64_t)y->apBroke * imax(1, sx); if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
+      int64_t px = (int64_t)x->apBroke * imax(1, sy) * imax(1, y->o.j.clearedPanels), py = (int64_t)y->apBroke * imax(1, sx) * imax(1, x->o.j.clearedPanels);
+      if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
     }
   }
   // 1a. THE LINE IN PROGRESS KEPT: of two that both live or both do not, the line the last decision was playing, judged again on the
