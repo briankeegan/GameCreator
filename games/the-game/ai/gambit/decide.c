@@ -5,8 +5,10 @@ typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
-#define OPENER_CHAINS 2
-static int32_t openerOver, openerChained, openerThrown;   // (the opener played out: a board has topped out this game -- or its chains thrown; the one falling; those thrown)
+#define OPENER_SUM 8
+#define OPENER_LEAST 3
+#define OPENER_CHAINS 3
+static int32_t openerOver, openerChained, openerThrown, openerSum;   // (the opener played out; the longest link of the chain falling; the chains of OPENER_LEAST or more thrown, and their links added: the log's osum=)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
@@ -129,11 +131,12 @@ static int readBoard_(Read *R) {
   // landed above its top row, not garbage sent -- the opener's rule, big chains; then the mode the enemy's board picks)
   // (the opener named and a mode to follow it -- the profile's `then`, answer.c gb_then: at the top-out the named mode becomes that one,
   // nothing carried let go, as the opener gives way to the enemy's mode in a fight)
-  // (THE OPENER IS OVER ONCE ITS CHAINS ARE THROWN -- the owner: two 4-chains top the enemy out: OPENER_CHAINS chains thrown, each the
-  // board's chain counter at two or more, then ended; in a fight and with nobody across alike -- or a board topped out first)
-  if (decQ.b->chainCounter >= 2) openerChained = 1;
-  else if (openerChained && decQ.b->chainCounter == 0) { openerChained = 0; openerThrown++; }
-  int thrown = openerThrown >= OPENER_CHAINS;
+  // (THE OPENER IS OVER ONCE ITS CHAINS ADD UP -- the owner: chains to eight or more, a 3x and a 5x or two 4x alike, and a 2x counts for
+  // nothing: each chain thrown its longest link, the board's chain counter at its height before it ends, counted where it is
+  // OPENER_LEAST or more; over at OPENER_SUM, or OPENER_CHAINS such chains thrown, or a board topped out first)
+  if (decQ.b->chainCounter > openerChained) openerChained = decQ.b->chainCounter;
+  else if (openerChained && decQ.b->chainCounter == 0) { if (openerChained >= OPENER_LEAST) { openerSum += openerChained; openerThrown++; } openerChained = 0; }
+  int thrown = openerSum >= OPENER_SUM || openerThrown >= OPENER_CHAINS;
   if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
