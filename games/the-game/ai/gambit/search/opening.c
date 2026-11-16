@@ -155,13 +155,6 @@ static void opScore(const Question *q, Ctx *x, int node, OpPath *p) {
   int32_t t = 0, ch = 0, c = triggerSendOf(&q2, &t, &ch);
   if (c > 0 && t) {
     p->sent = c; p->trig = t; p->ch = ch; p->cleared = opClearedOf(&q2, t);
-    // (THE SECOND CHAIN -- the owner: two 4-chains: the board once the trigger's chain has landed, and the chain its own best trigger fires
-    // there; only where the first is one the second can follow, OP_TWO_FROM or more)
-    if (ch >= OP_TWO_FROM) {
-      int after = opPress(x, node, t);
-      Board *ab = liveNode(x, after) ? ensureBoard(x, after) : 0;
-      if (ab) { Question q3 = q2; q3.b = ab; int32_t t2 = 0, ch2 = 0; if (triggerSendOf(&q3, &t2, &ch2) > 0 && t2) p->ch2 = ch2; }
-    }
   }
 }
 // (a chain the mode's list asks for: the opener throws nothing smaller -- a short chain only feeds the enemy)
@@ -347,6 +340,35 @@ static void openingGrowIn(const Question *q, const Board *now) {
     opN = m; for (int i = 0; i < m; i++) { opBeam[i] = opNext[i]; nodes[i] = nodesNext[i]; }
     opLevels++;
   }
+}
+// THE SECOND CHAIN A PLAN LEAVES (the owner: two 4-chains): the plan played and its chain landed, then every set-up swap there and the
+// chain its board's best trigger fires -- the best into ch2. Asked of the plans kept once the grow is done, those of OP_TWO_FROM or more.
+static int32_t opSecondOf(const Question *q, OpPath *p) {
+  static Ctx *sx; Ctx *x = sx = ctxOf(sx);
+  int root = rootOf(x, q); if (root < 0) return 0;
+  int at = opReplay(x, root, p); if (at < 0) return 0;
+  int landed = opPress(x, at, p->trig); if (!liveNode(x, landed)) return 0;
+  const Board *lb = ensureBoard(x, landed); if (!lb) return 0;
+  Question q2 = *q; q2.b = (Board *)lb; q2.narr = 0; q2.holdLeft = 0; q2.holdStarted = 0;
+  int32_t best = 0, t = 0, ch = 0;
+  if (triggerSendOf(&q2, &t, &ch) > 0 && t) best = ch;
+  int32_t ms[MAXROWS * W]; int mm = swapsOfNode(x, landed, ms);
+  for (int i = 0; i < mm && !clockOut(); i++) {
+    int o = opPress(x, landed, ms[i]);
+    if (!liveNode(x, o)) continue;
+    Stats st; if (statsOf(x, o, &st) && st.cleared > 0) continue;
+    const Board *ob = ensureBoard(x, o); if (!ob) continue;
+    Question q3 = q2; q3.b = (Board *)ob; int32_t t3 = 0, c3 = 0;
+    if (triggerSendOf(&q3, &t3, &c3) > 0 && t3 && c3 > best) best = c3;
+  }
+  return best;
+}
+static void opSecondAll(const Question *q) {
+  if (opHave && opBest.ch >= OP_TWO_FROM) opBest.ch2 = opSecondOf(q, &opBest);
+  for (int ln = 1; ln <= OP_DEPTH && !clockOut(); ln++) if (opByLenHave[ln] && opByLen[ln].ch >= OP_TWO_FROM) opByLen[ln].ch2 = opSecondOf(q, &opByLen[ln]);
+  // (the best ranked again, the second chain known)
+  for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
+  opGrewCh2 = opHave ? opBest.ch2 : 0; opGrewLen = opHave ? opBest.len : -1; opGrewCh = opHave ? opBest.ch : 0;
 }
 static void openingGrow(const Question *q, const Board *now) {
   openingGrowIn(q, now);
