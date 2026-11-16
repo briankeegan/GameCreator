@@ -363,9 +363,12 @@ static int32_t opSecondOf(const Question *q, OpPath *p) {
   }
   return best;
 }
+static int32_t opSecondBest, opSecondN;   // (the longest second chain the scored plans leave, and how many were scored: the log's)
 static void opSecondAll(const Question *q) {
-  if (opHave && opBest.ch >= OP_TWO_FROM) opBest.ch2 = opSecondOf(q, &opBest);
-  for (int ln = 1; ln <= OP_DEPTH && !clockOut(); ln++) if (opByLenHave[ln] && opByLen[ln].ch >= OP_TWO_FROM) opByLen[ln].ch2 = opSecondOf(q, &opByLen[ln]);
+  opSecondBest = -1; opSecondN = 0;
+  if (opHave && opBest.ch >= OP_TWO_FROM) { opBest.ch2 = opSecondOf(q, &opBest); opSecondN++; if (opBest.ch2 > opSecondBest) opSecondBest = opBest.ch2; }
+  for (int ln = 1; ln <= OP_DEPTH && !clockOut(); ln++) if (opByLenHave[ln] && opByLen[ln].ch >= OP_TWO_FROM) {
+    opByLen[ln].ch2 = opSecondOf(q, &opByLen[ln]); opSecondN++; if (opByLen[ln].ch2 > opSecondBest) opSecondBest = opByLen[ln].ch2; }
   // (the best ranked again, the second chain known)
   for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
   opGrewCh2 = opHave ? opBest.ch2 : 0; opGrewLen = opHave ? opBest.len : -1; opGrewCh = opHave ? opBest.ch : 0;
