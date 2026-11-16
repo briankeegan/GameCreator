@@ -317,6 +317,7 @@ static int32_t orderN;   // (the lines in the order the move was picked from: de
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
 static int carriedCand(const Read *R, Cand *k, int *wait);
+static void pvKeep(const Judge *k, int first); static int32_t pvSet, pvKind, pvV[5];   // (pvKind: 0 not asked, 1 same, 2 not played, 3 the line ends past this frame, 4 lost, 5 clock, 6 rows, 7 displacement, 8 cursor, 9 a cell -- pvV its row, column, field, foreseen, real)
 static int32_t carryRule(void);   // (the mode the line in progress was begun in)
 static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
@@ -405,7 +406,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; opCarried = 0; orderN = 0; pvKind = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -1017,6 +1018,7 @@ static int savesOverHold(const Judge *k) {
   return k->o.lives || diesAt(k) > diesAt(H);
 }
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
+  pvSet = 0;
   if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
   else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
@@ -1043,6 +1045,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   carriedSunk = lineWalk(k);
   if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
   theCarry.rule = R->rule;
+  pvKeep(k, first);
 }
 static int32_t carryRule(void) { return theCarry.rule; }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
@@ -1198,11 +1201,50 @@ static int32_t carryDropN, carryDropRest[MAXLINE], carryDropDead, carryDropCut, 
 // (WHY NO LINE IN PROGRESS WAS OFFERED, for the frame loop's count of what ended its line -- answer.c ended: 0 one was; 16 none was
 // carried by the last answer; 17 the frame loop asked on another line than the one carried; 18 every swap of it pressed; 19 the judge
 // gave no judgement of it; 20 it wastes a three the save did not confirm; 21 the mode's list asks nothing)
+// THE PLAN'S BOARD CHECKED (the log's pv=): the board the decision that played the line in progress was asked on, the swaps of it
+// pressed since pressed on it as soon as the board lets them, run on to this frame -- against the board as it is: pv=same, or the first
+// thing that differs
+static Board *pvBoard; static int32_t pvSeq[MAXLINE], pvN, pvFirst;
+static void pvKeep(const Judge *k, int first) {
+  pvSet = 0;
+  if (!k || k->hold || !decQ.b) return;
+  if (!pvBoard) pvBoard = nb_new();
+  if (!pvBoard) return;
+  cloneBoard(pvBoard, decQ.b); pvN = imin(k->k.nseq, MAXLINE); for (int i = 0; i < pvN; i++) pvSeq[i] = k->k.seq[i]; pvFirst = first; pvSet = 1;
+}
+static void pvCheck(int32_t skip) {
+  pvKind = 0;
+  int32_t pressed = pvFirst + skip;
+  if (!pvSet || pressed <= 0 || pressed > pvN) return;
+  Question q = decQ; q.b = pvBoard; q.narr = 0;
+  JudgeOpts jo = { 0, 0, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0, 0 };
+  Judged j; judge(&q, pvSeq, pressed, &jo, &j);
+  Ctx *x = judgeCtx;
+  if (j.dead || j.late || j.nats < pressed || !liveNode(x, j.endNode)) { pvKind = 2; return; }
+  int n = j.endNode, t = decQ.b->clock - NODE(x, n)->t;
+  if (t < 0) { pvKind = 3; pvV[0] = -t; return; }
+  if (t > 0) n = step(x, n, MK_LONG, 0, 0, t);
+  const Board *p = liveNode(x, n) ? ensureBoard(x, n) : 0, *b = decQ.b;
+  if (!p) { pvKind = 4; return; }
+#define PV(k, a, bb) do { pvKind = (k); pvV[0] = (a); pvV[1] = (bb); return; } while (0)
+  if (p->clock != b->clock) PV(5, p->clock, b->clock);
+  if (p->nrows != b->nrows) PV(6, p->nrows, b->nrows);
+  if (p->displacement != b->displacement) PV(7, p->displacement, b->displacement);
+  if (p->curRow != b->curRow || p->curCol != b->curCol) PV(8, p->curRow * 8 + p->curCol, b->curRow * 8 + b->curCol);
+#undef PV
+  static const int fs[] = { COLOR, STATE, TIMER, ISGARBAGE, CHAINING, YOFF };
+  for (int r = 1; r < p->nrows; r++) for (int c = 1; c <= W; c++) for (unsigned k = 0; k < sizeof fs / sizeof fs[0]; k++) {
+    int f = fs[k];
+    if (p->p[r][c].f[f] != b->p[r][c].f[f]) { pvKind = 9; pvV[0] = r; pvV[1] = c; pvV[2] = f; pvV[3] = p->p[r][c].f[f]; pvV[4] = b->p[r][c].f[f]; return; }
+  }
+  pvKind = 1;
+}
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0; carryLate = 0;
   carryNone = !C->set ? 16 : C->id != carryFrom ? 17 : 0;
   int skip = C->id == carryFrom ? carryPressed : 0;
+  if (C->set && C->id == carryFrom) pvCheck(skip);
   if (C->set && C->nrest <= skip && theCarryNext.set) {
     // (the line's own swaps all pressed: the break it lived by is the line in progress now, popping or not as the board is now)
     *C = theCarryNext; memset(&theCarryNext, 0, sizeof theCarryNext); carriedSunk = -1; C->popping = popLeft(decQ.b) > 0; skip = 0;
