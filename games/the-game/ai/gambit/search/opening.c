@@ -7,6 +7,7 @@
 // plan is the path with a trigger the mode's list ranks first, clearing fewest panels among those (opPacier), and its trigger.
 #define OP_BEAM 48       // the boards a level keeps
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
+#define OP_KIDS_CD 64    // in the countdown, every set-up: the board is still and the time is the countdown's
 #define OP_DEPTH 20      // the set-ups a plan may hold
 typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot, blind; } OpPath;   // blind: the rows dealt, unseen, by its trigger (OP_BLIND)
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
@@ -185,8 +186,8 @@ static void opAnchor(const Board *b, const Board *now) {
 // own share, the decision's (opJEnd); the thread's clock as it was after.
 typedef struct { int32_t sw, sent, cleared, trig, ch, pot, blind; uint32_t h; } OpKid;
 static Board opJPar[OP_BEAM];   // (copies: a node's board may be let go before a job reads it)
-static int32_t opJSw[OP_BEAM][OP_KIDS], opJN[OP_BEAM], opJGot[OP_BEAM];
-static OpKid opJRes[OP_BEAM][OP_KIDS];
+static int32_t opJSw[OP_BEAM][OP_KIDS_CD], opJN[OP_BEAM], opJGot[OP_BEAM];
+static OpKid opJRes[OP_BEAM][OP_KIDS_CD];
 static Question opJQ;
 static double opJEnd;
 static LOCAL Ctx *opJCtx;
@@ -284,7 +285,7 @@ static void openingGrowIn(const Question *q, const Board *now) {
       for (int i = 0; i < mm; i++) dd[i] = iabs(CR(ms[i]) - cr) + iabs(CC(ms[i]) - cc);
       for (int i = 1; i < mm; i++) for (int j = i; j > 0 && dd[j] < dd[j - 1]; j--) { int t = dd[j]; dd[j] = dd[j - 1]; dd[j - 1] = t; int32_t u = ms[j]; ms[j] = ms[j - 1]; ms[j - 1] = u; }
       int k = 0;
-      for (int i = 0; i < mm && k < OP_KIDS; i++) { if (opBeam[bi].len == 0 && swapBack(CR(ms[i]), CC(ms[i]), 0)) continue; opJSw[np][k++] = ms[i]; }
+      for (int i = 0; i < mm && k < (cdAsk ? OP_KIDS_CD : OP_KIDS); i++) { if (opBeam[bi].len == 0 && swapBack(CR(ms[i]), CC(ms[i]), 0)) continue; opJSw[np][k++] = ms[i]; }
       copyBoard(&opJPar[np], b0); opJN[np] = k; from[np++] = bi;
     }
     if (!np) break;
@@ -292,7 +293,7 @@ static void openingGrowIn(const Question *q, const Board *now) {
     opKidsAll(np);
     if (clockOut()) break;
     // (the kept: half the beam the kids whose trigger sends the most, the rest those with the most promise -- each board once)
-    static int32_t cp[OP_BEAM * OP_KIDS], ci[OP_BEAM * OP_KIDS]; static uint8_t taken[OP_BEAM * OP_KIDS];
+    static int32_t cp[OP_BEAM * OP_KIDS_CD], ci[OP_BEAM * OP_KIDS_CD]; static uint8_t taken[OP_BEAM * OP_KIDS_CD];
     int nc = 0;
     for (int p = 0; p < np; p++) for (int i = 0; i < opJGot[p]; i++) {
       const OpKid *c = &opJRes[p][i]; const OpPath *par = &opBeam[from[p]];
