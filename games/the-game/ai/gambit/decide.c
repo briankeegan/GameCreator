@@ -323,6 +323,7 @@ static const Judge *carriedJ;   // the line in progress among the ranked, for th
 // (THE OPENER'S LINE IN PROGRESS -- the owner: the opener is one continuous string; only a line no longer possible is put down: the
 // carried line, whatever the filters after its judging take out, while it lives or presses its last swap before the next block lands)
 static const Judge *opCarried;
+static int32_t carrySave;   // (the line in progress was begun on a three let through as the save: carryOf -- it keeps that leave while it is carried on)
 static const Judge *strippedCarry;   // (the line in progress without the swap that makes its three: THE THREE TAKEN OUT)
 // THE BOARD AFTER A LINE AND THE BEST ON (contLostOf): the line played to its end, the survival search asked of the board it leaves with
 // the garbage still on its way, for `give` ms (SAVE_MS at most, an equal part of the decision's own time each); the frame that board is lost, 1e9 if it lives, -1 if
@@ -595,7 +596,9 @@ static int ranked(const Read *R, const Found *S) {
     if (!keeps && !saveOk && (wasteLives || wasteLost >= 0) && !(saveAsked && saveCw >= 0 && saveCk >= 0)) { saveOk = 1; saveBlind = 1; }
     // (only a three the save confirmed is played: any other line that wastes one goes, the hold always left -- the press guard refuses
     // what the order lets through, a walk spent for nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    // (and never the line in progress begun on its three as the save: the input pressed of it is spent, and taken out now it is spent for
+    // nothing)
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
@@ -987,6 +990,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   Why keepWhy = k && k->carried ? theCarry.why : (Why){ WHY_NONE, 0, 0 };
+  carrySave = k && !k->hold && ((k->carried && carrySave) || wastesThree(k));
   memset(&theCarry, 0, sizeof theCarry);
   theCarry.why = keepWhy;
   theCarry.waits = waits; carriedSunk = -1;

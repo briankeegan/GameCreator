@@ -502,12 +502,8 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 #define NEAR_GAIN 30
-// (on the frame each board is lost, no walk charged: the judge pressed each line's walk when it judged its loss, and a line kept alive a
-// break's time longer is no alike of one that is not for the cursor steps it takes -- the walk is the later keys' to weigh, and the
-// window's reserve the reserve keys')
 static int lostAlike(const Judge *x, const Judge *y) {
-  double dx = diesAt(x), dy = diesAt(y);
-  double lo = dx < dy ? dx : dy, hi = dx < dy ? dy : dx;
+  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
   return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
 }
