@@ -968,13 +968,17 @@ static Played playOf(const Read *R, int n) {
     // (AN EXTENSION ONLY PAST THE CHAIN PLANNED -- the owner: planned for a 4x, the extension is only needed at the 5x: a line is played
     // only where its chain, as judged all of it, is longer than the chain left alone reaches -- the longest of them; anything else holds,
     // and the planned links fall untouched)
-    const Judge *ext = 0; int32_t bar = 0;
+    // (AND ONLY UP TO WHAT THE OPENER STILL NEEDS -- the owner's eight, less the chains already thrown: a chain taken past it spends the
+    // panels the garbage it brings back is dug with. A chain left alone that reaches it is not extended; of the extensions, the shortest
+    // that reaches it, else the longest)
+    const Judge *ext = 0; int32_t bar = 0, need = imax(OPENER_LEAST, OPENER_SUM - openerSum);
     for (int i = 0; i < n; i++) if (order[i]->hold) bar = order[i]->apChainAll;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n && bar < need; i++) {
       const Judge *J = order[i];
       if (J->hold || J->o.dead || !(J->k.play == PLAY_EXTEND || (J->carried && carryBeganPlay == PLAY_EXTEND))) continue;
       if (J->apChainAll <= bar) continue;
-      if (!ext || J->apChainAll > ext->apChainAll) ext = J;
+      int32_t c = J->apChainAll, e = ext ? ext->apChainAll : 0;
+      if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
     }
     opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
     P.wait = 0; P.deferred = 0; opFallHeld++;
