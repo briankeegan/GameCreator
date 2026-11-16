@@ -142,7 +142,10 @@ static int readBoard_(Read *R) {
   // (our board topped out with the opener's own chain still falling: the opener goes on until it lands -- the chain's stop time holds the
   // board, and the mode after it would play on the falling chain as if it were not the opener's)
   int ownFalling = decQ.b->chainCounter > 0 || (opFiredAt >= 0 && decQ.b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0));
-  if (((F->v[FACT_US_TOPPED] && !ownFalling) || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
+  // (garbage on our board and the board left alone lost within the planner's urgent time, no chain of ours falling: the opener gives way --
+  // its next chain is built on a board that will not be there, and the mode after it breaks the garbage that is)
+  int buried = F->known[FACT_US_CONTACT] && F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < PLAN_URGENT;
+  if ((((F->v[FACT_US_TOPPED] || buried) && !ownFalling) || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
@@ -1028,13 +1031,17 @@ static Played playOf(const Read *R, int n) {
         if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
         k.settled = 1;
         // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live,
-        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor: the log's, the first plan's)
+        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor, -6 judged short of the chain asked:
+        // the log's, the first plan's)
         lastDrop = -1;
         int jok = judgeCand(R, &k, &CU);
         int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
         if (!why && pass < 2 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > OPEN_FIRE_BY) why = -4;
         // (-5 a second chain, in a garbage game, that leaves the board under its material floor: the panels the garbage is dug with)
         if (!why && openerThrown >= 1 && garbageSeen && CU.o.floorKept == 0) why = -5;
+        // (-6 the chain as judged is not the chain the pass asks -- the judge plays the plan as the game will, the stack rising under it and
+        // the rows it brings up, so a plan the search counts a chain and the judge counts none is a plan on a board that never was)
+        if (!why && (pass == 1 ? CU.apChainAll < OP_FAST_CH : !opAsked(CU.apChainAll))) why = -6;
         if (!why) { P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
         else if (!chainUp) chainUp = why;
       }
