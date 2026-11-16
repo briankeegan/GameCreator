@@ -365,7 +365,8 @@ static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
-static int32_t opTried, opFallHeld, opFalling, opFallAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
+#define OP_FIRE_HOLD 120   // (the frames after the opener's trigger is handed on that its first clear and fall are its chain's, a link or not)
+static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
@@ -916,9 +917,12 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S CHAIN FALLING -- the owner: as long as you extend, you can't die: the stack is still while it falls and the garbage
   // waits for it, so nothing is pressed under it but its extension -- a swap of anything else is a link taken from it)
   // (the opener's chain: one falling while the opener is the mode, held to until it lands whatever mode comes after it)
-  // (a chain: the chain counter running -- a slab popping or panels falling with no chain going are not one)
-  { int falling = decQ.b->chainCounter > 0;
-    if (!falling) opFalling = 0; else if (!opFalling && R->rule >= 0 && theTables.r[R->rule].table == 2) { opFalling = 1; opFallAt = decQ.b->clock; } }
+  // (the opener's chain: from the frame its trigger was handed on -- its first clear and the fall after it, before the chain counter
+  // shows a link -- while the board still moves, and on while the chain counter runs; a slab popping with no trigger of ours is none)
+  { int ours = opFiredAt >= 0 && decQ.b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0);
+    int falling = decQ.b->chainCounter > 0 || ours;
+    if (!falling) { opFalling = 0; if (opFiredAt >= 0 && decQ.b->clock - opFiredAt > OP_FIRE_HOLD) opFiredAt = -1; }
+    else if (!opFalling && R->rule >= 0 && theTables.r[R->rule].table == 2) { opFalling = 1; opFallAt = decQ.b->clock; } }
   if (opFalling && !(P.line && (P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND)))) {
     // (the best extension the order holds is played; with none, the hold)
     const Judge *ext = 0;
@@ -1074,6 +1078,9 @@ static Played playOf(const Read *R, int n) {
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
   P.ncands = n; orderN = n;
+  // (the opener's trigger handed on now -- its line's last swap, or a plan or trigger it begins with nothing before: the chain it fires is
+  // held to from here, its first clear and fall too)
+  if (P.line && P.line->k.nseq == 1 && R->rule >= 0 && theTables.r[R->rule].table == 2 && ((opLineOn && P.line->carried) || chainUp >= 2)) opFiredAt = decQ.b->clock;
   return P;
 }
 // THE LINE IN PROGRESS (carryOf): the line of the move played, when it has more than one swap and is a play -- not a hold or a clear. It
