@@ -365,7 +365,7 @@ static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
-static int32_t opTried, opFallHeld, opFalling;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
+static int32_t opTried, opFallHeld, opFalling, opFallAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
@@ -754,7 +754,9 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   opSecondWhy = 3;
   if (ms < 2) return 0;
   double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
-  openingReset();
+  // (the landed board is the same board every decision of the fall: the plan grown on it is grown on, decision after decision)
+  static int32_t grownFor = -1;
+  if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
   { double sh = clockShareBegin(nowMs() + ms); openingGrow(&lq, decQ.b); clockShareEnd(sh); }
   clockDue = keepDue; clockShare = keepShare;
   opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1;
@@ -774,7 +776,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   if (!candOf(&k, PLAY_SETUP, one, 1, -1, 0)) return 0;
   k.settled = 0; lastDrop = -1;
   if (!judgeCand(R, &k, &J) || J.o.dead || J.apChainAll < bar) return 0;
-  opSecondWhy = 7;
+  opSecondWhy = 7; opPressed = sw;
   return &J;
 }
 static Played playOf(const Read *R, int n) {
@@ -886,7 +888,7 @@ static Played playOf(const Read *R, int n) {
   // (the opener's chain: one falling while the opener is the mode, held to until it lands whatever mode comes after it)
   // (a chain: the chain counter running -- a slab popping or panels falling with no chain going are not one)
   { int falling = decQ.b->chainCounter > 0;
-    if (!falling) opFalling = 0; else if (R->rule >= 0 && theTables.r[R->rule].table == 2) opFalling = 1; }
+    if (!falling) opFalling = 0; else if (!opFalling && R->rule >= 0 && theTables.r[R->rule].table == 2) { opFalling = 1; opFallAt = decQ.b->clock; } }
   if (opFalling && !(P.line && (P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND)))) {
     // (the best extension the order holds is played; with none, the hold)
     const Judge *ext = 0;
