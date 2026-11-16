@@ -5,7 +5,8 @@ typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
-static int32_t openerOver, openerChained;   // (the opener played out: a board has topped out this game -- or, nobody across, its chain thrown)
+#define OPENER_CHAINS 2
+static int32_t openerOver, openerChained, openerThrown;   // (the opener played out: a board has topped out this game -- or its chains thrown; the one falling; those thrown)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
@@ -128,11 +129,11 @@ static int readBoard_(Read *R) {
   // landed above its top row, not garbage sent -- the opener's rule, big chains; then the mode the enemy's board picks)
   // (the opener named and a mode to follow it -- the profile's `then`, answer.c gb_then: at the top-out the named mode becomes that one,
   // nothing carried let go, as the opener gives way to the enemy's mode in a fight)
-  // (THE OPENER IS OVER ONCE ITS CHAIN IS THROWN -- the owner: after it does what it did in the beginning, it moves on to the actual thing,
-  // topping the enemy out: the board's chain counter at two or more, then ended; in a fight and with nobody across alike -- or a board
-  // topped out first)
+  // (THE OPENER IS OVER ONCE ITS CHAINS ARE THROWN -- the owner: two 4-chains top the enemy out: OPENER_CHAINS chains thrown, each the
+  // board's chain counter at two or more, then ended; in a fight and with nobody across alike -- or a board topped out first)
   if (decQ.b->chainCounter >= 2) openerChained = 1;
-  int thrown = openerChained && decQ.b->chainCounter == 0;
+  else if (openerChained && decQ.b->chainCounter == 0) { openerChained = 0; openerThrown++; }
+  int thrown = openerThrown >= OPENER_CHAINS;
   if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
@@ -731,6 +732,45 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
   return p->len > 0 && p->ch > trigCh && (pass == 1 ? p->ch >= OP_FAST_CH : opAsked(p->ch)) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
          !(by && opBefore() && decQ.b->clock + frames > OPEN_FIRE_BY + OPEN_SWAP_FRAMES);
 }
+// THE SECOND CHAIN BUILT UNDER THE FIRST (the owner: two 4-chains): the board the falling chain leaves once it has landed, the opening's
+// plan grown there in a share of the decision's time; the plan's next set-up pressed now where it would be pressed then -- its two panels,
+// and every panel under them in their columns, where they will be once the chain lands and none of them moving -- and only where the
+// chain falls on as long as it does left alone. 0 where there is none.
+#define OP_SECOND_SHARE 0.5
+static int32_t opSecondCh;   // (the second chain's plan, its chain, where a set-up of it was pressed: the log's)
+static const Judge *opSecondSwap(const Read *R, int n) {
+  static Board *landed; static Ctx *sx;
+  if (!landed) landed = nb_new();
+  if (!landed || clockOut()) return 0;
+  sx = ctxOf(sx);
+  int root = rootOf(sx, &decQ), calm = root >= 0 ? settleOf(sx, root) : -1;
+  const Board *lb = liveNode(sx, calm) ? ensureBoard(sx, calm) : 0;
+  if (!lb || lb->chainCounter != 0 || lb->nrows != decQ.b->nrows) return 0;
+  cloneBoard(landed, lb);
+  Question lq = decQ; lq.b = landed;
+  double left = C2.due ? C2.due - C2.margin - nowMs() : 50, ms = left * OP_SECOND_SHARE;
+  if (ms < 2) return 0;
+  double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
+  openingReset();
+  { double sh = clockShareBegin(nowMs() + ms); openingGrow(&lq, decQ.b); clockShareEnd(sh); }
+  clockDue = keepDue; clockShare = keepShare;
+  if (!opHave || opBest.len < 1 || opBest.ch < OP_TWO_FROM) return 0;
+  int32_t sw = opBest.path[0], r = CR(sw), c = CC(sw);
+  const Board *b = decQ.b;
+  if (r < 1 || r >= b->nrows || c < 1 || c >= W) return 0;
+  for (int cc = c; cc <= c + 1; cc++) for (int rr = 1; rr <= r; rr++) {
+    const int32_t *now = b->p[rr][cc].f, *then = landed->p[rr][cc].f;
+    if (now[ID] != then[ID] || (now[ID] > 0 && now[STATE] != NORMAL)) return 0;
+  }
+  // (and the chain no shorter for it: the hold's chain, all of it, is the bar)
+  int32_t bar = 0; for (int i = 0; i < n; i++) if (order[i]->hold) bar = order[i]->apChainAll;
+  static Judge J; Cand k; int32_t one[1] = { sw };
+  if (!candOf(&k, PLAY_SETUP, one, 1, -1, 0)) return 0;
+  k.settled = 0; lastDrop = -1;
+  if (!judgeCand(R, &k, &J) || J.o.dead || J.apChainAll < bar) return 0;
+  opSecondCh = opBest.ch;
+  return &J;
+}
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -801,7 +841,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opGrew = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opGrew = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
@@ -847,7 +887,9 @@ static Played playOf(const Read *R, int n) {
     const Judge *ext = 0;
     for (int i = 0; i < n && !ext; i++) if (!order[i]->hold && !order[i]->o.dead && (order[i]->k.play == PLAY_EXTEND || (order[i]->carried && carryBeganPlay == PLAY_EXTEND))) ext = order[i];
     P.wait = 0; P.deferred = 0; opFallHeld++;
+    const Judge *two = ext ? 0 : opSecondSwap(R, n);
     if (ext) P.line = P.top = ext;
+    else if (two) P.line = P.top = two;
     else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
