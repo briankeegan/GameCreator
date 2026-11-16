@@ -841,7 +841,13 @@ static Played playOf(const Read *R, int n) {
   { int falling = cascadeLive(decQ.b) || decQ.b->chainCounter > 0;
     if (!falling) opFalling = 0; else if (R->rule >= 0 && theTables.r[R->rule].table == 2) opFalling = 1; }
   if (opFalling && P.line &&
-      !(P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND))) { P.line = 0; P.wait = 0; P.deferred = 0; opFallHeld++; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } }
+      !(P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND))) {
+    // (the best extension the order holds is played; with none, the hold)
+    const Judge *ext = 0;
+    for (int i = 0; i < n && !ext; i++) if (!order[i]->hold && !order[i]->o.dead && (order[i]->k.play == PLAY_EXTEND || (order[i]->carried && carryBeganPlay == PLAY_EXTEND))) ext = order[i];
+    P.wait = 0; P.deferred = 0; opFallHeld++;
+    if (ext) P.line = P.top = ext;
+    else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
   if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
