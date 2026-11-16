@@ -796,7 +796,7 @@ static Played playOf(const Read *R, int n) {
     static Question tq; tq = decQ;
     // (the flattening and the raise done before the next block lands: the plan is built on the board raised, the block judged with it)
     if (opTarget(&decQ, raiseRows, &tq) && (R->readyAt == NOT_ASKED || R->readyAt > tq.b->clock - decQ.b->clock)) {
-      double sh = clockShareBegin(nowMs() + grow); openingGrow(&tq); clockShareEnd(sh);
+      double sh = clockShareBegin(nowMs() + grow); openingGrow(&tq, decQ.b); clockShareEnd(sh);
       opGrew = 2;
       if (opFlatN > 0) {
         static Judge FL; Cand k;
@@ -824,7 +824,7 @@ static Played playOf(const Read *R, int n) {
     opGrowMs = (int32_t)grow;
     // (the pool taken back from the readiness beside the decision, which would search on past it: the beam is scored on every thread)
     readyStop();
-    { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ); clockShareEnd(sh); }
+    { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ, decQ.b); clockShareEnd(sh); }
     opGrew = 1;
     int32_t trig = 0, trigCh = 0;
     triggerSendOf(&decQ, &trig, &trigCh);

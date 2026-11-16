@@ -148,18 +148,27 @@ static int opAsked(int32_t ch) {
   return 0;
 }
 // A new game: nothing held
-static int32_t opAnchorCol, opAnchorId = -1;   // (a bottom-row panel of the board the beam was grown on: the rows risen since read off it)
+static int32_t opAnchorCol, opAnchorRow, opAnchorId = -1;   // (a panel of the board the beam was grown on that is also on the board as it is: the rows risen since read off it)
 static void openingReset(void) { opN = 0; opHave = 0; opPressed = 0; opAnchorId = -1; }
 // (THE BEAM KEPT THROUGH A RISE: the rows the stack has risen since the beam was grown, read off the anchor panel -- NOT_ASKED where it
 // is gone -- added to every swap of every path, so a plan made a row lower is pressed where its panels now are)
 static int32_t opRisen(const Board *b) {
   if (opAnchorId < 0) return NOT_ASKED;
-  for (int r = 1; r < b->nrows; r++) if (b->p[r][opAnchorCol].f[ID] == opAnchorId) return r - 1;
+  for (int r = 1; r < b->nrows; r++) if (b->p[r][opAnchorCol].f[ID] == opAnchorId) return r - opAnchorRow;
   return NOT_ASKED;
 }
-static void opAnchor(const Board *b) {
+// (the lowest panel of the board grown on that the board as it is, `now`, also holds in that column: a board grown on rows not yet
+// risen -- the opening's raise -- is anchored above them, on a panel the next decision's board has)
+static int opHolds(const Board *b, int32_t c, int32_t id) {
+  for (int r = 1; r < b->nrows; r++) if (b->p[r][c].f[ID] == id) return 1;
+  return 0;
+}
+static void opAnchor(const Board *b, const Board *now) {
   opAnchorId = -1;
-  for (int c = 1; c <= W; c++) if (b->nrows > 1 && b->p[1][c].f[ID] > 0 && cellAt(b, 1, c) != 0) { opAnchorCol = c; opAnchorId = b->p[1][c].f[ID]; return; }
+  for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    int32_t id = b->p[r][c].f[ID];
+    if (id > 0 && cellAt(b, r, c) != 0 && opHolds(now, c, id)) { opAnchorCol = c; opAnchorRow = r; opAnchorId = id; return; }
+  }
 }
 // ONE PATH'S SET-UPS SCORED (opKids, a job: on whichever thread takes it, on that thread's own nodes): the path's board opJPar[p], each
 // of its set-ups opJSw[p] played on it, those setting nothing off scored by their best trigger and their promise into opJRes[p]. Its
@@ -204,7 +213,7 @@ static void opKidsAll(int n) {
 }
 // THE PLAN GROWN in the time the clock gives: the beam re-rooted under the swap the last decision pressed, every path replayed on the board
 // as it is (a path whose set-ups are no longer there is let go), then grown a level at a time. The best plan into opBest.
-static void openingGrow(const Question *q) {
+static void openingGrow(const Question *q, const Board *now) {
   Ctx *x = opCtx = ctxOf(opCtx);
   int root = rootOf(x, q);
   if (root < 0) return;
@@ -216,10 +225,20 @@ static void openingGrow(const Question *q) {
       OpPath p = opBeam[i]; for (int k = 1; k < p.len; k++) p.path[k - 1] = p.path[k]; p.len--; opBeam[m++] = p; }
     opN = m; opPressed = 0;
   }
+  // (a path moved below the bottom row -- grown on a board risen further than this one -- is let go)
   { int32_t dr = opN ? opRisen(q->b) : 0;
     if (dr == NOT_ASKED) opN = 0;
-    else if (dr) for (int i = 0; i < opN; i++) { for (int k = 0; k < opBeam[i].len; k++) opBeam[i].path[k] += dr * 8; if (opBeam[i].trig) opBeam[i].trig += dr * 8; } }
-  opAnchor(q->b);
+    else if (dr) {
+      int m = 0;
+      for (int i = 0; i < opN; i++) {
+        OpPath p = opBeam[i]; int ok = 1;
+        for (int k = 0; k < p.len; k++) { p.path[k] += dr * 8; if (CR(p.path[k]) < 1) ok = 0; }
+        if (p.trig) { p.trig += dr * 8; if (CR(p.trig) < 1) ok = 0; }
+        if (ok) opBeam[m++] = p;
+      }
+      opN = m;
+    } }
+  opAnchor(q->b, now);
   // (the board as it is: the empty path, and every path still there to press)
   int nodes[OP_BEAM]; int m = 0;
   { OpPath e; memset(&e, 0, sizeof e); opScore(q, x, root, &e); opNext[m] = e; nodes[m++] = root; }
@@ -297,5 +316,7 @@ static void openingGrow(const Question *q) {
     if (clockOut() || !m) break;
     opN = m; for (int i = 0; i < m; i++) { opBeam[i] = opNext[i]; nodes[i] = nodesNext[i]; }
     opLevels++;
+    // (the best plan read off every level grown, this decision's too: a beam begun now is pressed now)
+    for (int i = 0; i < opN; i++) if (opBeam[i].trig && (!opHave || opPacier(&opBeam[i], &opBest))) { opBest = opBeam[i]; opHave = 1; }
   }
 }

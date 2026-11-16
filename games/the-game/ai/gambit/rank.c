@@ -356,8 +356,8 @@ static int awayFromGarbage(const Judge *J) {
   if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; lowG = lowestG(decQ.b); }
   return lowG < gridLen(decQ.b) && lowG - CR(J->k.seq[0]) >= GARBAGE_AWAY;
 }
-// (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out or near it
-// (nearTop), of two that both live it is no break to put first -- the owner: a three is for survival only; the mode's attacks break the garbage)
+// (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out, of two that
+// both live it is no break to put first -- the owner: a three is for survival only, topped out; the mode's attacks break the garbage)
 static int threeBreakOnly(const Judge *J) { return J->apBroke > 0 && J->apCombo < 4 && J->apChain < 2; }
 // (A SET-UP OF ANY KIND: a set-up, a lineup, a line toward the next break or nearest the list, a level -- a move that makes the next
 // thing, no hold)
@@ -379,11 +379,7 @@ static int zipOver(const Judge *x, const Judge *y) {
   if (x->o.j.spread != y->o.j.spread) return x->o.j.spread > y->o.j.spread ? -1 : 1;
   return 0;
 }
-// (NEAR THE TOP: garbage on the board and the stack within NEAR_TOP rows of the top -- the three is survival there too: dug now, the
-// board still takes a raise; topped out, it takes none, and lives on its stop time alone)
-#define NEAR_TOP 3
-static int nearTop(void) { return decF.topped || (decF.under && decQ.b && fullTop(decQ.b) >= decQ.b->height - NEAR_TOP); }
-static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx && !nearTop() && threeBreakOnly(J)); }
+static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx && !decF.topped && threeBreakOnly(J)); }
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
   // (any clear of three that breaks nothing and begins no chain, whatever the line breaks after it -- the owner: never a three unless
