@@ -649,7 +649,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   if (needlessTrimmed) { L_s(" needless="); L_i(needlessTrimmed); }
-  if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); if (opTried > 1) { L_s(" opTried="); L_i(opTried); } if (opFallHeld) L_s(" fallHeld=1");
+  if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); if (opTried > 1) { L_s(" opTried="); L_i(opTried); }
     // (the opening's line as the judge played it: its chain and the cells it throws -- beside chainAfter, the cells the plan said)
     if (chainUp >= 2 && P.line) { L_s(" opJudged="); L_i(P.line->apChain); L_s("/"); L_i(thrownOf(P.line)); } }
   if (opGrew) { L_s(" opgrew="); L_i(opLevels); L_s("/"); L_i(opGrewLen); L_s("/"); L_i(opGrowMs); L_s("/"); L_i(opOnPool); L_s("/"); L_i(opGrewCh); L_s("/"); L_i(opGrewN); L_s("/b"); L_i(opGrewBlind); L_s("/t"); L_i(opGrewCh2); L_s("/s"); L_i(opSightCh); L_s("x"); L_i(opSightLen); if (opGrew == 2) L_s("/raise"); }
@@ -788,6 +788,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it breaks)
   // (the line in progress offered and put down for another: the line played and the order's key that put it first, rank.c cmpKey)
   if (carriedJ && top && top != carriedJ && !top->carried && compareJudged(top, carriedJ) < 0) { L_s(" putDown="); L_play(top->hold ? PLAY_HOLD : top->k.play); L_s(":k"); L_i(cmpKey); }
+  if (opFallHeld) { L_s(" fallHeld=1"); if (opSecondCh) { L_s(" second="); L_i(opSecondCh); } }
   if (pvKind) { L_s(" pv="); L_i(pvKind); if (pvKind >= 3) { L_s(":"); L_i(pvV[0]); } if (pvKind >= 5) { L_s("/"); L_i(pvV[1]); } if (pvKind == 9) { L_s(":f"); L_i(pvV[2]); L_s(":"); L_i(pvV[3]); L_s("/"); L_i(pvV[4]); } if (pvKind == 10) { L_s(":"); L_i(pvV[2]); } }
   if (carryDrop) {
     L_s(" carryDrop="); L_i(carryDrop);
@@ -988,7 +989,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); taReset(); lifeDumps = 0; openerOver = 0; openerChained = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0;
+  modeLeft(); taReset(); lifeDumps = 0; openerOver = 0; openerChained = 0; openerThrown = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0;
   if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; garbageSeen = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
