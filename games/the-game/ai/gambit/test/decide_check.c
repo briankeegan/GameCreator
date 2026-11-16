@@ -297,7 +297,7 @@ EXPORT(gb_opening_check) int gb_opening_check(int nbytes, int ms, int32_t *out) 
   memset(&theList, 0, sizeof theList); theList.n = 1; theList.aim[0].chain.op = OP_GE; theList.aim[0].chain.n = 4; theList.aim[0].brk = -1;
   Question q = hostQ; q.narr = 0;
   double sh = clockShareBegin(clock_ms() + ms);
-  openingGrow(&q);
+  openingGrow(&q, q.b);
   clockShareEnd(sh);
   theList = keep;
   out[0] = opLevels; out[1] = opHave ? opBest.len : -1; out[2] = opHave ? opBest.sent : 0;
