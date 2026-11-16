@@ -732,7 +732,8 @@ static Played playOf(const Read *R, int n) {
   // is never passed over for a raise to come)
   int holdLivesNow = 0;
   for (int i = 0; i < n; i++) if (order[i]->hold && order[i]->o.lives) holdLivesNow = 1;
-  P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow;
+  // (and never while a chain falls: the raise cannot come then, and the chain is extended)
+  P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow && !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
   // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
   P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
