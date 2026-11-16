@@ -58,6 +58,7 @@ static int fitsWithin(const List *L, Made m, const Judged *j) {
 typedef struct { uint32_t h; int32_t settled, n, kind; int32_t seq[MAXLINE]; Outcome o; } Cached;
 static LOCAL Cached *cache; static LOCAL int32_t ncache;   // (each thread its own: the break search judges on a worker -- answer.c)
 static Question decQ; static Facts decF;
+static int32_t cdAsk;   // (the question is the countdown's: the board still, the decision's time the countdown's -- native.c, from the question's noRaise)
 static uint32_t lineHash(const int32_t *seq, int n, int settled, int kind) {
   uint32_t h = 2166136261u ^ (uint32_t)(settled * 7 + kind * 131);
   for (int i = 0; i < n; i++) h = (h ^ (uint32_t)seq[i]) * 16777619u;

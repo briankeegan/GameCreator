@@ -46,6 +46,7 @@ static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: 
 static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
 #define OP_TRIES 3            // (the opening plans judged in a decision, the best first)
+#define CD_GROW 0.9   // (the share of the countdown's decision time left that grows the opening's plan: the judging of what it finds takes the rest)
 #define OPEN_SWAP_FRAMES 16   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands -- 16.5 measured, the countdown plans of 100 opener games, their trigger's frame over their swaps)
 #define OPEN_FIRE_BY 330      // (the frame the opener's trigger is pressed by while no garbage is shown: the first garbage lands at 339 in every pattern, 99 opener games)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
@@ -807,7 +808,7 @@ static Played playOf(const Read *R, int n) {
   opFlatPlayed = 0;
   if (opWants && !opLineOn && raiseOpening) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
-    double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * 0.7; if (grow < 2) grow = 2;
+    double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * (cdAsk ? CD_GROW : 0.7); if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow; readyStop();
     static Question tq; tq = decQ;
     // (the flattening and the raise done before the next block lands: the plan is built on the board raised, the block judged with it)
@@ -836,7 +837,7 @@ static Played playOf(const Read *R, int n) {
     // pressed while the plan's chain is longer than the chain of the trigger the board has now, its set-ups can be pressed before the next block lands and
     // its chain is one the mode asks for; else that trigger fires, if its chain is one the mode asks for)
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100;
-    double grow = left * 0.7; if (grow < 2) grow = 2;
+    double grow = left * (cdAsk ? CD_GROW : 0.7); if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow;
     // (the pool taken back from the readiness beside the decision, which would search on past it: the beam is scored on every thread)
     readyStop();
