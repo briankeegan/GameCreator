@@ -1461,6 +1461,8 @@ static Why moveWhy(const Judge *L) {
   // (what it makes, the line itself)
   int shapes = play == PLAY_LEVEL || play == PLAY_ZIP || play == PLAY_SURVIVE || play == PLAY_READY || play == PLAY_TOWARD;
   if (!shapes || L->apBroke > 0) {
+    // (a line that breaks garbage with a chain of two is for the break: the 2x is what the dig makes, never its goal)
+    if (L->apBroke > 0 && L->apChain <= 2) { w.kind = WHY_BREAK; w.a = L->apBroke; return w; }
     if (L->apChain >= 2) { w.kind = WHY_CHAIN; w.a = L->apChain; return w; }
     if (L->apBroke > 0) { w.kind = WHY_BREAK; w.a = L->apBroke; return w; }
     if (L->apCombo >= 3 && !shapes) { w.kind = WHY_COMBO; w.a = L->apCombo; return w; }
