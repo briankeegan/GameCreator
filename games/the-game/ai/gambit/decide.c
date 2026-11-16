@@ -838,7 +838,8 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S CHAIN FALLING -- the owner: as long as you extend, you can't die: the stack is still while it falls and the garbage
   // waits for it, so nothing is pressed under it but its extension -- a swap of anything else is a link taken from it)
   // (the opener's chain: one falling while the opener is the mode, held to until it lands whatever mode comes after it)
-  { int falling = cascadeLive(decQ.b) || decQ.b->chainCounter > 0;
+  // (a chain: the chain counter running -- a slab popping or panels falling with no chain going are not one)
+  { int falling = decQ.b->chainCounter > 0;
     if (!falling) opFalling = 0; else if (R->rule >= 0 && theTables.r[R->rule].table == 2) opFalling = 1; }
   if (opFalling && P.line &&
       !(P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND))) {
