@@ -130,7 +130,9 @@ static int32_t searchBeside;
 static void searchExt(const Read *R, Found *S, double ms) {
   Profile *GP = &C2.GP;
   Board *board = decQ.b;
-  if ((cascadeLive(board) || R->pop) && !GP->extendOff && ms >= 20) {
+  // (the opener's chain falling: its extension is the move, searched in whatever the decision has)
+  int opFall = R->rule >= 0 && theTables.r[R->rule].table == 2 && board->chainCounter > 0;
+  if ((cascadeLive(board) || R->pop) && !GP->extendOff && (ms >= 20 || (opFall && ms >= 2))) {
     ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0, ms };
     extend(&decQ, &eo, &S->ex); S->haveEx = 1;
   }
@@ -169,13 +171,16 @@ static void searchMerge(const Read *R, Found *S) {
   // (a chain the workers did not begin: extended or begun here, in what is left)
   if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, leftMs() / 2);
 }
+#define OP_FALL_EXT 0.8   // (the share of the decision's time the extension of the opener's falling chain takes)
 #define CD_PLAN_MS 120   // (the planner's time in the countdown's decision: the opening's plan has the rest)
 #define PLAN_URGENT AT_LEVEL(240)   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
 static void searchAll(const Read *R, Found *S) {
   if (!R->guides.n) return;
   // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
-  if (!extBeside) { double xMs = leftMs() / 2; if (cdAsk && xMs > CD_PLAN_MS / 4) xMs = CD_PLAN_MS / 4; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
+  // (the opener's chain falling: the extension takes the decision's time, OP_FALL_EXT of it -- nothing else pressed then matters)
+  int opFall = R->rule >= 0 && theTables.r[R->rule].table == 2 && decQ.b->chainCounter > 0;
+  if (!extBeside || opFall) { double xMs = leftMs() * (opFall ? OP_FALL_EXT : 0.5); if (cdAsk && xMs > CD_PLAN_MS / 4) xMs = CD_PLAN_MS / 4; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
   // (garbage on the board, or the board lost soon: the lines found must be judged to be played -- the planner takes half, never the most)
   int urgent = R->under || (R->F.v[FACT_US_DIES] > 0 && R->F.v[FACT_US_DIES] < PLAN_URGENT);
