@@ -735,7 +735,7 @@ static Played playOf(const Read *R, int n) {
   int holdLivesNow = 0;
   for (int i = 0; i < n; i++) if (order[i]->hold && order[i]->o.lives) holdLivesNow = 1;
   // (and never while a chain falls: the raise cannot come then, and the chain is extended)
-  P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow && !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
+  P.wait = R->low && !R->up && !(n && order[0]->k.extend) && holdLivesNow && !cascadeLive(decQ.b) && decQ.b->chainCounter == 0 && !cdAsk;
   P.top = R->up || P.wait ? 0 : (n ? order[0] : 0);
   // (the line in progress that waits for the board is played as it was judged: its next swap from the frame the judge pressed it from)
   P.line = P.top && !P.top->hold && (!P.top->wait || P.top->k.play == PLAY_CARRYWAIT) ? P.top : 0;
@@ -807,7 +807,9 @@ static Played playOf(const Read *R, int n) {
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
   // is pressed first, as one line; with none left, the raise; then the plan, kept through the rows risen)
   opFlatPlayed = 0;
-  if (opWants && !opLineOn && raiseOpening) {
+  // (not the countdown's: a plan made on the board raised is made on rows not yet dealt -- the countdown plans the board as it is, and
+  // the raise is play's)
+  if (opWants && !opLineOn && raiseOpening && !cdAsk) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * (cdAsk ? CD_GROW : 0.7); if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow; readyStop();
