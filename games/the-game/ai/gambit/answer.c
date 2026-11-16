@@ -433,6 +433,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
   carryFrom = lineFrom; carryPressed = linePressed;
+  pvKind = 0; if (pvSet && pvId == lineFrom) pvCheck(linePressed);
   planSeedsHave = plannedPaths(decQ.b, lineFrom, linePressed, &planSeeds); planOut.n = 0; planSeeded = 0;
   // (THE DIG: the boards stood on since the garbage the break search digs toward was first the lowest)
   int32_t gid = digTargetOf(decQ.b);
