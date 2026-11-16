@@ -649,7 +649,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   if (needlessTrimmed) { L_s(" needless="); L_i(needlessTrimmed); }
-  if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); if (opTried > 1) { L_s(" opTried="); L_i(opTried); }
+  if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); if (opTried > 1) { L_s(" opTried="); L_i(opTried); } if (opFallHeld) L_s(" fallHeld=1");
     // (the opening's line as the judge played it: its chain and the cells it throws -- beside chainAfter, the cells the plan said)
     if (chainUp >= 2 && P.line) { L_s(" opJudged="); L_i(P.line->apChain); L_s("/"); L_i(thrownOf(P.line)); } }
   if (opGrew) { L_s(" opgrew="); L_i(opLevels); L_s("/"); L_i(opGrewLen); L_s("/"); L_i(opGrowMs); L_s("/"); L_i(opOnPool); L_s("/"); L_i(opGrewCh); L_s("/"); L_i(opGrewN); L_s("/b"); L_i(opGrewBlind); L_s("/s"); L_i(opSightCh); L_s("x"); L_i(opSightLen); if (opGrew == 2) L_s("/raise"); }
