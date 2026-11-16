@@ -8,11 +8,11 @@
 #define OP_BEAM 48       // the boards a level keeps
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_DEPTH 20      // the set-ups a plan may hold
-typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot; } OpPath;
+typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot, blind; } OpPath;   // blind: the rows dealt, unseen, by its trigger (OP_BLIND)
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
 static int opN, opHave;            // the beam's paths, and whether a plan is held
 static int32_t opLevels, opGrowMs, opOnPool;   // (the levels the last decision grew, the ms it had, the levels scored on the workers: the log's)
-static int32_t opGrewLen, opGrewCh, opGrewN;   // (the best plan as the growing left it -- its set-ups, -1 none, and chain -- and the paths kept: the log's, whatever is pressed after)
+static int32_t opGrewLen, opGrewCh, opGrewN, opGrewBlind;   // (the best plan as the growing left it -- its set-ups, -1 none, and chain -- and the paths kept: the log's, whatever is pressed after)
 static int32_t opPressed;          // the plan's set-up the last decision played (0: none) -- the beam is re-rooted under it
 static LOCAL Ctx *opCtx;
 // (A SWAP THAT CAN SET SOMETHING OFF, read off the cells before it is played: a panel swapped into an empty cell falls and may match
@@ -103,7 +103,12 @@ static int opEntryOf(int32_t ch) {
   for (int i = 0; i < theList.n; i++) if (theList.aim[i].chain.op && test(ch, theList.aim[i].chain)) return i;
   return theList.n;
 }
+// (A PLAN ON ROWS NOT YET DEALT: the second row the stack rises by is the first unseen one in play -- the first stays dimmed below -- and
+// what its panels are is not known when the plan is made; a trigger pressed once it is up fires a chain the panels it brings may spoil)
+#define OP_BLIND 2
 static int opPacier(const OpPath *a, const OpPath *o) {
+  // (a plan whose trigger is pressed on rows that are known first)
+  if ((a->blind >= OP_BLIND) != (o->blind >= OP_BLIND)) return a->blind < OP_BLIND;
   // (the list's entry first -- what the mode asks; of two meeting the same, the longer chain, then the one pressed sooner -- a chain
   // falling is a board that cannot top out, so the sooner it fires the sooner the board is safe -- then the one that clears fewer
   // panels, the board's own to dig with when the garbage comes)
@@ -138,8 +143,9 @@ static int opReplay(Ctx *x, int root, const OpPath *p) {
 // a board's trigger, scored into p (sent, cleared, trig): the question q's board replaced by the node's
 static void opScore(const Question *q, Ctx *x, int node, OpPath *p) {
   Board *eb = ensureBoard(x, node);
-  p->sent = 0; p->cleared = 0; p->trig = 0; p->ch = 0; p->pot = 0;
+  p->sent = 0; p->cleared = 0; p->trig = 0; p->ch = 0; p->pot = 0; p->blind = 0;
   if (!eb) return;
+  p->blind = eb->unseenRows - (decQ.b ? decQ.b->unseenRows : q->b->unseenRows);
   p->pot = opPot(eb);
   Question q2 = *q; q2.b = eb; q2.narr = 0; q2.holdLeft = 0; q2.holdStarted = 0;
   int32_t t = 0, ch = 0, c = triggerSendOf(&q2, &t, &ch);
@@ -177,7 +183,7 @@ static void opAnchor(const Board *b, const Board *now) {
 // ONE PATH'S SET-UPS SCORED (opKids, a job: on whichever thread takes it, on that thread's own nodes): the path's board opJPar[p], each
 // of its set-ups opJSw[p] played on it, those setting nothing off scored by their best trigger and their promise into opJRes[p]. Its
 // own share, the decision's (opJEnd); the thread's clock as it was after.
-typedef struct { int32_t sw, sent, cleared, trig, ch, pot; uint32_t h; } OpKid;
+typedef struct { int32_t sw, sent, cleared, trig, ch, pot, blind; uint32_t h; } OpKid;
 static Board opJPar[OP_BEAM];   // (copies: a node's board may be let go before a job reads it)
 static int32_t opJSw[OP_BEAM][OP_KIDS], opJN[OP_BEAM], opJGot[OP_BEAM];
 static OpKid opJRes[OP_BEAM][OP_KIDS];
@@ -200,7 +206,7 @@ static void opKids(int32_t p) {
     OpPath e; e.len = 0; opScore(&opJQ, x, out, &e);
     const Board *ob = ensureBoard(x, out);
     if (!ob) continue;
-    opJRes[p][got++] = (OpKid){ sw, e.sent, e.cleared, e.trig, e.ch, e.pot, opHash(ob) };
+    opJRes[p][got++] = (OpKid){ sw, e.sent, e.cleared, e.trig, e.ch, e.pot, e.blind, opHash(ob) };
   }
   opJGot[p] = got;
   clockShare = sShare; inJob = sJob; clockAborted = sAb; clockPoll = sPoll;
@@ -289,7 +295,7 @@ static void openingGrowIn(const Question *q, const Board *now) {
     for (int p = 0; p < np; p++) for (int i = 0; i < opJGot[p]; i++) {
       const OpKid *c = &opJRes[p][i]; const OpPath *par = &opBeam[from[p]];
       if (c->trig) {
-        OpPath e = *par; e.path[e.len++] = c->sw; e.sent = c->sent; e.cleared = c->cleared; e.trig = c->trig; e.ch = c->ch; e.pot = c->pot;
+        OpPath e = *par; e.path[e.len++] = c->sw; e.sent = c->sent; e.cleared = c->cleared; e.trig = c->trig; e.ch = c->ch; e.pot = c->pot; e.blind = c->blind;
         opConsider(&e); }
       int dup = 0; for (int j = 0; j < nc && !dup; j++) dup = opJRes[cp[j]][ci[j]].h == c->h;
       if (!dup) { cp[nc] = p; ci[nc] = i; taken[nc++] = 0; }
@@ -311,7 +317,7 @@ static void openingGrowIn(const Question *q, const Board *now) {
         taken[w] = 1;
         const OpKid *c = &opJRes[cp[w]][ci[w]];
         opNext[nn] = opBeam[from[cp[w]]]; opNext[nn].path[opNext[nn].len++] = c->sw; opNext[nn].sent = c->sent; opNext[nn].cleared = c->cleared;
-        opNext[nn].trig = c->trig; opNext[nn].ch = c->ch; opNext[nn].pot = c->pot; kp[nn] = from[cp[w]]; kk[nn] = c->sw; nn++;
+        opNext[nn].trig = c->trig; opNext[nn].ch = c->ch; opNext[nn].pot = c->pot; opNext[nn].blind = c->blind; kp[nn] = from[cp[w]]; kk[nn] = c->sw; nn++;
       }
     }
     if (!nn) break;
@@ -329,5 +335,5 @@ static void openingGrowIn(const Question *q, const Board *now) {
 }
 static void openingGrow(const Question *q, const Board *now) {
   openingGrowIn(q, now);
-  opGrewLen = opHave ? opBest.len : -1; opGrewCh = opHave ? opBest.ch : 0; opGrewN = opN;
+  opGrewLen = opHave ? opBest.len : -1; opGrewCh = opHave ? opBest.ch : 0; opGrewN = opN; opGrewBlind = opHave ? opBest.blind : 0;
 }
