@@ -151,6 +151,7 @@ static int cbOrder(const CbGrid *G0, const CbGrid *D, int32_t tr, int32_t *seq, 
 }
 static LOCAL int cbMaxSw = CB_MAXSWAPS;   // (the swaps a design may take: the time the board has to build it -- decide.c)
 #define CB_SWAP_COST 120   // a swap's worth in score: the time it takes against the score a link's time brings (measured: time attack runs)
+static LOCAL int32_t cbSwapCost = CB_SWAP_COST;   // (the one a search runs with: the opener's own -- decide.c opDesign)
 // THE DESIGN SEARCHED, from `start` (the board's own order, or a design of it kept), in `ms` of the wall clock: the best design into *out,
 // its trigger, links and score
 static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid *out, int32_t *tr, int *links, int *swaps) {
@@ -161,7 +162,7 @@ static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid
   if (!cbRand) cbRand = 2463534242u;
   CbGrid cur = start ? *start : *G0, best = *G0;
   int32_t t0 = 0, l0 = 0, bestV = 0, bestT = 0; int bestL = 0, bestS = 0;
-  int32_t curV = cbStable(&cur) ? cbBest(&cur, &t0, &l0) - CB_SWAP_COST * cbSwapsTo(G0, &cur) : -100000;
+  int32_t curV = cbStable(&cur) ? cbBest(&cur, &t0, &l0) - cbSwapCost * cbSwapsTo(G0, &cur) : -100000;
   { static LOCAL int32_t ord0[CB_MAXSWAPS + 1];
     if (curV > 0 && t0 && cbOrder(G0, &cur, t0, ord0, CB_MAXSWAPS + 1) > 0) { best = cur; bestV = curV; bestT = t0; bestL = l0; bestS = cbSwapsTo(G0, &cur); } }
   double end = nowMs() + ms, temp = 400;
@@ -172,7 +173,7 @@ static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid
     cb8 t = cur.g[r][a]; cur.g[r][a] = cur.g[r][b]; cur.g[r][b] = t;
     int32_t tt = 0, ll = 0, v;
     if (!cbStable(&cur)) v = -100000;
-    else { int s = cbSwapsTo(G0, &cur); v = cbBest(&cur, &tt, &ll) - CB_SWAP_COST * s; if (s > cbMaxSw) v = -100000; }
+    else { int s = cbSwapsTo(G0, &cur); v = cbBest(&cur, &tt, &ll) - cbSwapCost * s; if (s > cbMaxSw) v = -100000; }
     if (v >= curV || (double)(cbNext() % 100000) / 100000.0 < cbExp((v - curV) / temp)) {
       curV = v;
       // (a new best only where its swaps can be played setting nothing off on the way)
@@ -195,9 +196,9 @@ static void cbOfBoard(const Board *b, CbGrid *G) {
 static CbGrid cbJG, cbJStart, cbJOut[CB_JOBS]; static int cbJHasStart, cbJL[CB_JOBS], cbJS[CB_JOBS]; static double cbJMs;
 static int32_t cbJTr[CB_JOBS], cbJV[CB_JOBS];
 static Ctx *cbJobCtx;   // (the phase's own: each search makes no nodes)
-static int cbJMaxSw = CB_MAXSWAPS;
+static int cbJMaxSw = CB_MAXSWAPS; static int32_t cbJSwapCost = CB_SWAP_COST;
 static void cbJob(int32_t i) {
-  cbMaxSw = cbJMaxSw;
+  cbMaxSw = cbJMaxSw; cbSwapCost = cbJSwapCost;
   cbRand = 2463534242u ^ ((uint32_t)i * 2654435761u) ^ (uint32_t)nowMs();
   if (!cbRand) cbRand = 1;
   cbJV[i] = cbDesign(&cbJG, cbJHasStart ? &cbJStart : 0, cbJMs, &cbJOut[i], &cbJTr[i], &cbJL[i], &cbJS[i]);
