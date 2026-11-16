@@ -545,20 +545,12 @@ static int ranked(const Read *R, const Found *S) {
       if (wastesThree(order[i])) { if (order[i]->o.lives) wasteLives = 1; else if (lostOf(order[i]) > wasteLost) wasteLost = lostOf(order[i]); }
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
-    // (with no garbage on the board or on its way the board is lost to its own rise, and a break's time is fewer rows the faster it
-    // rises: a three is wasted only where the line without one keeps it a row's rise past that, at the speed it rises now)
-    int32_t keepFor = rankSave;
-    if (!decF.under && decQ.narr == 0 && decQ.b && decQ.b->speed >= 1 && decQ.b->speed <= 99) keepFor += SPEED_TO_RISE_TIME[decQ.b->speed - 1];
     // (A SAVE NEAR THE END: every line that keeps its threes lost within NEAR_SAVE breaks' time, and the three lost a break's time later or
     // lives -- the three is the save, asked of no search: by the time the rule's break's time comes the window is too short to press it.
     // Live p65, r661, 8348: the hold lost in 104 frames, a break's time and seven, the line that would have lived 242 frames longer
     // dropped as a wasted three, and the board lost 50 frames later)
     int nearSave = raceOn && keptLost >= 0 && keptLost < NEAR_SAVE * rankSave && (wasteLives || wasteLost - keptLost >= rankSave);
-    // (with no garbage on the board or on its way and no line living, the board is lost to its own rise whatever the frames left: the
-    // three is asked of the survival search below rather than kept out by the break's time -- every line lost, a three that outlasts is
-    // the save, one that does not is wasted)
-    int riseOnly = !decF.under && decQ.narr == 0 && keptLost >= 0;
-    if (!keeps && keptLost >= keepFor && !nearSave && !riseOnly) keeps = 1;
+    // (the owner: don't die -- a three is kept out only where a line that keeps it lives, or is lost no sooner than the best that wastes one)
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     if (!keeps && nearSave) saveOk = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
@@ -638,7 +630,7 @@ static int ranked(const Read *R, const Found *S) {
       else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
     }
     int why = keeps ? 1 : 0;
-    if (!keeps && keptLost >= rankSave) keeps = 1, why = 2;
+    // (the owner: don't die -- a 2x is kept out only where a line that makes none lives, or is lost no sooner than the best 2x)
     if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1, why = 3;
     twoWhy = why; twoLostLog = twoLives ? 1e300 : twoLost; twoKeptLog = keptLost;
     // (not where the list asks no chain: a 2x taken to three is a bigger slab the mode does not ask)
