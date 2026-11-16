@@ -1217,11 +1217,14 @@ static void pvCheck(int32_t skip) {
   int32_t pressed = pvFirst + skip;
   if (!pvSet || pressed <= 0 || pressed > pvN) return;
   Question q = decQ; q.b = pvBoard; q.narr = 0;
-  JudgeOpts jo = { 0, 0, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0, 0 };
-  Judged j; judge(&q, pvSeq, pressed, &jo, &j);
-  Ctx *x = judgeCtx;
-  if (j.dead || j.late || j.nats < pressed || !liveNode(x, j.endNode)) { pvKind = 2; return; }
-  int n = j.endNode, t = decQ.b->clock - pvBoard->clock - NODE(x, n)->t;
+  Ctx *x = judgeCtx = ctxOf(judgeCtx);
+  int n = rootOf(x, &q);
+  for (int i = 0; n >= 0 && i < pressed; i++) {
+    int from, out = pressWalk(x, n, MK_SWAP, CR(pvSeq[i]), CC(pvSeq[i]), stepTapped, &from);
+    n = liveNode(x, out) ? out : -1;
+  }
+  if (n < 0 || !liveNode(x, n)) { pvKind = 2; return; }
+  int t = decQ.b->clock - pvBoard->clock - NODE(x, n)->t;
   if (t < 0) { pvKind = 3; pvV[0] = -t; return; }
   if (t > 0) n = step(x, n, MK_LONG, 0, 0, t);
   const Board *p = liveNode(x, n) ? ensureBoard(x, n) : 0, *b = decQ.b;
