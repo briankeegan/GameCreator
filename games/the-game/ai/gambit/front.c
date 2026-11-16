@@ -545,6 +545,15 @@ static int calmGap(const Board *next) {
 }
 
 // ---------------------------------------------------------------- questions and answers
+// (THE LINE'S SWAPS PRESSED BY A FRAME: those handed to the keys, less those with a key still planned at the frame or after -- the answer
+// taken then clears the keys from that frame on, so a swap whose keys run past it is never pressed, and the line is carried on from it)
+static int32_t linePressedBy(int32_t at) {
+  int32_t n = F.lineOfPressed; uint32_t open = 0;
+  for (int i = 0; i < PLANN; i++)
+    if (F.planAt[i] != NUL && F.planAt[i] >= at && F.plan[i].swap && F.plan[i].lid == F.lineOfId + 1 && F.plan[i].idx >= 1 && F.plan[i].idx < 32) open |= 1u << F.plan[i].idx;
+  while (open) { n -= (int32_t)(open & 1); open >>= 1; }
+  return imax(0, n);
+}
 static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arrival *pend, int32_t npend) {
   static FQuestion q;
   F.pending = 1; F.pPosted = F.now; F.pId = F.nextId++; F.pEpoch = F.epoch; F.pAt = at; F.pPaced = 0; F.pHoldLeft = hl; F.pHoldStarted = hs;
@@ -555,7 +564,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   for (int i = 0; i < npend; i++) if (pend[i].at > b->stopWatch) F.pArr[F.pNarr++] = pend[i];
   memcpy(F.pKnew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.pNknew = F.narr;
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
-  q.allowance = allowanceAt(at); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? F.lineOfPressed : 0;
+  q.allowance = allowanceAt(at); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? linePressedBy(at) : 0;
   q.noRaise = F.askNoRaise;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
   { int32_t prev = F.prevBits; q.nages = 0; q.window = F.window;
