@@ -12,7 +12,7 @@ typedef struct {
   int32_t cells, chain, combo, broke, done, fire, floor, base, aimIndex;
   double near;
 } XLine;
-typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; } ExtOpts;
+typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; int32_t longest; } ExtOpts;   // longest: the chain made longest offered, as in time attack (the opener's falling chain)
 typedef struct { XLine best, nearest, three, longest; double ms; int32_t baseChain, seen, kept, top, topKept, late, floorLost; } Ext;   // seen..floorLost: the log's xs= -- boards settled, kept, the longest chain of any and of a kept one, put down for firing past `by`, for losing the floor   // baseChain: the cascade's chain left alone   // three: the chain taken to three or more, breaking the most;
                                                                        // longest: the chain made longest, in the fewest swaps
 // a node's cascade once it settles: what it sends, its chain and largest match, the garbage it converted, and whether its board keeps
@@ -147,8 +147,9 @@ static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
         if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineLives(kseq, k->nseq, 0)) XFILL(E->three, -1);
         // (THE CHAIN MADE LONGEST, a link at a time -- the owner: in time attack a chain is all there is; whatever the list asks, the
         // longest the cascade is taken to, up to 13 (CB_TOP), in the fewest swaps)
-        if (ruleNoEnemy && base.ok && base.chain < CB_TOP && g.chain > base.chain && (!E->longest.set || imin(g.chain, CB_TOP) > imin(E->longest.chain, CB_TOP) ||
-            (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq)) && lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1);
+        // (and the opener's chain falling: the longest it is taken to, a line that lives -- the list and the floor are the chain's own then)
+        if ((ruleNoEnemy || o->longest) && base.ok && base.chain < CB_TOP && g.chain > base.chain && (!E->longest.set || imin(g.chain, CB_TOP) > imin(E->longest.chain, CB_TOP) ||
+            (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq)) && (o->longest ? lineLives(kseq, k->nseq, 0) : lineFits(kseq, k->nseq, 0))) XFILL(E->longest, -1);
       }
       #undef XFILL
       k->h = connectedOf(ensureBoard(x, k->n)); k->set = ruleNoEnemy ? g.chain * 1000 + g.cells : g.cells;   // (set: its score -- what it sends; in time attack its chain first)

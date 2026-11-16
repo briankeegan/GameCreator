@@ -134,7 +134,8 @@ static void searchExt(const Read *R, Found *S, double ms) {
   // (the opener's chain falling: its extension is the move, searched in whatever the decision has)
   int opFall = R->rule >= 0 && theTables.r[R->rule].table == 2 && board->chainCounter > 0;
   if ((cascadeLive(board) || R->pop) && !GP->extendOff && (ms >= 20 || (opFall && ms >= 2))) {
-    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0, ms };
+    // (the opener's chain falling: the floor is not kept -- the panels are the chain's -- and its longest extension is offered)
+    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn && !opFall ? &R->keep : 0, ms, opFall };
     extend(&decQ, &eo, &S->ex); S->haveEx = 1; extLog = S->ex; extLogged = 1;
   } else if (!extLogged) extSkip = GP->extendOff ? 1 : !(cascadeLive(board) || R->pop) ? 2 : 3;
   // (A CHAIN IS BEGUN AND CONTINUED: on a board at rest, each swap that starts a clear, then the links its fall is continued by -- the
@@ -871,7 +872,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     }
     if (S->ex.nearest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.nearest.seq, S->ex.nearest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.nearest); }
     if (S->ex.three.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.three.seq, S->ex.three.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.three); }
-    if (ruleNoEnemy && S->ex.longest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.longest.seq, S->ex.longest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.longest); }
+    if (S->ex.longest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.longest.seq, S->ex.longest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.longest); }
   }
   // A CHAIN BEGUN: a swap that starts a clear and the links that continue its fall into an entry of the list
   for (int i = 0; i < S->nstart; i++) { int m0 = n; ADD(PLAY_EXTEND, S->start[i].seq, S->start[i].nseq, S->start[i].aimIndex, 1); if (n > m0) xFromExt(&out[m0], &S->start[i]); }
