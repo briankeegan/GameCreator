@@ -813,6 +813,35 @@ static int opDesign(const Board *b, double ms, OpPath *out) {
   opDesigned = links;
   return 1;
 }
+// THE PLANS' FALLS EXTENDED (the countdown's: the owner's three seconds): each plan kept, its chain OP_FAST_CH or more, played to its trigger
+// on the engine and its fall searched for the longest extension in an equal share of `ms` -- the chain it reaches into chx; the best
+// ranked again
+#define OP_EXT_PLANS 6
+static int32_t opExtBest;   // (the longest chain a plan's fall reached extended: the log's opgrew /x)
+static void opExtendAll(const Question *q, double ms) {
+  const OpPath *pl[OP_EXT_PLANS]; OpPath *mut[OP_EXT_PLANS]; int np = 0; opExtBest = 0;
+  for (int ln = 1; ln <= OP_DEPTH && np < OP_EXT_PLANS; ln++) if (opByLenHave[ln] && opByLen[ln].ch >= OP_FAST_CH) { pl[np] = &opByLen[ln]; mut[np++] = &opByLen[ln]; }
+  if (!np) return;
+  static Ctx *ex; Ctx *x = ex = ctxOf(ex);
+  for (int i = 0; i < np && !clockOut(); i++) {
+    int root = rootOf(x, q); if (root < 0) return;
+    int at = opReplay(x, root, pl[i]); if (at < 0) continue;
+    int out = step(x, at, MK_SWAP, CR(pl[i]->trig), CC(pl[i]->trig), 0);
+    for (int k = 0; k < 6 && liveNode(x, out); k++) { const Board *bb = ensureBoard(x, out); if (bb && cascadeLive(bb)) break; out = step(x, out, MK_LONG, 0, 0, 2); }
+    const Board *fb = liveNode(x, out) ? ensureBoard(x, out) : 0;
+    if (!fb || !cascadeLive(fb)) continue;
+    static Board *fall; if (!fall) fall = nb_new(); if (!fall) return;
+    cloneBoard(fall, fb);
+    Question fq = *q; fq.b = fall;
+    List L; memset(&L, 0, sizeof L); L.n = 1; L.aim[0].chain.op = OP_GE; L.aim[0].chain.n = 2; L.aim[0].brk = -1;
+    ExtOpts eo = { 40, 6, &L, NOT_ASKED, 0, ms / np };
+    static Ext E; extend(&fq, &eo, &E);
+    int32_t c = E.longest.set ? E.longest.chain : E.baseChain;
+    mut[i]->chx = c; if (c > opExtBest) opExtBest = c;
+    x = ex = ctxOf(ex);
+  }
+  for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
+}
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -955,7 +984,7 @@ static Played playOf(const Read *R, int n) {
         if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
         if (!opByLenHave[dp.len] || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; } } }
     // (the countdown's: the plans kept scored on the second chain each leaves, in the time the grow left)
-    if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opSecondAll(&decQ); clockShareEnd(sh); } }
+    if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opExtendAll(&decQ, l2 * 0.55); clockShareEnd(sh); } }
     opGrew = 1;
     int32_t trig = 0, trigCh = 0;
     triggerSendOf(&decQ, &trig, &trigCh);
