@@ -45,6 +45,7 @@ typedef struct {
   int32_t dead, deadAt, done, fire, nats, ats[MAXLINE];
   int32_t risen[MAXLINE];         // the rows the stack has risen, from the root, by the frame each swap is pressed: its row less this is its row on the root's board
   int32_t clearStep;              // the first step of the line after which something clears, -1 none (the log's cstep=)
+  int64_t tightBits;             // the swaps pressed tight -- the input window short: their walks held (the log's tb=)
   int32_t lostAt;               // FOREVER, a frame, or NOT_ASKED
   int32_t ready;                // 1, 0, or NOT_ASKED
   int32_t readyLine[MAXLINE], readyN; // the swaps the readiness found (why), as r * 8 + c
@@ -435,6 +436,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
             if (k < 64 && fa[COLOR] > 0 && fa[COLOR] == fb[COLOR] && !fa[ISGARBAGE] && !fb[ISGARBAGE]) j->sames |= (int64_t)1 << k; }
           prevA = a; prevB = b;
         } else prevA = prevB = NUL; }
+      if (pressTight && j->nats < 64) j->tightBits |= (int64_t)1 << j->nats;
       if (j->nats < MAXLINE) { j->risen[j->nats] = risenTo(x, n, rid); j->ats[j->nats++] = NODE(x, n)->t; }
     }
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
