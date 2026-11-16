@@ -802,7 +802,8 @@ static Played playOf(const Read *R, int n) {
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
   // is pressed first, as one line; with none left, the raise; then the plan, kept through the rows risen)
   opFlatPlayed = 0;
-  if (opWants && !opLineOn && raiseOpening) {
+  // (not while a chain falls: the stack is still then and cannot top out, and the chain is extended, never flattened under)
+  if (opWants && !opLineOn && raiseOpening && !cascadeLive(decQ.b) && decQ.b->chainCounter == 0) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     double left = C2.due ? C2.due - C2.margin - nowMs() : 100, grow = left * 0.7; if (grow < 2) grow = 2;
     opGrowMs = (int32_t)grow; readyStop();
