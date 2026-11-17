@@ -379,7 +379,8 @@ static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand thi
 #define OP_TRY_LOG 8
 static int32_t opTryLog[OP_TRY_LOG][6], opTryN;   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
-static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead;   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
+#define OP_EXT_PANELS 12   // (two rows)
+static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallPoor;   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
@@ -980,12 +981,15 @@ static Played playOf(const Read *R, int n) {
     // (AND ONLY UP TO WHAT THE OPENER STILL NEEDS -- the owner's eight, less the chains already thrown: a chain taken past it spends the
     // panels the garbage it brings back is dug with. A chain left alone that reaches it is not extended; of the extensions, the shortest
     // that reaches it, else the longest)
-    const Judge *ext = 0; int32_t bar = 0, need = imax(OPENER_LEAST, OPENER_SUM - openerSum);
+    const Judge *ext = 0; int32_t bar = 0, need = imax(OPENER_LEAST, OPENER_SUM - openerSum); opFallPoor = 0;
     for (int i = 0; i < n; i++) if (order[i]->hold) bar = order[i]->apChainAll;
     for (int i = 0; i < n && bar < need; i++) {
       const Judge *J = order[i];
       if (J->hold || J->o.dead || !(J->k.play == PLAY_EXTEND || (J->carried && carryBeganPlay == PLAY_EXTEND))) continue;
       if (J->apChainAll <= bar) continue;
+      // (and never down past OP_EXT_PANELS panels left once it lands: the garbage the chain brings back is dug with what is left -- set 86
+      // combo_storm 6, a 3 taken to a 6, 7 panels left and the board lost under the garbage at 755; combo_storm 4, a 12, 5 left, lost)
+      if (J->o.panelsLeft >= 0 && J->o.panelsLeft < OP_EXT_PANELS) { opFallPoor++; continue; }
       int32_t c = J->apChainAll, e = ext ? ext->apChainAll : 0;
       if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
     }
