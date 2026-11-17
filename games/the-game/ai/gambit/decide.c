@@ -1017,7 +1017,9 @@ static Played playOf(const Read *R, int n) {
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
   chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opFallWay = 0; opFallLink = opFallLinkCh = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
-  int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
+  // (and the next chain, the first thrown, is planned under garbage too: its panels are the ones under it)
+  int opNext = openerSum > 0 && opNeed > 0;
+  int opWants = (!R->under || opNext) && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && (theList.aim[0].chain.op || opNext) && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
   // (THE OPENER AS ONE PLAN -- the owner: the opener includes everything it is going to do, the flattening too, and raises the moment
   // it is flat: while the opening raise is due and done before the next block lands, the plan is made on the board it will build on -- the stack
@@ -1187,7 +1189,7 @@ static Played playOf(const Read *R, int n) {
     }
   }
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
-  if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
+  if (opWants && !opLineOn && !opFlatPlayed && opTop && (opNext || (opTop->o.lives && !(opTop->apBroke > 0))) && !P.deferred && !R->up && !P.wait) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
     // pressed while the plan's chain is longer than the chain of the trigger the board has now, its set-ups can be pressed before the next block lands and
@@ -1273,7 +1275,7 @@ static Played playOf(const Read *R, int n) {
         outRooted = pl->design;
         int jok = judgeCand(R, &k, &CU);
         outRooted = 0;
-        int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
+        int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives && !opNext ? -3 : 0;
         if (!why && pass < 4 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > opFireBy(pass)) why = -4;
         // (-5 a second chain, in a garbage game, that leaves the board under its material floor: the panels the garbage is dug with)
         if (!why && openerThrown >= 1 && garbageSeen && CU.o.floorKept == 0) why = -5;
