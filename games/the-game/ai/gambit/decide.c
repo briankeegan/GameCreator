@@ -892,16 +892,16 @@ static const Judge *opSecondSwap(const Read *R, int n) {
 static int32_t opDesignWhy, opDesignLinks;   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
 static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's designs judged, those that chain as judged, the longest: the log's opgrew /p)
 static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
-static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) {
+static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
   static CbGrid G, D; static int32_t seq[CB_MAXSWAPS + 1];
   cbOfBoard(b, &G); if (!opDesignAsIs) cbPreview(b, &G);
-  int full = 0; for (int r = 1; r <= G.rows; r++) full += cbFull(&G, r);
+  int full = 0; for (int r = 1; r <= G.rows; r++) full += cbRowOk(&G, r);
   opDesignWhy = !full ? 1 : 2;
   if (!full || ms < 1) return 0;
-  int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = maxSw; cbJSwapCost = OP_CB_COST;
+  int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = maxSw; cbJSwapCost = OP_CB_COST; cbJPartial = 1;
   int32_t tr = 0; int links = 0, sw = 0;
   int32_t v = cbDesignAll(&G, 0, ms, &D, &tr, &links, &sw);
-  cbJMaxSw = keepSw; cbJSwapCost = keepCost;
+  cbJMaxSw = keepSw; cbJSwapCost = keepCost; cbJPartial = 0;
   opDesignWhy = 3; opDesignLinks = links;
   if (v <= 0 || !tr || links < OP_TWO_FROM) return 0;
   cbCurR = b->curRow; cbCurC = b->curCol;
@@ -915,6 +915,8 @@ static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) {
   if (maxSw == OP_CB_MAXSW) opDesigned = links;
   return 1;
 }
+// (the opener's designs order rows with gaps too: search/chainbuild.c cbPartial)
+static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) { cbPartial = 1; int ok = opDesignIn(b, ms, out, maxSw); cbPartial = 0; return ok; }
 // THE PLANS' FALLS EXTENDED (the countdown's: the owner's three seconds): each plan kept, its chain OP_FAST_CH or more, played to its trigger
 // on the engine and its fall searched for the longest extension in an equal share of `ms` -- the chain it reaches into chx; the best
 // ranked again

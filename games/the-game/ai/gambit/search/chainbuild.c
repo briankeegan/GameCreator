@@ -117,6 +117,13 @@ static int cbSwapsTo(const CbGrid *A, const CbGrid *B) {
 static int cbStable(const CbGrid *G) { static LOCAL uint8_t m[CB_ROWS][W + 2]; return cbMark(G, m) == 0; }
 // (a row the design may order: full, nothing in it that does not move)
 static int cbFull(const CbGrid *G, int r) { for (int c = 1; c <= W; c++) if (G->g[r][c] <= 0) return 0; return 1; }
+// (WITH GAPS, cbPartial: a row with no garbage in it and a panel in it is ordered too, its panels moved into its empty cells -- and
+// every panel stays on a cell, so nothing the design does not count falls)
+static LOCAL int cbPartial;
+static int cbOpen(const CbGrid *G, int r) { int any = 0; for (int c = 1; c <= W; c++) { if (G->g[r][c] < 0) return 0; if (G->g[r][c] > 0) any = 1; } return any; }
+static int cbRowOk(const CbGrid *G, int r) { return cbFull(G, r) || (cbPartial && cbOpen(G, r)); }
+static int cbSupported(const CbGrid *G) { for (int r = 2; r <= G->rows; r++) for (int c = 1; c <= W; c++) if (G->g[r][c] > 0 && G->g[r - 1][c] == 0) return 0; return 1; }
+static int cbStill(const CbGrid *G) { return cbStable(G) && (!cbPartial || cbSupported(G)); }
 static LOCAL uint32_t cbRand;
 static double cbExp(double x) { return x >= 0 ? 1 : 1 / (1 - x + x * x / 2 - x * x * x / 6); }   // (e^x for x <= 0, near enough to anneal by)
 static uint32_t cbNext(void) { cbRand ^= cbRand << 13; cbRand ^= cbRand >> 17; cbRand ^= cbRand << 5; return cbRand; }
@@ -143,7 +150,7 @@ static int cbOrderFrom(CbGrid *G, int left, int32_t *seq, int n, int walk) {
     if (cbAt[r] >= cbNs[r]) continue;
     int c = cbSw[r][cbAt[r]];
     cb8 t = G->g[r][c]; G->g[r][c] = G->g[r][c + 1]; G->g[r][c + 1] = t;
-    if (cbStable(G)) {
+    if (cbStill(G)) {
       seq[n] = r * 8 + c; cbAt[r]++;
       int k = cbOrderFrom(G, left - 1, seq, n + 1, walk + cbDist(fr, fc, r, c));
       cbAt[r]--;
@@ -171,13 +178,13 @@ static LOCAL int32_t cbSwapCost = CB_SWAP_COST;   // (the one a search runs with
 // its trigger, links and score
 static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid *out, int32_t *tr, int *links, int *swaps) {
   int full[CB_ROWS], nf = 0;
-  for (int r = 1; r <= G0->rows; r++) if (cbFull(G0, r)) full[nf++] = r;
+  for (int r = 1; r <= G0->rows; r++) if (cbRowOk(G0, r)) full[nf++] = r;
   *out = *G0; *tr = 0; *links = 0; *swaps = 0;
   if (!nf) return 0;
   if (!cbRand) cbRand = 2463534242u;
   CbGrid cur = start ? *start : *G0, best = *G0;
   int32_t t0 = 0, l0 = 0, bestV = 0, bestT = 0; int bestL = 0, bestS = 0;
-  int32_t curV = cbStable(&cur) ? cbBest(&cur, &t0, &l0) - cbSwapCost * cbSwapsTo(G0, &cur) : -100000;
+  int32_t curV = cbStill(&cur) ? cbBest(&cur, &t0, &l0) - cbSwapCost * cbSwapsTo(G0, &cur) : -100000;
   { static LOCAL int32_t ord0[CB_MAXSWAPS + 1];
     if (curV > 0 && t0 && cbOrder(G0, &cur, t0, ord0, CB_MAXSWAPS + 1) > 0) { best = cur; bestV = curV; bestT = t0; bestL = l0; bestS = cbSwapsTo(G0, &cur); } }
   double end = nowMs() + ms, temp = 400;
@@ -187,7 +194,7 @@ static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid
     if (a == b || cur.g[r][a] == cur.g[r][b]) continue;
     cb8 t = cur.g[r][a]; cur.g[r][a] = cur.g[r][b]; cur.g[r][b] = t;
     int32_t tt = 0, ll = 0, v;
-    if (!cbStable(&cur)) v = -100000;
+    if (!cbStill(&cur)) v = -100000;
     else { int s = cbSwapsTo(G0, &cur); v = cbBest(&cur, &tt, &ll) - cbSwapCost * s; if (s > cbMaxSw) v = -100000; }
     if (v >= curV || (double)(cbNext() % 100000) / 100000.0 < cbExp((v - curV) / temp)) {
       curV = v;
@@ -218,9 +225,9 @@ static void cbPreview(const Board *b, CbGrid *G) {
 static CbGrid cbJG, cbJStart, cbJOut[CB_JOBS]; static int cbJHasStart, cbJL[CB_JOBS], cbJS[CB_JOBS]; static double cbJMs;
 static int32_t cbJTr[CB_JOBS], cbJV[CB_JOBS];
 static Ctx *cbJobCtx;   // (the phase's own: each search makes no nodes)
-static int cbJMaxSw = CB_MAXSWAPS; static int32_t cbJSwapCost = CB_SWAP_COST;
+static int cbJMaxSw = CB_MAXSWAPS, cbJPartial; static int32_t cbJSwapCost = CB_SWAP_COST;
 static void cbJob(int32_t i) {
-  cbMaxSw = cbJMaxSw; cbSwapCost = cbJSwapCost;
+  cbMaxSw = cbJMaxSw; cbSwapCost = cbJSwapCost; cbPartial = cbJPartial;
   cbRand = 2463534242u ^ ((uint32_t)i * 2654435761u) ^ (uint32_t)nowMs();
   if (!cbRand) cbRand = 1;
   cbJV[i] = cbDesign(&cbJG, cbJHasStart ? &cbJStart : 0, cbJMs, &cbJOut[i], &cbJTr[i], &cbJL[i], &cbJS[i]);
