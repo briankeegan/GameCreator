@@ -183,7 +183,7 @@ static void searchMerge(const Read *R, Found *S) {
   // (a chain the workers did not begin: extended or begun here, in what is left)
   if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, leftMs() / 2);
 }
-#define OP_FALL_EXT_DRY 0.3   // (and where the last found nothing longer: the second chain's set-up has the rest)
+#define OP_FALL_EXT_DRY 0.15   // (and where the last found nothing longer: the second chain's set-up has the rest)
 #define OP_FALL_EXT 0.8   // (the share of the decision's time the extension of the opener's falling chain takes)
 #define CD_PLAN_MS 120   // (the planner's time in the countdown's decision: the opening's plan has the rest)
 #define PLAN_URGENT AT_LEVEL(240)   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
