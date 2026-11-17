@@ -636,7 +636,10 @@ static void take(void) {
     // (A HOLD WALKS THE CURSOR TO THE NEXT WORK: where the best line that is no hold begins, with the window to spare -- AIM_RESERVE actions
     // kept -- and the cursor two cells or more from it; nothing swapped, the board the same)
     int aimed = 0;
-    if (a.kind == 0 && a.aim && !a.empty && allowanceAt(at) >= AIM_RESERVE &&
+    // (never ahead of a line handed on judged pressed later: its walk was judged from the cursor as the hold leaves it -- a step aimed
+    // before it walks a cell short, and its swap is pressed frames before the judge pressed it; set 86 factory 1, a link pressed 3 early
+    // and a 6 come down a 2)
+    if (a.kind == 0 && a.aim && !a.empty && allowanceAt(at) >= AIM_RESERVE && !(a.nhand && a.handAt[0] > at) &&
         iabs(F.pBoard->curRow - CR(a.aim)) + iabs(F.pBoard->curCol - CC(a.aim)) >= 2 &&
         keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, MK_GO, CR(a.aim), CC(a.aim), &k) && k.n > 0) { aimed = 1; F.st.aimed++; }
     if (!aimed && !keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
