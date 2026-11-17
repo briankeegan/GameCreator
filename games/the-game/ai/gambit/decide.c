@@ -1589,6 +1589,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // (each swap's walk begun no sooner than it was judged to begin: the line in progress played in the frames it was judged in)
   int32_t notBefore[MAXLINE]; for (int i = 0; i < nrest; i++) notBefore[i] = C->at[skip + i];
   jo.notBefore = notBefore; jo.nNotBefore = nrest;
+  carryNBn = imin(nrest, 64); for (int i = 0; i < carryNBn; i++) carryNB[i] = notBefore[i];   // (and the line's ranking judged so: rank.c judgeCand)
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
   for (int i = 0; i < j.nats && i < nrest; i++) rest[i] = (CR(rest[i]) + j.risen[i]) * 8 + CC(rest[i]);
