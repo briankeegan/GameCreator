@@ -893,21 +893,32 @@ static int32_t opDesignWhy, opDesignLinks;   // (the last design asked: 1 no ful
 static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's designs judged, those that chain as judged, the longest: the log's opgrew /p)
 static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
 static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
-  static CbGrid G, D; static int32_t seq[CB_MAXSWAPS + 1];
+  static CbGrid G, D; static int32_t seq[CB_MAXSWAPS + 1], sseq[CB_SEQ_MAX + 1];
   cbOfBoard(b, &G); if (!opDesignAsIs) cbPreview(b, &G);
   int full = 0; for (int r = 1; r <= G.rows; r++) full += cbRowOk(&G, r);
-  opDesignWhy = !full ? 1 : 2;
-  if (!full || ms < 1) return 0;
-  int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = maxSw; cbJSwapCost = OP_CB_COST; cbJPartial = 1;
-  int32_t tr = 0; int links = 0, sw = 0;
-  int32_t v = cbDesignAll(&G, 0, ms, &D, &tr, &links, &sw);
-  cbJMaxSw = keepSw; cbJSwapCost = keepCost; cbJPartial = 0;
-  opDesignWhy = 3; opDesignLinks = links;
-  if (v <= 0 || !tr || links < OP_TWO_FROM) return 0;
-  cbCurR = b->curRow; cbCurC = b->curCol;
-  int n = cbOrder(&G, &D, tr, seq, OP_DEPTH + 1);
-  cbCurR = 0;
-  opDesignWhy = 4;
+  opDesignWhy = 2;
+  if (ms < 1) return 0;
+  // (the rows ordered, in half the time)
+  int n = 0, links = 0;
+  if (full) {
+    int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = maxSw; cbJSwapCost = OP_CB_COST; cbJPartial = 1;
+    int32_t tr = 0; int sw = 0;
+    int32_t v = cbDesignAll(&G, 0, ms * 0.5, &D, &tr, &links, &sw);
+    cbJMaxSw = keepSw; cbJSwapCost = keepCost; cbJPartial = 0;
+    opDesignWhy = 3; opDesignLinks = links;
+    if (v > 0 && tr && links >= OP_TWO_FROM) {
+      cbCurR = b->curRow; cbCurC = b->curCol;
+      n = cbOrder(&G, &D, tr, seq, OP_DEPTH + 1);
+      cbCurR = 0;
+      opDesignWhy = 4;
+      if (n < 1) n = 0;
+    } else links = 0;
+  }
+  // (and the swaps themselves, panels falling between rows, in the other half: the longer chain kept, the fewer swaps between equals)
+  { int32_t keepCost = cbSwapCost; cbSwapCost = OP_CB_COST;
+    int32_t str = 0; int sl = 0, sn = cbSeqDesign(&G, ms * 0.5, imin(maxSw, OP_DEPTH), sseq, &str, &sl);
+    cbSwapCost = keepCost;
+    if (sn >= 0 && sl >= OP_TWO_FROM && (!n || sl > links || (sl == links && sn + 1 < n))) { for (int i = 0; i < sn; i++) seq[i] = sseq[i]; seq[sn] = str; n = sn + 1; links = sl; opDesignLinks = sl; } }
   if (n < 1) return 0;
   opDesignWhy = 5;
   memset(out, 0, sizeof *out);
