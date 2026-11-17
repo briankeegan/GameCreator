@@ -806,13 +806,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (carriedJ && top && top != carriedJ && !top->carried && compareJudged(top, carriedJ) < 0) { L_s(" putDown="); L_play(top->hold ? PLAY_HOLD : top->k.play); L_s(":k"); L_i(cmpKey); }
   // (the extension searched: its boards settled/kept, the chain left alone, the longest of any and of a kept one, put down late/for the floor, its ms)
   if (extLogged) { L_s(" xs="); L_i(extLog.seen); L_s("/"); L_i(extLog.kept); L_s("/"); L_i(extLog.baseChain); L_s("/"); L_i(extLog.top); L_s("/"); L_i(extLog.topKept);
-    L_s("/"); L_i(extLog.late); L_s("/"); L_i(extLog.floorLost); L_s("/"); L_i((int32_t)extLog.ms); }
+    L_s("/"); L_i(extLog.late); L_s("/"); L_i(extLog.floorLost); L_s("/"); L_i((int32_t)extLog.ms); L_s("/L"); L_i(extLog.longest.set ? extLog.longest.chain : 0); L_s(":"); L_i(extLog.longCut); }
   else if (extSkip) { L_s(" xs=-"); L_i(extSkip); }
   if (opKept) L_s(" opKept=1");
   // (each opener plan judged: pass p, swaps s, planned chain c, judged chain j, fires f frames on, verdict v (0 played, decide.c chainUp codes))
   if (opTryN) { L_s(" opTries="); for (int i = 0; i < opTryN; i++) { if (i) L_s(","); L_s("p"); L_i(opTryLog[i][0]); L_s("s"); L_i(opTryLog[i][1]); L_s("c"); L_i(opTryLog[i][2]);
     L_s("j"); L_i(opTryLog[i][3]); L_s("f"); L_i(opTryLog[i][4]); L_s("v"); L_i(opTryLog[i][5]); } }
-  if (opFallHeld) { L_s(" fallBar="); L_i(opFallBar); L_s("/"); L_i(opFallExt); L_s(" fallExt="); L_i(opFallSeen); L_s("/"); L_i(opFallTop); L_s("/"); L_i(opFallDead); }
+  if (opFallHeld) { L_s(" fallBar="); L_i(opFallBar); L_s("/"); L_i(opFallExt); L_s(" fallExt="); L_i(opFallSeen); L_s("/"); L_i(opFallTop); L_s("/"); L_i(opFallDead); L_s("/"); L_i(opFallPoor); }
   if (opFallHeld) { L_s(" fallHeld=1"); if (opSecondWhy) { L_s(" second="); L_i(opSecondWhy); L_s(":"); L_i(opSecondCh); } }
   if (pvKind) { L_s(" pv="); L_i(pvKind); if (pvKind >= 3) { L_s(":"); L_i(pvV[0]); } if (pvKind >= 5) { L_s("/"); L_i(pvV[1]); } if (pvKind == 9) { L_s(":f"); L_i(pvV[2]); L_s(":"); L_i(pvV[3]); L_s("/"); L_i(pvV[4]); } if (pvKind == 10) { L_s(":"); L_i(pvV[2]); } }
   if (carryDrop) {
