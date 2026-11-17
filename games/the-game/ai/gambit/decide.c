@@ -9,7 +9,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OPENER_LEAST 3
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_CHAINS 3
-static int32_t openerOver, openerChained, openerThrown, openerSum;   // (the opener played out; the longest link of the chain falling; the chains of OPENER_LEAST or more thrown, and their links added: the log's osum=)
+static int32_t openerOver, openerChained, openerThrown, openerSum, openerPaused;   // (the opener played out; the longest link of the chain falling; the chains of OPENER_LEAST or more thrown, and their links added: the log's osum=)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
@@ -149,15 +149,20 @@ static int readBoard_(Read *R) {
   // (nor while a line it began is still pressed -- a break of the garbage: set 86 large_garbage 2, the opener ended at 499 with its break a
   // swap from done, and at 513 the board stood 409 frames)
   int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener();
-  if (((theOpp.has && theOpp.out) || thrown || aboutLost) && !openerOver) {
+  // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
+  // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
+  // chains, thrown before or after, add up to the eight; set 86 combo_storm 2, a 4 thrown, the opener ended, and a 5 at 1027 the mode's)
+  openerPaused = aboutLost && !openerOver;
+  if (((theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
     if (thenRule >= 0 && ((ni >= 0 && theTables.r[ni].table == 2) || modeRule < 0)) modeRule = thenRule;
   }
   int oi = -1;
-  for (int i = 0; i < theTables.n && oi < 0 && !openerOver && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
-  int ri = oi >= 0 ? oi : modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
+  for (int i = 0; i < theTables.n && oi < 0 && !openerOver && !openerPaused && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
+  int pausedRule = openerPaused ? (thenRule >= 0 ? namedRule(thenRule) : nswitch ? namedRule(modeAt(0)) : -1) : -1;
+  int ri = oi >= 0 ? oi : pausedRule >= 0 ? pausedRule : modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
   // (THE MODE DEBOUNCED -- the owner: a board flickering at a line does not switch the mode back and forth: the enemy topped out calls
   // finish them at once; any other change of the mode the facts call is played once it has been called MODE_DEBOUNCE frames running)
   if (oi < 0 && modeRule < 0 && ri >= 0) {
