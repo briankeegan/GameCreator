@@ -739,16 +739,15 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
 // (and, no garbage shown yet, its trigger pressed by OPEN_FIRE_BY: the opener's chain goes before anything can land on it)
 static int opBefore(void) { return decF.next == NOT_ASKED && decQ.b->clock < OPEN_FIRE_BY; }
 // (pass 0: a chain the mode asks for, fired by OPEN_FIRE_BY; 1: a chain of OP_FAST_CH or more fired by then -- a chain going is a board
-// that cannot top out, and the extension grows it while it falls; 2: a chain of OP_FAST_CH or more fired within OP_LATE of it -- a chain
-// that starts just after the first garbage lands still runs, and is extended to the eight; 3: a chain the mode asks for, fired when it can)
+// that cannot top out, and the extension grows it while it falls; 2 -- the owner: start with a 2 and extend: a chain of two fired by then,
+// its fall extended to the eight -- before a longer plan fired late, whose many swaps are as many chances to come apart; 3: a chain of
+// OP_FAST_CH or more fired within OP_LATE of it; 4: a chain the mode asks for, fired when it can)
 #define OP_FAST_CH 3
-#define OP_LATE 60   // (the frames past OPEN_FIRE_BY pass 2 takes a chain fired in: about four set-ups' worth)
-// (pass 3 -- the owner: start with a 2 and extend: a chain of two fired within OP_LATE of it, its fall extended to the eight; 4: a chain
-// the mode asks for, fired when it can)
+#define OP_LATE 60   // (the frames past OPEN_FIRE_BY pass 3 takes a chain fired in: about four set-ups' worth)
 #define OP_PASSES 5
 #define OP_START_CH 2
-static int32_t opFireBy(int pass) { return OPEN_FIRE_BY + (pass == 2 || pass == 3 ? OP_LATE : 0); }
-static int32_t opPassLeast(int pass) { return pass == 1 || pass == 2 ? OP_FAST_CH : pass == 3 ? OP_START_CH : 0; }
+static int32_t opFireBy(int pass) { return OPEN_FIRE_BY + (pass == 3 ? OP_LATE : 0); }
+static int32_t opPassLeast(int pass) { return pass == 1 || pass == 3 ? OP_FAST_CH : pass == 2 ? OP_START_CH : 0; }
 static int opFits(const OpPath *p, int32_t trigCh, int pass) {
   int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES; int by = pass < 4;
   return p->len > 0 && p->ch > trigCh && (opPassLeast(pass) ? p->ch >= opPassLeast(pass) : opAsked(p->ch)) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
