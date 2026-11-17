@@ -810,6 +810,8 @@ static const Judge *opSecondSwap(const Read *R, int n) {
 // best chain OP_CB_MAXSW swaps or fewer make, a swap worth OP_CB_COST of a chain's score -- the opener's chains are a few swaps, never time
 // attack's long builds -- and its swaps put in an order that sets nothing off, the trigger last: a plan, into *out, where its chain is
 // OP_TWO_FROM or more
+#define OP_CB_FEWEST 3
+static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's designs judged, those that chain as judged, the longest: the log's opgrew /p)
 static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) {
   static CbGrid G, D; static int32_t seq[CB_MAXSWAPS + 1];
@@ -927,7 +929,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opFallBar = opFallExt = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opFallBar = opFallExt = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
@@ -1025,6 +1027,24 @@ static Played playOf(const Read *R, int n) {
           if (pass) opDesignedQuick = dp.ch;
           if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
           if (!opByLenHave[dp.len] || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; } } }
+    // (THE DESIGNS PROVED, the countdown's: the designer asked at every swap budget from OP_CB_FEWEST to OP_CB_MAXSW -- it works on the
+    // panels standing, not on the frames, so a design is judged as the game will play it, the stack rising under it, at once: a design
+    // whose chain as judged is OP_FAST_CH or more is kept at that chain, any other let go -- the plans tried are then plans that chain)
+    if (cdAsk) {
+      int32_t lastLen = -1;
+      for (int sw = OP_CB_FEWEST; sw <= OP_CB_MAXSW && !clockOut(); sw++) {
+        double l4 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l4 < 40) break;
+        OpPath dp; if (!opDesign(decQ.b, l4 * 0.04, &dp, sw) || dp.ch < OP_FAST_CH || dp.len == lastLen) continue;
+        lastLen = dp.len; opProveTried++;
+        int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < dp.len; k++) seq[ns++] = dp.path[k]; seq[ns++] = dp.trig;
+        static Judge PJ; Cand k; if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
+        k.settled = 1; lastDrop = -1;
+        if (!judgeCand(R, &k, &PJ) || PJ.o.dead || !PJ.o.lives || PJ.apChainAll < OP_FAST_CH) continue;
+        dp.ch = PJ.apChainAll; opProved++; if (dp.ch > opProvedBest) opProvedBest = dp.ch;
+        if (!opByLenHave[dp.len] || opByLen[dp.len].ch < OP_FAST_CH || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; }
+        if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
+      }
+    }
     // (the countdown's: the plans kept scored on the second chain each leaves, in the time the grow left)
     if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opExtendAll(&decQ, l2 * 0.55); clockShareEnd(sh); } }
     opGrew = 1;
