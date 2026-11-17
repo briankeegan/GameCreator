@@ -553,6 +553,7 @@ static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outs
 #define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
 static int32_t opNeed;   // (the chain the opener still needs to reach its eight, decide.c; 0 with the opener not in force)
+static int32_t needKept, needLost;   // (the log's need=: comparisons 1'L left to the opener's chain, and those it did not, the break's chain as judged)
 // (A 2x ITS LINE DOES NOT CONTINUE: the chain the line makes ends at two -- read on the judge's count whether or not the board is lost
 // while the line plays out: a line on a board lost later makes its 2x all the same)
 static int shortChain(const Judge *J) { int32_t reach = J->o.dead ? imax(J->apChain, J->o.j.chainAll) : chainReach(J); return !J->hold && J->apChain >= 2 && reach == 2; }
@@ -703,6 +704,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (not over the opener's chain: a line whose chain is one the opener still needs, the board's own included, made before any loss
     // the judging finds after it, is no line that meets nothing -- the owner: the eight first, survival after)
     int keepsNeed = opNeed && o->o.j.chainAll >= opNeed && b->o.j.chainAll < opNeed;
+    if (opNeed && o->o.j.chainAll >= opNeed) { if (keepsNeed) needKept++; else needLost = b->o.j.chainAll; }
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o)) && !keepsNeed) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
   // 1'r. READY FOR THE NEXT BLOCK (the owner: there should always be pieces): of two that survive alike, the readier before the other
