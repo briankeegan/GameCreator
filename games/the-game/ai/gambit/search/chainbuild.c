@@ -8,7 +8,8 @@
 typedef signed char cb8;
 #define CB_ROWS (MAXROWS + 2)
 #define CB_MAXSWAPS 96
-typedef struct { cb8 g[CB_ROWS][W + 2]; int rows; } CbGrid;   // g[r][c]: a colour, 0 empty, -1 what does not move or match (garbage)
+typedef struct { cb8 g[CB_ROWS][W + 2]; int rows, pre; } CbGrid;   // g[r][c]: a colour, 0 empty, -1 what does not move or match (garbage);
+// with pre, g[0] is the row rising from under the stack: it matches and is fallen into as the bottom row, and is never swapped
 static const int32_t CB_CHAIN_TA[14] = { 0, 0, 50, 80, 150, 300, 400, 500, 700, 900, 1100, 1300, 1500, 1800 };   // panel-game checkMatches
 static int32_t cbChainScore(int n) { int32_t s = 0; for (int k = 2; k <= n && k <= CB_TOP; k++) s += CB_CHAIN_TA[k]; return s; }
 // (the cells in a run of three or more of one colour, across or up and down: marked, their count returned)
@@ -21,18 +22,20 @@ static int cbMark(const CbGrid *G, uint8_t m[CB_ROWS][W + 2]) {
     if (a > 0 && G->g[r][c + 1] == a && G->g[r][c + 2] == a && (c == 1 || G->g[r][c - 1] != a)) cbAcross++;
     if (a > 0 && G->g[r][c + 1] == a && G->g[r][c + 2] == a) { int k = c; while (k <= W && G->g[r][k] == a) { if (!m[r][k]) { m[r][k] = 1; n++; } k++; } }
   }
-  for (int c = 1; c <= W; c++) for (int r = 1; r <= G->rows - 2; r++) {
+  const int lo = G->pre ? 0 : 1;
+  for (int c = 1; c <= W; c++) for (int r = lo; r <= G->rows - 2; r++) {
     cb8 a = G->g[r][c];
-    if (a > 0 && G->g[r + 1][c] == a && G->g[r + 2][c] == a && (r == 1 || G->g[r - 1][c] != a)) cbUpDown++;
+    if (a > 0 && G->g[r + 1][c] == a && G->g[r + 2][c] == a && (r == lo || G->g[r - 1][c] != a)) cbUpDown++;
     if (a > 0 && G->g[r + 1][c] == a && G->g[r + 2][c] == a) { int k = r; while (k <= G->rows && G->g[k][c] == a) { if (!m[k][c]) { m[k][c] = 1; n++; } k++; } }
   }
   return n;
 }
 // (everything falls to the floor or the cell under it)
 static void cbFall(CbGrid *G) {
+  const int lo = G->pre ? 0 : 1;
   for (int c = 1; c <= W; c++) {
-    int to = 1;
-    for (int r = 1; r <= G->rows; r++) {
+    int to = lo;
+    for (int r = lo; r <= G->rows; r++) {
       cb8 v = G->g[r][c];
       if (v == 0) continue;
       if (v < 0) { to = r + 1; continue; }   // (garbage holds where it is: what is above it rests on it)
@@ -53,7 +56,7 @@ static int cbRun(const CbGrid *G0, int r, int c, int *cleared) {
     int n = cbMark(&G, m);
     if (!n) break;
     links++; cl += n;
-    for (int y = 1; y <= G.rows; y++) for (int x = 1; x <= W; x++) if (m[y][x]) G.g[y][x] = 0;
+    for (int y = G.pre ? 0 : 1; y <= G.rows; y++) for (int x = 1; x <= W; x++) if (m[y][x]) G.g[y][x] = 0;
     cbFall(&G);
     if (links > 30) break;
   }
@@ -74,7 +77,7 @@ static int cbMaySet(const CbGrid *G, int r, int c) {
     for (int k = col + 1; k <= W && k != c + (1 - s) && G->g[r][k] == v; k++) n++;
     if (n >= 3) return 1;
     n = 1;
-    for (int q = r - 1; q >= 1 && G->g[q][col] == v; q--) n++;
+    for (int q = r - 1; q >= (G->pre ? 0 : 1) && G->g[q][col] == v; q--) n++;
     for (int q = r + 1; q <= G->rows && G->g[q][col] == v; q++) n++;
     if (n >= 3) return 1;
   }
@@ -189,6 +192,13 @@ static void cbOfBoard(const Board *b, CbGrid *G) {
   memset(G, 0, sizeof *G);
   G->rows = imin(b->height, CB_ROWS - 2);
   for (int r = 1; r <= G->rows; r++) for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, r, c); G->g[r][c] = (cb8)(v > 0 && v < 100 ? v : v < 0 ? -1 : 0); }
+}
+// (the row rising from under the stack taken in as the bottom row, g[0]: a design built while the stack rises must not match it -- left
+// out where it is not a full row of colours, or where the board as it is already matches it)
+static void cbPreview(const Board *b, CbGrid *G) {
+  for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, 0, c); if (!(v > 0 && v < 100)) return; G->g[0][c] = (cb8)v; }
+  G->pre = 1;
+  if (!cbStable(G)) { G->pre = 0; for (int c = 1; c <= W; c++) G->g[0][c] = 0; }
 }
 
 // THE DESIGN SEARCHED ON EVERY THREAD (cbDesignAll): a search of its own on each, from a seed of its own, the best of them kept

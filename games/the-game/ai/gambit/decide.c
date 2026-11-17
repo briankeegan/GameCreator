@@ -888,7 +888,7 @@ static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's desig
 static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) {
   static CbGrid G, D; static int32_t seq[CB_MAXSWAPS + 1];
-  cbOfBoard(b, &G);
+  cbOfBoard(b, &G); cbPreview(b, &G);
   int full = 0; for (int r = 1; r <= G.rows; r++) full += cbFull(&G, r);
   opDesignWhy = !full ? 1 : 2;
   if (!full || ms < 1) return 0;
