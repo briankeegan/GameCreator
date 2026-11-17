@@ -707,6 +707,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (opNeed && o->o.j.chainAll >= opNeed) { if (keepsNeed) needKept++; else needLost = b->o.j.chainAll; }
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o)) && !keepsNeed) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
+  // 1'Lc. THE BREAK THAT CHAINS (the owner: break the garbage and the next chain is there): the opener in force under garbage, of two
+  // that survive alike, neither making the chain the opener still needs, the one whose break is a link of a chain before one whose break
+  // is not -- garbage a link breaks pops chaining (pa.c convertGarbagePanels), the chain living while it pops and its panels the next links
+  if (opNeed && decF.under && (lx || lostAlike(x, y)) && x->o.j.chainAll < opNeed && y->o.j.chainAll < opNeed) {
+    int cx = !x->hold && x->o.j.brokeLink > 0, cy = !y->hold && y->o.j.brokeLink > 0;
+    if (cx != cy) return (cmpKey = __LINE__, (cx ? -1 : 1));
+  }
   // 1'r. READY FOR THE NEXT BLOCK (the owner: there should always be pieces): of two that survive alike, the readier before the other
   // where it breaks no less and the other meets no goal it misses -- readier is a break in reach once the next block lands (readyNext,
   // asked where none lives), else, under garbage, a swap that brings the nearest break nearer (propose.c readyBuild), the hold included
