@@ -14,7 +14,8 @@ typedef struct {
 } XLine;
 typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; int32_t longest; } ExtOpts;   // longest: the chain made longest offered, as in time attack (the opener's falling chain); 2 unjudged -- a board
                                                                                                             // played forward, not the decision's (decide.c opExtendAll)
-#define EXT_LONG_K 12  // (the opener's falling chain: the longest lines kept, each judged in turn -- the search's count of a line's chain is
+#define EXT_PER_FIRST 2   // (the longest lines kept for one first swap)
+#define EXT_LONG_K 24  // (the opener's falling chain: the longest lines kept, each judged in turn -- the search's count of a line's chain is
                        // its own, and the judge, which plays it as the frame loop will, has the last word)
 typedef struct { XLine best, nearest, three, longest, longK[EXT_LONG_K]; int32_t nlongK; double ms; int32_t baseChain, seen, kept, top, topKept, late, floorLost, longCut; } Ext;   // seen..floorLost: the log's xs= -- boards settled, kept, the longest chain of any and of a kept one, put down for firing past `by`, for losing the floor   // baseChain: the cascade's chain left alone   // three: the chain taken to three or more, breaking the most;
                                                                        // longest: the chain made longest, in the fewest swaps
@@ -160,10 +161,13 @@ static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
         }
         // (the K longest, any line making the chain longer than left alone: kept by chain, then fewer swaps, one per first swap)
         if (o->longest && base.ok && g.chain > base.chain) {
-          int at = -1, dup = -1;
-          for (int q = 0; q < E->nlongK; q++) if (E->longK[q].seq[0] == kseq[0]) dup = q;
+          int at = -1, dup = -1, same = 0;
+          // (EXT_PER_FIRST per first swap, the worse of them given up for a better: a line a swap longer that leaves the board another way
+          // is kept beside the shortest)
+          for (int q = 0; q < E->nlongK; q++) if (E->longK[q].seq[0] == kseq[0]) { same++;
+            if (dup < 0 || E->longK[q].chain < E->longK[dup].chain || (E->longK[q].chain == E->longK[dup].chain && E->longK[q].nseq > E->longK[dup].nseq)) dup = q; }
           #define XBETTER(L) (g.chain > (L).chain || (g.chain == (L).chain && k->nseq < (L).nseq))
-          if (dup >= 0) { if (XBETTER(E->longK[dup])) at = dup; }
+          if (same >= EXT_PER_FIRST) { if (XBETTER(E->longK[dup])) at = dup; }
           else if (E->nlongK < EXT_LONG_K) at = E->nlongK++;
           else { int w = 0; for (int q = 1; q < E->nlongK; q++) if (E->longK[q].chain < E->longK[w].chain || (E->longK[q].chain == E->longK[w].chain && E->longK[q].nseq > E->longK[w].nseq)) w = q; if (XBETTER(E->longK[w])) at = w; }
           #undef XBETTER
