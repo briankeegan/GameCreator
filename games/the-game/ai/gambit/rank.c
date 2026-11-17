@@ -111,6 +111,8 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (an extension cut: which swap, why, at what frame of its walk, and the search's chain for it -- the log's extCut=)
   if (!oc.dead && oc.j.cut >= 0 && (play == PLAY_EXTEND || play == PLAY_LINEUP) && extCutN < EXT_CUT_LOG) {
     int32_t *t = extCutLog[extCutN++]; t[0] = oc.j.cut; t[1] = k->nseq; t[2] = oc.j.cutWhy; t[3] = oc.j.nats > 0 ? oc.j.ats[oc.j.nats - 1] : -1; t[4] = k->x.chain; }
+  // (an opening plan the judge played through to no chain: the board it ended on, for the log's opCut=)
+  if (!oc.dead && oc.j.cut < 0 && outRooted && oc.j.chainAll < 2 && k->nseq >= 4) { const Board *cb = oc.j.preLast >= 0 ? ensureBoard(judgeCtx, oc.j.preLast) : 0; lastCutClock = cb ? cb->clock : -1; lastCutCell = k->seq[k->nseq - 1] + (oc.j.nats >= k->nseq ? oc.j.risen[k->nseq - 1] * 8 : 0); lastCutStates = -2; if (cb) boardRows(cb, lastCutRows, sizeof lastCutRows); else lastCutRows[0] = 0; }
   if (!oc.dead && oc.j.cut >= 0 && outRooted) { const Board *cb = ensureBoard(judgeCtx, oc.j.endNode); lastCutClock = cb ? cb->clock : -1; if (cb) boardRows(cb, lastCutRows, sizeof lastCutRows); else lastCutRows[0] = 0;
     { int r = oc.j.cutAt / 8, c = oc.j.cutAt % 8; lastCutCell = oc.j.cutAt; lastCutStates = cb && r >= 0 && r < cb->nrows && c >= 1 && c < W ? cb->p[r][c].f[STATE] * 10 + cb->p[r][c + 1].f[STATE] : -1; } }
   if (!oc.dead && oc.j.cut >= 0) { lastCut = oc.j.cut; lastCutWhy = oc.j.cutWhy; lastCutRisen = oc.j.nats > 0 ? oc.j.risen[oc.j.nats - 1] : 0; dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }

@@ -67,6 +67,7 @@ typedef struct {
   int32_t clearedPanels;        // the panels the line clears beyond those the board left alone clears
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
   int32_t cutAt;                // the row and column the cut swap was to be pressed at (row * 8 + column), 0 none
+  int32_t preLast;              // the node the line's last swap was pressed from, in judgeCtx (-1 none)
   int32_t even;                 // the board it ends on: its tallest column less its lowest, in rows (evenOf; -1 not known)
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
@@ -373,7 +374,7 @@ static int risenTo(Ctx *x, int node, int32_t any) {
 }
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->clearStep = -1; j->noops = 0; j->sames = 0;
+  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->clearStep = -1; j->preLast = -1; j->noops = 0; j->sames = 0;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -395,6 +396,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
 #define KB(m) do { if (ownChainBy > 0 && liveNode(x, (m)) && NODE(x, (m))->t <= ownChainBy) kb = (m); } while (0)
   for (int k = 0; k <= nseq; k++) {
     int last = k == nseq, mr = last ? 0 : CR(seq[k]), mc = last ? 0 : CC(seq[k]);
+    if (k == nseq - 1) j->preLast = n;
     if (last && o->settled) break;   // (each step settled already)
     if (o->waitTo > 0 && k == o->waitAt) {
       int w = step(x, n, MK_LONG, 0, 0, imax(1, o->waitTo - NODE(x, n)->t));
