@@ -809,6 +809,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s("/"); L_i(extLog.late); L_s("/"); L_i(extLog.floorLost); L_s("/"); L_i((int32_t)extLog.ms); L_s("/L"); L_i(extLog.longest.set ? extLog.longest.chain : 0); L_s(":"); L_i(extLog.longCut); }
   else if (extSkip) { L_s(" xs=-"); L_i(extSkip); }
   if (opKept) L_s(" opKept=1");
+  if (opLandedRows[0]) { L_s(" landed="); L_s(opLandedRows); }
   // (each opener plan judged: pass p, swaps s, planned chain c, judged chain j, fires f frames on, verdict v (0 played, decide.c chainUp codes))
   if (opTryN) { L_s(" opTries="); for (int i = 0; i < opTryN; i++) { if (i) L_s(","); L_s("p"); L_i(opTryLog[i][0]); L_s("s"); L_i(opTryLog[i][1]); L_s("c"); L_i(opTryLog[i][2]);
     L_s("j"); L_i(opTryLog[i][3]); L_s("f"); L_i(opTryLog[i][4]); L_s("v"); L_i(opTryLog[i][5]); } }

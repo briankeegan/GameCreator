@@ -760,6 +760,7 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 #define OP_CB_COST 30
 #define OP_CB_MAXSW 14
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
+static char opLandedRows[160];   // (the log's landed=)
 static int32_t opSecondCh, opSecondWhy, opSecondMs, opSecondN;   // (and the time it had, the boards its beam grew: the log's)   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 no landed board, 8 its chain still counting, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed:
                                             // the log's)
 static const Judge *opSecondSwap(const Read *R, int n) {
@@ -777,6 +778,12 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   if (lb->chainCounter != 0) return 0;
   cloneBoard(landed, lb);
   Question lq = decQ; lq.b = landed;
+  // (the landed board, once a fall, for the log: each row bottom up, a digit a panel's colour, g garbage, . empty)
+  { static int32_t loggedFor = -1;
+    if (loggedFor != opFallAt) { loggedFor = opFallAt; int k = 0;
+      for (int r = 1; r < landed->nrows && k < (int)sizeof opLandedRows - 9; r++) { if (r > 1) opLandedRows[k++] = '/';
+        for (int c = 1; c <= W; c++) { const int32_t *f = landed->p[r][c].f; opLandedRows[k++] = f[ISGARBAGE] ? 'g' : f[ID] > 0 ? (char)('0' + f[COLOR] % 10) : '.'; } }
+      opLandedRows[k] = 0; } else opLandedRows[0] = 0; }
   double left = C2.due ? C2.due - C2.margin - nowMs() : 50, ms = left * OP_SECOND_SHARE;
   opSecondWhy = 3;
   if (ms < 2) return 0;
@@ -942,7 +949,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opFallBar = opFallExt = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opFallBar = opFallExt = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
