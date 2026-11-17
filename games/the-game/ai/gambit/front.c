@@ -81,6 +81,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_OPEN 64
 #define MOVE_IDS 32
 #define MOVE_FOR 600
+#define LOGGED_KEYS 400   // (the swaps keyed logged at most, a game: GAMBITK)
 #define FOLLOW_FOR 360   // (the frames a swap's three waits for a break by a later swap of its line: past them, unbroken, it was wasted)
 #define MOVE_FALL 60
 typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx, row, col, acts, pa, pb; } MoveOpen;   // pa, pb: the ids of the two cells swapped (0: none there)   // row, col: where it was pressed; acts: the actions pressed since the swap before, its own included   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
@@ -96,7 +97,7 @@ static void lineEnds(int32_t why);
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
-  int32_t holdLeft, holdStarted, overLogged, loggedAskNow, loggedRefused, nalt, alt[MAXLINE];
+  int32_t holdLeft, holdStarted, overLogged, loggedAskNow, loggedRefused, loggedKeys, nalt, alt[MAXLINE];
   Planned plan[PLANN]; int32_t planAt[PLANN];
   Board *truth, *expect, *pr, *scratch;
   int32_t haveExpect;
@@ -662,6 +663,7 @@ static void take(void) {
     F.st.heldWalks += k.held;
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
+    if (a.kind == 1 && F.loggedKeys < LOGGED_KEYS) { char l[160]; snprintf(l, sizeof l, "GAMBITK %d judged=%d cur=%d,%d sw=%d,%d keys=%d press=%d q=%d taken=%d", at, at, F.pBoard->curRow, F.pBoard->curCol, CR(a.move), CC(a.move), k.n, at + k.n - 1, F.pPosted, F.now); flog(l); F.loggedKeys++; }
     for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play >= 0 ? a.play + 1 : 0, a.kind == 1 ? a.id + 1 : 0, 0 });
     { LineRec *o = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
       lineEnds(a.ended);
@@ -737,6 +739,9 @@ static int follow(void) {
   int left = allowanceAt(due);
   if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance", END_OVERWALK);
   F.st.heldWalks += k.held;
+  // (EVERY SWAP KEYED, ONE LINE (GAMBITK): the frame its keys begin, the frame the judge pressed it from (0 none), the cursor then, the
+  // swap, its keys -- its press the last of them -- and the decision whose line it is: a press later than the judge's is read off here)
+  if (F.loggedKeys < LOGGED_KEYS) { char l[160]; snprintf(l, sizeof l, "GAMBITK %d judged=%d cur=%d,%d sw=%d,%d keys=%d press=%d q=%d", due, F.lineAt[0], F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), k.n, due + k.n - 1, F.lineAsked); flog(l); F.loggedKeys++; }
   for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay, F.lineOfId + 1, F.lineOfPressed + 1 });
   F.nextAt = due + k.n;
   F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1;
