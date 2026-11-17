@@ -1085,14 +1085,14 @@ static Played playOf(const Read *R, int n) {
     // chain of OPENER_LEAST or more however long this one runs, so links that do not reach need spend the panels the next chain is made
     // of: past need - OPENER_LEAST + 1 the chain as it falls is kept, and below it the extension that reaches there in the fewest links
     // -- one link past the bare need - OPENER_LEAST: the chain's stop holds the garbage off, and a chain ended a link sooner is a board
-    // the garbage lands on sooner; with tall garbage only, whose panels come back a row a pop)
+    // the garbage lands on sooner; with tall garbage only, whose panels come back a row a pop. Past it, a link at a time: the chain kept
+    // falling is where the extension that reaches need is found)
     if (ext && ext->apChainAll < need && tallGarbage(&decQ)) {
-      int32_t enough = need - OPENER_LEAST + 1;
-      if (bar >= enough) ext = 0;
-      else if (ext->apChainAll > enough) {
+      int32_t enough = need - OPENER_LEAST + 1, least = imax(enough, bar + 1);
+      if (ext->apChainAll > least) {
         const Judge *fit = 0;
         for (int i = 0; i < n; i++) { const Judge *J = order[i];
-          if (J->hold || J->o.dead || !opExtLine(J) || J->apChainAll <= bar || J->apChainAll < enough || J->apChainAll >= need) continue;
+          if (J->hold || J->o.dead || !opExtLine(J) || J->apChainAll <= bar || J->apChainAll < least || J->apChainAll >= need) continue;
           if (!fit || J->apChainAll < fit->apChainAll || (J->apChainAll == fit->apChainAll && J->o.lives && !fit->o.lives)) fit = J; }
         if (fit) ext = fit;
       }
