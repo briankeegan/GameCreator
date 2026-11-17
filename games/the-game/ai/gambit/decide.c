@@ -898,7 +898,9 @@ static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) {
   cbJMaxSw = keepSw; cbJSwapCost = keepCost;
   opDesignWhy = 3; opDesignLinks = links;
   if (v <= 0 || !tr || links < OP_TWO_FROM) return 0;
+  cbCurR = b->curRow; cbCurC = b->curCol;
   int n = cbOrder(&G, &D, tr, seq, OP_DEPTH + 1);
+  cbCurR = 0;
   opDesignWhy = 4;
   if (n < 1) return 0;
   opDesignWhy = 5;
