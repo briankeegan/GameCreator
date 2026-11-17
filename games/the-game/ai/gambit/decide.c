@@ -145,7 +145,9 @@ static int readBoard_(Read *R) {
   // (garbage on our board and the board left alone lost within the planner's urgent time, no chain of ours falling: the opener gives way --
   // its next chain is built on a board that will not be there, and the mode after it breaks the garbage that is)
   int buried = F->known[FACT_US_CONTACT] && F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < PLAN_URGENT;
-  if ((((F->v[FACT_US_TOPPED] || buried) && !ownFalling) || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
+  // (nor while the opener's plan is still pressed: it is finished, or put down where the board is lost while it is pressed -- survival --
+  // and the opener ends at the decision after)
+  if ((((F->v[FACT_US_TOPPED] || buried) && !ownFalling && !opLineOn) || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
