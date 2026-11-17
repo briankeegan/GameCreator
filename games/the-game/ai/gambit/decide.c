@@ -773,19 +773,15 @@ static int opBefore(void) { return decF.next == NOT_ASKED && decQ.b->clock < OPE
 // (pass 0: a chain the mode asks for, fired by OPEN_FIRE_BY; 1: a chain of OP_FAST_CH or more fired by then -- a chain going is a board
 // that cannot top out, and the extension grows it while it falls; 2 -- the owner: start with a 2 and extend: a chain of two fired by then,
 // its fall extended to the eight -- before a longer plan fired late, whose many swaps are as many chances to come apart; 3: a chain of
-// OP_FAST_CH or more fired within OP_LATE of it; 4: a chain the mode asks for, fired when it can; 5: a chain the mode asks for, fired
-// within OP_LATE of OPEN_FIRE_BY -- tried second, before the chain of three: a plan the mode asks for a few frames past the line is a
-// bigger start than the three in time, and the falling chain is extended the fewer links to the eight)
-// (the passes are tried in the order of opOrder: kinds, as above)
+// OP_FAST_CH or more fired within OP_LATE of it; 4: a chain the mode asks for, fired when it can)
 #define OP_FAST_CH 3
-#define OP_LATE 60   // (the frames past OPEN_FIRE_BY passes 3 and 5 take a chain fired in: about four set-ups' worth)
-#define OP_PASSES 6
+#define OP_LATE 60   // (the frames past OPEN_FIRE_BY pass 3 takes a chain fired in: about four set-ups' worth)
+#define OP_PASSES 5
 #define OP_START_CH 2
-static const int opOrder[OP_PASSES] = { 0, 5, 1, 2, 3, 4 };
-static int32_t opFireBy(int pass) { return OPEN_FIRE_BY + (pass == 3 || pass == 5 ? OP_LATE : 0); }
+static int32_t opFireBy(int pass) { return OPEN_FIRE_BY + (pass == 3 ? OP_LATE : 0); }
 static int32_t opPassLeast(int pass) { return pass == 1 || pass == 3 ? OP_FAST_CH : pass == 2 ? OP_START_CH : 0; }
 static int opFits(const OpPath *p, int32_t trigCh, int pass) {
-  int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES; int by = pass != 4;
+  int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES; int by = pass < 4;
   return p->len > 0 && p->ch > trigCh && (opPassLeast(pass) ? p->ch >= opPassLeast(pass) : opAsked(p->ch)) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
          !(by && opBefore() && decQ.b->clock + frames > opFireBy(pass) + OPEN_SWAP_FRAMES);
 }
@@ -1171,8 +1167,7 @@ static Played playOf(const Read *R, int n) {
     // that asks it by then, gives way to the next, and a pass that plays none to the next pass; with none in any, the board's own trigger)
     opTried = 0;
     if (cdAsk) boardRows(decQ.b, opCdRows, sizeof opCdRows);
-    for (int pi = 0; pi < OP_PASSES && chainUp <= 0; pi++) {
-      const int pass = opOrder[pi];
+    for (int pass = 0; pass < OP_PASSES && chainUp <= 0; pass++) {
       const OpPath *tries[OP_TRIES]; int nt = 0;
       if (opHave && opFits(&opBest, trigCh, pass)) tries[nt++] = &opBest;
       for (int ln = 1; ln <= OP_DEPTH; ln++) {
@@ -1199,7 +1194,7 @@ static Played playOf(const Read *R, int n) {
         lastDrop = -1;
         int jok = judgeCand(R, &k, &CU);
         int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
-        if (!why && pass != 4 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > opFireBy(pass)) why = -4;
+        if (!why && pass < 4 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > opFireBy(pass)) why = -4;
         // (-5 a second chain, in a garbage game, that leaves the board under its material floor: the panels the garbage is dug with)
         if (!why && openerThrown >= 1 && garbageSeen && CU.o.floorKept == 0) why = -5;
         // (-6 the chain as judged is not the chain the pass asks -- the judge plays the plan as the game will, the stack rising under it and
