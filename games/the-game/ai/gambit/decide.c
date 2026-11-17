@@ -1180,7 +1180,7 @@ static Played playOf(const Read *R, int n) {
         int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < dp.len; k++) seq[ns++] = dp.path[k]; seq[ns++] = dp.trig;
         static Judge PJ; Cand k; if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
         k.settled = 1; lastDrop = -1;
-        int pok = judgeCand(R, &k, &PJ);
+        outRooted = 1; int pok = judgeCand(R, &k, &PJ); outRooted = 0;
         if (!pok || PJ.o.dead || !PJ.o.lives || PJ.apChainAll < OP_FAST_CH) continue;
         dp.ch = PJ.apChainAll; opProved++; if (dp.ch > opProvedBest) opProvedBest = dp.ch;
         if (!opByLenHave[dp.len] || opByLen[dp.len].ch < OP_FAST_CH || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; }
@@ -1222,10 +1222,14 @@ static Played playOf(const Read *R, int n) {
         if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
         k.settled = 1;
         // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live,
-        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor, -6 judged short of the chain asked,
-        // -7 a design the stack rises under: the log's, the first plan's)
+        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor, -6 judged short of the chain asked:
+        // the log's, the first plan's)
+        // (judged ROOTED: each swap named on the board as it stands now, pressed in the row its panels have risen to by its frame -- the
+        // stack rises while a plan is pressed -- and handed on named where it is pressed)
         lastDrop = -1;
+        outRooted = 1;
         int jok = judgeCand(R, &k, &CU);
+        outRooted = 0;
         int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
         if (!why && pass < 4 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > opFireBy(pass)) why = -4;
         // (-5 a second chain, in a garbage game, that leaves the board under its material floor: the panels the garbage is dug with)
@@ -1233,13 +1237,11 @@ static Played playOf(const Read *R, int n) {
         // (-6 the chain as judged is not the chain the pass asks -- the judge plays the plan as the game will, the stack rising under it and
         // the rows it brings up, so a plan the search counts a chain and the judge counts none is a plan on a board that never was)
         if (!why && (opPassLeast(pass) ? CU.apChainAll < opPassLeast(pass) : !opAsked(CU.apChainAll))) why = -6;
-        // (-7 a design the stack rises under before its trigger: its rows are named on the board as it stands, and the line carried reads
-        // them where each is pressed -- a row off once the stack has risen; set 86 factory 3, a design a 3 at 192, carried with a swap in row 0)
-        if (!why && pl->design) for (int s = 0; s < CU.o.j.nats && s < CU.k.nseq; s++) if (CU.o.j.risen[s] != 0) { why = -7; break; }
         if (opTryN < OP_TRY_LOG) { int32_t *t = opTryLog[opTryN++]; t[0] = pass; t[1] = pl->len + 1; t[2] = pl->ch; t[3] = jok ? CU.apChainAll : -1;
           t[4] = jok ? (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : -1) : -1; t[5] = why; t[6] = jok ? CU.o.j.clearStep : -2;
           if (opTryN <= 3) { opTrySeqN[opTryN - 1] = ns; for (int s = 0; s < ns; s++) opTrySeq[opTryN - 1][s] = seq[s]; } }
-        if (!why) { P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
+        if (!why) { for (int s = 0; s < CU.o.j.nats && s < CU.k.nseq && s < MAXLINE; s++) CU.k.seq[s] = (CR(CU.k.seq[s]) + CU.o.j.risen[s]) * 8 + CC(CU.k.seq[s]);
+          P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
         else if (!chainUp) chainUp = why;
       }
     }

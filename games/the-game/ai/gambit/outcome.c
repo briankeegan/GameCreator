@@ -134,8 +134,11 @@ static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeO
 // (THE LINE IN PROGRESS JUDGED IN ITS OWN FRAMES: the clock each of its swaps' walks was judged to begin on (decide.c carriedCand, into
 // carryNB), the judge pressing none sooner -- asked by rank.c judgeCand for the line in progress only, its own cache entries)
 static int32_t carryNB[64], carryNBn, outNBOn;
+// (A LINE NAMED ON THE ROOT'S BOARD: each swap's row as the board stands now, pressed where its panels have risen to by its frame -- the
+// opener's plans, whose swaps are pressed while the stack rises: their own cache entries)
+static int32_t outRooted;
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
-  int ck = outNBOn ? 5 : 0;
+  int ck = outNBOn ? 5 : outRooted ? 6 : 0;
   Outcome *hit = waitTo ? 0 : cached(seq, n, settled, ck);
   if (hit) return *hit;
   // (the board left alone asked first: its judging is the judge's own nodes, which the line's end board is read from below)
@@ -144,6 +147,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
   JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
   if (outNBOn) { jo.notBefore = carryNB; jo.nNotBefore = imin(carryNBn, n); }
+  jo.rooted = outRooted;
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
