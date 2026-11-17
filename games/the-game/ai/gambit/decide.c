@@ -1089,9 +1089,11 @@ static Played playOf(const Read *R, int n) {
     // chain of OPENER_LEAST or more however long this one runs, so links that do not reach need spend the panels the next chain is made
     // of: past need - OPENER_LEAST + 1 the chain as it falls is kept, and below it the extension that reaches there in the fewest links
     // -- one link past the bare need - OPENER_LEAST: the chain's stop holds the garbage off, and a chain ended a link sooner is a board
-    // the garbage lands on sooner; with tall garbage only, whose panels come back a row a pop)
-    if (ext && ext->apChainAll < need && tallGarbage(&decQ)) {
-      int32_t enough = need - OPENER_LEAST + 1;
+    // the garbage lands on sooner, with tall garbage, whose panels come back a row a pop; with smaller garbage the bare need - OPENER_LEAST:
+    // a link past it short of need is a link the next chain has to make up all the same)
+    int tall = tallGarbage(&decQ);
+    if (ext && ext->apChainAll < need && (tall || garbageSeen)) {
+      int32_t enough = need - OPENER_LEAST + (tall ? 1 : 0);
       if (bar >= enough) ext = 0;
       else if (ext->apChainAll > enough) {
         const Judge *fit = 0;
