@@ -409,7 +409,8 @@ static int32_t samesTrimmed;   // (the line played judged again without its swap
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 #define OP_TRY_LOG 8
-#define OP_NEXT_SHARE 0.3   // (the share of a decision's time the next chain's design is searched in)
+#define OP_NEXT_SHARE 0.5   // (the share of a decision's time the next chain's design is searched in)
+#define OP_NEXT_COST 5   // (a swap's worth in the next chain's design: any chain of what is still needed is the eight, however many swaps it takes)
 static int32_t opNextCh, opNextLen, opNextMs;   // (and its chain designed, its swaps)
 static int32_t opNextDesign;   // (the next chain designed this decision: its chain as judged; -1 none designed, -2 short of the need, -3 not judged, -4 its board lost -- the log's nd=)
 static int32_t carryWaste[5];   // (the line in progress taken out as a wasted three: why (rank.c wasteWhy), its whole chain, the board's own, its threes, lost -- the log's waste=)
@@ -890,7 +891,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
 #define OP_CB_FEWEST 3
 #define OP_PROVE_MAX 4   // (the designs judged at most: the plans' falls extended need the countdown's time after them)
 static int32_t opDesignWhy, opDesignLinks, opSeqLinks;   // (and the swaps' design's links, -1 none)
-static int32_t opDesignWhyKeep;   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
+static int32_t opDesignCost = OP_CB_COST;   // (a swap's worth in a design's score: the opening's race, or the next chain's OP_NEXT_COST)   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
 static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's designs judged, those that chain as judged, the longest: the log's opgrew /p)
 static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
 static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
@@ -902,7 +903,7 @@ static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
   // (the rows ordered, in half the time)
   int n = 0, links = 0;
   if (full) {
-    int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = maxSw; cbJSwapCost = OP_CB_COST; cbJPartial = 1;
+    int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = maxSw; cbJSwapCost = opDesignCost; cbJPartial = 1;
     int32_t tr = 0; int sw = 0;
     int32_t v = cbDesignAll(&G, 0, ms * 0.5, &D, &tr, &links, &sw);
     cbJMaxSw = keepSw; cbJSwapCost = keepCost; cbJPartial = 0;
@@ -916,7 +917,7 @@ static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
     } else links = 0;
   }
   // (and the swaps themselves, panels falling between rows, in the other half: the longer chain kept, the fewer swaps between equals)
-  { int32_t keepCost = cbSwapCost; cbSwapCost = OP_CB_COST;
+  { int32_t keepCost = cbSwapCost; cbSwapCost = opDesignCost;
     int32_t str = 0; int sl = 0, sn = cbSeqDesign(&G, ms * 0.5, imin(maxSw, OP_DEPTH), sseq, &str, &sl);
     cbSwapCost = keepCost; opSeqLinks = sn >= 0 ? sl : -1;
     if (sn >= 0 && sl >= OP_TWO_FROM && (!n || sl > links || (sl == links && sn + 1 < n))) { for (int i = 0; i < sn; i++) seq[i] = sseq[i]; seq[sn] = str; n = sn + 1; links = sl; opDesignLinks = sl; } }
@@ -1187,7 +1188,8 @@ static Played playOf(const Read *R, int n) {
     double left = C2.due ? C2.due - C2.margin - nowMs() : 0;
     OpPath dp;
     opNextDesign = -1; opNextMs = (int32_t)(left * OP_NEXT_SHARE); opDesignWhy = 0;
-    if (left > 8 && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_CB_MAXSW)) {
+    opDesignCost = OP_NEXT_COST; int got = left > 8 && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_CB_MAXSW); opDesignCost = OP_CB_COST;
+    if (got) {
       opNextDesign = -2; opNextCh = dp.ch; opNextLen = dp.len + 1;
       int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int i = 0; i < dp.len; i++) seq[ns++] = dp.path[i]; seq[ns++] = dp.trig;
       static Judge ND; Cand k;
