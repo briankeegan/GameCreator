@@ -755,7 +755,8 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 // plan grown there in a share of the decision's time; the plan's next set-up pressed now where it would be pressed then -- its two panels,
 // and every panel under them in their columns, where they will be once the chain lands and none of them moving -- and only where the
 // chain falls on as long as it does left alone. 0 where there is none.
-#define OP_SECOND_SHARE 0.5
+#define OP_SECOND_DESIGN 0.6   // (the designer's part of it)
+#define OP_SECOND_SHARE 0.9   // (the share of what the decision has left that the second chain's plan takes: the extension has had its share)
 #define OP_CB_COST 30
 #define OP_CB_MAXSW 14
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
@@ -779,17 +780,20 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   double left = C2.due ? C2.due - C2.margin - nowMs() : 50, ms = left * OP_SECOND_SHARE;
   opSecondWhy = 3;
   if (ms < 2) return 0;
-  double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
-  // (the landed board is the same board every decision of the fall: the plan grown on it is grown on, decision after decision)
+  // (the designer's chain first, in OP_SECOND_DESIGN of the time: its whole plan at once; the beam in the rest, grown on decision after
+  // decision -- the landed board is the same board every decision of the fall -- where the designer finds none)
+  static OpPath dp; const OpPath *pl = 0; double t0 = nowMs();
+  if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp;
+  double rest = ms - (nowMs() - t0);
   static int32_t grownFor = -1;
   if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
-  { double sh = clockShareBegin(nowMs() + ms); openingGrow(&lq, decQ.b); clockShareEnd(sh); }
-  clockDue = keepDue; clockShare = keepShare;
+  if (!pl && rest > 1) {
+    double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
+    { double sh = clockShareBegin(nowMs() + rest); openingGrow(&lq, decQ.b); clockShareEnd(sh); }
+    clockDue = keepDue; clockShare = keepShare;
+  }
   opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1; opSecondMs = (int32_t)ms; opSecondN = opGrewN;
-  // (the designer's chain first: its whole plan in a few milliseconds; the beam's where it finds none)
-  static OpPath dp; const OpPath *pl = 0;
-  if (opDesign(landed, ms * 0.5, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp;
-  else if (opHave && opBest.len >= 1 && opBest.ch >= OP_TWO_FROM) pl = &opBest;
+  if (!pl && opHave && opBest.len >= 1 && opBest.ch >= OP_TWO_FROM) pl = &opBest;
   if (!pl) return 0;
   opSecondCh = pl->ch;
   int32_t sw = pl->path[0], r = CR(sw), c = CC(sw);
