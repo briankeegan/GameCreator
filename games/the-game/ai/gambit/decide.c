@@ -800,6 +800,7 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 #define OP_CB_COST 30
 #define OP_CB_MAXSW 14
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
+static int opDesignAsIs;   // (a design on a board that is not the board as it stands -- the landed board: the row under it left out)
 static char opLandedRows[160], opCdRows[160];   // (the log's landed= and, at the countdown's decision, cdboard=)
 // (a board as rows bottom up, a digit a panel's colour, g garbage, . empty)
 static void boardRows(const Board *b, char *out, int cap) {
@@ -846,7 +847,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   // (the designer's chain first, in OP_SECOND_DESIGN of the time: its whole plan at once; the beam in the rest, grown on decision after
   // decision -- the landed board is the same board every decision of the fall -- where the designer finds none)
   static OpPath dp; const OpPath *pl = 0; double t0 = nowMs();
-  if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp;
+  opDesignAsIs = 1; if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp; opDesignAsIs = 0;
   double rest = ms - (nowMs() - t0);
   static int32_t grownFor = -1;
   if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
@@ -888,7 +889,7 @@ static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's desig
 static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) {
   static CbGrid G, D; static int32_t seq[CB_MAXSWAPS + 1];
-  cbOfBoard(b, &G); cbPreview(b, &G);
+  cbOfBoard(b, &G); if (!opDesignAsIs) cbPreview(b, &G);
   int full = 0; for (int r = 1; r <= G.rows; r++) full += cbFull(&G, r);
   opDesignWhy = !full ? 1 : 2;
   if (!full || ms < 1) return 0;
