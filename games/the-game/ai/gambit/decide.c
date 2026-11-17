@@ -862,9 +862,9 @@ static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) {
 // on the engine and its fall searched for the longest extension in an equal share of `ms` -- the chain it reaches into chx; the best
 // ranked again
 #define OP_EXT_PLANS 6
-static int32_t opExtBest;   // (the longest chain a plan's fall reached extended: the log's opgrew /x)
+static int32_t opExtBest, opExtMs, opExtN, opExtCh[OP_EXT_PLANS][3];   // (and its time, and each plan ranked: swaps, chain, chain its fall reached extended -- the log's opExt=)   // (the longest chain a plan's fall reached extended: the log's opgrew /x)
 static void opExtendAll(const Question *q, double ms) {
-  const OpPath *pl[OP_EXT_PLANS]; OpPath *mut[OP_EXT_PLANS]; int np = 0; opExtBest = 0;
+  const OpPath *pl[OP_EXT_PLANS]; OpPath *mut[OP_EXT_PLANS]; int np = 0; opExtBest = 0; opExtMs = (int32_t)ms; opExtN = 0;
   for (int ln = 1; ln <= OP_DEPTH && np < OP_EXT_PLANS; ln++) if (opByLenHave[ln] && opByLen[ln].ch >= OP_FAST_CH) { pl[np] = &opByLen[ln]; mut[np++] = &opByLen[ln]; }
   if (!np) return;
   static Ctx *ex; Ctx *x = ex = ctxOf(ex);
@@ -883,6 +883,7 @@ static void opExtendAll(const Question *q, double ms) {
     static Ext E; extend(&fq, &eo, &E);
     int32_t c = E.longest.set ? E.longest.chain : E.baseChain;
     mut[i]->chx = c; if (c > opExtBest) opExtBest = c;
+    if (opExtN < OP_EXT_PLANS) { opExtCh[opExtN][0] = pl[i]->len + 1; opExtCh[opExtN][1] = pl[i]->ch; opExtCh[opExtN][2] = c; opExtN++; }
     x = ex = ctxOf(ex);
   }
   for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
