@@ -750,7 +750,9 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 // and every panel under them in their columns, where they will be once the chain lands and none of them moving -- and only where the
 // chain falls on as long as it does left alone. 0 where there is none.
 #define OP_SECOND_SHARE 0.5
-static int opDesign(const Board *b, double ms, OpPath *out);
+#define OP_CB_COST 30
+#define OP_CB_MAXSW 14
+static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
 static int32_t opSecondCh, opSecondWhy;   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 a landed board, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed: the log's)
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
@@ -776,7 +778,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1;
   // (the designer's chain first: its whole plan in a few milliseconds; the beam's where it finds none)
   static OpPath dp; const OpPath *pl = 0;
-  if (opDesign(landed, ms * 0.5, &dp) && dp.len >= 1) pl = &dp;
+  if (opDesign(landed, ms * 0.5, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp;
   else if (opHave && opBest.len >= 1 && opBest.ch >= OP_TWO_FROM) pl = &opBest;
   if (!pl) return 0;
   opSecondCh = pl->ch;
@@ -802,15 +804,13 @@ static const Judge *opSecondSwap(const Read *R, int n) {
 // best chain OP_CB_MAXSW swaps or fewer make, a swap worth OP_CB_COST of a chain's score -- the opener's chains are a few swaps, never time
 // attack's long builds -- and its swaps put in an order that sets nothing off, the trigger last: a plan, into *out, where its chain is
 // OP_TWO_FROM or more
-#define OP_CB_COST 30
-#define OP_CB_MAXSW 14
-static int32_t opDesigned;   // (the chain of the design offered this decision, 0 none: the log's)
-static int opDesign(const Board *b, double ms, OpPath *out) {
+static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
+static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) {
   static CbGrid G, D; static int32_t seq[CB_MAXSWAPS + 1];
   cbOfBoard(b, &G);
   int full = 0; for (int r = 1; r <= G.rows; r++) full += cbFull(&G, r);
   if (!full || ms < 1) return 0;
-  int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = OP_CB_MAXSW; cbJSwapCost = OP_CB_COST;
+  int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = maxSw; cbJSwapCost = OP_CB_COST;
   int32_t tr = 0; int links = 0, sw = 0;
   int32_t v = cbDesignAll(&G, 0, ms, &D, &tr, &links, &sw);
   cbJMaxSw = keepSw; cbJSwapCost = keepCost;
@@ -819,7 +819,7 @@ static int opDesign(const Board *b, double ms, OpPath *out) {
   if (n < 1) return 0;
   memset(out, 0, sizeof *out);
   out->len = n - 1; for (int i = 0; i < n - 1; i++) out->path[i] = seq[i]; out->trig = seq[n - 1]; out->ch = links;
-  opDesigned = links;
+  if (maxSw == OP_CB_MAXSW) opDesigned = links;
   return 1;
 }
 // THE PLANS' FALLS EXTENDED (the countdown's: the owner's three seconds): each plan kept, its chain OP_FAST_CH or more, played to its trigger
@@ -921,7 +921,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opFallBar = opFallExt = 0; opDesigned = 0; opGrew = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opFallBar = opFallExt = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
@@ -1009,10 +1009,15 @@ static Played playOf(const Read *R, int n) {
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ, decQ.b); clockShareEnd(sh); }
     // (and the design: a chain the board's full rows make, offered as a plan beside the beam's -- in the countdown's time, or a slice of
     // the decision's)
+    // (and a second design, in the swaps that can be pressed before the first garbage lands -- OPEN_FIRE_BY, OPEN_SWAP_FRAMES a swap: the
+    // chain that fires in time, where the first design's fires past it)
     { double l3 = C2.due ? C2.due - C2.margin - nowMs() : 0, dms = cdAsk ? l3 * 0.3 : l3 * 0.2; OpPath dp;
-      if (opDesign(decQ.b, dms, &dp)) {
-        if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
-        if (!opByLenHave[dp.len] || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; } } }
+      int quickSw = opBefore() ? (OPEN_FIRE_BY - decQ.b->clock) / OPEN_SWAP_FRAMES - 1 : 0;
+      for (int pass = 0; pass < (quickSw >= 2 && quickSw < OP_CB_MAXSW ? 2 : 1); pass++)
+        if (opDesign(decQ.b, pass ? dms * 0.5 : dms * (quickSw >= 2 ? 0.5 : 1), &dp, pass ? quickSw : OP_CB_MAXSW)) {
+          if (pass) opDesignedQuick = dp.ch;
+          if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
+          if (!opByLenHave[dp.len] || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; } } }
     // (the countdown's: the plans kept scored on the second chain each leaves, in the time the grow left)
     if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opExtendAll(&decQ, l2 * 0.55); clockShareEnd(sh); } }
     opGrew = 1;
