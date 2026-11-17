@@ -358,19 +358,15 @@ static int32_t seamsOf(const Board *b) {
 #undef SC
   return n;
 }
-// (the rows a node's board has risen since the root's: of the root's bottom-row panels, each still a coloured panel, the row it is in now,
-// less 1 -- the least of them. A panel cleared leaves its id on an empty cell, and the engine moves that cell up the stack as the column
-// above falls into its place (pa.c switchPanels), so a cleared one is read as nothing; 0 where none is left)
-static LOCAL int32_t rootIds[W + 1];
+// (the rows a node's board has risen since the root's: the rows newRow made since (pa.c) -- each a fed row taken, or one dealt unseen;
+// nothing is fed while a line is judged, so the root's count of each against the node's. A count, not a panel: a panel's row moves with
+// every clear under it, and a cleared panel's id rises with its empty cell)
+static LOCAL int32_t rootFeed, rootUnseen;
 static int risenTo(Ctx *x, int node, int32_t any) {
   const Board *b = any == NUL ? 0 : ensureBoard(x, node);
-  int best = -1;
-  for (int r = 1; b && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const int32_t *f = b->p[r][c].f;
-    if (f[COLOR] <= 0 || (f[ISGARBAGE] && f[ISGARBAGE] != NUL)) continue;
-    for (int k = 1; k <= W; k++) if (rootIds[k] != NUL && f[ID] == rootIds[k] && (best < 0 || r - 1 < best)) best = r - 1;
-  }
-  return best < 0 ? 0 : best;
+  if (!b) return 0;
+  int r = (rootFeed - b->nRowFeed) + (b->unseenRows - rootUnseen);
+  return r > 0 ? r : 0;
 }
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
@@ -378,9 +374,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
-  // (a bottom-row panel of the root's board, found again on each board a swap is pressed from: the rows risen by then)
-  int32_t rid = NUL; { const Board *rb = ensureBoard(x, root);
-    for (int c = 1; c <= W; c++) { rootIds[c] = NUL; if (rb && rb->nrows > 1 && rb->p[1][c].f[ID] > 0 && rb->p[1][c].f[COLOR] > 0) { rootIds[c] = rb->p[1][c].f[ID]; rid = rootIds[c]; } } }
+  // (the root's row counts, read again on each board a swap is pressed from: the rows risen by then -- risenTo)
+  int32_t rid = NUL; { const Board *rb = ensureBoard(x, root); if (rb) { rootFeed = rb->nRowFeed; rootUnseen = rb->unseenRows; rid = 1; } }
   int base = settleOf(x, root);
   int32_t baseChain = 0, baseCombo = 0, baseBroke = 0;
   Stats bs;
