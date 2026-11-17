@@ -879,7 +879,7 @@ static void opExtendAll(const Question *q, double ms) {
     cloneBoard(fall, fb);
     Question fq = *q; fq.b = fall;
     List L; memset(&L, 0, sizeof L); L.n = 1; L.aim[0].chain.op = OP_GE; L.aim[0].chain.n = 2; L.aim[0].brk = -1;
-    ExtOpts eo = { 40, 6, &L, NOT_ASKED, 0, ms / np };
+    ExtOpts eo = { 40, 6, &L, NOT_ASKED, 0, ms / np, 2 };   // (longest, unjudged -- the fall is a board played forward: the chain it reaches extended; without it chx is the chain left alone)
     static Ext E; extend(&fq, &eo, &E);
     int32_t c = E.longest.set ? E.longest.chain : E.baseChain;
     mut[i]->chx = c; if (c > opExtBest) opExtBest = c;

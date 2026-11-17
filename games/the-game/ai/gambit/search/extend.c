@@ -12,7 +12,8 @@ typedef struct {
   int32_t cells, chain, combo, broke, done, fire, floor, base, aimIndex;
   double near;
 } XLine;
-typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; int32_t longest; } ExtOpts;   // longest: the chain made longest offered, as in time attack (the opener's falling chain)
+typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; int32_t longest; } ExtOpts;   // longest: the chain made longest offered, as in time attack (the opener's falling chain); 2 unjudged -- a board
+                                                                                                            // played forward, not the decision's (decide.c opExtendAll)
 #define EXT_LONG_K 6   // (the opener's falling chain: the longest lines kept, each judged in turn -- the search's count of a line's chain is
                        // its own, and the judge, which plays it as the frame loop will, has the last word)
 typedef struct { XLine best, nearest, three, longest, longK[EXT_LONG_K]; int32_t nlongK; double ms; int32_t baseChain, seen, kept, top, topKept, late, floorLost, longCut; } Ext;   // seen..floorLost: the log's xs= -- boards settled, kept, the longest chain of any and of a kept one, put down for firing past `by`, for losing the floor   // baseChain: the cascade's chain left alone   // three: the chain taken to three or more, breaking the most;
@@ -152,7 +153,7 @@ static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
         // (and the opener's chain falling: the longest it is taken to, a line that lives -- the list and the floor are the chain's own then)
         if ((ruleNoEnemy || o->longest) && base.ok && base.chain < CB_TOP && g.chain > base.chain && (!E->longest.set || imin(g.chain, CB_TOP) > imin(E->longest.chain, CB_TOP) ||
             (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq))) {
-          if (o->longest ? lineLives(kseq, k->nseq, 0) : lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1); else E->longCut++;
+          if (o->longest == 2 || (o->longest ? lineLives(kseq, k->nseq, 0) : lineFits(kseq, k->nseq, 0))) XFILL(E->longest, -1); else E->longCut++;
         }
         // (the K longest, any line making the chain longer than left alone: kept by chain, then fewer swaps, one per first swap)
         if (o->longest && base.ok && g.chain > base.chain) {
