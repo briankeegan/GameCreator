@@ -105,7 +105,6 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
   }
   return ok;
 }
-static int carryOpener(void);   // (the line in progress was begun under the opener: below, with the carry)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -138,17 +137,9 @@ static int readBoard_(Read *R) {
   if (decQ.b->chainCounter > openerChained) openerChained = decQ.b->chainCounter;
   else if (openerChained && decQ.b->chainCounter == 0) { if (openerChained >= OPENER_LEAST) { openerSum += openerChained; openerThrown++; } openerChained = 0; }
   int thrown = openerSum >= OPENER_SUM || openerThrown >= OPENER_CHAINS;
-  // (our board topped out with the opener's own chain still falling: the opener goes on until it lands -- the chain's stop time holds the
-  // board, and the mode after it would play on the falling chain as if it were not the opener's)
-  int ownFalling = decQ.b->chainCounter > 0 || (opFiredAt >= 0 && decQ.b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0));
-  // (nor while the opener's plan is still pressed: it is finished, or put down where the board is lost while it is pressed -- survival --
-  // and the opener ends at the decision after)
-  // (nor while a line the opener began -- a break of the garbage, its panels the next chain's -- is still pressed: the owner, carry on
-  // after the garbage is broken)
-  // (and a top-out ends it only where the board is lost soon, within the planner's urgent time: a board topped out and standing is the
-  // opener's still -- the garbage broken, the next chain built)
-  int toppedLost = F->v[FACT_US_TOPPED] && F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < PLAN_URGENT;
-  if (((toppedLost && !ownFalling && !opLineOn && !carryOpener()) || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
+  // (THE OPENER ENDS AT THE EIGHT -- the owner: get every opener to chains adding up to eight, survival after: its chains add up, or the
+  // enemy tops out; our board topped out is the opener's to carry on from -- the garbage broken, the next chain built from it)
+  if ((theOpp.has && theOpp.out || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
@@ -1272,7 +1263,6 @@ typedef struct { int32_t kind, a, b; } Why;
 typedef struct { int32_t set, id, nrest, rest[MAXLINE], risen[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; Why why; } Carry;   // (rule: the mode it was begun in; why: the reason it was begun, the log's aim=)
 static Carry theCarry;
 static int carryHeld(void) { return theCarry.set; }
-static int carryOpener(void) { return theCarry.set && theCarry.rule >= 0 && theCarry.rule < theTables.n && theTables.r[theCarry.rule].table == 2; }
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
 static Carry theCarryNext;
