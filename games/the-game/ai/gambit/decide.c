@@ -1071,7 +1071,8 @@ static Played playOf(const Read *R, int n) {
         int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < dp.len; k++) seq[ns++] = dp.path[k]; seq[ns++] = dp.trig;
         static Judge PJ; Cand k; if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
         k.settled = 1; lastDrop = -1;
-        if (!judgeCand(R, &k, &PJ) || PJ.o.dead || !PJ.o.lives || PJ.apChainAll < OP_FAST_CH) continue;
+        outcomeRooted = 1; int pok = judgeCand(R, &k, &PJ); outcomeRooted = 0;
+        if (!pok || PJ.o.dead || !PJ.o.lives || PJ.apChainAll < OP_FAST_CH) continue;
         dp.ch = PJ.apChainAll; opProved++; if (dp.ch > opProvedBest) opProvedBest = dp.ch;
         if (!opByLenHave[dp.len] || opByLen[dp.len].ch < OP_FAST_CH || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; }
         if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
@@ -1115,7 +1116,7 @@ static Played playOf(const Read *R, int n) {
         // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor, -6 judged short of the chain asked:
         // the log's, the first plan's)
         lastDrop = -1;
-        int jok = judgeCand(R, &k, &CU);
+        outcomeRooted = 1; int jok = judgeCand(R, &k, &CU); outcomeRooted = 0;
         int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
         if (!why && pass < 3 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > opFireBy(pass)) why = -4;
         // (-5 a second chain, in a garbage game, that leaves the board under its material floor: the panels the garbage is dug with)
@@ -1126,7 +1127,10 @@ static Played playOf(const Read *R, int n) {
         if (opTryN < OP_TRY_LOG) { int32_t *t = opTryLog[opTryN++]; t[0] = pass; t[1] = pl->len + 1; t[2] = pl->ch; t[3] = jok ? CU.apChainAll : -1;
           t[4] = jok ? (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : -1) : -1; t[5] = why; t[6] = jok ? CU.o.j.clearStep : -2;
           if (opTryN <= 3) { opTrySeqN[opTryN - 1] = ns; for (int s = 0; s < ns; s++) opTrySeq[opTryN - 1][s] = seq[s]; } }
-        if (!why) { P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
+        // (judged rooted: the line handed on names each swap where it will be pressed -- its row on the root's board and the rows risen by
+        // then -- as the line in progress does (carriedCand))
+        if (!why) { for (int s = 0; s < CU.o.j.nats && s < CU.k.nseq; s++) CU.k.seq[s] = (CR(CU.k.seq[s]) + CU.o.j.risen[s]) * 8 + CC(CU.k.seq[s]);
+          P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
         else if (!chainUp) chainUp = why;
       }
     }
