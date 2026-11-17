@@ -700,9 +700,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // board lacks, and a board waited on below the floor finds no break later
   if (decF.under && (lx || lostAlike(x, y)) && breaksFirst(x, lx) != breaksFirst(y, lx)) {
     const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
-    // (not over the opener's chain: a line whose chain is one the opener still needs, the board's own included, is no line that meets
-    // nothing -- the owner: the eight first, survival after)
-    int keepsNeed = opNeed && chainReach(o) >= opNeed && chainReach(b) < opNeed;
+    // (not over the opener's chain: a line whose chain is one the opener still needs, the board's own included, made before any loss
+    // the judging finds after it, is no line that meets nothing -- the owner: the eight first, survival after)
+    int keepsNeed = opNeed && o->o.j.chainAll >= opNeed && b->o.j.chainAll < opNeed;
     if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o)) && !keepsNeed) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
   // 1'r. READY FOR THE NEXT BLOCK (the owner: there should always be pieces): of two that survive alike, the readier before the other
