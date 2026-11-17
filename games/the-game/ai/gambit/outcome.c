@@ -131,14 +131,19 @@ static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
+// (a plan named on the board it was made on -- the opener's, made in the countdown and pressed over frames the stack rises in: each swap
+// pressed in the row its panels have risen to, as the line in progress is (decide.c carriedCand); its own cache entries)
+static int32_t outcomeRooted;
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
-  Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
+  int ck = outcomeRooted ? 4 : 0;
+  Outcome *hit = waitTo ? 0 : cached(seq, n, settled, ck);
   if (hit) return *hit;
   // (the board left alone asked first: its judging is the judge's own nodes, which the line's end board is read from below)
   int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
   JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
+  jo.rooted = outcomeRooted;
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
@@ -182,7 +187,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     }
   }
   // (a judging the clock stopped is no answer: it is not kept, and the next asking judges it again)
-  if (!o.late && !waitTo && !endNoKeep) keep(seq, n, settled, 0, &o);
+  if (!o.late && !waitTo && !endNoKeep) keep(seq, n, settled, ck, &o);
   return o;
 }
 // THE BOARD A LINE ENDS ON, as the judge plays it (the land a proposer reads what falls from: search/fill.c), judged as the proposers
