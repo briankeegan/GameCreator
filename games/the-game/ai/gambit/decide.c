@@ -7,6 +7,7 @@ static int32_t garbageSeen;   // (garbage has been on the board or on its way th
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OPENER_SUM 8
 #define OPENER_LEAST 3
+#define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_CHAINS 3
 static int32_t openerOver, openerChained, openerThrown, openerSum;   // (the opener played out; the longest link of the chain falling; the chains of OPENER_LEAST or more thrown, and their links added: the log's osum=)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
@@ -138,8 +139,12 @@ static int readBoard_(Read *R) {
   else if (openerChained && decQ.b->chainCounter == 0) { if (openerChained >= OPENER_LEAST) { openerSum += openerChained; openerThrown++; } openerChained = 0; }
   int thrown = openerSum >= OPENER_SUM || openerThrown >= OPENER_CHAINS;
   // (THE OPENER ENDS AT THE EIGHT -- the owner: get every opener to chains adding up to eight, survival after: its chains add up, or the
-  // enemy tops out; our board topped out is the opener's to carry on from -- the garbage broken, the next chain built from it)
-  if ((theOpp.has && theOpp.out || thrown) && !openerOver) {
+  // enemy tops out, or our board is about to be lost -- within OPENER_LOST, no chain of ours falling: a board topped out and standing is
+  // the opener's to carry on from, the garbage broken and the next chain built from it; set 86 combo_storm 7, the opener carried on to
+  // the last frame and the board lost at 697)
+  int ownFalling = decQ.b->chainCounter > 0 || (opFiredAt >= 0 && decQ.b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0));
+  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling;
+  if (((theOpp.has && theOpp.out) || thrown || aboutLost) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
