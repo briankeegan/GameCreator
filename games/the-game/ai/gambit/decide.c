@@ -409,6 +409,8 @@ static int32_t samesTrimmed;   // (the line played judged again without its swap
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 #define OP_TRY_LOG 8
+#define OP_NEXT_SHARE 0.3   // (the share of a decision's time the next chain's design is searched in)
+static int32_t opNextDesign;   // (the next chain designed this decision: its chain as judged; -1 none designed, -2 short of the need, -3 not judged, -4 its board lost -- the log's nd=)
 static int32_t carryWaste[5];   // (the line in progress taken out as a wasted three: why (rank.c wasteWhy), its whole chain, the board's own, its threes, lost -- the log's waste=)
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
@@ -1157,6 +1159,30 @@ static Played playOf(const Read *R, int n) {
     P.line = P.top = carriedJ; P.wait = 0; P.deferred = 0; opKept = 1;
   }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
+  // (THE NEXT CHAIN DESIGNED -- the owner: chains of three or more adding up to the eight: the first thrown and the eight not yet made,
+  // with nothing falling and no plan of the opener's carried, the designer plans the chain still needed on the board as it stands, its
+  // full rows under any garbage, judged ROOTED as the opener's first plans are; a plan whose chain as judged is what is still needed, its
+  // board standing till it fires, is the opener's line)
+  opNextDesign = 0;
+  if (opNeed > 0 && openerSum > 0 && !opLineOn && !carryOpener() && !cascadeLive(decQ.b) && decQ.b->chainCounter == 0 && !R->up && clockFrameOut && !clockFrameOut()) {
+    double left = C2.due ? C2.due - C2.margin - nowMs() : 0;
+    OpPath dp;
+    opNextDesign = -1;
+    if (left > 8 && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_CB_MAXSW)) {
+      opNextDesign = -2;
+      int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int i = 0; i < dp.len; i++) seq[ns++] = dp.path[i]; seq[ns++] = dp.trig;
+      static Judge ND; Cand k;
+      if (dp.ch >= opNeed && candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
+        k.settled = 1; lastDrop = -1;
+        outRooted = 1; int ok = judgeCand(R, &k, &ND); outRooted = 0;
+        opNextDesign = !ok ? -3 : ND.o.dead ? -4 : ND.apChainAll;
+        if (ok && !ND.o.dead && ND.apChainAll >= opNeed) {
+          for (int s2 = 0; s2 < ND.o.j.nats && s2 < ND.k.nseq && s2 < MAXLINE; s2++) ND.k.seq[s2] = (CR(ND.k.seq[s2]) + ND.o.j.risen[s2]) * 8 + CC(ND.k.seq[s2]);
+          P.line = P.top = &ND; P.wait = 0; P.deferred = 0; opLineOn = 1;
+        }
+      }
+    }
+  }
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
   if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
