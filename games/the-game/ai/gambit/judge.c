@@ -68,6 +68,7 @@ typedef struct {
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
   int32_t cutAt;                // the row and column the cut swap was to be pressed at (row * 8 + column), 0 none
   int32_t preLast;              // the node the line's last swap was pressed from, in judgeCtx (-1 none)
+  int32_t pressedAt[MAXLINE];   // each swap pressed: the row and column it was pressed at (row * 8 + column)
   int32_t even;                 // the board it ends on: its tallest column less its lowest, in rows (evenOf; -1 not known)
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
@@ -469,7 +470,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
           prevA = a; prevB = b;
         } else prevA = prevB = NUL; }
       if (pressTight && j->nats < 64) j->tightBits |= (int64_t)1 << j->nats;
-      if (j->nats < MAXLINE) { j->risen[j->nats] = risenTo(x, n, rid); j->ats[j->nats++] = NODE(x, n)->t; }
+      if (j->nats < MAXLINE) { j->risen[j->nats] = risenTo(x, n, rid); j->pressedAt[j->nats] = mr * 8 + mc; j->ats[j->nats++] = NODE(x, n)->t; }
     }
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
     if (out == STEP_NULL && clockOut()) { j->late = 1; break; }

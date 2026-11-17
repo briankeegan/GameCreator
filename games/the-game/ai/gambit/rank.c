@@ -48,7 +48,8 @@ static int32_t aloneChain; static int ruleNoEnemy;   // (below: the chain the bo
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press, w a wasted three, j the clock stopped its judging, 2 a 2x not taken to three)
 static int32_t lastCut = -1, lastCutWhy, lastCutRisen, lastCutClock, lastCutCell, lastCutStates;
-static char lastCutRows[200];   // (the board the cut swap was to be pressed on, rows bottom up: the log's opCut=)
+static char lastCutRows[200];
+static int32_t lastPA[16], lastPT[16], lastPR[16], lastPressedN;   // (each swap of the last opening plan that made no chain: where and when the judge pressed it, the rows risen -- the log's opPressed=)   // (the board the cut swap was to be pressed on, rows bottom up: the log's opCut=)
 static void boardRows(const Board *b, char *out, int cap);   // (the swap the judge cut the last line dropped at, why, and the rows risen by the swap before it: decide.c's opTries log)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, DROP_TWO, NDROPS };
 static int32_t dropped[NPLAYS][NDROPS], offered[NPLAYS];
@@ -112,7 +113,8 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (!oc.dead && oc.j.cut >= 0 && (play == PLAY_EXTEND || play == PLAY_LINEUP) && extCutN < EXT_CUT_LOG) {
     int32_t *t = extCutLog[extCutN++]; t[0] = oc.j.cut; t[1] = k->nseq; t[2] = oc.j.cutWhy; t[3] = oc.j.nats > 0 ? oc.j.ats[oc.j.nats - 1] : -1; t[4] = k->x.chain; }
   // (an opening plan the judge played through to no chain: the board it ended on, for the log's opCut=)
-  if (!oc.dead && oc.j.cut < 0 && outRooted && oc.j.chainAll < 2 && k->nseq >= 4) { const Board *cb = oc.j.preLast >= 0 ? ensureBoard(judgeCtx, oc.j.preLast) : 0; lastCutClock = cb ? cb->clock : -1; lastCutCell = k->seq[k->nseq - 1] + (oc.j.nats >= k->nseq ? oc.j.risen[k->nseq - 1] * 8 : 0); lastCutStates = -2; if (cb) boardRows(cb, lastCutRows, sizeof lastCutRows); else lastCutRows[0] = 0; }
+  if (!oc.dead && oc.j.cut < 0 && outRooted && oc.j.chainAll < 2 && k->nseq >= 4) {
+    lastPressedN = 0; for (int i = 0; i < oc.j.nats && i < k->nseq && i < 16; i++) { lastPA[i] = oc.j.pressedAt[i]; lastPT[i] = oc.j.ats[i]; lastPR[i] = oc.j.risen[i]; lastPressedN++; } const Board *cb = oc.j.preLast >= 0 ? ensureBoard(judgeCtx, oc.j.preLast) : 0; lastCutClock = cb ? cb->clock : -1; lastCutCell = k->seq[k->nseq - 1] + (oc.j.nats >= k->nseq ? oc.j.risen[k->nseq - 1] * 8 : 0); lastCutStates = -2; if (cb) boardRows(cb, lastCutRows, sizeof lastCutRows); else lastCutRows[0] = 0; }
   if (!oc.dead && oc.j.cut >= 0 && outRooted) { const Board *cb = ensureBoard(judgeCtx, oc.j.endNode); lastCutClock = cb ? cb->clock : -1; if (cb) boardRows(cb, lastCutRows, sizeof lastCutRows); else lastCutRows[0] = 0;
     { int r = oc.j.cutAt / 8, c = oc.j.cutAt % 8; lastCutCell = oc.j.cutAt; lastCutStates = cb && r >= 0 && r < cb->nrows && c >= 1 && c < W ? cb->p[r][c].f[STATE] * 10 + cb->p[r][c + 1].f[STATE] : -1; } }
   if (!oc.dead && oc.j.cut >= 0) { lastCut = oc.j.cut; lastCutWhy = oc.j.cutWhy; lastCutRisen = oc.j.nats > 0 ? oc.j.risen[oc.j.nats - 1] : 0; dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
