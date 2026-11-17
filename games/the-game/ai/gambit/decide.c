@@ -805,6 +805,15 @@ static void boardRows(const Board *b, char *out, int cap) {
 }   // (the log's landed=)
 static int32_t opSecondCh, opSecondWhy, opSecondMs, opSecondN;   // (and the time it had, the boards its beam grew: the log's)   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 no landed board, 8 its chain still counting, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed:
                                             // the log's)
+// TALL GARBAGE: a slab OP_TALL rows or more on the board or on its way -- one broken gives back one row, a pop at a time, so the next
+// chain's panels come slowly (the large slabs; a factory's are two rows)
+#define OP_TALL 6
+static int tallGarbage(const Question *q) {
+  for (int i = 0; i < q->narr; i++) if (q->arr[i].height >= OP_TALL) return 1;
+  for (int i = 0; i < q->b->ninc; i++) if (q->b->inc[i].height >= OP_TALL) return 1;
+  for (int r = 1; r < q->b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = q->b->p[r][c].f; if (f[ISGARBAGE] && f[ISGARBAGE] != NUL && f[GHEIGHT] >= OP_TALL) return 1; }
+  return 0;
+}
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -1067,8 +1076,8 @@ static Played playOf(const Read *R, int n) {
     // chain of OPENER_LEAST or more however long this one runs, so links that do not reach need spend the panels the next chain is made
     // of: past need - OPENER_LEAST + 1 the chain as it falls is kept, and below it the extension that reaches there in the fewest links
     // -- one link past the bare need - OPENER_LEAST: the chain's stop holds the garbage off, and a chain ended a link sooner is a board
-    // the garbage lands on sooner)
-    if (ext && ext->apChainAll < need) {
+    // the garbage lands on sooner; with tall garbage only, whose panels come back a row a pop)
+    if (ext && ext->apChainAll < need && tallGarbage(&decQ)) {
       int32_t enough = need - OPENER_LEAST + 1;
       if (bar >= enough) ext = 0;
       else if (ext->apChainAll > enough) {
