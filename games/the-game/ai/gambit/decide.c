@@ -862,7 +862,7 @@ static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) {
   if (n < 1) return 0;
   opDesignWhy = 5;
   memset(out, 0, sizeof *out);
-  out->len = n - 1; for (int i = 0; i < n - 1; i++) out->path[i] = seq[i]; out->trig = seq[n - 1]; out->ch = links;
+  out->len = n - 1; for (int i = 0; i < n - 1; i++) out->path[i] = seq[i]; out->trig = seq[n - 1]; out->ch = links; out->design = 1;
   if (maxSw == OP_CB_MAXSW) opDesigned = links;
   return 1;
 }
@@ -1075,10 +1075,37 @@ static Played playOf(const Read *R, int n) {
     // (the pool taken back from the readiness beside the decision, which would search on past it: the beam is scored on every thread)
     readyStop();
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ, decQ.b); clockShareEnd(sh); }
-    // (NO DESIGN AMONG THE OPENER'S PLANS: the designer names its swaps on the board as it stands, the beam where each is pressed, the rise
-    // played -- the line handed on and carried (carryOf, carriedCand) reads a plan the beam's way, and a design read so is pressed a row
-    // off once the stack rises: set 86 factory 3, a design judged a 3 at 192 carried at 214 with a swap in row 0. The designer serves the
-    // second chain (opSecondSwap), where each swap is checked panel for panel on the board as it is)
+    // (and the design: a chain the board's full rows make, offered as a plan beside the beam's -- in the countdown's time, or a slice of
+    // the decision's)
+    // (and a second design, in the swaps that can be pressed before the first garbage lands -- OPEN_FIRE_BY, OPEN_SWAP_FRAMES a swap: the
+    // chain that fires in time, where the first design's fires past it)
+    { double l3 = C2.due ? C2.due - C2.margin - nowMs() : 0, dms = cdAsk ? l3 * 0.15 : l3 * 0.2; OpPath dp;
+      int quickSw = opBefore() ? (OPEN_FIRE_BY - decQ.b->clock) / OPEN_SWAP_FRAMES - 1 : 0;
+      if (quickSw >= 2 && quickSw < OP_CB_MAXSW) opDesignedQuick = -quickSw;   // (tried in quickSw swaps, none found: the log's /q-N)
+      for (int pass = 0; pass < (quickSw >= 2 && quickSw < OP_CB_MAXSW ? 2 : 1); pass++)
+        if (opDesign(decQ.b, pass ? dms * 0.5 : dms * (quickSw >= 2 ? 0.5 : 1), &dp, pass ? quickSw : OP_CB_MAXSW)) {
+          if (pass) opDesignedQuick = dp.ch;
+          if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
+          if (!opByLenHave[dp.len] || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; } } }
+    // (THE DESIGNS PROVED, the countdown's: the designer asked at every swap budget from OP_CB_FEWEST to OP_CB_MAXSW -- it works on the
+    // panels standing, not on the frames, so a design is judged as the game will play it at once: a design
+    // whose chain as judged is OP_FAST_CH or more is kept at that chain, any other let go -- the plans tried are then plans that chain)
+    if (cdAsk) {
+      int32_t lastLen = -1;
+      for (int sw = OP_CB_FEWEST; sw <= OP_CB_MAXSW && opProveTried < OP_PROVE_MAX && !clockOut(); sw++) {
+        double l4 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l4 < 40) break;
+        OpPath dp; if (!opDesign(decQ.b, l4 * 0.04, &dp, sw) || dp.ch < OP_FAST_CH || dp.len == lastLen) continue;
+        lastLen = dp.len; opProveTried++;
+        int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < dp.len; k++) seq[ns++] = dp.path[k]; seq[ns++] = dp.trig;
+        static Judge PJ; Cand k; if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
+        k.settled = 1; lastDrop = -1;
+        int pok = judgeCand(R, &k, &PJ);
+        if (!pok || PJ.o.dead || !PJ.o.lives || PJ.apChainAll < OP_FAST_CH) continue;
+        dp.ch = PJ.apChainAll; opProved++; if (dp.ch > opProvedBest) opProvedBest = dp.ch;
+        if (!opByLenHave[dp.len] || opByLen[dp.len].ch < OP_FAST_CH || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; }
+        if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
+      }
+    }
     // (the countdown's: the plans kept scored on the second chain each leaves, in the time the grow left)
     if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opExtendAll(&decQ, l2 * 0.55); clockShareEnd(sh); } }
     opGrew = 1;
@@ -1114,8 +1141,8 @@ static Played playOf(const Read *R, int n) {
         if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
         k.settled = 1;
         // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live,
-        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor, -6 judged short of the chain asked:
-        // the log's, the first plan's)
+        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor, -6 judged short of the chain asked,
+        // -7 a design the stack rises under: the log's, the first plan's)
         lastDrop = -1;
         int jok = judgeCand(R, &k, &CU);
         int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
@@ -1125,6 +1152,9 @@ static Played playOf(const Read *R, int n) {
         // (-6 the chain as judged is not the chain the pass asks -- the judge plays the plan as the game will, the stack rising under it and
         // the rows it brings up, so a plan the search counts a chain and the judge counts none is a plan on a board that never was)
         if (!why && (opPassLeast(pass) ? CU.apChainAll < opPassLeast(pass) : !opAsked(CU.apChainAll))) why = -6;
+        // (-7 a design the stack rises under before its trigger: its rows are named on the board as it stands, and the line carried reads
+        // them where each is pressed -- a row off once the stack has risen; set 86 factory 3, a design a 3 at 192, carried with a swap in row 0)
+        if (!why && pl->design) for (int s = 0; s < CU.o.j.nats && s < CU.k.nseq; s++) if (CU.o.j.risen[s] != 0) { why = -7; break; }
         if (opTryN < OP_TRY_LOG) { int32_t *t = opTryLog[opTryN++]; t[0] = pass; t[1] = pl->len + 1; t[2] = pl->ch; t[3] = jok ? CU.apChainAll : -1;
           t[4] = jok ? (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : -1) : -1; t[5] = why; t[6] = jok ? CU.o.j.clearStep : -2;
           if (opTryN <= 3) { opTrySeqN[opTryN - 1] = ns; for (int s = 0; s < ns; s++) opTrySeq[opTryN - 1][s] = seq[s]; } }
