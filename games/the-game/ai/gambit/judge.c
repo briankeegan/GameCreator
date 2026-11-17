@@ -56,6 +56,7 @@ typedef struct {
   int32_t readyPend;            // the landed board kept for the decision's readiness, its index + 1 (search/break.c readyPendOf); 0 none
   int32_t readyMat;             // the material that board has -- its panels under the lowest garbage once everything shown has landed
                                 // (facts.c materialOn), -1 not asked: what the next breaks are made of
+  int32_t nearEnd;              // the swaps to the nearest break on the line's own end board by the shape math (breakNear; NEAR_MISS none; 0 no garbage on it)
   int32_t readyNear;            // the swaps to the nearest break on that board by the shape math (breakNear, NEAR_MISS none; 0 no
                                 // garbage), -1 not asked
   int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
@@ -542,7 +543,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
-  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; }
+  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0;
+    j->nearEnd = eb ? (garbageOn(eb) ? nearOf(eb) : 0) : -1; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));

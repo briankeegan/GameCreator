@@ -1058,8 +1058,8 @@ static Played playOf(const Read *R, int n) {
         if (la != lb) { if (la) ext = J; continue; }
         // (and of two that do not live, the one left with a break in reach once the next block lands, or one its shape can still build
         // (search/break.c breakNear) -- the board the next chain is made on is the one the garbage is broken on)
-        int ra = !la && (J->o.ready == 1 || (J->o.j.readyNear >= 0 && J->o.j.readyNear < NEAR_MISS)),
-            rb = !lb && (ext->o.ready == 1 || (ext->o.j.readyNear >= 0 && ext->o.j.readyNear < NEAR_MISS));
+        int ra = !la && (J->o.ready == 1 || (J->o.j.nearEnd >= 0 && J->o.j.nearEnd < NEAR_MISS)),
+            rb = !lb && (ext->o.ready == 1 || (ext->o.j.nearEnd >= 0 && ext->o.j.nearEnd < NEAR_MISS));
         if (ra != rb) { if (ra) ext = J; continue; }
         if (!la && J->o.lostAt != NOT_ASKED && ext->o.lostAt != NOT_ASKED && iabs(J->o.lostAt - ext->o.lostAt) >= rankSave) { if (J->o.lostAt > ext->o.lostAt) ext = J; continue; }
       }
@@ -1069,7 +1069,7 @@ static Played playOf(const Read *R, int n) {
     opFallSeen = 0; opFallTop = -1; opFallDead = 0; opFallLineN = 0;
     for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->hold || !opExtLine(J)) continue;
       opFallSeen++; if (J->o.dead) opFallDead++; else if (J->apChainAll > opFallTop) opFallTop = J->apChainAll;
-      if (opFallLineN < 8) { int32_t *t = opFallLine[opFallLineN++]; t[0] = J->k.nseq; t[1] = J->apNats; t[2] = J->apChainAll; t[3] = J->o.dead; t[4] = J->k.x.chain; t[5] = J->o.lives ? -1 : J->o.lostAt; t[6] = J->o.ready == 1 ? 100 : J->o.j.readyNear; } }
+      if (opFallLineN < 8) { int32_t *t = opFallLine[opFallLineN++]; t[0] = J->k.nseq; t[1] = J->apNats; t[2] = J->apChainAll; t[3] = J->o.dead; t[4] = J->k.x.chain; t[5] = J->o.lives ? -1 : J->o.lostAt; t[6] = J->o.ready == 1 ? 100 : J->o.j.nearEnd; } }
     P.wait = 0; P.deferred = 0; opFallHeld++;
     // (THE WAY TO THE EIGHT -- the owner: two 4s, a 5 and a 3, or an 8: an extension that reaches what is still needed is played; else a
     // second chain set up where its chain and the falling one's add up to it -- the panels an extension short of it would spend are the
