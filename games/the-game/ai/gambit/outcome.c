@@ -30,6 +30,7 @@ typedef struct {
   int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
   int32_t floorKept;   // the board the line leaves keeps the rule's floor, as the floor is tested (floorOf), the line's breaks aside; -1 not asked
   int32_t matLeft;     // the material the board the line leaves has: its panels under the lowest garbage, the next break's (materialOn); -1 not asked
+  int32_t groups;      // the threes the board the line leaves has the panels for, a chain's links (groupsOn); -1 not asked
   int32_t twinAfter;   // the swaps to a two-column eight on the board the line leaves (propose.c twinCostOn; 99 none), -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   Judged j;
@@ -130,6 +131,18 @@ static int32_t aloneBuildable(void) {
 static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
+// (THE THREES A BOARD HAS THE PANELS FOR: each colour's panels a three at a time, the row rising under it with them; a panel whose
+// colour is not shown yet -- a row not dealt, garbage turned to panels before its pop -- is any colour, three of them a three)
+static int32_t groupsOn(const Board *b) {
+  int32_t n[16] = { 0 }, any = 0;
+  for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = b->p[r][c].f;
+    if (f[ISGARBAGE] || f[ID] <= 0 || f[COLOR] <= 0) continue;
+    if (f[COLOR] >= 30) any++; else if (f[COLOR] < 8) n[f[COLOR]]++;
+  }
+  int32_t g = any / 3; for (int k = 1; k < 8; k++) g += n[k] / 3;
+  return g;
+}
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
 // (THE LINE IN PROGRESS JUDGED IN ITS OWN FRAMES: the clock each of its swaps' walks was judged to begin on (decide.c carriedCand, into
 // carryNB), the judge pressing none sooner -- asked by rank.c judgeCand for the line in progress only, its own cache entries)
@@ -161,10 +174,10 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.fits = fitsList(&theList, o.j.made, &o.j, 1) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1; o.twinAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
+    o.panelsLeft = -1; o.nearAfter = -1; o.twinAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.groups = -1;
     if (!waitTo) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
-      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); }
+      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.groups = groupsOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;

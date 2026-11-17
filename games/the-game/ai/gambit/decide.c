@@ -1110,8 +1110,11 @@ static Played playOf(const Read *R, int n) {
     // a link past it short of need is a link the next chain has to make up all the same)
     int tall = tallGarbage(&decQ);
     if (ext && ext->apChainAll < need && (tall || garbageSeen)) {
-      int32_t enough = need - OPENER_LEAST + (tall ? 1 : 0);
-      if (bar >= enough) ext = 0;
+      int32_t enough = need - OPENER_LEAST + (tall ? 1 : 0), left = -1;
+      for (int i = 0; i < n; i++) if (order[i]->hold) left = order[i]->o.groups;
+      // (held for the next chain only where the board left has the panels for it: OPENER_LEAST threes; with fewer the next chain is not
+      // there to make, and the chain falling is all there is -- extended as any chain short of need)
+      if (bar >= enough && left >= OPENER_LEAST) ext = 0;
       else if (ext->apChainAll > enough) {
         const Judge *fit = 0;
         for (int i = 0; i < n; i++) { const Judge *J = order[i];
