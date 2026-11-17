@@ -412,7 +412,7 @@ static int32_t carryWaste[5];   // (the line in progress taken out as a wasted t
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
-static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
+static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
                                                                                    // for the next chain, 4 a set-up short of it)
 static int32_t opFallLine[8][6], opFallLineN;   // (each extension under the fall: its swaps, those the judge pressed, its chain as judged, lost, its chain as its search said, the frames to its loss -1 living: the log's fallLines=)   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
@@ -1134,8 +1134,15 @@ static Played playOf(const Read *R, int n) {
         if (!lnk || J->apChainAll > lnk->apChainAll || (J->apChainAll == lnk->apChainAll && J->o.j.brokeLink > lnk->o.j.brokeLink)) lnk = J;
       }
     if (lnk) { opFallLink = lnk->o.j.brokeLink; opFallLinkCh = lnk->apChainAll; }
-    opFallWay = ext && ext->apChainAll >= need ? 1 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
-    if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
+    // (SHORT OF IT, NOT AT THE BOARD -- the owner: a board lost after the chain makes no second one: an extension short of what is still
+    // needed whose board is lost gives way to the line ranked first of those whose board lives, or is lost a break's time later)
+    const Judge *keep = 0;
+    if (ext && ext->apChainAll < need && !ext->o.lives && ext->o.lostAt != NOT_ASKED)
+      for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
+        if (J != ext && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - ext->o.lostAt >= rankSave))) keep = J; }
+    opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
+    if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
+    else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
     else if (opFallWay == 6) P.line = P.top = lnk;
     else if (opFallWay == 5) P.line = P.top = brk;
     else if (two) P.line = P.top = two;
