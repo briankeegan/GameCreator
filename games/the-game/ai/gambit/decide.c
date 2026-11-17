@@ -380,7 +380,7 @@ static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand thi
 static int32_t opTryLog[OP_TRY_LOG][6], opTryN;   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 #define OP_EXT_PANELS 12   // (two rows)
-static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallPoor;   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
+static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallPoor, opFallBroke;   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
@@ -1002,8 +1002,22 @@ static Played playOf(const Read *R, int n) {
     for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->hold || !(J->k.play == PLAY_EXTEND || (J->carried && carryBeganPlay == PLAY_EXTEND))) continue;
       opFallSeen++; if (J->o.dead) opFallDead++; else if (J->apChainAll > opFallTop) opFallTop = J->apChainAll; }
     P.wait = 0; P.deferred = 0; opFallHeld++;
-    const Judge *two = ext ? 0 : opSecondSwap(R, n);
+    // (GARBAGE ON THE BOARD OR ON ITS WAY, NO EXTENSION: the fall's time breaks it -- what the chain's stop time holds back lands all at once
+    // when it ends, set 86 factory 8 fill, an 8 and the board lost 70 frames after it at 783: the line that breaks the most garbage and
+    // keeps the chain as long as the hold's, its board not lost while it is pressed)
+    // (more than the hold breaks: the chain's own links break what they touch, a line that only watches them breaks nothing)
+    const Judge *brk = 0; int32_t holdBroke = 0;
+    for (int i = 0; i < n; i++) if (order[i]->hold) holdBroke = imax(0, order[i]->apBroke);
+    if (!ext && (R->under || decQ.narr > 0))
+      for (int i = 0; i < n; i++) {
+        const Judge *J = order[i];
+        if (J->hold || J->o.dead || J->apChainAll < bar || !(J->apBroke > holdBroke)) continue;
+        if (!brk || J->apBroke > brk->apBroke || (J->apBroke == brk->apBroke && J->o.panelsLeft > brk->o.panelsLeft)) brk = J;
+      }
+    opFallBroke = brk ? brk->apBroke : 0;
+    const Judge *two = ext || brk ? 0 : opSecondSwap(R, n);
     if (ext) P.line = P.top = ext;
+    else if (brk) P.line = P.top = brk;
     else if (two) P.line = P.top = two;
     else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
