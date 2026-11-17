@@ -135,6 +135,7 @@ static int opChainFalling(const Read *R, const Board *b) {
   if (!(R->rule >= 0 && theTables.r[R->rule].table == 2)) return 0;
   return b->chainCounter > 0 || (opFiredAt >= 0 && b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(b) || popLeft(b) > 0));
 }
+static int32_t extDry;   // (the opener's falling chain extended last decision and nothing longer found: the next takes OP_FALL_EXT_DRY of the time)
 static Ext extLog; static int32_t extLogged, extSkip;   // extSkip: why it was not searched -- 1 off, 2 nothing falling or popping, 3 short of time   // (the last extension searched this decision: the log's xs=)
 static void searchExt(const Read *R, Found *S, double ms) {
   Profile *GP = &C2.GP;
@@ -145,6 +146,7 @@ static void searchExt(const Read *R, Found *S, double ms) {
     // (the opener's chain falling: the floor is not kept -- the panels are the chain's -- and its longest extension is offered)
     ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn && !opFall ? &R->keep : 0, ms, opFall };
     extend(&decQ, &eo, &S->ex); S->haveEx = 1; extLog = S->ex; extLogged = 1;
+    extDry = opFall && S->ex.top <= S->ex.baseChain;
   } else if (!extLogged) extSkip = GP->extendOff ? 1 : !(cascadeLive(board) || R->pop) ? 2 : 3;
   // (A CHAIN IS BEGUN AND CONTINUED: on a board at rest, each swap that starts a clear, then the links its fall is continued by -- the
   // extension's own search, from the board the swap leaves falling; a beginning whose chain ends in the list is a line)
@@ -181,6 +183,7 @@ static void searchMerge(const Read *R, Found *S) {
   // (a chain the workers did not begin: extended or begun here, in what is left)
   if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, leftMs() / 2);
 }
+#define OP_FALL_EXT_DRY 0.3   // (and where the last found nothing longer: the second chain's set-up has the rest)
 #define OP_FALL_EXT 0.8   // (the share of the decision's time the extension of the opener's falling chain takes)
 #define CD_PLAN_MS 120   // (the planner's time in the countdown's decision: the opening's plan has the rest)
 #define PLAN_URGENT AT_LEVEL(240)   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
@@ -190,7 +193,8 @@ static void searchAll(const Read *R, Found *S) {
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
   // (the opener's chain falling: the extension takes the decision's time, OP_FALL_EXT of it -- nothing else pressed then matters)
   int opFall = opChainFalling(R, decQ.b);
-  if (!extBeside || opFall) { double xMs = leftMs() * (opFall ? OP_FALL_EXT : 0.5); if (cdAsk && xMs > CD_PLAN_MS / 4) xMs = CD_PLAN_MS / 4; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
+  if (!opFall) extDry = 0;
+  if (!extBeside || opFall) { double xMs = leftMs() * (opFall ? (extDry ? OP_FALL_EXT_DRY : OP_FALL_EXT) : 0.5); if (cdAsk && xMs > CD_PLAN_MS / 4) xMs = CD_PLAN_MS / 4; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
   // (garbage on the board, or the board lost soon: the lines found must be judged to be played -- the planner takes half, never the most)
   int urgent = R->under || (R->F.v[FACT_US_DIES] > 0 && R->F.v[FACT_US_DIES] < PLAN_URGENT);
