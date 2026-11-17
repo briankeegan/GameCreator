@@ -1108,13 +1108,12 @@ static Played playOf(const Read *R, int n) {
     // -- one link past the bare need - OPENER_LEAST: the chain's stop holds the garbage off, and a chain ended a link sooner is a board
     // the garbage lands on sooner, with tall garbage, whose panels come back a row a pop; with smaller garbage the bare need - OPENER_LEAST:
     // a link past it short of need is a link the next chain has to make up all the same)
-    int tall = tallGarbage(&decQ);
+    int tall = tallGarbage(&decQ); const Judge *two = 0; int twoAsked = 0;
     if (ext && ext->apChainAll < need && (tall || garbageSeen)) {
-      int32_t enough = need - OPENER_LEAST + (tall ? 1 : 0), left = -1;
-      for (int i = 0; i < n; i++) if (order[i]->hold) left = order[i]->o.groups;
-      // (held for the next chain only where the board left has the panels for it: OPENER_LEAST threes; with fewer the next chain is not
-      // there to make, and the chain falling is all there is -- extended as any chain short of need)
-      if (bar >= enough && left >= OPENER_LEAST) ext = 0;
+      int32_t enough = need - OPENER_LEAST + (tall ? 1 : 0);
+      // (held for the next chain only where the board the chain lands on has one: the next chain designed there (opSecondSwap) a chain of
+      // OPENER_LEAST or more; with none the chain falling is all there is, extended as any chain short of need)
+      if (bar >= enough) { two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= OPENER_LEAST) ext = 0; }
       else if (ext->apChainAll > enough) {
         const Judge *fit = 0;
         for (int i = 0; i < n; i++) { const Judge *J = order[i];
@@ -1132,8 +1131,7 @@ static Played playOf(const Read *R, int n) {
     // (THE WAY TO THE EIGHT -- the owner: two 4s, a 5 and a 3, or an 8: an extension that reaches what is still needed is played; else a
     // second chain set up where its chain and the falling one's add up to it -- the panels an extension short of it would spend are the
     // second chain's; else the extension, else the second chain's set-up)
-    const Judge *two = 0;
-    if (!(ext && ext->apChainAll >= need)) two = opSecondSwap(R, n);
+    if (!twoAsked && !(ext && ext->apChainAll >= need)) two = opSecondSwap(R, n);
     int twoReaches = two && opSecondCh >= OPENER_LEAST && bar + opSecondCh >= need;
     // (THE GARBAGE BROKEN FOR THE NEXT CHAIN -- the owner: break the garbage and the second chain is there: with no extension at all --
     // extending comes first, any extension -- nor a second chain that adds to the eight, the line that breaks the most garbage beyond the hold, the chain as long as the
