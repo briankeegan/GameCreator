@@ -760,7 +760,8 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 #define OP_CB_COST 30
 #define OP_CB_MAXSW 14
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
-static int32_t opSecondCh, opSecondWhy;   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 a landed board, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed: the log's)
+static int32_t opSecondCh, opSecondWhy;   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 no landed board, 8 its chain still counting, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed:
+                                            // the log's)
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -769,8 +770,11 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   sx = ctxOf(sx);
   int root = rootOf(sx, &decQ), calm = root >= 0 ? settleOf(sx, root) : -1;
   const Board *lb = liveNode(sx, calm) ? ensureBoard(sx, calm) : 0;
+  // (garbage landing on top while the chain falls adds rows above ours: the swap's panels are checked one by one below, panel for panel)
   opSecondWhy = 2;
-  if (!lb || lb->chainCounter != 0 || lb->nrows != decQ.b->nrows) return 0;
+  if (!lb) return 0;
+  opSecondWhy = 8;
+  if (lb->chainCounter != 0) return 0;
   cloneBoard(landed, lb);
   Question lq = decQ; lq.b = landed;
   double left = C2.due ? C2.due - C2.margin - nowMs() : 50, ms = left * OP_SECOND_SHARE;
