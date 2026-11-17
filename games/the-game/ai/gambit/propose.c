@@ -135,6 +135,7 @@ static int opChainFalling(const Read *R, const Board *b) {
   if (!(R->rule >= 0 && theTables.r[R->rule].table == 2)) return 0;
   return b->chainCounter > 0 || (opFiredAt >= 0 && b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(b) || popLeft(b) > 0));
 }
+#define OP_FALL_WIDTH 80
 static int32_t extDry;   // (the opener's falling chain extended last decision and nothing longer found: the next takes OP_FALL_EXT_DRY of the time)
 static Ext extLog; static int32_t extLogged, extSkip;   // extSkip: why it was not searched -- 1 off, 2 nothing falling or popping, 3 short of time   // (the last extension searched this decision: the log's xs=)
 static void searchExt(const Read *R, Found *S, double ms) {
@@ -144,7 +145,9 @@ static void searchExt(const Read *R, Found *S, double ms) {
   int opFall = opChainFalling(R, board);
   if ((cascadeLive(board) || R->pop) && !GP->extendOff && (ms >= 20 || (opFall && ms >= 2))) {
     // (the opener's chain falling: the floor is not kept -- the panels are the chain's -- and its longest extension is offered)
-    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn && !opFall ? &R->keep : 0, ms, opFall };
+    // (the opener's falling chain searched wider, OP_FALL_WIDTH: every link it finds is a step to the eight)
+    int width = GP->width ? GP->width : 40; if (opFall && width < OP_FALL_WIDTH) width = OP_FALL_WIDTH;
+    ExtOpts eo = { width, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn && !opFall ? &R->keep : 0, ms, opFall };
     extend(&decQ, &eo, &S->ex); S->haveEx = 1; extLog = S->ex; extLogged = 1;
     extDry = opFall && S->ex.top <= S->ex.baseChain;
   } else if (!extLogged) extSkip = GP->extendOff ? 1 : !(cascadeLive(board) || R->pop) ? 2 : 3;
@@ -183,7 +186,7 @@ static void searchMerge(const Read *R, Found *S) {
   // (a chain the workers did not begin: extended or begun here, in what is left)
   if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, leftMs() / 2);
 }
-#define OP_FALL_EXT_DRY 0.15   // (and where the last found nothing longer: the second chain's set-up has the rest)
+#define OP_FALL_EXT_DRY 0.5   // (and where the last found nothing longer: the second chain's set-up has the rest)
 #define OP_FALL_EXT 0.8   // (the share of the decision's time the extension of the opener's falling chain takes)
 #define CD_PLAN_MS 120   // (the planner's time in the countdown's decision: the opening's plan has the rest)
 #define PLAN_URGENT AT_LEVEL(240)   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
