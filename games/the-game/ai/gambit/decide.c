@@ -379,7 +379,7 @@ static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand thi
 #define OP_TRY_LOG 8
 static int32_t opTryLog[OP_TRY_LOG][6], opTryN;   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
-static int32_t opFallBar, opFallExt;   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
+static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead;   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
@@ -990,6 +990,9 @@ static Played playOf(const Read *R, int n) {
       if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
     }
     opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
+    opFallSeen = 0; opFallTop = -1; opFallDead = 0;
+    for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->hold || !(J->k.play == PLAY_EXTEND || (J->carried && carryBeganPlay == PLAY_EXTEND))) continue;
+      opFallSeen++; if (J->o.dead) opFallDead++; else if (J->apChainAll > opFallTop) opFallTop = J->apChainAll; }
     P.wait = 0; P.deferred = 0; opFallHeld++;
     const Judge *two = ext ? 0 : opSecondSwap(R, n);
     if (ext) P.line = P.top = ext;
