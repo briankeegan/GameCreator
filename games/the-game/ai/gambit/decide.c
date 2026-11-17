@@ -410,7 +410,7 @@ static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 #define OP_TRY_LOG 8
 #define OP_NEXT_SHARE 0.3   // (the share of a decision's time the next chain's design is searched in)
-static int32_t opNextCh, opNextLen;   // (and its chain designed, its swaps)
+static int32_t opNextCh, opNextLen, opNextMs;   // (and its chain designed, its swaps)
 static int32_t opNextDesign;   // (the next chain designed this decision: its chain as judged; -1 none designed, -2 short of the need, -3 not judged, -4 its board lost -- the log's nd=)
 static int32_t carryWaste[5];   // (the line in progress taken out as a wasted three: why (rank.c wasteWhy), its whole chain, the board's own, its threes, lost -- the log's waste=)
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
@@ -889,7 +889,8 @@ static const Judge *opSecondSwap(const Read *R, int n) {
 // OP_TWO_FROM or more
 #define OP_CB_FEWEST 3
 #define OP_PROVE_MAX 4   // (the designs judged at most: the plans' falls extended need the countdown's time after them)
-static int32_t opDesignWhy, opDesignLinks;   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
+static int32_t opDesignWhy, opDesignLinks, opSeqLinks;   // (and the swaps' design's links, -1 none)
+static int32_t opDesignWhyKeep;   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
 static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's designs judged, those that chain as judged, the longest: the log's opgrew /p)
 static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
 static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
@@ -917,7 +918,7 @@ static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
   // (and the swaps themselves, panels falling between rows, in the other half: the longer chain kept, the fewer swaps between equals)
   { int32_t keepCost = cbSwapCost; cbSwapCost = OP_CB_COST;
     int32_t str = 0; int sl = 0, sn = cbSeqDesign(&G, ms * 0.5, imin(maxSw, OP_DEPTH), sseq, &str, &sl);
-    cbSwapCost = keepCost;
+    cbSwapCost = keepCost; opSeqLinks = sn >= 0 ? sl : -1;
     if (sn >= 0 && sl >= OP_TWO_FROM && (!n || sl > links || (sl == links && sn + 1 < n))) { for (int i = 0; i < sn; i++) seq[i] = sseq[i]; seq[sn] = str; n = sn + 1; links = sl; opDesignLinks = sl; } }
   if (n < 1) return 0;
   opDesignWhy = 5;
@@ -1185,7 +1186,7 @@ static Played playOf(const Read *R, int n) {
   if (opNeed > 0 && openerSum > 0 && !opLineOn && !cascadeLive(decQ.b) && decQ.b->chainCounter == 0 && !R->up && clockFrameOut && !clockFrameOut()) {
     double left = C2.due ? C2.due - C2.margin - nowMs() : 0;
     OpPath dp;
-    opNextDesign = -1;
+    opNextDesign = -1; opNextMs = (int32_t)(left * OP_NEXT_SHARE); opDesignWhy = 0;
     if (left > 8 && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_CB_MAXSW)) {
       opNextDesign = -2; opNextCh = dp.ch; opNextLen = dp.len + 1;
       int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int i = 0; i < dp.len; i++) seq[ns++] = dp.path[i]; seq[ns++] = dp.trig;
