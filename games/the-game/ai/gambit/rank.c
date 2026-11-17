@@ -552,6 +552,7 @@ static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outs
 // link past the target is presses and panels the list does not ask for)
 #define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
+static int32_t opNeed;   // (the chain the opener still needs to reach its eight, decide.c; 0 with the opener not in force)
 // (A 2x ITS LINE DOES NOT CONTINUE: the chain the line makes ends at two -- read on the judge's count whether or not the board is lost
 // while the line plays out: a line on a board lost later makes its 2x all the same)
 static int shortChain(const Judge *J) { int32_t reach = J->o.dead ? imax(J->apChain, J->o.j.chainAll) : chainReach(J); return !J->hold && J->apChain >= 2 && reach == 2; }
@@ -699,7 +700,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // board lacks, and a board waited on below the floor finds no break later
   if (decF.under && (lx || lostAlike(x, y)) && breaksFirst(x, lx) != breaksFirst(y, lx)) {
     const Judge *b = breaksFirst(x, lx) ? x : y, *o = breaksFirst(x, lx) ? y : x;
-    if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o))) return (cmpKey = __LINE__, (b == x ? -1 : 1));
+    // (not over the opener's chain: a line whose chain is one the opener still needs, the board's own included, is no line that meets
+    // nothing -- the owner: the eight first, survival after)
+    int keepsNeed = opNeed && chainReach(o) >= opNeed && chainReach(b) < opNeed;
+    if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o)) && !keepsNeed) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
   // 1'r. READY FOR THE NEXT BLOCK (the owner: there should always be pieces): of two that survive alike, the readier before the other
   // where it breaks no less and the other meets no goal it misses -- readier is a break in reach once the next block lands (readyNext,
