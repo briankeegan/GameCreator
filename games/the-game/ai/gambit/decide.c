@@ -186,15 +186,21 @@ static int readBoard_(Read *R) {
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
   // (WHAT THE OPENER STILL NEEDS IS ASKED -- the owner: a 6 and a 3 are the eight: with chains thrown, the opener's list asks a chain of
-  // what is still needed after its own entries, where none of them asks one that short)
+  // what is still needed in its place among its own entries, where none of them asks it)
   // (the opener in force, or paused for the board's life: its chains still add up, and what it still needs is asked all the same)
   int opOn = !openerOver && (theTables.r[ri].table == 2 || openerPaused);
   opNeed = opOn ? imax(OPENER_LEAST, OPENER_SUM - openerSum) : 0;
   needKept = 0; needLost = -1;
   if (opOn && openerSum > 0) {
-    int32_t need = imax(OPENER_LEAST, OPENER_SUM - openerSum), least = 1 << 30;
-    for (int i = 0; i < R->list.n; i++) { const Test *t = &R->list.aim[i].chain; if (t->op == OP_GE) least = imin(least, t->n); else if (t->op == OP_GT) least = imin(least, t->n + 1); }
-    if (need < least && R->list.n < MAXAIMS) { Aim a; memset(&a, 0, sizeof a); a.chain.op = OP_GE; a.chain.n = need; R->list.aim[R->list.n++] = a; }
+    // (in its place: before the first entry asking a shorter chain, unless one asks it already)
+    int32_t need = imax(OPENER_LEAST, OPENER_SUM - openerSum), at = R->list.n, have = 0;
+    for (int i = R->list.n - 1; i >= 0; i--) { const Test *t = &R->list.aim[i].chain; int32_t n = t->op == OP_GE ? t->n : t->op == OP_GT ? t->n + 1 : 0;
+      if (!n) continue; if (n == need) have = 1; if (n < need) at = i; }
+    if (!have && R->list.n < MAXAIMS) {
+      Aim a; memset(&a, 0, sizeof a); a.chain.op = OP_GE; a.chain.n = need;
+      for (int i = R->list.n; i > at; i--) R->list.aim[i] = R->list.aim[i - 1];
+      R->list.aim[at] = a; R->list.n++;
+    }
   }
   fillList(&R->list);
   R->guides = R->list;
