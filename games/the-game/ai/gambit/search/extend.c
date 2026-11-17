@@ -154,14 +154,15 @@ static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
             (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq))) {
           if (o->longest ? lineLives(kseq, k->nseq, 0) : lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1); else E->longCut++;
         }
-        // (the K longest, any line making the chain longer than left alone: kept by chain, then fewer swaps, one per first swap)
+        // (the K longest, any line making the chain longer than left alone: kept by chain, then garbage broken, then fewer swaps, one per first swap)
         if (o->longest && base.ok && g.chain > base.chain) {
           int at = -1, dup = -1;
           for (int q = 0; q < E->nlongK; q++) if (E->longK[q].seq[0] == kseq[0]) dup = q;
-          #define XBETTER(L) (g.chain > (L).chain || (g.chain == (L).chain && k->nseq < (L).nseq))
+          // (a tie on the chain goes to the line breaking more garbage -- the panels it turns out are the next links' -- then the fewer swaps)
+          #define XBETTER(L) (g.chain > (L).chain || (g.chain == (L).chain && (g.broke > (L).broke || (g.broke == (L).broke && k->nseq < (L).nseq))))
           if (dup >= 0) { if (XBETTER(E->longK[dup])) at = dup; }
           else if (E->nlongK < EXT_LONG_K) at = E->nlongK++;
-          else { int w = 0; for (int q = 1; q < E->nlongK; q++) if (E->longK[q].chain < E->longK[w].chain || (E->longK[q].chain == E->longK[w].chain && E->longK[q].nseq > E->longK[w].nseq)) w = q; if (XBETTER(E->longK[w])) at = w; }
+          else { int w = 0; for (int q = 1; q < E->nlongK; q++) if (E->longK[q].chain < E->longK[w].chain || (E->longK[q].chain == E->longK[w].chain && (E->longK[q].broke < E->longK[w].broke || (E->longK[q].broke == E->longK[w].broke && E->longK[q].nseq > E->longK[w].nseq)))) w = q; if (XBETTER(E->longK[w])) at = w; }
           #undef XBETTER
           if (at >= 0) XFILL(E->longK[at], -1);
         }
