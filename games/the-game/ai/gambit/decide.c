@@ -740,12 +740,16 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
 // (and, no garbage shown yet, its trigger pressed by OPEN_FIRE_BY: the opener's chain goes before anything can land on it)
 static int opBefore(void) { return decF.next == NOT_ASKED && decQ.b->clock < OPEN_FIRE_BY; }
 // (pass 0: a chain the mode asks for, fired by OPEN_FIRE_BY; 1: a chain of OP_FAST_CH or more fired by then -- a chain going is a board
-// that cannot top out, and the extension grows it while it falls; 2: a chain the mode asks for, fired when it can)
+// that cannot top out, and the extension grows it while it falls; 2: a chain of OP_FAST_CH or more fired within OP_LATE of it -- a chain
+// that starts just after the first garbage lands still runs, and is extended to the eight; 3: a chain the mode asks for, fired when it can)
 #define OP_FAST_CH 3
+#define OP_LATE 60   // (the frames past OPEN_FIRE_BY pass 2 takes a chain fired in: about four set-ups' worth)
+#define OP_PASSES 4
+static int32_t opFireBy(int pass) { return OPEN_FIRE_BY + (pass == 2 ? OP_LATE : 0); }
 static int opFits(const OpPath *p, int32_t trigCh, int pass) {
-  int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES; int by = pass < 2;
-  return p->len > 0 && p->ch > trigCh && (pass == 1 ? p->ch >= OP_FAST_CH : opAsked(p->ch)) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
-         !(by && opBefore() && decQ.b->clock + frames > OPEN_FIRE_BY + OPEN_SWAP_FRAMES);
+  int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES; int by = pass < 3, fast = pass == 1 || pass == 2;
+  return p->len > 0 && p->ch > trigCh && (fast ? p->ch >= OP_FAST_CH : opAsked(p->ch)) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
+         !(by && opBefore() && decQ.b->clock + frames > opFireBy(pass) + OPEN_SWAP_FRAMES);
 }
 // THE SECOND CHAIN BUILT UNDER THE FIRST (the owner: two 4-chains): the board the falling chain leaves once it has landed, the opening's
 // plan grown there in a share of the decision's time; the plan's next set-up pressed now where it would be pressed then -- its two panels,
@@ -1033,7 +1037,7 @@ static Played playOf(const Read *R, int n) {
     // the plan is (search/opening.c opPacier) -- judged in turn; a plan that does not live, or as judged fires past OPEN_FIRE_BY in a pass
     // that asks it by then, gives way to the next, and a pass that plays none to the next pass; with none in any, the board's own trigger)
     opTried = 0;
-    for (int pass = 0; pass < 3 && chainUp <= 0; pass++) {
+    for (int pass = 0; pass < OP_PASSES && chainUp <= 0; pass++) {
       const OpPath *tries[OP_TRIES]; int nt = 0;
       if (opHave && opFits(&opBest, trigCh, pass)) tries[nt++] = &opBest;
       for (int ln = 1; ln <= OP_DEPTH; ln++) {
@@ -1056,12 +1060,12 @@ static Played playOf(const Read *R, int n) {
         lastDrop = -1;
         int jok = judgeCand(R, &k, &CU);
         int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
-        if (!why && pass < 2 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > OPEN_FIRE_BY) why = -4;
+        if (!why && pass < 3 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > opFireBy(pass)) why = -4;
         // (-5 a second chain, in a garbage game, that leaves the board under its material floor: the panels the garbage is dug with)
         if (!why && openerThrown >= 1 && garbageSeen && CU.o.floorKept == 0) why = -5;
         // (-6 the chain as judged is not the chain the pass asks -- the judge plays the plan as the game will, the stack rising under it and
         // the rows it brings up, so a plan the search counts a chain and the judge counts none is a plan on a board that never was)
-        if (!why && (pass == 1 ? CU.apChainAll < OP_FAST_CH : !opAsked(CU.apChainAll))) why = -6;
+        if (!why && (pass == 1 || pass == 2 ? CU.apChainAll < OP_FAST_CH : !opAsked(CU.apChainAll))) why = -6;
         if (opTryN < OP_TRY_LOG) { int32_t *t = opTryLog[opTryN++]; t[0] = pass; t[1] = pl->len + 1; t[2] = pl->ch; t[3] = jok ? CU.apChainAll : -1;
           t[4] = jok ? (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : -1) : -1; t[5] = why; }
         if (!why) { P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
