@@ -185,6 +185,13 @@ static int readBoard_(Read *R) {
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on && garbageGame;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
+  // (WHAT THE OPENER STILL NEEDS IS ASKED -- the owner: a 6 and a 3 are the eight: with chains thrown, the opener's list asks a chain of
+  // what is still needed after its own entries, where none of them asks one that short)
+  if (oi >= 0 && ri == oi && openerSum > 0) {
+    int32_t need = imax(OPENER_LEAST, OPENER_SUM - openerSum), least = 1 << 30;
+    for (int i = 0; i < R->list.n; i++) { const Test *t = &R->list.aim[i].chain; if (t->op == OP_GE) least = imin(least, t->n); else if (t->op == OP_GT) least = imin(least, t->n + 1); }
+    if (need < least && R->list.n < MAXAIMS) { Aim a; memset(&a, 0, sizeof a); a.chain.op = OP_GE; a.chain.n = need; R->list.aim[R->list.n++] = a; }
+  }
   fillList(&R->list);
   R->guides = R->list;
   R->by = deadlineOf(F, rule);
