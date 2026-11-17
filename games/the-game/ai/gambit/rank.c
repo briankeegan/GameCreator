@@ -42,6 +42,8 @@ typedef struct {
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
   int32_t lengthens;            // time attack: the line makes the board's chain longer than it makes alone, below 13 (in the mode)
 } Judge;
+#define EXT_CUT_LOG 6
+static int32_t extCutLog[EXT_CUT_LOG][5], extCutN;   // (extensions the judge cut, this decision: swap cut, swaps, why, the last swap's walk frame, the search's chain)
 static int32_t aloneChain; static int ruleNoEnemy;   // (below: the chain the board makes alone, and time attack's rule)
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press, w a wasted three, j the clock stopped its judging, 2 a 2x not taken to three)
@@ -101,6 +103,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   Outcome oc = play == PLAY_CARRYWAIT ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
+  // (an extension cut: which swap, why, at what frame of its walk, and the search's chain for it -- the log's extCut=)
+  if (!oc.dead && oc.j.cut >= 0 && (play == PLAY_EXTEND || play == PLAY_LINEUP) && extCutN < EXT_CUT_LOG) {
+    int32_t *t = extCutLog[extCutN++]; t[0] = oc.j.cut; t[1] = k->nseq; t[2] = oc.j.cutWhy; t[3] = oc.j.nats > 0 ? oc.j.ats[oc.j.nats - 1] : -1; t[4] = k->x.chain; }
   if (!oc.dead && oc.j.cut >= 0) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
   // (ONE THE CLOCK STOPPED THE JUDGE ON: its board past that frame unknown -- ranked as a line lost on the frame it was judged alive to,
   // what it makes on the search's word: never a board that lasts, and never dropped for a hold that dies sooner)

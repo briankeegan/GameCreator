@@ -455,7 +455,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   double searchShare = clockShareBegin(searchesEnd());
   static Found S;
   searchPrep(&R, &S);
-  extLogged = 0; extSkip = 0;   // (the extension's log is this decision's: cleared before any search begins, the ones beside this thread too)
+  extLogged = 0; extSkip = 0; extCutN = 0;   // (the extension's log is this decision's: cleared before any search begins, the ones beside this thread too)
   int beside = breakBegin(&R, &S, lineFrom, linePressed);
   if (!beside) searchUnsplit();
   searchBeside = beside;
@@ -809,6 +809,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s("/"); L_i(extLog.late); L_s("/"); L_i(extLog.floorLost); L_s("/"); L_i((int32_t)extLog.ms); L_s("/L"); L_i(extLog.longest.set ? extLog.longest.chain : 0); L_s(":"); L_i(extLog.longCut); }
   else if (extSkip) { L_s(" xs=-"); L_i(extSkip); }
   if (opKept) L_s(" opKept=1");
+  // (each extension the judge cut: swap k of s, why w (judge.c cutWhy), the frame f its last pressed swap's walk began, the search's chain x)
+  if (extCutN) { L_s(" extCut="); for (int i = 0; i < extCutN; i++) { if (i) L_s(","); L_s("k"); L_i(extCutLog[i][0]); L_s("s"); L_i(extCutLog[i][1]); L_s("w"); L_i(extCutLog[i][2]); L_s("f"); L_i(extCutLog[i][3]); L_s("x"); L_i(extCutLog[i][4]); } }
   if (opLandedRows[0]) { L_s(" landed="); L_s(opLandedRows); }
   // (each opener plan judged: pass p, swaps s, planned chain c, judged chain j, fires f frames on, verdict v (0 played, decide.c chainUp codes))
   if (opTryN) { L_s(" opTries="); for (int i = 0; i < opTryN; i++) { if (i) L_s(","); L_s("p"); L_i(opTryLog[i][0]); L_s("s"); L_i(opTryLog[i][1]); L_s("c"); L_i(opTryLog[i][2]);
