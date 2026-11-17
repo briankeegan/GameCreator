@@ -402,9 +402,9 @@ static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx &
 static int32_t wasteWhy;   // (the test that called the last line a wasted three: 1 its threes, 2 a combo outside, 3 a chain cut short, 4 a lone clear)
 static int wastesThree(const Judge *J) {
   if (J->hold) return 0;
-  // (a line that makes the board's falling chain longer than it makes alone -- the hold's judging, aloneChain, judged before this is
-  // asked -- is links, never a three wasted: lost or not, a line lost is ranked by its loss)
-  if (aloneChain >= 2 && J->o.j.whole.chain > aloneChain) return 0;
+  // (a line that makes a chain, longer than the board makes alone -- the hold's judging, aloneChain, judged before this is asked, 0
+  // where the chain falling makes no more links -- is links, never a three wasted: lost or not, a line lost is ranked by its loss)
+  if (J->o.j.whole.chain >= 2 && J->o.j.whole.chain > aloneChain) return 0;
   // (any clear of three that breaks nothing and begins no chain, whatever the line breaks after it -- the owner: never a three unless
   // it follows through; a line dropped before its later break leaves the three made for nothing. A line lost too)
   if (J->o.j.threes > 0) { wasteWhy = 1; return 1; }
