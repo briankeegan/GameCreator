@@ -7,7 +7,7 @@ static int32_t garbageSeen;   // (garbage has been on the board or on its way th
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OPENER_SUM 8
 #define OPENER_LEAST 3
-#define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
+#define OPENER_LOST AT_LEVEL(150)   // (frames to the board's loss inside which the opener gives way: two and a half seconds, the next mode's dig)
 #define OPENER_CHAINS 3
 static int32_t openerOver, openerChained, openerThrown, openerSum, openerPaused;   // (the opener played out; the longest link of the chain falling; the chains of OPENER_LEAST or more thrown, and their links added: the log's osum=)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
