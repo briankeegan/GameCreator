@@ -533,8 +533,11 @@ static int soon(void) {
 static int aheadOf(void) { return imax(F.ahead, soon()); }
 static uint32_t frand(void) { F.rnd = F.rnd * 1664525u + 1013904223u; return F.rnd >> 8; }
 // THE SLACK: after a swap whose decision found the hold lives and nothing urgent, the next swap waits the profile's gap and a jitter.
+// (never while a chain of ours falls: its links are pressed in the frames they were judged in -- a link pressed a gap late is no link, set 86
+// large_garbage 2, a swap judged for 353 pressed at 358 and a 5 come down a 3)
 static int calmGap(const Board *next) {
   if (F.gap < 0 || !F.haveSwapEnd || !F.havePace || !F.lastHold || F.lastUrgent) return -1;
+  if (next->chainCounter > 0 || cascadeLive(next)) return -1;
   int32_t stop = next->stopTime + next->preStopTime;
   if (F.toppedNow && !(stop > F.gap)) return -1;
   if (F.jitter) {
