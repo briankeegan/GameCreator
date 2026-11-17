@@ -705,9 +705,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // the judging finds after it, is no line that meets nothing -- the owner: the eight first, survival after)
     int keepsNeed = opNeed && o->o.j.chainAll >= opNeed && b->o.j.chainAll < opNeed;
     if (opNeed && o->o.j.chainAll >= opNeed) { if (keepsNeed) needKept++; else needLost = b->o.j.chainAll; }
-    // (and the opener in force: what it still asks is the rest of the eight, so a line that breaks nothing and makes no chain it needs
-    // meets nothing of its, whatever entry of the list it is)
-    if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o) || opNeed) && !keepsNeed) return (cmpKey = __LINE__, (b == x ? -1 : 1));
+    if ((lx || diesAt(b) >= diesAt(o)) && (decF.belowFloor || !goalLine(o)) && !keepsNeed) return (cmpKey = __LINE__, (b == x ? -1 : 1));
   }
   // 1'Lc. THE BREAK THAT CHAINS (the owner: break the garbage and the next chain is there): the opener in force under garbage, of two
   // that survive alike, neither making the chain the opener still needs, the one whose break is a link of a chain before one whose break
