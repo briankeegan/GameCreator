@@ -834,6 +834,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
 // attack's long builds -- and its swaps put in an order that sets nothing off, the trigger last: a plan, into *out, where its chain is
 // OP_TWO_FROM or more
 #define OP_CB_FEWEST 3
+#define OP_PROVE_MAX 4   // (the designs judged at most: the plans' falls extended need the countdown's time after them)
 static int32_t opDesignWhy, opDesignLinks;   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
 static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's designs judged, those that chain as judged, the longest: the log's opgrew /p)
 static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
@@ -1052,7 +1053,7 @@ static Played playOf(const Read *R, int n) {
     // the decision's)
     // (and a second design, in the swaps that can be pressed before the first garbage lands -- OPEN_FIRE_BY, OPEN_SWAP_FRAMES a swap: the
     // chain that fires in time, where the first design's fires past it)
-    { double l3 = C2.due ? C2.due - C2.margin - nowMs() : 0, dms = cdAsk ? l3 * 0.3 : l3 * 0.2; OpPath dp;
+    { double l3 = C2.due ? C2.due - C2.margin - nowMs() : 0, dms = cdAsk ? l3 * 0.15 : l3 * 0.2; OpPath dp;
       int quickSw = opBefore() ? (OPEN_FIRE_BY - decQ.b->clock) / OPEN_SWAP_FRAMES - 1 : 0;
       if (quickSw >= 2 && quickSw < OP_CB_MAXSW) opDesignedQuick = -quickSw;   // (tried in quickSw swaps, none found: the log's /q-N)
       for (int pass = 0; pass < (quickSw >= 2 && quickSw < OP_CB_MAXSW ? 2 : 1); pass++)
@@ -1065,7 +1066,7 @@ static Played playOf(const Read *R, int n) {
     // whose chain as judged is OP_FAST_CH or more is kept at that chain, any other let go -- the plans tried are then plans that chain)
     if (cdAsk) {
       int32_t lastLen = -1;
-      for (int sw = OP_CB_FEWEST; sw <= OP_CB_MAXSW && !clockOut(); sw++) {
+      for (int sw = OP_CB_FEWEST; sw <= OP_CB_MAXSW && opProveTried < OP_PROVE_MAX && !clockOut(); sw++) {
         double l4 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l4 < 40) break;
         OpPath dp; if (!opDesign(decQ.b, l4 * 0.04, &dp, sw) || dp.ch < OP_FAST_CH || dp.len == lastLen) continue;
         lastLen = dp.len; opProveTried++;
