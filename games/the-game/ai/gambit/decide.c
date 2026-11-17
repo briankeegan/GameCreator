@@ -387,6 +387,9 @@ static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWa
 static int32_t opFallLine[8][5], opFallLineN;   // (each extension under the fall: its swaps, those the judge pressed, its chain as judged, lost, its chain as its search said: the log's fallLines=)   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
+// (an extension of the falling chain: a line played as one -- PLAY_EXTEND, or PLAY_LINEUP, the same search's lines while a garbage slab
+// pops beside the chain -- or the line in progress begun as one)
+static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || (J->carried && (b == PLAY_EXTEND || b == PLAY_LINEUP)); }
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
@@ -1021,14 +1024,14 @@ static Played playOf(const Read *R, int n) {
     for (int i = 0; i < n; i++) if (order[i]->hold) bar = order[i]->apChainAll;
     for (int i = 0; i < n && bar < need; i++) {
       const Judge *J = order[i];
-      if (J->hold || J->o.dead || !(J->k.play == PLAY_EXTEND || (J->carried && carryBeganPlay == PLAY_EXTEND))) continue;
+      if (J->hold || J->o.dead || !opExtLine(J)) continue;
       if (J->apChainAll <= bar) continue;
       int32_t c = J->apChainAll, e = ext ? ext->apChainAll : 0;
       if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
     }
     opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
     opFallSeen = 0; opFallTop = -1; opFallDead = 0; opFallLineN = 0;
-    for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->hold || !(J->k.play == PLAY_EXTEND || (J->carried && carryBeganPlay == PLAY_EXTEND))) continue;
+    for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->hold || !opExtLine(J)) continue;
       opFallSeen++; if (J->o.dead) opFallDead++; else if (J->apChainAll > opFallTop) opFallTop = J->apChainAll;
       if (opFallLineN < 8) { int32_t *t = opFallLine[opFallLineN++]; t[0] = J->k.nseq; t[1] = J->apNats; t[2] = J->apChainAll; t[3] = J->o.dead; t[4] = J->k.x.chain; } }
     P.wait = 0; P.deferred = 0; opFallHeld++;
