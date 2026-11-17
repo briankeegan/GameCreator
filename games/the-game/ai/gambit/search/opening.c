@@ -9,7 +9,7 @@
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_KIDS_CD 64    // in the countdown, every set-up: the board is still and the time is the countdown's
 #define OP_DEPTH 20      // the set-ups a plan may hold
-typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot, blind, ch2, chx, rooted; } OpPath;   // rooted: its rows named on the board it was made on, the stack held still (the designer's) -- the beam's are named where they are pressed, the rise played   // chx: the chain its fall reaches extended (decide.c opExtendAll)   // blind: the rows dealt, unseen, by its trigger (OP_BLIND)
+typedef struct { int len; int32_t path[OP_DEPTH]; int32_t sent, cleared, trig, ch, pot, blind, ch2, chx; } OpPath;   // chx: the chain its fall reaches extended (decide.c opExtendAll)   // blind: the rows dealt, unseen, by its trigger (OP_BLIND)
 static OpPath opBeam[OP_BEAM], opNext[OP_BEAM], opBest;
 static int opN, opHave;            // the beam's paths, and whether a plan is held
 static int32_t opLevels, opGrowMs, opOnPool;   // (the levels the last decision grew, the ms it had, the levels scored on the workers: the log's)
