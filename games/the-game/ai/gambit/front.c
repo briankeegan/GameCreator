@@ -741,7 +741,10 @@ static int follow(void) {
   F.st.heldWalks += k.held;
   // (EVERY SWAP KEYED, ONE LINE (GAMBITK): the frame its keys begin, the frame the judge pressed it from (0 none), the cursor then, the
   // swap, its keys -- its press the last of them -- and the decision whose line it is: a press later than the judge's is read off here)
-  if (F.loggedKeys < LOGGED_KEYS) { char l[160]; snprintf(l, sizeof l, "GAMBITK %d judged=%d cur=%d,%d sw=%d,%d keys=%d press=%d q=%d", due, F.lineAt[0], F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), k.n, due + k.n - 1, F.lineAsked); flog(l); F.loggedKeys++; }
+  if (F.loggedKeys < LOGGED_KEYS) {
+    // (and the keys already planned from now to its first, as bits a frame, and the cursor now: what moves the cursor before it)
+    char ks[64]; int kn = 0; for (int32_t t = F.now; t < due && kn < 60; t++) { Planned *p = planOf(t); kn += snprintf(ks + kn, sizeof ks - kn, "%x", p ? p->bits & 0xf : 0); } ks[kn] = 0;
+    char l[240]; snprintf(l, sizeof l, "GAMBITK %d judged=%d cur=%d,%d sw=%d,%d keys=%d press=%d q=%d now=%d curNow=%d,%d before=%s", due, F.lineAt[0], F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), k.n, due + k.n - 1, F.lineAsked, F.now, F.truth ? F.truth->curRow : -1, F.truth ? F.truth->curCol : -1, ks); flog(l); F.loggedKeys++; }
   for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay, F.lineOfId + 1, F.lineOfPressed + 1 });
   F.nextAt = due + k.n;
   F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1;
