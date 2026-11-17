@@ -10,7 +10,7 @@
 #define STAGING (45 + 45 + 1)   // a sender stages garbage this long, then it lands LAND frames later
 #define LAND 60
 #define PLANN 4096         // frames of plan kept, by clock
-#define FALL_LEAD 40       // frames ahead a decision is asked while a chain of ours falls
+#define FALL_LEAD 70       // frames ahead a decision is asked while a chain of ours falls
 #define ASK_IDLE 30        // frames with no keys planned past which the next question is asked anyway
 #define MAXKEYS 2048
 #define MAXARRIVALS 1024
