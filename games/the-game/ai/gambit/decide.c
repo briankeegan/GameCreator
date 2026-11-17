@@ -1411,7 +1411,11 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   if (carrySkip) { carryClr = carrySkip; return; }
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
-  if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carrySkip = 5; carryClr = 5; return; }
+  // (the anchor is a panel of the board as it is now that no swap of the line moves: each swap named in this board's rows, the rows risen
+  // by its press taken off)
+  int32_t root[MAXLINE], nroot = imin(k->k.nseq, MAXLINE);
+  for (int i = 0; i < nroot; i++) root[i] = (CR(k->k.seq[i]) - k->o.j.risen[i]) * 8 + CC(k->k.seq[i]);
+  if (!anchorOf(row1, root, nroot)) { carrySkip = 5; carryClr = 5; return; }
   // (each swap kept in the rows of the board it was begun on: a swap the judge pressed after the stack rose is named in the rows of the
   // board it is pressed on, so the rows risen by then are taken off, and only the rows risen since the line began beyond those are put
   // back when it is carried on -- a rise foreseen is never counted twice)
