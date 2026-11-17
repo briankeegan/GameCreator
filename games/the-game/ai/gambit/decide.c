@@ -1270,7 +1270,7 @@ static Played playOf(const Read *R, int n) {
 // during it (rank.c judgeCand): the rest of such a line is read on it too, carriedCand)
 enum { WHY_NONE, WHY_CHAIN, WHY_COMBO, WHY_BREAK, WHY_TWIN, WHY_FLAT, WHY_ZIP, WHY_DROP, WHY_LIVE, WHY_READY };   // (WHY_NONE: no reason -- a bug)
 typedef struct { int32_t kind, a, b; } Why;
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], risen[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; Why why; } Carry;   // (rule: the mode it was begun in; why: the reason it was begun, the log's aim=)
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], risen[MAXLINE], at[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; Why why; } Carry;   // (rule: the mode it was begun in; why: the reason it was begun, the log's aim=)
 static Carry theCarry;
 static int carryHeld(void) { return theCarry.set; }
 static int carryOpener(void) { return theCarry.set && theCarry.rule >= 0 && theCarry.rule < theTables.n && theTables.r[theCarry.rule].table == 2; }
@@ -1335,7 +1335,9 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   // board it is pressed on, so the rows risen by then are taken off, and only the rows risen since the line began beyond those are put
   // back when it is carried on -- a rise foreseen is never counted twice)
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
-  for (int i = first; i < k->k.nseq; i++) { int32_t up = i < MAXLINE ? k->o.j.risen[i] : 0; theCarry.rest[i - first] = (CR(k->k.seq[i]) - up) * 8 + CC(k->k.seq[i]); theCarry.risen[i - first] = up; }
+  for (int i = first; i < k->k.nseq; i++) { int32_t up = i < MAXLINE ? k->o.j.risen[i] : 0; theCarry.rest[i - first] = (CR(k->k.seq[i]) - up) * 8 + CC(k->k.seq[i]); theCarry.risen[i - first] = up;
+    // (and the clock each swap's walk was judged to begin on: the carried line is judged pressing it no sooner)
+    theCarry.at[i - first] = i < k->o.j.nats && i < MAXLINE ? decQ.b->clock + k->o.j.ats[i] : 0; }
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
   theCarry.made = (Made){ k->apCombo, k->apChain, k->apBroke, k->k.x.cells };
   carriedSunk = lineWalk(k);
@@ -1353,7 +1355,7 @@ static void carryNextOf(const Judge *L) {
   if (!j || L->hold || L->o.ready != 1 || j->readyN < 1 || !theCarry.set) return;
   if (!anchorInto(&theCarryNext, j->readyRow1, j->readyLine, j->readyN)) return;
   theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.nrest = j->readyN;
-  for (int i = 0; i < j->readyN; i++) theCarryNext.rest[i] = j->readyLine[i];
+  for (int i = 0; i < j->readyN; i++) { theCarryNext.rest[i] = j->readyLine[i]; theCarryNext.at[i] = 0; }   // (found on the board once it lands: no frame judged)
   theCarryNext.settled = 0; theCarryNext.broke = 1; theCarryNext.ready = 1; theCarryNext.made = (Made){ 0, 0, 1, 0 };
 }
 static void carryReady(const Judge *H, int32_t qid) {
@@ -1579,6 +1581,9 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // found, on the board once everything lands, is pressed on that board: on one still moving it waits as a settled line does)
   int moving = (C->settled || C->ready) && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
   JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0, 1 };
+  // (each swap's walk begun no sooner than it was judged to begin: the line in progress played in the frames it was judged in)
+  int32_t notBefore[MAXLINE]; for (int i = 0; i < nrest; i++) notBefore[i] = C->at[skip + i];
+  jo.notBefore = notBefore; jo.nNotBefore = nrest;
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
   for (int i = 0; i < j.nats && i < nrest; i++) rest[i] = (CR(rest[i]) + j.risen[i]) * 8 + CC(rest[i]);

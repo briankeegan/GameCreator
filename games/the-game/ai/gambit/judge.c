@@ -24,6 +24,8 @@ typedef struct {
   int32_t lifeStop;                  // lostAt asked past the stop and shake the line ends on too (dropAt + lifeRest): a board held up by a
                                      // stop stands only if it outlives it
   int32_t rooted;                    // each swap's row named on the root's board: pressed in the row its panels have risen to by then
+  const int32_t *notBefore;          // (nNotBefore swaps) the clock each swap's walk was judged to begin on, 0 none: it begins no sooner --
+  int32_t nNotBefore;                // the line in progress pressed in the frames it was judged in (decide.c carriedCand)
 } JudgeOpts;
 typedef struct {
   Made made;                    // beyond the board left alone: { combo, chain, broke }
@@ -394,6 +396,25 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
         for (int i = 0; i < sc.n; i++) if (sc.size[i] > combo) combo = sc.size[i];
         if (chainOfStats(&sc) > chain) chain = chainOfStats(&sc);
         broke += sc.broke; clearedAll += sc.cleared;
+      }
+    }
+    // (A LINE IN PROGRESS PRESSED WHEN IT WAS JUDGED: its swap's walk begun no sooner than the clock it was judged to begin on -- a link of
+    // a falling chain pressed frames early is no link; set 86 combo_storm 8, a 5 judged at 284 judged afresh at 306, its swap pressed as
+    // soon as it could be, and a 4)
+    if (!last && o->notBefore && k < o->nNotBefore && o->notBefore[k] > 0) {
+      int32_t want = o->notBefore[k] - q->b->clock;
+      if (want > NODE(x, n)->t) {
+        int w = step(x, n, MK_LONG, 0, 0, want - NODE(x, n)->t);
+        if (w == STEP_NULL && clockOut()) { j->late = 1; break; }
+        if (!liveNode(x, w)) { j->dead = 1; j->deadAt = w == STEP_DEAD ? deadAt : NODE(x, n)->t; break; }
+        // (what the board makes while the line waits is counted as the line's steps are)
+        Stats sw;
+        if (statsOf(x, w, &sw)) {
+          for (int i = 0; i < sw.n; i++) if (sw.size[i] > combo) combo = sw.size[i];
+          if (chainOfStats(&sw) > chain) chain = chainOfStats(&sw);
+          broke += sw.broke; clearedAll += sw.cleared;
+        }
+        n = w; KB(n);
       }
     }
     // (a rooted line's swap pressed where its panels are now: its row on the root's board, and the rows risen since)
