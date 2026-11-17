@@ -127,12 +127,20 @@ static void searchUnsplit(void) { planSplit = 0; extBeside = 0; }
 // this one keeping back a fifth for the level and the readiness lines after it, rather than half of what is left)
 static int32_t searchBeside;
 // (the chain extended or begun, wherever it runs: S->ex or S->start)
+#define OP_FIRE_HOLD 120   // (the frames after the opener's trigger is handed on that its first clear and fall are its chain's, a link or not)
+static int32_t opFiredAt;   // (the clock the opener's trigger was handed on, -1 none: decide.c, with the opener's falling rule)
+// (THE OPENER'S CHAIN FALLING, as the falling rule reads it (decide.c playOf): the opener in force, and its chain counting, or within
+// OP_FIRE_HOLD of its trigger with the board moving -- its first clear pops before the counter counts)
+static int opChainFalling(const Read *R, const Board *b) {
+  if (!(R->rule >= 0 && theTables.r[R->rule].table == 2)) return 0;
+  return b->chainCounter > 0 || (opFiredAt >= 0 && b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(b) || popLeft(b) > 0));
+}
 static Ext extLog; static int32_t extLogged, extSkip;   // extSkip: why it was not searched -- 1 off, 2 nothing falling or popping, 3 short of time   // (the last extension searched this decision: the log's xs=)
 static void searchExt(const Read *R, Found *S, double ms) {
   Profile *GP = &C2.GP;
   Board *board = decQ.b;
   // (the opener's chain falling: its extension is the move, searched in whatever the decision has)
-  int opFall = R->rule >= 0 && theTables.r[R->rule].table == 2 && board->chainCounter > 0;
+  int opFall = opChainFalling(R, board);
   if ((cascadeLive(board) || R->pop) && !GP->extendOff && (ms >= 20 || (opFall && ms >= 2))) {
     // (the opener's chain falling: the floor is not kept -- the panels are the chain's -- and its longest extension is offered)
     ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn && !opFall ? &R->keep : 0, ms, opFall };
@@ -181,7 +189,7 @@ static void searchAll(const Read *R, Found *S) {
   // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
   // (the opener's chain falling: the extension takes the decision's time, OP_FALL_EXT of it -- nothing else pressed then matters)
-  int opFall = R->rule >= 0 && theTables.r[R->rule].table == 2 && decQ.b->chainCounter > 0;
+  int opFall = opChainFalling(R, decQ.b);
   if (!extBeside || opFall) { double xMs = leftMs() * (opFall ? OP_FALL_EXT : 0.5); if (cdAsk && xMs > CD_PLAN_MS / 4) xMs = CD_PLAN_MS / 4; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
   // (garbage on the board, or the board lost soon: the lines found must be judged to be played -- the planner takes half, never the most)

@@ -105,8 +105,6 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
   }
   return ok;
 }
-#define OP_FIRE_HOLD 120   // (the frames after the opener's trigger is handed on that its first clear and fall are its chain's, a link or not)
-static int32_t opFiredAt;   // (the clock the opener's trigger was handed on, -1 none: defined with the opener's falling rule)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
