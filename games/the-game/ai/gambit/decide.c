@@ -1058,6 +1058,9 @@ static Played playOf(const Read *R, int n) {
         if (la != lb) { if (la) ext = J; continue; }
         if (!la && J->o.lostAt != NOT_ASKED && ext->o.lostAt != NOT_ASKED && iabs(J->o.lostAt - ext->o.lostAt) >= rankSave) { if (J->o.lostAt > ext->o.lostAt) ext = J; continue; }
       }
+      // (of two short of it making the same chain, the one breaking more garbage: the panels the garbage turns into are the next chain's,
+      // and they come down a pop later)
+      if (ext && c < need && e < need && c == e && J->apBroke > ext->apBroke) { ext = J; continue; }
       if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
     }
     opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
