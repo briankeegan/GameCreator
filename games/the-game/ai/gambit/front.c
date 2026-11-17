@@ -10,6 +10,7 @@
 #define STAGING (45 + 45 + 1)   // a sender stages garbage this long, then it lands LAND frames later
 #define LAND 60
 #define PLANN 4096         // frames of plan kept, by clock
+#define ASK_IDLE 30        // frames with no keys planned past which the next question is asked anyway
 #define MAXKEYS 2048
 #define MAXARRIVALS 1024
 #define FTHINK 8           // the answers' times kept, for how soon the next comes
@@ -1189,6 +1190,14 @@ static void afterFrame(int32_t bits) {
   // alive, below)
   if (F.havePace && !F.lastHold && !F.lastBrk && F.nextAt <= now) lead = imax(lead, imin(aheadOf(), F.reaction + 1));
   int32_t at = imax(F.nextAt > now ? F.nextAt : 0, now + lead);
+  // (A LONG WAIT IS ASKED ABOUT: keys planned no sooner than ASK_IDLE frames off -- a line in hand waiting for its chain, its walk
+  // planned on the frame it was judged to begin -- leave the frames before them idle, and they are asked about as any are: the answer
+  // carries the line on, its swaps pressed the frames they were judged pressed from (decide.c carriedCand), or takes its place)
+  if (at - now > ASK_IDLE) {
+    int32_t first = 0;
+    for (int32_t t = now + 1; t <= now + ASK_IDLE && !first; t++) { Planned *p = planOf(t); if (p && p->bits) first = t; }
+    if (!first) at = now + lead;
+  }
   int paced = 0;
   if (gap >= 0 && F.lastSwapEnd + gap > at) { at = F.lastSwapEnd + gap; paced = 1; }
   // (A LINE IN HAND: asked no later than the frame its next swap is due -- a board predicted past it is one without the swap, and the
