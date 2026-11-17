@@ -131,14 +131,14 @@ static int32_t aloneBuildable(void) {
 static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
-// (THE THREES A BOARD HAS THE PANELS FOR: each colour's panels a three at a time, the row rising under it with them; a panel whose
-// colour is not shown yet -- a row not dealt, garbage turned to panels before its pop -- is any colour, three of them a three)
+// (THE THREES A BOARD HAS THE PANELS FOR: each colour's panels a three at a time, the row rising under it with them; garbage turned
+// to panels before its pop, its colour not shown yet, is any colour, three of them a three; a row not dealt yet is not counted)
 static int32_t groupsOn(const Board *b) {
   int32_t n[16] = { 0 }, any = 0;
   for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
     const int32_t *f = b->p[r][c].f;
     if (f[ISGARBAGE] || f[ID] <= 0 || f[COLOR] <= 0) continue;
-    if (f[COLOR] >= 30) any++; else if (f[COLOR] < 8) n[f[COLOR]]++;
+    if (f[COLOR] >= 130) any++; else if (f[COLOR] < 8) n[f[COLOR]]++;
   }
   int32_t g = any / 3; for (int k = 1; k < 8; k++) g += n[k] / 3;
   return g;
