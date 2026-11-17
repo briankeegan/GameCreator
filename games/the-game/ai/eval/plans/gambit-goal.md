@@ -47,6 +47,12 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 
 ## The list -- each finished before the next
 
+**THE OPENER'S 99 COME FIRST (the owner).** Every one of the 99 opener games (`gambit-24.yml`, set 86, `profile`
+gambit-opener.json) reaches chains of three or more adding up to eight -- an 8, 5+3, 3+5 or 4+4; a 2x counts nothing -- before any
+other work: deaths, survival and the list below wait until it holds. One board at a time: a failing board is fixed until it passes
+twice running, then the next; all 99 are run once every board passes, and any board that fails there is the next one fixed.
+factory-4 at 7 stands (the owner).
+
 1. **Level 11.** Training, `lua/check.lua`, the fight and the live run all play `LevelPresets.getModern(11)`; every place that
    assumes level 10 (its health, its frame constants, the docs) reads the level it is handed.
 2. **Never spoil the board's own chain.** A line is judged on what the board ends up making, the cascade already under way included:
