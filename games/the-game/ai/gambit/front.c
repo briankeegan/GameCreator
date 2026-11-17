@@ -10,6 +10,7 @@
 #define STAGING (45 + 45 + 1)   // a sender stages garbage this long, then it lands LAND frames later
 #define LAND 60
 #define PLANN 4096         // frames of plan kept, by clock
+#define FALL_LEAD 40       // frames ahead a decision is asked while a chain of ours falls
 #define ASK_IDLE 30        // frames with no keys planned past which the next question is asked anyway
 #define MAXKEYS 2048
 #define MAXARRIVALS 1024
@@ -1189,6 +1190,9 @@ static void afterFrame(int32_t bits) {
   // of 5 breaks missed were not found again in the live search's own 3 to 27 ms); a board lost before then is asked for its last frame
   // alive, below)
   if (F.havePace && !F.lastHold && !F.lastBrk && F.nextAt <= now) lead = imax(lead, imin(aheadOf(), F.reaction + 1));
+  // (A CHAIN OF OURS FALLING IS ASKED FURTHER AHEAD: nothing comes down on it the telegraph has not told, and its extension is a search
+  // of swaps a link at a time -- FALL_LEAD frames ahead, its search has that time; the swaps sooner are the line in hand's)
+  if (next->chainCounter > 0) lead = imax(lead, imin(aheadOf(), FALL_LEAD));
   int32_t at = imax(F.nextAt > now ? F.nextAt : 0, now + lead);
   // (A LONG WAIT IS ASKED ABOUT: keys planned no sooner than ASK_IDLE frames off -- a line in hand waiting for its chain, its walk
   // planned on the frame it was judged to begin -- leave the frames before them idle, and they are asked about as any are: the answer
