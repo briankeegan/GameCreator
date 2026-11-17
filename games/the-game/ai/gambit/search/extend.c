@@ -36,9 +36,11 @@ static void madeAlong(Ctx *x, int from, int to, PItem *k) {
   for (int i = from; i >= 0 && i != to; i = NODE(x, i)->prev) { Stats s; if (statsOf(x, i, &s)) madeAdd(k, &s); }
 }
 // node n's cascade once it settles, with what the line's steps to n made (k)
-static Sent sendsOf(Ctx *x, int n, const Keep *keep, const PItem *k) {
+static Sent sendsOfOut(Ctx *x, int n, int out, const Keep *keep, const PItem *k);
+static Sent sendsOf(Ctx *x, int n, const Keep *keep, const PItem *k) { return sendsOfOut(x, n, settleOf(x, n), keep, k); }
+// (the same, the settle already made: out, node n's settle as step() makes it -- taken from a batch)
+static Sent sendsOfOut(Ctx *x, int n, int out, const Keep *keep, const PItem *k) {
   Sent g; memset(&g, 0, sizeof g);
-  int out = settleOf(x, n);
   // (a board lost before its cascade settles: what the cascade made up to the frame before -- the links that come before the loss are
   // the chain's, as the judge counts them (judge.c), and a chain going on through garbage popping is one the board can be lost under)
   if (out == STEP_DEAD && deadAt - 1 > NODE(x, n)->t) out = step(x, n, MK_SETTLE, 0, 0, deadAt - 1 - NODE(x, n)->t);
@@ -125,9 +127,17 @@ static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
       }
     }
     int nk = 0;
+    // (THE SETTLES ON EVERY THREAD: each child's cascade played to rest as one batch (core/nodes.h stepBatch), taken in order -- the
+    // same children and the same clock as one at a time, the settles made side by side)
+    static LOCAL int32_t bpar[PLAN_POOL], bmv[PLAN_POOL], bout[PLAN_POOL], bdead[PLAN_POOL];
+    for (int i = 0; i < nn; i++) { bpar[i] = next[i].n; bmv[i] = 0; }
+    stepBatch(x, bpar, bmv, MK_SETTLE, nn);
+    for (int i = 0; i < nn; i++) { bout[i] = stepTake(x, i, bpar[i], MK_SETTLE, 0); bdead[i] = bout[i] == STEP_DEAD ? deadAt : 0; }
+    batchDone();
     for (int i = 0; i < nn; i++) {
       PItem *k = &next[i];
-      Sent g = clockOut() ? (Sent){ 0 } : sendsOf(x, k->n, o->keep, k);
+      if (bout[i] == STEP_DEAD) deadAt = bdead[i];
+      Sent g = sendsOfOut(x, k->n, bout[i], o->keep, k);
       if (!g.ok) continue;
       // (the garbage it breaks beyond the board left alone -- as the judge counts it: a slab popping breaks what it breaks whatever the
       // line does, and a line-up that only watches it is no break)
