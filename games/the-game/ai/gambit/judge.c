@@ -66,6 +66,7 @@ typedef struct {
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
   int32_t clearedPanels;        // the panels the line clears beyond those the board left alone clears
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
+  int32_t cutAt;                // the row and column the cut swap was to be pressed at (row * 8 + column), 0 none
   int32_t even;                 // the board it ends on: its tallest column less its lowest, in rows (evenOf; -1 not known)
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
@@ -445,7 +446,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
       int from;
       out = pressWalk(x, n, kind, mr, mc, stepTapped, &from);
       if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
-      if (out == STEP_NULL) { j->cut = k; j->cutWhy = 2; break; }
+      if (out == STEP_NULL) { j->cut = k; j->cutWhy = 2; j->cutAt = mr * 8 + mc; break; }
       if (from < 0) { j->dead = 1; j->deadAt = deadAt; break; }
       // (a line's first swap whose walk cannot begin within a reaction is one the frame loop does not press -- front.c keysOf refuses it:
       // not there; a later one is pressed from the frame its walk begins (ats), handed on with that frame, its keys made on the board
@@ -466,7 +467,7 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
     }
     // (a step the clock stopped is no answer: the judging is late, the line not lost)
     if (out == STEP_NULL && clockOut()) { j->late = 1; break; }
-    if (!last && out == STEP_NULL) { j->cut = k; j->cutWhy = 2; break; }
+    if (!last && out == STEP_NULL) { j->cut = k; j->cutWhy = 2; j->cutAt = mr * 8 + mc; break; }
     if (!liveNode(x, out)) {
       j->dead = 1; j->deadAt = out == STEP_DEAD ? deadAt : NODE(x, n)->t;
       // (a step the board is lost in -- a swap's settle or the last: what it made up to the frame before. The board's own chain is made

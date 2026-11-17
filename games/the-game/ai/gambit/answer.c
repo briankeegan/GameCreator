@@ -631,7 +631,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" under="); L_i(R.under); L_s(" mat="); L_d(R.F.v[FACT_US_MATERIAL]); L_s(" pan="); L_i(panelsOn(decQ.b)); L_s(" chain="); L_i(A->chain); L_s(" combo="); L_i(A->combo); L_s(" broke="); L_i(A->broke); L_s(" clr="); L_i(A->cleared);
   // (the chain the board makes left alone, and the one it makes with the line played: own=4/2 is a chain cut short -- a line the judge
   // could not play out, or the hold, shows the board's own)
-  if (lastCutRows[0] && opTryN) { L_s(" opCut="); L_i(lastCutClock); L_s(":"); L_s(lastCutRows); lastCutRows[0] = 0; }
+  if (lastCutRows[0] && opTryN) { L_s(" opCut="); L_i(lastCutClock); L_s(":"); L_i(lastCutCell / 8); L_s(","); L_i(lastCutCell % 8); L_s(":"); L_i(lastCutStates); L_s(":"); L_s(lastCutRows); lastCutRows[0] = 0; }
   if (opLinkCands) { L_s(" linkCands="); L_i(opLinkCands); L_s("/"); L_i(opLinkBest); }
   if (opNeed) { L_s(" need="); L_i(opNeed); L_s("/"); L_i(needKept); L_s("/"); L_i(needLost); }
   if (aloneChain > 1 && P.line) { L_s(" own="); L_i(aloneChain); L_s("/"); L_i(A->whole >= 0 ? A->whole : aloneChain);
