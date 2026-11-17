@@ -143,7 +143,9 @@ static int readBoard_(Read *R) {
   // the opener's to carry on from, the garbage broken and the next chain built from it; set 86 combo_storm 7, the opener carried on to
   // the last frame and the board lost at 697)
   int ownFalling = decQ.b->chainCounter > 0 || (opFiredAt >= 0 && decQ.b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0));
-  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling;
+  // (nor while its plan is still pressed: a plan the board is lost under before it fires is put down for survival, and the opener ends
+  // at the decision after; set 86 combo_storm 7, the opener ended at 297 with its 3's trigger a swap away)
+  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn;
   if (((theOpp.has && theOpp.out) || thrown || aboutLost) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
