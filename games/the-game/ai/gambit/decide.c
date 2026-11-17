@@ -1068,7 +1068,7 @@ static Played playOf(const Read *R, int n) {
     // extending comes first, any extension -- nor a second chain that adds to the eight, the line that breaks the most garbage beyond the hold, the chain as long as the
     // hold's -- the panels the garbage turns into are the next chain's)
     const Judge *brk = 0;
-    if (!(ext && ext->apChainAll >= need) && !twoReaches && (R->under || decQ.narr > 0)) {
+    if (bar < need && !(ext && ext->apChainAll >= need) && !twoReaches && (R->under || decQ.narr > 0)) {
       int32_t holdBroke = 0; for (int i = 0; i < n; i++) if (order[i]->hold) holdBroke = imax(0, order[i]->apBroke);
       for (int i = 0; i < n; i++) {
         const Judge *J = order[i];
@@ -1079,9 +1079,10 @@ static Played playOf(const Read *R, int n) {
     // (THE CHAIN CARRIED INTO THE GARBAGE -- the owner: break the garbage and the next chain is there: garbage a link breaks is converted
     // chaining (pa.c convertGarbagePanels) and the chain lives while it pops, its panels the next links as they come down. With no
     // extension reaching what is still needed nor a second chain adding to it, the line whose link breaks the most garbage, its chain as
-    // long as the extension short of it, is played over that extension and over a break after the chain has ended)
+    // long as the extension short of it, is played over that extension and over a break after the chain has ended -- never where the
+    // chain left alone already reaches it)
     const Judge *lnk = 0;
-    if (!(ext && ext->apChainAll >= need) && !twoReaches)
+    if (bar < need && !(ext && ext->apChainAll >= need) && !twoReaches)
       for (int i = 0; i < n; i++) {
         const Judge *J = order[i];
         if (J->hold || J->o.dead || J->o.j.brokeLink <= 0 || J->apChainAll < bar || (ext && J->apChainAll < ext->apChainAll)) continue;
