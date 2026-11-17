@@ -1008,8 +1008,7 @@ static Played playOf(const Read *R, int n) {
       if (J->hold || J->o.dead || !(J->k.play == PLAY_EXTEND || (J->carried && carryBeganPlay == PLAY_EXTEND))) continue;
       if (J->apChainAll <= bar) continue;
       int32_t c = J->apChainAll, e = ext ? ext->apChainAll : 0;
-      // (a tie goes to the one breaking more garbage: the panels it turns out are the next links')
-      if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e)) || (c == e && J->apBroke > ext->apBroke)) ext = J;
+      if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
     }
     opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
     opFallSeen = 0; opFallTop = -1; opFallDead = 0; opFallLineN = 0;
