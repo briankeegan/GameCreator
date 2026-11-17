@@ -106,6 +106,7 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
   }
   return ok;
 }
+static int carryOpener(void);   // (the line in progress was begun under the opener: below, with the carry)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -145,7 +146,9 @@ static int readBoard_(Read *R) {
   int ownFalling = decQ.b->chainCounter > 0 || (opFiredAt >= 0 && decQ.b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0));
   // (nor while its plan is still pressed: a plan the board is lost under before it fires is put down for survival, and the opener ends
   // at the decision after; set 86 combo_storm 7, the opener ended at 297 with its 3's trigger a swap away)
-  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn;
+  // (nor while a line it began is still pressed -- a break of the garbage: set 86 large_garbage 2, the opener ended at 499 with its break a
+  // swap from done, and at 513 the board stood 409 frames)
+  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener();
   if (((theOpp.has && theOpp.out) || thrown || aboutLost) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
@@ -1270,6 +1273,7 @@ typedef struct { int32_t kind, a, b; } Why;
 typedef struct { int32_t set, id, nrest, rest[MAXLINE], risen[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; Why why; } Carry;   // (rule: the mode it was begun in; why: the reason it was begun, the log's aim=)
 static Carry theCarry;
 static int carryHeld(void) { return theCarry.set; }
+static int carryOpener(void) { return theCarry.set && theCarry.rule >= 0 && theCarry.rule < theTables.n && theTables.r[theCarry.rule].table == 2; }
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
 static Carry theCarryNext;
