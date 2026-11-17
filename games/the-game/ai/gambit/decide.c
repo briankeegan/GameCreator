@@ -1060,6 +1060,21 @@ static Played playOf(const Read *R, int n) {
       }
       if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
     }
+    // (NO LINK PAST WHAT A SECOND CHAIN LEAVES TO DO -- the owner: a 5 and a 3: short of what is still needed, the next chain must be a
+    // chain of OPENER_LEAST or more however long this one runs, so links past need - OPENER_LEAST that do not reach need add nothing to
+    // the eight and spend the panels the next chain is made of: the chain as it falls is kept there, and below it the extension that
+    // reaches there in the fewest links)
+    if (ext && ext->apChainAll < need) {
+      int32_t enough = need - OPENER_LEAST;
+      if (bar >= enough) ext = 0;
+      else if (ext->apChainAll > enough) {
+        const Judge *fit = 0;
+        for (int i = 0; i < n; i++) { const Judge *J = order[i];
+          if (J->hold || J->o.dead || !opExtLine(J) || J->apChainAll <= bar || J->apChainAll < enough || J->apChainAll >= need) continue;
+          if (!fit || J->apChainAll < fit->apChainAll || (J->apChainAll == fit->apChainAll && J->o.lives && !fit->o.lives)) fit = J; }
+        if (fit) ext = fit;
+      }
+    }
     opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
     opFallSeen = 0; opFallTop = -1; opFallDead = 0; opFallLineN = 0;
     for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->hold || !opExtLine(J)) continue;
