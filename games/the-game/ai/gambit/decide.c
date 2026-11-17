@@ -379,7 +379,7 @@ static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand thi
 #define OP_TRY_LOG 8
 static int32_t opTryLog[OP_TRY_LOG][7], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
-static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead;
+static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay;   // (opFallWay: 1 the extension to the eight, 2 a second chain that adds to it, 3 an extension short of it, 4 a set-up short of it)
 static int32_t opFallLine[8][5], opFallLineN;   // (each extension under the fall: its swaps, those the judge pressed, its chain as judged, lost, its chain as its search said: the log's fallLines=)   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
@@ -959,7 +959,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opFallWay = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
                 !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
@@ -1025,8 +1025,14 @@ static Played playOf(const Read *R, int n) {
       opFallSeen++; if (J->o.dead) opFallDead++; else if (J->apChainAll > opFallTop) opFallTop = J->apChainAll;
       if (opFallLineN < 8) { int32_t *t = opFallLine[opFallLineN++]; t[0] = J->k.nseq; t[1] = J->apNats; t[2] = J->apChainAll; t[3] = J->o.dead; t[4] = J->k.x.chain; } }
     P.wait = 0; P.deferred = 0; opFallHeld++;
-    const Judge *two = ext ? 0 : opSecondSwap(R, n);
-    if (ext) P.line = P.top = ext;
+    // (THE WAY TO THE EIGHT -- the owner: two 4s, a 5 and a 3, or an 8: an extension that reaches what is still needed is played; else a
+    // second chain set up where its chain and the falling one's add up to it -- the panels an extension short of it would spend are the
+    // second chain's; else the extension, else the second chain's set-up)
+    const Judge *two = 0;
+    if (!(ext && ext->apChainAll >= need)) two = opSecondSwap(R, n);
+    int twoReaches = two && opSecondCh >= OPENER_LEAST && bar + opSecondCh >= need;
+    opFallWay = ext && ext->apChainAll >= need ? 1 : twoReaches ? 2 : ext ? 3 : two ? 4 : 0;
+    if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
     else if (two) P.line = P.top = two;
     else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
