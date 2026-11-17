@@ -39,6 +39,9 @@ static void madeAlong(Ctx *x, int from, int to, PItem *k) {
 static Sent sendsOf(Ctx *x, int n, const Keep *keep, const PItem *k) {
   Sent g; memset(&g, 0, sizeof g);
   int out = settleOf(x, n);
+  // (a board lost before its cascade settles: what the cascade made up to the frame before -- the links that come before the loss are
+  // the chain's, as the judge counts them (judge.c), and a chain going on through garbage popping is one the board can be lost under)
+  if (out == STEP_DEAD && deadAt - 1 > NODE(x, n)->t) out = step(x, n, MK_SETTLE, 0, 0, deadAt - 1 - NODE(x, n)->t);
   if (!liveNode(x, out)) return g;
   PItem a = *k; Stats st;
   if (statsOf(x, out, &st)) madeAdd(&a, &st);
