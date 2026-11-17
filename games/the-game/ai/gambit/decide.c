@@ -1035,7 +1035,7 @@ static Played playOf(const Read *R, int n) {
   // (and the next chain, the first thrown, is planned under garbage too: its panels are the ones under it)
   int opNext = openerSum > 0 && opNeed > 0;
   int opWants = (!R->under || opNext) && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && (theList.aim[0].chain.op || opNext) && clockFrameOut && !clockFrameOut() &&
-                !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
+                (opNext || !cascadeLive(decQ.b)) && decQ.b->chainCounter == 0;
   // (THE OPENER AS ONE PLAN -- the owner: the opener includes everything it is going to do, the flattening too, and raises the moment
   // it is flat: while the opening raise is due and done before the next block lands, the plan is made on the board it will build on -- the stack
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
@@ -1180,11 +1180,11 @@ static Played playOf(const Read *R, int n) {
   }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
   // (THE NEXT CHAIN DESIGNED -- the owner: chains of three or more adding up to the eight: the first thrown and the eight not yet made,
-  // with nothing falling and no plan of the opener's carried, the designer plans the chain still needed on the board as it stands, its
+  // no chain falling -- garbage may be popping, a slab's pop lasting longer than the rest of the game -- and no plan of the opener's carried, the designer plans the chain still needed on the board as it stands, its
   // full rows under any garbage, judged ROOTED as the opener's first plans are; a plan whose chain as judged is what is still needed, its
   // board standing till it fires, is the opener's line)
   opNextDesign = 0;
-  if (opNeed > 0 && openerSum > 0 && !opLineOn && !cascadeLive(decQ.b) && decQ.b->chainCounter == 0 && !R->up && clockFrameOut && !clockFrameOut()) {
+  if (opNeed > 0 && openerSum > 0 && !opLineOn && decQ.b->chainCounter == 0 && !R->up && clockFrameOut && !clockFrameOut()) {
     double left = C2.due ? C2.due - C2.margin - nowMs() : 0;
     OpPath dp;
     opNextDesign = -1; opNextMs = (int32_t)(left * OP_NEXT_SHARE); opDesignWhy = 0;
