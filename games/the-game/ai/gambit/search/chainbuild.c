@@ -122,29 +122,32 @@ static double cbExp(double x) { return x >= 0 ? 1 : 1 / (1 - x + x * x / 2 - x *
 static uint32_t cbNext(void) { cbRand ^= cbRand << 13; cbRand ^= cbRand >> 17; cbRand ^= cbRand << 5; return cbRand; }
 // THE SWAPS IN AN ORDER THAT SETS NOTHING OFF: each row's swaps (cbRowSwaps) kept in their row's order, the rows interleaved -- searched
 // depth first, a swap whose board would match not taken, CB_ORDER_TRIES boards tried at most; the trigger last. Into seq (r * 8 + c); the
-// count, -1 where no order is found. With a cursor given (cbCurR >= 1), the swap nearest the cursor's last place is tried first: the
-// order is pressed as walked, and a shorter walk fires the chain sooner.
+// count, -1 where no order is found. With a cursor given (cbCurR >= 1) every order is searched, CB_ORDER_TRIES boards at most, for the
+// one whose walk is shortest -- the cursor's moves from where it is, swap to swap, to the trigger: the order is pressed as walked, and a
+// shorter walk fires the chain sooner.
 #define CB_ORDER_TRIES 20000
-static LOCAL cb8 cbSw[CB_ROWS][CB_MAXSWAPS]; static LOCAL int cbNs[CB_ROWS], cbAt[CB_ROWS], cbTries, cbCurR, cbCurC;
-static int cbOrderFrom(CbGrid *G, int left, int32_t *seq, int n) {
-  if (!left) return n;
-  if (++cbTries > CB_ORDER_TRIES) return -1;
-  int rs[CB_ROWS], nr = 0;
-  for (int r = 1; r <= G->rows; r++) if (cbAt[r] < cbNs[r]) rs[nr++] = r;
-  if (cbCurR >= 1) {
-    int fr = n ? seq[n - 1] / 8 : cbCurR, fc = n ? seq[n - 1] % 8 : cbCurC, d[CB_ROWS];
-    for (int i = 0; i < nr; i++) { int r = rs[i], c = cbSw[r][cbAt[r]]; d[i] = (r > fr ? r - fr : fr - r) + (c > fc ? c - fc : fc - c); }
-    for (int i = 1; i < nr; i++) for (int j = i; j > 0 && d[j] < d[j - 1]; j--) { int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; t = rs[j]; rs[j] = rs[j - 1]; rs[j - 1] = t; }
+static LOCAL cb8 cbSw[CB_ROWS][CB_MAXSWAPS]; static LOCAL int cbNs[CB_ROWS], cbAt[CB_ROWS], cbTries, cbCurR, cbCurC, cbTrR, cbTrC, cbBestWalk;
+static LOCAL int32_t cbBestSeq[CB_MAXSWAPS + 1];
+static int cbDist(int r0, int c0, int r1, int c1) { return (r1 > r0 ? r1 - r0 : r0 - r1) + (c1 > c0 ? c1 - c0 : c0 - c1); }
+static int cbOrderFrom(CbGrid *G, int left, int32_t *seq, int n, int walk) {
+  if (!left) {
+    if (cbCurR < 1) return n;
+    walk += n ? cbDist(seq[n - 1] / 8, seq[n - 1] % 8, cbTrR, cbTrC) : 0;
+    if (walk < cbBestWalk) { cbBestWalk = walk; for (int i = 0; i < n; i++) cbBestSeq[i] = seq[i]; }
+    return -1;
   }
-  for (int i = 0; i < nr; i++) {
-    int r = rs[i];
+  if (++cbTries > CB_ORDER_TRIES) return -1;
+  if (cbCurR >= 1 && walk >= cbBestWalk) return -1;
+  int fr = n ? seq[n - 1] / 8 : cbCurR, fc = n ? seq[n - 1] % 8 : cbCurC;
+  for (int r = 1; r <= G->rows; r++) {
+    if (cbAt[r] >= cbNs[r]) continue;
     int c = cbSw[r][cbAt[r]];
     cb8 t = G->g[r][c]; G->g[r][c] = G->g[r][c + 1]; G->g[r][c + 1] = t;
     if (cbStable(G)) {
       seq[n] = r * 8 + c; cbAt[r]++;
-      int k = cbOrderFrom(G, left - 1, seq, n + 1);
-      if (k >= 0) return k;
+      int k = cbOrderFrom(G, left - 1, seq, n + 1, walk + cbDist(fr, fc, r, c));
       cbAt[r]--;
+      if (k >= 0) { G->g[r][c + 1] = G->g[r][c]; G->g[r][c] = t; return k; }
     }
     G->g[r][c + 1] = G->g[r][c]; G->g[r][c] = t;
   }
@@ -154,8 +157,9 @@ static int cbOrder(const CbGrid *G0, const CbGrid *D, int32_t tr, int32_t *seq, 
   int left = 0;
   for (int r = 1; r <= G0->rows; r++) { cbNs[r] = cbRowSwaps(G0->g[r], D->g[r], cbSw[r], CB_MAXSWAPS); cbAt[r] = 0; if (cbNs[r] > CB_MAXSWAPS) return -1; left += cbNs[r]; }
   if (left + 1 > cap) return -1;
-  CbGrid G = *G0; cbTries = 0;
-  int n = cbOrderFrom(&G, left, seq, 0);
+  CbGrid G = *G0; cbTries = 0; cbBestWalk = 1 << 30; cbTrR = tr / 8; cbTrC = tr % 8;
+  int n = cbOrderFrom(&G, left, seq, 0, 0);
+  if (cbCurR >= 1) { if (cbBestWalk == 1 << 30) return -1; n = left; for (int i = 0; i < n; i++) seq[i] = cbBestSeq[i]; }
   if (n < 0) return -1;
   seq[n++] = tr;
   return n;
