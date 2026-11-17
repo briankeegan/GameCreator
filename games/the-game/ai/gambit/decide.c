@@ -49,7 +49,7 @@ static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: 
 static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
 #define OP_TRIES 3            // (the opening plans judged in a decision, the best first)
-#define CD_GROW 0.6   // (the share of the countdown's decision time left that grows the opening's plan: the judging of what it finds takes the rest)
+#define CD_GROW 0.35   // (the share of the countdown's decision time left that grows the opening's plan: the designs, their judging and the plans' falls extended take the rest)
 #define OPEN_SWAP_FRAMES 16   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands -- 16.5 measured, the countdown plans of 100 opener games, their trigger's frame over their swaps)
 #define OPEN_FIRE_BY 330      // (the frame the opener's trigger is pressed by while no garbage is shown: the first garbage lands at 339 in every pattern, 99 opener games)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
