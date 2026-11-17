@@ -41,6 +41,7 @@ typedef struct {
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
   int32_t lengthens;            // time attack: the line makes the board's chain longer than it makes alone, below 13 (in the mode)
+  int32_t keepsOn;              // any mode: the line makes the board's chain longer than it makes alone -- its clears are links, never a three wasted
 } Judge;
 static int32_t aloneChain; static int ruleNoEnemy;   // (below: the chain the board makes alone, and time attack's rule)
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
@@ -123,6 +124,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // a chain is taken there a link at a time, up to 13)
   int lengthens = ruleNoEnemy && j && aloneChain < CB_TOP && j->whole.chain > imax(1, aloneChain);
   J->lengthens = lengthens;
+  J->keepsOn = j && aloneChain >= 2 && j->whole.chain > aloneChain;
   if (!lengthens && !(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
   // (the opener's chain is never a spend -- the owner: no scenario is worth not throwing large chains at the start: a chain of three or
   // more, the opener in force, is what the panels are for)
@@ -384,7 +386,7 @@ static int zipOver(const Judge *x, const Judge *y) {
 }
 static int breaksFirst(const Judge *J, int lx) { return J->apBroke > 0 && !(lx && !decF.topped && threeBreakOnly(J)); }
 static int wastesThree(const Judge *J) {
-  if (J->hold) return 0;
+  if (J->hold || J->keepsOn) return 0;
   // (any clear of three that breaks nothing and begins no chain, whatever the line breaks after it -- the owner: never a three unless
   // it follows through; a line dropped before its later break leaves the three made for nothing. A line lost too)
   if (J->o.j.threes > 0) return 1;
