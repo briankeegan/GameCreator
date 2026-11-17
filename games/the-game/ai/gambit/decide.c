@@ -1104,13 +1104,11 @@ static Played playOf(const Read *R, int n) {
     }
     // (NO LINK PAST WHAT A SECOND CHAIN LEAVES TO DO -- the owner: a 5 and a 3: short of what is still needed, the next chain must be a
     // chain of OPENER_LEAST or more however long this one runs, so links that do not reach need spend the panels the next chain is made
-    // of: past need - OPENER_LEAST + 1 the chain as it falls is kept, and below it the extension that reaches there in the fewest links
-    // -- one link past the bare need - OPENER_LEAST: the chain's stop holds the garbage off, and a chain ended a link sooner is a board
-    // the garbage lands on sooner, with tall garbage, whose panels come back a row a pop; with smaller garbage the bare need - OPENER_LEAST:
-    // a link past it short of need is a link the next chain has to make up all the same)
+    // of: past need - OPENER_LEAST the chain as it falls is kept, and below it the extension that reaches there in the fewest links -- in
+    // a garbage game, where the panels the next chain is made of come back slowly)
     int tall = tallGarbage(&decQ); const Judge *two = 0; int twoAsked = 0;
     if (ext && ext->apChainAll < need && (tall || garbageSeen)) {
-      int32_t enough = need - OPENER_LEAST + (tall ? 1 : 0);
+      int32_t enough = need - OPENER_LEAST;
       // (held for the next chain only where the board the chain lands on has one: the next chain designed there (opSecondSwap) a chain of
       // OPENER_LEAST or more; with none the chain falling is all there is, extended as any chain short of need)
       if (bar >= enough) { two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= OPENER_LEAST) ext = 0; }
