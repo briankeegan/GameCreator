@@ -408,6 +408,7 @@ static int32_t samesTrimmed;   // (the line played judged again without its swap
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 #define OP_TRY_LOG 8
+static int32_t carryWaste[5];   // (the line in progress taken out as a wasted three: why (rank.c wasteWhy), its whole chain, the board's own, its threes, lost -- the log's waste=)
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
@@ -658,7 +659,7 @@ static int ranked(const Read *R, const Found *S) {
     // what the order lets through, a walk spent for nothing)
     // (and never the line in progress begun on its three as the save: the input pressed of it is spent, and taken out now it is spent for
     // nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.

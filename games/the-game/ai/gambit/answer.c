@@ -841,6 +841,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // the list asking nothing, is not said)
   if (!carriedJ && !carryDrop && carryNone && carryNone != 16 && carryNone != 21) {
     L_s(" carryNone="); L_i(carryNone);
+    if (carryNone == 20) { L_s(" waste="); for (int i = 0; i < 5; i++) { if (i) L_s("/"); L_i(carryWaste[i]); } }
     if (carryNone == 19 && carryJudgeDrop >= 0 && carryJudgeDrop < NDROPS) { char c[3] = { ':', "botfrucwj2"[carryJudgeDrop], 0 }; L_s(c); }
   }
   // (A LATER LOSS PASSED OVER: where nothing lives, the line offered that is lost latest, where that is a break's time (rankSave) or more
