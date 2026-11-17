@@ -47,6 +47,7 @@ static int32_t extCutLog[EXT_CUT_LOG][5], extCutN;   // (extensions the judge cu
 static int32_t aloneChain; static int ruleNoEnemy;   // (below: the chain the board makes alone, and time attack's rule)
 // why a candidate was dropped, counted per decision for the log (DROP_CODE: b back, o list, t late, f floor, r ready, u unbroken, c a swap
 // the judge could not press, w a wasted three, j the clock stopped its judging, 2 a 2x not taken to three)
+static int32_t lastCut = -1, lastCutWhy, lastCutRisen;   // (the swap the judge cut the last line dropped at, why, and the rows risen by the swap before it: decide.c's opTries log)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, DROP_TWO, NDROPS };
 static int32_t dropped[NPLAYS][NDROPS], offered[NPLAYS];
 static int32_t lastDrop = -1;   // (the last drop's why: the opening plan's log)
@@ -108,7 +109,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (an extension cut: which swap, why, at what frame of its walk, and the search's chain for it -- the log's extCut=)
   if (!oc.dead && oc.j.cut >= 0 && (play == PLAY_EXTEND || play == PLAY_LINEUP) && extCutN < EXT_CUT_LOG) {
     int32_t *t = extCutLog[extCutN++]; t[0] = oc.j.cut; t[1] = k->nseq; t[2] = oc.j.cutWhy; t[3] = oc.j.nats > 0 ? oc.j.ats[oc.j.nats - 1] : -1; t[4] = k->x.chain; }
-  if (!oc.dead && oc.j.cut >= 0) { dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
+  if (!oc.dead && oc.j.cut >= 0) { lastCut = oc.j.cut; lastCutWhy = oc.j.cutWhy; lastCutRisen = oc.j.nats > 0 ? oc.j.risen[oc.j.nats - 1] : 0; dropAs(play, DROP_CUT); int w = oc.j.cutWhy >= 1 && oc.j.cutWhy <= 3 ? oc.j.cutWhy : 0; cutWhy[w]++; if (play == PLAY_BREAKSEARCH || play == PLAY_LINEUPBREAK) cutWhyBreak[w]++; return 0; }
   // (ONE THE CLOCK STOPPED THE JUDGE ON: its board past that frame unknown -- ranked as a line lost on the frame it was judged alive to,
   // what it makes on the search's word: never a board that lasts, and never dropped for a hold that dies sooner)
   if (oc.late) {
