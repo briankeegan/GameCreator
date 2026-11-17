@@ -14,7 +14,7 @@ typedef struct {
 } XLine;
 typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; int32_t longest; } ExtOpts;   // longest: the chain made longest offered, as in time attack (the opener's falling chain); 2 unjudged -- a board
                                                                                                             // played forward, not the decision's (decide.c opExtendAll)
-#define EXT_LONG_K 6   // (the opener's falling chain: the longest lines kept, each judged in turn -- the search's count of a line's chain is
+#define EXT_LONG_K 12  // (the opener's falling chain: the longest lines kept, each judged in turn -- the search's count of a line's chain is
                        // its own, and the judge, which plays it as the frame loop will, has the last word)
 typedef struct { XLine best, nearest, three, longest, longK[EXT_LONG_K]; int32_t nlongK; double ms; int32_t baseChain, seen, kept, top, topKept, late, floorLost, longCut; } Ext;   // seen..floorLost: the log's xs= -- boards settled, kept, the longest chain of any and of a kept one, put down for firing past `by`, for losing the floor   // baseChain: the cascade's chain left alone   // three: the chain taken to three or more, breaking the most;
                                                                        // longest: the chain made longest, in the fewest swaps
