@@ -1160,9 +1160,10 @@ static Played playOf(const Read *R, int n) {
     if (lnk) { opFallLink = lnk->o.j.brokeLink; opFallLinkCh = lnk->apChainAll; }
     // (SHORT OF IT, NOT AT THE BOARD -- the owner: a board lost after the chain makes no second one: an extension short of what is still
     // needed whose board is lost within OP_FALL_LOST gives way to the line ranked first of those whose board lives, or is lost a break's
-    // time later)
+    // time later; never under tall garbage, where the loss foreseen counts neither the panels its pop brings -- their colours not shown
+    // till then -- nor the time its pop stops the board)
     const Judge *keep = 0;
-    if (ext && ext->apChainAll < need && !ext->o.lives && ext->o.lostAt != NOT_ASKED && ext->o.lostAt < OP_FALL_LOST)
+    if (ext && ext->apChainAll < need && !tall && !ext->o.lives && ext->o.lostAt != NOT_ASKED && ext->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
         if (J != ext && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - ext->o.lostAt >= rankSave))) keep = J; }
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
