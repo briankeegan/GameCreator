@@ -552,6 +552,7 @@ static int wastesFour(const Judge *J) { return !J->hold && !J->o.dead && J->outs
 // link past the target is presses and panels the list does not ask for)
 #define BACK_CALM 1   // (breaks' time, rankSave: a loss nearer than this, the line that does best plays whether it swaps back or not)
 static int32_t chainReach(const Judge *J) { return J->o.dead ? 0 : J->o.j.chainAll; }
+#define OP_BREAK_SOONER 60   // (frames: a break this much sooner is the opener's, rank 1'Ld)
 static int32_t opNeed;   // (the chain the opener still needs to reach its eight, decide.c; 0 with the opener not in force)
 static int32_t needKept, needLost;   // (the log's need=: comparisons 1'L left to the opener's chain, and those it did not, the break's chain as judged)
 // (A 2x ITS LINE DOES NOT CONTINUE: the chain the line makes ends at two -- read on the judge's count whether or not the board is lost
@@ -714,6 +715,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int cx = !x->hold && x->o.j.brokeLink > 0, cy = !y->hold && y->o.j.brokeLink > 0;
     if (cx != cy) return (cmpKey = __LINE__, (cx ? -1 : 1));
   }
+  // 1'Ld. THE BREAK SOONER (the opener's next chain is made of what the garbage turns into, and the garbage turns once it is broken):
+  // the opener in force under garbage, of two breaks that survive alike, neither making the chain still needed, the one that fires
+  // OP_BREAK_SOONER frames or more sooner first
+  if (opNeed && decF.under && (lx || lostAlike(x, y)) && x->o.j.chainAll < opNeed && y->o.j.chainAll < opNeed && !x->hold && !y->hold &&
+      x->apBroke > 0 && y->apBroke > 0 && x->apFire >= 0 && y->apFire >= 0 && iabs(x->apFire - y->apFire) >= OP_BREAK_SOONER)
+    return (cmpKey = __LINE__, (x->apFire < y->apFire ? -1 : 1));
   // 1'r. READY FOR THE NEXT BLOCK (the owner: there should always be pieces): of two that survive alike, the readier before the other
   // where it breaks no less and the other meets no goal it misses -- readier is a break in reach once the next block lands (readyNext,
   // asked where none lives), else, under garbage, a swap that brings the nearest break nearer (propose.c readyBuild), the hold included
