@@ -1044,9 +1044,13 @@ static Played playOf(const Read *R, int n) {
         const OpPath *c = &opByLen[ln];
         if (!opByLenHave[ln] || !opFits(c, trigCh, pass) || (nt && tries[0] == &opBest && !memcmp(c, &opBest, sizeof *c))) continue;
         int at = nt < OP_TRIES ? nt++ : OP_TRIES;
-        if (at == OP_TRIES) { if (!opPacier(c, tries[OP_TRIES - 1])) continue; at = OP_TRIES - 1; }
+        // (pass 2 asks a chain in time: its plans tried fewest swaps first -- the one pressed soonest fires soonest; the others the plan's own
+        // order)
+        #define OP_BEFORE(a, b) (pass == 2 ? (a)->len < (b)->len : opPacier(a, b))
+        if (at == OP_TRIES) { if (!OP_BEFORE(c, tries[OP_TRIES - 1])) continue; at = OP_TRIES - 1; }
         tries[at] = c;
-        for (int j = at; j > 0 && opPacier(tries[j], tries[j - 1]) && !(tries[j - 1] == &opBest); j--) { const OpPath *t = tries[j]; tries[j] = tries[j - 1]; tries[j - 1] = t; }
+        for (int j = at; j > 0 && OP_BEFORE(tries[j], tries[j - 1]) && !(pass != 2 && tries[j - 1] == &opBest); j--) { const OpPath *t = tries[j]; tries[j] = tries[j - 1]; tries[j - 1] = t; }
+        #undef OP_BEFORE
       }
       for (int t = 0; t < nt && chainUp <= 0; t++) {
         int32_t seq[OP_DEPTH + 1]; int ns = 0;
