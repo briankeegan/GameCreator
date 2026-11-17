@@ -339,6 +339,9 @@ static void breakJob(int32_t i) {
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
   brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
+  // (THE OPENER'S CHAIN FALLING HAS THE THREADS: no jobs beside it -- the stack is still while it falls, and the extension's settles are
+  // made on every thread, a batch at a time (search/extend.c))
+  if (opChainFalling(R, decQ.b)) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
   if (!brCtx) brCtx = ctxOf(0);
@@ -461,11 +464,14 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   searchBeside = beside;
   brWhere = 0; brGiven = 0;
   if (!beside) { brWhere = 3; brGiven = leftMs(); }
-  int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
+  // (the opener's chain falling: the extension first, the break search in what it leaves)
+  int opFallNow = !beside && opChainFalling(&R, decQ.b);
+  int ran = beside || opFallNow ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   if (R.under) onStart(brHave ? &brResume : 0);   // (the search beside the decision, from the frontier this one resumes)
   double ts = nowMs();
   searchAll(&R, &S);
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
+  else if (opFallNow) { brGiven = leftMs(); ran = breakSearch(&R, lineFrom, linePressed, &brMs); }
   searchMerge(&R, &S);
   S.searchMs = nowMs() - ts;
   batSearch = batOwn;
