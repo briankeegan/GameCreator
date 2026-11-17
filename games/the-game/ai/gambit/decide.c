@@ -1226,10 +1226,11 @@ static Played playOf(const Read *R, int n) {
         // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live,
         // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor, -6 judged short of the chain asked:
         // the log's, the first plan's)
-        // (judged ROOTED: each swap named on the board as it stands now, pressed in the row its panels have risen to by its frame -- the
-        // stack rises while a plan is pressed -- and handed on named where it is pressed)
+        // (a design is judged ROOTED: its swaps are named on the board as it stands now (search/chainbuild.c), each pressed in the row its
+        // panels have risen to by its frame -- the stack rises while a plan is pressed -- and handed on named where it is pressed. The
+        // search's plans are named where each swap is pressed already, the rise in them, and are judged as named)
         lastDrop = -1; lastCut = -1;
-        outRooted = 1;
+        outRooted = pl->design;
         int jok = judgeCand(R, &k, &CU);
         outRooted = 0;
         int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
@@ -1242,7 +1243,7 @@ static Played playOf(const Read *R, int n) {
         if (opTryN < OP_TRY_LOG) { int32_t *t = opTryLog[opTryN++]; t[0] = pass; t[1] = pl->len + 1; t[2] = pl->ch; t[3] = jok ? CU.apChainAll : -1;
           t[4] = jok ? (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : -1) : -1; t[5] = why; t[7] = pl->design; t[6] = jok ? CU.o.j.clearStep : lastCut >= 0 ? -1000 - lastCut * 100 - lastCutWhy * 10 - lastCutRisen : -2;
           if (opTryN <= 3) { opTrySeqN[opTryN - 1] = ns; for (int s = 0; s < ns; s++) opTrySeq[opTryN - 1][s] = seq[s]; } }
-        if (!why) { for (int s = 0; s < CU.o.j.nats && s < CU.k.nseq && s < MAXLINE; s++) CU.k.seq[s] = (CR(CU.k.seq[s]) + CU.o.j.risen[s]) * 8 + CC(CU.k.seq[s]);
+        if (!why) { if (pl->design) for (int s = 0; s < CU.o.j.nats && s < CU.k.nseq && s < MAXLINE; s++) CU.k.seq[s] = (CR(CU.k.seq[s]) + CU.o.j.risen[s]) * 8 + CC(CU.k.seq[s]);
           P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
         else if (!chainUp) chainUp = why;
       }
