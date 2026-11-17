@@ -263,11 +263,12 @@ static int cbSeqDesign(const CbGrid *G0, double ms, int maxSw, int32_t *seq, int
   *tr = bestT; *links = bestL;
   return best.n;
 }
-// (a board read as the design's: its settled cells, garbage as what does not move)
+// (a board read as the design's: its settled cells, garbage as what does not move -- and garbage turned to panels whose colour is not
+// shown till its pop: a cell that holds what is over it and matches nothing, never an empty one)
 static void cbOfBoard(const Board *b, CbGrid *G) {
   memset(G, 0, sizeof *G);
   G->rows = imin(b->height, CB_ROWS - 2);
-  for (int r = 1; r <= G->rows; r++) for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, r, c); G->g[r][c] = (cb8)(v > 0 && v < 100 ? v : v < 0 ? -1 : 0); }
+  for (int r = 1; r <= G->rows; r++) for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, r, c); G->g[r][c] = (cb8)(v > 0 && v < 100 ? v : v != 0 ? -1 : 0); }
 }
 // (the row rising from under the stack taken in as the bottom row, g[0]: a design built while the stack rises must not match it -- left
 // out where it is not a full row of colours, or where the board as it is already matches it)
