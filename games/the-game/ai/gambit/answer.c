@@ -819,7 +819,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (opLandedRows[0]) { L_s(" landed="); L_s(opLandedRows); }
   // (each opener plan judged: pass p, swaps s, planned chain c, judged chain j, fires f frames on, verdict v (0 played, decide.c chainUp codes))
   if (opTryN) { L_s(" opTries="); for (int i = 0; i < opTryN; i++) { if (i) L_s(","); L_s("p"); L_i(opTryLog[i][0]); L_s("s"); L_i(opTryLog[i][1]); L_s("c"); L_i(opTryLog[i][2]);
-    L_s("j"); L_i(opTryLog[i][3]); L_s("f"); L_i(opTryLog[i][4]); L_s("v"); L_i(opTryLog[i][5]); L_s("k"); L_i(opTryLog[i][6]); }
+    L_s("j"); L_i(opTryLog[i][3]); L_s("f"); L_i(opTryLog[i][4]); L_s("v"); L_i(opTryLog[i][5]); L_s("k"); L_i(opTryLog[i][6]); if (opTryLog[i][7]) L_s("D"); }
     // (the first three plans' swaps, row,col each, the trigger last)
     L_s(" opTrySeq="); for (int i = 0; i < opTryN && i < 3; i++) { if (i) L_s("|"); for (int s = 0; s < opTrySeqN[i]; s++) { if (s) L_s(";"); L_i(CR(opTrySeq[i][s])); L_s(","); L_i(CC(opTrySeq[i][s])); } } }
   if (opCdRows[0]) { L_s(" cdboard="); L_s(opCdRows); }
