@@ -1070,37 +1070,10 @@ static Played playOf(const Read *R, int n) {
     // (the pool taken back from the readiness beside the decision, which would search on past it: the beam is scored on every thread)
     readyStop();
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ, decQ.b); clockShareEnd(sh); }
-    // (and the design: a chain the board's full rows make, offered as a plan beside the beam's -- in the countdown's time, or a slice of
-    // the decision's)
-    // (and a second design, in the swaps that can be pressed before the first garbage lands -- OPEN_FIRE_BY, OPEN_SWAP_FRAMES a swap: the
-    // chain that fires in time, where the first design's fires past it)
-    { double l3 = C2.due ? C2.due - C2.margin - nowMs() : 0, dms = cdAsk ? l3 * 0.15 : l3 * 0.2; OpPath dp;
-      int quickSw = opBefore() ? (OPEN_FIRE_BY - decQ.b->clock) / OPEN_SWAP_FRAMES - 1 : 0;
-      if (quickSw >= 2 && quickSw < OP_CB_MAXSW) opDesignedQuick = -quickSw;   // (tried in quickSw swaps, none found: the log's /q-N)
-      for (int pass = 0; pass < (quickSw >= 2 && quickSw < OP_CB_MAXSW ? 2 : 1); pass++)
-        if (opDesign(decQ.b, pass ? dms * 0.5 : dms * (quickSw >= 2 ? 0.5 : 1), &dp, pass ? quickSw : OP_CB_MAXSW)) {
-          if (pass) opDesignedQuick = dp.ch;
-          if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
-          if (!opByLenHave[dp.len] || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; } } }
-    // (THE DESIGNS PROVED, the countdown's: the designer asked at every swap budget from OP_CB_FEWEST to OP_CB_MAXSW -- it works on the
-    // panels standing, not on the frames, so a design is judged as the game will play it at once: a design
-    // whose chain as judged is OP_FAST_CH or more is kept at that chain, any other let go -- the plans tried are then plans that chain)
-    if (cdAsk) {
-      int32_t lastLen = -1;
-      for (int sw = OP_CB_FEWEST; sw <= OP_CB_MAXSW && opProveTried < OP_PROVE_MAX && !clockOut(); sw++) {
-        double l4 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l4 < 40) break;
-        OpPath dp; if (!opDesign(decQ.b, l4 * 0.04, &dp, sw) || dp.ch < OP_FAST_CH || dp.len == lastLen) continue;
-        lastLen = dp.len; opProveTried++;
-        int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < dp.len; k++) seq[ns++] = dp.path[k]; seq[ns++] = dp.trig;
-        static Judge PJ; Cand k; if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
-        k.settled = 1; lastDrop = -1;
-        int pok = judgeCand(R, &k, &PJ);
-        if (!pok || PJ.o.dead || !PJ.o.lives || PJ.apChainAll < OP_FAST_CH) continue;
-        dp.ch = PJ.apChainAll; opProved++; if (dp.ch > opProvedBest) opProvedBest = dp.ch;
-        if (!opByLenHave[dp.len] || opByLen[dp.len].ch < OP_FAST_CH || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; }
-        if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
-      }
-    }
+    // (NO DESIGN AMONG THE OPENER'S PLANS: the designer names its swaps on the board as it stands, the beam where each is pressed, the rise
+    // played -- the line handed on and carried (carryOf, carriedCand) reads a plan the beam's way, and a design read so is pressed a row
+    // off once the stack rises: set 86 factory 3, a design judged a 3 at 192 carried at 214 with a swap in row 0. The designer serves the
+    // second chain (opSecondSwap), where each swap is checked panel for panel on the board as it is)
     // (the countdown's: the plans kept scored on the second chain each leaves, in the time the grow left)
     if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opExtendAll(&decQ, l2 * 0.55); clockShareEnd(sh); } }
     opGrew = 1;
