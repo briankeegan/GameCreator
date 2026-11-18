@@ -604,7 +604,9 @@ static int ranked(const Read *R, const Found *S) {
   // (asked up to the move's own frame, the host's hard stop, as the judging is -- the decision's own time is spent by then -- each line its
   // own CONT_MS)
   contAsked = 0;
-  if (finishAsked() && n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
+  // (in the opener too -- the owner: the opener does not die: a chain built while a block is on its way is judged with the moves after it)
+  int contOpener = R->rule >= 0 && theTables.r[R->rule].table == 2;
+  if ((finishAsked() || contOpener) && n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
     double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
     for (int pass = 0; pass < 2; pass++)
       for (int i = 0; i < n && contAsked < CONT_LINES && !clockFrameOut(); i++) {
@@ -1390,9 +1392,10 @@ static Played playOf(const Read *R, int n) {
       // later or lives: that line is played; set 86 combo_storm 1, a hold lost at 71 over a break that kept the 3x and stood to 500)
       const Judge *h = 0, *kp = 0;
       for (int i = 0; i < n; i++) if (order[i]->hold) { h = order[i]; break; }
+      // (each judged with its next moves played where that was asked: diesAt, the later of its own loss and the life after it)
       if (h && !h->o.lives && h->o.lostAt != NOT_ASKED && h->o.lostAt < OP_FALL_LOST)
         for (int i = 0; i < n && !kp; i++) { const Judge *J = order[i];
-          if (!J->hold && !J->o.dead && J->apChainAll >= bar && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - h->o.lostAt >= OP_FALL_KEEP))) kp = J; }
+          if (!J->hold && !J->o.dead && J->apChainAll >= bar && (J->o.lives || (diesAt(J) >= 0 && diesAt(J) - diesAt(h) >= OP_FALL_KEEP))) kp = J; }
       if (kp) { P.line = P.top = kp; opFallWay = 8; }
       else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
