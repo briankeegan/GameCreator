@@ -411,7 +411,7 @@ static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand thi
 #define OP_TRY_LOG 8
 #define OP_NEXT_SHARE 0.5   // (the share of a decision's time the next chain's design is searched in)
 #define OP_NEXT_COST 20   // (a swap's worth in the next chain's design: a 3 kept to some eleven swaps -- a long build is pressed late, its board lost under a slab before it fires)
-static int32_t opNextCh, opNextLen, opNextMs;   // (and its chain designed, its swaps)
+static int32_t opNextCh, opNextLen, opNextMs, opNextDrop;   // (opNextDrop: an unjudged design's drop (rank.c DROP_*) * 10 + its cut's why)   // (and its chain designed, its swaps)
 static int32_t opNextDesign;   // (the next chain designed this decision: its chain as judged; -1 none designed, -2 short of the need, -3 not judged, -4 its board lost -- the log's nd=)
 static int32_t carryWaste[5];   // (the line in progress taken out as a wasted three: why (rank.c wasteWhy), its whole chain, the board's own, its threes, lost -- the log's waste=)
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
@@ -1198,9 +1198,9 @@ static Played playOf(const Read *R, int n) {
       // (each swap pressed once its two panels are still, not once the whole board is: under a slab popping, a board let settle after
       // every swap waits out the pop each time)
       if (dp.ch >= OPENER_LEAST && candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
-        k.settled = 0; lastDrop = -1;
+        k.settled = 0; lastDrop = -1; lastCut = -1;
         outRooted = 1; int ok = judgeCand(R, &k, &ND); outRooted = 0;
-        opNextDesign = !ok ? -3 : ND.o.dead ? -4 : ND.apChainAll;
+        opNextDesign = !ok ? -3 : ND.o.dead ? -4 : ND.apChainAll; opNextDrop = !ok ? lastDrop * 10 + (lastCut >= 0 ? lastCutWhy : 0) : -1;
         if (ok && !ND.o.dead && ND.apChainAll >= OPENER_LEAST) {
           for (int s2 = 0; s2 < ND.o.j.nats && s2 < ND.k.nseq && s2 < MAXLINE; s2++) ND.k.seq[s2] = (CR(ND.k.seq[s2]) + ND.o.j.risen[s2]) * 8 + CC(ND.k.seq[s2]);
           P.line = P.top = &ND; P.wait = 0; P.deferred = 0; opLineOn = 1;
