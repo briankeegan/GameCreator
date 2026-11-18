@@ -774,8 +774,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // a cut taken over the hold that lets the garbage's chain run to a 4
   if (finishAsked() && (lx || lostAlike(x, y)) && chainPastTwo(x) != chainPastTwo(y)) {
     const Judge *cl = chainPastTwo(x) ? x : y, *o = chainPastTwo(x) ? y : x;
-    // (both living: the chain cut at two whatever it breaks -- the board lives either way; lost alike: only where it breaks as much)
-    if (lx || imax(0, o->apBroke) >= imax(0, cl->apBroke)) return (cmpKey = __LINE__, (chainPastTwo(x) ? 1 : -1));
+    // (both living, or the cut lost no sooner: the chain cut at two whatever it breaks; lost alike and sooner: only where it breaks as much)
+    if (lx || (!o->o.lives && !cl->o.lives && diesAt(o) >= diesAt(cl)) || imax(0, o->apBroke) >= imax(0, cl->apBroke)) return (cmpKey = __LINE__, (chainPastTwo(x) ? 1 : -1));
   }
   // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that walks the input allowance below a
   // break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter after -- two
