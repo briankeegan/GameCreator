@@ -359,6 +359,7 @@ static int growLines(Cand *out, int n, int cap) {
 // - Elsewhere, under garbage or not, with none loaded (rank.c twinTime): the rows sorted and the trigger left unpressed, a set-up -- the eight
 //   is ready the moment a mode asks one (finish them, the enemy topped out).
 //   Any other mode leaves the trigger alone: a combo it does not ask for is wasted (rank.c wastesThree).
+#define TWIN_SWAP_FRAMES 24   // (the frames a swap of an eight takes to press, the walk with it: set 86 combo_storm 1, 18-26 a swap)
 #define TWIN_MAXSWAPS 12
 #define TWIN_OFFER 3
 #define TWIN_REACH 20   // (the most swaps the distance to an eight is counted to -- one distance, the set-ups proposed by it and ranked by it)
@@ -593,6 +594,9 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
       if (candOf(&out[n], PLAY_SETUP, seq, ns, -1, 0)) { out[n].settled = 1; out[n].twin = 2; out[n].aimC = twinSize(t); out[n].aimLeft = 1; n++; offered++; twinOffered++; }
       continue;
     }
+    // (an eight pressed whole only where its swaps are pressed before the board is lost: one begun and put down for the board's life is
+    // swaps spent for nothing -- set 86 combo_storm 1, eights of nine swaps begun 130-160 frames from the loss, put down at 20)
+    if (R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0 && (ns + 1) * TWIN_SWAP_FRAMES > R->F.v[FACT_US_DIES]) continue;
     seq[ns++] = t->r * 8 + t->c;
     if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 1; n++; offered++; twinOffered++; twinTouchOffered += t->touch; }
   }
