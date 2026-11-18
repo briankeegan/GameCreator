@@ -8,6 +8,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OPENER_SUM 8
 #define OPENER_LEAST 3
 #define OP_FALL_LOST AT_LEVEL(200)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-193 and a break at 442-465; the large slabs', lost at 299-471 a second chain is still made)
+#define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-168, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_CHAINS 3
 #define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
@@ -1158,13 +1159,13 @@ static Played playOf(const Read *R, int n) {
       }
     if (lnk) { opFallLink = lnk->o.j.brokeLink; opFallLinkCh = lnk->apChainAll; }
     // (SHORT OF IT, NOT AT THE BOARD -- the owner: a board lost after the chain makes no second one: an extension short of what is still
-    // needed whose board is lost within OP_FALL_LOST gives way to the line ranked first of those whose board lives, or is lost a break's
-    // time later; never under tall garbage, where the loss foreseen counts neither the panels its pop brings -- their colours not shown
+    // needed whose board is lost within OP_FALL_LOST gives way to the line ranked first of those whose board lives, or is lost
+    // OP_FALL_KEEP later; never under tall garbage, where the loss foreseen counts neither the panels its pop brings -- their colours not shown
     // till then -- nor the time its pop stops the board)
     const Judge *keep = 0;
     if (ext && ext->apChainAll < need && !tall && !ext->o.lives && ext->o.lostAt != NOT_ASKED && ext->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
-        if (J != ext && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - ext->o.lostAt >= rankSave))) keep = J; }
+        if (J != ext && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - ext->o.lostAt >= OP_FALL_KEEP))) keep = J; }
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
