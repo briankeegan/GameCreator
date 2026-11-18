@@ -140,7 +140,11 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // a chain is taken there a link at a time, up to 13)
   int lengthens = ruleNoEnemy && j && aloneChain < CB_TOP && j->whole.chain > imax(1, aloneChain);
   J->lengthens = lengthens;
-  if (!lengthens && !(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
+  // (IN FINISH THEM A COMBO IS A COMBO -- the owner: any combo, a 2x allowed: a combo of four or more that comes with a chain of two at most
+  // meets the list by its combo)
+  int finishCombo = 0;
+  if (finishAsked() && m.combo >= 4 && m.chain <= 2) { Made mc = m; mc.chain = 0; finishCombo = fits(&R->list, mc); }
+  if (!lengthens && !finishCombo && !(j ? fitsList(&R->list, m, j, 0) : fits(&R->list, m))) J->outside = 1;
   // (the opener's chain is never a spend -- the owner: no scenario is worth not throwing large chains at the start: a chain of three or
   // more, the opener in force, is what the panels are for)
   int openerChain = R->rule >= 0 && theTables.r[R->rule].table == 2 && m.chain >= 3;
@@ -347,6 +351,9 @@ static int fallbackOf(const Judge *J) { return !J->hold && J->met > 0 && !(J->ap
 static int goalKeyOf(const Judge *J) {
   if (J->hold) return 2;
   if (J->met == 0 || J->modeFirst) return 0;   // (the mode's first entry, under garbage too where it breaks nothing: the mode is played there)
+  // (in finish them every combo the list asks is the mode's goal, never a fallback after the hold -- the owner: the most combos, any combo
+  // before a three: the eights and up first, then the rest)
+  if (finishAsked() && !J->outside && J->apCombo >= 4) return J->apCombo >= 8 ? 0 : 1;
   if (fallbackOf(J)) return 2 + J->met;
   if (J->outside && !(J->apBroke > 0) && (J->apCombo > 0 || J->apChain > 0)) return 3 + MAXAIMS;
   return J->apBroke > 0 || setupPlay(J->k.play) ? 1 : 2;
@@ -718,8 +725,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
   // owner: no big chains at the finish; a chain is played there only where nothing else lives as long
   if (finishAsked() && (lx || lostAlike(x, y))) {
-    // (a list that asks no chain at all: no chain of two either -- every chain is a slab at an enemy topped out)
-    int at = listChainCap() > 0 ? 3 : 2, bx = chainReach(x) >= at, by = chainReach(y) >= at;
+    // (a 2x is allowed -- the owner: a chain at the finish, if any, is a 2x; the slab is a chain of three or longer)
+    int at = 3, bx = chainReach(x) >= at, by = chainReach(y) >= at;
     if (bx != by) return (cmpKey = __LINE__, (bx ? 1 : -1));
   }
   // 1'L. UNDER GARBAGE, BREAK (the owner: it waits too long to break garbage; low, spend less and focus on breaking): garbage on the
