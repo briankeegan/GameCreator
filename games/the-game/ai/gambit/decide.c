@@ -1162,13 +1162,14 @@ static Played playOf(const Read *R, int n) {
     // needed whose board is lost within OP_FALL_LOST gives way to the line ranked first of those whose board lives, or is lost
     // OP_FALL_KEEP later; never under tall garbage, where the loss foreseen counts neither the panels its pop brings -- their colours not shown
     // till then -- nor the time its pop stops the board)
-    // (and the hold the rule falls back on with nothing else to play, alike)
+    // (and the hold the rule falls back on with nothing else to play, alike, where its chain is short of need; never for a line that makes
+    // the chain falling shorter than the hold's)
     const Judge *keep = 0, *held = 0;
     for (int i = 0; i < n; i++) if (order[i]->hold) held = order[i];
-    const Judge *base = ext && ext->apChainAll < need ? ext : !ext && !lnk && !brk && !twoReaches && !two ? held : 0;
+    const Judge *base = ext && ext->apChainAll < need ? ext : bar < need && !ext && !lnk && !brk && !twoReaches && !two ? held : 0;
     if (base && !tall && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
-        if (J != base && !J->hold && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
+        if (J != base && !J->hold && J->apChainAll >= bar && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
