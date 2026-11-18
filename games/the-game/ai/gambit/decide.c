@@ -1458,6 +1458,10 @@ static Played playOf(const Read *R, int n) {
         if (J->hold || J->o.dead || J->o.j.brokeLink <= 0 || J->apChainAll < bar || (ext && J->apChainAll < ext->apChainAll)) continue;
         if (!lnk || J->apChainAll > lnk->apChainAll || (J->apChainAll == lnk->apChainAll && J->o.j.brokeLink > lnk->o.j.brokeLink)) lnk = J;
       }
+    // (and the link into the garbage and the break after the chain alike: no line the board does not outlive by OP_CHAIN_AFTER -- set 86
+    // combo_storm 1, a 4x carried into the garbage to an 8x at 954, its board lost at 457 and the chain falling 300 frames of it)
+    if (lnk && !lnk->o.lives && lnk->apDone >= 0 && diesAt(lnk) - lnk->apDone < OP_CHAIN_AFTER) lnk = 0;
+    if (brk && !brk->o.lives && brk->apDone >= 0 && diesAt(brk) - brk->apDone < OP_CHAIN_AFTER) brk = 0;
     if (lnk) { opFallLink = lnk->o.j.brokeLink; opFallLinkCh = lnk->apChainAll; }
     // (SHORT OF IT, NOT AT THE BOARD -- the owner: a board lost after the chain makes no second one: an extension short of what is still
     // needed whose board is lost within OP_FALL_LOST gives way to the line ranked first of those whose board lives, or is lost
