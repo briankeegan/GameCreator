@@ -8,6 +8,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OP_FALL_LOST AT_LEVEL(200)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-193 and a break at 442-465; combo_storm 3's at 205, kept, made its 8; the large slabs', lost at 299-471 a second chain is still made)
 #define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
+#define OPENER_LOST_ON AT_LEVEL(240)   // (and once a chain is thrown: the horizon -- the next chain is built only on a board that stands)
 #define OPENER_CHAINS 3
 #define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
 static int tallGarbage(const Question *q);
@@ -157,7 +158,10 @@ static int readBoard_(Read *R) {
   // a chain falling is a board that cannot top out --
   // set 86 large_garbage 6, a 5 designed and pressed after the 3, put down at 69 frames for a dig that left nothing to build with)
   int nextFires = opKeepOn && openerSum > 0 && decQ.b->clock - opKeepAt <= 40 && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < F->v[FACT_US_DIES];
-  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
+  // (and once a chain is thrown, the next one is built only on a board that stands: lost within OPENER_LOST_ON, the opener gives way --
+  // set 86 combo_storm 1, a 6x thrown, the second chain designed from 245 frames to the loss down to 82, and the board lost at 981)
+  int32_t lostBar = openerSum > 0 ? OPENER_LOST_ON : OPENER_LOST;
+  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < lostBar && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
   // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
   // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
   // chains, thrown before or after, add up to the eight; set 86 combo_storm 2, a 4 thrown, the opener ended, and a 5 at 1027 the mode's)
