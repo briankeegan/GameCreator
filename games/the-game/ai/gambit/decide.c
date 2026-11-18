@@ -854,7 +854,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   // (the designer's chain first, in OP_SECOND_DESIGN of the time: its whole plan at once; the beam in the rest, grown on decision after
   // decision -- the landed board is the same board every decision of the fall -- where the designer finds none)
   static OpPath dp; const OpPath *pl = 0; double t0 = nowMs();
-  opDesignAsIs = 1; opDesignLeast = imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM;
+  opDesignAsIs = 1; opDesignLeast = openerSum > 0 ? imax(OPENER_LEAST, opNeed) : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM;
   double rest = ms - (nowMs() - t0);
   static int32_t grownFor = -1;
   if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
@@ -864,7 +864,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
     clockDue = keepDue; clockShare = keepShare;
   }
   opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1; opSecondMs = (int32_t)ms; opSecondN = opGrewN;
-  if (!pl && opHave && opBest.len >= 1 && opBest.ch >= imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed))) pl = &opBest;
+  if (!pl && opHave && opBest.len >= 1 && opBest.ch >= (openerSum > 0 ? imax(OPENER_LEAST, opNeed) : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)))) pl = &opBest;
   if (!pl) return 0;
   opSecondCh = pl->ch;
   int32_t sw = pl->path[0], r = CR(sw), c = CC(sw);
@@ -1203,6 +1203,14 @@ static Played playOf(const Read *R, int n) {
           P.line = P.top = &ND; P.wait = 0; P.deferred = 0; opLineOn = 1;
         }
       }
+    }
+    // (and with the board still moving -- a slab popping, its panels' colours shown one by one -- the next chain designed on the board it
+    // settles to (opSecondSwap), its next swap pressed as soon as its panels stand where that board has them: a chain of what is still
+    // needed built as the colours show)
+    // (over the line ranked first, unless that line's board lives and the swap's does not)
+    if (opNextDesign < 0 && opNextDesign != -4 && cascadeLive(decQ.b)) {
+      const Judge *t2 = opSecondSwap(R, n);
+      if (t2 && opSecondCh >= imax(OPENER_LEAST, opNeed) && !(P.line && P.line->o.lives && !t2->o.lives)) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
     }
   }
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
