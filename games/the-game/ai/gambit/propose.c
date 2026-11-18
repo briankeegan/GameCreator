@@ -456,9 +456,9 @@ static int twinTouches(int32_t g[][W + 2], const Twin *t) {
   #undef TG
   return 0;
 }
-// (the order the eights are kept and offered in: the fewest swaps, an eight that breaks garbage as TWIN_TOUCH swaps fewer)
-#define TWIN_TOUCH 6
-static int twinRank(const Twin *t) { return t->cost - (t->touch ? TWIN_TOUCH : 0); }
+// (the order the eights are kept and offered in: the fewest swaps, then the one that breaks garbage -- a nearer eight is never put out of
+// the offer by a farther one that breaks: set 86 combo_storm 1, an eight a swap away left unoffered 60 frames for three six swaps off)
+static int twinRank(const Twin *t) { return t->cost * 2 - (t->touch ? 1 : 0); }
 static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topOut, Twin *best, int *rows, int cap) {
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
