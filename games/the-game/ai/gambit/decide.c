@@ -10,6 +10,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_LOST_ON AT_LEVEL(240)   // (and once a chain is thrown: the horizon -- the next chain is built only on a board that stands)
 #define OP_CHAIN_AFTER AT_LEVEL(240)   // (the frames an opener's chain must leave the board once it has run its course: the horizon)
+#define OPENER_PILE 3   // (rows of garbage on the board at which the opener, a chain thrown, gives way to the mode to break them)
 #define OPENER_CHAINS 3
 #define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
 static int tallGarbage(const Question *q);
@@ -163,6 +164,14 @@ static int readBoard_(Read *R) {
   // set 86 combo_storm 1, a 6x thrown, the second chain designed from 245 frames to the loss down to 82, and the board lost at 981)
   int32_t lostBar = openerSum > 0 ? OPENER_LOST_ON : OPENER_LOST;
   int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < lostBar && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
+  // (and once a chain is thrown, a pile of OPENER_PILE rows or more of garbage on the board is the mode's to break, while it is small: a
+  // pile broken whole converts at once and holds the board for its pop -- set 86 combo_storm 1, six rows broken at 1491, the board held
+  // 200 frames and left 150 from its loss)
+  if (openerSum > 0 && !ownFalling && !opLineOn && !carryOpener() && !nextFires) {
+    int rows = 0;
+    for (int r = 1; r < decQ.b->nrows && r <= TOP(decQ.b); r++) { int g = 0; for (int c = 1; c <= W; c++) { const int32_t *f = decQ.b->p[r][c].f; if (f[ISGARBAGE] && f[ISGARBAGE] != NUL && f[STATE] != MATCHED) g = 1; } rows += g; }
+    if (rows >= OPENER_PILE) aboutLost = 1;
+  }
   // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
   // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
   // chains, thrown before or after, add up to the eight; set 86 combo_storm 2, a 4 thrown, the opener ended, and a 5 at 1027 the mode's)
