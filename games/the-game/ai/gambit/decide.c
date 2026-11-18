@@ -649,18 +649,19 @@ static int ranked(const Read *R, const Found *S) {
     if (contAsked) sortJudged(order, n);
   }
   // (THE COMBO WITHOUT ITS CHAIN -- the owner: make the eight, and before or after it move the panels so the ones that fall make no
-  // chain: in finish them, a combo of four or more on offer whose whole chain runs past two -- the best CUT8_LINES of them -- is judged
+  // chain: in finish them, a combo of four or more on offer that sends a chain -- the best CUT8_LINES of them -- is judged
   // again with one swap more, after its trigger, then before its first, near its trigger's rows; the first whose combo is no smaller,
-  // whose chain ends at two at most and whose board is lost no sooner, or is safe (FINISH_SAFE), takes its place)
+  // that sends no chain and whose board is lost no sooner, or is safe (FINISH_SAFE), takes its place -- a combo with a 2x tried as well;
+  // for one past 2x, a 2x where no swap stops the chain whole)
   if (finishAsked() && n && clockFrameOut && !clockFrameOut()) {
     double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
     int cut = 0, tried = 0;
     for (int i = 0; i < n && !clockFrameOut(); i++) {
       Judge *E = order[i];
-      if (E->hold || E->o.dead || E->apCombo < 4 || E->apChainAll < 3 || E->k.nseq + 1 > MAXLINE || tried >= CUT8_LINES) continue;
+      if (E->hold || E->o.dead || E->apCombo < 4 || E->apChainAll < 2 || E->k.nseq + 1 > MAXLINE || tried >= CUT8_LINES) continue;
       tried++;
       int tr = CR(E->k.seq[E->k.nseq - 1]), done = 0;
-      static Judge CE;
+      static Judge CE, C2E; int have2 = 0;
       for (int side = 0; side < 2 && !done; side++)
         for (int r = imax(1, tr - 1); r <= tr + 4 && !done && !clockFrameOut(); r++)
           for (int c = 1; c < W && !done && !clockFrameOut(); c++) {
@@ -676,8 +677,11 @@ static int ranked(const Read *R, const Found *S) {
             if (!ok || CE.o.dead || CE.apCombo < E->apCombo || CE.apChainAll > 2) continue;
             // (lost no sooner, or safe at the finish -- FINISH_SAFE on, where key 1 counts both as living and the shorter chain wins)
             if (!(CE.o.lives || finishSafe(&CE) || (!E->o.lives && diesAt(&CE) >= diesAt(E)))) continue;
+            // (no chain at all first -- the owner: finish them sends combos, not chains; a 2x kept for a line past it where none is found)
+            if (CE.apChainAll >= 2) { if (E->apChainAll >= 3 && !have2) { C2E = CE; have2 = 1; } continue; }
             *E = CE; done = 1; cut++;
           }
+      if (!done && have2) { *E = C2E; cut++; }
     }
     clockDue = due; clockShare = share;
     if (cut) sortJudged(order, n);

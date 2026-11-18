@@ -838,6 +838,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // a 7x lost at 502 over a 4x lost at 498 with the next moves, on the garbage the 7x broke)
     return (cmpKey = __LINE__, (cl == x ? 1 : -1));
   }
+  // 1'k. COMBOS, NOT CHAINS (the owner: finish them sends combos, not chains): of two that live, or are lost within a break's time of each
+  // other, a combo of four or more that sends no chain before a line that sends one -- the board's own falling chain counted with it
+  if (finishAsked() && (lx || finishAlike(x, y)) && !x->hold && !y->hold) {
+    int px = x->apCombo >= 4 && x->apChainAll < 2, py = y->apCombo >= 4 && y->apChainAll < 2;
+    int cx = x->apChainAll >= 2, cy = y->apChainAll >= 2;
+    if (px && cy && !cx) return (cmpKey = __LINE__, -1);
+    if (py && cx && !cy) return (cmpKey = __LINE__, 1);
+  }
   // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that walks the input allowance below a
   // break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter after -- two
   // breaks as two of anything else -- the next break is pressed out of what is left, and what is spent comes back only a window later, the garbage it is needed
