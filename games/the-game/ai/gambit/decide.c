@@ -838,6 +838,16 @@ static int32_t opSecondFall;   // (the chain falling as the fall rule reads it -
 // (the chain a second chain must make: with the first thrown, any of OPENER_LEAST or more; with one falling, the rest of the eight
 // after it, OPENER_LEAST or more)
 static int32_t opSecondLeast(void) { return openerSum > 0 ? OPENER_LEAST : imax(OPENER_LEAST, imax(OPENER_LEAST, opNeed) - opSecondFall); }
+// (a swap's panels, and every panel under them, where the landed board has them and at rest: a swap there can be pressed now)
+static int opAtRest(const Board *landed, int32_t sw) {
+  const Board *b = decQ.b; int r = CR(sw), c = CC(sw);
+  if (r < 1 || r >= b->nrows || c < 1 || c >= W) return 0;
+  for (int cc = c; cc <= c + 1; cc++) for (int rr = 1; rr <= r; rr++) {
+    const int32_t *now = b->p[rr][cc].f, *then = landed->p[rr][cc].f;
+    if (now[ID] != then[ID] || (now[ID] > 0 && now[STATE] != NORMAL)) return 0;
+  }
+  return 1;
+}
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -904,14 +914,27 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   if (!pl) return 0;
   opSecondCh = pl->ch;
   // (a plan of its trigger alone -- the landed board's own chain one swap away -- is that swap)
-  int32_t sw = pl->len >= 1 ? pl->path[0] : pl->trig, r = CR(sw), c = CC(sw);
-  const Board *b = decQ.b;
-  opSecondWhy = 5;
-  if (r < 1 || r >= b->nrows || c < 1 || c >= W) return 0;
-  for (int cc = c; cc <= c + 1; cc++) for (int rr = 1; rr <= r; rr++) {
-    const int32_t *now = b->p[rr][cc].f, *then = landed->p[rr][cc].f;
-    if (now[ID] != then[ID] || (now[ID] > 0 && now[STATE] != NORMAL)) return 0;
+  // (a design's swap whose panels are not yet at rest gives way to another of its swaps that is, where the design pressed in that order
+  // still makes its chain: a chain falling through one column holds back a swap in it, not the whole design -- set 86 combo_storm 2, a
+  // 3 kept 200 frames under a 6, its first swap in the 6's column)
+  if (pl == &dp && dp.len >= 2 && !opAtRest(landed, dp.path[0])) {
+    static CbGrid RG, RT; cbPartial = 1; cbOfBoard(landed, &RG);
+    for (int i = 1; i < dp.len && i < CB_SEQ_MAX; i++) {
+      if (!opAtRest(landed, dp.path[i])) continue;
+      CbSeq s; s.n = imin(dp.len, CB_SEQ_MAX); s.r[0] = (cb8)CR(dp.path[i]); s.c[0] = (cb8)CC(dp.path[i]);
+      for (int j = 0, k = 1; j < s.n; j++) if (j != i) { s.r[k] = (cb8)CR(dp.path[j]); s.c[k] = (cb8)CC(dp.path[j]); k++; }
+      int32_t tk = 0; int lk = 0;
+      if (cbSeqPlay(&RG, &s, &RT) && cbBest(&RT, &tk, &lk) > 0 && tk && lk >= dp.ch) {
+        for (int j = 0; j < s.n; j++) dp.path[j] = s.r[j] * 8 + s.c[j]; dp.trig = tk;
+        if (opKeepOn) opKeepSeq = s;
+        break;
+      }
+    }
+    cbPartial = 0;
   }
+  int32_t sw = pl->len >= 1 ? pl->path[0] : pl->trig;
+  opSecondWhy = 5;
+  if (!opAtRest(landed, sw)) return 0;
   opSecondWhy = 6;
   // (and the chain no shorter for it: the hold's chain, all of it, is the bar)
   int32_t bar = 0; for (int i = 0; i < n; i++) if (order[i]->hold) bar = order[i]->apChainAll;
