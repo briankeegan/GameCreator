@@ -877,6 +877,7 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
 // motion or a slab popping, nearest the cursor first -- one of them takes a link out from under the chain, and the ranking keeps the
 // line that meets the list (the owner: every attack is what the mode asks)
 #define CUTN 16
+#define CUT_PAIRS 6   // (the partner swaps paired into two-swap cuts: the first six, fifteen pairs)
 static int32_t cutOffered;   // (the cuts this decision offered: the log's)
 static int cutLines(const Read *R, Cand *out, int n, int cap) {
   cutOffered = 0;
@@ -893,18 +894,25 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
   // (THE NEXT LINK'S PARTNERS first: a panel of the chain falling lands on its column's resting top; a resting panel of its colour beside
   // where it lands, or under it, is what the next link is made of -- swapped aside, the link is not there to make. The blind swaps near
   // the motion after, nearest the cursor first)
+  // (a panel above a clear still popping falls once it has gone: it lands as many rows down as there are clearing cells under it, and is
+  // the next link's as surely as one already falling -- its partners are swapped aside while the pop runs)
   int32_t tg[4 * W * MAXROWS]; int nt = 0;
+  static uint8_t popsUnder[MAXROWS + 2][W + 2];
+  for (int c = 1; c <= W; c++) { int k = 0; for (int r = 1; r <= h + 1 && r < b->nrows; r++) { const int32_t *f = P(b, r, c)->f;
+    popsUnder[r][c] = (uint8_t)k; if (!f[ISGARBAGE] && f[COLOR] > 0 && (f[STATE] == MATCHED || f[STATE] == POPPING || f[STATE] == POPPED)) k++; } }
   for (int r = 2; r <= h + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
     const int32_t *f = P(b, r, c)->f;
-    if (f[ISGARBAGE] || f[COLOR] <= 0 || f[COLOR] >= 8 || !(f[STATE] == FALLING || f[STATE] == HOVERING || (SETB(f[CHAINING]) && f[STATE] != NORMAL))) continue;
-    int land = r;
-    while (land > 1) { const int32_t *u = P(b, land - 1, c)->f; if (u[COLOR] != 0 && !moving[land - 1][c]) break; land--; }
+    int clearing = f[STATE] == MATCHED || f[STATE] == POPPING || f[STATE] == POPPED;
+    int falls = f[STATE] == FALLING || f[STATE] == HOVERING || (SETB(f[CHAINING]) && f[STATE] != NORMAL) || (!clearing && popsUnder[r][c] > 0);
+    if (f[ISGARBAGE] || f[COLOR] <= 0 || f[COLOR] >= 8 || clearing || !falls) continue;
+    int land = r - popsUnder[r][c];
+    while (land > 1) { const int32_t *u = P(b, land - 1, c)->f; if (u[COLOR] != 0 && !moving[land - 1][c] && !(u[STATE] == MATCHED || u[STATE] == POPPING || u[STATE] == POPPED)) break; land--; }
     static const int dr[6] = { 0, 0, 0, 0, -1, -2 }, dc[6] = { -2, -1, 1, 2, 0, 0 };
     for (int q = 0; q < 6; q++) {
       int pr = land + dr[q], pc = c + dc[q];
       if (pr < 1 || pc < 1 || pc > W || pr >= b->nrows) continue;
       const int32_t *g = P(b, pr, pc)->f;
-      if (g[ISGARBAGE] || g[COLOR] != f[COLOR] || g[STATE] != NORMAL || moving[pr][pc]) continue;
+      if (g[ISGARBAGE] || g[COLOR] != f[COLOR] || g[STATE] != NORMAL || moving[pr][pc] || popsUnder[pr][pc] > 0) continue;
       for (int s = pc - 1; s <= pc; s++) {
         int32_t cost;
         if (s < 1 || s >= W || !canSwapPanels(b, P(b, pr, s), P(b, pr, s + 1), &cost) || cost) continue;
@@ -914,6 +922,13 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
     }
   }
   for (int i = 0; i < nt && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &tg[i], 1, -1, 0)) { n++; cutOffered++; }
+  // (and two of them, one line: a link made in two places at once -- a row and a column -- is stopped only by both; the first CUT_PAIRS
+  // partner swaps paired, on different cells)
+  for (int i = 0; i < nt && i < CUT_PAIRS; i++) for (int j = i + 1; j < nt && j < CUT_PAIRS && n < cap; j++) {
+    if (CR(tg[i]) == CR(tg[j]) && iabs(CC(tg[i]) - CC(tg[j])) < 2) continue;
+    int32_t two[2] = { tg[i], tg[j] };
+    if (candOf(&out[n], PLAY_CUT, two, 2, -1, 0)) { out[n].settled = 0; n++; cutOffered++; }
+  }
   int32_t mv[W * MAXROWS]; int d[W * MAXROWS], nm = 0;
   for (int r = 1; r <= h && r < b->nrows; r++) for (int c = 1; c < W; c++) {
     int near = 0;
