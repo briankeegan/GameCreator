@@ -1214,6 +1214,14 @@ static Played playOf(const Read *R, int n) {
         if (la != lb) { if (la) ext = J; continue; }
         if (!la && J->o.lostAt != NOT_ASKED && ext->o.lostAt != NOT_ASKED && iabs(J->o.lostAt - ext->o.lostAt) >= rankSave) { if (J->o.lostAt > ext->o.lostAt) ext = J; continue; }
       }
+      // (AND REACHING IT, THE BOARD KEPT ALL THE SAME -- the opener survives as well as making the eight: of two extensions that reach
+      // what is needed, the one whose board lives, else the one lost a break's time later, before the shorter -- set 86 large_garbage 2,
+      // an 8 extended to a board lost 74 frames after it)
+      if (ext && c >= need && e >= need) {
+        int la = J->o.lives, lb = ext->o.lives;
+        if (la != lb) { if (la) ext = J; continue; }
+        if (!la && J->o.lostAt != NOT_ASKED && ext->o.lostAt != NOT_ASKED && iabs(J->o.lostAt - ext->o.lostAt) >= rankSave) { if (J->o.lostAt > ext->o.lostAt) ext = J; continue; }
+      }
       if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
     }
     // (NO LINK PAST WHAT A SECOND CHAIN LEAVES TO DO -- the owner: a 5 and a 3: short of what is still needed, the next chain must be a
