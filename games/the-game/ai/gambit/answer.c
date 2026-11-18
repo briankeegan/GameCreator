@@ -667,6 +667,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (twinLo > -2) { L_s(" twinLo="); L_i(twinLo); L_s("/"); L_i(twinRows); }
   if (twinTouchOffered) { L_s(" twinT="); L_i(twinTouchOffered); }
   if (twinNo[1] + twinNo[2] + twinNo[3] + twinNo[4] + twinNo[5]) { L_s(" twinNo="); for (int i = 1; i <= 5; i++) { if (i > 1) L_s("/"); L_i(twinNo[i]); } }
+  if (twinNo[3]) { L_s(" twinBad="); for (int i = 1; i <= 5; i++) { if (i > 1) L_s("/"); L_i(twinBad[i]); } }   // (the threes the refused sorts met: row, column, trigger row, its column, unsortable)
   if (twinWaste[1] + twinWaste[2] + twinWaste[3] + twinWaste[4]) { L_s(" twinW="); for (int i = 1; i <= 4; i++) { if (i > 1) L_s("/"); L_i(twinWaste[i]); } if (twinWaste[2]) { L_s(":made"); L_i(twinWasteC); L_s("x"); L_i(twinWasteN); L_s("/sized"); L_i(twinWasteX); } }
   if (twinOffered || (P.line && P.line->k.twin)) { L_s(" twin="); L_i(twinOffered); if (P.line && P.line->k.twin) L_s(P.line->k.twin == 2 ? "/setup" : "/played"); }
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");

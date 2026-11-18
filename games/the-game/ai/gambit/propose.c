@@ -529,27 +529,46 @@ static int twinCostOn(Board *b) {
 }
 // THE SWAPS THAT SORT ONE: the eight t's rows sorted, the rows nearest the cursor first, then the trigger row, on a copy of the grid g --
 // the trigger left unpressed; how many, or -1 where a row cannot be sorted or a three clears before the trigger
-// (the rows sorted nearest the cursor first; where that order makes a three on the way, the other order -- the same rows from the far end)
-static int twinSortDir(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq, int flip);
+// (the rows sorted nearest the cursor first; where that order makes a three on the way, the trigger row's first -- a trigger row holding
+// the run's colour in the run's column completes the run as the row beside it is sorted, and its own swaps cross that colour out -- then
+// the rows from the far end. twinBad: what the last refused order met -- 1 a three along a row sorted, 2 down its column, 3 along the
+// trigger row, 4 down its column; 5 a row that cannot be sorted)
+static int32_t twinBad[6], twinBadLast;
+static int twinSortDir(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq, int order);
 static int twinSort(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq) {
-  int ns = twinSortDir(b, g, ok, top, t, seq, 0);
-  return ns >= 0 ? ns : twinSortDir(b, g, ok, top, t, seq, 1);
+  for (int order = 0; order < 3; order++) { int ns = twinSortDir(b, g, ok, top, t, seq, order); if (ns >= 0) return ns; }
+  return -1;
 }
-static int twinSortDir(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq, int flip) {
+// (a three the swap at (r, l) makes: 1 along the row, 2 down a column, 0 none)
+static int twinThreeKind(int32_t h[][W + 2], int top, int r, int l) {
+  for (int c = l; c <= l + 1; c++) { int32_t k = h[r][c]; if (!(k > 0 && k < 8)) continue;
+    int n = 1; for (int x = c - 1; x >= 1 && h[r][x] == k; x--) n++; for (int x = c + 1; x <= W && h[r][x] == k; x++) n++;
+    if (n >= 3) return 1;
+    n = 1; for (int y = r - 1; y >= 1 && h[y][c] == k; y--) n++; for (int y = r + 1; y <= top && h[y][c] == k; y++) n++;
+    if (n >= 3) return 2; }
+  return 0;
+}
+static int twinSortDir(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq, int order) {
   static int32_t h[MAXROWS + 2][W + 2];
   memcpy(h, g, sizeof h);
   int ns = 0, bad = 0;
-  int lo = imin(t->a0, t->b0), hi = imax(t->a1, t->b1), up = (iabs(b->curRow - lo) <= iabs(b->curRow - hi)) != flip;
+  int lo = imin(t->a0, t->b0), hi = imax(t->a1, t->b1), up = (iabs(b->curRow - lo) <= iabs(b->curRow - hi)) != (order == 2);
+  // (the trigger row: its colours crossed, the trigger left unpressed -- first in order 1, last otherwise)
+  #define TRIG_ROW() do { RowFix f; if (trigFix(h[t->r], ok[t->r], t->c, t->X, t->Y, t->hx, t->hy, &f) < 0) { twinBadLast = 5; return -1; } \
+    for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; \
+      int why = twinThreeKind(h, top, t->r, l); if (why) { twinBadLast = 2 + why; return -1; } } } while (0)
+  if (order == 1) TRIG_ROW();
   for (int s = 0; s <= hi - lo && !bad; s++) {
     int q = up ? lo + s : hi - s;
     if (q == t->r) continue;
     int wx = q >= t->a0 && q <= t->a1, wy = q >= t->b0 && q <= t->b1;
-    RowFix f; if (twinRowFix(h[q], ok[q], wx ? t->c : 0, t->X, wy ? t->c + 1 : 0, t->Y, &f) < 0) return -1;
-    for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l; if (twinThreeAt(h, top, q, l) || twinThreeAt(h, top, q, l + 1)) bad = 1; }
+    RowFix f; if (twinRowFix(h[q], ok[q], wx ? t->c : 0, t->X, wy ? t->c + 1 : 0, t->Y, &f) < 0) { twinBadLast = 5; return -1; }
+    for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l;
+      int why = twinThreeKind(h, top, q, l); if (why) { twinBadLast = why; return -1; } }
   }
-  RowFix f; if (bad || trigFix(h[t->r], ok[t->r], t->c, t->X, t->Y, t->hx, t->hy, &f) < 0) return -1;
-  for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThreeAt(h, top, t->r, l) || twinThreeAt(h, top, t->r, l + 1)) bad = 1; }
-  return bad ? -1 : ns;
+  if (order != 1) TRIG_ROW();
+  #undef TRIG_ROW
+  return ns;
 }
 // THE SECOND HAND (the owner: set up between moves, in the time the board waits, never at the cost of its life): one eight kept as the
 // target across decisions -- the same two columns, colours and trigger row (a row up or down, the stack's rise), while the board still
@@ -612,7 +631,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   for (int i = 0; i < nb && offered < TWIN_OFFER && n < cap; i++) {
     const Twin *t = &best[i];
     int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, t, seq);
-    if (ns < 0) { twinNo[3]++; continue; }
+    if (ns < 0) { twinNo[3]++; if (twinBadLast >= 1 && twinBadLast <= 5) twinBad[twinBadLast]++; continue; }
     // (each swap pressed as soon as its pair is free while a slab or a clear pops -- a set-up that waits for the board to settle waits the pop out)
     // (SET UP BETWEEN MOVES -- the owner: the set-up built of moves that cost nothing, never of the board's life: the first one, two and
     // three of its swaps, each a line of its own -- a swap pressed where the board waits, the rest left for the next wait; the rank takes
@@ -963,7 +982,7 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
 static int readyBuild(const Read *R, Cand *out, int n, int cap);
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
-  pairOffered = 0; twinOffered = 0; twinTouchOffered = 0; memset(twinNo, 0, sizeof twinNo); twinLo = -2; twinRows = -1;
+  pairOffered = 0; twinOffered = 0; twinTouchOffered = 0; memset(twinNo, 0, sizeof twinNo); memset(twinBad, 0, sizeof twinBad); twinLo = -2; twinRows = -1;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
   // READY FOR THE SLAB ON ITS WAY first, while the decision still has its time (readyBuild)
   n = readyBuild(R, out, n, cap);
