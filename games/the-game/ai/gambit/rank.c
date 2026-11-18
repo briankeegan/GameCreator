@@ -1009,6 +1009,18 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *nr = t8x < t8y ? x : y, *fr = nr == x ? y : x;
     if (nr->o.lives || (!fr->o.lives && diesAt(nr) >= diesAt(fr))) return (cmpKey = __LINE__, (t8x - t8y));
   }
+  // 7e. THE FINISH'S STACK (the owner: zip and flatten for the eights -- multiple combos of eight, quickly, under pressure): in finish
+  // them, of two lines every key above leaves equal, the one leaving more crossed seams ready (judge.c seamsOf: one swap finishing two
+  // colours at once), then the flatter by FLAT_ROWS or more, then the more zipped (judge.c spreadOf) -- under garbage too, where no eight
+  // is in reach and the rows it is sorted from are made; only between lines meeting the same entry, and where it is lost no sooner
+  if (finishAsked() && (x->met >= 0 ? x->met : MAXAIMS) == (y->met >= 0 ? y->met : MAXAIMS)) {
+    const Judge *fb = 0; int fk = 0;
+    if (x->o.j.seams != y->o.j.seams) { fb = x->o.j.seams > y->o.j.seams ? x : y; fk = __LINE__; }
+    else if (x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS) { fb = x->o.j.even < y->o.j.even ? x : y; fk = __LINE__; }
+    else if (x->o.j.spread != y->o.j.spread) { fb = x->o.j.spread > y->o.j.spread ? x : y; fk = __LINE__; }
+    if (fb) { const Judge *ob = fb == x ? y : x;
+      if (fb->o.lives || (!ob->o.lives && diesAt(fb) >= diesAt(ob))) return (cmpKey = fk, (fb == x ? -1 : 1)); }
+  }
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
   { int ax = x->met >= 0 ? x->met : MAXAIMS, ay = y->met >= 0 ? y->met : MAXAIMS; if (ax != ay) return (cmpKey = __LINE__, (ax - ay));
