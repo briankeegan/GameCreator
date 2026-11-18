@@ -54,8 +54,8 @@ twice running, then the next; all 99 are run once every board passes, and any bo
 No board is let off at 7.
 Then (the owner): with the 99 at eight and the game no worse for it, the opener becomes fill's own opening -- the switcher's
 first move, not a mode of its own.
-None of it is merged until the opener survives 100 of 100 -- its own target, above -- and every mode's 28 die no more than
-before it (the owner).
+None of it is merged until the opener survives 100 of 100 -- its own target, above -- and fill's, finish them's and switching's 28
+die no more than before it (the owner).
 
 1. **Level 11.** Training, `lua/check.lua`, the fight and the live run all play `LevelPresets.getModern(11)`; every place that
    assumes level 10 (its health, its frame constants, the docs) reads the level it is handed.
@@ -92,10 +92,12 @@ before it (the owner).
    done. Measured: clears begun while
    another still clears, the pair lines played, the lines that threw two blocks or more, the ideas left ready (gambit_summary.js
    `several ideas at once`).
-6. **Every mode 28/28 at level 11, twice in a row** -- the 24 garbage games and the 4 endless -- then switching (5-30 s, every direction) 28/28 with the switches happening.
-   **The order (the owner's):** the goal stays 28/28 in every mode; 22 of the 24 garbage games and all 4 endless is where a mode is left for the next -- a change made for
-   one mode can undo another's, so the last two are won with every mode run together. Once every mode is at 22, they are run together
-   and each change is checked for a mode it set back, until all are at 24, twice.
+6. **Fill, finish them and switching 28/28 at level 11, twice in a row** -- the 24 garbage games and the 4 endless; switching (5-30 s,
+   every direction) with the switches happening. These are the modes measured (the owner: everything is fill now); build, big chain
+   and pressure are not run.
+   **The order (the owner's):** 22 of the 24 garbage games and all 4 endless is where a mode is left for the next -- a change made for
+   one mode can undo another's, so the last two are won with the three run together, each change checked for a mode it set back,
+   until all three are at 24, twice.
    Finish them reached 22 in run 432; big chain in run 1464 (lockstep). In real time, on the base (plans/gambit-since-base.md):
    pressure 23 in run 1555 and 21 in 1556 (factory 5 to 8 of 8, the other two 7 and 8); build 23 in run 1636 (combo_storm and
    large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). On the owner's lists (110143e3): pressure 22 in run 1669, build 22 in run 1672, finish 22 in run 1679, switching 22 in run 1789; each mode to 22 again, one at a time.
@@ -146,6 +148,8 @@ where it meets the new mode's first entry or breaks garbage.
 - Whether the chain modes build their chains on their own stack only, or may fire the chains garbage colours make without breaking.
 
 ## Done, for each mode
+
+The modes: fill, finish them and switching (the owner).
 
 - 28/28 in **two runs in a row** at level 11 (one run is too noisy).
 - Played within the mode's list, its aim met at the share item 3 sets.
@@ -206,8 +210,11 @@ where it meets the new mode's first entry or breaks garbage.
   gambit.json, `then` that mode); the other modes only once it does well there. Every run new games: a seed not run before (a seed
   run again only to set two builds side by side). Main is not run again: its measure is the one on record. Its log goes in the same
   run, and a run is never spent on a log alone.
-- **A run, as fast as it goes** (the owner): one change, one run -- of one mode, the weakest on record, until every mode is at 22; from
-  then on every mode together, each change checked for a mode it set back (the list's 6). Never a run that decides nothing.
+- **A run, as fast as it goes** (the owner): one change, one run -- of one mode, the weakest on record of fill, finish them and
+  switching, until each is at 22; from then on the three together, each change checked for a mode it set back (the list's 6). Never a
+  run that decides nothing.
+- **One 28-game run at a time, read as it goes** (the owner): a run is dispatched alone and its games are read as their jobs finish --
+  never a queue of runs left to finish unread, never a mode no longer measured.
 - **The worst first, always** (the owner): the next change is for the mode with the fewest survived in the latest run -- not the goal's
   other measures, not a mode doing well. Once it is at 23 or 24, the next worst is taken. A run takes about ten minutes (seven of them the game, in real time: Gambit thinks on the clock). A run made
   stale by a newer change is cancelled at once. Each run is reported with when it began and when it should end, in ET on the 24-hour
