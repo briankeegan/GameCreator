@@ -833,6 +833,7 @@ static int32_t opSecondFall;   // (the chain falling as the fall rule reads it -
 // (the chain a second chain must make: with the first thrown, any of OPENER_LEAST or more; with one falling, the rest of the eight
 // after it, OPENER_LEAST or more)
 static int32_t opSecondLeast(void) { return openerSum > 0 ? OPENER_LEAST : imax(OPENER_LEAST, imax(OPENER_LEAST, opNeed) - opSecondFall); }
+static CbSeq opKeepSeq; static int opKeepOn; static int32_t opKeepHeld;   // (the next chain's design carried on, and the decisions it was: the log's keep=)
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -860,7 +861,26 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   // (the designer's chain first, in OP_SECOND_DESIGN of the time: its whole plan at once; the beam in the rest, grown on decision after
   // decision -- the landed board is the same board every decision of the fall -- where the designer finds none)
   static OpPath dp; const OpPath *pl = 0; double t0 = nowMs();
-  opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = opSecondLeast(); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW)) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
+  opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = opSecondLeast();
+  // (THE NEXT CHAIN KEPT: the design pressed a swap at a time is the one carried on -- on each landed board the fewest of its swaps still
+  // to press that make a chain of opDesignLeast or more; a new design only where none does: one swap from each of a new design every
+  // decision is a chain never built, set 86 factory 3)
+  if (opKeepOn) {
+    static CbGrid KG, KT; cbPartial = 1; cbOfBoard(landed, &KG);
+    for (int k = opKeepSeq.n; k >= 0 && !pl; k--) {
+      CbSeq s; s.n = opKeepSeq.n - k; for (int i = 0; i < s.n; i++) { s.r[i] = opKeepSeq.r[k + i]; s.c[i] = opKeepSeq.c[k + i]; }
+      int32_t tk = 0; int lk = 0;
+      if (cbSeqPlay(&KG, &s, &KT) && cbBest(&KT, &tk, &lk) > 0 && tk && lk >= opDesignLeast) {
+        memset(&dp, 0, sizeof dp); dp.len = s.n; for (int i = 0; i < s.n; i++) dp.path[i] = s.r[i] * 8 + s.c[i]; dp.trig = tk; dp.ch = lk; dp.design = 1;
+        opKeepSeq = s; pl = &dp; opKeepHeld++; }
+    }
+    cbPartial = 0;
+    if (!pl) opKeepOn = 0;
+  }
+  if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW)) {
+    pl = &dp; opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX);
+    for (int i = 0; i < opKeepSeq.n; i++) { opKeepSeq.r[i] = (cb8)CR(dp.path[i]); opKeepSeq.c[i] = (cb8)CC(dp.path[i]); } }
+  opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
   double rest = ms - (nowMs() - t0);
   static int32_t grownFor = -1;
   if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
