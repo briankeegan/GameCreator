@@ -809,6 +809,7 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 #define OP_SECOND_SHARE 0.9   // (the share of what the decision has left that the second chain's plan takes: the extension has had its share)
 #define OP_CB_COST 30
 #define OP_CB_MAXSW 14
+#define OP_NEXT_MAXSW 10   // (and the next chain's: its swaps pressed while garbage lands and the game's clock runs -- set 86 large_garbage 7, a 4 of 14 swaps half pressed and never fired)
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
 static int32_t opDesignCost = OP_CB_COST;   // (a swap's worth in a design's score: the opening's race, or the next chain's OP_NEXT_COST)   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
 static int32_t opDesignLeast = OP_TWO_FROM;   // (the chain a design must make: the opening's OP_TWO_FROM, the next chain's what is still needed)
@@ -886,7 +887,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
     if (!pl) opKeepOn = 0;
     else opKeepPrev = KG;
   }
-  if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW)) {
+  if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_NEXT_MAXSW)) {
     pl = &dp; opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX); opKeepAt = decQ.b->clock; cbOfBoard(landed, &opKeepPrev);
     for (int i = 0; i < opKeepSeq.n; i++) { opKeepSeq.r[i] = (cb8)CR(dp.path[i]); opKeepSeq.c[i] = (cb8)CC(dp.path[i]); } }
   opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
@@ -1022,7 +1023,7 @@ static void opPairAll(const Question *q, double ms) {
     const Board *lb = got ? endBoard : 0;
     if (!lb || oo.dead || imax(chainOf(oo.j.made), oo.j.chainAll) < p->ch || lb->chainCounter != 0 || cascadeLive((Board *)lb)) continue;
     OpPath dp; opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = imax(OPENER_LEAST, OPENER_SUM - p->ch);
-    p->ch2 = opDesign(lb, ms / np, &dp, OP_CB_MAXSW) ? dp.ch : 0;
+    p->ch2 = opDesign(lb, ms / np, &dp, OP_NEXT_MAXSW) ? dp.ch : 0;
     if (p->ch2 > opPairBest) opPairBest = p->ch2;
   }
   opDesignLeast = kLeast; opDesignCost = kCost; opDesigned = kDesigned; opDesignWhy = kWhy; opDesignLinks = kLinks; opSeqLinks = kSeq; opDesignAsIs = kAsIs;
@@ -1275,7 +1276,7 @@ static Played playOf(const Read *R, int n) {
     opNextDesign = -1; opNextMs = (int32_t)(left * OP_NEXT_SHARE); opDesignWhy = 0;
     // (on the board as it stands only while nothing on it moves: a panel hovering above a swap refuses it, and a board in motion is not the
     // one its swaps meet -- moving, the next chain is designed on the board it settles to, below)
-    opDesignCost = OP_NEXT_COST; opDesignLeast = OPENER_LEAST; int got = left > 8 && !hasActivePanels(decQ.b) && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_CB_MAXSW); opDesignCost = OP_CB_COST; opDesignLeast = OP_TWO_FROM;
+    opDesignCost = OP_NEXT_COST; opDesignLeast = OPENER_LEAST; int got = left > 8 && !hasActivePanels(decQ.b) && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_NEXT_MAXSW); opDesignCost = OP_CB_COST; opDesignLeast = OP_TWO_FROM;
     if (got) {
       opNextDesign = -2; opNextCh = dp.ch; opNextLen = dp.len + 1;
       int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int i = 0; i < dp.len; i++) seq[ns++] = dp.path[i]; seq[ns++] = dp.trig;
