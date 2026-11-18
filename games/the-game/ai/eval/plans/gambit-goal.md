@@ -47,13 +47,18 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 
 ## The list -- each finished before the next
 
-**FINISH THEM'S EIGHTS COME FIRST (the owner).** In finish them -- the attack phase, the enemy topped out -- Gambit works toward
-combos of eight and up -- 8, 9, 10 alike: several, as quickly as it can, under pressure too. Other combos it sends count, but its play is set up for eights and up. It
-sends no chain past a 2x. The stack is kept zipped and flat (colours a swap apart, not touching; few rows between the tallest column
-and the lowest) so the next eight is always a few swaps away. Measured on finish them's 28 games (`gambit-24.yml`, `then`
-`["finish_them"]`), read as the games finish: combos of eight and up sent in the attack phase, in all and a minute (main on set 86: 13-18 in
-28 games, about 0.1 a minute; Tanycanayt live: 1.29 a minute), the other combos sent, chains of 3x or more sent (target 0), and
-survival no worse than main's (21-26 of 28 on set 86). This comes before any other work.
+**FINISH THEM'S EIGHTS COME FIRST (the owner).** In finish them -- the attack phase, the enemy topped out -- Gambit sends as many
+combos of eight and up (8, 9, 10 alike) as it can, under pressure too, **without dying**. Other combos count too, but its play is set
+up for eights and up. And it sends **fewer large chains**: some chains are inevitable, but in finish them a chain, if any, is a 2x --
+large chains go down while the eights and other combos go up.
+- **One game at a time** (the owner): a single finish game (`gambit-24.yml`, `patterns` and `games` that one game, `then`
+  `["finish_them"]`, profile gambit.json, a fight) is worked on until it sends eights and up a lot without dying -- the number to be
+  agreed with the owner -- then the next game, one at a time. Not the 28 at once until then.
+- **After every run, the breakdown** (the owner): the finish phase's chains by size (2x, 3x, 4x ...) and combos by size (4, 5, 6, 7,
+  8, 9, 10 ...), eights and up a minute, and whether the game survived -- every change read by it, toward the most eights and up and the
+  fewest chains past 2x.
+- Reference: main on set 86 sends about 0.1 eights and up a minute across the 28 (13-18 in all); Tanycanayt live, 1.29 a minute. This
+  comes before any other work.
 
 1. **Level 11.** Training, `lua/check.lua`, the fight and the live run all play `LevelPresets.getModern(11)`; every place that
    assumes level 10 (its health, its frame constants, the docs) reads the level it is handed.
