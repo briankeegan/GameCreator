@@ -56,6 +56,7 @@ static int carryHeld(void);
 #define OPEN_SWAP_FRAMES 16   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands -- 16.5 measured, the countdown plans of 100 opener games, their trigger's frame over their swaps)
 #define OPEN_FIRE_BY 338      // (the frame the opener's trigger is pressed by while no garbage is shown: the frame before the first garbage lands, 339 in every pattern of the 99 opener games -- it lands on the stack's top, not on the chain)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
+#define FINISH_ROWS 8   // the rows finish them raises a low stack to where no garbage has come: an eight's columns, and rows over them
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
 #define OPENING_RAISE 600   // the opening raise's frames: the countdown and the seconds before garbage first lands (340-400 in the garbage patterns)
@@ -109,6 +110,7 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
   return ok;
 }
 static int carryOpener(void);   // (the line in progress was begun under the opener: below, with the carry)
+static int32_t twinWaste[5], twinWasteC, twinWasteX, twinWasteN;   // (the two-column eights taken out as wasting a three, by the test that called it so -- rank.c wasteWhy: the log's twinW=)
 static CbSeq opKeepSeq; static CbGrid opKeepPrev; static int opKeepOn; static int32_t opKeepHeld, opKeepAt;   // (the next chain's design carried on, and the decisions it was: the log's keep=)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
@@ -192,6 +194,14 @@ static int readBoard_(Read *R) {
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on && garbageGame;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
+  // (EIGHT AND UP -- the owner: 8x plus, 9s and 10s alike: in a list that asks combos and no chain, an entry of exactly eight asks eight
+  // or more -- a two-column eight of 11 or 12 panels is the attack asked, never a combo outside the list taken out as a wasted three;
+  // set 86 combo_storm 1, 261 of 277 eights taken out so)
+  { int chain = 0; for (int i = 0; i < R->list.n; i++) if (R->list.aim[i].chain.op) chain = 1;
+    if (!chain) for (int i = 0; i < R->list.n; i++) { Test *c = &R->list.aim[i].combo; if (c->op == OP_EQ && c->n == 8) c->op = OP_GE; }
+    // (ANY COMBO BEFORE A THREE -- the owner: in finish them a three is the last resort, and every combo beats it: in a list that asks combos
+    // and no chain, its entry of exactly four asks four or more, so a 7 meets the list as a 4 does and is never a combo outside it)
+    if (!chain) for (int i = 0; i < R->list.n; i++) { Test *c = &R->list.aim[i].combo; if (c->op == OP_EQ && c->n == 4) c->op = OP_GE; } }
   // (WHAT THE OPENER STILL NEEDS IS ASKED -- the owner: a 6 and a 3 are the eight: with chains thrown, the opener's list asks a chain of
   // what is still needed in its place among its own entries, where none of them asks it)
   // (and under tall garbage, a chain of two that breaks it after the rest of the eight: its link breaks the slab chaining, the chain lives
@@ -223,7 +233,7 @@ static int readBoard_(Read *R) {
   theList = R->list; listOn = 1; decF.belowFloor = R->belowFloor;
   // (an eight is set up ahead wherever some mode asks one -- outcome.c twinAfter, rank.c 7d)
   twinWanted = 0;
-  for (int i = 0; i < theTables.n && !twinWanted; i++) for (int k = 0; k < theTables.r[i].list.n; k++) { const Test *t = &theTables.r[i].list.aim[k].combo; if ((t->op == OP_GE || t->op == OP_GT) && t->n + (t->op == OP_GT) >= 8) twinWanted = 1; }
+  for (int i = 0; i < theTables.n && !twinWanted; i++) for (int k = 0; k < theTables.r[i].list.n; k++) { const Test *t = &theTables.r[i].list.aim[k].combo; if ((t->op == OP_GE || t->op == OP_GT || t->op == OP_EQ) && t->n + (t->op == OP_GT) >= 8) twinWanted = 1; }
   // (garbage on the board: the search asks every entry to break it too; garbage on it or topped out, the deadline is a break's -- before
   // the board dies; the rule's `by` is an attack's)
   R->under = !theTables.underIgnore && F->known[FACT_US_CONTACT];
@@ -272,6 +282,11 @@ static int readBoard_(Read *R) {
   // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
   // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
   int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
+  // (and FINISH THEM'S RAISE: the eights it fires need rows to sort -- three to five tall in two columns side by side -- so a stack
+  // under LOW_ROWS is raised to FINISH_ROWS in a game garbage has not reached too; set 86 endless, a stack of four rows cleared by 4s
+  // and 6s, no eight in reach in four decisions of five)
+  int finishRefill = !opening && !refill && !garbageGame && finishAsked() && panelTop(decQ.b) < LOW_ROWS && !R->topped;
+  if (finishRefill) { refill = 1; if (!rule->raiseTo || rule->raiseTo > FINISH_ROWS) to = FINISH_ROWS; }
   // (TIME ATTACK'S RAISE: no design being built and the stack under its top -- the owner: flatten, raise to the top, then the chain; no
   // garbage is coming, so the rows are raised as they are, never held to a break's readiness. The top is TA_TOP less each row the tallest
   // column stands over the shortest past TA_EVEN: an uneven stack raised to TA_TOP puts its tallest column where the rise ends it)
@@ -430,7 +445,7 @@ static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (an extension of the falling chain: a line played as one -- PLAY_EXTEND, or PLAY_LINEUP, the same search's lines while a garbage slab
 // pops beside the chain -- or the line in progress begun as one)
 static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || (J->carried && (b == PLAY_EXTEND || b == PLAY_LINEUP)); }
-static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
+static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down; 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -669,7 +684,8 @@ static int ranked(const Read *R, const Found *S) {
     // what the order lets through, a walk spent for nothing)
     // (and never the line in progress begun on its three as the save: the input pressed of it is spent, and taken out now it is spent for
     // nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    memset(twinWaste, 0, sizeof twinWaste); twinWasteC = twinWasteX = twinWasteN = 0;
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
@@ -1138,6 +1154,44 @@ static Played playOf(const Read *R, int n) {
         else if (wastesThree(&FS)) freeSetup = -4;
         else if (spendsReserve(&FS)) freeSetup = -5;
         else { P.line = &FS; freeSetup = 1; }
+      }
+    }
+  }
+  // (and IN THE CARRIED LINE'S WAIT -- the owner: build the eight in increments, between breaks and smaller combos: where the line in
+  // progress waits for its next swap, the kept eight's next swap is pressed first and the line carried on after it, the two one line,
+  // judged whole: only where it is lost no sooner than the line alone, breaks as much, meets as early an entry, cuts no chain short and
+  // wastes no three)
+  if (freeSetup == 0 && P.line && P.line->k.play == PLAY_CARRYWAIT && !P.line->o.dead && !P.deferred && !R->up && twinWanted && !clockOut()) {
+    int32_t sw; const Judge *C = P.line;
+    if (C->k.nseq + 1 <= MAXLINE && twinNextSwap(decQ.b, &sw)) {
+      static Judge FW; Cand k; int32_t seq[MAXLINE + 1]; int ns = 0;
+      seq[ns++] = sw; for (int i = 0; i < C->k.nseq && ns < MAXLINE; i++) seq[ns++] = C->k.seq[i];
+      freeSetup = -6;
+      if (candOf(&k, PLAY_SETUP, seq, ns, -1, 0)) {
+        k.settled = C->settled; k.twin = 2;
+        if (judgeCand(R, &k, &FW) && !FW.o.dead &&
+            (C->o.lives ? FW.o.lives : (FW.o.lives || (FW.o.lostAt != NOT_ASKED && diesAt(&FW) >= diesAt(C)))) &&
+            imax(0, FW.apBroke) >= imax(0, C->apBroke) && (FW.met < 0 ? MAXAIMS : FW.met) <= (C->met < 0 ? MAXAIMS : C->met) &&
+            !cutsShort(&FW) && !wastesThree(&FW)) { P.line = P.top = &FW; P.wait = 0; freeSetup = 2; }
+      }
+    }
+  }
+  // (THE WHOLE EIGHT BEFORE THE LINE IN PROGRESS -- the owner: eights between breaks: in finish them, where the decision carries a line
+  // on, an eight offered whole (propose.c twinLines) is pressed first and the carried line after it, the two one line, judged whole:
+  // taken where it fires the eight and is lost within a break's time of the carried line alone, or later -- each judged alone is lost
+  // as if it were the last thing pressed, so an eight beside a break is never seen to leave the time for the break)
+  if (freeSetup == 0 && P.line && P.line->carried && (P.line->k.play == PLAY_CARRY || P.line->k.play == PLAY_CARRYWAIT) && !P.line->o.dead &&
+      !(P.line->apCombo >= 8 && P.line->apChain < 2) && !P.deferred && !R->up && finishAsked() && !clockOut()) {
+    const Judge *C = P.line, *E = 0;
+    for (int i = 0; i < n; i++) if (order[i]->k.twin == 1 && !order[i]->o.dead && order[i]->apCombo >= 8 && (!E || diesAt(order[i]) > diesAt(E))) E = order[i];
+    if (E && E->k.nseq + C->k.nseq <= MAXLINE) {
+      static Judge EW; Cand k; int32_t seq[MAXLINE]; int ns = 0;
+      for (int i = 0; i < E->k.nseq; i++) seq[ns++] = E->k.seq[i];
+      for (int i = 0; i < C->k.nseq; i++) seq[ns++] = C->k.seq[i];
+      freeSetup = -7;
+      if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
+        k.settled = C->settled; k.twin = 1; k.x.combo = E->k.x.combo;
+        if (judgeCand(R, &k, &EW) && EW.apCombo >= 8 && (finishEightBy(&EW, C) || (!EW.o.dead && diesAt(&EW) >= diesAt(C)))) { P.line = P.top = &EW; P.wait = 0; freeSetup = 3; }
       }
     }
   }

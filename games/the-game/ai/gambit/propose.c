@@ -300,7 +300,7 @@ static int32_t towardRest[MAXPATH], towardRestLen;   // (answer.c: the rest of t
 // beside the match before that swap -- a combo of four or more buys the stop a three does not (pa.c calculateStopTime). Offered as the
 // play that found the three, so its place in the order is that play's; the engine judges whether the match is made.
 static Ctx *fillCtx;
-static int32_t twinOffered;   // (the two-column lines offered this decision: twinLines)
+static int32_t twinOffered, twinTouchOffered, twinNo[6];   // (twinNo: the eights found and not offered whole, by why -- 1 no time, 2 the offer full, 3 sorted into a three, 4 not pressed before the loss, 5 too far: the log's twinNo=)   // (the two-column lines offered this decision: twinLines)
 static int32_t twinRows = -1;   // (and the rows it could sort: six panels at rest on six)
 static int32_t twinLo = -2;   // (the fewest swaps a set-up takes on this board: -1 none found, -2 not asked -- the log's)
 static const Board *boardBefore(Ctx *x, const int32_t *seq, int n) {
@@ -313,7 +313,7 @@ static int growLines(Cand *out, int n, int cap) {
   Ctx *x = fillCtx = ctxOf(fillCtx);
   static Land L; static Fills F;
   int bigAsked = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
+  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT || c->op == OP_EQ) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
   for (int i = 0, n0 = n; i < n0 && n < cap && !clockOut(); i++) {
     const Cand *k = &out[i];
     if (k->nseq < 1 || k->grown) continue;
@@ -359,8 +359,10 @@ static int growLines(Cand *out, int n, int cap) {
 // - Elsewhere, under garbage or not, with none loaded (rank.c twinTime): the rows sorted and the trigger left unpressed, a set-up -- the eight
 //   is ready the moment a mode asks one (finish them, the enemy topped out).
 //   Any other mode leaves the trigger alone: a combo it does not ask for is wasted (rank.c wastesThree).
+#define TWIN_SWAP_FRAMES 24   // (the frames a swap of an eight takes to press, the walk with it: set 86 combo_storm 1, 18-26 a swap)
 #define TWIN_MAXSWAPS 12
 #define TWIN_OFFER 3
+#define TWIN_GONE 15   // (a scan cell whose panel is clearing: not empty, no colour)
 #define TWIN_REACH 20   // (the most swaps the distance to an eight is counted to -- one distance, the set-ups proposed by it and ranked by it)
 #define TWIN_SETUP_MAX 8   // (the most swaps a set-up is built in outside the mode that fires it)
 typedef struct { int32_t n, at[8], ok; } RowFix;
@@ -396,7 +398,15 @@ static int twinThree(int32_t g[][W + 2], int top) {
   }
   return 0;
 }
-typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1, hx, hy; } Twin;   // (hx, hy: the arms -- X at c-2, c-1 and Y at c+2, c+3 of the trigger row -- 2 or 0; a0 > a1, b0 > b1: no column run)
+// (a three through cell (r, c) -- along its row or its column: what a swap there makes, the board's own threes elsewhere left out)
+static int twinThreeAt(int32_t g[][W + 2], int top, int r, int c) {
+  int32_t k = g[r][c]; if (!(k > 0 && k < 8)) return 0;
+  int n = 1; for (int x = c - 1; x >= 1 && g[r][x] == k; x--) n++; for (int x = c + 1; x <= W && g[r][x] == k; x++) n++;
+  if (n >= 3) return 1;
+  n = 1; for (int y = r - 1; y >= 1 && g[y][c] == k; y--) n++; for (int y = r + 1; y <= top && g[y][c] == k; y++) n++;
+  return n >= 3;
+}
+typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1, hx, hy, touch; } Twin;   // (hx, hy: the arms -- X at c-2, c-1 and Y at c+2, c+3 of the trigger row -- 2 or 0; a0 > a1, b0 > b1: no column run)
 // (the panels an eight clears: each side its column run and its arm, the trigger cell once)
 static int twinSize(const Twin *t) { return (t->a1 >= t->a0 ? t->a1 - t->a0 + 1 : 1) + t->hx + (t->b1 >= t->b0 ? t->b1 - t->b0 + 1 : 1) + t->hy; }
 // (A ROW SORTED TO SEVERAL COLUMNS: each target column's colour walked in from the nearest panel of it that need not cross a column already
@@ -441,10 +451,33 @@ static int trigFix(const int32_t *row, const uint8_t *ok, int c, int32_t X, int3
 }
 // (every two-column eight the board can be sorted into within TWIN_MAXSWAPS, the cheapest TWIN_OFFER * 4 kept: the grid in g, its top
 // in *topOut, the cells that can be sorted in ok, the full rows in *rows)
+// (AN EIGHT THAT BREAKS: a panel it clears next to garbage -- above it or beside it -- breaks the garbage with it, so the eight is a break
+// and lives as one: the players' eights, fired against the garbage on screen (plans/gambit-combos.md, 222 of 260 with garbage up))
+static int twinTouches(int32_t g[][W + 2], const Twin *t) {
+  #define TG(r_, c_) ((c_) >= 1 && (c_) <= W && (r_) >= 1 && (r_) < MAXROWS + 2 && g[r_][c_] == -2)
+  #define TC(r_, c_) (TG((r_) + 1, c_) || TG((r_) - 1, c_) || TG(r_, (c_) - 1) || TG(r_, (c_) + 1))
+  for (int q = t->a0; q <= t->a1; q++) if (TC(q, t->c)) return 1;
+  for (int q = t->b0; q <= t->b1; q++) if (TC(q, t->c + 1)) return 1;
+  if (TC(t->r, t->c) || TC(t->r, t->c + 1)) return 1;
+  if (t->hx && (TC(t->r, t->c - 2) || TC(t->r, t->c - 1))) return 1;
+  if (t->hy && (TC(t->r, t->c + 2) || TC(t->r, t->c + 3))) return 1;
+  #undef TC
+  #undef TG
+  return 0;
+}
+// (the order the eights are kept and offered in: the fewest swaps, then the one that breaks garbage -- a nearer eight is never put out of
+// the offer by a farther one that breaks: set 86 combo_storm 1, an eight a swap away left unoffered 60 frames for three six swaps off)
+static int twinRank(const Twin *t) { return t->cost * 2 - (t->touch ? 1 : 0); }
 static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topOut, Twin *best, int *rows, int cap) {
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
-  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { g[r][c] = cellAt(b, r, c); if (g[r][c] != 0) top = r; }
+  // (a panel clearing -- matched, popping, popped -- holds its cell until it goes and makes no three with anything: TWIN_GONE, no colour)
+  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) {
+    g[r][c] = cellAt(b, r, c);
+    int32_t s = b->p[r][c].f[STATE];
+    if (g[r][c] > 0 && g[r][c] < 8 && (s == MATCHED || s == POPPING || s == POPPED)) g[r][c] = TWIN_GONE;
+    if (g[r][c] != 0) top = r;
+  }
   if (top > b->topCurRow) top = b->topCurRow;
   // (a cell that can be sorted: a panel of colour at rest, on one at rest -- or the floor; a row with any is a row the runs may pass)
   uint32_t any[MAXROWS + 2];
@@ -475,9 +508,9 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
             if (k < 0) okAll = 0; else cost += k;
           }
           if (!okAll || cost > cap) continue;
-          t.cost = cost;
+          t.cost = cost; t.touch = twinTouches(g, &t);
           int at = nb < TWIN_OFFER * 4 ? nb++ : -1;
-          if (at < 0) { int w = 0; for (int i = 1; i < nb; i++) if (best[i].cost > best[w].cost) w = i; if (best[w].cost <= cost) continue; at = w; }
+          if (at < 0) { int w = 0; for (int i = 1; i < nb; i++) if (twinRank(&best[i]) > twinRank(&best[w])) w = i; if (twinRank(&best[w]) <= twinRank(&t)) continue; at = w; }
           best[at] = t;
         }
       }
@@ -506,10 +539,10 @@ static int twinSort(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int
     if (q == t->r) continue;
     int wx = q >= t->a0 && q <= t->a1, wy = q >= t->b0 && q <= t->b1;
     RowFix f; if (twinRowFix(h[q], ok[q], wx ? t->c : 0, t->X, wy ? t->c + 1 : 0, t->Y, &f) < 0) return -1;
-    for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l; if (twinThree(h, top)) bad = 1; }
+    for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l; if (twinThreeAt(h, top, q, l) || twinThreeAt(h, top, q, l + 1)) bad = 1; }
   }
   RowFix f; if (bad || trigFix(h[t->r], ok[t->r], t->c, t->X, t->Y, t->hx, t->hy, &f) < 0) return -1;
-  for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThree(h, top)) bad = 1; }
+  for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThreeAt(h, top, t->r, l) || twinThreeAt(h, top, t->r, l + 1)) bad = 1; }
   return bad ? -1 : ns;
 }
 // THE SECOND HAND (the owner: set up between moves, in the time the board waits, never at the cost of its life): one eight kept as the
@@ -542,13 +575,13 @@ static int twinNextSwap(Board *b, int32_t *swap) {
 }
 static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
-  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
+  for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT || c->op == OP_EQ) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
   Board *b = decQ.b;
   // (the set-up's first swaps on any board -- under garbage, a pop running, a chain falling: the owner, once the chain's next link is
   // set, go do something else -- the judge plays each on the engine, and one that cuts the board's chain short ranks after the wait)
   int prefixes = !R->topped, setupOnly = !bigAsked && twinTime(R->under, R->topped);
   twinLo = -2;
-  if ((!bigAsked && !setupOnly && !prefixes) || clockOut()) return n;
+  if ((!bigAsked && !setupOnly && !prefixes) || clockOut()) { if (clockOut()) twinNo[1]++; return n; }
   static int32_t g[MAXROWS + 2][W + 2];
   static uint8_t ok[MAXROWS + 2][W + 2];
   static Twin best[TWIN_OFFER * 4];
@@ -558,26 +591,31 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
   // (a set-up only where none is loaded -- no trigger one swap away -- and short enough to be worth building ahead)
   { int lo = 99; for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost; twinLo = lo == 99 ? -1 : lo;
     if (!bigAsked && lo == 0) return n; }
-  for (int i = 0; i < nb; i++) for (int j = i + 1; j < nb; j++) if (best[j].cost < best[i].cost) { Twin t = best[i]; best[i] = best[j]; best[j] = t; }
+  for (int i = 0; i < nb; i++) for (int j = i + 1; j < nb; j++) if (twinRank(&best[j]) < twinRank(&best[i])) { Twin t = best[i]; best[i] = best[j]; best[j] = t; }
   int offered = 0;
+  if (nb && n >= cap) twinNo[2]++;
   for (int i = 0; i < nb && offered < TWIN_OFFER && n < cap; i++) {
     const Twin *t = &best[i];
     int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, t, seq);
-    if (ns < 0) continue;
+    if (ns < 0) { twinNo[3]++; continue; }
+    // (each swap pressed as soon as its pair is free while a slab or a clear pops -- a set-up that waits for the board to settle waits the pop out)
     // (SET UP BETWEEN MOVES -- the owner: the set-up built of moves that cost nothing, never of the board's life: the first one, two and
     // three of its swaps, each a line of its own -- a swap pressed where the board waits, the rest left for the next wait; the rank takes
     // one only where it is lost no sooner and keeps the window's reserve, rank.c nearerEight)
     if (prefixes && i < 2 && ns > 0)
       for (int p = 1; p <= 3 && p < ns && n < cap; p++)
-        if (candOf(&out[n], PLAY_SETUP, seq, p, -1, 0)) { out[n].settled = 1; out[n].twin = 2; out[n].aimC = twinSize(t); out[n].aimLeft = ns - p + 1; n++; twinOffered++; }
-    if (t->cost > TWIN_MAXSWAPS) continue;   // (past TWIN_MAXSWAPS: its first swaps only -- an eight that far is set up, never fired whole)
+        if (candOf(&out[n], PLAY_SETUP, seq, p, -1, 0)) { out[n].settled = !R->pop; out[n].twin = 2; out[n].aimC = twinSize(t); out[n].aimLeft = ns - p + 1; n++; twinOffered++; }
+    if (t->cost > TWIN_MAXSWAPS) { twinNo[5]++; continue; }   // (past TWIN_MAXSWAPS: its first swaps only -- an eight that far is set up, never fired whole)
     if (setupOnly) {
       if (ns < 1 || ns > TWIN_SETUP_MAX) continue;
-      if (candOf(&out[n], PLAY_SETUP, seq, ns, -1, 0)) { out[n].settled = 1; out[n].twin = 2; out[n].aimC = twinSize(t); out[n].aimLeft = 1; n++; offered++; twinOffered++; }
+      if (candOf(&out[n], PLAY_SETUP, seq, ns, -1, 0)) { out[n].settled = !R->pop; out[n].twin = 2; out[n].aimC = twinSize(t); out[n].aimLeft = 1; n++; offered++; twinOffered++; }
       continue;
     }
+    // (an eight pressed whole only where its swaps are pressed before the board is lost: one begun and put down for the board's life is
+    // swaps spent for nothing -- set 86 combo_storm 1, eights of nine swaps begun 130-160 frames from the loss, put down at 20)
+    if (R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0 && (ns + 1) * TWIN_SWAP_FRAMES > R->F.v[FACT_US_DIES]) { twinNo[4]++; continue; }
     seq[ns++] = t->r * 8 + t->c;
-    if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 1; n++; offered++; twinOffered++; }
+    if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 1; n++; offered++; twinOffered++; twinTouchOffered += t->touch; }
   }
   return n;
 }
@@ -852,12 +890,37 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
     const int32_t *f = P(b, r, c)->f;
     if (f[ISGARBAGE] ? f[STATE] == MATCHED : f[COLOR] != 0 && (f[STATE] != NORMAL || SETB(f[CHAINING]))) moving[r][c] = 1;   // (a slab popping among them: what it turns into chains with what lies beside it)
   }
+  // (THE NEXT LINK'S PARTNERS first: a panel of the chain falling lands on its column's resting top; a resting panel of its colour beside
+  // where it lands, or under it, is what the next link is made of -- swapped aside, the link is not there to make. The blind swaps near
+  // the motion after, nearest the cursor first)
+  int32_t tg[4 * W * MAXROWS]; int nt = 0;
+  for (int r = 2; r <= h + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = P(b, r, c)->f;
+    if (f[ISGARBAGE] || f[COLOR] <= 0 || f[COLOR] >= 8 || !(f[STATE] == FALLING || f[STATE] == HOVERING || (SETB(f[CHAINING]) && f[STATE] != NORMAL))) continue;
+    int land = r;
+    while (land > 1) { const int32_t *u = P(b, land - 1, c)->f; if (u[COLOR] != 0 && !moving[land - 1][c]) break; land--; }
+    static const int dr[6] = { 0, 0, 0, 0, -1, -2 }, dc[6] = { -2, -1, 1, 2, 0, 0 };
+    for (int q = 0; q < 6; q++) {
+      int pr = land + dr[q], pc = c + dc[q];
+      if (pr < 1 || pc < 1 || pc > W || pr >= b->nrows) continue;
+      const int32_t *g = P(b, pr, pc)->f;
+      if (g[ISGARBAGE] || g[COLOR] != f[COLOR] || g[STATE] != NORMAL || moving[pr][pc]) continue;
+      for (int s = pc - 1; s <= pc; s++) {
+        int32_t cost;
+        if (s < 1 || s >= W || !canSwapPanels(b, P(b, pr, s), P(b, pr, s + 1), &cost) || cost) continue;
+        int32_t m = pr * 8 + s, dup = 0; for (int i = 0; i < nt; i++) dup |= tg[i] == m;
+        if (!dup && nt < 4 * W * MAXROWS) tg[nt++] = m;
+      }
+    }
+  }
+  for (int i = 0; i < nt && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &tg[i], 1, -1, 0)) { n++; cutOffered++; }
   int32_t mv[W * MAXROWS]; int d[W * MAXROWS], nm = 0;
   for (int r = 1; r <= h && r < b->nrows; r++) for (int c = 1; c < W; c++) {
     int near = 0;
     for (int rr = imax(1, r - 2); rr <= imin(h + 1, r + 2) && !near; rr++) for (int cc = imax(1, c - 1); cc <= imin(W, c + 2); cc++) if (moving[rr][cc]) { near = 1; break; }
     int32_t cost;
     if (!near || !canSwapPanels(b, P(b, r, c), P(b, r, c + 1), &cost) || cost) continue;
+    { int dup = 0; for (int i = 0; i < nt; i++) dup |= tg[i] == r * 8 + c; if (dup) continue; }
     mv[nm] = r * 8 + c; d[nm] = iabs(r - b->curRow) + iabs(c - b->curCol); nm++;
   }
   for (int i = 1; i < nm; i++) for (int j = i; j > 0 && d[j] < d[j - 1]; j--) { int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; }
@@ -867,7 +930,7 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
 static int readyBuild(const Read *R, Cand *out, int n, int cap);
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
-  pairOffered = 0; twinOffered = 0; twinLo = -2; twinRows = -1;
+  pairOffered = 0; twinOffered = 0; twinTouchOffered = 0; memset(twinNo, 0, sizeof twinNo); twinLo = -2; twinRows = -1;
   #define ADD(...) do { if (n < cap && candOf(&out[n], __VA_ARGS__)) n++; } while (0)
   // READY FOR THE SLAB ON ITS WAY first, while the decision still has its time (readyBuild)
   n = readyBuild(R, out, n, cap);
