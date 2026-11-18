@@ -78,8 +78,8 @@ def main():
         if seq and seq != '-': line += '  swaps ' + seq
         tk = g('twinKey')
         if tk:
-            k = tk.split(':')[0][1:]
-            line += '  | an 8 was offered and lost on key %s: %s' % (k, key_name(lines, int(k)))
+            k = tk.split(':')[0][1:]; won8 = k.endswith('+'); k = k.rstrip('+')
+            line += '  | an 8 was offered and %s on key %s: %s' % ('WON the comparison with the top but ranked below it' if won8 else 'lost', k, key_name(lines, int(k)))
         print(line)
 
 main()

@@ -1162,4 +1162,14 @@ static void sortJudged(Judge **a, int n) {
       while (j < hi) tmp[k++] = a[j++];
       for (k = lo; k < hi; k++) a[k] = tmp[k];
     }
+  // (THE EIGHT THAT BEATS THE TOP IS THE TOP: the keys are not transitive -- an eight put first by the finish's own key beside the line
+  // on top can end below it through a third line -- so in finish them, the first eight offered whole that the order puts before the top
+  // line, compared with it alone, is moved up to the top)
+  if (finishAsked() && n > 1 && !(a[0]->apCombo >= 8 && a[0]->apChain < 2)) {
+    int32_t keep = cmpKey;
+    for (int i = 1; i < n; i++) if (a[i]->k.twin == 1 && !a[i]->o.dead && a[i]->apCombo >= 8 && compareJudged(a[i], a[0]) < 0) {
+      Judge *e = a[i]; for (int q = i; q > 0; q--) a[q] = a[q - 1]; a[0] = e; break;
+    }
+    cmpKey = keep;
+  }
 }
