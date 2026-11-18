@@ -665,6 +665,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (P.line && P.line->ideasAsked && P.line->ideas >= 0) { L_s(" ideas="); L_i(P.line->ideas); }
   if (pairOffered || (P.line && P.line->k.pair)) { L_s(" pair="); L_i(pairOffered); if (P.line && P.line->k.pair) L_s("/played"); }
   if (twinLo > -2) { L_s(" twinLo="); L_i(twinLo); L_s("/"); L_i(twinRows); }
+  if (twinTouchOffered) { L_s(" twinT="); L_i(twinTouchOffered); }
   if (twinOffered || (P.line && P.line->k.twin)) { L_s(" twin="); L_i(twinOffered); if (P.line && P.line->k.twin) L_s(P.line->k.twin == 2 ? "/setup" : "/played"); }
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
