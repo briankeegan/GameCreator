@@ -405,6 +405,7 @@ static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
 #define CONT_LINES 6   // (the lines judged with the survival search run on after them, a decision: decide.c, the life after the line)
+#define CUT8_LINES 4   // (the combos so tried a decision)
 #define CUT8_MS 4      // (the judging's time for each eight tried with one swap more: decide.c, the eight without its chain)
 #define CONT_MS 6      // (the survival search's time for each)
 static int32_t contAsked;   // (the lines so judged this decision: the log's cont=)
@@ -621,16 +622,17 @@ static int ranked(const Read *R, const Found *S) {
     clockDue = due; clockShare = share;
     if (contAsked) sortJudged(order, n);
   }
-  // (THE EIGHT WITHOUT ITS CHAIN -- the owner: make the eight, and before or after it move the panels so the ones that fall make no
-  // chain: in finish them, an eight on offer whose whole chain runs past two is judged again with one swap more -- after its trigger, then
-  // before its first -- near its trigger's rows; the first whose eight still fires, whose chain ends at two at most and whose board is
-  // lost no sooner takes its place)
+  // (THE COMBO WITHOUT ITS CHAIN -- the owner: make the eight, and before or after it move the panels so the ones that fall make no
+  // chain: in finish them, a combo of four or more on offer whose whole chain runs past two -- the best CUT8_LINES of them -- is judged
+  // again with one swap more, after its trigger, then before its first, near its trigger's rows; the first whose combo is no smaller,
+  // whose chain ends at two at most and whose board is lost no sooner takes its place)
   if (finishAsked() && n && clockFrameOut && !clockFrameOut()) {
     double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
-    int cut = 0;
+    int cut = 0, tried = 0;
     for (int i = 0; i < n && !clockFrameOut(); i++) {
       Judge *E = order[i];
-      if (E->hold || E->o.dead || E->apCombo < 8 || E->apChainAll < 3 || E->k.nseq + 1 > MAXLINE) continue;
+      if (E->hold || E->o.dead || E->apCombo < 4 || E->apChainAll < 3 || E->k.nseq + 1 > MAXLINE || tried >= CUT8_LINES) continue;
+      tried++;
       int tr = CR(E->k.seq[E->k.nseq - 1]), done = 0;
       static Judge CE;
       for (int side = 0; side < 2 && !done; side++)
@@ -645,7 +647,7 @@ static int ranked(const Read *R, const Found *S) {
             double sh = clockShareBegin(nowMs() + CUT8_MS);
             int ok = judgeCand(R, &k, &CE);
             clockShareEnd(sh);
-            if (!ok || CE.o.dead || CE.apCombo < 8 || CE.apChainAll > 2) continue;
+            if (!ok || CE.o.dead || CE.apCombo < E->apCombo || CE.apChainAll > 2) continue;
             if (!(CE.o.lives || (!E->o.lives && diesAt(&CE) >= diesAt(E)))) continue;
             *E = CE; done = 1; cut++;
           }
