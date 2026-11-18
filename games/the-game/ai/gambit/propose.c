@@ -529,11 +529,17 @@ static int twinCostOn(Board *b) {
 }
 // THE SWAPS THAT SORT ONE: the eight t's rows sorted, the rows nearest the cursor first, then the trigger row, on a copy of the grid g --
 // the trigger left unpressed; how many, or -1 where a row cannot be sorted or a three clears before the trigger
+// (the rows sorted nearest the cursor first; where that order makes a three on the way, the other order -- the same rows from the far end)
+static int twinSortDir(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq, int flip);
 static int twinSort(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq) {
+  int ns = twinSortDir(b, g, ok, top, t, seq, 0);
+  return ns >= 0 ? ns : twinSortDir(b, g, ok, top, t, seq, 1);
+}
+static int twinSortDir(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq, int flip) {
   static int32_t h[MAXROWS + 2][W + 2];
   memcpy(h, g, sizeof h);
   int ns = 0, bad = 0;
-  int lo = imin(t->a0, t->b0), hi = imax(t->a1, t->b1), up = iabs(b->curRow - lo) <= iabs(b->curRow - hi);
+  int lo = imin(t->a0, t->b0), hi = imax(t->a1, t->b1), up = (iabs(b->curRow - lo) <= iabs(b->curRow - hi)) != flip;
   for (int s = 0; s <= hi - lo && !bad; s++) {
     int q = up ? lo + s : hi - s;
     if (q == t->r) continue;
