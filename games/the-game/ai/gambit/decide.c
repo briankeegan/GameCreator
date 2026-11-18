@@ -1328,7 +1328,13 @@ static Played playOf(const Read *R, int n) {
     // that asks it by then, gives way to the next, and a pass that plays none to the next pass; with none in any, the board's own trigger)
     opTried = 0;
     if (cdAsk) boardRows(decQ.b, opCdRows, sizeof opCdRows);
-    for (int pass = 0; pass < OP_PASSES && chainUp <= 0; pass++) {
+    // (a plan of OP_TWO_FROM or more that fires within OP_LATE is tried before a 2 to extend: half the eight in one chain, against a 2
+    // that grows to a 3 -- set 86 factory 3, every 4 fired at 344-354 and the 2 taken made a 3)
+    int late4 = opHave && opBest.ch >= OP_TWO_FROM && opFits(&opBest, trigCh, 3);
+    for (int ln = 1; ln <= OP_DEPTH && !late4; ln++) late4 = opByLenHave[ln] && opByLen[ln].ch >= OP_TWO_FROM && opFits(&opByLen[ln], trigCh, 3);
+    static const int passOrder[2][OP_PASSES] = { { 0, 1, 2, 3, 4 }, { 0, 1, 3, 2, 4 } };
+    for (int pi = 0; pi < OP_PASSES && chainUp <= 0; pi++) {
+      int pass = passOrder[late4][pi];
       const OpPath *tries[OP_TRIES]; int nt = 0;
       if (opHave && opFits(&opBest, trigCh, pass)) tries[nt++] = &opBest;
       for (int ln = 1; ln <= OP_DEPTH; ln++) {
