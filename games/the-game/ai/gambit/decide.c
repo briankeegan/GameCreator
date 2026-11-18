@@ -1065,7 +1065,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opFallWay = 0; opFallLink = opFallLinkCh = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opFallWay = 0; opFallLink = opFallLinkCh = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0; opPairN = opPairBest = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   // (and the next chain, the first thrown, is planned under garbage too: its panels are the ones under it)
   int opNext = openerSum > 0 && opNeed > 0;
@@ -1142,6 +1142,9 @@ static Played playOf(const Read *R, int n) {
     // of: past need - OPENER_LEAST the chain as it falls is kept, and below it the extension that reaches there in the fewest links -- in
     // a garbage game, where the panels the next chain is made of come back slowly)
     int tall = tallGarbage(&decQ); const Judge *two = 0; int twoAsked = 0;
+    // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
+    // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
+    if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
     if (ext && ext->apChainAll < need && (tall || garbageSeen)) {
       int32_t enough = need - OPENER_LEAST;
       // (held for the next chain only where the board the chain lands on has one: the next chain designed there (opSecondSwap) a chain of
@@ -1149,7 +1152,7 @@ static Played playOf(const Read *R, int n) {
       // (under smaller garbage held all the same: the board it lands on is full of colours its pops have not shown, a next chain seldom
       // designed there, and the 5 and the 3 come; under tall garbage, a 5 often leaves no 3 at all)
       if (bar >= enough && !tall) ext = 0;
-      else if (bar >= enough) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= OPENER_LEAST) ext = 0; }
+      else if (bar >= enough) { if (!twoAsked) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; } if (opSecondCh >= OPENER_LEAST) ext = 0; }
       else if (ext->apChainAll > enough) {
         const Judge *fit = 0;
         for (int i = 0; i < n; i++) { const Judge *J = order[i];
@@ -1309,8 +1312,9 @@ static Played playOf(const Read *R, int n) {
     }
     // (the countdown's: the plans kept scored on the second chain each leaves, in the time the grow left)
     if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opExtendAll(&decQ, l2 * 0.55); clockShareEnd(sh); } }
-    // (and the second chain each leaves, in the most of what the extensions left)
-    if (cdAsk) { double l5 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l5 > 8) { double sh = clockShareBegin(nowMs() + l5 * 0.5); opPairAll(&decQ, l5 * 0.45); clockShareEnd(sh); } }
+    // (and the second chain each leaves, at every decision until the first chain is thrown -- a plan grown longer later is kept only where
+    // it makes the eight too: in the most of what the countdown's extensions left, a share of any other decision's)
+    if (openerSum == 0) { double l5 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l5 > 8) { double sh = clockShareBegin(nowMs() + l5 * (cdAsk ? 0.5 : 0.3)); opPairAll(&decQ, l5 * (cdAsk ? 0.45 : 0.25)); clockShareEnd(sh); } }
     opGrew = 1;
     int32_t trig = 0, trigCh = 0;
     triggerSendOf(&decQ, &trig, &trigCh);
