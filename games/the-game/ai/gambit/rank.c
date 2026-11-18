@@ -359,7 +359,7 @@ static int finishAsked(void) {
     if (((c->op == OP_GE || c->op == OP_EQ) && c->n >= 8) || (c->op == OP_GT && c->n + 1 >= 8)) big = 1; }   // (an entry of "==8" and up asks one too)
   return big;
 }
-static int chainPastTwo(const Judge *J) { return !J->hold && J->apChain > 2; }
+static int chainPastTwo(const Judge *J) { return J->apChainAll > 2; }   // (the whole chain the line ends in, the board's own falling chain with it -- a hold that lets it run to a 3 included)
 static int comboEntry(const Judge *J) { return J->met >= 0 && J->met < theList.n && theList.aim[J->met].combo.op ? J->met : MAXAIMS; }
 // (the lowest garbage row of the decision's board, read once a board: search/break.c lowestG)
 #define GARBAGE_AWAY 4
@@ -754,11 +754,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *cb = comboOutside(x) ? x : y, *o = comboOutside(x) ? y : x;
     if (imax(0, o->apBroke) >= imax(0, cb->apBroke)) return (cmpKey = __LINE__, (comboOutside(x) ? 1 : -1));
   }
-  // 1'c. THE FINISH SENDS NO CHAIN PAST A 2 (the owner: topped out, the kill is combos of eight -- a chain, if any, a 2x): in finish
-  // them, of two that survive alike, a line whose own chain runs past two after one whose does not and that breaks as much garbage
+  // 1'c. THE FINISH SENDS NO CHAIN PAST A 2 (the owner: in finish them a chain, if any, is a 2x -- large chains down, eights up): of two
+  // that survive alike, a line whose whole chain -- the board's own falling chain with it -- runs past two after one whose does not:
+  // a cut taken over the hold that lets the garbage's chain run to a 4
   if (finishAsked() && (lx || lostAlike(x, y)) && chainPastTwo(x) != chainPastTwo(y)) {
     const Judge *cl = chainPastTwo(x) ? x : y, *o = chainPastTwo(x) ? y : x;
-    if (imax(0, o->apBroke) >= imax(0, cl->apBroke)) return (cmpKey = __LINE__, (chainPastTwo(x) ? 1 : -1));
+    // (both living: the chain cut at two whatever it breaks -- the board lives either way; lost alike: only where it breaks as much)
+    if (lx || imax(0, o->apBroke) >= imax(0, cl->apBroke)) return (cmpKey = __LINE__, (chainPastTwo(x) ? 1 : -1));
   }
   // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that walks the input allowance below a
   // break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter after -- two
