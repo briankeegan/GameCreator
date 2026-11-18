@@ -918,6 +918,10 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   if (!candOf(&k, PLAY_SETUP, one, 1, -1, 0)) return 0;
   k.settled = 0; lastDrop = -1;
   if (!judgeCand(R, &k, &J) || J.o.dead || J.apChainAll < bar) return 0;
+  // (nor a set-up that makes a link: a link short of what is needed spends the next chain's panels on a chain that does not count, or on
+  // the falling chain short of the eight -- set 86 large_garbage 3, the 3's set-ups linked into the 5 as it fell, a 7 and no 3)
+  opSecondWhy = 9;
+  if (pl->len >= 1 && J.apChainAll > bar && J.apChainAll < imax(OPENER_LEAST, opNeed)) return 0;
   opSecondWhy = 7; opPressed = sw;
   return &J;
 }
