@@ -818,7 +818,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // the line that keeps it alive longer by a cursor step's walk or more is played over the reserve -- the board kept doing things)
     const Judge *kp = rx < ry ? x : y, *sp = rx < ry ? y : x;
     int rises = !lx && !decF.under && decQ.narr == 0 && !sp->o.dead && diesAt(sp) >= diesAt(kp) + WALK_FRAMES;
-    if (rx != ry && !rises) return (cmpKey = __LINE__, (rx - ry));
+    // (nor, in finish them, against a combo the list asks: a combo of four or more with at most a 2x, beside a line that makes no such
+    // combo, is played over the reserve where it is lost no sooner -- the owner: any combo beats a 3; the combo is the break itself)
+    int asks = finishAsked() && !sp->hold && !sp->outside && sp->apCombo >= 4 && !(!kp->outside && kp->apCombo >= 4) &&
+               (sp->o.lives || (!kp->o.lives && diesAt(sp) >= diesAt(kp)));
+    if (rx != ry && !rises && !asks) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
