@@ -398,6 +398,14 @@ static int twinThree(int32_t g[][W + 2], int top) {
   }
   return 0;
 }
+// (a three through cell (r, c) -- along its row or its column: what a swap there makes, the board's own threes elsewhere left out)
+static int twinThreeAt(int32_t g[][W + 2], int top, int r, int c) {
+  int32_t k = g[r][c]; if (!(k > 0 && k < 8)) return 0;
+  int n = 1; for (int x = c - 1; x >= 1 && g[r][x] == k; x--) n++; for (int x = c + 1; x <= W && g[r][x] == k; x++) n++;
+  if (n >= 3) return 1;
+  n = 1; for (int y = r - 1; y >= 1 && g[y][c] == k; y--) n++; for (int y = r + 1; y <= top && g[y][c] == k; y++) n++;
+  return n >= 3;
+}
 typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1, hx, hy, touch; } Twin;   // (hx, hy: the arms -- X at c-2, c-1 and Y at c+2, c+3 of the trigger row -- 2 or 0; a0 > a1, b0 > b1: no column run)
 // (the panels an eight clears: each side its column run and its arm, the trigger cell once)
 static int twinSize(const Twin *t) { return (t->a1 >= t->a0 ? t->a1 - t->a0 + 1 : 1) + t->hx + (t->b1 >= t->b0 ? t->b1 - t->b0 + 1 : 1) + t->hy; }
@@ -531,10 +539,10 @@ static int twinSort(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int
     if (q == t->r) continue;
     int wx = q >= t->a0 && q <= t->a1, wy = q >= t->b0 && q <= t->b1;
     RowFix f; if (twinRowFix(h[q], ok[q], wx ? t->c : 0, t->X, wy ? t->c + 1 : 0, t->Y, &f) < 0) return -1;
-    for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l; if (twinThree(h, top)) bad = 1; }
+    for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l; if (twinThreeAt(h, top, q, l) || twinThreeAt(h, top, q, l + 1)) bad = 1; }
   }
   RowFix f; if (bad || trigFix(h[t->r], ok[t->r], t->c, t->X, t->Y, t->hx, t->hy, &f) < 0) return -1;
-  for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThree(h, top)) bad = 1; }
+  for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; if (twinThreeAt(h, top, t->r, l) || twinThreeAt(h, top, t->r, l + 1)) bad = 1; }
   return bad ? -1 : ns;
 }
 // THE SECOND HAND (the owner: set up between moves, in the time the board waits, never at the cost of its life): one eight kept as the
