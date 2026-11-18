@@ -69,7 +69,7 @@ static int readyFresh;   // (the readiness asked now: an outcome kept without it
 static int endWanted;    // (lineEnd: the line is judged again and the board it ends on kept)
 static int endNoKeep;    // (and that judging not kept in the cache: asked once the rank has the line's whole outcome -- rank.c ideasOf)
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
-  if ((readyFresh || endWanted) && kind == 0) return 0;
+  if ((readyFresh && kind == 0) || endWanted) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
   for (int i = 0; i < ncache; i++) {
     Cached *c = &cache[i];

@@ -969,8 +969,8 @@ static void opExtendAll(const Question *q, double ms) {
   for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
 }
 // THE SECOND CHAIN EACH PLAN LEAVES, the countdown's (the owner: chains of three or more adding up to eight -- a 5 and a 3 alike): each
-// plan kept whose chain is short of OPENER_SUM played to its trigger and its chain landed, the garbage on its way landed with it, and the
-// next chain designed on the board it leaves, as the next chain is after it (opDesign as it stands, OP_NEXT_COST a swap) -- its chain into
+// plan kept whose chain is short of OPENER_SUM played out by the judge as the game will play it -- rooted, the stack rising under its
+// swaps, its chain landed and the garbage on its way with it (outcome.c lineEnd) -- and the next chain designed on the board it leaves, as the next chain is after it (opDesign as it stands, OP_NEXT_COST a swap) -- its chain into
 // ch2; the best ranked again (search/opening.c opMakesEight)
 static int32_t opPairBest, opPairN;   // (the longest second chain designed, and the plans asked: the log's opgrew /r)
 static void opPairAll(const Question *q, double ms) {
@@ -978,20 +978,22 @@ static void opPairAll(const Question *q, double ms) {
   for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && opByLen[ln].ch >= OPENER_LEAST && imax(opByLen[ln].ch, opByLen[ln].chx) < OPENER_SUM) np++;
   if (!np) return;
   int32_t kLeast = opDesignLeast, kCost = opDesignCost, kDesigned = opDesigned, kWhy = opDesignWhy, kLinks = opDesignLinks, kSeq = opSeqLinks; int kAsIs = opDesignAsIs;
-  static Ctx *px;
   for (int ln = 1; ln <= OP_DEPTH && !clockOut(); ln++) {
     OpPath *p = &opByLen[ln];
     if (!opByLenHave[ln] || p->ch < OPENER_LEAST || imax(p->ch, p->chx) >= OPENER_SUM) continue;
-    Ctx *x = px = ctxOf(px);
-    int root = rootOf(x, q); if (root < 0) break;
-    int at = opReplay(x, root, p); if (at < 0) continue;
-    int landed = opPress(x, at, p->trig); if (!liveNode(x, landed)) continue;
-    const Board *lb = ensureBoard(x, landed); if (!lb) continue;
+    int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < p->len; k++) seq[ns++] = p->path[k]; seq[ns++] = p->trig;
+    int rd = readyDefer; readyDefer = 1; endWanted = 1; outRooted = p->design;
+    Outcome oo = outcome(seq, ns, 1);
+    outRooted = 0; int got = endWanted == 2; endWanted = 0; readyDefer = rd;
+    p->ch2 = 0; opPairN++;
+    const Board *lb = got ? endBoard : 0;
+    if (!lb || oo.dead || imax(chainOf(oo.j.made), oo.j.chainAll) < p->ch || lb->chainCounter != 0 || cascadeLive((Board *)lb)) continue;
     OpPath dp; opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = imax(OPENER_LEAST, OPENER_SUM - p->ch);
     p->ch2 = opDesign(lb, ms / np, &dp, OP_CB_MAXSW) ? dp.ch : 0;
-    opPairN++; if (p->ch2 > opPairBest) opPairBest = p->ch2;
+    if (p->ch2 > opPairBest) opPairBest = p->ch2;
   }
   opDesignLeast = kLeast; opDesignCost = kCost; opDesigned = kDesigned; opDesignWhy = kWhy; opDesignLinks = kLinks; opSeqLinks = kSeq; opDesignAsIs = kAsIs;
+  opBest.ch2 = 0;   // (the plan held is ranked again on the second chains just designed, its own among them where it is one of these)
   for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
   opGrewCh2 = opHave ? opBest.ch2 : 0;
 }
