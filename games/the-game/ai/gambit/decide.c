@@ -151,9 +151,10 @@ static int readBoard_(Read *R) {
   // at the decision after; set 86 combo_storm 7, the opener ended at 297 with its 3's trigger a swap away)
   // (nor while a line it began is still pressed -- a break of the garbage: set 86 large_garbage 2, the opener ended at 499 with its break a
   // swap from done, and at 513 the board stood 409 frames)
-  // (nor while the next chain's design is pressed and fires before the board is lost: a chain falling is a board that cannot top out --
+  // (nor while the next chain's design is pressed and fires before the board is lost, its swaps and the slab's pop still to come counted:
+  // a chain falling is a board that cannot top out --
   // set 86 large_garbage 6, a 5 designed and pressed after the 3, put down at 69 frames for a dig that left nothing to build with)
-  int nextFires = opKeepOn && openerSum > 0 && decQ.b->clock - opKeepAt <= 40 && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES < F->v[FACT_US_DIES];
+  int nextFires = opKeepOn && openerSum > 0 && decQ.b->clock - opKeepAt <= 40 && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < F->v[FACT_US_DIES];
   int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
   // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
   // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
@@ -1326,7 +1327,7 @@ static Played playOf(const Read *R, int n) {
       // (the design's swap is judged alone, a board left as it is after it; its chain fired before the board is lost keeps the board -- a
       // chain falling cannot top out -- so it gives way only where it does not fire in time: set 86 large_garbage 6, a 3's design half
       // pressed, put down at 190 frames for a break that made a 2)
-      int fires = opKeepOn && decQ.b->clock - opKeepAt <= 40 && R->F.known[FACT_US_DIES] && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES < R->F.v[FACT_US_DIES];
+      int fires = opKeepOn && decQ.b->clock - opKeepAt <= 40 && R->F.known[FACT_US_DIES] && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < R->F.v[FACT_US_DIES];
       if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires)) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
       // (and while it waits for its panels to come to rest, the board is held: a clear short of what is needed spends the panels it is
       // made of -- set 86 factory 5, a 3's design half pressed, two 2s played in its waits and no 3)
