@@ -56,7 +56,6 @@ static int carryHeld(void);
 #define OPEN_SWAP_FRAMES 16   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands -- 16.5 measured, the countdown plans of 100 opener games, their trigger's frame over their swaps)
 #define OPEN_FIRE_BY 338      // (the frame the opener's trigger is pressed by while no garbage is shown: the frame before the first garbage lands, 339 in every pattern of the 99 opener games -- it lands on the stack's top, not on the chain)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
-#define FINISH_MATERIAL 55   // finish them's material floor: the panels its eights are sorted from, kept under the garbage
 #define FINISH_ROWS 8   // the rows finish them raises a low stack to where no garbage has come: an eight's columns, and rows over them
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
@@ -111,7 +110,7 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
   return ok;
 }
 static int carryOpener(void);   // (the line in progress was begun under the opener: below, with the carry)
-static int32_t twinWaste[5];   // (the two-column eights taken out as wasting a three, by the test that called it so -- rank.c wasteWhy: the log's twinW=)
+static int32_t twinWaste[5], twinWasteC, twinWasteX, twinWasteN;   // (the two-column eights taken out as wasting a three, by the test that called it so -- rank.c wasteWhy: the log's twinW=)
 static CbSeq opKeepSeq; static CbGrid opKeepPrev; static int opKeepOn; static int32_t opKeepHeld, opKeepAt;   // (the next chain's design carried on, and the decisions it was: the log's keep=)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
@@ -193,13 +192,6 @@ static int readBoard_(Read *R) {
   if (F->known[FACT_US_CONTACT] || decQ.narr > 0 || decQ.b->ninc > 0) garbageSeen = 1;
   int garbageGame = garbageSeen;
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on && garbageGame;
-  // (FINISH THEM'S RESERVE: a list asking a combo of eight or more and no chain keeps FINISH_MATERIAL panels under the garbage -- an
-  // eight is sorted from two columns three to five tall, and a stack of 20-30 panels, two full rows, holds none (set 86, 78% of finish
-  // decisions with no eight in reach); the raise to it is held to the rows the board lives through, as every floor's raise)
-  { int big = 0, chain = 0;
-    for (int i = 0; i < rule->list.n; i++) { const Test *c = &rule->list.aim[i].combo; if (rule->list.aim[i].chain.op) chain = 1;
-      if (((c->op == OP_GE || c->op == OP_EQ) && c->n >= 8) || (c->op == OP_GT && c->n + 1 >= 8)) big = 1; }
-    if (big && !chain && R->keep.on && R->keep.t[KEEP_MATERIAL].op && R->keep.t[KEEP_MATERIAL].n < FINISH_MATERIAL) R->keep.t[KEEP_MATERIAL].n = FINISH_MATERIAL; }
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
   // (EIGHT AND UP -- the owner: 8x plus, 9s and 10s alike: in a list that asks combos and no chain, an entry of exactly eight asks eight
@@ -689,8 +681,8 @@ static int ranked(const Read *R, const Found *S) {
     // what the order lets through, a walk spent for nothing)
     // (and never the line in progress begun on its three as the save: the input pressed of it is spent, and taken out now it is spent for
     // nothing)
-    memset(twinWaste, 0, sizeof twinWaste);
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) twinWaste[wasteWhy]++; if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    memset(twinWaste, 0, sizeof twinWaste); twinWasteC = twinWasteX = twinWasteN = 0;
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.

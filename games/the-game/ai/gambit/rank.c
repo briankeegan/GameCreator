@@ -52,6 +52,7 @@ static char lastCutRows[200];
 static int32_t lastPA[16], lastPT[16], lastPR[16], lastPressedN;   // (each swap of the last opening plan that made no chain: where and when the judge pressed it, the rows risen -- the log's opPressed=)   // (the board the cut swap was to be pressed on, rows bottom up: the log's opCut=)
 static void boardRows(const Board *b, char *out, int cap);   // (the swap the judge cut the last line dropped at, why, and the rows risen by the swap before it: decide.c's opTries log)
 enum { DROP_BACK, DROP_LIST, DROP_LATE, DROP_FLOOR, DROP_READY, DROP_UNBROKEN, DROP_CUT, DROP_WASTE, DROP_UNJUDGED, DROP_TWO, NDROPS };
+static int finishAsked(void);   // (below: the list asks a combo of eight or more and no chain -- finish them)
 static int32_t dropped[NPLAYS][NDROPS], offered[NPLAYS];
 static int32_t lastDrop = -1;   // (the last drop's why: the opening plan's log)
 static void dropAs(int play, int why) { dropped[play][why]++; lastDrop = why; }
@@ -143,7 +144,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (the opener's chain is never a spend -- the owner: no scenario is worth not throwing large chains at the start: a chain of three or
   // more, the opener in force, is what the panels are for)
   int openerChain = R->rule >= 0 && theTables.r[R->rule].table == 2 && m.chain >= 3;
-  if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0) && !openerChain) J->outside = J->spends = 1;
+  // (nor finish them's eight and up -- the owner: the eights are what the panels are for once the enemy is topped out)
+  int finishEight = finishAsked() && m.combo >= 8 && m.chain < 2;
+  if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0) && !openerChain && !finishEight) J->outside = J->spends = 1;
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
   // entries, then the one rule's three that breaks)
   // (read off what the board ends up making, the chain already under way included: a swap that cuts it short meets what is left of it,
