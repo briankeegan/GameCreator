@@ -1147,6 +1147,25 @@ static Played playOf(const Read *R, int n) {
       }
     }
   }
+  // (and IN THE CARRIED LINE'S WAIT -- the owner: build the eight in increments, between breaks and smaller combos: where the line in
+  // progress waits for its next swap, the kept eight's next swap is pressed first and the line carried on after it, the two one line,
+  // judged whole: only where it is lost no sooner than the line alone, breaks as much, meets as early an entry, cuts no chain short and
+  // wastes no three)
+  if (freeSetup == 0 && P.line && P.line->k.play == PLAY_CARRYWAIT && !P.line->o.dead && !P.deferred && !R->up && twinWanted && !clockOut()) {
+    int32_t sw; const Judge *C = P.line;
+    if (C->k.nseq + 1 <= MAXLINE && twinNextSwap(decQ.b, &sw)) {
+      static Judge FW; Cand k; int32_t seq[MAXLINE + 1]; int ns = 0;
+      seq[ns++] = sw; for (int i = 0; i < C->k.nseq && ns < MAXLINE; i++) seq[ns++] = C->k.seq[i];
+      freeSetup = -6;
+      if (candOf(&k, PLAY_SETUP, seq, ns, -1, 0)) {
+        k.settled = C->settled; k.twin = 2;
+        if (judgeCand(R, &k, &FW) && !FW.o.dead &&
+            (C->o.lives ? FW.o.lives : (FW.o.lives || (FW.o.lostAt != NOT_ASKED && diesAt(&FW) >= diesAt(C)))) &&
+            imax(0, FW.apBroke) >= imax(0, C->apBroke) && (FW.met < 0 ? MAXAIMS : FW.met) <= (C->met < 0 ? MAXAIMS : C->met) &&
+            !cutsShort(&FW) && !wastesThree(&FW)) { P.line = P.top = &FW; P.wait = 0; freeSetup = 2; }
+      }
+    }
+  }
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
