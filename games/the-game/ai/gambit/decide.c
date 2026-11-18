@@ -601,16 +601,21 @@ static int ranked(const Read *R, const Found *S) {
   // finish them, where nothing lives, the best lines -- the combos first -- are each judged with the survival search run on from the
   // board they leave (contLostOf), and ranked on the later of that and their own loss: a line lost at 137 if nothing more is pressed,
   // on a board with room for the next block made by the next moves, is no emergency that only a chain answers)
+  // (asked up to the move's own frame, the host's hard stop, as the judging is -- the decision's own time is spent by then -- each line its
+  // own CONT_MS)
   contAsked = 0;
-  if (finishAsked() && n && !order[0]->o.lives) {
+  if (finishAsked() && n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
+    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
     for (int pass = 0; pass < 2; pass++)
-      for (int i = 0; i < n && contAsked < CONT_LINES && !clockOut(); i++) {
+      for (int i = 0; i < n && contAsked < CONT_LINES && !clockFrameOut(); i++) {
         Judge *J = order[i];
         if (J->hold || J->o.lives || J->o.dead || (pass == 0) != (J->apCombo >= 4)) continue;
-        if (leftMs() < 2 * CONT_MS) break;
+        double sh = clockShareBegin(nowMs() + CONT_MS);
         double c = contLostOf(J, CONT_MS); contAsked++;
+        clockShareEnd(sh);
         if (c > 0) { int32_t f = c >= 1e9 ? FOREVER : (int32_t)c; if (J->extLost == NOT_ASKED || f > J->extLost) J->extLost = f; }
       }
+    clockDue = due; clockShare = share;
     if (contAsked) sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
