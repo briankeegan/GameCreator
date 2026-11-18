@@ -970,6 +970,8 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
   cutOffered = 0;
   int32_t longest = listChainCap();
   for (int i = 0; i < theList.n; i++) if (theList.aim[i].chain.op == OP_GE || theList.aim[i].chain.op == OP_GT) longest = MAXCHAIN;   // (an ask of "or longer" has no longest)
+  // (finish them sends combos, not chains -- the owner: a 2x falling is cut as a longer one is)
+  if (finishAsked()) longest = 1;
   if (R->aloneChain < 2 || R->aloneChain <= longest) return n;
   Board *b = decQ.b;
   int h = b->height ? b->height : 12;
