@@ -1465,7 +1465,19 @@ static Played playOf(const Read *R, int n) {
     else if (opFallWay == 6) P.line = P.top = lnk;
     else if (opFallWay == 5) P.line = P.top = brk;
     else if (two) P.line = P.top = two;
-    else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
+    else {
+      // (WHILE IT LANDS, THE CURSOR WORKS -- the owner: can it not do something while it waits? organize, zip, set up: the best set-up,
+      // lineup, zip, level or line toward a break in the order that keeps the chain falling as far as the hold does, wastes no three,
+      // keeps the window's reserve and is lost no sooner than the hold -- else the hold)
+      const Judge *h = 0, *sk = 0;
+      for (int i = 0; i < n; i++) if (order[i]->hold) { h = order[i]; break; }
+      for (int i = 0; i < n && !sk; i++) { const Judge *J = order[i];
+        if (J->hold || J->o.dead || !J->k.nseq || !setupKind(J) || wastesThree(J) || spendsReserve(J) || cutsShort(J)) continue;
+        if (h && chainReach(J) < chainReach(h)) continue;
+        if (!(J->o.lives || (h && !h->o.lives && diesAt(J) >= diesAt(h)))) continue;
+        sk = J; }
+      if (sk) { P.line = P.top = sk; opFallWay = 9; }
+      else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
   // as judged still a chain of OPENER_LEAST or more and its board not lost while it is pressed, is played over any line ranked above it
   // for a loss after it -- what comes after the chain is the next decision's, and its stop time is the board's)
