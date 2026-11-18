@@ -5,6 +5,8 @@
 // a chain is built for swaps before any trigger is there. Every decision grows it a level at a time in the time it has (the countdown's is
 // the longest), re-rooted under the swap pressed: a path that begins with the swap pressed goes on without it, any other is let go. The
 // plan is the path with a trigger the mode's list ranks first, clearing fewest panels among those (opPacier), and its trigger.
+#define OPENER_SUM 8     // (the opener's chains add up to this: decide.c)
+#define OPENER_LEAST 3   // (the shortest chain that counts toward it)
 #define OP_BEAM 48       // the boards a level keeps
 #define OP_KIDS 24       // the set-ups tried from each, the nearest the cursor first
 #define OP_KIDS_CD 64    // in the countdown, every set-up: the board is still and the time is the countdown's
@@ -108,11 +110,13 @@ static int opEntryOf(int32_t ch) {
 // what its panels are is not known when the plan is made; a trigger pressed once it is up fires a chain the panels it brings may spoil)
 #define OP_BLIND 2
 #define OP_TWO_FROM 4   // (the first chain a second is looked for after: the owner's two 4-chains)
+static int opMakesEight(const OpPath *p) { return imax(p->ch, p->chx) >= OPENER_SUM || (p->ch >= OPENER_LEAST && p->ch2 >= OPENER_LEAST && p->ch + p->ch2 >= OPENER_SUM); }
 static int opPacier(const OpPath *a, const OpPath *o) {
   // (a plan whose trigger is pressed on rows that are known first)
   if ((a->blind >= OP_BLIND) != (o->blind >= OP_BLIND)) return a->blind < OP_BLIND;
-  // (then two chains of OP_TWO_FROM or more, the second ready once the first lands -- the owner: two 4-chains top the enemy out)
-  { int ta = a->ch >= OP_TWO_FROM && a->ch2 >= OP_TWO_FROM, to = o->ch >= OP_TWO_FROM && o->ch2 >= OP_TWO_FROM; if (ta != to) return ta; }
+  // (then a plan that makes the eight: its chain OPENER_SUM alone, or with the chain designed on the board it leaves -- each OPENER_LEAST
+  // or more, the two adding up to OPENER_SUM: the owner's 5 and 3, two 4s alike; decide.c opPairAll)
+  { int ta = opMakesEight(a), to = opMakesEight(o); if (ta != to) return ta; }
   // (then the chain the fall reaches extended, where the countdown measured it: the owner's eight, one chain grown while it falls)
   { int32_t xa = imax(a->ch, a->chx), xo = imax(o->ch, o->chx); if (xa != xo && (a->chx || o->chx)) return xa > xo; }
   // (the list's entry first -- what the mode asks; of two meeting the same, the longer chain, then the one pressed sooner -- a chain

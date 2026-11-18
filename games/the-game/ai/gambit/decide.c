@@ -5,8 +5,6 @@ typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
-#define OPENER_SUM 8
-#define OPENER_LEAST 3
 #define OP_FALL_LOST AT_LEVEL(200)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-193 and a break at 442-465; combo_storm 3's at 205, kept, made its 8; the large slabs', lost at 299-471 a second chain is still made)
 #define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
@@ -970,6 +968,33 @@ static void opExtendAll(const Question *q, double ms) {
   }
   for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
 }
+// THE SECOND CHAIN EACH PLAN LEAVES, the countdown's (the owner: chains of three or more adding up to eight -- a 5 and a 3 alike): each
+// plan kept whose chain is short of OPENER_SUM played to its trigger and its chain landed, the garbage on its way landed with it, and the
+// next chain designed on the board it leaves, as the next chain is after it (opDesign as it stands, OP_NEXT_COST a swap) -- its chain into
+// ch2; the best ranked again (search/opening.c opMakesEight)
+static int32_t opPairBest, opPairN;   // (the longest second chain designed, and the plans asked: the log's opgrew /r)
+static void opPairAll(const Question *q, double ms) {
+  int np = 0; opPairBest = 0; opPairN = 0;
+  for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && opByLen[ln].ch >= OPENER_LEAST && imax(opByLen[ln].ch, opByLen[ln].chx) < OPENER_SUM) np++;
+  if (!np) return;
+  int32_t kLeast = opDesignLeast, kCost = opDesignCost, kDesigned = opDesigned, kWhy = opDesignWhy, kLinks = opDesignLinks, kSeq = opSeqLinks; int kAsIs = opDesignAsIs;
+  static Ctx *px;
+  for (int ln = 1; ln <= OP_DEPTH && !clockOut(); ln++) {
+    OpPath *p = &opByLen[ln];
+    if (!opByLenHave[ln] || p->ch < OPENER_LEAST || imax(p->ch, p->chx) >= OPENER_SUM) continue;
+    Ctx *x = px = ctxOf(px);
+    int root = rootOf(x, q); if (root < 0) break;
+    int at = opReplay(x, root, p); if (at < 0) continue;
+    int landed = opPress(x, at, p->trig); if (!liveNode(x, landed)) continue;
+    const Board *lb = ensureBoard(x, landed); if (!lb) continue;
+    OpPath dp; opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = imax(OPENER_LEAST, OPENER_SUM - p->ch);
+    p->ch2 = opDesign(lb, ms / np, &dp, OP_CB_MAXSW) ? dp.ch : 0;
+    opPairN++; if (p->ch2 > opPairBest) opPairBest = p->ch2;
+  }
+  opDesignLeast = kLeast; opDesignCost = kCost; opDesigned = kDesigned; opDesignWhy = kWhy; opDesignLinks = kLinks; opSeqLinks = kSeq; opDesignAsIs = kAsIs;
+  for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
+  opGrewCh2 = opHave ? opBest.ch2 : 0;
+}
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
   // (the opening's wait for the raise is a hold, so only while the hold lives: where it does not, the order decides -- a line that lives
@@ -1284,6 +1309,8 @@ static Played playOf(const Read *R, int n) {
     }
     // (the countdown's: the plans kept scored on the second chain each leaves, in the time the grow left)
     if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opExtendAll(&decQ, l2 * 0.55); clockShareEnd(sh); } }
+    // (and the second chain each leaves, in the most of what the extensions left)
+    if (cdAsk) { double l5 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l5 > 8) { double sh = clockShareBegin(nowMs() + l5 * 0.5); opPairAll(&decQ, l5 * 0.45); clockShareEnd(sh); } }
     opGrew = 1;
     int32_t trig = 0, trigCh = 0;
     triggerSendOf(&decQ, &trig, &trigCh);
