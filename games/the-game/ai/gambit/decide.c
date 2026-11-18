@@ -56,6 +56,7 @@ static int carryHeld(void);
 #define OPEN_SWAP_FRAMES 16   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands -- 16.5 measured, the countdown plans of 100 opener games, their trigger's frame over their swaps)
 #define OPEN_FIRE_BY 338      // (the frame the opener's trigger is pressed by while no garbage is shown: the frame before the first garbage lands, 339 in every pattern of the 99 opener games -- it lands on the stack's top, not on the chain)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
+#define FINISH_MATERIAL 55   // finish them's material floor: the panels its eights are sorted from, kept under the garbage
 #define FINISH_ROWS 8   // the rows finish them raises a low stack to where no garbage has come: an eight's columns, and rows over them
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
@@ -191,6 +192,13 @@ static int readBoard_(Read *R) {
   if (F->known[FACT_US_CONTACT] || decQ.narr > 0 || decQ.b->ninc > 0) garbageSeen = 1;
   int garbageGame = garbageSeen;
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on && garbageGame;
+  // (FINISH THEM'S RESERVE: a list asking a combo of eight or more and no chain keeps FINISH_MATERIAL panels under the garbage -- an
+  // eight is sorted from two columns three to five tall, and a stack of 20-30 panels, two full rows, holds none (set 86, 78% of finish
+  // decisions with no eight in reach); the raise to it is held to the rows the board lives through, as every floor's raise)
+  { int big = 0, chain = 0;
+    for (int i = 0; i < rule->list.n; i++) { const Test *c = &rule->list.aim[i].combo; if (rule->list.aim[i].chain.op) chain = 1;
+      if (((c->op == OP_GE || c->op == OP_EQ) && c->n >= 8) || (c->op == OP_GT && c->n + 1 >= 8)) big = 1; }
+    if (big && !chain && R->keep.on && R->keep.t[KEEP_MATERIAL].op && R->keep.t[KEEP_MATERIAL].n < FINISH_MATERIAL) R->keep.t[KEEP_MATERIAL].n = FINISH_MATERIAL; }
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
   // (WHAT THE OPENER STILL NEEDS IS ASKED -- the owner: a 6 and a 3 are the eight: with chains thrown, the opener's list asks a chain of
