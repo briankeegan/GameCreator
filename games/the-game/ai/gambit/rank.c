@@ -287,6 +287,11 @@ static int walkTurns(const Judge *x, const Judge *y) {
   // loss was judged, and the hold breaks nothing)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
     if (s->hold && !l->hold && l->apBroke > 0) return (dx > dy) != (lostOf(x) > lostOf(y));
+    // (nor, under garbage, a line that spends no panels and breaks or walks toward a break, behind the hold or a line that spends them:
+    // the hold builds nothing and the spend is the next break's material -- r1336 9240-9268, a toward line lost 43 frames later put
+    // behind the hold for its walk while a pop ran, the board left to drain its material on chains after)
+    if ((s->hold || s->spends) && !l->hold && !l->spends && decF.under && (l->apBroke > 0 || l->k.play == PLAY_TOWARD))
+      return (dx > dy) != (lostOf(x) > lostOf(y));
     // (nor, in finish them, a line that fires an eight or more, beside any line lost sooner: the attack the mode asks, its walk pressed
     // on the engine as well)
     if (finishAsked() && !l->hold && l->apCombo >= 8 && l->apChain < 2 && !(s->apCombo >= 8 && s->apChain < 2)) return (dx > dy) != (lostOf(x) > lostOf(y)); }
