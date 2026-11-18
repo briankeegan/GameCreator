@@ -651,7 +651,7 @@ static int ranked(const Read *R, const Found *S) {
   // (THE COMBO WITHOUT ITS CHAIN -- the owner: make the eight, and before or after it move the panels so the ones that fall make no
   // chain: in finish them, a combo of four or more on offer whose whole chain runs past two -- the best CUT8_LINES of them -- is judged
   // again with one swap more, after its trigger, then before its first, near its trigger's rows; the first whose combo is no smaller,
-  // whose chain ends at two at most and whose board is lost no sooner takes its place)
+  // whose chain ends at two at most and whose board is lost no sooner, or is safe (FINISH_SAFE), takes its place)
   if (finishAsked() && n && clockFrameOut && !clockFrameOut()) {
     double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
     int cut = 0, tried = 0;
@@ -674,7 +674,8 @@ static int ranked(const Read *R, const Found *S) {
             int ok = judgeCand(R, &k, &CE);
             clockShareEnd(sh);
             if (!ok || CE.o.dead || CE.apCombo < E->apCombo || CE.apChainAll > 2) continue;
-            if (!(CE.o.lives || (!E->o.lives && diesAt(&CE) >= diesAt(E)))) continue;
+            // (lost no sooner, or safe at the finish -- FINISH_SAFE on, where key 1 counts both as living and the shorter chain wins)
+            if (!(CE.o.lives || finishSafe(&CE) || (!E->o.lives && diesAt(&CE) >= diesAt(E)))) continue;
             *E = CE; done = 1; cut++;
           }
     }
