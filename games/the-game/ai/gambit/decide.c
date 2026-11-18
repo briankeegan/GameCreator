@@ -404,6 +404,9 @@ static int32_t saveBlind;   // (a three kept as the save because the save check 
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
+#define CONT_LINES 6   // (the lines judged with the survival search run on after them, a decision: decide.c, the life after the line)
+#define CONT_MS 6      // (the survival search's time for each)
+static int32_t contAsked;   // (the lines so judged this decision: the log's cont=)
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
   if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
@@ -593,6 +596,22 @@ static int ranked(const Read *R, const Found *S) {
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
+  }
+  // (THE LIFE AFTER THE LINE -- the owner: survival is not the line that buys the most frames alone, with nothing pressed after it: in
+  // finish them, where nothing lives, the best lines -- the combos first -- are each judged with the survival search run on from the
+  // board they leave (contLostOf), and ranked on the later of that and their own loss: a line lost at 137 if nothing more is pressed,
+  // on a board with room for the next block made by the next moves, is no emergency that only a chain answers)
+  contAsked = 0;
+  if (finishAsked() && n && !order[0]->o.lives) {
+    for (int pass = 0; pass < 2; pass++)
+      for (int i = 0; i < n && contAsked < CONT_LINES && !clockOut(); i++) {
+        Judge *J = order[i];
+        if (J->hold || J->o.lives || J->o.dead || (pass == 0) != (J->apCombo >= 4)) continue;
+        if (leftMs() < 2 * CONT_MS) break;
+        double c = contLostOf(J, CONT_MS); contAsked++;
+        if (c > 0) { int32_t f = c >= 1e9 ? FOREVER : (int32_t)c; if (J->extLost == NOT_ASKED || f > J->extLost) J->extLost = f; }
+      }
+    if (contAsked) sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps

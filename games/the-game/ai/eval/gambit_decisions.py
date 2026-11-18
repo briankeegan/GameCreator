@@ -2,7 +2,7 @@
 # gambit_decisions.py LOG [SHA] [FROM [TO]]: every Gambit decision of a survivor.log as one plain line -- the frame, the mode, what was
 # played and what it makes, the frame the board is lost on, and the option it beat with the rank key that decided, named from rank.c
 # (at SHA when given: the build that played the game; else the checkout's). Each option is read from the decision's opts= field:
-#   play:lostAt:broke[:n][:bBLOCKS][:cCOMBO][:xCHAIN]  -- * the line in progress, ~ outside the mode's list, L lives, :n ready next
+#   play:lostAt:broke[:n][:bBLOCKS][:thenLOST][:cCOMBO][:xCHAIN]  -- * the line in progress, ~ outside the mode's list, L lives, :n ready next
 # and each attack sent (GAMBITA) is printed where it lands.
 import sys, re, subprocess, os
 
@@ -34,6 +34,7 @@ def option(s):
         if x.startswith('b'): o['blocks'] = x[1:]
         elif x.startswith('c'): o['combo'] = x[1:]
         elif x.startswith('x'): o['chain'] = x[1:]
+        elif x.startswith('then'): o['then'] = x[4:]
     return o
 
 def says(o):
@@ -43,7 +44,7 @@ def says(o):
     if o['broke'] not in ('0', '-1', ''): parts.append('breaks %s cells' % o['broke'])
     if o.get('blocks'): parts.append('sends %s blocks' % o['blocks'])
     if o['outside']: parts.append('outside the list')
-    life = 'lives' if o['lost'] == 'L' else 'lost at %s' % o['lost']
+    life = 'lives' if o['lost'] == 'L' else 'lost at %s' % o['lost'] + (', %s with the next moves' % o['then'] if o.get('then') else '')
     return '%s%s (%s%s)' % (o['play'], ' [in progress]' if o['carried'] else '', ', '.join(parts) + '; ' if parts else '', life)
 
 def main():

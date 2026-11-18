@@ -679,6 +679,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (opGrew == 2) { L_s(" opflat="); L_i(opFlatN); if (opFlatPlayed) L_s("/played"); }
   if (taxMs >= 0) { L_s(" tx="); L_i(taxBase); L_s("/"); L_i(taxLong); L_s("/"); L_i(taxN); L_s("/"); L_i(taxMs); }
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
+  if (contAsked) { L_s(" cont="); L_i(contAsked); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
   if (windowCut) { L_s(" windowCut="); L_i(windowCut); }   // (lines taken out: the window not back before their board is lost)
   if (samesTrimmed) L_s(" samesTrimmed=1");   // (the line played had its swaps of one colour taken out)
@@ -879,6 +880,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
     L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
+    if (!j->hold && j->extLost != NOT_ASKED && !j->o.lives) { L_s(":then"); if (j->extLost == FOREVER) L_s("inf"); else L_i(j->extLost); }   // (lost with the next moves played: readiness's break or the survival search after it)
     if (!j->hold && j->apCombo >= 3) { L_s(":c"); L_i(j->apCombo); }   // (the biggest clear it makes)
     if (j->apChainAll >= 2) { L_s(":x"); L_i(j->apChainAll); }   // (the whole chain it ends in, the board's own falling chain with it)
   }
