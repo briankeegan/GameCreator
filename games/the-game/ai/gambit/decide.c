@@ -419,6 +419,10 @@ static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
 #define CONT_LINES 6   // (the lines judged with the survival search run on after them, a decision: decide.c, the life after the line)
+#define COMBO_TIMED 3   // (the combo lines judged pressed later, a decision: decide.c, the combo timed for its stop)
+#define COMBO_WAIT 30   // (the frames between the waits tried)
+#define COMBO_WAIT_MAX 120
+static int32_t comboTimed;   // (the frames waited for a combo this decision, 0 none: the log's timed=)
 #define CUT8_LINES 4   // (the combos so tried a decision)
 #define CUT8_MS 4      // (the judging's time for each eight tried with one swap more: decide.c, the eight without its chain)
 #define CONT_MS 6      // (the survival search's time for each)
@@ -1209,6 +1213,31 @@ static Played playOf(const Read *R, int n) {
     // (the line pressed later must be known to last as long: a loss it was not judged for never licenses waiting)
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
+  }
+  // (THE COMBO TIMED FOR ITS STOP -- the owner: wait to do a combo to give more time, not as soon as it can be: in finish them, where
+  // nothing lives, each of the best COMBO_TIMED combo lines (four or more, a 2x at most) is judged pressed later, COMBO_WAIT frames on and
+  // on; one whose board then stands at least as long as the line on top's -- the stop its clear gives coming when the board needs it --
+  // and still makes its combo is waited for: this decision presses nothing, the next one asks again)
+  comboTimed = 0;
+  if (finishAsked() && P.line && n && !order[0]->o.lives && !P.deferred && clockFrameOut && !clockFrameOut()) {
+    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
+    double topLost = diesAt(P.line);
+    int tried = 0;
+    for (int i = 0; i < n && tried < COMBO_TIMED && !clockFrameOut() && !comboTimed; i++) {
+      const Judge *J = order[i];
+      if (J->hold || J->o.dead || J->o.lives || J->apCombo < 4 || J->apChainAll > 2) continue;
+      tried++;
+      for (int w = COMBO_WAIT; w <= COMBO_WAIT_MAX && !clockFrameOut(); w += COMBO_WAIT) {
+        if (holdLost >= 0 && w >= holdLost) break;   // (never waited past the board left alone's own loss)
+        double sh = clockShareBegin(nowMs() + CUT8_MS);
+        Outcome d = outcomeOf(J->k.seq, J->k.nseq, J->settled, 0, w);
+        clockShareEnd(sh);
+        if (d.late || d.dead) continue;
+        double dl = d.lives ? 1e9 : d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0);
+        if (d.j.made.combo >= J->apCombo && d.j.chainAll <= 2 && dl >= topLost && dl > diesAt(J)) { P.line = 0; P.deferred = 1; comboTimed = w; break; }
+      }
+    }
+    clockDue = due; clockShare = share;
   }
   // (THE SECOND HAND -- the owner: set up between moves, never at the cost of the board's life: where the decision is the hold, the next
   // swap toward the eight kept as the target (propose.c twinNextSwap), judged on the engine, is pressed instead -- only where it lives

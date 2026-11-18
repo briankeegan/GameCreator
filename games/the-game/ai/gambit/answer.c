@@ -680,6 +680,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (taxMs >= 0) { L_s(" tx="); L_i(taxBase); L_s("/"); L_i(taxLong); L_s("/"); L_i(taxN); L_s("/"); L_i(taxMs); }
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
   if (contAsked) { L_s(" cont="); L_i(contAsked); }
+  if (comboTimed) { L_s(" timed="); L_i(comboTimed); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
   if (windowCut) { L_s(" windowCut="); L_i(windowCut); }   // (lines taken out: the window not back before their board is lost)
   if (samesTrimmed) L_s(" samesTrimmed=1");   // (the line played had its swaps of one colour taken out)
