@@ -47,15 +47,12 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 
 ## The list -- each finished before the next
 
-**THE OPENER'S 99 COME FIRST (the owner).** Every one of the 99 opener games (`gambit-24.yml`, set 86, `profile`
-gambit-opener.json) reaches chains of three or more adding up to eight -- an 8, 5+3, 3+5 or 4+4; a 2x counts nothing -- before any
-other work: deaths, survival and the list below wait until it holds. One board at a time: a failing board is fixed until it passes
-twice running, then the next; all 99 are run once every board passes, and any board that fails there is the next one fixed.
-No board is let off at 7.
-Then (the owner): with the 99 at eight and the game no worse for it, the opener becomes fill's own opening -- the switcher's
-first move, not a mode of its own.
-None of it is merged until the opener survives 100 of 100 -- its own target, above -- and fill's, finish them's and switching's 28
-die no more than before it (the owner).
+**FINISH THEM'S EIGHTS COME FIRST (the owner).** Once the enemy is topped out, Gambit kills it with combos of eight -- several, as
+quickly as it can, under pressure too -- and sends no chain past a 2x. The stack is kept zipped and flat (colours a swap apart, not
+touching; few rows between the tallest column and the lowest) so the next eight is always a few swaps away. Measured on finish them's
+28 games (`gambit-24.yml`, `then` `["finish_them"]`), read as the games finish: combos of eight and up a minute (main on set 86: about
+0.1; Tanycanayt live: 1.29), chains of 3x or more sent (target 0), and survival no worse than main's (21-26 of 28 on set 86). This
+comes before any other work.
 
 1. **Level 11.** Training, `lua/check.lua`, the fight and the live run all play `LevelPresets.getModern(11)`; every place that
    assumes level 10 (its health, its frame constants, the docs) reads the level it is handed.
