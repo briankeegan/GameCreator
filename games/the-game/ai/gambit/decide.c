@@ -920,11 +920,12 @@ static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
       if (n < 1) n = 0;
     } else links = 0;
   }
-  // (and the swaps themselves, panels falling between rows, in the other half: the longer chain kept, the fewer swaps between equals)
+  // (and the swaps themselves, panels moved into gaps and between rows, in the other half: kept only where its chain is longer -- the
+  // rows' order is the one walked shortest)
   { int32_t keepCost = cbSwapCost; cbSwapCost = opDesignCost;
     int32_t str = 0; int sl = 0, sn = cbSeqDesign(&G, ms * 0.5, imin(maxSw, OP_DEPTH), sseq, &str, &sl);
     cbSwapCost = keepCost; opSeqLinks = sn >= 0 ? sl : -1;
-    if (sn >= 0 && sl >= opDesignLeast && (!n || sl > links || (sl == links && sn + 1 < n))) { for (int i = 0; i < sn; i++) seq[i] = sseq[i]; seq[sn] = str; n = sn + 1; links = sl; opDesignLinks = sl; } }
+    if (sn >= 0 && sl >= opDesignLeast && (!n || sl > links)) { for (int i = 0; i < sn; i++) seq[i] = sseq[i]; seq[sn] = str; n = sn + 1; links = sl; opDesignLinks = sl; } }
   if (n < 1) return 0;
   opDesignWhy = 5;
   memset(out, 0, sizeof *out);
