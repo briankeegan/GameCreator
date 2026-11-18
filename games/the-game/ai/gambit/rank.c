@@ -832,8 +832,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // that survive alike, a line whose whole chain -- the board's own falling chain with it -- runs past two after one whose does not:
   // a cut taken over the hold that lets the garbage's chain run to a 4
   // (and a chain already past two when the decision is made is cut where it stands: of two past two, the shorter -- a 3 before a 5)
-  // (any chain, a 2x too -- the owner: finish them sends combos, not chains)
-  if (finishAsked() && (lx || finishAlike(x, y)) && (x->apChainAll >= 2 || y->apChainAll >= 2) && x->apChainAll != y->apChainAll) {
+  if (finishAsked() && (lx || finishAlike(x, y)) && (chainPastTwo(x) || chainPastTwo(y)) && x->apChainAll != y->apChainAll) {
     const Judge *cl = x->apChainAll > y->apChainAll ? x : y, *o = cl == x ? y : x;
     // (both living or lost alike: the shorter chain, whatever each breaks -- the owner: no big chains at the finish; set 86 combo_storm 1,
     // a 7x lost at 502 over a 4x lost at 498 with the next moves, on the garbage the 7x broke)
