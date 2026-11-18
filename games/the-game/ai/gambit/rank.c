@@ -572,6 +572,12 @@ static int lostAlike(const Judge *x, const Judge *y) {
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
   return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
 }
+// (LOST ALIKE AT THE FINISH: within one break's time of each other -- the finish's own keys trade the board's life for a combo or a
+// shorter chain only where the trade costs less than a break; three breaks' time and more apart is a break the next decision loses)
+static int finishAlike(const Judge *x, const Judge *y) {
+  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
+  return lo >= rankSave && hi - lo < rankSave;
+}
 // (THE KEY THAT DECIDED: the line of the last return compareJudged took -- answer.c logs it for the line played over one lost later)
 static int32_t cmpKey;
 // (BOUGHT WITH THE PANELS: the later loss of a line that clears panels below the floor and breaks nothing is stop time, bought with the
@@ -769,7 +775,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
   // rows or more (a chain of three or longer, the board's own going on included) before one that does, whatever either breaks -- the
   // owner: no big chains at the finish; a chain is played there only where nothing else lives as long
-  if (finishAsked() && (lx || lostAlike(x, y))) {
+  if (finishAsked() && (lx || finishAlike(x, y))) {
     // (a 2x is allowed -- the owner: a chain at the finish, if any, is a 2x; the slab is a chain of three or longer)
     int at = 3, bx = chainReach(x) >= at, by = chainReach(y) >= at;
     if (bx != by) return (cmpKey = __LINE__, (bx ? 1 : -1));
@@ -826,7 +832,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // that survive alike, a line whose whole chain -- the board's own falling chain with it -- runs past two after one whose does not:
   // a cut taken over the hold that lets the garbage's chain run to a 4
   // (and a chain already past two when the decision is made is cut where it stands: of two past two, the shorter -- a 3 before a 5)
-  if (finishAsked() && (lx || lostAlike(x, y)) && (chainPastTwo(x) || chainPastTwo(y)) && x->apChainAll != y->apChainAll) {
+  if (finishAsked() && (lx || finishAlike(x, y)) && (chainPastTwo(x) || chainPastTwo(y)) && x->apChainAll != y->apChainAll) {
     const Judge *cl = x->apChainAll > y->apChainAll ? x : y, *o = cl == x ? y : x;
     // (both living or lost alike: the shorter chain, whatever each breaks -- the owner: no big chains at the finish; set 86 combo_storm 1,
     // a 7x lost at 502 over a 4x lost at 498 with the next moves, on the garbage the 7x broke)
@@ -1096,7 +1102,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     else if (x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS) { fb = x->o.j.even < y->o.j.even ? x : y; fk = __LINE__; }
     else if (x->o.j.spread != y->o.j.spread) { fb = x->o.j.spread > y->o.j.spread ? x : y; fk = __LINE__; }
     if (fb) { const Judge *ob = fb == x ? y : x;
-      if (fb->o.lives || (!ob->o.lives && (diesAt(fb) >= diesAt(ob) || lostAlike(fb, ob)))) return (cmpKey = fk, (fb == x ? -1 : 1)); }
+      if (fb->o.lives || (!ob->o.lives && (diesAt(fb) >= diesAt(ob) || finishAlike(fb, ob)))) return (cmpKey = fk, (fb == x ? -1 : 1)); }
   }
   // 8. THE LIST: the earlier entry the judged line meets, its break as the entry asks it (rules.c metOf) -- before the kind of line, so a
   // line that keeps a topped board held is ordered by the list like every other
