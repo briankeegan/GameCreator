@@ -149,7 +149,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // more, the opener in force, is what the panels are for)
   int openerChain = R->rule >= 0 && theTables.r[R->rule].table == 2 && m.chain >= 3;
   // (nor finish them's eight and up -- the owner: the eights are what the panels are for once the enemy is topped out)
-  int finishEight = finishAsked() && m.combo >= 8 && m.chain < 2;
+  int finishEight = finishAsked() && m.combo >= 4 && m.chain <= 2;   // (in finish them every combo is the attack: none is a spend -- the owner: any combo before a three)
   if (R->belowFloor && (m.combo > 0 || m.chain > 0) && !(m.broke > 0) && !openerChain && !finishEight) J->outside = J->spends = 1;
   // (THE ENTRY A LINE MEETS, the one the list's key and the tier's keys read: of the list as the board asks it (R->asked) -- its
   // entries, then the one rule's three that breaks)
@@ -691,7 +691,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
   // more panels -- before the mode and the walk
-  if (!lx && shortOfPanels(x, y) && lostOf(x) >= rankSave && lostOf(y) >= rankSave) return (cmpKey = __LINE__, (panelsLeft(x) > panelsLeft(y) ? -1 : 1));
+  // (not in finish them between a combo and a line that makes none: the combo is the attack, and the panels it spends are what it is made of)
+  if (!lx && shortOfPanels(x, y) && lostOf(x) >= rankSave && lostOf(y) >= rankSave && !(finishAsked() && (x->apCombo >= 4) != (y->apCombo >= 4)))
+    return (cmpKey = __LINE__, (panelsLeft(x) > panelsLeft(y) ? -1 : 1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
   // none and breaks as much
