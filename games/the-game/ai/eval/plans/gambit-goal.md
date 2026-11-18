@@ -57,6 +57,17 @@ large chains go down while the eights and other combos go up.
 - **After every run, the breakdown** (the owner): the finish phase's chains by size (2x, 3x, 4x ...) and combos by size (4, 5, 6, 7,
   8, 9, 10 ...), eights and up a minute, and whether the game survived -- every change read by it, toward the most eights and up and the
   fewest chains past 2x.
+- **The finish's order** (the owner): survival first -- a board lost sooner is never chosen for an attack; then eights and up; then any
+  other combo -- **every combo beats a three**, and a three is the last resort; a chain, if any, a 2x. An eight is fired wherever its
+  board still stands two breaks' time with the next moves played (`rank.c` FINISH_8_LIFE). An eight or a combo that would run to a 3x or
+  more is made with the swap that stops the chain, before it or after it, not given up (`decide.c`, the combo without its chain). A
+  board that only needs room for the next block is not an emergency: lines are ranked on the life with the next moves played
+  (`contLostOf`).
+- **Only what a human sees** (the owner): Gambit never reads hidden state -- the colours garbage converts into (`garbagePanelBuffer`),
+  rows not yet dealt. A chain those colours make is answered when it shows.
+- **Bit by bit** (the owner): the first 35 seconds of finish (a game cut at frame 3000) are read decision by decision with
+  `gambit_decisions.py`, every wrong decision fixed and the same 35 seconds played again -- the next 35 seconds only once these are
+  right. The opener's chains are the opener's: the finish's count starts at the opener's last decision.
 - Reference: main on set 86 sends about 0.1 eights and up a minute across the 28 (13-18 in all); Tanycanayt live, 1.29 a minute. This
   comes before any other work.
 

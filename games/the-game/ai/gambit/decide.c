@@ -404,6 +404,15 @@ static int32_t saveBlind;   // (a three kept as the save because the save check 
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
+#define CONT_LINES 6   // (the lines judged with the survival search run on after them, a decision: decide.c, the life after the line)
+#define COMBO_TIMED 3   // (the combo lines judged pressed later, a decision: decide.c, the combo timed for its stop)
+#define COMBO_WAIT 30   // (the frames between the waits tried)
+#define COMBO_WAIT_MAX 120
+static int32_t comboTimed;   // (the frames waited for a combo this decision, 0 none: the log's timed=)
+#define CUT8_LINES 4   // (the combos so tried a decision)
+#define CUT8_MS 4      // (the judging's time for each eight tried with one swap more: decide.c, the eight without its chain)
+#define CONT_MS 6      // (the survival search's time for each)
+static int32_t contAsked;   // (the lines so judged this decision: the log's cont=)
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
   if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
@@ -445,7 +454,15 @@ static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (an extension of the falling chain: a line played as one -- PLAY_EXTEND, or PLAY_LINEUP, the same search's lines while a garbage slab
 // pops beside the chain -- or the line in progress begun as one)
 static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || (J->carried && (b == PLAY_EXTEND || b == PLAY_LINEUP)); }
-static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down; 0 not asked: the log's)
+// (an eight still loaded on the board the line ends on -- one swap from firing)
+static int loadedAfter(const int32_t *seq, int n) {
+  static Board *eb; if (!eb) eb = nb_new(); if (!eb) return 0;
+  const Board *e = lineEnd(seq, n, 0);
+  if (!e) return 0;
+  cloneBoard(eb, e);
+  return twinCostOn(eb) == 0;
+}
+static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down, -8 the second eight's swap unloading the first; 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -593,6 +610,65 @@ static int ranked(const Read *R, const Found *S) {
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
+  }
+  // (THE LIFE AFTER THE LINE -- the owner: survival is not the line that buys the most frames alone, with nothing pressed after it: in
+  // finish them, where nothing lives, the best lines -- the combos first -- are each judged with the survival search run on from the
+  // board they leave (contLostOf), and ranked on the later of that and their own loss: a line lost at 137 if nothing more is pressed,
+  // on a board with room for the next block made by the next moves, is no emergency that only a chain answers)
+  // (asked up to the move's own frame, the host's hard stop, as the judging is -- the decision's own time is spent by then -- each line its
+  // own CONT_MS)
+  contAsked = 0;
+  if (finishAsked() && n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
+    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
+    for (int pass = 0; pass < 2; pass++)
+      for (int i = 0; i < n && contAsked < CONT_LINES && !clockFrameOut(); i++) {
+        Judge *J = order[i];
+        if (J->hold || J->o.lives || J->o.dead || (pass == 0) != (J->apCombo >= 4)) continue;
+        double sh = clockShareBegin(nowMs() + CONT_MS);
+        double c = contLostOf(J, CONT_MS); contAsked++;
+        clockShareEnd(sh);
+        if (c > 0) { int32_t f = c >= 1e9 ? FOREVER : (int32_t)c; if (J->extLost == NOT_ASKED || f > J->extLost) J->extLost = f; }
+      }
+    clockDue = due; clockShare = share;
+    if (contAsked) sortJudged(order, n);
+  }
+  // (THE COMBO WITHOUT ITS CHAIN -- the owner: make the eight, and before or after it move the panels so the ones that fall make no
+  // chain: in finish them, a combo of four or more on offer that sends a chain -- the best CUT8_LINES of them -- is judged
+  // again with one swap more, after its trigger, then before its first, near its trigger's rows; the first whose combo is no smaller,
+  // that sends no chain and whose board is lost no sooner, or is safe (FINISH_SAFE), takes its place -- a combo with a 2x tried as well;
+  // for one past 2x, a 2x where no swap stops the chain whole)
+  if (finishAsked() && n && clockFrameOut && !clockFrameOut()) {
+    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
+    int cut = 0, tried = 0;
+    for (int i = 0; i < n && !clockFrameOut(); i++) {
+      Judge *E = order[i];
+      if (E->hold || E->o.dead || E->apCombo < 4 || E->apChainAll < 2 || E->k.nseq + 1 > MAXLINE || tried >= CUT8_LINES) continue;
+      tried++;
+      int tr = CR(E->k.seq[E->k.nseq - 1]), done = 0;
+      static Judge CE, C2E; int have2 = 0;
+      for (int side = 0; side < 2 && !done; side++)
+        for (int r = imax(1, tr - 1); r <= tr + 4 && !done && !clockFrameOut(); r++)
+          for (int c = 1; c < W && !done && !clockFrameOut(); c++) {
+            int32_t seq[MAXLINE]; int ns = 0;
+            if (side == 1) seq[ns++] = r * 8 + c;
+            for (int q = 0; q < E->k.nseq; q++) seq[ns++] = E->k.seq[q];
+            if (side == 0) seq[ns++] = r * 8 + c;
+            Cand k; if (!candOf(&k, PLAY_ENTRY, seq, ns, E->k.aim, 0)) continue;
+            k.settled = 0; k.twin = E->k.twin; k.x = E->k.x;
+            double sh = clockShareBegin(nowMs() + CUT8_MS);
+            int ok = judgeCand(R, &k, &CE);
+            clockShareEnd(sh);
+            if (!ok || CE.o.dead || CE.apCombo < E->apCombo || CE.apChainAll > 2) continue;
+            // (lost no sooner, or safe at the finish -- FINISH_SAFE on, where key 1 counts both as living and the shorter chain wins)
+            if (!(CE.o.lives || finishSafe(&CE) || (!E->o.lives && diesAt(&CE) >= diesAt(E)))) continue;
+            // (no chain at all first -- the owner: finish them sends combos, not chains; a 2x kept for a line past it where none is found)
+            if (CE.apChainAll >= 2) { if (E->apChainAll >= 3 && !have2) { C2E = CE; have2 = 1; } continue; }
+            *E = CE; done = 1; cut++;
+          }
+      if (!done && have2) { *E = C2E; cut++; }
+    }
+    clockDue = due; clockShare = share;
+    if (cut) sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps
@@ -1135,6 +1211,34 @@ static Played playOf(const Read *R, int n) {
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
   }
+  // (THE COMBO TIMED FOR ITS STOP -- the owner: wait to do a combo to give more time, not as soon as it can be: in finish them, where
+  // nothing lives, each of the best COMBO_TIMED combo lines (four or more, a 2x at most) is judged pressed later, COMBO_WAIT frames on and
+  // on; one whose board then stands at least as long as the line on top's -- the stop its clear gives coming when the board needs it --
+  // and still makes its combo is waited for: this decision presses nothing, the next one asks again)
+  comboTimed = 0;
+  // (never with an eight on top -- it is fired -- nor on a board left alone lost within two breaks' time: a wait there is a wait the
+  // board does not survive the next decision getting wrong; set 86 combo_storm 1, an eight waited for at 92 frames from the loss, lost)
+  if (finishAsked() && P.line && n && !order[0]->o.lives && !P.deferred && clockFrameOut && !clockFrameOut() &&
+      !(P.line->apCombo >= 8 && P.line->apChain < 2) && !(holdLost >= 0 && holdLost < 2 * rankSave)) {
+    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
+    double topLost = diesAt(P.line);
+    int tried = 0;
+    for (int i = 0; i < n && tried < COMBO_TIMED && !clockFrameOut() && !comboTimed; i++) {
+      const Judge *J = order[i];
+      if (J->hold || J->o.dead || J->o.lives || J->apCombo < 4 || J->apCombo >= 8 || J->apChainAll > 2) continue;
+      tried++;
+      for (int w = COMBO_WAIT; w <= COMBO_WAIT_MAX && !clockFrameOut(); w += COMBO_WAIT) {
+        if (holdLost >= 0 && w + rankSave >= holdLost) break;   // (a wait ends a break's time before the board left alone is lost)
+        double sh = clockShareBegin(nowMs() + CUT8_MS);
+        Outcome d = outcomeOf(J->k.seq, J->k.nseq, J->settled, 0, w);
+        clockShareEnd(sh);
+        if (d.late || d.dead) continue;
+        double dl = d.lives ? 1e9 : d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0);
+        if (d.j.made.combo >= J->apCombo && d.j.chainAll <= 2 && dl >= topLost && dl > diesAt(J)) { P.line = 0; P.deferred = 1; comboTimed = w; break; }
+      }
+    }
+    clockDue = due; clockShare = share;
+  }
   // (THE SECOND HAND -- the owner: set up between moves, never at the cost of the board's life: where the decision is the hold, the next
   // swap toward the eight kept as the target (propose.c twinNextSwap), judged on the engine, is pressed instead -- only where it lives
   // as the hold does or is lost no sooner, breaks the board's chain no shorter, wastes no three and keeps the window's reserve)
@@ -1153,6 +1257,7 @@ static Played playOf(const Read *R, int n) {
         else if (cutsShort(&FS)) freeSetup = -3;
         else if (wastesThree(&FS)) freeSetup = -4;
         else if (spendsReserve(&FS)) freeSetup = -5;
+        else if (twinSecond && !loadedAfter(one, 1)) freeSetup = -8;   // (the second eight's swap: never one that unloads the first)
         else { P.line = &FS; freeSetup = 1; }
       }
     }
