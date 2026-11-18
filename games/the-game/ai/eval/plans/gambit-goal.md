@@ -63,6 +63,8 @@ large chains go down while the eights and other combos go up.
   more is made with the swap that stops the chain, before it or after it, not given up (`decide.c`, the combo without its chain). A
   board that only needs room for the next block is not an emergency: lines are ranked on the life with the next moves played
   (`contLostOf`).
+- **Only what a human sees** (the owner): Gambit never reads hidden state -- the colours garbage converts into (`garbagePanelBuffer`),
+  rows not yet dealt. A chain those colours make is answered when it shows.
 - **Bit by bit** (the owner): the first 35 seconds of finish (a game cut at frame 3000) are read decision by decision with
   `gambit_decisions.py`, every wrong decision fixed and the same 35 seconds played again -- the next 35 seconds only once these are
   right. The opener's chains are the opener's: the finish's count starts at the opener's last decision.
