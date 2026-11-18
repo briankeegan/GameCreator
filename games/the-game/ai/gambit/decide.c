@@ -1142,10 +1142,14 @@ static Played playOf(const Read *R, int n) {
     // hold's -- the panels the garbage turns into are the next chain's)
     const Judge *brk = 0;
     if (bar < need && !(ext && ext->apChainAll >= need) && !twoReaches && (R->under || decQ.narr > 0)) {
-      int32_t holdBroke = 0; for (int i = 0; i < n; i++) if (order[i]->hold) holdBroke = imax(0, order[i]->apBroke);
+      int32_t holdBroke = 0; const Judge *hj = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { holdBroke = imax(0, order[i]->apBroke); hj = order[i]; }
+      // (a hold that loses the board: a break that keeps it longer may end the chain falling short of the hold's, down to need -
+      // OPENER_LEAST -- a 6 or a 5 the next chain a 3 all the same; the board left alone does not live)
+      int32_t floor = hj && !hj->o.lives ? imin(bar, imax(OPENER_LEAST, need - OPENER_LEAST)) : bar;
       for (int i = 0; i < n; i++) {
         const Judge *J = order[i];
-        if (J->hold || J->o.dead || J->apChainAll < bar || !(J->apBroke > holdBroke)) continue;
+        if (J->hold || J->o.dead || J->apChainAll < floor || !(J->apBroke > holdBroke)) continue;
+        if (J->apChainAll < bar && !(J->o.lives || (hj->o.lostAt != NOT_ASKED && J->o.lostAt != NOT_ASKED && J->o.lostAt > hj->o.lostAt))) continue;
         if (!brk || J->apBroke > brk->apBroke || (J->apBroke == brk->apBroke && J->apChainAll > brk->apChainAll)) brk = J;
       }
     }
