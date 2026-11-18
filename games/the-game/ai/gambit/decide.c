@@ -806,6 +806,7 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 #define OP_CB_COST 30
 #define OP_CB_MAXSW 14
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
+static int32_t opDesignLeast = OP_TWO_FROM;   // (the chain a design must make: the opening's OP_TWO_FROM, the next chain's what is still needed)
 static int opDesignAsIs;   // (a design on a board that is not the board as it stands -- the landed board: the row under it left out)
 static char opLandedRows[160], opCdRows[160];   // (the log's landed= and, at the countdown's decision, cdboard=)
 // (a board as rows bottom up, a digit a panel's colour, g garbage, . empty)
@@ -853,7 +854,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   // (the designer's chain first, in OP_SECOND_DESIGN of the time: its whole plan at once; the beam in the rest, grown on decision after
   // decision -- the landed board is the same board every decision of the fall -- where the designer finds none)
   static OpPath dp; const OpPath *pl = 0; double t0 = nowMs();
-  opDesignAsIs = 1; if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp; opDesignAsIs = 0;
+  opDesignAsIs = 1; opDesignLeast = imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM;
   double rest = ms - (nowMs() - t0);
   static int32_t grownFor = -1;
   if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
@@ -863,7 +864,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
     clockDue = keepDue; clockShare = keepShare;
   }
   opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1; opSecondMs = (int32_t)ms; opSecondN = opGrewN;
-  if (!pl && opHave && opBest.len >= 1 && opBest.ch >= OP_TWO_FROM) pl = &opBest;
+  if (!pl && opHave && opBest.len >= 1 && opBest.ch >= imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed))) pl = &opBest;
   if (!pl) return 0;
   opSecondCh = pl->ch;
   int32_t sw = pl->path[0], r = CR(sw), c = CC(sw);
@@ -908,7 +909,7 @@ static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
     int32_t v = cbDesignAll(&G, 0, ms * 0.5, &D, &tr, &links, &sw);
     cbJMaxSw = keepSw; cbJSwapCost = keepCost; cbJPartial = 0;
     opDesignWhy = 3; opDesignLinks = links;
-    if (v > 0 && tr && links >= OP_TWO_FROM) {
+    if (v > 0 && tr && links >= opDesignLeast) {
       cbCurR = b->curRow; cbCurC = b->curCol;
       n = cbOrder(&G, &D, tr, seq, OP_DEPTH + 1);
       cbCurR = 0;
@@ -920,7 +921,7 @@ static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
   { int32_t keepCost = cbSwapCost; cbSwapCost = opDesignCost;
     int32_t str = 0; int sl = 0, sn = cbSeqDesign(&G, ms * 0.5, imin(maxSw, OP_DEPTH), sseq, &str, &sl);
     cbSwapCost = keepCost; opSeqLinks = sn >= 0 ? sl : -1;
-    if (sn >= 0 && sl >= OP_TWO_FROM && (!n || sl > links || (sl == links && sn + 1 < n))) { for (int i = 0; i < sn; i++) seq[i] = sseq[i]; seq[sn] = str; n = sn + 1; links = sl; opDesignLinks = sl; } }
+    if (sn >= 0 && sl >= opDesignLeast && (!n || sl > links || (sl == links && sn + 1 < n))) { for (int i = 0; i < sn; i++) seq[i] = sseq[i]; seq[sn] = str; n = sn + 1; links = sl; opDesignLinks = sl; } }
   if (n < 1) return 0;
   opDesignWhy = 5;
   memset(out, 0, sizeof *out);
@@ -1188,7 +1189,7 @@ static Played playOf(const Read *R, int n) {
     double left = C2.due ? C2.due - C2.margin - nowMs() : 0;
     OpPath dp;
     opNextDesign = -1; opNextMs = (int32_t)(left * OP_NEXT_SHARE); opDesignWhy = 0;
-    opDesignCost = OP_NEXT_COST; int got = left > 8 && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_CB_MAXSW); opDesignCost = OP_CB_COST;
+    opDesignCost = OP_NEXT_COST; opDesignLeast = imax(OPENER_LEAST, opNeed); int got = left > 8 && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_CB_MAXSW); opDesignCost = OP_CB_COST; opDesignLeast = OP_TWO_FROM;
     if (got) {
       opNextDesign = -2; opNextCh = dp.ch; opNextLen = dp.len + 1;
       int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int i = 0; i < dp.len; i++) seq[ns++] = dp.path[i]; seq[ns++] = dp.trig;
