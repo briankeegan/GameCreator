@@ -1362,14 +1362,17 @@ static Played playOf(const Read *R, int n) {
     // that grows to a 3 -- set 86 factory 3, every 4 fired at 344-354 and the 2 taken made a 3)
     int late4 = opHave && opBest.ch >= OP_TWO_FROM && opFits(&opBest, trigCh, 3);
     for (int ln = 1; ln <= OP_DEPTH && !late4; ln++) late4 = opByLenHave[ln] && opByLen[ln].ch >= OP_TWO_FROM && opFits(&opByLen[ln], trigCh, 3);
-    static const int passOrder[2][OP_PASSES] = { { 0, 1, 2, 3, 4 }, { 0, 1, 3, 2, 4 } };
-    for (int pi = 0; pi < OP_PASSES && chainUp <= 0; pi++) {
-      int pass = passOrder[late4][pi];
+    // (and before the 3 fired in time: a 4 and the 4 after it come sooner than a 3 and the 5 after it, the game's clock running out on
+    // the second chain -- set 86 large_garbage 6, the 5 after the 3 landing at 1265 of a game that ends at 1300; the early slot takes plans
+    // of OP_TWO_FROM or more only, the judge's board living all the same)
+    static const int passOrder[2][OP_PASSES + 1] = { { 0, 1, 2, 3, 4, -1 }, { 0, 3, 1, 2, 3, 4 } };
+    for (int pi = 0; pi < OP_PASSES + 1 && passOrder[late4][pi] >= 0 && chainUp <= 0; pi++) {
+      int pass = passOrder[late4][pi], fourOnly = late4 && pi == 1;
       const OpPath *tries[OP_TRIES]; int nt = 0;
-      if (opHave && opFits(&opBest, trigCh, pass)) tries[nt++] = &opBest;
+      if (opHave && opFits(&opBest, trigCh, pass) && (!fourOnly || opBest.ch >= OP_TWO_FROM)) tries[nt++] = &opBest;
       for (int ln = 1; ln <= OP_DEPTH; ln++) {
         const OpPath *c = &opByLen[ln];
-        if (!opByLenHave[ln] || !opFits(c, trigCh, pass) || (nt && tries[0] == &opBest && !memcmp(c, &opBest, sizeof *c))) continue;
+        if (!opByLenHave[ln] || !opFits(c, trigCh, pass) || (fourOnly && c->ch < OP_TWO_FROM) || (nt && tries[0] == &opBest && !memcmp(c, &opBest, sizeof *c))) continue;
         int at = nt < OP_TRIES ? nt++ : OP_TRIES;
         // (passes 2 and 3 ask a chain in time: their plans tried fewest swaps first -- the one pressed soonest fires soonest; the others the plan's own
         // order)
