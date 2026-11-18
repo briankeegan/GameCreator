@@ -810,6 +810,8 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 #define OP_SECOND_SHARE 0.9   // (the share of what the decision has left that the second chain's plan takes: the extension has had its share)
 #define OP_CB_COST 30
 #define OP_CB_MAXSW 14
+#define OP_RAISE_FOR 60   // (the frames the opening raise is given before a plan short of the eight is put off no longer)
+static int opRaisedFirst;   // (the plan put off for the raise this decision: the log's raiseFirst=)
 #define OP_NEXT_MAXSW 10   // (and the next chain's: its swaps pressed while garbage lands and the game's clock runs -- set 86 large_garbage 7, a 4 of 14 swaps half pressed and never fired)
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
 static int32_t opDesignCost = OP_CB_COST;   // (a swap's worth in a design's score: the opening's race, or the next chain's OP_NEXT_COST)   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
@@ -1144,7 +1146,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opFallWay = 0; opFallLink = opFallLinkCh = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0; opPairN = opPairBest = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opFallWay = 0; opFallLink = opFallLinkCh = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0; opPairN = opPairBest = 0; opRaisedFirst = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   // (and the next chain, the first thrown, is planned under garbage too: its panels are the ones under it)
   int opNext = openerSum > 0 && opNeed > 0;
@@ -1426,13 +1428,21 @@ static Played playOf(const Read *R, int n) {
     if (cdAsk) boardRows(decQ.b, opCdRows, sizeof opCdRows);
     // (a plan of OP_TWO_FROM or more that fires within OP_LATE is tried before a 2 to extend: half the eight in one chain, against a 2
     // that grows to a 3 -- set 86 factory 3, every 4 fired at 344-354 and the 2 taken made a 3)
+    // (THE STACK RAISED BEFORE A PLAN SHORT OF THE EIGHT: no plan makes it, or comes a link short of it with a chain behind it, while
+    // the opening raise is still wanted -- the plan is put off and the rows raised, and planned again on the taller stack, while a plan
+    // still fires by OPEN_FIRE_BY after it; set 86 factory 4, a 4 planned on the thirty panels it opens with and nothing after it)
+    int anyEight = opHave && (opMakesEight(&opBest) || opNearEight(&opBest));
+    for (int ln = 1; ln <= OP_DEPTH && !anyEight; ln++) anyEight = opByLenHave[ln] && (opMakesEight(&opByLen[ln]) || opNearEight(&opByLen[ln]));
+    int raiseFirst = R->low && !anyEight && opBefore() && opNeed > 0 && openerSum == 0 &&
+                     decQ.b->clock + ((opHave ? opBest.len : 0) + 1) * OPEN_SWAP_FRAMES + OP_RAISE_FOR < OPEN_FIRE_BY;
+    opRaisedFirst = raiseFirst;
     int late4 = opHave && opBest.ch >= OP_TWO_FROM && opFits(&opBest, trigCh, 3);
     for (int ln = 1; ln <= OP_DEPTH && !late4; ln++) late4 = opByLenHave[ln] && opByLen[ln].ch >= OP_TWO_FROM && opFits(&opByLen[ln], trigCh, 3);
     // (and before the 3 fired in time: a 4 and the 4 after it come sooner than a 3 and the 5 after it, the game's clock running out on
     // the second chain -- set 86 large_garbage 6, the 5 after the 3 landing at 1265 of a game that ends at 1300; the early slot takes plans
     // of OP_TWO_FROM or more only, the judge's board living all the same)
     static const int passOrder[2][OP_PASSES + 1] = { { 0, 1, 2, 3, 4, -1 }, { 0, 3, 1, 2, 3, 4 } };
-    for (int pi = 0; pi < OP_PASSES + 1 && passOrder[late4][pi] >= 0 && chainUp <= 0; pi++) {
+    for (int pi = 0; pi < OP_PASSES + 1 && passOrder[late4][pi] >= 0 && chainUp <= 0 && !raiseFirst; pi++) {
       int pass = passOrder[late4][pi], fourOnly = late4 && pi == 1;
       const OpPath *tries[OP_TRIES]; int nt = 0;
       if (opHave && opFits(&opBest, trigCh, pass) && (!fourOnly || opBest.ch >= OP_TWO_FROM)) tries[nt++] = &opBest;

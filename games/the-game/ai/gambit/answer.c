@@ -813,7 +813,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s("/"); L_i(extLog.late); L_s("/"); L_i(extLog.floorLost); L_s("/"); L_i((int32_t)extLog.ms); L_s("/L"); L_i(extLog.longest.set ? extLog.longest.chain : 0); L_s(":"); L_i(extLog.longCut); }
   else if (extSkip) { L_s(" xs=-"); L_i(extSkip); }
   if (openerPaused) L_s(" opPause=1");
-  if (opKeepHeld) { L_s(" keep="); L_i(opKeepHeld); }   // (the opener paused, the board about to be lost: the mode after it plays, the opener's chains still counted)
+  if (opKeepHeld) { L_s(" keep="); L_i(opKeepHeld); }
+  if (opRaisedFirst) L_s(" raiseFirst=1");   // (the opener paused, the board about to be lost: the mode after it plays, the opener's chains still counted)
   if (opKept) L_s(" opKept=1");
   // (each extension the judge cut: swap k of s, why w (judge.c cutWhy), the frame f its last pressed swap's walk began, the search's chain x)
   if (extCutN) { L_s(" extCut="); for (int i = 0; i < extCutN; i++) { if (i) L_s(","); L_s("k"); L_i(extCutLog[i][0]); L_s("s"); L_i(extCutLog[i][1]); L_s("w"); L_i(extCutLog[i][2]); L_s("f"); L_i(extCutLog[i][3]); L_s("x"); L_i(extCutLog[i][4]); } }
