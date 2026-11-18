@@ -496,6 +496,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       const Judge *J = order[i];
       if (J == P.line || J->hold || J->wait || J->o.dead) continue;
       if (!(J->o.lives || (!P.line->o.lives && diesAt(J) >= diesAt(P.line)))) continue;
+      // (and later than the hold with its walk charged: a line no better than the hold left alone is a walk for nothing)
+      if (H && !H->o.dead && !H->o.lives && !J->o.lives && !(lostOf(J) > lostOf(H))) continue;
       tries++;
       Why wj = moveWhy(J);
       if (wj.kind != WHY_NONE) { alt = J; whyPlayed = wj; }

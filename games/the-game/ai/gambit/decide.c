@@ -2174,6 +2174,9 @@ static Why moveWhy(const Judge *L) {
     const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
     w.kind = WHY_LIVE; w.a = H && !H->o.lives && !L->o.lives ? (int32_t)(diesAt(L) - diesAt(H)) : 0;
     w.b = H && !H->o.lives && L->o.lives ? 1 : !H || H->o.lives || w.a <= 0 ? 2 : 0;   // (1 it lives where the hold does not, 2 it gains nothing on the hold: the log's)
+    // (a survive line that gains nothing on the hold has no reason: its swaps are inputs for nothing -- r1335, 15 such lines played, 9
+    // swaps that came to nothing, one of them a ten-row walk at 3195)
+    if (H && w.b == 2) w.kind = WHY_NONE;
   }
   if (w.kind == WHY_NONE && eb && nd != n0) {
     // (what the board it leaves fires one swap on: the longest chain, else the biggest combo)

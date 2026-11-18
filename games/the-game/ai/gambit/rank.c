@@ -258,9 +258,19 @@ static int lineWalk(const Judge *J);
 static double lostOf(const Judge *x);
 // THE FRAME THE BOARD IS LOST, as the engine has it -- the line's own loss or its readiness's, no walk charged (lostOf charges the walk:
 // the order's preference for the nearer, not a loss): what a set-up that must never cost the board's life is held to
+// (THE NEXT MOVES' CREDIT, ONLY WHERE THE LINE COSTS THE BOARD NOTHING: a line's life after it (extLost) counts only where its own board,
+// left alone, is lost no sooner than the hold's -- the hold is never credited with moves after it, and a line that shortens the board's
+// own life on a break it promises after the next block is a line whose promise is never pressed: r1335 3913-4002, four ready swaps lost
+// at 91 against the hold's 135, each credited 376-405)
+static double rankHoldOwn = -1; static int32_t rankHoldClock = -1;   // (the hold's own loss this decision: markIdle)
+static int extCounts(const Judge *x) {
+  if (x->hold || x->extLost == NOT_ASKED) return 0;
+  if (rankHoldClock != decQ.b->clock || rankHoldOwn < 0) return 1;
+  return lostAtOf(x->o.lostAt, 0) >= rankHoldOwn;
+}
 static double diesAt(const Judge *x) {
   double own = lostAtOf(x->o.lostAt, x->hold);
-  if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
+  if (extCounts(x)) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
   return own;
 }
 // (THE WALK NEVER TURNS A LIFE INTO A DEATH: two boards lost a break's time apart or more on the frame each is lost, the later of them,
@@ -299,7 +309,7 @@ static int finishEightBy(const Judge *e, const Judge *o) {
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
-  if (!x->hold && x->extLost != NOT_ASKED) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
+  if (extCounts(x)) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
   if (x->hold || own >= 1e299 || own < 0) return own;
   return own - (double)WALK_FRAMES * lineWalk(x);
 }
@@ -474,6 +484,7 @@ static void markIdle(Judge **a, int n) {
   const Judge *H = 0;
   for (int i = 0; i < n && !H; i++) if (a[i]->hold) H = a[i];
   for (int i = 0; i < n; i++) a[i]->idle = 0;
+  rankHoldClock = decQ.b->clock; rankHoldOwn = H && !H->o.dead && H->o.lostAt != NOT_ASKED ? lostAtOf(H->o.lostAt, 1) : -1;
   double holdLost = H ? lostOf(H) : 0;
   for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H) && !(a[i]->k.readyGain > 0 && !a[i]->o.dead && diesAt(a[i]) >= diesAt(H))) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
