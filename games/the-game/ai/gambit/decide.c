@@ -1178,7 +1178,7 @@ static Played playOf(const Read *R, int n) {
   // taken where it fires the eight and is lost within a break's time of the carried line alone, or later -- each judged alone is lost
   // as if it were the last thing pressed, so an eight beside a break is never seen to leave the time for the break)
   if (freeSetup == 0 && P.line && P.line->carried && (P.line->k.play == PLAY_CARRY || P.line->k.play == PLAY_CARRYWAIT) && !P.line->o.dead &&
-      !P.deferred && !R->up && finishAsked() && !clockOut()) {
+      !(P.line->apCombo >= 8 && P.line->apChain < 2) && !P.deferred && !R->up && finishAsked() && !clockOut()) {
     const Judge *C = P.line, *E = 0;
     for (int i = 0; i < n; i++) if (order[i]->k.twin == 1 && !order[i]->o.dead && order[i]->apCombo >= 8 && (!E || diesAt(order[i]) > diesAt(E))) E = order[i];
     if (E && E->k.nseq + C->k.nseq <= MAXLINE) {
