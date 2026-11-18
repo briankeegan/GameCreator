@@ -390,6 +390,36 @@ static int twinRowFix(const int32_t *row, const uint8_t *ok, int cx, int32_t X, 
   }
   return f->ok ? best : -1;
 }
+// (EVERY WAY TO SORT A ROW: as twinRowFix, each distinct order of swaps kept, the fewest first -- up to cap; how many)
+#define ROWFIX_ALT 12
+static int twinRowFixAll(const int32_t *row, const uint8_t *ok, int cx, int32_t X, int cy, int32_t Y, RowFix *fs, int cap) {
+  int nf = 0;
+  for (int ax = 1; ax <= W; ax++) for (int ay = 1; ay <= W; ay++) {
+    if (cx ? row[ax] != X || !ok[ax] : ax > 1) continue;
+    if (cy ? row[ay] != Y || !ok[ay] || (cx && ay == ax) : ay > 1) continue;
+    for (int order = 0; order < 2; order++) {
+      int id[W + 2]; for (int c = 1; c <= W; c++) id[c] = c;
+      int src[2] = { cx ? ax : 0, cy ? ay : 0 }, to[2] = { cx, cy }, n = 0; int32_t at[8];
+      for (int s = 0; s < 2; s++) {
+        int w = order ? 1 - s : s;
+        if (!to[w]) continue;
+        int p = 0; for (int c = 1; c <= W; c++) if (id[c] == src[w]) p = c;
+        while (p != to[w] && n < 8) { int l = p < to[w] ? p : p - 1; if (!ok[l] || !ok[l + 1]) { n = 99; break; } int v = id[l]; id[l] = id[l + 1]; id[l + 1] = v; at[n++] = (int32_t)l; p += p < to[w] ? 1 : -1; }
+        if (n == 99) break;
+      }
+      if (n == 99 || (cx && id[cx] != ax) || (cy && id[cy] != ay)) continue;
+      int same = 0;
+      for (int i = 0; i < nf && !same; i++) if (fs[i].n == n && !memcmp(fs[i].at, at, sizeof(int32_t) * n)) same = 1;
+      if (same) continue;
+      int pos = nf; while (pos > 0 && fs[pos - 1].n > n) pos--;
+      if (pos >= cap) continue;
+      for (int i = (nf < cap ? nf : cap - 1); i > pos; i--) fs[i] = fs[i - 1];
+      fs[pos].n = n; fs[pos].ok = 1; for (int i = 0; i < n; i++) fs[pos].at[i] = at[i];
+      if (nf < cap) nf++;
+    }
+  }
+  return nf;
+}
 static int twinThree(int32_t g[][W + 2], int top) {
   for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
     int32_t k = g[r][c]; if (!(k > 0 && k < 8)) continue;
@@ -548,23 +578,36 @@ static int twinThreeKind(int32_t h[][W + 2], int top, int r, int l) {
     if (n >= 3) return 2; }
   return 0;
 }
+// (a row's fix pressed on the copy h, each swap checked: 0, or the three a swap made -- 1 along the row, 2 down a column -- and the row
+// and the swaps put back as they were)
+static int twinRowApply(int32_t h[][W + 2], int top, int q, const RowFix *f, int32_t *seq, int *ns, int lim) {
+  int32_t save[W + 2]; memcpy(save, h[q], sizeof save); int ns0 = *ns;
+  for (int k = 0; k < f->n && *ns < lim; k++) { int l = f->at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[(*ns)++] = q * 8 + l;
+    int why = twinThreeKind(h, top, q, l); if (why) { memcpy(h[q], save, sizeof save); *ns = ns0; return why; } }
+  return 0;
+}
 static int twinSortDir(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int top, const Twin *t, int32_t *seq, int order) {
   static int32_t h[MAXROWS + 2][W + 2];
   memcpy(h, g, sizeof h);
   int ns = 0, bad = 0;
   int lo = imin(t->a0, t->b0), hi = imax(t->a1, t->b1), up = (iabs(b->curRow - lo) <= iabs(b->curRow - hi)) != (order == 2);
   // (the trigger row: its colours crossed, the trigger left unpressed -- first in order 1, last otherwise)
-  #define TRIG_ROW() do { RowFix f; if (trigFix(h[t->r], ok[t->r], t->c, t->X, t->Y, t->hx, t->hy, &f) < 0) { twinBadLast = 5; return -1; } \
-    for (int k = 0; k < f.n && ns < MAXLINE - 2; k++) { int l = f.at[k]; int32_t v = h[t->r][l]; h[t->r][l] = h[t->r][l + 1]; h[t->r][l + 1] = v; seq[ns++] = t->r * 8 + l; \
-      int why = twinThreeKind(h, top, t->r, l); if (why) { twinBadLast = 2 + why; return -1; } } } while (0)
+  // (each row: every way to sort it, the fewest swaps first, till one makes no three on the way -- the arms' row its one way)
+  #define TRIG_ROW() do { RowFix fs[ROWFIX_ALT]; int nf; \
+    if (t->hx || t->hy) nf = trigFix(h[t->r], ok[t->r], t->c, t->X, t->Y, t->hx, t->hy, &fs[0]) < 0 ? 0 : 1; \
+    else nf = twinRowFixAll(h[t->r], ok[t->r], t->c, t->Y, t->c + 1, t->X, fs, ROWFIX_ALT); \
+    if (nf <= 0) { twinBadLast = 5; return -1; } \
+    int why = 0; for (int i = 0; i < nf; i++) { why = twinRowApply(h, top, t->r, &fs[i], seq, &ns, MAXLINE - 2); if (!why) break; } \
+    if (why) { twinBadLast = 2 + why; return -1; } } while (0)
   if (order == 1) TRIG_ROW();
   for (int s = 0; s <= hi - lo && !bad; s++) {
     int q = up ? lo + s : hi - s;
     if (q == t->r) continue;
     int wx = q >= t->a0 && q <= t->a1, wy = q >= t->b0 && q <= t->b1;
-    RowFix f; if (twinRowFix(h[q], ok[q], wx ? t->c : 0, t->X, wy ? t->c + 1 : 0, t->Y, &f) < 0) { twinBadLast = 5; return -1; }
-    for (int k = 0; k < f.n && ns < MAXLINE - 8; k++) { int l = f.at[k]; int32_t v = h[q][l]; h[q][l] = h[q][l + 1]; h[q][l + 1] = v; seq[ns++] = q * 8 + l;
-      int why = twinThreeKind(h, top, q, l); if (why) { twinBadLast = why; return -1; } }
+    RowFix fs[ROWFIX_ALT]; int nf = twinRowFixAll(h[q], ok[q], wx ? t->c : 0, t->X, wy ? t->c + 1 : 0, t->Y, fs, ROWFIX_ALT);
+    if (nf <= 0) { twinBadLast = 5; return -1; }
+    int why = 0; for (int i = 0; i < nf; i++) { why = twinRowApply(h, top, q, &fs[i], seq, &ns, MAXLINE - 8); if (!why) break; }
+    if (why) { twinBadLast = why; return -1; }
   }
   if (order != 1) TRIG_ROW();
   #undef TRIG_ROW
