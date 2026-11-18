@@ -405,6 +405,7 @@ static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
 #define CONT_LINES 6   // (the lines judged with the survival search run on after them, a decision: decide.c, the life after the line)
+#define CUT8_MS 4      // (the judging's time for each eight tried with one swap more: decide.c, the eight without its chain)
 #define CONT_MS 6      // (the survival search's time for each)
 static int32_t contAsked;   // (the lines so judged this decision: the log's cont=)
 static double contLostOf(const Judge *J, double give) {
@@ -619,6 +620,38 @@ static int ranked(const Read *R, const Found *S) {
       }
     clockDue = due; clockShare = share;
     if (contAsked) sortJudged(order, n);
+  }
+  // (THE EIGHT WITHOUT ITS CHAIN -- the owner: make the eight, and before or after it move the panels so the ones that fall make no
+  // chain: in finish them, an eight on offer whose whole chain runs past two is judged again with one swap more -- after its trigger, then
+  // before its first -- near its trigger's rows; the first whose eight still fires, whose chain ends at two at most and whose board is
+  // lost no sooner takes its place)
+  if (finishAsked() && n && clockFrameOut && !clockFrameOut()) {
+    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
+    int cut = 0;
+    for (int i = 0; i < n && !clockFrameOut(); i++) {
+      Judge *E = order[i];
+      if (E->hold || E->o.dead || E->apCombo < 8 || E->apChainAll < 3 || E->k.nseq + 1 > MAXLINE) continue;
+      int tr = CR(E->k.seq[E->k.nseq - 1]), done = 0;
+      static Judge CE;
+      for (int side = 0; side < 2 && !done; side++)
+        for (int r = imax(1, tr - 1); r <= tr + 4 && !done && !clockFrameOut(); r++)
+          for (int c = 1; c < W && !done && !clockFrameOut(); c++) {
+            int32_t seq[MAXLINE]; int ns = 0;
+            if (side == 1) seq[ns++] = r * 8 + c;
+            for (int q = 0; q < E->k.nseq; q++) seq[ns++] = E->k.seq[q];
+            if (side == 0) seq[ns++] = r * 8 + c;
+            Cand k; if (!candOf(&k, PLAY_ENTRY, seq, ns, E->k.aim, 0)) continue;
+            k.settled = 0; k.twin = E->k.twin; k.x = E->k.x;
+            double sh = clockShareBegin(nowMs() + CUT8_MS);
+            int ok = judgeCand(R, &k, &CE);
+            clockShareEnd(sh);
+            if (!ok || CE.o.dead || CE.apCombo < 8 || CE.apChainAll > 2) continue;
+            if (!(CE.o.lives || (!E->o.lives && diesAt(&CE) >= diesAt(E)))) continue;
+            *E = CE; done = 1; cut++;
+          }
+    }
+    clockDue = due; clockShare = share;
+    if (cut) sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps
