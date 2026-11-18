@@ -12,8 +12,11 @@ typedef struct {
   int32_t cells, chain, combo, broke, done, fire, floor, base, aimIndex;
   double near;
 } XLine;
-typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; } ExtOpts;
-typedef struct { XLine best, nearest, three, longest; double ms; int32_t baseChain; } Ext;   // baseChain: the cascade's chain left alone   // three: the chain taken to three or more, breaking the most;
+typedef struct { int32_t width, depth; const List *aims; int32_t by; const Keep *keep; double ms; int32_t longest; } ExtOpts;   // longest: the chain made longest offered, as in time attack (the opener's falling chain); 2 unjudged -- a board
+                                                                                                            // played forward, not the decision's (decide.c opExtendAll)
+#define EXT_LONG_K 12  // (the opener's falling chain: the longest lines kept, each judged in turn -- the search's count of a line's chain is
+                       // its own, and the judge, which plays it as the frame loop will, has the last word)
+typedef struct { XLine best, nearest, three, longest, longK[EXT_LONG_K]; int32_t nlongK; double ms; int32_t baseChain, seen, kept, top, topKept, late, floorLost, longCut; } Ext;   // seen..floorLost: the log's xs= -- boards settled, kept, the longest chain of any and of a kept one, put down for firing past `by`, for losing the floor   // baseChain: the cascade's chain left alone   // three: the chain taken to three or more, breaking the most;
                                                                        // longest: the chain made longest, in the fewest swaps
 // a node's cascade once it settles: what it sends, its chain and largest match, the garbage it converted, and whether its board keeps
 // the floor (kept: with what it broke, floor: as if it broke nothing)
@@ -36,6 +39,9 @@ static void madeAlong(Ctx *x, int from, int to, PItem *k) {
 static Sent sendsOf(Ctx *x, int n, const Keep *keep, const PItem *k) {
   Sent g; memset(&g, 0, sizeof g);
   int out = settleOf(x, n);
+  // (a board lost before its cascade settles: what the cascade made up to the frame before -- the links that come before the loss are
+  // the chain's, as the judge counts them (judge.c), and a chain going on through garbage popping is one the board can be lost under)
+  if (out == STEP_DEAD && deadAt - 1 > NODE(x, n)->t) out = step(x, n, MK_SETTLE, 0, 0, deadAt - 1 - NODE(x, n)->t);
   if (!liveNode(x, out)) return g;
   PItem a = *k; Stats st;
   if (statsOf(x, out, &st)) madeAdd(&a, &st);
@@ -128,7 +134,10 @@ static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
       g.broke = imax(0, g.broke - (base.ok ? base.broke : 0));
       // (a link added to a falling chain is in time when its swap is: pressed before the link it joins lands, and by the deadline)
       int32_t fire = NODE(x, k->n)->t;
-      if (o->by != NOT_ASKED && fire > o->by) g.kept = 0;
+      E->seen++; if (g.chain > E->top) E->top = g.chain;
+      if (!g.kept) E->floorLost++;
+      if (g.kept && o->by != NOT_ASKED && fire > o->by) { g.kept = 0; E->late++; }
+      if (g.kept) { E->kept++; if (g.chain > E->topKept) E->topKept = g.chain; }
       Made made = { g.combo, g.chain, g.broke, g.cells - baseCells };
       int32_t kseq[MAXLINE]; pathRead(&extTree, k->path, k->nseq, kseq, 0);
       #define XFILL(L, ai) do { memset(&(L), 0, sizeof (L)); (L).set = 1; (L).nseq = k->nseq; for (int s_ = 0; s_ < k->nseq; s_++) (L).seq[s_] = kseq[s_]; \
@@ -144,8 +153,23 @@ static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
         if (g.chain >= 3 && (!E->three.set || g.broke > E->three.broke || (g.broke == E->three.broke && g.cells > E->three.cells)) && lineLives(kseq, k->nseq, 0)) XFILL(E->three, -1);
         // (THE CHAIN MADE LONGEST, a link at a time -- the owner: in time attack a chain is all there is; whatever the list asks, the
         // longest the cascade is taken to, up to 13 (CB_TOP), in the fewest swaps)
-        if (ruleNoEnemy && base.ok && base.chain < CB_TOP && g.chain > base.chain && (!E->longest.set || imin(g.chain, CB_TOP) > imin(E->longest.chain, CB_TOP) ||
-            (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq)) && lineFits(kseq, k->nseq, 0)) XFILL(E->longest, -1);
+        // (and the opener's chain falling: the longest it is taken to, a line that lives -- the list and the floor are the chain's own then)
+        if ((ruleNoEnemy || o->longest) && base.ok && base.chain < CB_TOP && g.chain > base.chain && (!E->longest.set || imin(g.chain, CB_TOP) > imin(E->longest.chain, CB_TOP) ||
+            (imin(g.chain, CB_TOP) == imin(E->longest.chain, CB_TOP) && k->nseq < E->longest.nseq))) {
+          if (o->longest == 2 || (o->longest ? lineLives(kseq, k->nseq, 0) : lineFits(kseq, k->nseq, 0))) XFILL(E->longest, -1); else E->longCut++;
+        }
+        // (the K longest, any line making the chain longer than left alone: kept by chain, then the garbage broken -- a link that breaks a
+        // slab keeps the chain going through its pop -- then fewer swaps, one per first swap)
+        if (o->longest && base.ok && g.chain > base.chain) {
+          int at = -1, dup = -1;
+          for (int q = 0; q < E->nlongK; q++) if (E->longK[q].seq[0] == kseq[0]) dup = q;
+          #define XBETTER(L) (g.chain > (L).chain || (g.chain == (L).chain && (g.broke > (L).broke || (g.broke == (L).broke && k->nseq < (L).nseq))))
+          if (dup >= 0) { if (XBETTER(E->longK[dup])) at = dup; }
+          else if (E->nlongK < EXT_LONG_K) at = E->nlongK++;
+          else { int w = 0; for (int q = 1; q < E->nlongK; q++) { const XLine *a = &E->longK[q], *b = &E->longK[w]; if (a->chain < b->chain || (a->chain == b->chain && (a->broke < b->broke || (a->broke == b->broke && a->nseq > b->nseq)))) w = q; } if (XBETTER(E->longK[w])) at = w; }
+          #undef XBETTER
+          if (at >= 0) XFILL(E->longK[at], -1);
+        }
       }
       #undef XFILL
       k->h = connectedOf(ensureBoard(x, k->n)); k->set = ruleNoEnemy ? g.chain * 1000 + g.cells : g.cells;   // (set: its score -- what it sends; in time attack its chain first)

@@ -10,6 +10,7 @@
 #define STAGING (45 + 45 + 1)   // a sender stages garbage this long, then it lands LAND frames later
 #define LAND 60
 #define PLANN 4096         // frames of plan kept, by clock
+#define ASK_IDLE 30        // frames with no keys planned past which the next question is asked anyway
 #define MAXKEYS 2048
 #define MAXARRIVALS 1024
 #define FTHINK 8           // the answers' times kept, for how soon the next comes
@@ -81,6 +82,7 @@ enum { LINK_GARBAGE, LINK_SWAP, LINK_ALONE };
 #define MOVE_OPEN 64
 #define MOVE_IDS 32
 #define MOVE_FOR 600
+#define LOGGED_KEYS 400   // (the swaps keyed logged at most, a game: GAMBITK)
 #define FOLLOW_FOR 360   // (the frames a swap's three waits for a break by a later swap of its line: past them, unbroken, it was wasted)
 #define MOVE_FALL 60
 typedef struct { int32_t at, n, ids[MOVE_IDS], moved[MOVE_IDS], swapsAfter, save, guard, play, lid, idx, row, col, acts, pa, pb; } MoveOpen;   // pa, pb: the ids of the two cells swapped (0: none there)   // row, col: where it was pressed; acts: the actions pressed since the swap before, its own included   // save: pressed as a key of a save (Planned.save); guard: what the press guard saw (0 no three, 2 a three let through as the board's save)
@@ -96,7 +98,7 @@ static void lineEnds(int32_t why);
 
 static struct {
   int32_t now, epoch, nextAt, lastSwapEnd, haveSwapEnd, jitterFor, jitterGap, raiseCutUntil;
-  int32_t holdLeft, holdStarted, overLogged, loggedAskNow, loggedRefused, nalt, alt[MAXLINE];
+  int32_t holdLeft, holdStarted, overLogged, loggedAskNow, loggedRefused, loggedKeys, nalt, alt[MAXLINE];
   Planned plan[PLANN]; int32_t planAt[PLANN];
   Board *truth, *expect, *pr, *scratch;
   int32_t haveExpect;
@@ -533,8 +535,11 @@ static int soon(void) {
 static int aheadOf(void) { return imax(F.ahead, soon()); }
 static uint32_t frand(void) { F.rnd = F.rnd * 1664525u + 1013904223u; return F.rnd >> 8; }
 // THE SLACK: after a swap whose decision found the hold lives and nothing urgent, the next swap waits the profile's gap and a jitter.
+// (never while a chain of ours falls: its links are pressed in the frames they were judged in -- a link pressed a gap late is no link, set 86
+// large_garbage 2, a swap judged for 353 pressed at 358 and a 5 come down a 3)
 static int calmGap(const Board *next) {
   if (F.gap < 0 || !F.haveSwapEnd || !F.havePace || !F.lastHold || F.lastUrgent) return -1;
+  if (next->chainCounter > 0 || cascadeLive(next)) return -1;
   int32_t stop = next->stopTime + next->preStopTime;
   if (F.toppedNow && !(stop > F.gap)) return -1;
   if (F.jitter) {
@@ -632,7 +637,10 @@ static void take(void) {
     // (A HOLD WALKS THE CURSOR TO THE NEXT WORK: where the best line that is no hold begins, with the window to spare -- AIM_RESERVE actions
     // kept -- and the cursor two cells or more from it; nothing swapped, the board the same)
     int aimed = 0;
-    if (a.kind == 0 && a.aim && !a.empty && allowanceAt(at) >= AIM_RESERVE &&
+    // (never ahead of a line handed on judged pressed later: its walk was judged from the cursor as the hold leaves it -- a step aimed
+    // before it walks a cell short, and its swap is pressed frames before the judge pressed it; set 86 factory 1, a link pressed 3 early
+    // and a 6 come down a 2)
+    if (a.kind == 0 && a.aim && !a.empty && allowanceAt(at) >= AIM_RESERVE && !(a.nhand && a.handAt[0] > at) &&
         iabs(F.pBoard->curRow - CR(a.aim)) + iabs(F.pBoard->curCol - CC(a.aim)) >= 2 &&
         keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, MK_GO, CR(a.aim), CC(a.aim), &k) && k.n > 0) { aimed = 1; F.st.aimed++; }
     if (!aimed && !keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
@@ -659,6 +667,7 @@ static void take(void) {
     F.st.heldWalks += k.held;
     if (a.kind == 1) F.st.swaps++;
     planClearFrom(at);
+    if (a.kind == 1 && F.loggedKeys < LOGGED_KEYS) { char l[160]; snprintf(l, sizeof l, "GAMBITK %d judged=%d cur=%d,%d sw=%d,%d keys=%d press=%d q=%d taken=%d", at, at, F.pBoard->curRow, F.pBoard->curCol, CR(a.move), CC(a.move), k.n, at + k.n - 1, F.pPosted, F.now); flog(l); F.loggedKeys++; }
     for (int i = 0; i < k.n; i++) planSet(at + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], a.kind == 1, a.wastes, F.pPosted, a.play >= 0 ? a.play + 1 : 0, a.kind == 1 ? a.id + 1 : 0, 0 });
     { LineRec *o = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
       lineEnds(a.ended);
@@ -734,6 +743,12 @@ static int follow(void) {
   int left = allowanceAt(due);
   if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance", END_OVERWALK);
   F.st.heldWalks += k.held;
+  // (EVERY SWAP KEYED, ONE LINE (GAMBITK): the frame its keys begin, the frame the judge pressed it from (0 none), the cursor then, the
+  // swap, its keys -- its press the last of them -- and the decision whose line it is: a press later than the judge's is read off here)
+  if (F.loggedKeys < LOGGED_KEYS) {
+    // (and the keys already planned from now to its first, as bits a frame, and the cursor now: what moves the cursor before it)
+    char ks[64]; int kn = 0; for (int32_t t = F.now; t < due && kn < 60; t++) { Planned *p = planOf(t); kn += snprintf(ks + kn, sizeof ks - kn, "%x", p ? p->bits & 0xf : 0); } ks[kn] = 0;
+    char l[240]; snprintf(l, sizeof l, "GAMBITK %d judged=%d cur=%d,%d sw=%d,%d keys=%d press=%d q=%d now=%d curNow=%d,%d before=%s", due, F.lineAt[0], F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), k.n, due + k.n - 1, F.lineAsked, F.now, F.truth ? F.truth->curRow : -1, F.truth ? F.truth->curCol : -1, ks); flog(l); F.loggedKeys++; }
   for (int i = 0; i < k.n; i++) planSet(due + i, (Planned){ k.ins[i], k.hl[i], k.hs[i], 1, F.lineWastes, F.lineAsked, F.linePlay, F.lineOfId + 1, F.lineOfPressed + 1 });
   F.nextAt = due + k.n;
   F.lastSwapEnd = F.nextAt; F.haveSwapEnd = 1;
@@ -1175,6 +1190,14 @@ static void afterFrame(int32_t bits) {
   // alive, below)
   if (F.havePace && !F.lastHold && !F.lastBrk && F.nextAt <= now) lead = imax(lead, imin(aheadOf(), F.reaction + 1));
   int32_t at = imax(F.nextAt > now ? F.nextAt : 0, now + lead);
+  // (A LONG WAIT IS ASKED ABOUT: keys planned no sooner than ASK_IDLE frames off -- a line in hand waiting for its chain, its walk
+  // planned on the frame it was judged to begin -- leave the frames before them idle, and they are asked about as any are: the answer
+  // carries the line on, its swaps pressed the frames they were judged pressed from (decide.c carriedCand), or takes its place)
+  if (at - now > ASK_IDLE) {
+    int32_t first = 0;
+    for (int32_t t = now + 1; t <= now + ASK_IDLE && !first; t++) { Planned *p = planOf(t); if (p && p->bits) first = t; }
+    if (!first) at = now + lead;
+  }
   int paced = 0;
   if (gap >= 0 && F.lastSwapEnd + gap > at) { at = F.lastSwapEnd + gap; paced = 1; }
   // (A LINE IN HAND: asked no later than the frame its next swap is due -- a board predicted past it is one without the swap, and the

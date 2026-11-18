@@ -8,7 +8,8 @@
 typedef signed char cb8;
 #define CB_ROWS (MAXROWS + 2)
 #define CB_MAXSWAPS 96
-typedef struct { cb8 g[CB_ROWS][W + 2]; int rows; } CbGrid;   // g[r][c]: a colour, 0 empty, -1 what does not move or match (garbage)
+typedef struct { cb8 g[CB_ROWS][W + 2]; int rows, pre; } CbGrid;   // g[r][c]: a colour, 0 empty, -1 what does not move or match (garbage);
+// with pre, g[0] is the row rising from under the stack: it matches and is fallen into as the bottom row, and is never swapped
 static const int32_t CB_CHAIN_TA[14] = { 0, 0, 50, 80, 150, 300, 400, 500, 700, 900, 1100, 1300, 1500, 1800 };   // panel-game checkMatches
 static int32_t cbChainScore(int n) { int32_t s = 0; for (int k = 2; k <= n && k <= CB_TOP; k++) s += CB_CHAIN_TA[k]; return s; }
 // (the cells in a run of three or more of one colour, across or up and down: marked, their count returned)
@@ -21,18 +22,20 @@ static int cbMark(const CbGrid *G, uint8_t m[CB_ROWS][W + 2]) {
     if (a > 0 && G->g[r][c + 1] == a && G->g[r][c + 2] == a && (c == 1 || G->g[r][c - 1] != a)) cbAcross++;
     if (a > 0 && G->g[r][c + 1] == a && G->g[r][c + 2] == a) { int k = c; while (k <= W && G->g[r][k] == a) { if (!m[r][k]) { m[r][k] = 1; n++; } k++; } }
   }
-  for (int c = 1; c <= W; c++) for (int r = 1; r <= G->rows - 2; r++) {
+  const int lo = G->pre ? 0 : 1;
+  for (int c = 1; c <= W; c++) for (int r = lo; r <= G->rows - 2; r++) {
     cb8 a = G->g[r][c];
-    if (a > 0 && G->g[r + 1][c] == a && G->g[r + 2][c] == a && (r == 1 || G->g[r - 1][c] != a)) cbUpDown++;
+    if (a > 0 && G->g[r + 1][c] == a && G->g[r + 2][c] == a && (r == lo || G->g[r - 1][c] != a)) cbUpDown++;
     if (a > 0 && G->g[r + 1][c] == a && G->g[r + 2][c] == a) { int k = r; while (k <= G->rows && G->g[k][c] == a) { if (!m[k][c]) { m[k][c] = 1; n++; } k++; } }
   }
   return n;
 }
 // (everything falls to the floor or the cell under it)
 static void cbFall(CbGrid *G) {
+  const int lo = G->pre ? 0 : 1;
   for (int c = 1; c <= W; c++) {
-    int to = 1;
-    for (int r = 1; r <= G->rows; r++) {
+    int to = lo;
+    for (int r = lo; r <= G->rows; r++) {
       cb8 v = G->g[r][c];
       if (v == 0) continue;
       if (v < 0) { to = r + 1; continue; }   // (garbage holds where it is: what is above it rests on it)
@@ -53,7 +56,7 @@ static int cbRun(const CbGrid *G0, int r, int c, int *cleared) {
     int n = cbMark(&G, m);
     if (!n) break;
     links++; cl += n;
-    for (int y = 1; y <= G.rows; y++) for (int x = 1; x <= W; x++) if (m[y][x]) G.g[y][x] = 0;
+    for (int y = G.pre ? 0 : 1; y <= G.rows; y++) for (int x = 1; x <= W; x++) if (m[y][x]) G.g[y][x] = 0;
     cbFall(&G);
     if (links > 30) break;
   }
@@ -74,7 +77,7 @@ static int cbMaySet(const CbGrid *G, int r, int c) {
     for (int k = col + 1; k <= W && k != c + (1 - s) && G->g[r][k] == v; k++) n++;
     if (n >= 3) return 1;
     n = 1;
-    for (int q = r - 1; q >= 1 && G->g[q][col] == v; q--) n++;
+    for (int q = r - 1; q >= (G->pre ? 0 : 1) && G->g[q][col] == v; q--) n++;
     for (int q = r + 1; q <= G->rows && G->g[q][col] == v; q++) n++;
     if (n >= 3) return 1;
   }
@@ -114,26 +117,44 @@ static int cbSwapsTo(const CbGrid *A, const CbGrid *B) {
 static int cbStable(const CbGrid *G) { static LOCAL uint8_t m[CB_ROWS][W + 2]; return cbMark(G, m) == 0; }
 // (a row the design may order: full, nothing in it that does not move)
 static int cbFull(const CbGrid *G, int r) { for (int c = 1; c <= W; c++) if (G->g[r][c] <= 0) return 0; return 1; }
+// (WITH GAPS, cbPartial: a row with no garbage in it and a panel in it is ordered too, its panels moved into its empty cells -- and
+// every panel stays on a cell, so nothing the design does not count falls)
+static LOCAL int cbPartial;
+static int cbOpen(const CbGrid *G, int r) { int any = 0; for (int c = 1; c <= W; c++) { if (G->g[r][c] < 0) return 0; if (G->g[r][c] > 0) any = 1; } return any; }
+static int cbRowOk(const CbGrid *G, int r) { return cbFull(G, r) || (cbPartial && cbOpen(G, r)); }
+static int cbSupported(const CbGrid *G) { for (int r = 2; r <= G->rows; r++) for (int c = 1; c <= W; c++) if (G->g[r][c] > 0 && G->g[r - 1][c] == 0) return 0; return 1; }
+static int cbStill(const CbGrid *G) { return cbStable(G) && (!cbPartial || cbSupported(G)); }
 static LOCAL uint32_t cbRand;
 static double cbExp(double x) { return x >= 0 ? 1 : 1 / (1 - x + x * x / 2 - x * x * x / 6); }   // (e^x for x <= 0, near enough to anneal by)
 static uint32_t cbNext(void) { cbRand ^= cbRand << 13; cbRand ^= cbRand >> 17; cbRand ^= cbRand << 5; return cbRand; }
 // THE SWAPS IN AN ORDER THAT SETS NOTHING OFF: each row's swaps (cbRowSwaps) kept in their row's order, the rows interleaved -- searched
 // depth first, a swap whose board would match not taken, CB_ORDER_TRIES boards tried at most; the trigger last. Into seq (r * 8 + c); the
-// count, -1 where no order is found.
+// count, -1 where no order is found. With a cursor given (cbCurR >= 1) every order is searched, CB_ORDER_TRIES boards at most, for the
+// one whose walk is shortest -- the cursor's moves from where it is, swap to swap, to the trigger: the order is pressed as walked, and a
+// shorter walk fires the chain sooner.
 #define CB_ORDER_TRIES 20000
-static LOCAL cb8 cbSw[CB_ROWS][CB_MAXSWAPS]; static LOCAL int cbNs[CB_ROWS], cbAt[CB_ROWS], cbTries;
-static int cbOrderFrom(CbGrid *G, int left, int32_t *seq, int n) {
-  if (!left) return n;
+static LOCAL cb8 cbSw[CB_ROWS][CB_MAXSWAPS]; static LOCAL int cbNs[CB_ROWS], cbAt[CB_ROWS], cbTries, cbCurR, cbCurC, cbTrR, cbTrC, cbBestWalk;
+static LOCAL int32_t cbBestSeq[CB_MAXSWAPS + 1];
+static int cbDist(int r0, int c0, int r1, int c1) { return (r1 > r0 ? r1 - r0 : r0 - r1) + (c1 > c0 ? c1 - c0 : c0 - c1); }
+static int cbOrderFrom(CbGrid *G, int left, int32_t *seq, int n, int walk) {
+  if (!left) {
+    if (cbCurR < 1) return n;
+    walk += n ? cbDist(seq[n - 1] / 8, seq[n - 1] % 8, cbTrR, cbTrC) : 0;
+    if (walk < cbBestWalk) { cbBestWalk = walk; for (int i = 0; i < n; i++) cbBestSeq[i] = seq[i]; }
+    return -1;
+  }
   if (++cbTries > CB_ORDER_TRIES) return -1;
+  if (cbCurR >= 1 && walk >= cbBestWalk) return -1;
+  int fr = n ? seq[n - 1] / 8 : cbCurR, fc = n ? seq[n - 1] % 8 : cbCurC;
   for (int r = 1; r <= G->rows; r++) {
     if (cbAt[r] >= cbNs[r]) continue;
     int c = cbSw[r][cbAt[r]];
     cb8 t = G->g[r][c]; G->g[r][c] = G->g[r][c + 1]; G->g[r][c + 1] = t;
-    if (cbStable(G)) {
+    if (cbStill(G)) {
       seq[n] = r * 8 + c; cbAt[r]++;
-      int k = cbOrderFrom(G, left - 1, seq, n + 1);
-      if (k >= 0) return k;
+      int k = cbOrderFrom(G, left - 1, seq, n + 1, walk + cbDist(fr, fc, r, c));
       cbAt[r]--;
+      if (k >= 0) { G->g[r][c + 1] = G->g[r][c]; G->g[r][c] = t; return k; }
     }
     G->g[r][c + 1] = G->g[r][c]; G->g[r][c] = t;
   }
@@ -143,8 +164,9 @@ static int cbOrder(const CbGrid *G0, const CbGrid *D, int32_t tr, int32_t *seq, 
   int left = 0;
   for (int r = 1; r <= G0->rows; r++) { cbNs[r] = cbRowSwaps(G0->g[r], D->g[r], cbSw[r], CB_MAXSWAPS); cbAt[r] = 0; if (cbNs[r] > CB_MAXSWAPS) return -1; left += cbNs[r]; }
   if (left + 1 > cap) return -1;
-  CbGrid G = *G0; cbTries = 0;
-  int n = cbOrderFrom(&G, left, seq, 0);
+  CbGrid G = *G0; cbTries = 0; cbBestWalk = 1 << 30; cbTrR = tr / 8; cbTrC = tr % 8;
+  int n = cbOrderFrom(&G, left, seq, 0, 0);
+  if (cbCurR >= 1) { if (cbBestWalk == 1 << 30) return -1; n = left; for (int i = 0; i < n; i++) seq[i] = cbBestSeq[i]; }
   if (n < 0) return -1;
   seq[n++] = tr;
   return n;
@@ -156,13 +178,13 @@ static LOCAL int32_t cbSwapCost = CB_SWAP_COST;   // (the one a search runs with
 // its trigger, links and score
 static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid *out, int32_t *tr, int *links, int *swaps) {
   int full[CB_ROWS], nf = 0;
-  for (int r = 1; r <= G0->rows; r++) if (cbFull(G0, r)) full[nf++] = r;
+  for (int r = 1; r <= G0->rows; r++) if (cbRowOk(G0, r)) full[nf++] = r;
   *out = *G0; *tr = 0; *links = 0; *swaps = 0;
   if (!nf) return 0;
   if (!cbRand) cbRand = 2463534242u;
   CbGrid cur = start ? *start : *G0, best = *G0;
   int32_t t0 = 0, l0 = 0, bestV = 0, bestT = 0; int bestL = 0, bestS = 0;
-  int32_t curV = cbStable(&cur) ? cbBest(&cur, &t0, &l0) - cbSwapCost * cbSwapsTo(G0, &cur) : -100000;
+  int32_t curV = cbStill(&cur) ? cbBest(&cur, &t0, &l0) - cbSwapCost * cbSwapsTo(G0, &cur) : -100000;
   { static LOCAL int32_t ord0[CB_MAXSWAPS + 1];
     if (curV > 0 && t0 && cbOrder(G0, &cur, t0, ord0, CB_MAXSWAPS + 1) > 0) { best = cur; bestV = curV; bestT = t0; bestL = l0; bestS = cbSwapsTo(G0, &cur); } }
   double end = nowMs() + ms, temp = 400;
@@ -172,7 +194,7 @@ static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid
     if (a == b || cur.g[r][a] == cur.g[r][b]) continue;
     cb8 t = cur.g[r][a]; cur.g[r][a] = cur.g[r][b]; cur.g[r][b] = t;
     int32_t tt = 0, ll = 0, v;
-    if (!cbStable(&cur)) v = -100000;
+    if (!cbStill(&cur)) v = -100000;
     else { int s = cbSwapsTo(G0, &cur); v = cbBest(&cur, &tt, &ll) - cbSwapCost * s; if (s > cbMaxSw) v = -100000; }
     if (v >= curV || (double)(cbNext() % 100000) / 100000.0 < cbExp((v - curV) / temp)) {
       curV = v;
@@ -184,11 +206,84 @@ static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid
   *out = best; *tr = bestT; *links = bestL; *swaps = bestS;
   return bestV;
 }
-// (a board read as the design's: its settled cells, garbage as what does not move)
+// THE CHAIN DESIGNED AS SWAPS (cbSeqDesign): the design searched as the swaps themselves, each played on the abstract board -- a panel
+// moved into any empty cell that holds it, in a row or not, every panel left standing on a cell: nothing falls before the trigger, for
+// a panel the game lets fall hovers first, and a swap planned on where it lands is not there to press while it hovers. A sequence is
+// played only where nothing matches before its trigger; it is worth what the best trigger's chain on the board it leaves scores (cbBest), less cbSwapCost a swap. Searched by
+// annealing: a swap added, taken out, put in another place, or moved a cell.
+#define CB_SEQ_MAX 16
+typedef struct { int n; cb8 r[CB_SEQ_MAX], c[CB_SEQ_MAX]; } CbSeq;
+// (the sequence played on G0 into *out: 0 where a swap is not there to press -- garbage, or two empty cells -- or something matches)
+static int cbSeqPlay(const CbGrid *G0, const CbSeq *S, CbGrid *out) {
+  *out = *G0;
+  for (int i = 0; i < S->n; i++) {
+    int r = S->r[i], c = S->c[i];
+    if (r < 1 || r > out->rows || c < 1 || c >= W) return 0;
+    cb8 a = out->g[r][c], b = out->g[r][c + 1];
+    if (a < 0 || b < 0 || (a == 0 && b == 0) || a == b) return 0;
+    out->g[r][c] = b; out->g[r][c + 1] = a;
+    if (!cbSupported(out) || !cbStable(out)) return 0;
+  }
+  return 1;
+}
+static void cbSeqMutate(const CbGrid *G0, CbSeq *S, int maxSw) {
+  int k = (int)(cbNext() % 4u);
+  if (S->n == 0) k = 0;
+  if (k == 0 && S->n >= maxSw) k = 2;
+  int at = S->n ? (int)(cbNext() % (unsigned)S->n) : 0;
+  int r = 1 + (int)(cbNext() % (unsigned)(G0->rows > 0 ? G0->rows : 1)), c = 1 + (int)(cbNext() % (unsigned)(W - 1));
+  if (k == 0) { int p = (int)(cbNext() % (unsigned)(S->n + 1)); for (int i = S->n; i > p; i--) { S->r[i] = S->r[i - 1]; S->c[i] = S->c[i - 1]; } S->r[p] = (cb8)r; S->c[p] = (cb8)c; S->n++; }
+  else if (k == 1) { for (int i = at; i < S->n - 1; i++) { S->r[i] = S->r[i + 1]; S->c[i] = S->c[i + 1]; } S->n--; }
+  else if (k == 2) { S->r[at] = (cb8)r; S->c[at] = (cb8)c; }
+  else { int d = (int)(cbNext() % 4u); if (d == 0 && S->r[at] > 1) S->r[at]--; else if (d == 1) S->r[at]++; else if (d == 2 && S->c[at] > 1) S->c[at]--; else if (S->c[at] < W - 1) S->c[at]++; }
+}
+// (the best sequence found in `ms` of the wall clock, maxSw swaps at most: its swaps into seq (r * 8 + c), the trigger into *tr, the
+// trigger's links into *links; the count of swaps, -1 none worth anything. The search goes on from the best of the search before it
+// (cbSeqKeep) where that sequence still plays on this board: a board little changed between decisions is searched across all of them)
+static LOCAL CbSeq cbSeqKeeps[2]; static LOCAL int cbSeqSlot;   // (one kept search a board designed on: 0 the board as it stands, 1 the board it settles to)
+#define cbSeqKeep cbSeqKeeps[cbSeqSlot]
+static int cbSeqDesign(const CbGrid *G0, double ms, int maxSw, int32_t *seq, int32_t *tr, int *links) {
+  static LOCAL CbGrid T;
+  if (maxSw > CB_SEQ_MAX) maxSw = CB_SEQ_MAX;
+  if (!cbRand) cbRand = 2463534242u;
+  CbSeq cur = { 0 }, best = { 0 }, nx;
+  int32_t t0 = 0; int l0 = 0;
+  int32_t curV = cbStable(G0) ? cbBest(G0, &t0, &l0) : -100000, bestV = curV > 0 && t0 ? curV : 0, bestT = t0; int bestL = l0;
+  if (cbSeqKeep.n > 0 && cbSeqKeep.n <= maxSw && cbSeqPlay(G0, &cbSeqKeep, &T)) {
+    int32_t tk = 0; int lk = 0, vk = cbBest(&T, &tk, &lk) - cbSwapCost * cbSeqKeep.n;
+    cur = cbSeqKeep; curV = vk;
+    if (vk > bestV && tk) { best = cbSeqKeep; bestV = vk; bestT = tk; bestL = lk; }
+  }
+  double end = nowMs() + ms, temp = 400;
+  for (int it = 0; ; it++) {
+    if ((it & 63) == 0) { double now = nowMs(); if (now >= end) break; temp = 400 * (end - now) / ms + 5; }
+    nx = cur; cbSeqMutate(G0, &nx, maxSw);
+    int32_t tt = 0, v; int ll = 0;
+    v = cbSeqPlay(G0, &nx, &T) ? cbBest(&T, &tt, &ll) - cbSwapCost * nx.n : -100000;
+    if (v >= curV || (double)(cbNext() % 100000) / 100000.0 < cbExp((v - curV) / temp)) {
+      cur = nx; curV = v;
+      if (v > bestV && tt) { best = nx; bestV = v; bestT = tt; bestL = ll; }
+    }
+  }
+  cbSeqKeep = best;
+  if (bestV <= 0 || !bestT) return -1;
+  for (int i = 0; i < best.n; i++) seq[i] = best.r[i] * 8 + best.c[i];
+  *tr = bestT; *links = bestL;
+  return best.n;
+}
+// (a board read as the design's: its settled cells, garbage as what does not move -- and garbage turned to panels whose colour is not
+// shown till its pop: a cell that holds what is over it and matches nothing, never an empty one)
 static void cbOfBoard(const Board *b, CbGrid *G) {
   memset(G, 0, sizeof *G);
   G->rows = imin(b->height, CB_ROWS - 2);
-  for (int r = 1; r <= G->rows; r++) for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, r, c); G->g[r][c] = (cb8)(v > 0 && v < 100 ? v : v < 0 ? -1 : 0); }
+  for (int r = 1; r <= G->rows; r++) for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, r, c); G->g[r][c] = (cb8)(v > 0 && v < 100 ? v : v != 0 ? -1 : 0); }
+}
+// (the row rising from under the stack taken in as the bottom row, g[0]: a design built while the stack rises must not match it -- left
+// out where it is not a full row of colours, or where the board as it is already matches it)
+static void cbPreview(const Board *b, CbGrid *G) {
+  for (int c = 1; c <= W; c++) { int32_t v = cellAt(b, 0, c); if (!(v > 0 && v < 100)) return; G->g[0][c] = (cb8)v; }
+  G->pre = 1;
+  if (!cbStable(G)) { G->pre = 0; for (int c = 1; c <= W; c++) G->g[0][c] = 0; }
 }
 
 // THE DESIGN SEARCHED ON EVERY THREAD (cbDesignAll): a search of its own on each, from a seed of its own, the best of them kept
@@ -196,9 +291,9 @@ static void cbOfBoard(const Board *b, CbGrid *G) {
 static CbGrid cbJG, cbJStart, cbJOut[CB_JOBS]; static int cbJHasStart, cbJL[CB_JOBS], cbJS[CB_JOBS]; static double cbJMs;
 static int32_t cbJTr[CB_JOBS], cbJV[CB_JOBS];
 static Ctx *cbJobCtx;   // (the phase's own: each search makes no nodes)
-static int cbJMaxSw = CB_MAXSWAPS; static int32_t cbJSwapCost = CB_SWAP_COST;
+static int cbJMaxSw = CB_MAXSWAPS, cbJPartial; static int32_t cbJSwapCost = CB_SWAP_COST;
 static void cbJob(int32_t i) {
-  cbMaxSw = cbJMaxSw; cbSwapCost = cbJSwapCost;
+  cbMaxSw = cbJMaxSw; cbSwapCost = cbJSwapCost; cbPartial = cbJPartial;
   cbRand = 2463534242u ^ ((uint32_t)i * 2654435761u) ^ (uint32_t)nowMs();
   if (!cbRand) cbRand = 1;
   cbJV[i] = cbDesign(&cbJG, cbJHasStart ? &cbJStart : 0, cbJMs, &cbJOut[i], &cbJTr[i], &cbJL[i], &cbJS[i]);

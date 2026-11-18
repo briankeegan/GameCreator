@@ -30,6 +30,7 @@ typedef struct {
   int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
   int32_t floorKept;   // the board the line leaves keeps the rule's floor, as the floor is tested (floorOf), the line's breaks aside; -1 not asked
   int32_t matLeft;     // the material the board the line leaves has: its panels under the lowest garbage, the next break's (materialOn); -1 not asked
+  int32_t groups;      // the threes the board the line leaves has the panels for, a chain's links (groupsOn); -1 not asked
   int32_t twinAfter;   // the swaps to a two-column eight on the board the line leaves (propose.c twinCostOn; 99 none), -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
   Judged j;
@@ -68,7 +69,7 @@ static int readyFresh;   // (the readiness asked now: an outcome kept without it
 static int endWanted;    // (lineEnd: the line is judged again and the board it ends on kept)
 static int endNoKeep;    // (and that judging not kept in the cache: asked once the rank has the line's whole outcome -- rank.c ideasOf)
 static Outcome *cached(const int32_t *seq, int n, int settled, int kind) {
-  if ((readyFresh || endWanted) && kind == 0) return 0;
+  if ((readyFresh && kind == 0) || endWanted) return 0;
   uint32_t h = lineHash(seq, n, settled, kind);
   for (int i = 0; i < ncache; i++) {
     Cached *c = &cache[i];
@@ -130,15 +131,36 @@ static int32_t aloneBuildable(void) {
 static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
+// (THE THREES A BOARD HAS THE PANELS FOR: each colour's panels a three at a time, the row rising under it with them; garbage turned
+// to panels before its pop, its colour not shown yet, is any colour, three of them a three; a row not dealt yet is not counted)
+static int32_t groupsOn(const Board *b) {
+  int32_t n[16] = { 0 }, any = 0;
+  for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = b->p[r][c].f;
+    if (f[ISGARBAGE] || f[ID] <= 0 || f[COLOR] <= 0) continue;
+    if (f[COLOR] >= 130) any++; else if (f[COLOR] < 8) n[f[COLOR]]++;
+  }
+  int32_t g = any / 3; for (int k = 1; k < 8; k++) g += n[k] / 3;
+  return g;
+}
 static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeOf(seq, n, settled, 0, 0); }
+// (THE LINE IN PROGRESS JUDGED IN ITS OWN FRAMES: the clock each of its swaps' walks was judged to begin on (decide.c carriedCand, into
+// carryNB), the judge pressing none sooner -- asked by rank.c judgeCand for the line in progress only, its own cache entries)
+static int32_t carryNB[64], carryNBn, outNBOn;
+// (A LINE NAMED ON THE ROOT'S BOARD: each swap's row as the board stands now, pressed where its panels have risen to by its frame -- the
+// opener's plans, whose swaps are pressed while the stack rises: their own cache entries)
+static int32_t outRooted;
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo) {
-  Outcome *hit = waitTo ? 0 : cached(seq, n, settled, 0);
+  int ck = outNBOn ? 5 : outRooted ? 6 : 0;
+  Outcome *hit = waitTo ? 0 : cached(seq, n, settled, ck);
   if (hit) return *hit;
   // (the board left alone asked first: its judging is the judge's own nodes, which the line's end board is read from below)
   int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
   JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
+  if (outNBOn) { jo.notBefore = carryNB; jo.nNotBefore = imin(carryNBn, n); }
+  jo.rooted = outRooted;
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);
@@ -152,10 +174,10 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.fits = fitsList(&theList, o.j.made, &o.j, 1) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1; o.twinAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1;
+    o.panelsLeft = -1; o.nearAfter = -1; o.twinAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.groups = -1;
     if (!waitTo) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
-      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); }
+      if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.groups = groupsOn(eb); }
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
@@ -182,7 +204,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     }
   }
   // (a judging the clock stopped is no answer: it is not kept, and the next asking judges it again)
-  if (!o.late && !waitTo && !endNoKeep) keep(seq, n, settled, 0, &o);
+  if (!o.late && !waitTo && !endNoKeep) keep(seq, n, settled, ck, &o);
   return o;
 }
 // THE BOARD A LINE ENDS ON, as the judge plays it (the land a proposer reads what falls from: search/fill.c), judged as the proposers

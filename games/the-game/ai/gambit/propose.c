@@ -127,13 +127,32 @@ static void searchUnsplit(void) { planSplit = 0; extBeside = 0; }
 // this one keeping back a fifth for the level and the readiness lines after it, rather than half of what is left)
 static int32_t searchBeside;
 // (the chain extended or begun, wherever it runs: S->ex or S->start)
+#define OP_FIRE_HOLD 120   // (the frames after the opener's trigger is handed on that its first clear and fall are its chain's, a link or not)
+static int32_t opFiredAt;   // (the clock the opener's trigger was handed on, -1 none: decide.c, with the opener's falling rule)
+// (THE OPENER'S CHAIN FALLING, as the falling rule reads it (decide.c playOf): the opener in force, and its chain counting, or within
+// OP_FIRE_HOLD of its trigger with the board moving -- its first clear pops before the counter counts)
+static int opChainFalling(const Read *R, const Board *b) {
+  if (!(R->rule >= 0 && theTables.r[R->rule].table == 2)) return 0;
+  return b->chainCounter > 0 || (opFiredAt >= 0 && b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(b) || popLeft(b) > 0));
+}
+#define OP_FALL_WIDTH 80   // (the opener's falling chain's extension: the lines a level keeps, and its swaps deep -- time attack's TA_EXT_WIDTH/DEPTH)
+#define OP_FALL_DEPTH 8
+static int32_t extDry;   // (the opener's falling chain extended last decision and nothing longer found: the next takes OP_FALL_EXT_DRY of the time)
+static Ext extLog; static int32_t extLogged, extSkip;   // extSkip: why it was not searched -- 1 off, 2 nothing falling or popping, 3 short of time   // (the last extension searched this decision: the log's xs=)
 static void searchExt(const Read *R, Found *S, double ms) {
   Profile *GP = &C2.GP;
   Board *board = decQ.b;
-  if ((cascadeLive(board) || R->pop) && !GP->extendOff && ms >= 20) {
-    ExtOpts eo = { GP->width ? GP->width : 40, GP->extendDepth ? GP->extendDepth : 6, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn ? &R->keep : 0, ms };
-    extend(&decQ, &eo, &S->ex); S->haveEx = 1;
-  }
+  // (the opener's chain falling: its extension is the move, searched in whatever the decision has)
+  int opFall = opChainFalling(R, board);
+  if ((cascadeLive(board) || R->pop) && !GP->extendOff && (ms >= 20 || (opFall && ms >= 2))) {
+    // (the opener's chain falling: the floor is not kept -- the panels are the chain's -- and its longest extension is offered, searched
+    // as wide and deep as time attack's chain going: the chain puzzles' furthest)
+    int ew = GP->width ? GP->width : 40, ed = GP->extendDepth ? GP->extendDepth : 6;
+    if (opFall) { ew = imax(ew, OP_FALL_WIDTH); ed = imax(ed, OP_FALL_DEPTH); }
+    ExtOpts eo = { ew, ed, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn && !opFall ? &R->keep : 0, ms, opFall };
+    extend(&decQ, &eo, &S->ex); S->haveEx = 1; extLog = S->ex; extLogged = 1;
+    extDry = opFall && S->ex.top <= S->ex.baseChain;
+  } else if (!extLogged) extSkip = GP->extendOff ? 1 : !(cascadeLive(board) || R->pop) ? 2 : 3;
   // (A CHAIN IS BEGUN AND CONTINUED: on a board at rest, each swap that starts a clear, then the links its fall is continued by -- the
   // extension's own search, from the board the swap leaves falling; a beginning whose chain ends in the list is a line)
   if (!cascadeLive(board) && !R->pop && !GP->extendOff && wantsChain(&R->guides)) startChains(R, S, ms);
@@ -169,13 +188,18 @@ static void searchMerge(const Read *R, Found *S) {
   // (a chain the workers did not begin: extended or begun here, in what is left)
   if (extBeside && !__atomic_load_n(&extDone, __ATOMIC_ACQUIRE)) searchExt(R, S, leftMs() / 2);
 }
+#define OP_FALL_EXT_DRY 0.5   // (and where the last found nothing longer: half -- the chain changes as each link lands, and the next chain's designs search on from their last)
+#define OP_FALL_EXT 0.8   // (the share of the decision's time the extension of the opener's falling chain takes)
 #define CD_PLAN_MS 120   // (the planner's time in the countdown's decision: the opening's plan has the rest)
 #define PLAN_URGENT AT_LEVEL(240)   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
 static void searchAll(const Read *R, Found *S) {
   if (!R->guides.n) return;
   // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
-  if (!extBeside) { double xMs = leftMs() / 2; if (cdAsk && xMs > CD_PLAN_MS / 4) xMs = CD_PLAN_MS / 4; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
+  // (the opener's chain falling: the extension takes the decision's time, OP_FALL_EXT of it -- nothing else pressed then matters)
+  int opFall = opChainFalling(R, decQ.b);
+  if (!opFall) extDry = 0;
+  if (!extBeside || opFall) { double xMs = leftMs() * (opFall ? (extDry ? OP_FALL_EXT_DRY : OP_FALL_EXT) : 0.5); if (cdAsk && xMs > CD_PLAN_MS / 4) xMs = CD_PLAN_MS / 4; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
   // (garbage on the board, or the board lost soon: the lines found must be judged to be played -- the planner takes half, never the most)
   int urgent = R->under || (R->F.v[FACT_US_DIES] > 0 && R->F.v[FACT_US_DIES] < PLAN_URGENT);
@@ -865,7 +889,8 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
     }
     if (S->ex.nearest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.nearest.seq, S->ex.nearest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.nearest); }
     if (S->ex.three.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.three.seq, S->ex.three.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.three); }
-    if (ruleNoEnemy && S->ex.longest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.longest.seq, S->ex.longest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.longest); }
+    if (S->ex.longest.set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.longest.seq, S->ex.longest.nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.longest); }
+    for (int q = 0; q < S->ex.nlongK; q++) if (S->ex.longK[q].set) { int m0 = n; ADD(R->pop ? PLAY_LINEUP : PLAY_EXTEND, S->ex.longK[q].seq, S->ex.longK[q].nseq, -1, 1); if (n > m0) xFromExt(&out[m0], &S->ex.longK[q]); }
   }
   // A CHAIN BEGUN: a swap that starts a clear and the links that continue its fall into an entry of the list
   for (int i = 0; i < S->nstart; i++) { int m0 = n; ADD(PLAY_EXTEND, S->start[i].seq, S->start[i].nseq, S->start[i].aimIndex, 1); if (n > m0) xFromExt(&out[m0], &S->start[i]); }

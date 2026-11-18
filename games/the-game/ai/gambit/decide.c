@@ -5,10 +5,13 @@ typedef struct { int32_t has, out, topKnown, top, stopKnown, stop; } Opp;
 static Opp theOpp;
 static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
-#define OPENER_SUM 8
-#define OPENER_LEAST 3
+#define OP_FALL_LOST AT_LEVEL(200)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-193 and a break at 442-465; combo_storm 3's at 205, kept, made its 8; the large slabs', lost at 299-471 a second chain is still made)
+#define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
+#define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_CHAINS 3
-static int32_t openerOver, openerChained, openerThrown, openerSum;   // (the opener played out; the longest link of the chain falling; the chains of OPENER_LEAST or more thrown, and their links added: the log's osum=)
+#define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
+static int tallGarbage(const Question *q);
+static int32_t openerOver, openerChained, openerThrown, openerSum, openerPaused;   // (the opener played out; the longest link of the chain falling; the chains of OPENER_LEAST or more thrown, and their links added: the log's osum=)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
@@ -49,9 +52,9 @@ static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: 
 static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
 #define OP_TRIES 3            // (the opening plans judged in a decision, the best first)
-#define CD_GROW 0.6   // (the share of the countdown's decision time left that grows the opening's plan: the judging of what it finds takes the rest)
+#define CD_GROW 0.35   // (the share of the countdown's decision time left that grows the opening's plan: the designs, their judging and the plans' falls extended take the rest)
 #define OPEN_SWAP_FRAMES 16   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands -- 16.5 measured, the countdown plans of 100 opener games, their trigger's frame over their swaps)
-#define OPEN_FIRE_BY 330      // (the frame the opener's trigger is pressed by while no garbage is shown: the first garbage lands at 339 in every pattern, 99 opener games)
+#define OPEN_FIRE_BY 338      // (the frame the opener's trigger is pressed by while no garbage is shown: the frame before the first garbage lands, 339 in every pattern of the 99 opener games -- it lands on the stack's top, not on the chain)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
@@ -105,6 +108,8 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
   }
   return ok;
 }
+static int carryOpener(void);   // (the line in progress was begun under the opener: below, with the carry)
+static CbSeq opKeepSeq; static CbGrid opKeepPrev; static int opKeepOn; static int32_t opKeepHeld, opKeepAt;   // (the next chain's design carried on, and the decisions it was: the log's keep=)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -137,15 +142,34 @@ static int readBoard_(Read *R) {
   if (decQ.b->chainCounter > openerChained) openerChained = decQ.b->chainCounter;
   else if (openerChained && decQ.b->chainCounter == 0) { if (openerChained >= OPENER_LEAST) { openerSum += openerChained; openerThrown++; } openerChained = 0; }
   int thrown = openerSum >= OPENER_SUM || openerThrown >= OPENER_CHAINS;
-  if ((F->v[FACT_US_TOPPED] || (theOpp.has && theOpp.out) || thrown) && !openerOver) {
+  // (THE OPENER ENDS AT THE EIGHT -- the owner: get every opener to chains adding up to eight, survival after: its chains add up, or the
+  // enemy tops out, or our board is about to be lost -- within OPENER_LOST, no chain of ours falling: a board topped out and standing is
+  // the opener's to carry on from, the garbage broken and the next chain built from it; set 86 combo_storm 7, the opener carried on to
+  // the last frame and the board lost at 697)
+  int ownFalling = decQ.b->chainCounter > 0 || (opFiredAt >= 0 && decQ.b->clock - opFiredAt <= OP_FIRE_HOLD && (cascadeLive(decQ.b) || popLeft(decQ.b) > 0));
+  // (nor while its plan is still pressed: a plan the board is lost under before it fires is put down for survival, and the opener ends
+  // at the decision after; set 86 combo_storm 7, the opener ended at 297 with its 3's trigger a swap away)
+  // (nor while a line it began is still pressed -- a break of the garbage: set 86 large_garbage 2, the opener ended at 499 with its break a
+  // swap from done, and at 513 the board stood 409 frames)
+  // (nor while the next chain's design is pressed and fires before the board is lost, its swaps and the slab's pop still to come counted:
+  // a chain falling is a board that cannot top out --
+  // set 86 large_garbage 6, a 5 designed and pressed after the 3, put down at 69 frames for a dig that left nothing to build with)
+  int nextFires = opKeepOn && openerSum > 0 && decQ.b->clock - opKeepAt <= 40 && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < F->v[FACT_US_DIES];
+  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
+  // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
+  // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
+  // chains, thrown before or after, add up to the eight; set 86 combo_storm 2, a 4 thrown, the opener ended, and a 5 at 1027 the mode's)
+  openerPaused = aboutLost && !openerOver;
+  if (((theOpp.has && theOpp.out) || thrown) && !openerOver) {
     openerOver = 1; openerAt = decQ.b->clock;
     if (nswitch && modeRule < 0) modeRule = modeAt(0);   // (switching: the schedule's first mode from the opener's end on)
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
     if (thenRule >= 0 && ((ni >= 0 && theTables.r[ni].table == 2) || modeRule < 0)) modeRule = thenRule;
   }
   int oi = -1;
-  for (int i = 0; i < theTables.n && oi < 0 && !openerOver && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
-  int ri = oi >= 0 ? oi : modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
+  for (int i = 0; i < theTables.n && oi < 0 && !openerOver && !openerPaused && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
+  int pausedRule = openerPaused ? (thenRule >= 0 ? namedRule(thenRule) : nswitch ? namedRule(modeAt(0)) : -1) : -1;
+  int ri = oi >= 0 ? oi : pausedRule >= 0 ? pausedRule : modeRule >= 0 ? namedRule(modeRule) : chooseRule(F);
   // (THE MODE DEBOUNCED -- the owner: a board flickering at a line does not switch the mode back and forth: the enemy topped out calls
   // finish them at once; any other change of the mode the facts call is played once it has been called MODE_DEBOUNCE frames running)
   if (oi < 0 && modeRule < 0 && ri >= 0) {
@@ -168,6 +192,26 @@ static int readBoard_(Read *R) {
   R->keep = rule->keep.on ? rule->keep : theTables.keep; R->keepOn = R->keep.on && garbageGame;
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
+  // (WHAT THE OPENER STILL NEEDS IS ASKED -- the owner: a 6 and a 3 are the eight: with chains thrown, the opener's list asks a chain of
+  // what is still needed in its place among its own entries, where none of them asks it)
+  // (and under tall garbage, a chain of two that breaks it after the rest of the eight: its link breaks the slab chaining, the chain lives
+  // while it pops, and the converted row comes down as its next link -- the second chain begun a pop sooner)
+  // (the opener in force, or paused for the board's life: its chains still add up, and what it still needs is asked all the same)
+  int opOn = !openerOver && (theTables.r[ri].table == 2 || openerPaused);
+  opNeed = opOn ? imax(OPENER_LEAST, OPENER_SUM - openerSum) : 0;
+  needKept = 0; needLost = -1;
+  if (opOn && openerSum > 0) {
+    // (in its place: before the first entry asking a shorter chain, unless one asks it already)
+    int32_t need = imax(OPENER_LEAST, OPENER_SUM - openerSum), at = R->list.n, have = 0;
+    for (int i = R->list.n - 1; i >= 0; i--) { const Test *t = &R->list.aim[i].chain; int32_t n = t->op == OP_GE ? t->n : t->op == OP_GT ? t->n + 1 : 0;
+      if (!n) continue; if (n == need) have = 1; if (n < need) at = i; }
+    if (!have && R->list.n < MAXAIMS) {
+      Aim a; memset(&a, 0, sizeof a); a.chain.op = OP_GE; a.chain.n = need;
+      for (int i = R->list.n; i > at; i--) R->list.aim[i] = R->list.aim[i - 1];
+      R->list.aim[at] = a; R->list.n++;
+    }
+    if (tallGarbage(&decQ) && need > OP_TWO_UNDER && R->list.n < MAXAIMS) { Aim a; memset(&a, 0, sizeof a); a.chain.op = OP_GE; a.chain.n = OP_TWO_UNDER; a.brk = 1; R->list.aim[R->list.n++] = a; }
+  }
   fillList(&R->list);
   R->guides = R->list;
   R->by = deadlineOf(F, rule);
@@ -368,9 +412,24 @@ static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
 static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 grown only, the stack being raised -- the log's)
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
-#define OP_FIRE_HOLD 120   // (the frames after the opener's trigger is handed on that its first clear and fall are its chain's, a link or not)
+#define OP_TRY_LOG 8
+#define OP_NEXT_SHARE 0.5   // (the share of a decision's time the next chain's design is searched in)
+#define OP_NEXT_COST 20   // (a swap's worth in the next chain's design: a 3 kept to some eleven swaps -- a long build is pressed late, its board lost under a slab before it fires)
+static int32_t opNextCut, opNextCutCell, opNextSeq[16], opNextSeqN; static char opNextRows[200];   // (an unjudged design: the swap cut at and its cell, its swaps, the board -- the log's ndcut=)
+static int32_t opNextCh, opNextLen, opNextMs, opNextDrop;   // (opNextDrop: an unjudged design's drop (rank.c DROP_*) * 10 + its cut's why)   // (and its chain designed, its swaps)
+static int32_t opNextDesign;   // (the next chain designed this decision: its chain as judged; -1 none designed, -2 short of the need, -3 not judged, -4 its board lost -- the log's nd=)
+static int32_t carryWaste[5];   // (the line in progress taken out as a wasted three: why (rank.c wasteWhy), its whole chain, the board's own, its threes, lost -- the log's waste=)
+static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
+static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
+static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
+static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
+                                                                                   // for the next chain, 4 a set-up short of it)
+static int32_t opFallLine[8][6], opFallLineN;   // (each extension under the fall: its swaps, those the judge pressed, its chain as judged, lost, its chain as its search said, the frames to its loss -1 living: the log's fallLines=)   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
+// (an extension of the falling chain: a line played as one -- PLAY_EXTEND, or PLAY_LINEUP, the same search's lines while a garbage slab
+// pops beside the chain -- or the line in progress begun as one)
+static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || (J->carried && (b == PLAY_EXTEND || b == PLAY_LINEUP)); }
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
@@ -610,7 +669,7 @@ static int ranked(const Read *R, const Found *S) {
     // what the order lets through, a walk spent for nothing)
     // (and never the line in progress begun on its three as the save: the input pressed of it is spent, and taken out now it is spent for
     // nothing)
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
@@ -729,20 +788,67 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
 // (and, no garbage shown yet, its trigger pressed by OPEN_FIRE_BY: the opener's chain goes before anything can land on it)
 static int opBefore(void) { return decF.next == NOT_ASKED && decQ.b->clock < OPEN_FIRE_BY; }
 // (pass 0: a chain the mode asks for, fired by OPEN_FIRE_BY; 1: a chain of OP_FAST_CH or more fired by then -- a chain going is a board
-// that cannot top out, and the extension grows it while it falls; 2: a chain the mode asks for, fired when it can)
+// that cannot top out, and the extension grows it while it falls; 2 -- the owner: start with a 2 and extend: a chain of two fired by then,
+// its fall extended to the eight -- before a longer plan fired late, whose many swaps are as many chances to come apart; 3: a chain of
+// OP_FAST_CH or more fired within OP_LATE of it; 4: a chain the mode asks for, fired when it can)
 #define OP_FAST_CH 3
+#define OP_LATE 60   // (the frames past OPEN_FIRE_BY pass 3 takes a chain fired in: about four set-ups' worth)
+#define OP_PASSES 5
+#define OP_START_CH 2
+static int32_t opFireBy(int pass) { return OPEN_FIRE_BY + (pass == 3 ? OP_LATE : 0); }
+static int32_t opPassLeast(int pass) { return pass == 1 || pass == 3 ? OP_FAST_CH : pass == 2 ? OP_START_CH : 0; }
 static int opFits(const OpPath *p, int32_t trigCh, int pass) {
-  int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES; int by = pass < 2;
-  return p->len > 0 && p->ch > trigCh && (pass == 1 ? p->ch >= OP_FAST_CH : opAsked(p->ch)) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
-         !(by && opBefore() && decQ.b->clock + frames > OPEN_FIRE_BY + OPEN_SWAP_FRAMES);
+  int32_t frames = (p->len + 1) * OPEN_SWAP_FRAMES; int by = pass < 4;
+  return p->len > 0 && p->ch > trigCh && (opPassLeast(pass) ? p->ch >= opPassLeast(pass) : opAsked(p->ch)) && !(decF.next != NOT_ASKED && decF.next <= frames) &&
+         !(by && opBefore() && decQ.b->clock + frames > opFireBy(pass) + OPEN_SWAP_FRAMES);
 }
 // THE SECOND CHAIN BUILT UNDER THE FIRST (the owner: two 4-chains): the board the falling chain leaves once it has landed, the opening's
 // plan grown there in a share of the decision's time; the plan's next set-up pressed now where it would be pressed then -- its two panels,
 // and every panel under them in their columns, where they will be once the chain lands and none of them moving -- and only where the
 // chain falls on as long as it does left alone. 0 where there is none.
-#define OP_SECOND_SHARE 0.5
-static int opDesign(const Board *b, double ms, OpPath *out);
-static int32_t opSecondCh, opSecondWhy;   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 a landed board, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed: the log's)
+#define OP_SECOND_DESIGN 0.6   // (the designer's part of it)
+#define OP_SECOND_SHARE 0.9   // (the share of what the decision has left that the second chain's plan takes: the extension has had its share)
+#define OP_CB_COST 30
+#define OP_CB_MAXSW 14
+#define OP_NEXT_MAXSW 10   // (and the next chain's: its swaps pressed while garbage lands and the game's clock runs -- set 86 large_garbage 7, a 4 of 14 swaps half pressed and never fired)
+static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
+static int32_t opDesignCost = OP_CB_COST;   // (a swap's worth in a design's score: the opening's race, or the next chain's OP_NEXT_COST)   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
+static int32_t opDesignLeast = OP_TWO_FROM;   // (the chain a design must make: the opening's OP_TWO_FROM, the next chain's what is still needed)
+static int opDesignAsIs;   // (a design on a board that is not the board as it stands -- the landed board: the row under it left out)
+static char opLandedRows[160], opCdRows[160];   // (the log's landed= and, at the countdown's decision, cdboard=)
+// (a board as rows bottom up, a digit a panel's colour, g garbage, . empty)
+static void boardRows(const Board *b, char *out, int cap) {
+  int k = 0;
+  for (int r = 1; r < b->nrows && k < cap - 9; r++) { if (r > 1) out[k++] = '/';
+    for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; out[k++] = f[ISGARBAGE] ? 'g' : f[ID] > 0 && f[COLOR] > 0 ? (char)('0' + f[COLOR] % 10) : '.'; } }
+  out[k] = 0;
+}   // (the log's landed=)
+static int32_t opSecondCh, opSecondWhy, opSecondMs, opSecondN;   // (and the time it had, the boards its beam grew: the log's)   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 no landed board, 8 its chain still counting, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed:
+                                            // the log's)
+// TALL GARBAGE: a slab OP_TALL rows or more on the board or on its way -- one broken gives back one row, a pop at a time, so the next
+// chain's panels come slowly (the large slabs; a factory's are two rows)
+#define OP_TALL 6
+static int garbageRows(const Question *q, int rows) {
+  for (int i = 0; i < q->narr; i++) if (q->arr[i].height >= rows) return 1;
+  for (int i = 0; i < q->b->ninc; i++) if (q->b->inc[i].height >= rows) return 1;
+  for (int r = 1; r < q->b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = q->b->p[r][c].f; if (f[ISGARBAGE] && f[ISGARBAGE] != NUL && f[GHEIGHT] >= rows) return 1; }
+  return 0;
+}
+static int tallGarbage(const Question *q) { return garbageRows(q, OP_TALL); }
+static int32_t opSecondFall;   // (the chain falling as the fall rule reads it -- its hold's -- with the need left: what a second chain must make is the rest)
+// (the chain a second chain must make: with the first thrown, any of OPENER_LEAST or more; with one falling, the rest of the eight
+// after it, OPENER_LEAST or more)
+static int32_t opSecondLeast(void) { return openerSum > 0 ? OPENER_LEAST : imax(OPENER_LEAST, imax(OPENER_LEAST, opNeed) - opSecondFall); }
+// (a swap's panels, and every panel under them, where the landed board has them and at rest: a swap there can be pressed now)
+static int opAtRest(const Board *landed, int32_t sw) {
+  const Board *b = decQ.b; int r = CR(sw), c = CC(sw);
+  if (r < 1 || r >= b->nrows || c < 1 || c >= W) return 0;
+  for (int cc = c; cc <= c + 1; cc++) for (int rr = 1; rr <= r; rr++) {
+    const int32_t *now = b->p[rr][cc].f, *then = landed->p[rr][cc].f;
+    if (now[ID] != then[ID] || (now[ID] > 0 && now[STATE] != NORMAL)) return 0;
+  }
+  return 1;
+}
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -751,34 +857,98 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   sx = ctxOf(sx);
   int root = rootOf(sx, &decQ), calm = root >= 0 ? settleOf(sx, root) : -1;
   const Board *lb = liveNode(sx, calm) ? ensureBoard(sx, calm) : 0;
+  // (garbage landing on top while the chain falls adds rows above ours: the swap's panels are checked one by one below, panel for panel)
   opSecondWhy = 2;
-  if (!lb || lb->chainCounter != 0 || lb->nrows != decQ.b->nrows) return 0;
+  if (!lb) return 0;
+  opSecondWhy = 8;
+  if (lb->chainCounter != 0) return 0;
   cloneBoard(landed, lb);
   Question lq = decQ; lq.b = landed;
+  // (the landed board, once a fall, for the log: each row bottom up, a digit a panel's colour, g garbage, . empty)
+  { static int32_t loggedFor = -1;
+    if (loggedFor != opFallAt) { loggedFor = opFallAt; int k = 0;
+      for (int r = 1; r < landed->nrows && k < (int)sizeof opLandedRows - 9; r++) { if (r > 1) opLandedRows[k++] = '/';
+        for (int c = 1; c <= W; c++) { const int32_t *f = landed->p[r][c].f; opLandedRows[k++] = f[ISGARBAGE] ? 'g' : f[ID] > 0 ? (char)('0' + f[COLOR] % 10) : '.'; } }
+      opLandedRows[k] = 0; } else opLandedRows[0] = 0; }
   double left = C2.due ? C2.due - C2.margin - nowMs() : 50, ms = left * OP_SECOND_SHARE;
   opSecondWhy = 3;
   if (ms < 2) return 0;
-  double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
-  // (the landed board is the same board every decision of the fall: the plan grown on it is grown on, decision after decision)
+  // (the designer's chain first, in OP_SECOND_DESIGN of the time: its whole plan at once; the beam in the rest, grown on decision after
+  // decision -- the landed board is the same board every decision of the fall -- where the designer finds none)
+  static OpPath dp; const OpPath *pl = 0; double t0 = nowMs();
+  opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = opSecondLeast();
+  // (THE NEXT CHAIN KEPT: the design pressed a swap at a time is the one carried on -- on each landed board the fewest of its swaps still
+  // to press that make a chain of opDesignLeast or more; a new design only where none does: one swap from each of a new design every
+  // decision is a chain never built, set 86 factory 3)
+  if (opKeepOn) {
+    static CbGrid KG, KT; cbPartial = 1; cbOfBoard(landed, &KG);
+    // (its first swap pressed already where the landed board shows it so -- its two cells swapped since the last decision: never pressed
+    // again, which is a swap and its swap back)
+    int minK = 0;
+    if (opKeepSeq.n > 0) { int r = opKeepSeq.r[0], c = opKeepSeq.c[0]; cb8 a = opKeepPrev.g[r][c], b = opKeepPrev.g[r][c + 1];
+      if (a != b && KG.g[r][c] == b && KG.g[r][c + 1] == a) minK = 1; }
+    for (int k = opKeepSeq.n; k >= minK && !pl; k--) {
+      CbSeq s; s.n = opKeepSeq.n - k; for (int i = 0; i < s.n; i++) { s.r[i] = opKeepSeq.r[k + i]; s.c[i] = opKeepSeq.c[k + i]; }
+      int32_t tk = 0; int lk = 0;
+      if (cbSeqPlay(&KG, &s, &KT) && cbBest(&KT, &tk, &lk) > 0 && tk && lk >= opDesignLeast) {
+        memset(&dp, 0, sizeof dp); dp.len = s.n; for (int i = 0; i < s.n; i++) dp.path[i] = s.r[i] * 8 + s.c[i]; dp.trig = tk; dp.ch = lk; dp.design = 1;
+        opKeepSeq = s; pl = &dp; opKeepHeld++; opKeepAt = decQ.b->clock; }
+    }
+    cbPartial = 0;
+    if (!pl) opKeepOn = 0;
+    else opKeepPrev = KG;
+  }
+  // (the next chain that reaches what is still needed looked for first, in half the time, a shorter one only where none does -- a 3 and a
+  // 4 is a 7: set 86 large_garbage 6, 3s and 4s designed after the 3 with 5 still needed)
+  int32_t want = openerSum > 0 ? imax(opDesignLeast, opNeed) : opDesignLeast; int fresh = 0;
+  // (in the swaps that can be pressed before the board is lost, the slab's pop still to come counted: a design that fires after it is put
+  // down for the dig -- set 86 large_garbage 6, the 5 the eight needed designed in 11 swaps with the board lost in 119 frames)
+  int maxSw = OP_NEXT_MAXSW;
+  if (R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0) maxSw = imax(1, imin(maxSw, (int)((R->F.v[FACT_US_DIES] - popLeft(decQ.b)) / OPEN_SWAP_FRAMES) - 1));
+  if ((!pl || pl->ch < want) && want > opDesignLeast) {
+    static OpPath dw; int32_t lo = opDesignLeast; opDesignLeast = want;
+    if (opDesign(landed, ms * OP_SECOND_DESIGN * 0.5, &dw, maxSw)) { dp = dw; pl = &dp; fresh = 1; }
+    opDesignLeast = lo;
+  }
+  if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN * (want > opDesignLeast ? 0.5 : 1), &dp, maxSw)) { pl = &dp; fresh = 1; }
+  if (fresh) {
+    opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX); opKeepAt = decQ.b->clock; cbOfBoard(landed, &opKeepPrev);
+    for (int i = 0; i < opKeepSeq.n; i++) { opKeepSeq.r[i] = (cb8)CR(dp.path[i]); opKeepSeq.c[i] = (cb8)CC(dp.path[i]); } }
+  opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
+  double rest = ms - (nowMs() - t0);
   static int32_t grownFor = -1;
   if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
-  { double sh = clockShareBegin(nowMs() + ms); openingGrow(&lq, decQ.b); clockShareEnd(sh); }
-  clockDue = keepDue; clockShare = keepShare;
-  opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1;
-  // (the designer's chain first: its whole plan in a few milliseconds; the beam's where it finds none)
-  static OpPath dp; const OpPath *pl = 0;
-  if (opDesign(landed, ms * 0.5, &dp) && dp.len >= 1) pl = &dp;
-  else if (opHave && opBest.len >= 1 && opBest.ch >= OP_TWO_FROM) pl = &opBest;
+  if (!pl && rest > 1) {
+    double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
+    { double sh = clockShareBegin(nowMs() + rest); openingGrow(&lq, decQ.b); clockShareEnd(sh); }
+    clockDue = keepDue; clockShare = keepShare;
+  }
+  opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1; opSecondMs = (int32_t)ms; opSecondN = opGrewN;
+  if (!pl && opHave && opBest.ch >= (opSecondLeast())) pl = &opBest;
   if (!pl) return 0;
   opSecondCh = pl->ch;
-  int32_t sw = pl->path[0], r = CR(sw), c = CC(sw);
-  const Board *b = decQ.b;
-  opSecondWhy = 5;
-  if (r < 1 || r >= b->nrows || c < 1 || c >= W) return 0;
-  for (int cc = c; cc <= c + 1; cc++) for (int rr = 1; rr <= r; rr++) {
-    const int32_t *now = b->p[rr][cc].f, *then = landed->p[rr][cc].f;
-    if (now[ID] != then[ID] || (now[ID] > 0 && now[STATE] != NORMAL)) return 0;
+  // (a plan of its trigger alone -- the landed board's own chain one swap away -- is that swap)
+  // (a design's swap whose panels are not yet at rest gives way to another of its swaps that is, where the design pressed in that order
+  // still makes its chain: a chain falling through one column holds back a swap in it, not the whole design -- set 86 combo_storm 2, a
+  // 3 kept 200 frames under a 6, its first swap in the 6's column)
+  if (pl == &dp && dp.len >= 2 && !opAtRest(landed, dp.path[0])) {
+    static CbGrid RG, RT; cbPartial = 1; cbOfBoard(landed, &RG);
+    for (int i = 1; i < dp.len && i < CB_SEQ_MAX; i++) {
+      if (!opAtRest(landed, dp.path[i])) continue;
+      CbSeq s; s.n = imin(dp.len, CB_SEQ_MAX); s.r[0] = (cb8)CR(dp.path[i]); s.c[0] = (cb8)CC(dp.path[i]);
+      for (int j = 0, k = 1; j < s.n; j++) if (j != i) { s.r[k] = (cb8)CR(dp.path[j]); s.c[k] = (cb8)CC(dp.path[j]); k++; }
+      int32_t tk = 0; int lk = 0;
+      if (cbSeqPlay(&RG, &s, &RT) && cbBest(&RT, &tk, &lk) > 0 && tk && lk >= dp.ch) {
+        for (int j = 0; j < s.n; j++) dp.path[j] = s.r[j] * 8 + s.c[j]; dp.trig = tk;
+        if (opKeepOn) opKeepSeq = s;
+        break;
+      }
+    }
+    cbPartial = 0;
   }
+  int32_t sw = pl->len >= 1 ? pl->path[0] : pl->trig;
+  opSecondWhy = 5;
+  if (!opAtRest(landed, sw)) return 0;
   opSecondWhy = 6;
   // (and the chain no shorter for it: the hold's chain, all of it, is the bar)
   int32_t bar = 0; for (int i = 0; i < n; i++) if (order[i]->hold) bar = order[i]->apChainAll;
@@ -786,6 +956,10 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   if (!candOf(&k, PLAY_SETUP, one, 1, -1, 0)) return 0;
   k.settled = 0; lastDrop = -1;
   if (!judgeCand(R, &k, &J) || J.o.dead || J.apChainAll < bar) return 0;
+  // (nor a set-up that makes a link: a link short of what is needed spends the next chain's panels on a chain that does not count, or on
+  // the falling chain short of the eight -- set 86 large_garbage 3, the 3's set-ups linked into the 5 as it fell, a 7 and no 3)
+  opSecondWhy = 9;
+  if (pl->len >= 1 && J.apChainAll > bar && J.apChainAll < imax(OPENER_LEAST, opNeed)) return 0;
   opSecondWhy = 7; opPressed = sw;
   return &J;
 }
@@ -793,25 +967,112 @@ static const Judge *opSecondSwap(const Read *R, int n) {
 // best chain OP_CB_MAXSW swaps or fewer make, a swap worth OP_CB_COST of a chain's score -- the opener's chains are a few swaps, never time
 // attack's long builds -- and its swaps put in an order that sets nothing off, the trigger last: a plan, into *out, where its chain is
 // OP_TWO_FROM or more
-#define OP_CB_COST 30
-#define OP_CB_MAXSW 14
-static int32_t opDesigned;   // (the chain of the design offered this decision, 0 none: the log's)
-static int opDesign(const Board *b, double ms, OpPath *out) {
-  static CbGrid G, D; static int32_t seq[CB_MAXSWAPS + 1];
-  cbOfBoard(b, &G);
-  int full = 0; for (int r = 1; r <= G.rows; r++) full += cbFull(&G, r);
-  if (!full || ms < 1) return 0;
-  int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = OP_CB_MAXSW; cbJSwapCost = OP_CB_COST;
-  int32_t tr = 0; int links = 0, sw = 0;
-  int32_t v = cbDesignAll(&G, 0, ms, &D, &tr, &links, &sw);
-  cbJMaxSw = keepSw; cbJSwapCost = keepCost;
-  if (v <= 0 || !tr || links < OP_TWO_FROM) return 0;
-  int n = cbOrder(&G, &D, tr, seq, OP_DEPTH + 1);
+#define OP_CB_FEWEST 3
+#define OP_PROVE_MAX 4   // (the designs judged at most: the plans' falls extended need the countdown's time after them)
+static int32_t opDesignWhy, opDesignLinks, opSeqLinks;   // (and the swaps' design's links, -1 none)
+static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's designs judged, those that chain as judged, the longest: the log's opgrew /p)
+static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
+static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
+  static CbGrid G, D; static int32_t seq[CB_MAXSWAPS + 1], sseq[CB_SEQ_MAX + 1];
+  cbOfBoard(b, &G); if (!opDesignAsIs) cbPreview(b, &G);
+  int full = 0; for (int r = 1; r <= G.rows; r++) full += cbRowOk(&G, r);
+  opDesignWhy = 2;
+  if (ms < 1) return 0;
+  // (the rows ordered, in half the time)
+  int n = 0, links = 0;
+  if (full) {
+    int keepSw = cbJMaxSw; int32_t keepCost = cbJSwapCost; cbJMaxSw = maxSw; cbJSwapCost = opDesignCost; cbJPartial = 1;
+    int32_t tr = 0; int sw = 0;
+    int32_t v = cbDesignAll(&G, 0, ms * 0.5, &D, &tr, &links, &sw);
+    cbJMaxSw = keepSw; cbJSwapCost = keepCost; cbJPartial = 0;
+    opDesignWhy = 3; opDesignLinks = links;
+    if (v > 0 && tr && links >= opDesignLeast) {
+      cbCurR = b->curRow; cbCurC = b->curCol;
+      n = cbOrder(&G, &D, tr, seq, OP_DEPTH + 1);
+      cbCurR = 0;
+      opDesignWhy = 4;
+      if (n < 1) n = 0;
+    } else links = 0;
+  }
+  // (and the swaps themselves, panels moved into gaps and between rows, in the other half: kept only where its chain is longer -- the
+  // rows' order is the one walked shortest)
+  { int32_t keepCost = cbSwapCost; cbSwapCost = opDesignCost;
+    int32_t str = 0; int sl = 0, sn = cbSeqDesign(&G, ms * 0.5, imin(maxSw, OP_DEPTH), sseq, &str, &sl);
+    cbSwapCost = keepCost; opSeqLinks = sn >= 0 ? sl : -1;
+    if (sn >= 0 && sl >= opDesignLeast && (!n || sl > links)) { for (int i = 0; i < sn; i++) seq[i] = sseq[i]; seq[sn] = str; n = sn + 1; links = sl; opDesignLinks = sl; } }
   if (n < 1) return 0;
+  opDesignWhy = 5;
   memset(out, 0, sizeof *out);
-  out->len = n - 1; for (int i = 0; i < n - 1; i++) out->path[i] = seq[i]; out->trig = seq[n - 1]; out->ch = links;
-  opDesigned = links;
+  out->len = n - 1; for (int i = 0; i < n - 1; i++) out->path[i] = seq[i]; out->trig = seq[n - 1]; out->ch = links; out->design = 1;
+  if (maxSw == OP_CB_MAXSW) opDesigned = links;
   return 1;
+}
+// (the opener's designs order rows with gaps too: search/chainbuild.c cbPartial)
+static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) { cbPartial = 1; cbSeqSlot = opDesignAsIs ? 1 : 0; int ok = opDesignIn(b, ms, out, maxSw); cbPartial = 0; cbSeqSlot = 0; return ok; }
+// THE PLANS' FALLS EXTENDED (the countdown's: the owner's three seconds): each plan kept, its chain OP_FAST_CH or more, played to its trigger
+// on the engine and its fall searched for the longest extension in an equal share of `ms` -- the chain it reaches into chx; the best
+// ranked again
+#define OP_EXT_PLANS 6
+static int32_t opExtBest, opExtMs, opExtN, opExtCh[OP_EXT_PLANS][3];   // (and its time, and each plan ranked: swaps, chain, chain its fall reached extended -- the log's opExt=)   // (the longest chain a plan's fall reached extended: the log's opgrew /x)
+static void opExtendAll(const Question *q, double ms) {
+  const OpPath *pl[OP_EXT_PLANS]; OpPath *mut[OP_EXT_PLANS]; int np = 0; opExtBest = 0; opExtMs = (int32_t)ms; opExtN = 0;
+  for (int ln = 1; ln <= OP_DEPTH && np < OP_EXT_PLANS; ln++) if (opByLenHave[ln] && opByLen[ln].ch >= OP_FAST_CH) { pl[np] = &opByLen[ln]; mut[np++] = &opByLen[ln]; }
+  if (!np) return;
+  static Ctx *ex; Ctx *x = ex = ctxOf(ex);
+  for (int i = 0; i < np && !clockOut(); i++) {
+    int root = rootOf(x, q); if (root < 0) return;
+    int at = opReplay(x, root, pl[i]); if (at < 0) continue;
+    int out = step(x, at, MK_SWAP, CR(pl[i]->trig), CC(pl[i]->trig), 0);
+    for (int k = 0; k < 6 && liveNode(x, out); k++) { const Board *bb = ensureBoard(x, out); if (bb && cascadeLive(bb)) break; out = step(x, out, MK_LONG, 0, 0, 2); }
+    const Board *fb = liveNode(x, out) ? ensureBoard(x, out) : 0;
+    if (!fb || !cascadeLive(fb)) continue;
+    static Board *fall; if (!fall) fall = nb_new(); if (!fall) return;
+    cloneBoard(fall, fb);
+    Question fq = *q; fq.b = fall;
+    List L; memset(&L, 0, sizeof L); L.n = 1; L.aim[0].chain.op = OP_GE; L.aim[0].chain.n = 2; L.aim[0].brk = -1;
+    ExtOpts eo = { 40, 6, &L, NOT_ASKED, 0, ms / np, 2 };   // (longest, unjudged -- the fall is a board played forward: the chain it reaches extended; without it chx is the chain left alone)
+    static Ext E; extend(&fq, &eo, &E);
+    int32_t c = E.longest.set ? E.longest.chain : E.baseChain;
+    mut[i]->chx = c; if (c > opExtBest) opExtBest = c;
+    if (opExtN < OP_EXT_PLANS) { opExtCh[opExtN][0] = pl[i]->len + 1; opExtCh[opExtN][1] = pl[i]->ch; opExtCh[opExtN][2] = c; opExtN++; }
+    x = ex = ctxOf(ex);
+  }
+  for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
+}
+// THE SECOND CHAIN EACH PLAN LEAVES, the countdown's (the owner: chains of three or more adding up to eight -- a 5 and a 3 alike): each
+// plan kept whose chain is short of OPENER_SUM played out by the judge as the game will play it -- rooted, the stack rising under its
+// swaps, its chain landed and the garbage on its way with it (outcome.c lineEnd) -- and the next chain designed on the board it leaves, as the next chain is after it (opDesign as it stands, OP_NEXT_COST a swap) -- its chain into
+// ch2; the best ranked again (search/opening.c opMakesEight)
+static int32_t opPairBest, opPairN;   // (the longest second chain designed, and the plans asked: the log's opgrew /r)
+static void opPairAll(const Question *q, double ms) {
+  int np = 0; opPairBest = 0; opPairN = 0;
+  for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && opByLen[ln].ch >= OPENER_LEAST && imax(opByLen[ln].ch, opByLen[ln].chx) < OPENER_SUM) np++;
+  if (!np) return;
+  int32_t kLeast = opDesignLeast, kCost = opDesignCost, kDesigned = opDesigned, kWhy = opDesignWhy, kLinks = opDesignLinks, kSeq = opSeqLinks; int kAsIs = opDesignAsIs;
+  for (int ln = 1; ln <= OP_DEPTH && !clockOut(); ln++) {
+    OpPath *p = &opByLen[ln];
+    if (!opByLenHave[ln] || p->ch < OPENER_LEAST || imax(p->ch, p->chx) >= OPENER_SUM) continue;
+    int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < p->len; k++) seq[ns++] = p->path[k]; seq[ns++] = p->trig;
+    // (judged with no garbage on its way: the next chain fires as this one lands, and a chain falling is a board the garbage cannot top
+    // out -- the slab lands on top of it; that judging is never kept, the game's own is)
+    int rd = readyDefer, kn = decQ.narr, kk = endNoKeep; int32_t kl = decF.land; readyDefer = 1; endWanted = 1; outRooted = p->design;
+    static Board *quiet; if (!quiet) quiet = nb_new();
+    Board *kb = decQ.b; if (quiet) { cloneBoard(quiet, kb); quiet->ninc = 0; decQ.b = quiet; }
+    decQ.narr = 0; decF.land = NOT_ASKED; endNoKeep = 1;
+    Outcome oo = outcome(seq, ns, 1);
+    decQ.b = kb; decQ.narr = kn; decF.land = kl; endNoKeep = kk;
+    outRooted = 0; int got = endWanted == 2; endWanted = 0; readyDefer = rd;
+    p->ch2 = 0; opPairN++;
+    const Board *lb = got ? endBoard : 0;
+    if (!lb || oo.dead || imax(chainOf(oo.j.made), oo.j.chainAll) < p->ch || lb->chainCounter != 0 || cascadeLive((Board *)lb)) continue;
+    OpPath dp; opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = OPENER_LEAST;
+    p->ch2 = opDesign(lb, ms / np, &dp, OP_NEXT_MAXSW) ? dp.ch : 0;
+    if (p->ch2 > opPairBest) opPairBest = p->ch2;
+  }
+  opDesignLeast = kLeast; opDesignCost = kCost; opDesigned = kDesigned; opDesignWhy = kWhy; opDesignLinks = kLinks; opSeqLinks = kSeq; opDesignAsIs = kAsIs;
+  opBest.ch2 = 0;   // (the plan held is ranked again on the second chains just designed, its own among them where it is one of these)
+  for (int ln = 1; ln <= OP_DEPTH; ln++) if (opByLenHave[ln] && (!opHave || opPacier(&opByLen[ln], &opBest))) { opBest = opByLen[ln]; opHave = 1; }
+  opGrewCh2 = opHave ? opBest.ch2 : 0;
 }
 static Played playOf(const Read *R, int n) {
   Played P; memset(&P, 0, sizeof P);
@@ -883,10 +1144,12 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opDesigned = 0; opGrew = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opFallWay = 0; opFallLink = opFallLinkCh = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0; opPairN = opPairBest = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
-  int opWants = !R->under && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && theList.aim[0].chain.op && clockFrameOut && !clockFrameOut() &&
-                !cascadeLive(decQ.b) && decQ.b->chainCounter == 0;
+  // (and the next chain, the first thrown, is planned under garbage too: its panels are the ones under it)
+  int opNext = openerSum > 0 && opNeed > 0;
+  int opWants = (!R->under || opNext) && R->rule >= 0 && theTables.r[R->rule].table == 2 && theList.n > 0 && (theList.aim[0].chain.op || opNext) && clockFrameOut && !clockFrameOut() &&
+                (opNext || !cascadeLive(decQ.b)) && decQ.b->chainCounter == 0;
   // (THE OPENER AS ONE PLAN -- the owner: the opener includes everything it is going to do, the flattening too, and raises the moment
   // it is flat: while the opening raise is due and done before the next block lands, the plan is made on the board it will build on -- the stack
   // flattened (opFlatten), then raised the rows the raise asks on the engine -- and grown there in the decision's time. The flattening
@@ -912,6 +1175,8 @@ static Played playOf(const Read *R, int n) {
   }
   // (the plan takes the move whenever the move chosen lives and breaks nothing -- a level, a set-up, a line in progress, the hold -- not
   // only where the hold was chosen: the opening's whole time is the plan's)
+  opLinkCands = 0; opLinkBest = 0;
+  for (int i = 0; i < n; i++) if (!order[i]->hold && !order[i]->o.dead && order[i]->o.j.brokeLink > 0) { opLinkCands++; if (order[i]->apChainAll > opLinkBest) opLinkBest = order[i]->apChainAll; }
   const Judge *opTop = P.line ? P.line : P.top;
   // (the planned opener in progress goes on: no plan is grown or begun over it -- the carry presses it, and survival alone puts it down)
   // (and no other line takes its place while it can still be pressed and either lives or presses its last swap before the next block
@@ -926,18 +1191,189 @@ static Played playOf(const Read *R, int n) {
     int falling = decQ.b->chainCounter > 0 || ours;
     if (!falling) { opFalling = 0; if (opFiredAt >= 0 && decQ.b->clock - opFiredAt > OP_FIRE_HOLD) opFiredAt = -1; }
     else if (!opFalling && R->rule >= 0 && theTables.r[R->rule].table == 2) { opFalling = 1; opFallAt = decQ.b->clock; } }
-  if (opFalling && !(P.line && (P.line->k.play == PLAY_EXTEND || (P.line->carried && carryBeganPlay == PLAY_EXTEND)))) {
-    // (the best extension the order holds is played; with none, the hold)
-    const Judge *ext = 0;
-    for (int i = 0; i < n && !ext; i++) if (!order[i]->hold && !order[i]->o.dead && (order[i]->k.play == PLAY_EXTEND || (order[i]->carried && carryBeganPlay == PLAY_EXTEND))) ext = order[i];
+  if (opFalling) {
+    // (the best extension the order holds is played, the line on top too, whatever it is called; with none, the second chain's set-up or the hold)
+    // (AN EXTENSION ONLY PAST THE CHAIN PLANNED -- the owner: planned for a 4x, the extension is only needed at the 5x: a line is played
+    // only where its chain, as judged all of it, is longer than the chain left alone reaches -- the longest of them; anything else holds,
+    // and the planned links fall untouched)
+    // (AND ONLY UP TO WHAT THE OPENER STILL NEEDS -- the owner's eight, less the chains already thrown: a chain taken past it spends the
+    // panels the garbage it brings back is dug with. A chain left alone that reaches it is not extended; of the extensions, the shortest
+    // that reaches it, else the longest)
+    const Judge *ext = 0; int32_t bar = 0, need = imax(OPENER_LEAST, OPENER_SUM - openerSum);
+    for (int i = 0; i < n; i++) if (order[i]->hold) bar = order[i]->apChainAll;
+    for (int i = 0; i < n && bar < need; i++) {
+      const Judge *J = order[i];
+      if (J->hold || J->o.dead || !opExtLine(J)) continue;
+      if (J->apChainAll <= bar) continue;
+      int32_t c = J->apChainAll, e = ext ? ext->apChainAll : 0;
+      // (SHORT OF IT, THE BOARD KEPT -- the owner: survival comes after the eight, and a board lost after the chain makes no second one:
+      // of two extensions short of what is still needed, the one whose board lives, else the one lost a break's time later, before the
+      // longer)
+      if (ext && c < need && e < need) {
+        int la = J->o.lives, lb = ext->o.lives;
+        if (la != lb) { if (la) ext = J; continue; }
+        if (!la && J->o.lostAt != NOT_ASKED && ext->o.lostAt != NOT_ASKED && iabs(J->o.lostAt - ext->o.lostAt) >= rankSave) { if (J->o.lostAt > ext->o.lostAt) ext = J; continue; }
+      }
+      // (AND REACHING IT, THE BOARD KEPT ALL THE SAME -- the opener survives as well as making the eight: of two extensions that reach
+      // what is needed, the one whose board lives, else the one lost a break's time later, before the shorter -- set 86 large_garbage 2,
+      // an 8 extended to a board lost 74 frames after it)
+      if (ext && c >= need && e >= need) {
+        int la = J->o.lives, lb = ext->o.lives;
+        if (la != lb) { if (la) ext = J; continue; }
+        if (!la && J->o.lostAt != NOT_ASKED && ext->o.lostAt != NOT_ASKED && iabs(J->o.lostAt - ext->o.lostAt) >= rankSave) { if (J->o.lostAt > ext->o.lostAt) ext = J; continue; }
+      }
+      if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
+    }
+    // (NO LINK PAST WHAT A SECOND CHAIN LEAVES TO DO -- the owner: a 5 and a 3: short of what is still needed, the next chain must be a
+    // chain of OPENER_LEAST or more however long this one runs, so links that do not reach need spend the panels the next chain is made
+    // of: past need - OPENER_LEAST the chain as it falls is kept, and below it the extension that reaches there in the fewest links -- in
+    // a garbage game, where the panels the next chain is made of come back slowly)
+    int tall = tallGarbage(&decQ); const Judge *two = 0; int twoAsked = 0;
+    // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
+    // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
+    if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
+    if (ext && ext->apChainAll < need && (tall || garbageSeen)) {
+      int32_t enough = need - OPENER_LEAST;
+      // (held for the next chain only where the board the chain lands on has one: the next chain designed there (opSecondSwap) a chain of
+      // OPENER_LEAST or more; with none the chain falling is all there is, extended as any chain short of need)
+      // (under smaller garbage held all the same: the board it lands on is full of colours its pops have not shown, a next chain seldom
+      // designed there, and the 5 and the 3 come; under tall garbage, a 5 often leaves no 3 at all)
+      if (bar >= enough && !tall) ext = 0;
+      else if (bar >= enough) { if (!twoAsked) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; } if (opSecondCh >= OPENER_LEAST) ext = 0; }
+      else if (ext->apChainAll > enough) {
+        const Judge *fit = 0;
+        for (int i = 0; i < n; i++) { const Judge *J = order[i];
+          if (J->hold || J->o.dead || !opExtLine(J) || J->apChainAll <= bar || J->apChainAll < enough || J->apChainAll >= need) continue;
+          if (!fit || J->apChainAll < fit->apChainAll || (J->apChainAll == fit->apChainAll && J->o.lives && !fit->o.lives)) fit = J; }
+        if (fit) ext = fit;
+      }
+    }
+    opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
+    opFallSeen = 0; opFallTop = -1; opFallDead = 0; opFallLineN = 0;
+    for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->hold || !opExtLine(J)) continue;
+      opFallSeen++; if (J->o.dead) opFallDead++; else if (J->apChainAll > opFallTop) opFallTop = J->apChainAll;
+      if (opFallLineN < 8) { int32_t *t = opFallLine[opFallLineN++]; t[0] = J->k.nseq; t[1] = J->apNats; t[2] = J->apChainAll; t[3] = J->o.dead; t[4] = J->k.x.chain; t[5] = J->o.lives ? -1 : J->o.lostAt; } }
     P.wait = 0; P.deferred = 0; opFallHeld++;
-    const Judge *two = ext ? 0 : opSecondSwap(R, n);
-    if (ext) P.line = P.top = ext;
+    // (THE WAY TO THE EIGHT -- the owner: two 4s, a 5 and a 3, or an 8: an extension that reaches what is still needed is played; else a
+    // second chain set up where its chain and the falling one's add up to it -- the panels an extension short of it would spend are the
+    // second chain's; else the extension, else the second chain's set-up)
+    if (!twoAsked && !(ext && ext->apChainAll >= need)) { opSecondFall = bar; two = opSecondSwap(R, n); }
+    int twoReaches = two && opSecondCh >= OPENER_LEAST && bar + opSecondCh >= need;
+    // (THE GARBAGE BROKEN FOR THE NEXT CHAIN -- the owner: break the garbage and the second chain is there: with no extension at all --
+    // extending comes first, any extension -- nor a second chain that adds to the eight, the line that breaks the most garbage beyond the hold, the chain as long as the
+    // hold's -- the panels the garbage turns into are the next chain's)
+    const Judge *brk = 0;
+    if (bar < need && !(ext && ext->apChainAll >= need) && !twoReaches && (R->under || decQ.narr > 0)) {
+      int32_t holdBroke = 0; const Judge *hj = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { holdBroke = imax(0, order[i]->apBroke); hj = order[i]; }
+      // (a hold that loses the board: a break that keeps it longer may end the chain falling short of the hold's, down to need -
+      // OPENER_LEAST -- a 6 or a 5 the next chain a 3 all the same; the board left alone does not live)
+      int32_t floor = hj && !hj->o.lives ? imin(bar, imax(OPENER_LEAST, need - OPENER_LEAST)) : bar;
+      for (int i = 0; i < n; i++) {
+        const Judge *J = order[i];
+        if (J->hold || J->o.dead || J->apChainAll < floor || !(J->apBroke > holdBroke)) continue;
+        if (J->apChainAll < bar && !(J->o.lives || (hj->o.lostAt != NOT_ASKED && J->o.lostAt != NOT_ASKED && J->o.lostAt > hj->o.lostAt))) continue;
+        if (!brk || J->apBroke > brk->apBroke || (J->apBroke == brk->apBroke && J->apChainAll > brk->apChainAll)) brk = J;
+      }
+    }
+    // (THE CHAIN CARRIED INTO THE GARBAGE -- the owner: break the garbage and the next chain is there: garbage a link breaks is converted
+    // chaining (pa.c convertGarbagePanels) and the chain lives while it pops, its panels the next links as they come down. With no
+    // extension reaching what is still needed nor a second chain adding to it, the line whose link breaks the most garbage, its chain as
+    // long as the extension short of it, is played over that extension and over a break after the chain has ended -- never where the
+    // chain left alone already reaches it)
+    const Judge *lnk = 0;
+    if (bar < need && !(ext && ext->apChainAll >= need) && !twoReaches)
+      for (int i = 0; i < n; i++) {
+        const Judge *J = order[i];
+        if (J->hold || J->o.dead || J->o.j.brokeLink <= 0 || J->apChainAll < bar || (ext && J->apChainAll < ext->apChainAll)) continue;
+        if (!lnk || J->apChainAll > lnk->apChainAll || (J->apChainAll == lnk->apChainAll && J->o.j.brokeLink > lnk->o.j.brokeLink)) lnk = J;
+      }
+    if (lnk) { opFallLink = lnk->o.j.brokeLink; opFallLinkCh = lnk->apChainAll; }
+    // (SHORT OF IT, NOT AT THE BOARD -- the owner: a board lost after the chain makes no second one: an extension short of what is still
+    // needed whose board is lost within OP_FALL_LOST gives way to the line ranked first of those whose board lives, or is lost
+    // OP_FALL_KEEP later; never under a slab of two rows or more, where the loss foreseen counts neither the panels its pop brings -- their
+    // colours not shown till then -- nor the time its pop stops the board: combo garbage, a row a piece, only)
+    // (and the hold the rule falls back on with nothing else to play, alike, where its chain is short of need; never for a line that makes
+    // the chain falling shorter than the hold's)
+    const Judge *keep = 0, *held = 0;
+    for (int i = 0; i < n; i++) if (order[i]->hold) held = order[i];
+    const Judge *base = ext && ext->apChainAll < need ? ext : bar < need && !ext && !lnk && !brk && !twoReaches && !two ? held : 0;
+    if (base && !garbageRows(&decQ, 2) && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
+      for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
+        if (J != base && !J->hold && J->apChainAll >= bar && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
+    opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
+    if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
+    else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
+    else if (opFallWay == 6) P.line = P.top = lnk;
+    else if (opFallWay == 5) P.line = P.top = brk;
     else if (two) P.line = P.top = two;
     else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
+  // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
+  // as judged still a chain of OPENER_LEAST or more and its board not lost while it is pressed, is played over any line ranked above it
+  // for a loss after it -- what comes after the chain is the next decision's, and its stop time is the board's)
+  opKept = 0;
+  if (opLineOn && carriedJ && carriedJ->carried && P.line != carriedJ && !carriedJ->o.dead && carriedJ->apChainAll >= OPENER_LEAST && !R->up && !opFalling) {
+    P.line = P.top = carriedJ; P.wait = 0; P.deferred = 0; opKept = 1;
+  }
   if (opLineOn && !(carryHeld() && P.line && P.line->carried)) opLineOn = 0;
+  // (THE NEXT CHAIN DESIGNED -- the owner: chains of three or more adding up to the eight: the first thrown and the eight not yet made,
+  // no chain falling -- garbage may be popping, a slab's pop lasting longer than the rest of the game -- and no plan of the opener's carried, the designer plans the chain still needed on the board as it stands, its
+  // full rows under any garbage, judged ROOTED as the opener's first plans are; a plan whose chain as judged is what is still needed, its
+  // board standing till it fires, is the opener's line -- any chain of OPENER_LEAST or more: every one adds to the eight, and a chain
+  // short of what is still needed leaves the rest to the one after it)
+  opNextDesign = 0;
+  if (opNeed > 0 && openerSum > 0 && !opLineOn && decQ.b->chainCounter == 0 && !R->up && clockFrameOut && !clockFrameOut()) {
+    double left = C2.due ? C2.due - C2.margin - nowMs() : 0;
+    OpPath dp;
+    opNextDesign = -1; opNextMs = (int32_t)(left * OP_NEXT_SHARE); opDesignWhy = 0;
+    // (on the board as it stands only while nothing on it moves: a panel hovering above a swap refuses it, and a board in motion is not the
+    // one its swaps meet -- moving, the next chain is designed on the board it settles to, below)
+    // (what is still needed looked for first, in half the time, then any chain that counts)
+    int32_t wantAll = imax(OPENER_LEAST, opNeed); int got = 0;
+    opDesignCost = OP_NEXT_COST;
+    if (left > 8 && !hasActivePanels(decQ.b)) {
+      if (wantAll > OPENER_LEAST) { opDesignLeast = wantAll; got = opDesign(decQ.b, left * OP_NEXT_SHARE * 0.5, &dp, OP_NEXT_MAXSW); }
+      if (!got) { opDesignLeast = OPENER_LEAST; got = opDesign(decQ.b, left * OP_NEXT_SHARE * (wantAll > OPENER_LEAST ? 0.5 : 1), &dp, OP_NEXT_MAXSW); }
+    }
+    opDesignCost = OP_CB_COST; opDesignLeast = OP_TWO_FROM;
+    if (got) {
+      opNextDesign = -2; opNextCh = dp.ch; opNextLen = dp.len + 1;
+      int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int i = 0; i < dp.len; i++) seq[ns++] = dp.path[i]; seq[ns++] = dp.trig;
+      static Judge ND; Cand k;
+      // (each swap pressed once its two panels are still, not once the whole board is: under a slab popping, a board let settle after
+      // every swap waits out the pop each time)
+      if (dp.ch >= OPENER_LEAST && candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
+        k.settled = 0; lastDrop = -1; lastCut = -1;
+        outRooted = 1; int ok = judgeCand(R, &k, &ND); outRooted = 0;
+        opNextDesign = !ok ? -3 : ND.o.dead ? -4 : ND.apChainAll; opNextDrop = !ok ? lastDrop * 10 + (lastCut >= 0 ? lastCutWhy : 0) : -1;
+        if (!ok) { opNextCut = lastCut; opNextCutCell = lastCutCell; opNextSeqN = imin(ns, 16); for (int i = 0; i < opNextSeqN; i++) opNextSeq[i] = seq[i]; boardRows(decQ.b, opNextRows, sizeof opNextRows); }
+        if (ok && !ND.o.dead && ND.apChainAll >= OPENER_LEAST) {
+          for (int s2 = 0; s2 < ND.o.j.nats && s2 < ND.k.nseq && s2 < MAXLINE; s2++) ND.k.seq[s2] = (CR(ND.k.seq[s2]) + ND.o.j.risen[s2]) * 8 + CC(ND.k.seq[s2]);
+          P.line = P.top = &ND; P.wait = 0; P.deferred = 0; opLineOn = 1;
+        }
+      }
+    }
+    // (and with the board still moving -- a slab popping, its panels' colours shown one by one -- the next chain designed on the board it
+    // settles to (opSecondSwap), its next swap pressed as soon as its panels stand where that board has them: a chain of what is still
+    // needed built as the colours show)
+    // (over the line ranked first, unless that line's board lives and the swap's does not)
+    if (opNextDesign < 0 && opNextDesign != -4 && cascadeLive(decQ.b)) {
+      const Judge *t2 = opSecondSwap(R, n);
+      // (the design's swap is judged alone, a board left as it is after it; its chain fired before the board is lost keeps the board -- a
+      // chain falling cannot top out -- so it gives way only where it does not fire in time: set 86 large_garbage 6, a 3's design half
+      // pressed, put down at 190 frames for a break that made a 2)
+      int fires = opKeepOn && decQ.b->clock - opKeepAt <= 40 && R->F.known[FACT_US_DIES] && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < R->F.v[FACT_US_DIES];
+      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires)) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
+      // (and while it waits for its panels to come to rest, the board is held: a clear short of what is needed spends the panels it is
+      // made of -- set 86 factory 5, a 3's design half pressed, two 2s played in its waits and no 3)
+      else if (!t2 && fires && opKeepOn && (opSecondWhy == 5 || opSecondWhy == 9) && P.line && !P.line->hold &&
+               (P.line->apCombo > 0 || P.line->apChain > 0) && P.line->apChainAll < imax(OPENER_LEAST, opNeed)) {
+        const Judge *h = 0; for (int i = 0; i < n; i++) if (order[i]->hold) h = order[i];
+        if (h) { P.top = h; P.line = 0; P.wait = 0; P.deferred = 0; opNextDesign = 200; }
+      }
+    }
+  }
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
-  if (opWants && !opLineOn && !opFlatPlayed && opTop && opTop->o.lives && !(opTop->apBroke > 0) && !P.deferred && !R->up && !P.wait) {
+  if (opWants && !opLineOn && !opFlatPlayed && opTop && (opNext || (opTop->o.lives && !(opTop->apBroke > 0))) && !P.deferred && !R->up && !P.wait) {
     double keepDue = clockDue, keepShare = clockShare; clockDue = 0; clockShare = 0;
     // (THE OPENING PLANNED, search/opening.c: the plan grown in the most of this decision's time the judging leaves, its next set-up
     // pressed while the plan's chain is longer than the chain of the trigger the board has now, its set-ups can be pressed before the next block lands and
@@ -950,12 +1386,41 @@ static Played playOf(const Read *R, int n) {
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ, decQ.b); clockShareEnd(sh); }
     // (and the design: a chain the board's full rows make, offered as a plan beside the beam's -- in the countdown's time, or a slice of
     // the decision's)
+    // (the countdown's design in 0.3 of what is left: on a slower runner a smaller share finds no plan at all -- set 86 factory 3)
+    // (and a second design, in the swaps that can be pressed before the first garbage lands -- OPEN_FIRE_BY, OPEN_SWAP_FRAMES a swap: the
+    // chain that fires in time, where the first design's fires past it)
     { double l3 = C2.due ? C2.due - C2.margin - nowMs() : 0, dms = cdAsk ? l3 * 0.3 : l3 * 0.2; OpPath dp;
-      if (opDesign(decQ.b, dms, &dp)) {
+      int quickSw = opBefore() ? (OPEN_FIRE_BY - decQ.b->clock) / OPEN_SWAP_FRAMES - 1 : 0;
+      if (quickSw >= 2 && quickSw < OP_CB_MAXSW) opDesignedQuick = -quickSw;   // (tried in quickSw swaps, none found: the log's /q-N)
+      for (int pass = 0; pass < (quickSw >= 2 && quickSw < OP_CB_MAXSW ? 2 : 1); pass++)
+        if (opDesign(decQ.b, pass ? dms * 0.5 : dms * (quickSw >= 2 ? 0.5 : 1), &dp, pass ? quickSw : OP_CB_MAXSW)) {
+          if (pass) opDesignedQuick = dp.ch;
+          if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
+          if (!opByLenHave[dp.len] || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; } } }
+    // (THE DESIGNS PROVED, the countdown's: the designer asked at every swap budget from OP_CB_FEWEST to OP_CB_MAXSW -- it works on the
+    // panels standing, not on the frames, so a design is judged as the game will play it at once: a design
+    // whose chain as judged is OP_FAST_CH or more is kept at that chain, any other let go -- the plans tried are then plans that chain)
+    if (cdAsk) {
+      int32_t lastLen = -1;
+      for (int sw = OP_CB_FEWEST; sw <= OP_CB_MAXSW && opProveTried < OP_PROVE_MAX && !clockOut(); sw++) {
+        double l4 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l4 < 40) break;
+        OpPath dp; if (!opDesign(decQ.b, l4 * 0.04, &dp, sw) || dp.ch < OP_FAST_CH || dp.len == lastLen) continue;
+        lastLen = dp.len; opProveTried++;
+        int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < dp.len; k++) seq[ns++] = dp.path[k]; seq[ns++] = dp.trig;
+        static Judge PJ; Cand k; if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
+        k.settled = 1; lastDrop = -1;
+        outRooted = 1; int pok = judgeCand(R, &k, &PJ); outRooted = 0;
+        if (!pok || PJ.o.dead || !PJ.o.lives || PJ.apChainAll < OP_FAST_CH) continue;
+        dp.ch = PJ.apChainAll; opProved++; if (dp.ch > opProvedBest) opProvedBest = dp.ch;
+        if (!opByLenHave[dp.len] || opByLen[dp.len].ch < OP_FAST_CH || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; }
         if (!opHave || opPacier(&dp, &opBest)) { opBest = dp; opHave = 1; }
-        if (!opByLenHave[dp.len] || opPacier(&dp, &opByLen[dp.len])) { opByLen[dp.len] = dp; opByLenHave[dp.len] = 1; } } }
+      }
+    }
     // (the countdown's: the plans kept scored on the second chain each leaves, in the time the grow left)
-    if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opSecondAll(&decQ); clockShareEnd(sh); } }
+    if (cdAsk) { double l2 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l2 > 4) { double sh = clockShareBegin(nowMs() + l2 * 0.6); opExtendAll(&decQ, l2 * 0.55); clockShareEnd(sh); } }
+    // (and the second chain each leaves, at every decision until the first chain is thrown -- a plan grown longer later is kept only where
+    // it makes the eight too: in the most of what the countdown's extensions left, a share of any other decision's)
+    if (openerSum == 0) { double l5 = C2.due ? C2.due - C2.margin - nowMs() : 0; if (l5 > 8) { double sh = clockShareBegin(nowMs() + l5 * (cdAsk ? 0.5 : 0.3)); opPairAll(&decQ, l5 * (cdAsk ? 0.45 : 0.25)); clockShareEnd(sh); } }
     opGrew = 1;
     int32_t trig = 0, trigCh = 0;
     triggerSendOf(&decQ, &trig, &trigCh);
@@ -966,16 +1431,30 @@ static Played playOf(const Read *R, int n) {
     // the plan is (search/opening.c opPacier) -- judged in turn; a plan that does not live, or as judged fires past OPEN_FIRE_BY in a pass
     // that asks it by then, gives way to the next, and a pass that plays none to the next pass; with none in any, the board's own trigger)
     opTried = 0;
-    for (int pass = 0; pass < 3 && chainUp <= 0; pass++) {
+    if (cdAsk) boardRows(decQ.b, opCdRows, sizeof opCdRows);
+    // (a plan of OP_TWO_FROM or more that fires within OP_LATE is tried before a 2 to extend: half the eight in one chain, against a 2
+    // that grows to a 3 -- set 86 factory 3, every 4 fired at 344-354 and the 2 taken made a 3)
+    int late4 = opHave && opBest.ch >= OP_TWO_FROM && opFits(&opBest, trigCh, 3);
+    for (int ln = 1; ln <= OP_DEPTH && !late4; ln++) late4 = opByLenHave[ln] && opByLen[ln].ch >= OP_TWO_FROM && opFits(&opByLen[ln], trigCh, 3);
+    // (and before the 3 fired in time: a 4 and the 4 after it come sooner than a 3 and the 5 after it, the game's clock running out on
+    // the second chain -- set 86 large_garbage 6, the 5 after the 3 landing at 1265 of a game that ends at 1300; the early slot takes plans
+    // of OP_TWO_FROM or more only, the judge's board living all the same)
+    static const int passOrder[2][OP_PASSES + 1] = { { 0, 1, 2, 3, 4, -1 }, { 0, 3, 1, 2, 3, 4 } };
+    for (int pi = 0; pi < OP_PASSES + 1 && passOrder[late4][pi] >= 0 && chainUp <= 0; pi++) {
+      int pass = passOrder[late4][pi], fourOnly = late4 && pi == 1;
       const OpPath *tries[OP_TRIES]; int nt = 0;
-      if (opHave && opFits(&opBest, trigCh, pass)) tries[nt++] = &opBest;
+      if (opHave && opFits(&opBest, trigCh, pass) && (!fourOnly || opBest.ch >= OP_TWO_FROM)) tries[nt++] = &opBest;
       for (int ln = 1; ln <= OP_DEPTH; ln++) {
         const OpPath *c = &opByLen[ln];
-        if (!opByLenHave[ln] || !opFits(c, trigCh, pass) || (nt && tries[0] == &opBest && !memcmp(c, &opBest, sizeof *c))) continue;
+        if (!opByLenHave[ln] || !opFits(c, trigCh, pass) || (fourOnly && c->ch < OP_TWO_FROM) || (nt && tries[0] == &opBest && !memcmp(c, &opBest, sizeof *c))) continue;
         int at = nt < OP_TRIES ? nt++ : OP_TRIES;
-        if (at == OP_TRIES) { if (!opPacier(c, tries[OP_TRIES - 1])) continue; at = OP_TRIES - 1; }
+        // (passes 2 and 3 ask a chain in time: their plans tried fewest swaps first -- the one pressed soonest fires soonest; the others the plan's own
+        // order)
+        #define OP_BEFORE(a, b) (pass == 2 || pass == 3 ? (a)->len < (b)->len : opPacier(a, b))
+        if (at == OP_TRIES) { if (!OP_BEFORE(c, tries[OP_TRIES - 1])) continue; at = OP_TRIES - 1; }
         tries[at] = c;
-        for (int j = at; j > 0 && opPacier(tries[j], tries[j - 1]) && !(tries[j - 1] == &opBest); j--) { const OpPath *t = tries[j]; tries[j] = tries[j - 1]; tries[j - 1] = t; }
+        for (int j = at; j > 0 && OP_BEFORE(tries[j], tries[j - 1]) && !(pass != 2 && pass != 3 && tries[j - 1] == &opBest); j--) { const OpPath *t = tries[j]; tries[j] = tries[j - 1]; tries[j - 1] = t; }
+        #undef OP_BEFORE
       }
       for (int t = 0; t < nt && chainUp <= 0; t++) {
         int32_t seq[OP_DEPTH + 1]; int ns = 0;
@@ -984,14 +1463,27 @@ static Played playOf(const Read *R, int n) {
         if (!candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) continue;
         k.settled = 1;
         // (turned down: -10 less the judge's drop code where it took it out (rank.c DROP_*), -2 its board is lost, -3 it does not live,
-        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor: the log's, the first plan's)
-        lastDrop = -1;
+        // -4 it fires past OPEN_FIRE_BY in a pass that asks it by then, -5 a second chain under the floor, -6 judged short of the chain asked:
+        // the log's, the first plan's)
+        // (a design is judged ROOTED: its swaps are named on the board as it stands now (search/chainbuild.c), each pressed in the row its
+        // panels have risen to by its frame -- the stack rises while a plan is pressed -- and handed on named where it is pressed. The
+        // search's plans are named where each swap is pressed already, the rise in them, and are judged as named)
+        lastDrop = -1; lastCut = -1;
+        outRooted = pl->design;
         int jok = judgeCand(R, &k, &CU);
-        int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives ? -3 : 0;
-        if (!why && pass < 2 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > OPEN_FIRE_BY) why = -4;
+        outRooted = 0;
+        int why = !jok ? -10 - lastDrop : CU.o.dead ? -2 : !CU.o.lives && !opNext ? -3 : 0;
+        if (!why && pass < 4 && opBefore() && decQ.b->clock + (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : 0) > opFireBy(pass)) why = -4;
         // (-5 a second chain, in a garbage game, that leaves the board under its material floor: the panels the garbage is dug with)
         if (!why && openerThrown >= 1 && garbageSeen && CU.o.floorKept == 0) why = -5;
-        if (!why) { P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
+        // (-6 the chain as judged is not the chain the pass asks -- the judge plays the plan as the game will, the stack rising under it and
+        // the rows it brings up, so a plan the search counts a chain and the judge counts none is a plan on a board that never was)
+        if (!why && (opPassLeast(pass) ? CU.apChainAll < opPassLeast(pass) : !opAsked(CU.apChainAll))) why = -6;
+        if (opTryN < OP_TRY_LOG) { int32_t *t = opTryLog[opTryN++]; t[0] = pass; t[1] = pl->len + 1; t[2] = pl->ch; t[3] = jok ? CU.apChainAll : -1;
+          t[4] = jok ? (CU.apFire >= 0 ? CU.apFire : CU.apNats > 0 ? CU.apAts[CU.apNats - 1] : -1) : -1; t[5] = why; t[7] = pl->design; t[6] = jok ? CU.o.j.clearStep : lastCut >= 0 ? -1000 - lastCut * 100 - lastCutWhy * 10 - lastCutRisen : -2;
+          if (opTryN <= 3) { opTrySeqN[opTryN - 1] = ns; for (int s = 0; s < ns; s++) opTrySeq[opTryN - 1][s] = seq[s]; } }
+        if (!why) { if (pl->design) for (int s = 0; s < CU.o.j.nats && s < CU.k.nseq && s < MAXLINE; s++) CU.k.seq[s] = (CR(CU.k.seq[s]) + CU.o.j.risen[s]) * 8 + CC(CU.k.seq[s]);
+          P.line = &CU; chainUp = 3; openingReset(); opLineOn = 1; }
         else if (!chainUp) chainUp = why;
       }
     }
@@ -1099,9 +1591,10 @@ static Played playOf(const Read *R, int n) {
 // during it (rank.c judgeCand): the rest of such a line is read on it too, carriedCand)
 enum { WHY_NONE, WHY_CHAIN, WHY_COMBO, WHY_BREAK, WHY_TWIN, WHY_FLAT, WHY_ZIP, WHY_DROP, WHY_LIVE, WHY_READY };   // (WHY_NONE: no reason -- a bug)
 typedef struct { int32_t kind, a, b; } Why;
-typedef struct { int32_t set, id, nrest, rest[MAXLINE], risen[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; Why why; } Carry;   // (rule: the mode it was begun in; why: the reason it was begun, the log's aim=)
+typedef struct { int32_t set, id, nrest, rest[MAXLINE], risen[MAXLINE], at[MAXLINE], settled, hasAim, broke, popping, ready, anchorRow, anchorCol, anchorId, waits, rule; Aim aim; Made made; Why why; } Carry;   // (rule: the mode it was begun in; why: the reason it was begun, the log's aim=)
 static Carry theCarry;
 static int carryHeld(void) { return theCarry.set; }
+static int carryOpener(void) { return theCarry.set && theCarry.rule >= 0 && theCarry.rule < theTables.n && theTables.r[theCarry.rule].table == 2; }
 // THE BREAK A LINE LIVES BY, NEXT: a line played that lives only by a break in reach once everything lands (its readiness) carries that
 // break too, to be the line in progress once the line's own swaps are pressed -- the next decisions need not find it again
 static Carry theCarryNext;
@@ -1158,12 +1651,18 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   if (carrySkip) { carryClr = carrySkip; return; }
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
-  if (!anchorOf(row1, k->k.seq, k->k.nseq)) { carrySkip = 5; carryClr = 5; return; }
+  // (the anchor is a panel of the board as it is now that no swap of the line moves: each swap named in this board's rows, the rows risen
+  // by its press taken off)
+  int32_t root[MAXLINE], nroot = imin(k->k.nseq, MAXLINE);
+  for (int i = 0; i < nroot; i++) root[i] = (CR(k->k.seq[i]) - k->o.j.risen[i]) * 8 + CC(k->k.seq[i]);
+  if (!anchorOf(row1, root, nroot)) { carrySkip = 5; carryClr = 5; return; }
   // (each swap kept in the rows of the board it was begun on: a swap the judge pressed after the stack rose is named in the rows of the
   // board it is pressed on, so the rows risen by then are taken off, and only the rows risen since the line began beyond those are put
   // back when it is carried on -- a rise foreseen is never counted twice)
   theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
-  for (int i = first; i < k->k.nseq; i++) { int32_t up = i < MAXLINE ? k->o.j.risen[i] : 0; theCarry.rest[i - first] = (CR(k->k.seq[i]) - up) * 8 + CC(k->k.seq[i]); theCarry.risen[i - first] = up; }
+  for (int i = first; i < k->k.nseq; i++) { int32_t up = i < MAXLINE ? k->o.j.risen[i] : 0; theCarry.rest[i - first] = (CR(k->k.seq[i]) - up) * 8 + CC(k->k.seq[i]); theCarry.risen[i - first] = up;
+    // (and the clock each swap's walk was judged to begin on: the carried line is judged pressing it no sooner)
+    theCarry.at[i - first] = i < k->o.j.nats && i < MAXLINE ? decQ.b->clock + k->o.j.ats[i] : 0; }
   theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
   theCarry.made = (Made){ k->apCombo, k->apChain, k->apBroke, k->k.x.cells };
   carriedSunk = lineWalk(k);
@@ -1181,7 +1680,7 @@ static void carryNextOf(const Judge *L) {
   if (!j || L->hold || L->o.ready != 1 || j->readyN < 1 || !theCarry.set) return;
   if (!anchorInto(&theCarryNext, j->readyRow1, j->readyLine, j->readyN)) return;
   theCarryNext.set = 1; theCarryNext.id = -1; theCarryNext.nrest = j->readyN;
-  for (int i = 0; i < j->readyN; i++) theCarryNext.rest[i] = j->readyLine[i];
+  for (int i = 0; i < j->readyN; i++) { theCarryNext.rest[i] = j->readyLine[i]; theCarryNext.at[i] = 0; }   // (found on the board once it lands: no frame judged)
   theCarryNext.settled = 0; theCarryNext.broke = 1; theCarryNext.ready = 1; theCarryNext.made = (Made){ 0, 0, 1, 0 };
 }
 static void carryReady(const Judge *H, int32_t qid) {
@@ -1407,6 +1906,10 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // found, on the board once everything lands, is pressed on that board: on one still moving it waits as a settled line does)
   int moving = (C->settled || C->ready) && (hasActivePanels(decQ.b) || decQ.b->swappingCount > 0);
   JudgeOpts jo = { C->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, moving ? 1 : 0, 0, 1 };
+  // (each swap's walk begun no sooner than it was judged to begin: the line in progress played in the frames it was judged in)
+  int32_t notBefore[MAXLINE]; for (int i = 0; i < nrest; i++) notBefore[i] = C->at[skip + i];
+  jo.notBefore = notBefore; jo.nNotBefore = nrest;
+  carryNBn = imin(nrest, 64); for (int i = 0; i < carryNBn; i++) carryNB[i] = notBefore[i];   // (and the line's ranking judged so: rank.c judgeCand)
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
   for (int i = 0; i < j.nats && i < nrest; i++) rest[i] = (CR(rest[i]) + j.risen[i]) * 8 + CC(rest[i]);

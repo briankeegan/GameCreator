@@ -455,6 +455,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   double searchShare = clockShareBegin(searchesEnd());
   static Found S;
   searchPrep(&R, &S);
+  extLogged = 0; extSkip = 0; extCutN = 0;   // (the extension's log is this decision's: cleared before any search begins, the ones beside this thread too)
   int beside = breakBegin(&R, &S, lineFrom, linePressed);
   if (!beside) searchUnsplit();
   searchBeside = beside;
@@ -630,6 +631,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" under="); L_i(R.under); L_s(" mat="); L_d(R.F.v[FACT_US_MATERIAL]); L_s(" pan="); L_i(panelsOn(decQ.b)); L_s(" chain="); L_i(A->chain); L_s(" combo="); L_i(A->combo); L_s(" broke="); L_i(A->broke); L_s(" clr="); L_i(A->cleared);
   // (the chain the board makes left alone, and the one it makes with the line played: own=4/2 is a chain cut short -- a line the judge
   // could not play out, or the hold, shows the board's own)
+  if (lastPressedN && opTryN) { L_s(" opPressed="); for (int i = 0; i < lastPressedN; i++) { if (i) L_s(";"); L_i(lastPA[i] / 8); L_s(","); L_i(lastPA[i] % 8); L_s("@"); L_i(lastPT[i]); L_s("+"); L_i(lastPR[i]); } lastPressedN = 0; }
+  if (lastCutRows[0] && opTryN) { L_s(" opCut="); L_i(lastCutClock); L_s(":"); L_i(lastCutCell / 8); L_s(","); L_i(lastCutCell % 8); L_s(":"); L_i(lastCutStates); L_s(":"); L_s(lastCutRows); lastCutRows[0] = 0; }
+  if (opLinkCands) { L_s(" linkCands="); L_i(opLinkCands); L_s("/"); L_i(opLinkBest); }
+  if (opNeed) { L_s(" need="); L_i(opNeed); L_s("/"); L_i(needKept); L_s("/"); L_i(needLost); }
   if (aloneChain > 1 && P.line) { L_s(" own="); L_i(aloneChain); L_s("/"); L_i(A->whole >= 0 ? A->whole : aloneChain);
     // (and the lines that live and keep it, the hold among them: a cut with one of them there is the plan's to count)
     int keeps = 0; for (int i = 0; i < n; i++) keeps += order[i]->o.lives && !cutsShort(order[i]);
@@ -667,7 +672,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (chainUp) { L_s(" chainUp="); L_i(chainUp); L_s("/"); L_i(chainNow); L_s("/"); L_i(chainAfter); if (opTried > 1) { L_s(" opTried="); L_i(opTried); }
     // (the opening's line as the judge played it: its chain and the cells it throws -- beside chainAfter, the cells the plan said)
     if (chainUp >= 2 && P.line) { L_s(" opJudged="); L_i(P.line->apChain); L_s("/"); L_i(thrownOf(P.line)); } }
-  if (opGrew) { L_s(" opgrew="); L_i(opLevels); L_s("/"); L_i(opGrewLen); L_s("/"); L_i(opGrowMs); L_s("/"); L_i(opOnPool); L_s("/"); L_i(opGrewCh); L_s("/"); L_i(opGrewN); L_s("/b"); L_i(opGrewBlind); L_s("/t"); L_i(opGrewCh2); if (opDesigned) { L_s("/d"); L_i(opDesigned); } if (cdAsk) { L_s("/T"); L_i(opSecondBest); L_s("n"); L_i(opSecondN); } L_s("/s"); L_i(opSightCh); L_s("x"); L_i(opSightLen); if (opGrew == 2) L_s("/raise"); }
+  if (opGrew) { L_s(" opgrew="); L_i(opLevels); L_s("/"); L_i(opGrewLen); L_s("/"); L_i(opGrowMs); L_s("/"); L_i(opOnPool); L_s("/"); L_i(opGrewCh); L_s("/"); L_i(opGrewN); L_s("/b"); L_i(opGrewBlind); L_s("/t"); L_i(opGrewCh2); if (opDesigned) { L_s("/d"); L_i(opDesigned); } if (opDesignedQuick) { L_s("/q"); L_i(opDesignedQuick); } if (opProveTried) { L_s("/p"); L_i(opProved); L_s(":"); L_i(opProveTried); L_s(":"); L_i(opProvedBest); } if (cdAsk) { L_s("/x"); L_i(opExtBest); } if (opPairN) { L_s("/r"); L_i(opPairN); L_s(":"); L_i(opPairBest); } L_s("/s"); L_i(opSightCh); L_s("x"); L_i(opSightLen); if (opGrew == 2) L_s("/raise"); }
   if (opGrew == 2) { L_s(" opflat="); L_i(opFlatN); if (opFlatPlayed) L_s("/played"); }
   if (taxMs >= 0) { L_s(" tx="); L_i(taxBase); L_s("/"); L_i(taxLong); L_s("/"); L_i(taxN); L_s("/"); L_i(taxMs); }
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
@@ -772,7 +777,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" sv="); L_i(__atomic_load_n(&svJobDone, __ATOMIC_ACQUIRE) ? 1 : 0); if (surviveAsked) L_s("/asked");   // (the survival job finished this decision; the backup asked of it)
   if (saveAsked) { L_s(" saveAsk="); L_i(saveNot); L_s("/"); L_i(saveAsked); L_s(":"); L_i((int64_t)saveCw); L_s("/"); L_i((int64_t)saveCk); if (saveOk) L_s("/needed"); } if (saveBlind) L_s(" saveBlind=1");   // (the threes the survival search found not needed, of those asked)
   if (refillAsked) { L_s(" refill="); L_i(refillAsked); L_s("/"); L_i(refillReady); L_s("/"); L_i(refillAlive); if (raiseWait) { L_s("/w"); L_i(raiseWait); } else if (refillAsked == -1) { L_s("/s"); L_i(raiseShut); } }
-  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decTap) L_s(" tap=1"); if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); L_s(" onDeep="); L_i(onLogDeep); if (onLogKept) L_s("/kept"); }
+  L_s(" waits="); L_i(R.breakWaits); L_s(" tight="); L_i(decQ.tight); L_s(" allow="); L_i(pressAllowance); if (decQ.b) { L_s(" cur="); L_i(decQ.b->curRow); L_s(","); L_i(decQ.b->curCol); } if (decTap) L_s(" tap=1"); if (onLogSlices) { L_s(" on="); L_i(onLogSlices); L_s("/"); L_i(onLogFound); L_s(" onDeep="); L_i(onLogDeep); if (onLogKept) L_s("/kept"); }
   L_s(" br=");
   if (ran) { L_i(theBr.depth); L_s("/"); if (theBr.pathLen) L_i(theBr.pathLen); else if (theBr.towardLen) { L_s("t"); L_i(theBr.towardLen); } else L_s("0");
              if (brCut) L_s("/cut"); if (brResumed) { L_s("/r"); L_i(brResumed); } if (theBr.wide) { L_s("/w"); L_i(theBr.wide); } if (theBr.carried) L_s("/carried"); if (theBr.built) L_s("/built"); if (theBr.fresh) L_s("/fresh"); }
@@ -803,7 +808,28 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the one order, its first eight: the play -- * the line in progress -- whether it lives or the frame its board is lost, the garbage it breaks)
   // (the line in progress offered and put down for another: the line played and the order's key that put it first, rank.c cmpKey)
   if (carriedJ && top && top != carriedJ && !top->carried && compareJudged(top, carriedJ) < 0) { L_s(" putDown="); L_play(top->hold ? PLAY_HOLD : top->k.play); L_s(":k"); L_i(cmpKey); }
-  if (opFallHeld) { L_s(" fallHeld=1"); if (opSecondWhy) { L_s(" second="); L_i(opSecondWhy); L_s(":"); L_i(opSecondCh); } }
+  // (the extension searched: its boards settled/kept, the chain left alone, the longest of any and of a kept one, put down late/for the floor, its ms)
+  if (extLogged) { L_s(" xs="); L_i(extLog.seen); L_s("/"); L_i(extLog.kept); L_s("/"); L_i(extLog.baseChain); L_s("/"); L_i(extLog.top); L_s("/"); L_i(extLog.topKept);
+    L_s("/"); L_i(extLog.late); L_s("/"); L_i(extLog.floorLost); L_s("/"); L_i((int32_t)extLog.ms); L_s("/L"); L_i(extLog.longest.set ? extLog.longest.chain : 0); L_s(":"); L_i(extLog.longCut); }
+  else if (extSkip) { L_s(" xs=-"); L_i(extSkip); }
+  if (openerPaused) L_s(" opPause=1");
+  if (opKeepHeld) { L_s(" keep="); L_i(opKeepHeld); }   // (the opener paused, the board about to be lost: the mode after it plays, the opener's chains still counted)
+  if (opKept) L_s(" opKept=1");
+  // (each extension the judge cut: swap k of s, why w (judge.c cutWhy), the frame f its last pressed swap's walk began, the search's chain x)
+  if (extCutN) { L_s(" extCut="); for (int i = 0; i < extCutN; i++) { if (i) L_s(","); L_s("k"); L_i(extCutLog[i][0]); L_s("s"); L_i(extCutLog[i][1]); L_s("w"); L_i(extCutLog[i][2]); L_s("f"); L_i(extCutLog[i][3]); L_s("x"); L_i(extCutLog[i][4]); } }
+  if (opLandedRows[0]) { L_s(" landed="); L_s(opLandedRows); }
+  // (each opener plan judged: pass p, swaps s, planned chain c, judged chain j, fires f frames on, verdict v (0 played, decide.c chainUp codes))
+  if (opTryN) { L_s(" opTries="); for (int i = 0; i < opTryN; i++) { if (i) L_s(","); L_s("p"); L_i(opTryLog[i][0]); L_s("s"); L_i(opTryLog[i][1]); L_s("c"); L_i(opTryLog[i][2]);
+    L_s("j"); L_i(opTryLog[i][3]); L_s("f"); L_i(opTryLog[i][4]); L_s("v"); L_i(opTryLog[i][5]); L_s("k"); L_i(opTryLog[i][6]); if (opTryLog[i][7]) L_s("D"); }
+    // (the first three plans' swaps, row,col each, the trigger last)
+    L_s(" opTrySeq="); for (int i = 0; i < opTryN && i < 3; i++) { if (i) L_s("|"); for (int s = 0; s < opTrySeqN[i]; s++) { if (s) L_s(";"); L_i(CR(opTrySeq[i][s])); L_s(","); L_i(CC(opTrySeq[i][s])); } } }
+  if (opNextDesign) { L_s(" nd="); L_i(opNextDesign); if (opNextDesign != -1) { L_s("/c"); L_i(opNextCh); L_s("s"); L_i(opNextLen); if (opNextDesign == -3) { L_s("/d"); L_i(opNextDrop); L_s(" ndcut="); L_i(opNextCut); L_s("@"); L_i(opNextCutCell / 8); L_s(","); L_i(opNextCutCell % 8); L_s(":"); for (int i = 0; i < opNextSeqN; i++) { if (i) L_s(";"); L_i(opNextSeq[i] / 8); L_s(","); L_i(opNextSeq[i] % 8); } L_s(":"); L_s(opNextRows); } } else { L_s("/w"); L_i(opDesignWhy); L_s("/l"); L_i(opDesignLinks); L_s("/q"); L_i(opSeqLinks); L_s("/ms"); L_i(opNextMs); } }
+  if (opCdRows[0]) { L_s(" cdboard="); L_s(opCdRows); }
+  if (cdAsk && opExtN) { L_s(" opExt="); L_i(opExtMs); L_s("ms"); for (int i = 0; i < opExtN; i++) { L_s(i ? "," : ":"); L_s("s"); L_i(opExtCh[i][0]); L_s("c"); L_i(opExtCh[i][1]); L_s("x"); L_i(opExtCh[i][2]); } }
+  // (each extension under the fall: swaps s, pressed by the judge p, chain as judged j, its search's x, lost d)
+  if (opFallHeld && opFallLineN) { L_s(" fallLines="); for (int i = 0; i < opFallLineN; i++) { if (i) L_s(","); L_s("s"); L_i(opFallLine[i][0]); L_s("p"); L_i(opFallLine[i][1]); L_s("j"); L_i(opFallLine[i][2]); L_s("x"); L_i(opFallLine[i][4]); if (opFallLine[i][3]) L_s("d"); if (opFallLine[i][5] >= 0) { L_s("l"); L_i(opFallLine[i][5]); } } }
+  if (opFallHeld) { L_s(" fallWay="); L_i(opFallWay); L_s(" fallBar="); L_i(opFallBar); L_s("/"); L_i(opFallExt); L_s(" fallExt="); L_i(opFallSeen); L_s("/"); L_i(opFallTop); L_s("/"); L_i(opFallDead); if (opFallLink) { L_s(" fallLink="); L_i(opFallLink); L_s("/"); L_i(opFallLinkCh); } }
+  if (opFallHeld) { L_s(" fallHeld=1"); if (opSecondWhy) { L_s(" second="); L_i(opSecondWhy); L_s(":"); L_i(opSecondCh); if (opSecondWhy >= 4 && opSecondWhy != 8) { L_s(":"); L_i(opSecondMs); L_s("ms:n"); L_i(opSecondN); L_s(":d"); L_i(opDesignWhy); L_s("/"); L_i(opDesignLinks); } } }
   if (pvKind) { L_s(" pv="); L_i(pvKind); if (pvKind >= 3) { L_s(":"); L_i(pvV[0]); } if (pvKind >= 5) { L_s("/"); L_i(pvV[1]); } if (pvKind == 9) { L_s(":f"); L_i(pvV[2]); L_s(":"); L_i(pvV[3]); L_s("/"); L_i(pvV[4]); } if (pvKind == 10) { L_s(":"); L_i(pvV[2]); } }
   if (carryDrop) {
     L_s(" carryDrop="); L_i(carryDrop);
@@ -817,6 +843,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // the list asking nothing, is not said)
   if (!carriedJ && !carryDrop && carryNone && carryNone != 16 && carryNone != 21) {
     L_s(" carryNone="); L_i(carryNone);
+    if (carryNone == 20) { L_s(" waste="); for (int i = 0; i < 5; i++) { if (i) L_s("/"); L_i(carryWaste[i]); } }
     if (carryNone == 19 && carryJudgeDrop >= 0 && carryJudgeDrop < NDROPS) { char c[3] = { ':', "botfrucwj2"[carryJudgeDrop], 0 }; L_s(c); }
   }
   // (A LATER LOSS PASSED OVER: where nothing lives, the line offered that is lost latest, where that is a break's time (rankSave) or more
@@ -1004,7 +1031,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); taReset(); lifeDumps = 0; openerOver = 0; openerChained = 0; openerThrown = 0; openerSum = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0; opFiredAt = -1;
+  modeLeft(); taReset(); lifeDumps = 0; openerOver = 0; openerPaused = 0; opKeepOn = 0; opKeepHeld = 0; openerChained = 0; openerThrown = 0; openerSum = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0; opFiredAt = -1;
   if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; garbageSeen = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
