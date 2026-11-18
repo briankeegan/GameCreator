@@ -606,6 +606,13 @@ static double diesAt(const Judge *x);
 // (a combo of four or more, its chain two at most, beside a line that is lost no later than it)
 static int finishComboBy(const Judge *c, const Judge *o) { return !c->hold && !c->o.dead && c->apCombo >= 4 && c->apChainAll <= 2 && !(o->apCombo >= 4) && diesAt(c) >= diesAt(o); }
 static int finishSafe(const Judge *J) { if (J->o.dead || J->o.lives) return 0; double d = diesAt(J); return d >= FINISH_SAFE && d < 1e299; }
+// (A COMBO SAFE BESIDE A CHAIN -- the owner: survive by breaking garbage with combos, not chains: in finish them, a combo the list asks
+// (four or more, at most a 2x) whose board is lost HORIZON or more from now -- a break's time and more for the next decision -- survives
+// as one that lives does beside a line whose chain runs past two; the shorter chain then decides, 1'c)
+static int finishSafeCombo(const Judge *J, const Judge *o) {
+  if (!finishAsked() || J->hold || J->o.dead || J->o.lives || J->outside || J->apCombo < 4 || chainPastTwo(J) || !chainPastTwo(o)) return 0;
+  double d = diesAt(J); return d >= HORIZON && d < 1e299;
+}
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
 // (A BOARD THAT OUTLIVES ANOTHER: c's is lost -- past the horizon or not -- and o's lives, stands the whole judging, or is lost a break's
 // time (rankSave) or more later, on the frame each is lost, no walk charged; a loss not asked outlives nothing)
@@ -624,7 +631,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (IN FINISH THEM, A BOARD THAT STANDS TWICE THE HORIZON IS SAFE -- the owner: survival is not pushed where the board is not dying: a
   // line whose board is lost FINISH_SAFE or more from now, its next moves played (diesAt: its own loss or the life after it), survives as
   // one that lives does, and the combos decide between them)
-  if (finishAsked()) { if (!lx && finishSafe(x)) lx = 1; if (!ly && finishSafe(y)) ly = 1; }
+  if (finishAsked()) { if (!lx && (finishSafe(x) || finishSafeCombo(x, y))) lx = 1; if (!ly && (finishSafe(y) || finishSafeCombo(y, x))) ly = 1; }
   // (and the line in progress's horizon credit is no life beside a combo lost no sooner than it: the combo is the attack)
   if (finishAsked()) {
     if (lx && !x->o.lives && !finishSafe(x) && finishComboBy(y, x)) lx = 0;
