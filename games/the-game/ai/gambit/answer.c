@@ -879,6 +879,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     L_s(":"); if (j->o.lives) L_s("L"); else if (j->o.lostAt == FOREVER) L_s("inf"); else L_i(j->o.lostAt);
     L_s(":"); L_i(j->apBroke); if (j->readyNext == 1) L_s(":n");
     { int32_t b = j->hold ? 0 : blocksOf(j->apCombo, j->apChain); if (b) { L_s(":b"); L_i(b); } }   // (the blocks it throws)
+    if (!j->hold && j->apCombo >= 3) { L_s(":c"); L_i(j->apCombo); }   // (the biggest clear it makes)
     if (j->apChainAll >= 2) { L_s(":x"); L_i(j->apChainAll); }   // (the whole chain it ends in, the board's own falling chain with it)
   }
   // (WHAT EACH SWAP OF THE LINE PLAYED DOES: the line judged again without it -- n nothing lost without it (it does nothing), else what
