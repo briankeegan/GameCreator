@@ -54,7 +54,7 @@ twice running, then the next; all 99 are run once every board passes, and any bo
 No board is let off at 7.
 Then (the owner): with the 99 at eight and the game no worse for it, the opener becomes fill's own opening -- the switcher's
 first move, not a mode of its own.
-None of it is merged until it dies no more than before (the owner): the opener runs before it survived 84-86 of 100.
+None of it is merged until the opener survives 100 of 100 (the owner) -- its own target, above.
 
 1. **Level 11.** Training, `lua/check.lua`, the fight and the live run all play `LevelPresets.getModern(11)`; every place that
    assumes level 10 (its health, its frame constants, the docs) reads the level it is handed.
