@@ -822,12 +822,13 @@ static int32_t opSecondCh, opSecondWhy, opSecondMs, opSecondN;   // (and the tim
 // TALL GARBAGE: a slab OP_TALL rows or more on the board or on its way -- one broken gives back one row, a pop at a time, so the next
 // chain's panels come slowly (the large slabs; a factory's are two rows)
 #define OP_TALL 6
-static int tallGarbage(const Question *q) {
-  for (int i = 0; i < q->narr; i++) if (q->arr[i].height >= OP_TALL) return 1;
-  for (int i = 0; i < q->b->ninc; i++) if (q->b->inc[i].height >= OP_TALL) return 1;
-  for (int r = 1; r < q->b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = q->b->p[r][c].f; if (f[ISGARBAGE] && f[ISGARBAGE] != NUL && f[GHEIGHT] >= OP_TALL) return 1; }
+static int garbageRows(const Question *q, int rows) {
+  for (int i = 0; i < q->narr; i++) if (q->arr[i].height >= rows) return 1;
+  for (int i = 0; i < q->b->ninc; i++) if (q->b->inc[i].height >= rows) return 1;
+  for (int r = 1; r < q->b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = q->b->p[r][c].f; if (f[ISGARBAGE] && f[ISGARBAGE] != NUL && f[GHEIGHT] >= rows) return 1; }
   return 0;
 }
+static int tallGarbage(const Question *q) { return garbageRows(q, OP_TALL); }
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -1160,14 +1161,14 @@ static Played playOf(const Read *R, int n) {
     if (lnk) { opFallLink = lnk->o.j.brokeLink; opFallLinkCh = lnk->apChainAll; }
     // (SHORT OF IT, NOT AT THE BOARD -- the owner: a board lost after the chain makes no second one: an extension short of what is still
     // needed whose board is lost within OP_FALL_LOST gives way to the line ranked first of those whose board lives, or is lost
-    // OP_FALL_KEEP later; never under tall garbage, where the loss foreseen counts neither the panels its pop brings -- their colours not shown
-    // till then -- nor the time its pop stops the board)
+    // OP_FALL_KEEP later; never under a slab of two rows or more, where the loss foreseen counts neither the panels its pop brings -- their
+    // colours not shown till then -- nor the time its pop stops the board: combo garbage, a row a piece, only)
     // (and the hold the rule falls back on with nothing else to play, alike, where its chain is short of need; never for a line that makes
     // the chain falling shorter than the hold's)
     const Judge *keep = 0, *held = 0;
     for (int i = 0; i < n; i++) if (order[i]->hold) held = order[i];
     const Judge *base = ext && ext->apChainAll < need ? ext : bar < need && !ext && !lnk && !brk && !twoReaches && !two ? held : 0;
-    if (base && !tall && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
+    if (base && !garbageRows(&decQ, 2) && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
         if (J != base && !J->hold && J->apChainAll >= bar && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
