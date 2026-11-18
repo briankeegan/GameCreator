@@ -1227,16 +1227,19 @@ static Played playOf(const Read *R, int n) {
   // on; one whose board then stands at least as long as the line on top's -- the stop its clear gives coming when the board needs it --
   // and still makes its combo is waited for: this decision presses nothing, the next one asks again)
   comboTimed = 0;
-  if (finishAsked() && P.line && n && !order[0]->o.lives && !P.deferred && clockFrameOut && !clockFrameOut()) {
+  // (never with an eight on top -- it is fired -- nor on a board left alone lost within two breaks' time: a wait there is a wait the
+  // board does not survive the next decision getting wrong; set 86 combo_storm 1, an eight waited for at 92 frames from the loss, lost)
+  if (finishAsked() && P.line && n && !order[0]->o.lives && !P.deferred && clockFrameOut && !clockFrameOut() &&
+      !(P.line->apCombo >= 8 && P.line->apChain < 2) && !(holdLost >= 0 && holdLost < 2 * rankSave)) {
     double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
     double topLost = diesAt(P.line);
     int tried = 0;
     for (int i = 0; i < n && tried < COMBO_TIMED && !clockFrameOut() && !comboTimed; i++) {
       const Judge *J = order[i];
-      if (J->hold || J->o.dead || J->o.lives || J->apCombo < 4 || J->apChainAll > 2) continue;
+      if (J->hold || J->o.dead || J->o.lives || J->apCombo < 4 || J->apCombo >= 8 || J->apChainAll > 2) continue;
       tried++;
       for (int w = COMBO_WAIT; w <= COMBO_WAIT_MAX && !clockFrameOut(); w += COMBO_WAIT) {
-        if (holdLost >= 0 && w >= holdLost) break;   // (never waited past the board left alone's own loss)
+        if (holdLost >= 0 && w + rankSave >= holdLost) break;   // (a wait ends a break's time before the board left alone is lost)
         double sh = clockShareBegin(nowMs() + CUT8_MS);
         Outcome d = outcomeOf(J->k.seq, J->k.nseq, J->settled, 0, w);
         clockShareEnd(sh);
