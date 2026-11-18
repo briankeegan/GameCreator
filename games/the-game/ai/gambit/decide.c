@@ -1300,7 +1300,13 @@ static Played playOf(const Read *R, int n) {
     if (base && !garbageRows(&decQ, 2) && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
         if (J != base && !J->hold && J->apChainAll >= bar && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
-    opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
+    // (THE EIGHT GIVES WAY TO A BOARD THAT LIVES: an extension reaching need whose board is lost gives way to a line -- the hold too --
+    // whose board lives, the chain falling no shorter: the panels a long chain spends are the ones the board digs with after it; set 86
+    // combo_storm 2, an 8 extended to a board left nine panels and lost 290 frames on)
+    if (ext && ext->apChainAll >= need && !ext->o.lives)
+      for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
+        if (J != ext && !J->o.dead && J->o.lives && (J->hold ? bar : J->apChainAll) >= bar) keep = J; }
+    opFallWay = ext && ext->apChainAll >= need && !keep ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
     else if (opFallWay == 6) P.line = P.top = lnk;
