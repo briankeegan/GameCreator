@@ -659,6 +659,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (finishAsked()) {
     if (lx && !x->o.lives && !finishSafe(x) && finishComboBy(y, x)) lx = 0;
     if (ly && !y->o.lives && !finishSafe(y) && finishComboBy(x, y)) ly = 0;
+    // (nor beside a combo that sends no chain lost within a break's time of it, where the line in progress runs past 2x -- the owner:
+    // finish them sends combos, not chains; set 86, 517 decisions of run 4046 a chain past 2x kept by its horizon credit over a line
+    // with none as long lived)
+    #define PURE_COMBO(J) (!(J)->hold && !(J)->o.dead && (J)->apCombo >= 4 && (J)->apChainAll < 2)
+    if (lx && !x->o.lives && !finishSafe(x) && chainPastTwo(x) && PURE_COMBO(y) && finishAlike(x, y)) lx = 0;
+    if (ly && !y->o.lives && !finishSafe(y) && chainPastTwo(y) && PURE_COMBO(x) && finishAlike(x, y)) ly = 0;
+    #undef PURE_COMBO
   }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
