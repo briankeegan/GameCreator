@@ -1305,6 +1305,13 @@ static Played playOf(const Read *R, int n) {
       // pressed, put down at 190 frames for a break that made a 2)
       int fires = opKeepOn && decQ.b->clock - opKeepAt <= 40 && R->F.known[FACT_US_DIES] && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES < R->F.v[FACT_US_DIES];
       if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires)) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
+      // (and while it waits for its panels to come to rest, the board is held: a clear short of what is needed spends the panels it is
+      // made of -- set 86 factory 5, a 3's design half pressed, two 2s played in its waits and no 3)
+      else if (!t2 && fires && opKeepOn && (opSecondWhy == 5 || opSecondWhy == 9) && P.line && !P.line->hold &&
+               (P.line->apCombo > 0 || P.line->apChain > 0) && P.line->apChainAll < imax(OPENER_LEAST, opNeed)) {
+        const Judge *h = 0; for (int i = 0; i < n; i++) if (order[i]->hold) h = order[i];
+        if (h) { P.top = h; P.line = 0; P.wait = 0; P.deferred = 0; opNextDesign = 200; }
+      }
     }
   }
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
