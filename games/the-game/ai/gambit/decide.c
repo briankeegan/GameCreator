@@ -901,12 +901,16 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   // (the next chain that reaches what is still needed looked for first, in half the time, a shorter one only where none does -- a 3 and a
   // 4 is a 7: set 86 large_garbage 6, 3s and 4s designed after the 3 with 5 still needed)
   int32_t want = openerSum > 0 ? imax(opDesignLeast, opNeed) : opDesignLeast; int fresh = 0;
+  // (in the swaps that can be pressed before the board is lost, the slab's pop still to come counted: a design that fires after it is put
+  // down for the dig -- set 86 large_garbage 6, the 5 the eight needed designed in 11 swaps with the board lost in 119 frames)
+  int maxSw = OP_NEXT_MAXSW;
+  if (R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0) maxSw = imax(1, imin(maxSw, (int)((R->F.v[FACT_US_DIES] - popLeft(decQ.b)) / OPEN_SWAP_FRAMES) - 1));
   if ((!pl || pl->ch < want) && want > opDesignLeast) {
     static OpPath dw; int32_t lo = opDesignLeast; opDesignLeast = want;
-    if (opDesign(landed, ms * OP_SECOND_DESIGN * 0.5, &dw, OP_NEXT_MAXSW)) { dp = dw; pl = &dp; fresh = 1; }
+    if (opDesign(landed, ms * OP_SECOND_DESIGN * 0.5, &dw, maxSw)) { dp = dw; pl = &dp; fresh = 1; }
     opDesignLeast = lo;
   }
-  if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN * (want > opDesignLeast ? 0.5 : 1), &dp, OP_NEXT_MAXSW)) { pl = &dp; fresh = 1; }
+  if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN * (want > opDesignLeast ? 0.5 : 1), &dp, maxSw)) { pl = &dp; fresh = 1; }
   if (fresh) {
     opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX); opKeepAt = decQ.b->clock; cbOfBoard(landed, &opKeepPrev);
     for (int i = 0; i < opKeepSeq.n; i++) { opKeepSeq.r[i] = (cb8)CR(dp.path[i]); opKeepSeq.c[i] = (cb8)CC(dp.path[i]); } }
