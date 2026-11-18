@@ -877,6 +877,7 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
 // motion or a slab popping, nearest the cursor first -- one of them takes a link out from under the chain, and the ranking keeps the
 // line that meets the list (the owner: every attack is what the mode asks)
 #define CUTN 16
+#define CUT_BLIND 4   // (the blind swaps offered beside the partners' cuts)
 #define CUT_PAIRS 6   // (the partner swaps paired into two-swap cuts: the first six, fifteen pairs)
 static int32_t cutOffered;   // (the cuts this decision offered: the log's)
 static int cutLines(const Read *R, Cand *out, int n, int cap) {
@@ -939,7 +940,9 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
     mv[nm] = r * 8 + c; d[nm] = iabs(r - b->curRow) + iabs(c - b->curCol); nm++;
   }
   for (int i = 1; i < nm; i++) for (int j = i; j > 0 && d[j] < d[j - 1]; j--) { int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; }
-  for (int i = 0; i < nm && i < CUTN && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &mv[i], 1, -1, 0)) { n++; cutOffered++; }
+  // (the blind swaps fewer where the partners were found: the judging's time goes to the cuts that take a link out)
+  int blind = nt ? CUT_BLIND : CUTN;
+  for (int i = 0; i < nm && i < blind && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &mv[i], 1, -1, 0)) { n++; cutOffered++; }
   return n;
 }
 static int readyBuild(const Read *R, Cand *out, int n, int cap);
