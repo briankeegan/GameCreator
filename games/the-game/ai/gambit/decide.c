@@ -1199,7 +1199,9 @@ static Played playOf(const Read *R, int n) {
     double left = C2.due ? C2.due - C2.margin - nowMs() : 0;
     OpPath dp;
     opNextDesign = -1; opNextMs = (int32_t)(left * OP_NEXT_SHARE); opDesignWhy = 0;
-    opDesignCost = OP_NEXT_COST; opDesignLeast = OPENER_LEAST; int got = left > 8 && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_CB_MAXSW); opDesignCost = OP_CB_COST; opDesignLeast = OP_TWO_FROM;
+    // (on the board as it stands only while nothing on it moves: a panel hovering above a swap refuses it, and a board in motion is not the
+    // one its swaps meet -- moving, the next chain is designed on the board it settles to, below)
+    opDesignCost = OP_NEXT_COST; opDesignLeast = OPENER_LEAST; int got = left > 8 && !hasActivePanels(decQ.b) && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_CB_MAXSW); opDesignCost = OP_CB_COST; opDesignLeast = OP_TWO_FROM;
     if (got) {
       opNextDesign = -2; opNextCh = dp.ch; opNextLen = dp.len + 1;
       int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int i = 0; i < dp.len; i++) seq[ns++] = dp.path[i]; seq[ns++] = dp.trig;
