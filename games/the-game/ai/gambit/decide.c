@@ -8,9 +8,6 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OP_FALL_LOST AT_LEVEL(200)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-193 and a break at 442-465; combo_storm 3's at 205, kept, made its 8; the large slabs', lost at 299-471 a second chain is still made)
 #define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
-#define OPENER_LOST_ON AT_LEVEL(240)   // (and once a chain is thrown: the horizon -- the next chain is built only on a board that stands)
-#define OP_CHAIN_AFTER AT_LEVEL(240)   // (the frames an opener's chain must leave the board once it has run its course: the horizon)
-#define OPENER_PILE 3   // (rows of garbage on the board at which the opener, a chain thrown, gives way to the mode to break them)
 #define OPENER_CHAINS 3
 #define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
 static int tallGarbage(const Question *q);
@@ -160,18 +157,7 @@ static int readBoard_(Read *R) {
   // a chain falling is a board that cannot top out --
   // set 86 large_garbage 6, a 5 designed and pressed after the 3, put down at 69 frames for a dig that left nothing to build with)
   int nextFires = opKeepOn && openerSum > 0 && decQ.b->clock - opKeepAt <= 40 && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < F->v[FACT_US_DIES];
-  // (and once a chain is thrown, the next one is built only on a board that stands: lost within OPENER_LOST_ON, the opener gives way --
-  // set 86 combo_storm 1, a 6x thrown, the second chain designed from 245 frames to the loss down to 82, and the board lost at 981)
-  int32_t lostBar = openerSum > 0 ? OPENER_LOST_ON : OPENER_LOST;
-  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < lostBar && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
-  // (and once a chain is thrown, a pile of OPENER_PILE rows or more of garbage on the board is the mode's to break, while it is small: a
-  // pile broken whole converts at once and holds the board for its pop -- set 86 combo_storm 1, six rows broken at 1491, the board held
-  // 200 frames and left 150 from its loss)
-  if (openerSum > 0 && !ownFalling && !opLineOn && !carryOpener() && !nextFires) {
-    int rows = 0;
-    for (int r = 1; r < decQ.b->nrows && r <= TOP(decQ.b); r++) { int g = 0; for (int c = 1; c <= W; c++) { const int32_t *f = decQ.b->p[r][c].f; if (f[ISGARBAGE] && f[ISGARBAGE] != NUL && f[STATE] != MATCHED) g = 1; } rows += g; }
-    if (rows >= OPENER_PILE) aboutLost = 1;
-  }
+  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
   // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
   // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
   // chains, thrown before or after, add up to the eight; set 86 combo_storm 2, a 4 thrown, the opener ended, and a 5 at 1027 the mode's)
@@ -418,15 +404,6 @@ static int32_t saveBlind;   // (a three kept as the save because the save check 
 static double saveCw = -1, saveCk = -1;
 static double svLost = -1; static int32_t svClean;   // (the survival search's loss from now this decision, and whether its line wastes no three: the save's other side)
 static double saveRoomMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
-#define CONT_LINES 6   // (the lines judged with the survival search run on after them, a decision: decide.c, the life after the line)
-#define COMBO_TIMED 3   // (the combo lines judged pressed later, a decision: decide.c, the combo timed for its stop)
-#define COMBO_WAIT 30   // (the frames between the waits tried)
-#define COMBO_WAIT_MAX 120
-static int32_t comboTimed;   // (the frames waited for a combo this decision, 0 none: the log's timed=)
-#define CUT8_LINES 4   // (the combos so tried a decision)
-#define CUT8_MS 4      // (the judging's time for each eight tried with one swap more: decide.c, the eight without its chain)
-#define CONT_MS 6      // (the survival search's time for each)
-static int32_t contAsked;   // (the lines so judged this decision: the log's cont=)
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
   if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
@@ -460,7 +437,7 @@ static int32_t carryWaste[5];   // (the line in progress taken out as a wasted t
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
-static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 8 the line that keeps the chain and the board over the hold that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
+static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
                                                                                    // for the next chain, 4 a set-up short of it)
 static int32_t opFallLine[8][6], opFallLineN;   // (each extension under the fall: its swaps, those the judge pressed, its chain as judged, lost, its chain as its search said, the frames to its loss -1 living: the log's fallLines=)   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
@@ -468,15 +445,7 @@ static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (an extension of the falling chain: a line played as one -- PLAY_EXTEND, or PLAY_LINEUP, the same search's lines while a garbage slab
 // pops beside the chain -- or the line in progress begun as one)
 static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || (J->carried && (b == PLAY_EXTEND || b == PLAY_LINEUP)); }
-// (an eight still loaded on the board the line ends on -- one swap from firing)
-static int loadedAfter(const int32_t *seq, int n) {
-  static Board *eb; if (!eb) eb = nb_new(); if (!eb) return 0;
-  const Board *e = lineEnd(seq, n, 0);
-  if (!e) return 0;
-  cloneBoard(eb, e);
-  return twinCostOn(eb) == 0;
-}
-static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down, -8 the second eight's swap unloading the first; 0 not asked: the log's)
+static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down; 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -624,67 +593,6 @@ static int ranked(const Read *R, const Found *S) {
     Cand sk;
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
-  }
-  // (THE LIFE AFTER THE LINE -- the owner: survival is not the line that buys the most frames alone, with nothing pressed after it: in
-  // finish them, where nothing lives, the best lines -- the combos first -- are each judged with the survival search run on from the
-  // board they leave (contLostOf), and ranked on the later of that and their own loss: a line lost at 137 if nothing more is pressed,
-  // on a board with room for the next block made by the next moves, is no emergency that only a chain answers)
-  // (asked up to the move's own frame, the host's hard stop, as the judging is -- the decision's own time is spent by then -- each line its
-  // own CONT_MS)
-  contAsked = 0;
-  // (in the opener too -- the owner: the opener does not die: a chain built while a block is on its way is judged with the moves after it)
-  int contOpener = R->rule >= 0 && theTables.r[R->rule].table == 2;
-  if ((finishAsked() || contOpener) && n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
-    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
-    for (int pass = 0; pass < 2; pass++)
-      for (int i = 0; i < n && contAsked < CONT_LINES && !clockFrameOut(); i++) {
-        Judge *J = order[i];
-        if (J->hold || J->o.lives || J->o.dead || (pass == 0) != (J->apCombo >= 4)) continue;
-        double sh = clockShareBegin(nowMs() + CONT_MS);
-        double c = contLostOf(J, CONT_MS); contAsked++;
-        clockShareEnd(sh);
-        if (c > 0) { int32_t f = c >= 1e9 ? FOREVER : (int32_t)c; if (J->extLost == NOT_ASKED || f > J->extLost) J->extLost = f; }
-      }
-    clockDue = due; clockShare = share;
-    if (contAsked) sortJudged(order, n);
-  }
-  // (THE COMBO WITHOUT ITS CHAIN -- the owner: make the eight, and before or after it move the panels so the ones that fall make no
-  // chain: in finish them, a combo of four or more on offer that sends a chain -- the best CUT8_LINES of them -- is judged
-  // again with one swap more, after its trigger, then before its first, near its trigger's rows; the first whose combo is no smaller,
-  // that sends no chain and whose board is lost no sooner, or is safe (FINISH_SAFE), takes its place -- a combo with a 2x tried as well;
-  // for one past 2x, a 2x where no swap stops the chain whole)
-  if (finishAsked() && n && clockFrameOut && !clockFrameOut()) {
-    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
-    int cut = 0, tried = 0;
-    for (int i = 0; i < n && !clockFrameOut(); i++) {
-      Judge *E = order[i];
-      if (E->hold || E->o.dead || E->apCombo < 4 || E->apChainAll < 2 || E->k.nseq + 1 > MAXLINE || tried >= CUT8_LINES) continue;
-      tried++;
-      int tr = CR(E->k.seq[E->k.nseq - 1]), done = 0;
-      static Judge CE, C2E; int have2 = 0;
-      for (int side = 0; side < 2 && !done; side++)
-        for (int r = imax(1, tr - 1); r <= tr + 4 && !done && !clockFrameOut(); r++)
-          for (int c = 1; c < W && !done && !clockFrameOut(); c++) {
-            int32_t seq[MAXLINE]; int ns = 0;
-            if (side == 1) seq[ns++] = r * 8 + c;
-            for (int q = 0; q < E->k.nseq; q++) seq[ns++] = E->k.seq[q];
-            if (side == 0) seq[ns++] = r * 8 + c;
-            Cand k; if (!candOf(&k, PLAY_ENTRY, seq, ns, E->k.aim, 0)) continue;
-            k.settled = 0; k.twin = E->k.twin; k.x = E->k.x;
-            double sh = clockShareBegin(nowMs() + CUT8_MS);
-            int ok = judgeCand(R, &k, &CE);
-            clockShareEnd(sh);
-            if (!ok || CE.o.dead || CE.apCombo < E->apCombo || CE.apChainAll > 2) continue;
-            // (lost no sooner, or safe at the finish -- FINISH_SAFE on, where key 1 counts both as living and the shorter chain wins)
-            if (!(CE.o.lives || finishSafe(&CE) || (!E->o.lives && diesAt(&CE) >= diesAt(E)))) continue;
-            // (no chain at all first -- the owner: finish them sends combos, not chains; a 2x kept for a line past it where none is found)
-            if (CE.apChainAll >= 2) { if (E->apChainAll >= 3 && !have2) { C2E = CE; have2 = 1; } continue; }
-            *E = CE; done = 1; cut++;
-          }
-      if (!done && have2) { *E = C2E; cut++; }
-    }
-    clockDue = due; clockShare = share;
-    if (cut) sortJudged(order, n);
   }
   // THE THREE TAKEN OUT: each of the best lines that waste a three, judged again with one of its swaps left out at a time -- the line
   // without the swap that makes the three, where it does as well, is a line the order below keeps
@@ -1227,34 +1135,6 @@ static Played playOf(const Read *R, int n) {
     double dl = d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0), ol = lostAtOf(L->o.lostAt, 0);
     if (!d.late && !d.dead && d.lives >= L->o.lives && d.j.made.broke >= L->apBroke && dl >= ol) { P.line = 0; P.deferred = 1; }
   }
-  // (THE COMBO TIMED FOR ITS STOP -- the owner: wait to do a combo to give more time, not as soon as it can be: in finish them, where
-  // nothing lives, each of the best COMBO_TIMED combo lines (four or more, a 2x at most) is judged pressed later, COMBO_WAIT frames on and
-  // on; one whose board then stands at least as long as the line on top's -- the stop its clear gives coming when the board needs it --
-  // and still makes its combo is waited for: this decision presses nothing, the next one asks again)
-  comboTimed = 0;
-  // (never with an eight on top -- it is fired -- nor on a board left alone lost within two breaks' time: a wait there is a wait the
-  // board does not survive the next decision getting wrong; set 86 combo_storm 1, an eight waited for at 92 frames from the loss, lost)
-  if (finishAsked() && P.line && n && !order[0]->o.lives && !P.deferred && clockFrameOut && !clockFrameOut() &&
-      !(P.line->apCombo >= 8 && P.line->apChain < 2) && !(holdLost >= 0 && holdLost < 2 * rankSave)) {
-    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
-    double topLost = diesAt(P.line);
-    int tried = 0;
-    for (int i = 0; i < n && tried < COMBO_TIMED && !clockFrameOut() && !comboTimed; i++) {
-      const Judge *J = order[i];
-      if (J->hold || J->o.dead || J->o.lives || J->apCombo < 4 || J->apCombo >= 8 || J->apChainAll > 2) continue;
-      tried++;
-      for (int w = COMBO_WAIT; w <= COMBO_WAIT_MAX && !clockFrameOut(); w += COMBO_WAIT) {
-        if (holdLost >= 0 && w + rankSave >= holdLost) break;   // (a wait ends a break's time before the board left alone is lost)
-        double sh = clockShareBegin(nowMs() + CUT8_MS);
-        Outcome d = outcomeOf(J->k.seq, J->k.nseq, J->settled, 0, w);
-        clockShareEnd(sh);
-        if (d.late || d.dead) continue;
-        double dl = d.lives ? 1e9 : d.lostAt == NOT_ASKED ? -1 : lostAtOf(d.lostAt, 0);
-        if (d.j.made.combo >= J->apCombo && d.j.chainAll <= 2 && dl >= topLost && dl > diesAt(J)) { P.line = 0; P.deferred = 1; comboTimed = w; break; }
-      }
-    }
-    clockDue = due; clockShare = share;
-  }
   // (THE SECOND HAND -- the owner: set up between moves, never at the cost of the board's life: where the decision is the hold, the next
   // swap toward the eight kept as the target (propose.c twinNextSwap), judged on the engine, is pressed instead -- only where it lives
   // as the hold does or is lost no sooner, breaks the board's chain no shorter, wastes no three and keeps the window's reserve)
@@ -1273,7 +1153,6 @@ static Played playOf(const Read *R, int n) {
         else if (cutsShort(&FS)) freeSetup = -3;
         else if (wastesThree(&FS)) freeSetup = -4;
         else if (spendsReserve(&FS)) freeSetup = -5;
-        else if (twinSecond && !loadedAfter(one, 1)) freeSetup = -8;   // (the second eight's swap: never one that unloads the first)
         else { P.line = &FS; freeSetup = 1; }
       }
     }
@@ -1423,10 +1302,6 @@ static Played playOf(const Read *R, int n) {
         if (fit) ext = fit;
       }
     }
-    // (NO CHAIN THE BOARD DOES NOT OUTLIVE -- the owner: the opener does not die: an extension is taken only where the board still stands
-    // OP_CHAIN_AFTER once the chain has run its course (its board lost that long after the line is done, its next moves played) -- the
-    // garbage its stop time held back lands then; set 86 combo_storm 1, a 5x taken to 8x at 444, the board lost 70 frames after it ended)
-    if (ext && !ext->o.lives && ext->apDone >= 0 && diesAt(ext) - ext->apDone < OP_CHAIN_AFTER) ext = 0;
     opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
     opFallSeen = 0; opFallTop = -1; opFallDead = 0; opFallLineN = 0;
     for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->hold || !opExtLine(J)) continue;
@@ -1466,10 +1341,6 @@ static Played playOf(const Read *R, int n) {
         if (J->hold || J->o.dead || J->o.j.brokeLink <= 0 || J->apChainAll < bar || (ext && J->apChainAll < ext->apChainAll)) continue;
         if (!lnk || J->apChainAll > lnk->apChainAll || (J->apChainAll == lnk->apChainAll && J->o.j.brokeLink > lnk->o.j.brokeLink)) lnk = J;
       }
-    // (and the link into the garbage and the break after the chain alike: no line the board does not outlive by OP_CHAIN_AFTER -- set 86
-    // combo_storm 1, a 4x carried into the garbage to an 8x at 954, its board lost at 457 and the chain falling 300 frames of it)
-    if (lnk && !lnk->o.lives && lnk->apDone >= 0 && diesAt(lnk) - lnk->apDone < OP_CHAIN_AFTER) lnk = 0;
-    if (brk && !brk->o.lives && brk->apDone >= 0 && diesAt(brk) - brk->apDone < OP_CHAIN_AFTER) brk = 0;
     if (lnk) { opFallLink = lnk->o.j.brokeLink; opFallLinkCh = lnk->apChainAll; }
     // (SHORT OF IT, NOT AT THE BOARD -- the owner: a board lost after the chain makes no second one: an extension short of what is still
     // needed whose board is lost within OP_FALL_LOST gives way to the line ranked first of those whose board lives, or is lost
@@ -1489,26 +1360,7 @@ static Played playOf(const Read *R, int n) {
     else if (opFallWay == 6) P.line = P.top = lnk;
     else if (opFallWay == 5) P.line = P.top = brk;
     else if (two) P.line = P.top = two;
-    else {
-      // (THE CHAIN LEFT TO LAND, NEVER THE BOARD -- the owner: the opener does not die: where the falling chain alone reaches what is still
-      // needed, it is let land -- unless the hold is lost within OP_FALL_LOST and a line that keeps the chain whole is lost OP_FALL_KEEP
-      // later or lives: that line is played; set 86 combo_storm 1, a hold lost at 71 over a break that kept the 3x and stood to 500)
-      const Judge *h = 0, *kp = 0;
-      for (int i = 0; i < n; i++) if (order[i]->hold) { h = order[i]; break; }
-      // (each judged with its next moves played where that was asked: diesAt, the later of its own loss and the life after it)
-      if (h && !h->o.lives && h->o.lostAt != NOT_ASKED && h->o.lostAt < OP_FALL_LOST)
-        for (int i = 0; i < n && !kp; i++) { const Judge *J = order[i];
-          if (!J->hold && !J->o.dead && J->apChainAll >= bar && (J->o.lives || (diesAt(J) >= 0 && diesAt(J) - diesAt(h) >= OP_FALL_KEEP))) kp = J; }
-      // (and with none keeping the chain whole, the line that keeps the board longest, a break's time or more past the hold, its chain
-      // shorter or not -- the owner: the opener does not die; set 86 factory 3, a 4x let land on a board lost at 160 over a break lost at
-      // 323, the board lost 190 frames after the chain)
-      if (!kp && h && !h->o.lives && h->o.lostAt != NOT_ASKED && h->o.lostAt < OP_FALL_LOST)
-        for (int i = 0; i < n; i++) { const Judge *J = order[i];
-          if (J->hold || J->o.dead || diesAt(J) < 0) continue;
-          if (!(J->o.lives || diesAt(J) - diesAt(h) >= rankSave)) continue;
-          if (!kp || (J->o.lives && !kp->o.lives) || (!kp->o.lives && diesAt(J) > diesAt(kp))) kp = J; }
-      if (kp) { P.line = P.top = kp; opFallWay = 8; }
-      else { P.line = 0; P.top = h ? h : P.top; } } }
+    else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
   // as judged still a chain of OPENER_LEAST or more and its board not lost while it is pressed, is played over any line ranked above it
   // for a loss after it -- what comes after the chain is the next decision's, and its stop time is the board's)
