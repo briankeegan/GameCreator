@@ -741,7 +741,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
   // more panels -- before the mode and the walk
   // (not in finish them between a combo and a line that makes none: the combo is the attack, and the panels it spends are what it is made of)
-  if (!lx && shortOfPanels(x, y) && lostOf(x) >= rankSave && lostOf(y) >= rankSave && !(finishAsked() && (x->apCombo >= 4) != (y->apCombo >= 4)))
+  // (nor in finish them between a line whose chain runs past 2x and one whose does not: the shorter chain decides, 1'c -- set 86
+  // combo_storm 1, 1987: a 3x lost at 351 over a break lost at 368 for the panels it left)
+  if (!lx && shortOfPanels(x, y) && lostOf(x) >= rankSave && lostOf(y) >= rankSave && !(finishAsked() && (x->apCombo >= 4) != (y->apCombo >= 4)) &&
+      !(finishAsked() && chainPastTwo(x) != chainPastTwo(y)))
     return (cmpKey = __LINE__, (panelsLeft(x) > panelsLeft(y) ? -1 : 1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
