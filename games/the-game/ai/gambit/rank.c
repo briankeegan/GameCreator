@@ -804,8 +804,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (and a chain already past two when the decision is made is cut where it stands: of two past two, the shorter -- a 3 before a 5)
   if (finishAsked() && (lx || lostAlike(x, y)) && (chainPastTwo(x) || chainPastTwo(y)) && x->apChainAll != y->apChainAll) {
     const Judge *cl = x->apChainAll > y->apChainAll ? x : y, *o = cl == x ? y : x;
-    // (both living, or the cut lost no sooner: the chain cut at two whatever it breaks; lost alike and sooner: only where it breaks as much)
-    if (lx || (!o->o.lives && !cl->o.lives && diesAt(o) >= diesAt(cl)) || imax(0, o->apBroke) >= imax(0, cl->apBroke)) return (cmpKey = __LINE__, (cl == x ? 1 : -1));
+    // (both living or lost alike: the shorter chain, whatever each breaks -- the owner: no big chains at the finish; set 86 combo_storm 1,
+    // a 7x lost at 502 over a 4x lost at 498 with the next moves, on the garbage the 7x broke)
+    return (cmpKey = __LINE__, (cl == x ? 1 : -1));
   }
   // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that walks the input allowance below a
   // break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter after -- two
