@@ -1040,8 +1040,14 @@ static void opPairAll(const Question *q, double ms) {
     OpPath *p = &opByLen[ln];
     if (!opByLenHave[ln] || p->ch < OPENER_LEAST || imax(p->ch, p->chx) >= OPENER_SUM) continue;
     int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int k = 0; k < p->len; k++) seq[ns++] = p->path[k]; seq[ns++] = p->trig;
-    int rd = readyDefer; readyDefer = 1; endWanted = 1; outRooted = p->design;
+    // (judged with no garbage on its way: the next chain fires as this one lands, and a chain falling is a board the garbage cannot top
+    // out -- the slab lands on top of it; that judging is never kept, the game's own is)
+    int rd = readyDefer, kn = decQ.narr, kk = endNoKeep; int32_t kl = decF.land; readyDefer = 1; endWanted = 1; outRooted = p->design;
+    static Board *quiet; if (!quiet) quiet = nb_new();
+    Board *kb = decQ.b; if (quiet) { cloneBoard(quiet, kb); quiet->ninc = 0; decQ.b = quiet; }
+    decQ.narr = 0; decF.land = NOT_ASKED; endNoKeep = 1;
     Outcome oo = outcome(seq, ns, 1);
+    decQ.b = kb; decQ.narr = kn; decF.land = kl; endNoKeep = kk;
     outRooted = 0; int got = endWanted == 2; endWanted = 0; readyDefer = rd;
     p->ch2 = 0; opPairN++;
     const Board *lb = got ? endBoard : 0;
