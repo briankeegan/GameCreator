@@ -857,7 +857,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   // (the designer's chain first, in OP_SECOND_DESIGN of the time: its whole plan at once; the beam in the rest, grown on decision after
   // decision -- the landed board is the same board every decision of the fall -- where the designer finds none)
   static OpPath dp; const OpPath *pl = 0; double t0 = nowMs();
-  opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = openerSum > 0 ? OPENER_LEAST : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
+  opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = openerSum > 0 ? OPENER_LEAST : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW)) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
   double rest = ms - (nowMs() - t0);
   static int32_t grownFor = -1;
   if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
@@ -867,10 +867,11 @@ static const Judge *opSecondSwap(const Read *R, int n) {
     clockDue = keepDue; clockShare = keepShare;
   }
   opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1; opSecondMs = (int32_t)ms; opSecondN = opGrewN;
-  if (!pl && opHave && opBest.len >= 1 && opBest.ch >= (openerSum > 0 ? OPENER_LEAST : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)))) pl = &opBest;
+  if (!pl && opHave && opBest.ch >= (openerSum > 0 ? OPENER_LEAST : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)))) pl = &opBest;
   if (!pl) return 0;
   opSecondCh = pl->ch;
-  int32_t sw = pl->path[0], r = CR(sw), c = CC(sw);
+  // (a plan of its trigger alone -- the landed board's own chain one swap away -- is that swap)
+  int32_t sw = pl->len >= 1 ? pl->path[0] : pl->trig, r = CR(sw), c = CC(sw);
   const Board *b = decQ.b;
   opSecondWhy = 5;
   if (r < 1 || r >= b->nrows || c < 1 || c >= W) return 0;
