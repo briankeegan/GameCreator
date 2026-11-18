@@ -198,7 +198,10 @@ static int readBoard_(Read *R) {
   // or more -- a two-column eight of 11 or 12 panels is the attack asked, never a combo outside the list taken out as a wasted three;
   // set 86 combo_storm 1, 261 of 277 eights taken out so)
   { int chain = 0; for (int i = 0; i < R->list.n; i++) if (R->list.aim[i].chain.op) chain = 1;
-    if (!chain) for (int i = 0; i < R->list.n; i++) { Test *c = &R->list.aim[i].combo; if (c->op == OP_EQ && c->n == 8) c->op = OP_GE; } }
+    if (!chain) for (int i = 0; i < R->list.n; i++) { Test *c = &R->list.aim[i].combo; if (c->op == OP_EQ && c->n == 8) c->op = OP_GE; }
+    // (ANY COMBO BEFORE A THREE -- the owner: in finish them a three is the last resort, and every combo beats it: in a list that asks combos
+    // and no chain, its entry of exactly four asks four or more, so a 7 meets the list as a 4 does and is never a combo outside it)
+    if (!chain) for (int i = 0; i < R->list.n; i++) { Test *c = &R->list.aim[i].combo; if (c->op == OP_EQ && c->n == 4) c->op = OP_GE; } }
   // (WHAT THE OPENER STILL NEEDS IS ASKED -- the owner: a 6 and a 3 are the eight: with chains thrown, the opener's list asks a chain of
   // what is still needed in its place among its own entries, where none of them asks it)
   // (and under tall garbage, a chain of two that breaks it after the rest of the eight: its link breaks the slab chaining, the chain lives
