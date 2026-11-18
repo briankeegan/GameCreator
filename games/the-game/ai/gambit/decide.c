@@ -410,7 +410,7 @@ static int32_t opGrew;   // (the opening grown this decision: 1 for its plan, 2 
 static int32_t chainUp, chainNow, chainAfter;   // (the opener's second hand this decision: 2 a trigger fired, 1 a set-up pressed, -1 turned down; the trigger chain before and after: the log's)
 #define OP_TRY_LOG 8
 #define OP_NEXT_SHARE 0.5   // (the share of a decision's time the next chain's design is searched in)
-#define OP_NEXT_COST 5   // (a swap's worth in the next chain's design: any chain of what is still needed is the eight, however many swaps it takes)
+#define OP_NEXT_COST 20   // (a swap's worth in the next chain's design: a 3 kept to some eleven swaps -- a long build is pressed late, its board lost under a slab before it fires)
 static int32_t opNextCh, opNextLen, opNextMs;   // (and its chain designed, its swaps)
 static int32_t opNextDesign;   // (the next chain designed this decision: its chain as judged; -1 none designed, -2 short of the need, -3 not judged, -4 its board lost -- the log's nd=)
 static int32_t carryWaste[5];   // (the line in progress taken out as a wasted three: why (rank.c wasteWhy), its whole chain, the board's own, its threes, lost -- the log's waste=)
