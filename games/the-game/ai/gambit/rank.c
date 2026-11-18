@@ -600,6 +600,8 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 // of four or more it does not ask -- the board's own chain going on counted, as every line has it alike)
 #define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
 static int offMode(const Judge *J) { return !J->hold && !J->o.dead && !J->lengthens && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
+#define FINISH_SAFE (2 * HORIZON)   // (frames from now a finish board is safe at: rank.c, key 1)
+static int finishSafe(const Judge *J) { if (J->o.dead || J->o.lives) return 0; double d = diesAt(J); return d >= FINISH_SAFE && d < 1e299; }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
 // (A BOARD THAT OUTLIVES ANOTHER: c's is lost -- past the horizon or not -- and o's lives, stands the whole judging, or is lost a break's
 // time (rankSave) or more later, on the frame each is lost, no walk charged; a loss not asked outlives nothing)
@@ -615,6 +617,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // lives or is lost a break's time later, is a line that is lost -- death is never an option)
   if (lx && !x->o.lives && outlives(y, x)) lx = 0;
   if (ly && !y->o.lives && outlives(x, y)) ly = 0;
+  // (IN FINISH THEM, A BOARD THAT STANDS TWICE THE HORIZON IS SAFE -- the owner: survival is not pushed where the board is not dying: a
+  // line whose board is lost FINISH_SAFE or more from now, its next moves played (diesAt: its own loss or the life after it), survives as
+  // one that lives does, and the combos decide between them)
+  if (finishAsked()) { if (!lx && finishSafe(x)) lx = 1; if (!ly && finishSafe(y)) ly = 1; }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
