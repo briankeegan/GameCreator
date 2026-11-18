@@ -239,7 +239,9 @@ static void cbSeqMutate(const CbGrid *G0, CbSeq *S, int maxSw) {
   else { int d = (int)(cbNext() % 4u); if (d == 0 && S->r[at] > 1) S->r[at]--; else if (d == 1) S->r[at]++; else if (d == 2 && S->c[at] > 1) S->c[at]--; else if (S->c[at] < W - 1) S->c[at]++; }
 }
 // (the best sequence found in `ms` of the wall clock, maxSw swaps at most: its swaps into seq (r * 8 + c), the trigger into *tr, the
-// trigger's links into *links; the count of swaps, -1 none worth anything)
+// trigger's links into *links; the count of swaps, -1 none worth anything. The search goes on from the best of the search before it
+// (cbSeqKeep) where that sequence still plays on this board: a board little changed between decisions is searched across all of them)
+static LOCAL CbSeq cbSeqKeep;
 static int cbSeqDesign(const CbGrid *G0, double ms, int maxSw, int32_t *seq, int32_t *tr, int *links) {
   static LOCAL CbGrid T;
   if (maxSw > CB_SEQ_MAX) maxSw = CB_SEQ_MAX;
@@ -247,6 +249,11 @@ static int cbSeqDesign(const CbGrid *G0, double ms, int maxSw, int32_t *seq, int
   CbSeq cur = { 0 }, best = { 0 }, nx;
   int32_t t0 = 0; int l0 = 0;
   int32_t curV = cbStable(G0) ? cbBest(G0, &t0, &l0) : -100000, bestV = curV > 0 && t0 ? curV : 0, bestT = t0; int bestL = l0;
+  if (cbSeqKeep.n > 0 && cbSeqKeep.n <= maxSw && cbSeqPlay(G0, &cbSeqKeep, &T)) {
+    int32_t tk = 0; int lk = 0, vk = cbBest(&T, &tk, &lk) - cbSwapCost * cbSeqKeep.n;
+    cur = cbSeqKeep; curV = vk;
+    if (vk > bestV && tk) { best = cbSeqKeep; bestV = vk; bestT = tk; bestL = lk; }
+  }
   double end = nowMs() + ms, temp = 400;
   for (int it = 0; ; it++) {
     if ((it & 63) == 0) { double now = nowMs(); if (now >= end) break; temp = 400 * (end - now) / ms + 5; }
@@ -258,6 +265,7 @@ static int cbSeqDesign(const CbGrid *G0, double ms, int maxSw, int32_t *seq, int
       if (v > bestV && tt) { best = nx; bestV = v; bestT = tt; bestL = ll; }
     }
   }
+  cbSeqKeep = best;
   if (bestV <= 0 || !bestT) return -1;
   for (int i = 0; i < best.n; i++) seq[i] = best.r[i] * 8 + best.c[i];
   *tr = bestT; *links = bestL;
