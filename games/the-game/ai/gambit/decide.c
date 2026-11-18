@@ -1195,8 +1195,10 @@ static Played playOf(const Read *R, int n) {
       opNextDesign = -2; opNextCh = dp.ch; opNextLen = dp.len + 1;
       int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int i = 0; i < dp.len; i++) seq[ns++] = dp.path[i]; seq[ns++] = dp.trig;
       static Judge ND; Cand k;
+      // (each swap pressed once its two panels are still, not once the whole board is: under a slab popping, a board let settle after
+      // every swap waits out the pop each time)
       if (dp.ch >= OPENER_LEAST && candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
-        k.settled = 1; lastDrop = -1;
+        k.settled = 0; lastDrop = -1;
         outRooted = 1; int ok = judgeCand(R, &k, &ND); outRooted = 0;
         opNextDesign = !ok ? -3 : ND.o.dead ? -4 : ND.apChainAll;
         if (ok && !ND.o.dead && ND.apChainAll >= OPENER_LEAST) {
