@@ -666,7 +666,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int modeOver = goalKeyOf(o) == 0 && goalKeyOf(c) > 0 && imax(0, brokeSeen(o)) >= imax(0, brokeSeen(c));
     // (in finish them, a combo the list asks over a line in progress that makes none, whatever each breaks: the combo is the attack -- the
     // owner: the most combos)
-    if (finishAsked() && !o->hold && o->apCombo >= 4 && !o->outside && !(c->apCombo >= 4)) modeOver = 1;
+    // (and a bigger combo over a smaller one in progress: set 86 combo_storm 1, a 4 timed 224 frames out kept over 6s for 220 frames)
+    if (finishAsked() && !o->hold && o->apCombo >= 4 && !o->outside && (!(c->apCombo >= 4) || o->apCombo > c->apCombo)) modeOver = 1;
     if (!c->hold && !modeOver && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead && !outlives(o, c)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. THE MODE, AMONG LINES THAT LIVE (the owner: just don't die; the mode is respected, garbage on the board or not): a line off the
