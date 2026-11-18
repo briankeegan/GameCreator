@@ -47,12 +47,13 @@ engine at **level 11**, the game's own think and input budgets. Live: Gambit aga
 
 ## The list -- each finished before the next
 
-**FINISH THEM'S EIGHTS COME FIRST (the owner).** Once the enemy is topped out, Gambit kills it with combos of eight -- several, as
-quickly as it can, under pressure too -- and sends no chain past a 2x. The stack is kept zipped and flat (colours a swap apart, not
-touching; few rows between the tallest column and the lowest) so the next eight is always a few swaps away. Measured on finish them's
-28 games (`gambit-24.yml`, `then` `["finish_them"]`), read as the games finish: combos of eight and up a minute (main on set 86: about
-0.1; Tanycanayt live: 1.29), chains of 3x or more sent (target 0), and survival no worse than main's (21-26 of 28 on set 86). This
-comes before any other work.
+**FINISH THEM'S EIGHTS COME FIRST (the owner).** In finish them -- the attack phase, the enemy topped out -- Gambit works toward
+combos of eight: several, as quickly as it can, under pressure too. Other combos it sends count, but its play is set up for eights. It
+sends no chain past a 2x. The stack is kept zipped and flat (colours a swap apart, not touching; few rows between the tallest column
+and the lowest) so the next eight is always a few swaps away. Measured on finish them's 28 games (`gambit-24.yml`, `then`
+`["finish_them"]`), read as the games finish: combos of eight sent in the attack phase, in all and a minute (main on set 86: 13-18 in
+28 games, about 0.1 a minute; Tanycanayt live: 1.29 a minute), the other combos sent, chains of 3x or more sent (target 0), and
+survival no worse than main's (21-26 of 28 on set 86). This comes before any other work.
 
 1. **Level 11.** Training, `lua/check.lua`, the fight and the live run all play `LevelPresets.getModern(11)`; every place that
    assumes level 10 (its health, its frame constants, the docs) reads the level it is handed.
