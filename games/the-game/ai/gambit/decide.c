@@ -1283,9 +1283,10 @@ static Played playOf(const Read *R, int n) {
     { double sh = clockShareBegin(nowMs() + grow); openingGrow(&decQ, decQ.b); clockShareEnd(sh); }
     // (and the design: a chain the board's full rows make, offered as a plan beside the beam's -- in the countdown's time, or a slice of
     // the decision's)
+    // (the countdown's design in 0.3 of what is left: on a slower runner a smaller share finds no plan at all -- set 86 factory 3)
     // (and a second design, in the swaps that can be pressed before the first garbage lands -- OPEN_FIRE_BY, OPEN_SWAP_FRAMES a swap: the
     // chain that fires in time, where the first design's fires past it)
-    { double l3 = C2.due ? C2.due - C2.margin - nowMs() : 0, dms = cdAsk ? l3 * 0.15 : l3 * 0.2; OpPath dp;
+    { double l3 = C2.due ? C2.due - C2.margin - nowMs() : 0, dms = cdAsk ? l3 * 0.3 : l3 * 0.2; OpPath dp;
       int quickSw = opBefore() ? (OPEN_FIRE_BY - decQ.b->clock) / OPEN_SWAP_FRAMES - 1 : 0;
       if (quickSw >= 2 && quickSw < OP_CB_MAXSW) opDesignedQuick = -quickSw;   // (tried in quickSw swaps, none found: the log's /q-N)
       for (int pass = 0; pass < (quickSw >= 2 && quickSw < OP_CB_MAXSW ? 2 : 1); pass++)
