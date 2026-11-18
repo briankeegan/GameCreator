@@ -272,7 +272,9 @@ static int walkTurns(const Judge *x, const Judge *y) {
   // (and never behind the hold, a line that breaks garbage and is lost later: the walk it is charged was pressed on the engine when its
   // loss was judged, and the hold breaks nothing)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
-    if (s->hold && !l->hold && l->apBroke > 0) return (dx > dy) != (lostOf(x) > lostOf(y)); }
+    if (s->hold && !l->hold && l->apBroke > 0) return (dx > dy) != (lostOf(x) > lostOf(y));
+    // (nor, in finish them, a line that fires an eight or more: the attack the mode asks, its walk pressed on the engine as well)
+    if (finishAsked() && s->hold && !l->hold && l->apCombo >= 8 && l->apChain < 2) return (dx > dy) != (lostOf(x) > lostOf(y)); }
   if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
   // (nor where the later one buys less than a break's time with the window the next breaks are pressed from: the actions it spends come
   // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
