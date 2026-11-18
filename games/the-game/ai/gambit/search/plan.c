@@ -330,8 +330,13 @@ static void planIn(const Question *q, const PlanOpts *o, Plan *P) {
     for (int q2 = 0; q2 < keepN; q2++) pool[q2] = sorted[q2];
     npool = keepN;
   }
-  // READY: an entry's line and the nearest kept only if the board it leaves breaks the block on its way once it has landed
-  if (o->readyAt != NOT_ASKED) {
+  // READY: an entry's line and the nearest kept only if the board it leaves breaks the block on its way once it has landed -- not in
+  // finish them (a list of combos up to eight and up, no chain): there every combo is the attack, offered to the rank, which judges its
+  // life and its readiness beside every other line (the owner: break the garbage with combos)
+  int finishList = 0;
+  { int chain = 0, big = 0; for (int i = 0; i < theList.n; i++) { if (theList.aim[i].chain.op) chain = 1; if (theList.aim[i].combo.op && theList.aim[i].combo.n + (theList.aim[i].combo.op == OP_GT) >= 8) big = 1; }
+    finishList = big && !chain; }
+  if (o->readyAt != NOT_ASKED && !finishList) {
     clockShareEnd(shareOld); shareOld = clockShareBegin(t0 + 2 * o->ms);
     for (int ai = 0; ai < na; ai++) if (P->perAim[ai].set && !clockOut() && !readyAfter(x, P->perAim[ai].n, o->readyAt)) P->perAim[ai].set = 0;
     if (P->nearest.set && !readyAfter(x, P->nearest.n, o->readyAt)) P->nearest.set = 0;
