@@ -202,6 +202,11 @@ static int readBoard_(Read *R) {
     if (big && !chain && R->keep.on && R->keep.t[KEEP_MATERIAL].op && R->keep.t[KEEP_MATERIAL].n < FINISH_MATERIAL) R->keep.t[KEEP_MATERIAL].n = FINISH_MATERIAL; }
   floorKeep = R->keep; floorKeepOn = R->keepOn; floorOf = decisionFloor;
   R->list = rule->list; R->end = rule->end;
+  // (EIGHT AND UP -- the owner: 8x plus, 9s and 10s alike: in a list that asks combos and no chain, an entry of exactly eight asks eight
+  // or more -- a two-column eight of 11 or 12 panels is the attack asked, never a combo outside the list taken out as a wasted three;
+  // set 86 combo_storm 1, 261 of 277 eights taken out so)
+  { int chain = 0; for (int i = 0; i < R->list.n; i++) if (R->list.aim[i].chain.op) chain = 1;
+    if (!chain) for (int i = 0; i < R->list.n; i++) { Test *c = &R->list.aim[i].combo; if (c->op == OP_EQ && c->n == 8) c->op = OP_GE; } }
   // (WHAT THE OPENER STILL NEEDS IS ASKED -- the owner: a 6 and a 3 are the eight: with chains thrown, the opener's list asks a chain of
   // what is still needed in its place among its own entries, where none of them asks it)
   // (and under tall garbage, a chain of two that breaks it after the rest of the eight: its link breaks the slab chaining, the chain lives
