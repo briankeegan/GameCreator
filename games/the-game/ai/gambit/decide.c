@@ -468,7 +468,15 @@ static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (an extension of the falling chain: a line played as one -- PLAY_EXTEND, or PLAY_LINEUP, the same search's lines while a garbage slab
 // pops beside the chain -- or the line in progress begun as one)
 static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || (J->carried && (b == PLAY_EXTEND || b == PLAY_LINEUP)); }
-static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down; 0 not asked: the log's)
+// (an eight still loaded on the board the line ends on -- one swap from firing)
+static int loadedAfter(const int32_t *seq, int n) {
+  static Board *eb; if (!eb) eb = nb_new(); if (!eb) return 0;
+  const Board *e = lineEnd(seq, n, 0);
+  if (!e) return 0;
+  cloneBoard(eb, e);
+  return twinCostOn(eb) == 0;
+}
+static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down, -8 the second eight's swap unloading the first; 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -1257,6 +1265,7 @@ static Played playOf(const Read *R, int n) {
         else if (cutsShort(&FS)) freeSetup = -3;
         else if (wastesThree(&FS)) freeSetup = -4;
         else if (spendsReserve(&FS)) freeSetup = -5;
+        else if (twinSecond && !loadedAfter(one, 1)) freeSetup = -8;   // (the second eight's swap: never one that unloads the first)
         else { P.line = &FS; freeSetup = 1; }
       }
     }

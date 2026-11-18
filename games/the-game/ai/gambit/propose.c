@@ -549,7 +549,7 @@ static int twinSort(const Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int
 // target across decisions -- the same two columns, colours and trigger row (a row up or down, the stack's rise), while the board still
 // holds it within TWIN_REACH swaps; else the cheapest -- so its swaps build one eight and never undo each other. Its next swap in *swap;
 // 0 where there is none (none in reach, or it is loaded: its trigger is the mode's to press)
-static Twin twinKept; static int32_t twinKeptSet;
+static Twin twinKept; static int32_t twinKeptSet, twinSecond;   // (twinSecond: the swap given is the second eight's, the kept one loaded)
 static int twinNextSwap(Board *b, int32_t *swap) {
   static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2]; static Twin best[TWIN_OFFER * 4]; int top;
   int nb = twinScan(b, g, ok, &top, best, 0, TWIN_REACH), w = -1;
@@ -557,8 +557,17 @@ static int twinNextSwap(Board *b, int32_t *swap) {
     if (best[i].c == twinKept.c && best[i].X == twinKept.X && best[i].Y == twinKept.Y && iabs(best[i].r - twinKept.r) <= 1 && (w < 0 || best[i].cost < best[w].cost)) w = i;
   for (int i = 0; i < nb && w < 0; i++) if (w < 0 || best[i].cost < best[w].cost) w = i;
   if (w < 0) { twinKeptSet = 0; return 0; }
-  twinKept = best[w]; twinKeptSet = 1;
-  if (best[w].cost == 0) return 0;
+  twinKept = best[w]; twinKeptSet = 1; twinSecond = 0;
+  // (ONE LOADED, THE NEXT BUILT -- the owner: several eights one swap from firing, each fired when it is needed: the kept eight loaded,
+  // the cheapest other in columns apart from it is the one set up -- decide.c presses its swap only where an eight is still loaded after)
+  if (best[w].cost == 0) {
+    int lo = best[w].c - best[w].hx, hi = best[w].c + 1 + best[w].hy, w2 = -1;
+    for (int i = 0; i < nb; i++) { if (i == w || best[i].cost == 0) continue;
+      int l2 = best[i].c - best[i].hx, h2 = best[i].c + 1 + best[i].hy;
+      if (h2 < lo || l2 > hi) { if (w2 < 0 || best[i].cost < best[w2].cost) w2 = i; } }
+    if (w2 < 0) return 0;
+    w = w2; twinSecond = 1;
+  }
   int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, &best[w], seq);
   if (ns < 1) return 0;
   // (of the rows still to sort, the next swap of the one nearest the cursor: each row is sorted along itself, apart from the others --
