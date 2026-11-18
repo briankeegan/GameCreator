@@ -9,6 +9,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_LOST_ON AT_LEVEL(240)   // (and once a chain is thrown: the horizon -- the next chain is built only on a board that stands)
+#define OP_CHAIN_AFTER AT_LEVEL(240)   // (the frames an opener's chain must leave the board once it has run its course: the horizon)
 #define OPENER_CHAINS 3
 #define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
 static int tallGarbage(const Question *q);
@@ -1367,6 +1368,10 @@ static Played playOf(const Read *R, int n) {
         if (fit) ext = fit;
       }
     }
+    // (NO CHAIN THE BOARD DOES NOT OUTLIVE -- the owner: the opener does not die: an extension is taken only where the board still stands
+    // OP_CHAIN_AFTER once the chain has run its course (its board lost that long after the line is done, its next moves played) -- the
+    // garbage its stop time held back lands then; set 86 combo_storm 1, a 5x taken to 8x at 444, the board lost 70 frames after it ended)
+    if (ext && !ext->o.lives && ext->apDone >= 0 && diesAt(ext) - ext->apDone < OP_CHAIN_AFTER) ext = 0;
     opFallBar = bar; opFallExt = ext ? ext->apChainAll : 0;
     opFallSeen = 0; opFallTop = -1; opFallDead = 0; opFallLineN = 0;
     for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->hold || !opExtLine(J)) continue;
