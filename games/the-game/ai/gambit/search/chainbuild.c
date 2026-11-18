@@ -240,7 +240,8 @@ static void cbSeqMutate(const CbGrid *G0, CbSeq *S, int maxSw) {
 // (the best sequence found in `ms` of the wall clock, maxSw swaps at most: its swaps into seq (r * 8 + c), the trigger into *tr, the
 // trigger's links into *links; the count of swaps, -1 none worth anything. The search goes on from the best of the search before it
 // (cbSeqKeep) where that sequence still plays on this board: a board little changed between decisions is searched across all of them)
-static LOCAL CbSeq cbSeqKeep;
+static LOCAL CbSeq cbSeqKeeps[2]; static LOCAL int cbSeqSlot;   // (one kept search a board designed on: 0 the board as it stands, 1 the board it settles to)
+#define cbSeqKeep cbSeqKeeps[cbSeqSlot]
 static int cbSeqDesign(const CbGrid *G0, double ms, int maxSw, int32_t *seq, int32_t *tr, int *links) {
   static LOCAL CbGrid T;
   if (maxSw > CB_SEQ_MAX) maxSw = CB_SEQ_MAX;

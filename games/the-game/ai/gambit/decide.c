@@ -807,6 +807,7 @@ static int opFits(const OpPath *p, int32_t trigCh, int pass) {
 #define OP_CB_COST 30
 #define OP_CB_MAXSW 14
 static int opDesign(const Board *b, double ms, OpPath *out, int maxSw);
+static int32_t opDesignCost = OP_CB_COST;   // (a swap's worth in a design's score: the opening's race, or the next chain's OP_NEXT_COST)   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
 static int32_t opDesignLeast = OP_TWO_FROM;   // (the chain a design must make: the opening's OP_TWO_FROM, the next chain's what is still needed)
 static int opDesignAsIs;   // (a design on a board that is not the board as it stands -- the landed board: the row under it left out)
 static char opLandedRows[160], opCdRows[160];   // (the log's landed= and, at the countdown's decision, cdboard=)
@@ -856,7 +857,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   // (the designer's chain first, in OP_SECOND_DESIGN of the time: its whole plan at once; the beam in the rest, grown on decision after
   // decision -- the landed board is the same board every decision of the fall -- where the designer finds none)
   static OpPath dp; const OpPath *pl = 0; double t0 = nowMs();
-  opDesignAsIs = 1; opDesignLeast = openerSum > 0 ? OPENER_LEAST : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM;
+  opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = openerSum > 0 ? OPENER_LEAST : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW) && dp.len >= 1) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
   double rest = ms - (nowMs() - t0);
   static int32_t grownFor = -1;
   if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
@@ -894,7 +895,6 @@ static const Judge *opSecondSwap(const Read *R, int n) {
 #define OP_CB_FEWEST 3
 #define OP_PROVE_MAX 4   // (the designs judged at most: the plans' falls extended need the countdown's time after them)
 static int32_t opDesignWhy, opDesignLinks, opSeqLinks;   // (and the swaps' design's links, -1 none)
-static int32_t opDesignCost = OP_CB_COST;   // (a swap's worth in a design's score: the opening's race, or the next chain's OP_NEXT_COST)   // (the last design asked: 1 no full row, 2 no time, 3 no chain of OP_TWO_FROM (its links), 4 no order, 5 made)
 static int32_t opProveTried, opProved, opProvedBest;   // (the countdown's designs judged, those that chain as judged, the longest: the log's opgrew /p)
 static int32_t opDesigned, opDesignedQuick;   // (the chain of the design offered this decision, 0 none: the log's)
 static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
@@ -932,7 +932,7 @@ static int opDesignIn(const Board *b, double ms, OpPath *out, int maxSw) {
   return 1;
 }
 // (the opener's designs order rows with gaps too: search/chainbuild.c cbPartial)
-static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) { cbPartial = 1; int ok = opDesignIn(b, ms, out, maxSw); cbPartial = 0; return ok; }
+static int opDesign(const Board *b, double ms, OpPath *out, int maxSw) { cbPartial = 1; cbSeqSlot = opDesignAsIs ? 1 : 0; int ok = opDesignIn(b, ms, out, maxSw); cbPartial = 0; cbSeqSlot = 0; return ok; }
 // THE PLANS' FALLS EXTENDED (the countdown's: the owner's three seconds): each plan kept, its chain OP_FAST_CH or more, played to its trigger
 // on the engine and its fall searched for the longest extension in an equal share of `ms` -- the chain it reaches into chx; the best
 // ranked again
