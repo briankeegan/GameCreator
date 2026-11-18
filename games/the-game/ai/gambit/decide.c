@@ -56,7 +56,7 @@ static int carryHeld(void);
 #define OP_TRIES 3            // (the opening plans judged in a decision, the best first)
 #define CD_GROW 0.35   // (the share of the countdown's decision time left that grows the opening's plan: the designs, their judging and the plans' falls extended take the rest)
 #define OPEN_SWAP_FRAMES 16   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands -- 16.5 measured, the countdown plans of 100 opener games, their trigger's frame over their swaps)
-#define OPEN_FIRE_BY 330      // (the frame the opener's trigger is pressed by while no garbage is shown: the first garbage lands at 339 in every pattern, 99 opener games)
+#define OPEN_FIRE_BY 338      // (the frame the opener's trigger is pressed by while no garbage is shown: the frame before the first garbage lands, 339 in every pattern of the 99 opener games -- it lands on the stack's top, not on the chain)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
