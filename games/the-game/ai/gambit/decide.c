@@ -1121,7 +1121,10 @@ static Played playOf(const Read *R, int n) {
       int32_t enough = need - OPENER_LEAST;
       // (held for the next chain only where the board the chain lands on has one: the next chain designed there (opSecondSwap) a chain of
       // OPENER_LEAST or more; with none the chain falling is all there is, extended as any chain short of need)
-      if (bar >= enough) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= OPENER_LEAST) ext = 0; }
+      // (under smaller garbage held all the same: the board it lands on is full of colours its pops have not shown, a next chain seldom
+      // designed there, and the 5 and the 3 come; under tall garbage, a 5 often leaves no 3 at all)
+      if (bar >= enough && !tall) ext = 0;
+      else if (bar >= enough) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= OPENER_LEAST) ext = 0; }
       else if (ext->apChainAll > enough) {
         const Judge *fit = 0;
         for (int i = 0; i < n; i++) { const Judge *J = order[i];
