@@ -7,8 +7,8 @@ static int32_t garbageSeen;   // (garbage has been on the board or on its way th
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OPENER_SUM 8
 #define OPENER_LEAST 3
-#define OP_FALL_LOST AT_LEVEL(200)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-193 and a break at 442-465; the large slabs', lost at 299-471 a second chain is still made)
-#define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-168, the chain the eight needed given up and the board lost all the same)
+#define OP_FALL_LOST AT_LEVEL(250)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-204 with a break kept 207-312 longer; the large slabs', lost at 299-471 a second chain is still made)
+#define OP_FALL_KEEP AT_LEVEL(200)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, 207-312 frames longer; combo_storm 3, 135-168, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_CHAINS 3
 #define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
