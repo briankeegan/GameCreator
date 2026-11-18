@@ -52,6 +52,8 @@ gambit-opener.json) reaches chains of three or more adding up to eight -- an 8, 
 other work: deaths, survival and the list below wait until it holds. One board at a time: a failing board is fixed until it passes
 twice running, then the next; all 99 are run once every board passes, and any board that fails there is the next one fixed.
 No board is let off at 7.
+Then (the owner): with the 99 at eight and the game no worse for it, the opener becomes fill's own opening -- the switcher's
+first move, not a mode of its own.
 
 1. **Level 11.** Training, `lua/check.lua`, the fight and the live run all play `LevelPresets.getModern(11)`; every place that
    assumes level 10 (its health, its frame constants, the docs) reads the level it is handed.
