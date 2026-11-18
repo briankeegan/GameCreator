@@ -621,12 +621,13 @@ static int offMode(const Judge *J) { return !J->hold && !J->o.dead && !J->length
 static double diesAt(const Judge *x);
 // (a combo of four or more, its chain two at most, beside a line that is lost no later than it)
 static int finishComboBy(const Judge *c, const Judge *o) { return !c->hold && !c->o.dead && c->apCombo >= 4 && c->apChainAll <= 2 && !(o->apCombo >= 4) && diesAt(c) >= diesAt(o); }
-static int finishSafe(const Judge *J) { if (J->o.dead || J->o.lives) return 0; double d = diesAt(J); return d >= FINISH_SAFE && d < 1e299; }
+#define FINISH_SAFE_ON 0   // (the safe board's credit: 0 off -- a board lost later than FINISH_SAFE is ranked by its loss)
+static int finishSafe(const Judge *J) { if (!FINISH_SAFE_ON || J->o.dead || J->o.lives) return 0; double d = diesAt(J); return d >= FINISH_SAFE && d < 1e299; }
 // (A COMBO SAFE BESIDE A CHAIN -- the owner: survive by breaking garbage with combos, not chains: in finish them, a combo the list asks
 // (four or more, at most a 2x) whose board is lost HORIZON or more from now -- a break's time and more for the next decision -- survives
 // as one that lives does beside a line whose chain runs past two; the shorter chain then decides, 1'c)
 static int finishSafeCombo(const Judge *J, const Judge *o) {
-  if (!finishAsked() || J->hold || J->o.dead || J->o.lives || J->outside || J->apCombo < 4 || chainPastTwo(J) || !chainPastTwo(o)) return 0;
+  if (!FINISH_SAFE_ON || !finishAsked() || J->hold || J->o.dead || J->o.lives || J->outside || J->apCombo < 4 || chainPastTwo(J) || !chainPastTwo(o)) return 0;
   double d = diesAt(J); return d >= HORIZON && d < 1e299;
 }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
