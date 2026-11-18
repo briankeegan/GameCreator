@@ -109,7 +109,7 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
   return ok;
 }
 static int carryOpener(void);   // (the line in progress was begun under the opener: below, with the carry)
-static CbSeq opKeepSeq; static int opKeepOn; static int32_t opKeepHeld, opKeepAt;   // (the next chain's design carried on, and the decisions it was: the log's keep=)
+static CbSeq opKeepSeq; static CbGrid opKeepPrev; static int opKeepOn; static int32_t opKeepHeld, opKeepAt;   // (the next chain's design carried on, and the decisions it was: the log's keep=)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -870,7 +870,12 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   // decision is a chain never built, set 86 factory 3)
   if (opKeepOn) {
     static CbGrid KG, KT; cbPartial = 1; cbOfBoard(landed, &KG);
-    for (int k = opKeepSeq.n; k >= 0 && !pl; k--) {
+    // (its first swap pressed already where the landed board shows it so -- its two cells swapped since the last decision: never pressed
+    // again, which is a swap and its swap back)
+    int minK = 0;
+    if (opKeepSeq.n > 0) { int r = opKeepSeq.r[0], c = opKeepSeq.c[0]; cb8 a = opKeepPrev.g[r][c], b = opKeepPrev.g[r][c + 1];
+      if (a != b && KG.g[r][c] == b && KG.g[r][c + 1] == a) minK = 1; }
+    for (int k = opKeepSeq.n; k >= minK && !pl; k--) {
       CbSeq s; s.n = opKeepSeq.n - k; for (int i = 0; i < s.n; i++) { s.r[i] = opKeepSeq.r[k + i]; s.c[i] = opKeepSeq.c[k + i]; }
       int32_t tk = 0; int lk = 0;
       if (cbSeqPlay(&KG, &s, &KT) && cbBest(&KT, &tk, &lk) > 0 && tk && lk >= opDesignLeast) {
@@ -879,9 +884,10 @@ static const Judge *opSecondSwap(const Read *R, int n) {
     }
     cbPartial = 0;
     if (!pl) opKeepOn = 0;
+    else opKeepPrev = KG;
   }
   if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW)) {
-    pl = &dp; opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX); opKeepAt = decQ.b->clock;
+    pl = &dp; opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX); opKeepAt = decQ.b->clock; cbOfBoard(landed, &opKeepPrev);
     for (int i = 0; i < opKeepSeq.n; i++) { opKeepSeq.r[i] = (cb8)CR(dp.path[i]); opKeepSeq.c[i] = (cb8)CC(dp.path[i]); } }
   opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
   double rest = ms - (nowMs() - t0);
