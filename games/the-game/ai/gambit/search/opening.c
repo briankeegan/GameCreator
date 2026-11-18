@@ -111,12 +111,16 @@ static int opEntryOf(int32_t ch) {
 #define OP_BLIND 2
 #define OP_TWO_FROM 4   // (the first chain a second is looked for after: the owner's two 4-chains)
 static int opMakesEight(const OpPath *p) { return imax(p->ch, p->chx) >= OPENER_SUM || (p->ch >= OPENER_LEAST && p->ch2 >= OPENER_LEAST && p->ch + p->ch2 >= OPENER_SUM); }
+static int opNearEight(const OpPath *p) { return p->ch >= OPENER_LEAST && p->ch2 >= OPENER_LEAST && imax(p->ch, p->chx) + p->ch2 >= OPENER_SUM - 1; }
 static int opPacier(const OpPath *a, const OpPath *o) {
   // (a plan whose trigger is pressed on rows that are known first)
   if ((a->blind >= OP_BLIND) != (o->blind >= OP_BLIND)) return a->blind < OP_BLIND;
   // (then a plan that makes the eight: its chain OPENER_SUM alone, or with the chain designed on the board it leaves -- each OPENER_LEAST
   // or more, the two adding up to OPENER_SUM: the owner's 5 and 3, two 4s alike; decide.c opPairAll)
   { int ta = opMakesEight(a), to = opMakesEight(o); if (ta != to) return ta; }
+  // (then a plan a link short of it with a chain that counts behind it: the chain falling is extended a link as it falls, the eight
+  // made with the next -- before a plan that leaves nothing to follow it, the eight left to the garbage's luck)
+  { int ta = opNearEight(a), to = opNearEight(o); if (ta != to) return ta; }
   // (then the chain the fall reaches extended, where the countdown measured it: the owner's eight, one chain grown while it falls)
   { int32_t xa = imax(a->ch, a->chx), xo = imax(o->ch, o->chx); if (xa != xo && (a->chx || o->chx)) return xa > xo; }
   // (the list's entry first -- what the mode asks; of two meeting the same, the longer chain, then the one pressed sooner -- a chain

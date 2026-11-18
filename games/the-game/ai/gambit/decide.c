@@ -1061,7 +1061,7 @@ static void opPairAll(const Question *q, double ms) {
     p->ch2 = 0; opPairN++;
     const Board *lb = got ? endBoard : 0;
     if (!lb || oo.dead || imax(chainOf(oo.j.made), oo.j.chainAll) < p->ch || lb->chainCounter != 0 || cascadeLive((Board *)lb)) continue;
-    OpPath dp; opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = imax(OPENER_LEAST, OPENER_SUM - p->ch);
+    OpPath dp; opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = OPENER_LEAST;
     p->ch2 = opDesign(lb, ms / np, &dp, OP_NEXT_MAXSW) ? dp.ch : 0;
     if (p->ch2 > opPairBest) opPairBest = p->ch2;
   }
