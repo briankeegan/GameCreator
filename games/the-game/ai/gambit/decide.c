@@ -1295,7 +1295,11 @@ static Played playOf(const Read *R, int n) {
     // (over the line ranked first, unless that line's board lives and the swap's does not)
     if (opNextDesign < 0 && opNextDesign != -4 && cascadeLive(decQ.b)) {
       const Judge *t2 = opSecondSwap(R, n);
-      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives)) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
+      // (the design's swap is judged alone, a board left as it is after it; its chain fired before the board is lost keeps the board -- a
+      // chain falling cannot top out -- so it gives way only where it does not fire in time: set 86 large_garbage 6, a 3's design half
+      // pressed, put down at 190 frames for a break that made a 2)
+      int fires = opKeepOn && decQ.b->clock - opKeepAt <= 40 && R->F.known[FACT_US_DIES] && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES < R->F.v[FACT_US_DIES];
+      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires)) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
     }
   }
   // (in its order: the flattening pressed, then the raise -- no plan begun over either)
