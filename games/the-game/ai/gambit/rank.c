@@ -602,6 +602,9 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 static int offMode(const Judge *J) { return !J->hold && !J->o.dead && !J->lengthens && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
 #define FINISH_SAFE (2 * HORIZON)   // (frames from now a finish board is safe at: rank.c, key 1)
 #define FINISH_8_LIFE 2   // (the breaks' time (rankSave) an eight's board must still stand, its next moves played, to be fired over a line that lives longer)
+static double diesAt(const Judge *x);
+// (a combo of four or more, its chain two at most, beside a line that is lost no later than it)
+static int finishComboBy(const Judge *c, const Judge *o) { return !c->hold && !c->o.dead && c->apCombo >= 4 && c->apChainAll <= 2 && !(o->apCombo >= 4) && diesAt(c) >= diesAt(o); }
 static int finishSafe(const Judge *J) { if (J->o.dead || J->o.lives) return 0; double d = diesAt(J); return d >= FINISH_SAFE && d < 1e299; }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
 // (A BOARD THAT OUTLIVES ANOTHER: c's is lost -- past the horizon or not -- and o's lives, stands the whole judging, or is lost a break's
@@ -622,6 +625,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // line whose board is lost FINISH_SAFE or more from now, its next moves played (diesAt: its own loss or the life after it), survives as
   // one that lives does, and the combos decide between them)
   if (finishAsked()) { if (!lx && finishSafe(x)) lx = 1; if (!ly && finishSafe(y)) ly = 1; }
+  // (and the line in progress's horizon credit is no life beside a combo lost no sooner than it: the combo is the attack)
+  if (finishAsked()) {
+    if (lx && !x->o.lives && !finishSafe(x) && finishComboBy(y, x)) lx = 0;
+    if (ly && !y->o.lives && !finishSafe(y) && finishComboBy(x, y)) ly = 0;
+  }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
