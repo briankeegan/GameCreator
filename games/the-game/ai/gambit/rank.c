@@ -601,6 +601,7 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 #define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
 static int offMode(const Judge *J) { return !J->hold && !J->o.dead && !J->lengthens && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
 #define FINISH_SAFE (2 * HORIZON)   // (frames from now a finish board is safe at: rank.c, key 1)
+#define FINISH_8_LIFE 2   // (the breaks' time (rankSave) an eight's board must still stand, its next moves played, to be fired over a line that lives longer)
 static int finishSafe(const Judge *J) { if (J->o.dead || J->o.lives) return 0; double d = diesAt(J); return d >= FINISH_SAFE && d < 1e299; }
 static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
 // (A BOARD THAT OUTLIVES ANOTHER: c's is lost -- past the horizon or not -- and o's lives, stands the whole judging, or is lost a break's
@@ -1185,5 +1186,17 @@ static void sortJudged(Judge **a, int n) {
       Judge *e = a[i]; for (int q = i; q > 0; q--) a[q] = a[q - 1]; a[0] = e; break;
     }
     cmpKey = keep;
+  }
+  // (AN EIGHT IS WORTH THE LIFE IT COSTS, UP TO TWO BREAKS' TIME -- the owner: in finish them the eight is fired wherever its board still
+  // stands two breaks' time (FINISH_8_LIFE rankSaves) with the next moves played, whatever line lives longer: the eight on offer whose
+  // board stands longest, put on top -- where it leaves the input window a break's walk)
+  if (finishAsked() && n > 1 && !(a[0]->apCombo >= 8 && a[0]->apChain < 2)) {
+    int best = -1;
+    for (int i = 1; i < n; i++) { const Judge *e = a[i];
+      if (e->hold || e->o.dead || e->apCombo < 8 || e->apChain >= 2) continue;
+      if (!(e->o.lives || diesAt(e) >= FINISH_8_LIFE * rankSave)) continue;
+      if (pressAllowance >= 0 && pressAllowance - lineWalk(e) < BREAK_WALK) continue;   // (and a break's walk of the window kept: the next break is pressed from it)
+      if (best < 0 || (e->o.lives && !a[best]->o.lives) || (!a[best]->o.lives && diesAt(e) > diesAt(a[best]))) best = i; }
+    if (best > 0) { Judge *e = a[best]; for (int q = best; q > 0; q--) a[q] = a[q - 1]; a[0] = e; }
   }
 }
