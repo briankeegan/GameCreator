@@ -206,10 +206,10 @@ static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid
   *out = best; *tr = bestT; *links = bestL; *swaps = bestS;
   return bestV;
 }
-// THE CHAIN DESIGNED AS SWAPS (cbSeqDesign): the design searched as the swaps themselves, each played on the abstract board and
-// everything let fall after it -- a panel swapped over an empty cell falls into it, a panel left over one falls -- so panels move
-// between rows and into the gaps under garbage as the game moves them. A sequence is played only where nothing matches before its
-// trigger; it is worth what the best trigger's chain on the board it leaves scores (cbBest), less cbSwapCost a swap. Searched by
+// THE CHAIN DESIGNED AS SWAPS (cbSeqDesign): the design searched as the swaps themselves, each played on the abstract board -- a panel
+// moved into any empty cell that holds it, in a row or not, every panel left standing on a cell: nothing falls before the trigger, for
+// a panel the game lets fall hovers first, and a swap planned on where it lands is not there to press while it hovers. A sequence is
+// played only where nothing matches before its trigger; it is worth what the best trigger's chain on the board it leaves scores (cbBest), less cbSwapCost a swap. Searched by
 // annealing: a swap added, taken out, put in another place, or moved a cell.
 #define CB_SEQ_MAX 16
 typedef struct { int n; cb8 r[CB_SEQ_MAX], c[CB_SEQ_MAX]; } CbSeq;
@@ -222,8 +222,7 @@ static int cbSeqPlay(const CbGrid *G0, const CbSeq *S, CbGrid *out) {
     cb8 a = out->g[r][c], b = out->g[r][c + 1];
     if (a < 0 || b < 0 || (a == 0 && b == 0) || a == b) return 0;
     out->g[r][c] = b; out->g[r][c + 1] = a;
-    cbFall(out);
-    if (!cbStable(out)) return 0;
+    if (!cbSupported(out) || !cbStable(out)) return 0;
   }
   return 1;
 }
