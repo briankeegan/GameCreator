@@ -890,12 +890,37 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
     const int32_t *f = P(b, r, c)->f;
     if (f[ISGARBAGE] ? f[STATE] == MATCHED : f[COLOR] != 0 && (f[STATE] != NORMAL || SETB(f[CHAINING]))) moving[r][c] = 1;   // (a slab popping among them: what it turns into chains with what lies beside it)
   }
+  // (THE NEXT LINK'S PARTNERS first: a panel of the chain falling lands on its column's resting top; a resting panel of its colour beside
+  // where it lands, or under it, is what the next link is made of -- swapped aside, the link is not there to make. The blind swaps near
+  // the motion after, nearest the cursor first)
+  int32_t tg[4 * W * MAXROWS]; int nt = 0;
+  for (int r = 2; r <= h + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = P(b, r, c)->f;
+    if (f[ISGARBAGE] || f[COLOR] <= 0 || f[COLOR] >= 8 || !(f[STATE] == FALLING || f[STATE] == HOVERING || (SETB(f[CHAINING]) && f[STATE] != NORMAL))) continue;
+    int land = r;
+    while (land > 1) { const int32_t *u = P(b, land - 1, c)->f; if (u[COLOR] != 0 && !moving[land - 1][c]) break; land--; }
+    static const int dr[6] = { 0, 0, 0, 0, -1, -2 }, dc[6] = { -2, -1, 1, 2, 0, 0 };
+    for (int q = 0; q < 6; q++) {
+      int pr = land + dr[q], pc = c + dc[q];
+      if (pr < 1 || pc < 1 || pc > W || pr >= b->nrows) continue;
+      const int32_t *g = P(b, pr, pc)->f;
+      if (g[ISGARBAGE] || g[COLOR] != f[COLOR] || g[STATE] != NORMAL || moving[pr][pc]) continue;
+      for (int s = pc - 1; s <= pc; s++) {
+        int32_t cost;
+        if (s < 1 || s >= W || !canSwapPanels(b, P(b, pr, s), P(b, pr, s + 1), &cost) || cost) continue;
+        int32_t m = pr * 8 + s, dup = 0; for (int i = 0; i < nt; i++) dup |= tg[i] == m;
+        if (!dup && nt < 4 * W * MAXROWS) tg[nt++] = m;
+      }
+    }
+  }
+  for (int i = 0; i < nt && n < cap; i++) if (candOf(&out[n], PLAY_CUT, &tg[i], 1, -1, 0)) { n++; cutOffered++; }
   int32_t mv[W * MAXROWS]; int d[W * MAXROWS], nm = 0;
   for (int r = 1; r <= h && r < b->nrows; r++) for (int c = 1; c < W; c++) {
     int near = 0;
     for (int rr = imax(1, r - 2); rr <= imin(h + 1, r + 2) && !near; rr++) for (int cc = imax(1, c - 1); cc <= imin(W, c + 2); cc++) if (moving[rr][cc]) { near = 1; break; }
     int32_t cost;
     if (!near || !canSwapPanels(b, P(b, r, c), P(b, r, c + 1), &cost) || cost) continue;
+    { int dup = 0; for (int i = 0; i < nt; i++) dup |= tg[i] == r * 8 + c; if (dup) continue; }
     mv[nm] = r * 8 + c; d[nm] = iabs(r - b->curRow) + iabs(c - b->curCol); nm++;
   }
   for (int i = 1; i < nm; i++) for (int j = i; j > 0 && d[j] < d[j - 1]; j--) { int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; int32_t u = mv[j]; mv[j] = mv[j - 1]; mv[j - 1] = u; }
