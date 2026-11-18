@@ -1495,6 +1495,14 @@ static Played playOf(const Read *R, int n) {
       if (h && !h->o.lives && h->o.lostAt != NOT_ASKED && h->o.lostAt < OP_FALL_LOST)
         for (int i = 0; i < n && !kp; i++) { const Judge *J = order[i];
           if (!J->hold && !J->o.dead && J->apChainAll >= bar && (J->o.lives || (diesAt(J) >= 0 && diesAt(J) - diesAt(h) >= OP_FALL_KEEP))) kp = J; }
+      // (and with none keeping the chain whole, the line that keeps the board longest, a break's time or more past the hold, its chain
+      // shorter or not -- the owner: the opener does not die; set 86 factory 3, a 4x let land on a board lost at 160 over a break lost at
+      // 323, the board lost 190 frames after the chain)
+      if (!kp && h && !h->o.lives && h->o.lostAt != NOT_ASKED && h->o.lostAt < OP_FALL_LOST)
+        for (int i = 0; i < n; i++) { const Judge *J = order[i];
+          if (J->hold || J->o.dead || diesAt(J) < 0) continue;
+          if (!(J->o.lives || diesAt(J) - diesAt(h) >= rankSave)) continue;
+          if (!kp || (J->o.lives && !kp->o.lives) || (!kp->o.lives && diesAt(J) > diesAt(kp))) kp = J; }
       if (kp) { P.line = P.top = kp; opFallWay = 8; }
       else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
