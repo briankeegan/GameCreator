@@ -898,8 +898,17 @@ static const Judge *opSecondSwap(const Read *R, int n) {
     if (!pl) opKeepOn = 0;
     else opKeepPrev = KG;
   }
-  if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_NEXT_MAXSW)) {
-    pl = &dp; opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX); opKeepAt = decQ.b->clock; cbOfBoard(landed, &opKeepPrev);
+  // (the next chain that reaches what is still needed looked for first, in half the time, a shorter one only where none does -- a 3 and a
+  // 4 is a 7: set 86 large_garbage 6, 3s and 4s designed after the 3 with 5 still needed)
+  int32_t want = openerSum > 0 ? imax(opDesignLeast, opNeed) : opDesignLeast; int fresh = 0;
+  if ((!pl || pl->ch < want) && want > opDesignLeast) {
+    static OpPath dw; int32_t lo = opDesignLeast; opDesignLeast = want;
+    if (opDesign(landed, ms * OP_SECOND_DESIGN * 0.5, &dw, OP_NEXT_MAXSW)) { dp = dw; pl = &dp; fresh = 1; }
+    opDesignLeast = lo;
+  }
+  if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN * (want > opDesignLeast ? 0.5 : 1), &dp, OP_NEXT_MAXSW)) { pl = &dp; fresh = 1; }
+  if (fresh) {
+    opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX); opKeepAt = decQ.b->clock; cbOfBoard(landed, &opKeepPrev);
     for (int i = 0; i < opKeepSeq.n; i++) { opKeepSeq.r[i] = (cb8)CR(dp.path[i]); opKeepSeq.c[i] = (cb8)CC(dp.path[i]); } }
   opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
   double rest = ms - (nowMs() - t0);
@@ -1306,7 +1315,14 @@ static Played playOf(const Read *R, int n) {
     opNextDesign = -1; opNextMs = (int32_t)(left * OP_NEXT_SHARE); opDesignWhy = 0;
     // (on the board as it stands only while nothing on it moves: a panel hovering above a swap refuses it, and a board in motion is not the
     // one its swaps meet -- moving, the next chain is designed on the board it settles to, below)
-    opDesignCost = OP_NEXT_COST; opDesignLeast = OPENER_LEAST; int got = left > 8 && !hasActivePanels(decQ.b) && opDesign(decQ.b, left * OP_NEXT_SHARE, &dp, OP_NEXT_MAXSW); opDesignCost = OP_CB_COST; opDesignLeast = OP_TWO_FROM;
+    // (what is still needed looked for first, in half the time, then any chain that counts)
+    int32_t wantAll = imax(OPENER_LEAST, opNeed); int got = 0;
+    opDesignCost = OP_NEXT_COST;
+    if (left > 8 && !hasActivePanels(decQ.b)) {
+      if (wantAll > OPENER_LEAST) { opDesignLeast = wantAll; got = opDesign(decQ.b, left * OP_NEXT_SHARE * 0.5, &dp, OP_NEXT_MAXSW); }
+      if (!got) { opDesignLeast = OPENER_LEAST; got = opDesign(decQ.b, left * OP_NEXT_SHARE * (wantAll > OPENER_LEAST ? 0.5 : 1), &dp, OP_NEXT_MAXSW); }
+    }
+    opDesignCost = OP_CB_COST; opDesignLeast = OP_TWO_FROM;
     if (got) {
       opNextDesign = -2; opNextCh = dp.ch; opNextLen = dp.len + 1;
       int32_t seq[OP_DEPTH + 1]; int ns = 0; for (int i = 0; i < dp.len; i++) seq[ns++] = dp.path[i]; seq[ns++] = dp.trig;
