@@ -831,6 +831,10 @@ static int garbageRows(const Question *q, int rows) {
   return 0;
 }
 static int tallGarbage(const Question *q) { return garbageRows(q, OP_TALL); }
+static int32_t opSecondFall;   // (the chain falling as the fall rule reads it -- its hold's -- with the need left: what a second chain must make is the rest)
+// (the chain a second chain must make: with the first thrown, any of OPENER_LEAST or more; with one falling, the rest of the eight
+// after it, OPENER_LEAST or more)
+static int32_t opSecondLeast(void) { return openerSum > 0 ? OPENER_LEAST : imax(OPENER_LEAST, imax(OPENER_LEAST, opNeed) - opSecondFall); }
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -858,7 +862,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   // (the designer's chain first, in OP_SECOND_DESIGN of the time: its whole plan at once; the beam in the rest, grown on decision after
   // decision -- the landed board is the same board every decision of the fall -- where the designer finds none)
   static OpPath dp; const OpPath *pl = 0; double t0 = nowMs();
-  opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = openerSum > 0 ? OPENER_LEAST : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW)) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
+  opDesignAsIs = 1; opDesignCost = OP_NEXT_COST; opDesignLeast = opSecondLeast(); if (opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW)) pl = &dp; opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
   double rest = ms - (nowMs() - t0);
   static int32_t grownFor = -1;
   if (grownFor != opFallAt) { openingReset(); grownFor = opFallAt; }
@@ -868,7 +872,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
     clockDue = keepDue; clockShare = keepShare;
   }
   opSecondWhy = 4; opSecondCh = opHave ? opBest.ch : -1; opSecondMs = (int32_t)ms; opSecondN = opGrewN;
-  if (!pl && opHave && opBest.ch >= (openerSum > 0 ? OPENER_LEAST : imin(OP_TWO_FROM, imax(OPENER_LEAST, opNeed)))) pl = &opBest;
+  if (!pl && opHave && opBest.ch >= (opSecondLeast())) pl = &opBest;
   if (!pl) return 0;
   opSecondCh = pl->ch;
   // (a plan of its trigger alone -- the landed board's own chain one swap away -- is that swap)
@@ -1117,7 +1121,7 @@ static Played playOf(const Read *R, int n) {
       int32_t enough = need - OPENER_LEAST;
       // (held for the next chain only where the board the chain lands on has one: the next chain designed there (opSecondSwap) a chain of
       // OPENER_LEAST or more; with none the chain falling is all there is, extended as any chain short of need)
-      if (bar >= enough) { two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= OPENER_LEAST) ext = 0; }
+      if (bar >= enough) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= OPENER_LEAST) ext = 0; }
       else if (ext->apChainAll > enough) {
         const Judge *fit = 0;
         for (int i = 0; i < n; i++) { const Judge *J = order[i];
@@ -1135,7 +1139,7 @@ static Played playOf(const Read *R, int n) {
     // (THE WAY TO THE EIGHT -- the owner: two 4s, a 5 and a 3, or an 8: an extension that reaches what is still needed is played; else a
     // second chain set up where its chain and the falling one's add up to it -- the panels an extension short of it would spend are the
     // second chain's; else the extension, else the second chain's set-up)
-    if (!twoAsked && !(ext && ext->apChainAll >= need)) two = opSecondSwap(R, n);
+    if (!twoAsked && !(ext && ext->apChainAll >= need)) { opSecondFall = bar; two = opSecondSwap(R, n); }
     int twoReaches = two && opSecondCh >= OPENER_LEAST && bar + opSecondCh >= need;
     // (THE GARBAGE BROKEN FOR THE NEXT CHAIN -- the owner: break the garbage and the second chain is there: with no extension at all --
     // extending comes first, any extension -- nor a second chain that adds to the eight, the line that breaks the most garbage beyond the hold, the chain as long as the
