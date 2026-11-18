@@ -56,6 +56,7 @@ static int carryHeld(void);
 #define OPEN_SWAP_FRAMES 16   // (the frames a planned set-up takes to press, its walk with it: the plan's set-ups pressed before the next block lands -- 16.5 measured, the countdown plans of 100 opener games, their trigger's frame over their swaps)
 #define OPEN_FIRE_BY 338      // (the frame the opener's trigger is pressed by while no garbage is shown: the frame before the first garbage lands, 339 in every pattern of the 99 opener games -- it lands on the stack's top, not on the chain)
 #define NEAR_SAVE 3   // (the breaks' time within which a three that buys a break's time more is a save, asked of no search)
+#define FINISH_ROWS 8   // the rows finish them raises a low stack to where no garbage has come: an eight's columns, and rows over them
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
 #define OPENING_RAISE 600   // the opening raise's frames: the countdown and the seconds before garbage first lands (340-400 in the garbage patterns)
@@ -272,6 +273,11 @@ static int readBoard_(Read *R) {
   // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
   // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
   int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
+  // (and FINISH THEM'S RAISE: the eights it fires need rows to sort -- three to five tall in two columns side by side -- so a stack
+  // under LOW_ROWS is raised to FINISH_ROWS in a game garbage has not reached too; set 86 endless, a stack of four rows cleared by 4s
+  // and 6s, no eight in reach in four decisions of five)
+  int finishRefill = !opening && !refill && !garbageGame && finishAsked() && panelTop(decQ.b) < LOW_ROWS && !R->topped;
+  if (finishRefill) { refill = 1; if (!rule->raiseTo || rule->raiseTo > FINISH_ROWS) to = FINISH_ROWS; }
   // (TIME ATTACK'S RAISE: no design being built and the stack under its top -- the owner: flatten, raise to the top, then the chain; no
   // garbage is coming, so the rows are raised as they are, never held to a break's readiness. The top is TA_TOP less each row the tallest
   // column stands over the shortest past TA_EVEN: an uneven stack raised to TA_TOP puts its tallest column where the rise ends it)
