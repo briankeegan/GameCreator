@@ -68,6 +68,12 @@ def main():
         mode = p[2] + (' them' if p[2] == 'finish' else '')
         opts = [option(s) for s in (g('opts') or '').split(',') if s]
         played = opts[0] if opts else {'play': g('play') or '?', 'lost': g('dies') or '?', 'broke': '0', 'outside': False, 'carried': False}
+        # (the play the decision made, where a rule outside the rank -- the opener's falling chain, the hold kept -- overrides the order)
+        pl = (g('play') or '').replace('carry_wait', 'carry_wait')
+        if opts and pl and pl != played['play'] and not (pl in ('carry', 'carry_wait') and played['carried']):
+            hit = next((o for o in opts if o['play'] == pl), None)
+            played = dict(hit) if hit else {'play': pl, 'lost': g('dies') or '?', 'broke': '0', 'outside': False, 'carried': False}
+            played['play'] = pl + ' [over the rank]'
         line = '%6d %-8s %-48s' % (t, p[2], says(played))
         won = g('won')
         if won:

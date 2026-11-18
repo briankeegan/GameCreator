@@ -440,7 +440,7 @@ static int32_t carryWaste[5];   // (the line in progress taken out as a wasted t
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
-static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
+static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 8 the line that keeps the chain and the board over the hold that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
                                                                                    // for the next chain, 4 a set-up short of it)
 static int32_t opFallLine[8][6], opFallLineN;   // (each extension under the fall: its swaps, those the judge pressed, its chain as judged, lost, its chain as its search said, the frames to its loss -1 living: the log's fallLines=)   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
 static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   // (the opening plans judged this decision; the lines the opener's falling chain held off this decision: the log's; the opener's chain still falling)
@@ -1384,7 +1384,17 @@ static Played playOf(const Read *R, int n) {
     else if (opFallWay == 6) P.line = P.top = lnk;
     else if (opFallWay == 5) P.line = P.top = brk;
     else if (two) P.line = P.top = two;
-    else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
+    else {
+      // (THE CHAIN LEFT TO LAND, NEVER THE BOARD -- the owner: the opener does not die: where the falling chain alone reaches what is still
+      // needed, it is let land -- unless the hold is lost within OP_FALL_LOST and a line that keeps the chain whole is lost OP_FALL_KEEP
+      // later or lives: that line is played; set 86 combo_storm 1, a hold lost at 71 over a break that kept the 3x and stood to 500)
+      const Judge *h = 0, *kp = 0;
+      for (int i = 0; i < n; i++) if (order[i]->hold) { h = order[i]; break; }
+      if (h && !h->o.lives && h->o.lostAt != NOT_ASKED && h->o.lostAt < OP_FALL_LOST)
+        for (int i = 0; i < n && !kp; i++) { const Judge *J = order[i];
+          if (!J->hold && !J->o.dead && J->apChainAll >= bar && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - h->o.lostAt >= OP_FALL_KEEP))) kp = J; }
+      if (kp) { P.line = P.top = kp; opFallWay = 8; }
+      else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
   // as judged still a chain of OPENER_LEAST or more and its board not lost while it is pressed, is played over any line ranked above it
   // for a loss after it -- what comes after the chain is the next decision's, and its stop time is the board's)
