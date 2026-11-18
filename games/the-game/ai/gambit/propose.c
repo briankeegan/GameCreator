@@ -598,16 +598,17 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
     const Twin *t = &best[i];
     int32_t seq[MAXLINE]; int ns = twinSort(b, g, ok, top, t, seq);
     if (ns < 0) { twinNo[3]++; continue; }
+    // (each swap pressed as soon as its pair is free while a slab or a clear pops -- a set-up that waits for the board to settle waits the pop out)
     // (SET UP BETWEEN MOVES -- the owner: the set-up built of moves that cost nothing, never of the board's life: the first one, two and
     // three of its swaps, each a line of its own -- a swap pressed where the board waits, the rest left for the next wait; the rank takes
     // one only where it is lost no sooner and keeps the window's reserve, rank.c nearerEight)
     if (prefixes && i < 2 && ns > 0)
       for (int p = 1; p <= 3 && p < ns && n < cap; p++)
-        if (candOf(&out[n], PLAY_SETUP, seq, p, -1, 0)) { out[n].settled = 1; out[n].twin = 2; out[n].aimC = twinSize(t); out[n].aimLeft = ns - p + 1; n++; twinOffered++; }
+        if (candOf(&out[n], PLAY_SETUP, seq, p, -1, 0)) { out[n].settled = !R->pop; out[n].twin = 2; out[n].aimC = twinSize(t); out[n].aimLeft = ns - p + 1; n++; twinOffered++; }
     if (t->cost > TWIN_MAXSWAPS) { twinNo[5]++; continue; }   // (past TWIN_MAXSWAPS: its first swaps only -- an eight that far is set up, never fired whole)
     if (setupOnly) {
       if (ns < 1 || ns > TWIN_SETUP_MAX) continue;
-      if (candOf(&out[n], PLAY_SETUP, seq, ns, -1, 0)) { out[n].settled = 1; out[n].twin = 2; out[n].aimC = twinSize(t); out[n].aimLeft = 1; n++; offered++; twinOffered++; }
+      if (candOf(&out[n], PLAY_SETUP, seq, ns, -1, 0)) { out[n].settled = !R->pop; out[n].twin = 2; out[n].aimC = twinSize(t); out[n].aimLeft = 1; n++; offered++; twinOffered++; }
       continue;
     }
     // (an eight pressed whole only where its swaps are pressed before the board is lost: one begun and put down for the board's life is

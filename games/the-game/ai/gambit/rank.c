@@ -282,6 +282,15 @@ static int walkTurns(const Judge *x, const Judge *y) {
     if ((dx > dy ? dx - dy : dy - dx) < rankSave && spendsReserve(l) && !spendsReserve(s)) return 0; }
   return (dx > dy) != (lostOf(x) > lostOf(y));
 }
+// (THE FINISH'S EIGHT: in finish them, a line that fires an eight or more beside one that does not, lost within a break's time of it or
+// later -- the attack the mode asks, never put after the other for its walk or for the line in progress)
+static int finishEightBy(const Judge *e, const Judge *o) {
+  if (!finishAsked() || e->hold || e->o.dead || e->apCombo < 8 || e->apChain >= 2 || (o->apCombo >= 8 && o->apChain < 2)) return 0;
+  if (e->o.lives) return 1;
+  if (o->o.lives) return 0;
+  double de = diesAt(e), d0 = diesAt(o);
+  return de >= rankSave && d0 - de < rankSave;
+}
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
@@ -662,6 +671,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
+  if (finishEightBy(x, y) || finishEightBy(y, x)) goalNoSooner = 1;
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
@@ -877,6 +887,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (and under garbage, a break in progress over another break that costs more presses than what is left of it -- switching spends the
     // window on swaps pressed for nothing -- unless the one in progress is lost within a break's time)
     if (!keep && decF.under && c->apBroke > 0 && o->apBroke > 0 && lineWalk(o) > lineWalk(c) && lostOf(c) >= rankSave) keep = 1;
+    if (finishEightBy(o, c)) keep = 0;
     if (keep) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1b. THE MODE'S GOALS (the owner: a mode plays its first entry, builds toward it otherwise, and takes a fallback only where the board
