@@ -109,6 +109,7 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
   return ok;
 }
 static int carryOpener(void);   // (the line in progress was begun under the opener: below, with the carry)
+static CbSeq opKeepSeq; static int opKeepOn; static int32_t opKeepHeld, opKeepAt;   // (the next chain's design carried on, and the decisions it was: the log's keep=)
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
@@ -150,7 +151,10 @@ static int readBoard_(Read *R) {
   // at the decision after; set 86 combo_storm 7, the opener ended at 297 with its 3's trigger a swap away)
   // (nor while a line it began is still pressed -- a break of the garbage: set 86 large_garbage 2, the opener ended at 499 with its break a
   // swap from done, and at 513 the board stood 409 frames)
-  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener();
+  // (nor while the next chain's design is pressed and fires before the board is lost: a chain falling is a board that cannot top out --
+  // set 86 large_garbage 6, a 5 designed and pressed after the 3, put down at 69 frames for a dig that left nothing to build with)
+  int nextFires = opKeepOn && openerSum > 0 && decQ.b->clock - opKeepAt <= 40 && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES < F->v[FACT_US_DIES];
+  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
   // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
   // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
   // chains, thrown before or after, add up to the eight; set 86 combo_storm 2, a 4 thrown, the opener ended, and a 5 at 1027 the mode's)
@@ -833,7 +837,6 @@ static int32_t opSecondFall;   // (the chain falling as the fall rule reads it -
 // (the chain a second chain must make: with the first thrown, any of OPENER_LEAST or more; with one falling, the rest of the eight
 // after it, OPENER_LEAST or more)
 static int32_t opSecondLeast(void) { return openerSum > 0 ? OPENER_LEAST : imax(OPENER_LEAST, imax(OPENER_LEAST, opNeed) - opSecondFall); }
-static CbSeq opKeepSeq; static int opKeepOn; static int32_t opKeepHeld;   // (the next chain's design carried on, and the decisions it was: the log's keep=)
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -872,13 +875,13 @@ static const Judge *opSecondSwap(const Read *R, int n) {
       int32_t tk = 0; int lk = 0;
       if (cbSeqPlay(&KG, &s, &KT) && cbBest(&KT, &tk, &lk) > 0 && tk && lk >= opDesignLeast) {
         memset(&dp, 0, sizeof dp); dp.len = s.n; for (int i = 0; i < s.n; i++) dp.path[i] = s.r[i] * 8 + s.c[i]; dp.trig = tk; dp.ch = lk; dp.design = 1;
-        opKeepSeq = s; pl = &dp; opKeepHeld++; }
+        opKeepSeq = s; pl = &dp; opKeepHeld++; opKeepAt = decQ.b->clock; }
     }
     cbPartial = 0;
     if (!pl) opKeepOn = 0;
   }
   if (!pl && opDesign(landed, ms * OP_SECOND_DESIGN, &dp, OP_CB_MAXSW)) {
-    pl = &dp; opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX);
+    pl = &dp; opKeepOn = dp.len <= CB_SEQ_MAX; opKeepSeq.n = imin(dp.len, CB_SEQ_MAX); opKeepAt = decQ.b->clock;
     for (int i = 0; i < opKeepSeq.n; i++) { opKeepSeq.r[i] = (cb8)CR(dp.path[i]); opKeepSeq.c[i] = (cb8)CC(dp.path[i]); } }
   opDesignAsIs = 0; opDesignLeast = OP_TWO_FROM; opDesignCost = OP_CB_COST;
   double rest = ms - (nowMs() - t0);
