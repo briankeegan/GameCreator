@@ -362,6 +362,7 @@ static int growLines(Cand *out, int n, int cap) {
 #define TWIN_SWAP_FRAMES 24   // (the frames a swap of an eight takes to press, the walk with it: set 86 combo_storm 1, 18-26 a swap)
 #define TWIN_MAXSWAPS 12
 #define TWIN_OFFER 3
+#define TWIN_GONE 15   // (a scan cell whose panel is clearing: not empty, no colour)
 #define TWIN_REACH 20   // (the most swaps the distance to an eight is counted to -- one distance, the set-ups proposed by it and ranked by it)
 #define TWIN_SETUP_MAX 8   // (the most swaps a set-up is built in outside the mode that fires it)
 typedef struct { int32_t n, at[8], ok; } RowFix;
@@ -462,7 +463,13 @@ static int twinRank(const Twin *t) { return t->cost * 2 - (t->touch ? 1 : 0); }
 static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topOut, Twin *best, int *rows, int cap) {
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
-  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) { g[r][c] = cellAt(b, r, c); if (g[r][c] != 0) top = r; }
+  // (a panel clearing -- matched, popping, popped -- holds its cell until it goes and makes no three with anything: TWIN_GONE, no colour)
+  for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) {
+    g[r][c] = cellAt(b, r, c);
+    int32_t s = b->p[r][c].f[STATE];
+    if (g[r][c] > 0 && g[r][c] < 8 && (s == MATCHED || s == POPPING || s == POPPED)) g[r][c] = TWIN_GONE;
+    if (g[r][c] != 0) top = r;
+  }
   if (top > b->topCurRow) top = b->topCurRow;
   // (a cell that can be sorted: a panel of colour at rest, on one at rest -- or the floor; a row with any is a row the runs may pass)
   uint32_t any[MAXROWS + 2];
