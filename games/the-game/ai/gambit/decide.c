@@ -442,7 +442,7 @@ static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (an extension of the falling chain: a line played as one -- PLAY_EXTEND, or PLAY_LINEUP, the same search's lines while a garbage slab
 // pops beside the chain -- or the line in progress begun as one)
 static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || (J->carried && (b == PLAY_EXTEND || b == PLAY_LINEUP)); }
-static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, -1 asked and turned down, 0 not asked: the log's)
+static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down; 0 not asked: the log's)
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -1170,6 +1170,25 @@ static Played playOf(const Read *R, int n) {
             (C->o.lives ? FW.o.lives : (FW.o.lives || (FW.o.lostAt != NOT_ASKED && diesAt(&FW) >= diesAt(C)))) &&
             imax(0, FW.apBroke) >= imax(0, C->apBroke) && (FW.met < 0 ? MAXAIMS : FW.met) <= (C->met < 0 ? MAXAIMS : C->met) &&
             !cutsShort(&FW) && !wastesThree(&FW)) { P.line = P.top = &FW; P.wait = 0; freeSetup = 2; }
+      }
+    }
+  }
+  // (THE WHOLE EIGHT BEFORE THE LINE IN PROGRESS -- the owner: eights between breaks: in finish them, where the decision carries a line
+  // on, an eight offered whole (propose.c twinLines) is pressed first and the carried line after it, the two one line, judged whole:
+  // taken where it fires the eight and is lost within a break's time of the carried line alone, or later -- each judged alone is lost
+  // as if it were the last thing pressed, so an eight beside a break is never seen to leave the time for the break)
+  if (freeSetup == 0 && P.line && P.line->carried && (P.line->k.play == PLAY_CARRY || P.line->k.play == PLAY_CARRYWAIT) && !P.line->o.dead &&
+      !P.deferred && !R->up && finishAsked() && !clockOut()) {
+    const Judge *C = P.line, *E = 0;
+    for (int i = 0; i < n; i++) if (order[i]->k.twin == 1 && !order[i]->o.dead && order[i]->apCombo >= 8 && (!E || diesAt(order[i]) > diesAt(E))) E = order[i];
+    if (E && E->k.nseq + C->k.nseq <= MAXLINE) {
+      static Judge EW; Cand k; int32_t seq[MAXLINE]; int ns = 0;
+      for (int i = 0; i < E->k.nseq; i++) seq[ns++] = E->k.seq[i];
+      for (int i = 0; i < C->k.nseq; i++) seq[ns++] = C->k.seq[i];
+      freeSetup = -7;
+      if (candOf(&k, PLAY_ENTRY, seq, ns, -1, 0)) {
+        k.settled = C->settled; k.twin = 1; k.x.combo = E->k.x.combo;
+        if (judgeCand(R, &k, &EW) && EW.apCombo >= 8 && (finishEightBy(&EW, C) || (!EW.o.dead && diesAt(&EW) >= diesAt(C)))) { P.line = P.top = &EW; P.wait = 0; freeSetup = 3; }
       }
     }
   }
