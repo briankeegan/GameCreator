@@ -772,10 +772,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'c. THE FINISH SENDS NO CHAIN PAST A 2 (the owner: in finish them a chain, if any, is a 2x -- large chains down, eights up): of two
   // that survive alike, a line whose whole chain -- the board's own falling chain with it -- runs past two after one whose does not:
   // a cut taken over the hold that lets the garbage's chain run to a 4
-  if (finishAsked() && (lx || lostAlike(x, y)) && chainPastTwo(x) != chainPastTwo(y)) {
-    const Judge *cl = chainPastTwo(x) ? x : y, *o = chainPastTwo(x) ? y : x;
+  // (and a chain already past two when the decision is made is cut where it stands: of two past two, the shorter -- a 3 before a 5)
+  if (finishAsked() && (lx || lostAlike(x, y)) && (chainPastTwo(x) || chainPastTwo(y)) && x->apChainAll != y->apChainAll) {
+    const Judge *cl = x->apChainAll > y->apChainAll ? x : y, *o = cl == x ? y : x;
     // (both living, or the cut lost no sooner: the chain cut at two whatever it breaks; lost alike and sooner: only where it breaks as much)
-    if (lx || (!o->o.lives && !cl->o.lives && diesAt(o) >= diesAt(cl)) || imax(0, o->apBroke) >= imax(0, cl->apBroke)) return (cmpKey = __LINE__, (chainPastTwo(x) ? 1 : -1));
+    if (lx || (!o->o.lives && !cl->o.lives && diesAt(o) >= diesAt(cl)) || imax(0, o->apBroke) >= imax(0, cl->apBroke)) return (cmpKey = __LINE__, (cl == x ? 1 : -1));
   }
   // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that walks the input allowance below a
   // break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter after -- two
