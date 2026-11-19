@@ -1486,7 +1486,23 @@ static Played playOf(const Read *R, int n) {
       const Judge *h = 0, *sk = 0;
       for (int i = 0; i < n; i++) if (order[i]->hold) { h = order[i]; break; }
       const Judge *kp = 0;   // (no give-way while the chain lands: set 86 combo_storm 1, a line kept a break's time longer taken at 514, the board lost at 800 all the same -- main's opener survives it)
+<<<<<<< HEAD
       for (int i = 0; i < n && !sk; i++) { const Judge *J = order[i];
+=======
+      // (only where the board has the time: the hold lost no sooner than OP_FALL_LOST -- a board near its loss keeps its panels where they
+      // are for the break the next decisions find: set 86 combo_storm 5 fill, 478-518, three level swaps with the board 105-65 frames from
+      // its loss, no break found after them and the board lost at 666, where holding found a break at 493 and survived)
+      int roomy = h && (h->o.lives || (h->o.lostAt != NOT_ASKED && h->o.lostAt >= OP_FALL_LOST));
+      // (A BREAK FIRST WHILE IT LANDS -- the owner: be ready to break the garbage as soon as it lands; not enough blocks is what loses: a
+      // line that breaks garbage, keeps the chain falling as far as the hold does and is lost no sooner, is played over the hold and any
+      // set-up -- the garbage it converts is the next panels; set 86 factory 3 fill, 676-763: an 8x falling, a break of 24-30 cells that
+      // kept it, lost at 591-631, passed for a hold lost at 172, the panels 36 to 12 and the board lost at 1374)
+      for (int i = 0; i < n && !sk && h; i++) { const Judge *J = order[i];
+        if (J->hold || J->o.dead || !J->k.nseq || !(J->apBroke > 0) || cutsShort(J) || chainReach(J) < chainReach(h)) continue;
+        if (!(J->o.lives || h->o.lives == 0 && diesAt(J) >= diesAt(h))) continue;
+        sk = J; }
+      for (int i = 0; i < n && !sk && roomy; i++) { const Judge *J = order[i];
+>>>>>>> 3fac8ff7a5 (Gambit: while the opener's chain lands, a break that keeps the chain falling and is lost no sooner than the hold is played first)
         if (J->hold || J->o.dead || !J->k.nseq || !setupKind(J) || wastesThree(J) || spendsReserve(J) || cutsShort(J)) continue;
         if (h && chainReach(J) < chainReach(h)) continue;
         if (!(J->o.lives || (h && !h->o.lives && diesAt(J) >= diesAt(h)))) continue;
