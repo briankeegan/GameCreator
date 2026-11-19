@@ -682,6 +682,11 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (twinWaste[1] + twinWaste[2] + twinWaste[3] + twinWaste[4]) { L_s(" twinW="); for (int i = 1; i <= 4; i++) { if (i > 1) L_s("/"); L_i(twinWaste[i]); } if (twinWaste[2]) { L_s(":made"); L_i(twinWasteC); L_s("x"); L_i(twinWasteN); L_s("/sized"); L_i(twinWasteX); } }
   if (twinOffered || (P.line && (P.line->k.twin == 1 || P.line->k.twin == 2))) { L_s(" twin="); L_i(twinOffered); if (P.line && (P.line->k.twin == 1 || P.line->k.twin == 2)) L_s(P.line->k.twin == 2 ? "/setup" : "/played"); }
   if (sixOffered || (P.line && P.line->k.twin == 3)) { L_s(" six="); L_i(sixOffered); if (P.line && P.line->k.twin == 3) L_s("/played"); }
+  // (the first six in the order: its place, its loss (L lives, D dead), its combo, and the key that put the line played first over it)
+  if (sixOffered && n && order[0] && order[0]->k.twin != 3) for (int i = 1; i < n; i++) if (order[i]->k.twin == 3) {
+    int32_t keep = cmpKey; compareJudged(order[0], order[i]);
+    L_s(" sixAt="); L_i(i); L_s(":"); if (order[i]->o.dead) L_s("D"); else if (order[i]->o.lives) L_s("L"); else L_i((int32_t)diesAt(order[i]));
+    L_s(":c"); L_i(order[i]->apCombo); L_s(":x"); L_i(order[i]->apChainAll); L_s(":k"); L_i(cmpKey); cmpKey = keep; break; }
   L_s(" land="); if (R.F.known[FACT_US_NEXTLANDS]) L_d(R.F.v[FACT_US_NEXTLANDS]); else L_s("-");
   L_s(" dies="); L_d(R.F.v[FACT_US_DIES]); if (R.F.v[FACT_US_QUEUEKILLS]) L_s(" qk=1"); if (R.aloneOut) { L_s(" alone="); L_i(R.aloneChain); }
   if (needlessTrimmed) { L_s(" needless="); L_i(needlessTrimmed); }
