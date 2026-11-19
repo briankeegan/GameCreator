@@ -162,11 +162,7 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
   // opening's raise is held to more: a line with nothing coming lives by standing HORIZON + REST (outcome.c), so a board raised to stand
   // only that long leaves no line that lives -- it stands that and one more REST, the time a line takes)
   if (last == NOT_ASKED) {
-    // (the opening's raise, though, the owner's rule: up to 11 before the first garbage -- held only to the time a line takes (REST): left
-    // alone at level 11 the stack rises a row in about 40 frames, so a six-row stack stands 336 frames unraised, and HORIZON + 2 * REST
-    // (480) refused every opening raise -- set 86 factory 7 fill, five rows short at 192, none raised, 14-21 panels at the first garbage
-    // where the players have 30-55)
-    int32_t stand = raiseOpens ? REST : HORIZON;
+    int32_t stand = raiseOpens ? HORIZON + 2 * REST : HORIZON;
     for (int k = 1; k <= rows; k++) {
       cloneBoard(st, q->b);
       int32_t f = 0;
