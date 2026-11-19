@@ -893,9 +893,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // a 7x lost at 502 over a 4x lost at 498 with the next moves, on the garbage the 7x broke)
     return (cmpKey = __LINE__, (cl == x ? 1 : -1));
   }
-  // 1'k. COMBOS, NOT CHAINS (the owner: finish them sends combos, not chains): of two that live, or are lost within a break's time of each
-  // other, a combo of four or more that sends no chain before a line that sends one -- the board's own falling chain counted with it
-  if (finishAsked() && (lx || finishAlike(x, y)) && !x->hold && !y->hold) {
+  // 1'k. COMBOS, NOT CHAINS (the owner: finish them sends combos, not chains): of two that live, or are lost alike, a combo of four or
+  // more that sends no chain before a line that sends one -- the board's own falling chain counted with it
+  if (finishAsked() && (lx || lostAlike(x, y)) && !x->hold && !y->hold) {
     int px = x->apCombo >= 4 && x->apChainAll < 2, py = y->apCombo >= 4 && y->apChainAll < 2;
     int cx = x->apChainAll >= 2, cy = y->apChainAll >= 2;
     // (only where the combo with no chain is lost no sooner -- survival first: set 86 combo_storm 1, 6301, an 8 lost at 225 over a 9 with
