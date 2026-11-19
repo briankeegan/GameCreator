@@ -621,7 +621,12 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 // (OFF THE MODE: a line whose attack the mode's list does not ask -- a chain where it asks combos, a 2x or a chain past its length, a combo
 // of four or more it does not ask -- the board's own chain going on counted, as every line has it alike)
 #define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
-static int offMode(const Judge *J) { return !J->hold && !J->o.dead && !J->lengthens && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4); }
+// (in finish them a combo of four or more with at most a 2x is the mode's, never off it -- set 86 combo_storm 1, 1073-1107: the hold
+// over a 6 with its 2x, both living)
+static int offMode(const Judge *J) {
+  if (finishAsked() && !J->hold && J->apCombo >= 4 && J->apChainAll <= 2 && !J->outside) return 0;
+  return !J->hold && !J->o.dead && !J->lengthens && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4);
+}
 #define FINISH_SAFE (2 * HORIZON)   // (frames from now a finish board is safe at: rank.c, key 1)
 #define FINISH_8_LIFE 2   // (the breaks' time (rankSave) an eight's board must still stand, its next moves played, to be fired over a line that lives longer)
 static double diesAt(const Judge *x);
