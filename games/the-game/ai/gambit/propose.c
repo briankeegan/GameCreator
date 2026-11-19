@@ -722,9 +722,7 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
 #define SIX_OFFER 3
 static int sixLines(const Read *R, Cand *out, int n, int cap) {
   sixOffered = 0;
-  // (topped too: finish them is topped in 90% of its decisions (run 4119, 21,658 of ~24,000), and the players build theirs under the
-  // popping slab -- the judge plays its stop and its life)
-  if (!finishAsked() || clockOut() || n >= cap) return n;
+  if (!finishAsked() || R->topped || clockOut() || n >= cap) return n;
   static int32_t g[MAXROWS + 2][W + 2];
   static uint8_t ok[MAXROWS + 2][W + 2];
   static Twin best[TWIN_OFFER * 4];
