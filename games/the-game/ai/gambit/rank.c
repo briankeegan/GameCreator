@@ -898,8 +898,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (finishAsked() && (lx || finishAlike(x, y)) && !x->hold && !y->hold) {
     int px = x->apCombo >= 4 && x->apChainAll < 2, py = y->apCombo >= 4 && y->apChainAll < 2;
     int cx = x->apChainAll >= 2, cy = y->apChainAll >= 2;
-    if (px && cy && !cx) return (cmpKey = __LINE__, -1);
-    if (py && cx && !cy) return (cmpKey = __LINE__, 1);
+    // (only where the combo with no chain is lost no sooner -- survival first: set 86 combo_storm 1, 6301, an 8 lost at 225 over a 9 with
+    // its 2x lost at 296, the board lost at 6583)
+    if (px && cy && !cx && diesAt(x) >= diesAt(y)) return (cmpKey = __LINE__, -1);
+    if (py && cx && !cy && diesAt(y) >= diesAt(x)) return (cmpKey = __LINE__, 1);
   }
   // 1'a. THE ALLOWANCE'S RESERVE: of two that survive alike (both live, or lost alike), a line that walks the input allowance below a
   // break's walk (BREAK_WALK) after one that keeps it, and of two that leave it short the one that leaves it shorter after -- two
