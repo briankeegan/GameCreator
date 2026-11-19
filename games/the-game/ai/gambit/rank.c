@@ -286,6 +286,10 @@ static int walkTurns(const Judge *x, const Judge *y) {
   // (and never behind the hold, a line that breaks garbage and is lost later: the walk it is charged was pressed on the engine when its
   // loss was judged, and the hold breaks nothing)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
+    // (in finish them, a line that takes the chain past 2x and longer than the other's is never put first for its later loss here -- the
+    // shorter chain and the walk decide: set 86 combo_storm 1, 1734, a 4x taken to a 6x with a walk of 38 over a line lost 98 frames
+    // sooner, the chain then fed through the garbage to a 10x)
+    if (finishAsked() && l->apChainAll > 2 && l->apChainAll > s->apChainAll && !s->hold && !s->o.dead && (dx < dy ? dx : dy) >= rankSave) return 0;
     if (s->hold && !l->hold && l->apBroke > 0) return (dx > dy) != (lostOf(x) > lostOf(y));
     // (nor, under garbage, a line that spends no panels and breaks or walks toward a break, behind the hold or a line that spends them:
     // the hold builds nothing and the spend is the next break's material -- r1336 9240-9268, a toward line lost 43 frames later put
