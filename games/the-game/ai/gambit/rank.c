@@ -641,6 +641,11 @@ static double diesAt(const Judge *x);
 // (and beside a bigger combo too -- set 86 combo_storm 1, 1953: an 8 lost at 299 passed over for a 4 in progress lost at 252)
 static int finishComboBy(const Judge *c, const Judge *o) { return !c->hold && !c->o.dead && c->apCombo >= 4 && c->apChainAll <= 2 && (!(o->apCombo >= 4) || c->apCombo > o->apCombo) && diesAt(c) >= diesAt(o); }
 #define FINISH_SAFE_ON 0   // (the safe board's credit: 0 off -- a board lost later than FINISH_SAFE is ranked by its loss)
+// (A BIGGER COMBO AT THE FINISH: a combo of four or more with at most a 2x, bigger than the other line's and lost no sooner -- never put
+// after it for the reserve or the cursor's place: set 86 combo_storm 1, 1219-1282, a 6 lost later passed over three times for a 4)
+static int finishBigger(const Judge *a, const Judge *b) {
+  return finishAsked() && !a->hold && !a->o.dead && !a->outside && a->apCombo >= 4 && a->apChainAll <= 2 && a->apCombo > (b->hold ? 0 : b->apCombo) && diesAt(a) >= diesAt(b);
+}
 static int finishSafe(const Judge *J) { if (!FINISH_SAFE_ON || J->o.dead || J->o.lives) return 0; double d = diesAt(J); return d >= FINISH_SAFE && d < 1e299; }
 // (A COMBO SAFE BESIDE A CHAIN -- the owner: survive by breaking garbage with combos, not chains: in finish them, a combo the list asks
 // (four or more, at most a 2x) whose board is lost HORIZON or more from now -- a break's time and more for the next decision -- survives
@@ -904,7 +909,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int rises = !lx && !decF.under && decQ.narr == 0 && !sp->o.dead && diesAt(sp) >= diesAt(kp) + WALK_FRAMES;
     // (nor, in finish them, against a combo the list asks: a combo of four or more with at most a 2x, beside a line that makes no such
     // combo, is played over the reserve where it is lost no sooner -- the owner: any combo beats a 3; the combo is the break itself)
-    int asks = finishAsked() && !sp->hold && !sp->outside && sp->apCombo >= 4 && !(!kp->outside && kp->apCombo >= 4) &&
+    int asks = finishAsked() && !sp->hold && !sp->outside && sp->apCombo >= 4 && sp->apChainAll <= 2 && !(!kp->outside && kp->apCombo >= sp->apCombo) &&
                (sp->o.lives || (!kp->o.lives && diesAt(sp) >= diesAt(kp)));
     if (rx != ry && !rises && !asks) return (cmpKey = __LINE__, (rx - ry));
   }
@@ -922,7 +927,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (never an eight left for a nearer line in finish them: the two 4s fired as one -- set 86 combo_storm 1, 2864: a set-up lost at 150
   // over an eight lost at 308, for its walk)
   if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0) && x->k.nseq && y->k.nseq &&
-      !finishEightBy(x, y) && !finishEightBy(y, x) &&
+      !finishEightBy(x, y) && !finishEightBy(y, x) && !finishBigger(x, y) && !finishBigger(y, x) &&
       !(x->apBroke > 0 && imax(0, x->apBroke) == imax(0, y->apBroke) && lineWalk(x) != lineWalk(y))) {
     int bx = focusBand(x), by = focusBand(y);
     // (and a far line that breaks more garbage than the near one is not left for it: the near one is worked only where it breaks as much
