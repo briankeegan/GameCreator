@@ -6,7 +6,6 @@ static Opp theOpp;
 static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OP_FALL_LOST AT_LEVEL(200)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-193 and a break at 442-465; combo_storm 3's at 205, kept, made its 8; the large slabs', lost at 299-471 a second chain is still made)
-#define OP_KEEP_PANELS 24   // (the panels an opener's extension leaves with garbage on its way, at least: four rows)
 #define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_CHAINS 3
@@ -1398,10 +1397,6 @@ static Played playOf(const Read *R, int n) {
     // of: past need - OPENER_LEAST the chain as it falls is kept, and below it the extension that reaches there in the fewest links -- in
     // a garbage game, where the panels the next chain is made of come back slowly)
     int tall = tallGarbage(&decQ); const Judge *two = 0; int twoAsked = 0;
-    // (THE CHAIN NEVER SPENDS THE BOARD'S LAST PANELS WITH GARBAGE ON ITS WAY -- the owner: the opener must not die; not enough blocks is
-    // what loses: an extension that leaves fewer than OP_KEEP_PANELS panels with a block told of, the chain falling kept as it is instead
-    // -- set 86 combo_storm 4, finish 765 and fill 774: a 4x extended to an 8x, the panels 42 to 11, the block landing as it ended)
-    if (ext && decQ.narr > 0 && ext->o.matLeft >= 0 && ext->o.matLeft < OP_KEEP_PANELS && !ext->o.lives) ext = 0;
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
     // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
     if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
