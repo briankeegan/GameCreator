@@ -700,6 +700,10 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
     if (ly && !y->o.lives && !finishSafe(y) && chainPastTwo(y) && NO_SLAB(x) && diesAt(x) >= diesAt(y)) ly = 0;
     #undef NO_SLAB
     #undef PURE_COMBO
+    // (and beside any line lost no sooner at all -- the horizon's credit is the line in progress's alone, so a line lost later past the
+    // horizon too was put after it; set 86 combo_storm 1, 62 decisions of run 4076, 1437: a 4 in progress lost at 476 over a line lost at 524)
+    if (lx && !x->o.lives && !finishSafe(x) && !y->o.dead && diesAt(y) >= diesAt(x) && diesAt(y) < 1e299) lx = 0;
+    if (ly && !y->o.lives && !finishSafe(y) && !x->o.dead && diesAt(x) >= diesAt(y) && diesAt(x) < 1e299) ly = 0;
   }
   *lxo = lx; *lyo = ly;
 }
@@ -785,7 +789,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (nor in finish them between a line whose chain runs past 2x and one whose does not: the shorter chain decides, 1'c -- set 86
   // combo_storm 1, 1987: a 3x lost at 351 over a break lost at 368 for the panels it left)
   if (!lx && shortOfPanels(x, y) && lostOf(x) >= rankSave && lostOf(y) >= rankSave && !(finishAsked() && (x->apCombo >= 4) != (y->apCombo >= 4)) &&
-      !(finishAsked() && chainPastTwo(x) != chainPastTwo(y)))
+      !(finishAsked() && chainPastTwo(x) != chainPastTwo(y)) && !finishBigger(x, y) && !finishBigger(y, x))   // (nor a bigger combo lost no sooner: set 86 combo_storm 1, 2679-3001, a 7 passed over 18 times for a 6 that left more panels)
     return (cmpKey = __LINE__, (panelsLeft(x) > panelsLeft(y) ? -1 : 1));
   // 1'2. NO 2x WHERE THE BOARD IS SAFE (the owner: a 2x is continued or not made -- one made with nothing to survive is for nothing): of
   // two that live, no garbage on the board and the board making no chain of its own, a line whose chain ends at two after one that makes
