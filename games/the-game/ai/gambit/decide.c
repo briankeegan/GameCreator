@@ -2178,9 +2178,12 @@ static Why moveWhy(const Judge *L) {
       Stats st; if (!liveNode(x, o) || !statsOf(x, o, &st)) continue;
       for (int c = 0; c < st.n && c < MAXCOMBOS; c++) { if (st.chainAt[c] > bestX) bestX = st.chainAt[c]; if (st.size[c] > bestC) bestC = st.size[c]; }
     }
-    if (bestX >= 2) { w.kind = WHY_CHAIN; w.a = bestX; }
+    // (in finish them a chain set up, or a lone three, is no reason -- the owner: combos, not chains, and a 3 the last resort; set 86
+    // combo_storm 1, 1644-2250: set-ups toward a 2x and a three pressed for nothing)
+    int fin = finishAsked();
+    if (bestX >= 2 && !fin) { w.kind = WHY_CHAIN; w.a = bestX; }
     else if (L->k.aimC > 0 && L->k.aimLeft > 1) { w.kind = WHY_TWIN; w.a = L->k.aimC; w.b = L->k.aimLeft; }
-    else if (bestC >= 3) { w.kind = WHY_COMBO; w.a = bestC; }
+    else if (bestC >= (fin ? 4 : 3)) { w.kind = WHY_COMBO; w.a = bestC; }
   }
   if (w.kind == WHY_NONE && L->k.aimC > 0) { w.kind = WHY_TWIN; w.a = L->k.aimC; w.b = L->k.aimLeft; }
   ns_reset(x);
