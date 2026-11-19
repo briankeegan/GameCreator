@@ -278,7 +278,10 @@ static int readBoard_(Read *R) {
   // floor kept by raising, a reserve: below it, not topped, the panels under `to` -- garbage on them aside, a slab is no panel to break
   // with -- the rows the next break is made of brought in)
   int32_t to = rule->raiseTo ? rule->raiseTo : theTables.raiseTo;
-  int opening = !gambitHit && !F->known[FACT_US_CONTACT] && !R->topped && decQ.b->clock < OPENING_RAISE;
+  // (and after garbage lands, still: the owner -- small garbage landed, it still raises up high; it never raises to a point that kills: the
+  // rows counted from the stack's top with the garbage on it (fullTop), and held to the rows the board lives through once everything
+  // lands (raiseAlive, below))
+  int opening = !R->topped && decQ.b->clock < OPENING_RAISE;
   // (and A LOW STACK: under LOW_ROWS rows of panels, not topped, it is raised all the same -- the owner's rule: below six rows, raise high;
   // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
   // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
