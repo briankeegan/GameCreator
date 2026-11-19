@@ -948,6 +948,14 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       { int a, b; int32_t k = cmpKey; creditPair(top, late, &a, &b); L_s(" cr="); L_i(a); L_s("/"); L_i(b); cmpKey = k; }
     }
   }
+  // (A BIGGER COMBO PASSED OVER at the finish: the first line in the order that makes a bigger combo with at most a 2x, lost no sooner,
+  // and the key that put it after the line played -- rank.c finishBigger)
+  if (top && !top->hold && finishAsked()) {
+    for (int i = 0; i < P.ncands; i++) { const Judge *j = order[i]; if (j == top || !finishBigger(j, top)) continue;
+      int32_t k = cmpKey; int r = compareJudged(top, j);
+      L_s(" bigger="); L_play(j->k.play); L_s(":c"); L_i(j->apCombo); L_s(":"); if (j->o.lives) L_s("L"); else L_i((int32_t)diesAt(j)); L_s(":k"); L_i(cmpKey); if (r > 0) L_s("+");
+      cmpKey = k; break; }
+  }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   // (A RAISE, AND WHY: asked as the opening's (o) or the floor's refill (r), the rows to raise to and the rows short of them, and whether the
