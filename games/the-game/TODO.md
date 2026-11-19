@@ -5,6 +5,37 @@
 Each line: the ask, then where it stands. A fix ships to main only when it holds survival over two runs; one that costs survival is
 narrowed, not dropped.
 
+### Offense, from yoschi (the owner, 2026-11-19: "make this into actionable items")
+
+Measured on r1361-r1363 (yoschi at level 10, the only three games against him): he sends about 145 cells a minute to our 119, and in
+the first 20 s 60-76 cells to our 27-30 -- we never recover from the opening. Each item: the change, where, and the number that says
+it worked (ours / his).
+
+- [ ] **Y1. Raise before the first garbage -- with the opener built around it.** Panels when the first block lands: ours 14-21, his
+      30-55; he raises 3-4 rows in the first second. The opener never raised: `search/ready.c raiseReady` held the opening raise to
+      standing HORIZON + 2 REST left alone, which no stack at level 11 does. Tried (2026-11-19, fill, 28 games): raised to 11 -- 22;
+      capped at 10 until garbage is seen -- 22 (endless 3 lost at 720 to its own rise); main 24. So the raise alone is not it: the
+      opener must plan for the raised board (a break ready for the first block, its chain not spending the raise). Measure: panels at
+      the first landing, cells sent in frames 600-1500 (ours ~30, his 41-71), survival per mode.
+- [ ] **Y2. Combos of 4-6, not plain threes.** 4+ combos a minute: ours 5.7, his 12.5. Plain threes that break and link nothing:
+      ours 14 a minute, his 9 -- 23-31% of our swaps go to threes, 8-18% of his. Price a plain three where a 4+ is within ~5 swaps
+      (`rank.c` break and presses keys); when topped, a 4+ is stop time and a three is none. Measure: 4+ a minute, threes a minute, the
+      4+ share of matches while topped (ours 15-25%, his 36-55%).
+- [ ] **Y3. The two-column six as a first-class line.** 31 of his 42 sixes and sevens are two vertical threes side by side, fired by
+      one swap, ~5 swaps and ~130 frames to build; 45% break garbage in the same match; his eights are the same shape a row taller
+      (v4+v4). Offer it under garbage, counted as a break when a cleared cell touches garbage (`propose.c` twinLines builds eights only;
+      `judge.c seamsOf`; let a seam six that breaks outrank a three that breaks, `rank.c`). Measure: sixes a minute, v3+v3 share.
+- [ ] **Y4. Short topped spells.** Topped median: ours 4-15 s (longest 68 s), his 0-4 s; garbage waiting on us grows ~28 cells a minute,
+      to 108-134 at our deaths. While topped, answer with 4+ combos (Y2) and swap faster (ours 100-119 a minute, his 131-196). Measure:
+      topped median and longest, cells waiting at the end.
+- [ ] **Y5. Use the waits.** Idle: ours 15-23% of the game, mostly while our own garbage pops; his 4-11%. He builds the next six under
+      the popping slab. Offer set-ups there over `hold` / `carry_wait` (`propose.c`, the hold conditions in `decide.c`) -- this is C below.
+      Measure: half-seconds with no input.
+- [ ] **Y6. No hollows under garbage.** Empty cells under garbage at rest: ours 5.0-9.7, his 3.5-5.9; both our death boards were a slab
+      bridged over ~15 empty cells. Price voids under garbage in the levelling search and the flatness key (`search/level.c`, `rank.c`).
+      And never clear the top with a long queue waiting unless the board lives through all of it landing at once (r1363: four pieces in
+      13 frames). Measure: empty cells under garbage.
+
 ### Now, in this order (the owner, 2026-11-12/13 -- repeated; worked top first, every session)
 
 - [ ] **A. Efficiency.** No wasted threes; no set-ups that build nothing or walk far for little (TODO 8, 9). Every set-up names what
