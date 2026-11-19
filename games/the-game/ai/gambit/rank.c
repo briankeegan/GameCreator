@@ -570,6 +570,7 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // garbage 19 where it was 23 -- finish 15 against 17)
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
+static int32_t inOpener;   // (the opener still playing: its chain is the opener's to build -- decide.c read)
 #define NEAR_GAIN 30
 static int lostAlike(const Judge *x, const Judge *y) {
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
@@ -895,7 +896,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   // 1'k. COMBOS, NOT CHAINS (the owner: finish them sends combos, not chains): of two that live, or are lost alike, a combo of four or
   // more that sends no chain before a line that sends one -- the board's own falling chain counted with it
-  if (finishAsked() && (lx || lostAlike(x, y)) && !x->hold && !y->hold) {
+  // (never in the opener: its chain is asked -- set 86 combo_storm 1, 192, the opener's 5x played with a swap more)
+  if (finishAsked() && !inOpener && (lx || lostAlike(x, y)) && !x->hold && !y->hold) {
     int px = x->apCombo >= 4 && x->apChainAll < 2, py = y->apCombo >= 4 && y->apChainAll < 2;
     int cx = x->apChainAll >= 2, cy = y->apChainAll >= 2;
     // (only where the combo with no chain is lost no sooner -- survival first: set 86 combo_storm 1, 6301, an 8 lost at 225 over a 9 with

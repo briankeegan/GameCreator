@@ -168,6 +168,7 @@ static int readBoard_(Read *R) {
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
     if (thenRule >= 0 && ((ni >= 0 && theTables.r[ni].table == 2) || modeRule < 0)) modeRule = thenRule;
   }
+  inOpener = !openerOver;
   int oi = -1;
   for (int i = 0; i < theTables.n && oi < 0 && !openerOver && !openerPaused && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
   int pausedRule = openerPaused ? (thenRule >= 0 ? namedRule(thenRule) : nswitch ? namedRule(modeAt(0)) : -1) : -1;
