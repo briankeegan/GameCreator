@@ -1482,7 +1482,7 @@ static Played playOf(const Read *R, int n) {
     if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
         if (slab && !(J->apBroke > 0)) continue;
-        if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
+        if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= rankSave))) keep = J; }   // (a break's time: set 86 factory 8 finish, 612, a break 156 frames longer passed at OP_FALL_KEEP's 250, the board lost at 776)
     if (!keep) { if (SPENDS_BOARD(lnk)) lnk = 0; if (SPENDS_BOARD(two)) { two = 0; twoReaches = 0; } }
     #undef SPENDS_BOARD
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
