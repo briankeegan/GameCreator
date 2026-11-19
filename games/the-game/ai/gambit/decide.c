@@ -60,6 +60,8 @@ static int carryHeld(void);
 #define FINISH_ROWS 8   // the rows finish them raises a low stack to where no garbage has come: an eight's columns, and rows over them
 #define LOW_ROWS 6   // a stack under this many rows of panels is raised (the floor's raise)
 #define PRESS_FRAMES 3   // the frames an action of a break's walk is pressed in, held walks and taps between
+#define OPEN_SEEN_TO 10   // the opening raise's rows before any garbage is told of (the players: 9-10)
+static int32_t openCap;
 #define OPENING_RAISE 600   // the opening raise's frames: the countdown and the seconds before garbage first lands (340-400 in the garbage patterns)
 #define RAISE_WAIT 120   // the frames the floor's raise waits for the stack to take one, at most
 static int32_t savingPanels;   // (saving panels up, across decisions; a new game ends it -- gb_new_game)
@@ -283,6 +285,10 @@ static int readBoard_(Read *R) {
   // rows counted from the stack's top with the garbage on it (fullTop), and held to the rows the board lives through once everything
   // lands (raiseAlive, below))
   int opening = !R->topped && decQ.b->clock < OPENING_RAISE;
+  // (THE OPENING RAISE BEFORE ANY GARBAGE IS SEEN: to OPEN_SEEN_TO rows, the rows the first garbage lands on left free -- the raise is
+  // judged before the first block is told of; set 86 fill, 29b79e3: raised to 11 at 192, the first block told of at 209, the board lost
+  // within 130 frames of every decision after it and at 784-856 in three games of 28; the players raise to 9-10)
+  if (opening && !garbageSeen && decQ.narr == 0 && !R->under) { int32_t cap = OPEN_SEEN_TO; if (!rule->raiseTo || rule->raiseTo > cap) openCap = cap; else openCap = 0; } else openCap = 0;
   // (and A LOW STACK: under LOW_ROWS rows of panels, not topped, it is raised all the same -- the owner's rule: below six rows, raise high;
   // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
   // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
@@ -298,6 +304,7 @@ static int readBoard_(Read *R) {
   int32_t taTo = TA_TOP - imax(0, evenOf(decQ.b) - TA_EVEN);
   int taRaise = ruleNoEnemy && !opening && !refill && !R->topped && !R->taDying && !taOn && panelTop(decQ.b) < taTo;
   if (taRaise) to = taTo;
+  if (openCap && opening && to > openCap) to = openCap;
   raiseRefill = refill; raiseOpening = opening; raiseTo = to;
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
   raiseRows = rowsUp;
