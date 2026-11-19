@@ -506,6 +506,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     P.line = alt; P.top = alt ? alt : H;
   }
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
+  // (the frame the board is lost under the line played, for the eights' time next decision: propose.c twinLines)
+  twinRoomAt = P.line && !P.line->hold && !P.line->o.dead && P.line->o.lostAt != NOT_ASKED ? (P.line->o.lives || P.line->o.lostAt == FOREVER ? decQ.b->clock + FOREVER / 2 : decQ.b->clock + P.line->o.lostAt) : -1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
   Move d = R.up ? (Move){ 2, 0 } : P.line && !timed ? (Move){ 1, P.line->k.seq[0] } : (Move){ 0, 0 };
