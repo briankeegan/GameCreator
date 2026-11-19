@@ -1074,11 +1074,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
     // (time attack: nothing coming, the rise never still -- of two that do not live the later loss decides, never the goal: a board held
     // for the mode's goal while it climbs is one that runs out of ways to live)
-    // (never near the end for 2 * NEAR_GAIN frames of the board's own life or more: the sooner lost within two breaks' time -- set 86 factory
-    // 7 fill, 4974-4988: a toward lost at 129 over a line lost at 230 for the mode's chain, the board lost at 5592)
-    double ox = lostAtOf(x->o.lostAt, x->hold), oy = lostAtOf(y->o.lostAt, y->hold), olo = ox < oy ? ox : oy, ohi = ox < oy ? oy : ox;
-    int nearEnd = !lx && olo >= 0 && ohi < 1e299 && olo < 2 * rankSave && ohi - olo >= 2 * NEAR_GAIN;
-    if (!nearEnd && (lx || (!ruleNoEnemy && lo >= rankSave && hi - lo < rankSave))) {
+    if (lx || (!ruleNoEnemy && lo >= rankSave && hi - lo < rankSave)) {
       int gx = goalKeyOf(x), gy = goalKeyOf(y);
       if (gx != gy) return (cmpKey = __LINE__, (gx - gy));
       // (and of two that make the first entry, or two set-ups toward it, the fewer presses: the owner, the goal first and the shortest
