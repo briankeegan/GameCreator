@@ -666,7 +666,9 @@ static int outlives(const Judge *o, const Judge *c) {
   if (o->o.lives || dn >= 1e300) return 1;
   return dn >= 0 && dn < 1e299 && dn - dc >= rankSave;
 }
-static int compareJudged(const Judge *x, const Judge *y) {
+// THE SURVIVAL CREDIT of two lines, each beside the other: lives, or counted as living (the horizon, the finish's safe board), and
+// where it is taken back -- compareJudged's first step, and the log's cr=
+static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   int lx = livesOn(x), ly = livesOn(y);
   // (the horizon's credit is no life beside a board that outlives it: the line in progress lost past the horizon, beside a line that
   // lives or is lost a break's time later, is a line that is lost -- death is never an option)
@@ -694,6 +696,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     #undef NO_SLAB
     #undef PURE_COMBO
   }
+  *lxo = lx; *lyo = ly;
+}
+static int compareJudged(const Judge *x, const Judge *y) {
+  int lx, ly; creditPair(x, y, &lx, &ly);
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {

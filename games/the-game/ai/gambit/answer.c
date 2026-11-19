@@ -944,6 +944,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     A->sooner = late && !late->o.lives && !lostAlike(top, late) && !(walkTurns(top, late) && diesAt(top) > diesAt(late));
     if (late && compareJudged(top, late) < 0) {
       L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey);
+      // (the survival credit each had beside the other: 1 counted as living -- rank.c creditPair)
+      { int a, b; int32_t k = cmpKey; creditPair(top, late, &a, &b); L_s(" cr="); L_i(a); L_s("/"); L_i(b); cmpKey = k; }
     }
   }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
