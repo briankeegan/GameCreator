@@ -1466,13 +1466,8 @@ static Played playOf(const Read *R, int n) {
     const Judge *keep = 0, *held = 0;
     for (int i = 0; i < n; i++) if (order[i]->hold) held = order[i];
     const Judge *base = ext && ext->apChainAll < need ? ext : bar < need && !ext && !lnk && !brk && !twoReaches && !two ? held : 0;
-    // (under a slab of two rows or more, still, for a line that breaks it: the pop the loss foreseen leaves out is the break's own -- set 86
-    // large_garbage 3 switching, 472-633: extensions lost at 175-268 played over a break keeping the chain lost at 575-608, the panels 36
-    // to 9, the board lost at 806)
-    int slab = garbageRows(&decQ, 2);
-    if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
+    if (base && !garbageRows(&decQ, 2) && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
-        if (slab && !(J->apBroke > 0)) continue;
         if (J != base && !J->hold && J->apChainAll >= bar && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
