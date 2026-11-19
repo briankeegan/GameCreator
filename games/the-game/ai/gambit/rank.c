@@ -265,6 +265,7 @@ static double lostOf(const Judge *x);
 static double rankHoldOwn = -1; static int32_t rankHoldClock = -1;   // (the hold's own loss this decision: markIdle)
 static int extCounts(const Judge *x) {
   if (x->hold || x->extLost == NOT_ASKED) return 0;
+  if (lostAtOf(x->o.lostAt, 0) < rankSave) return 0;   // (a board lost inside a break's time presses no promise after it)
   if (rankHoldClock != decQ.b->clock || rankHoldOwn < 0) return 1;
   return lostAtOf(x->o.lostAt, 0) >= rankHoldOwn;
 }
@@ -602,6 +603,10 @@ static int lostAlike(const Judge *x, const Judge *y) {
 // (LOST ALIKE AT THE FINISH: within one break's time of each other -- the finish's own keys trade the board's life for a combo or a
 // shorter chain only where the trade costs less than a break; three breaks' time and more apart is a break the next decision loses)
 static int finishAlike(const Judge *x, const Judge *y) {
+  // (never alike where the boards themselves are lost a break's time apart near the end: as lostAlike -- the walk's charge and a promise
+  // are preferences, not a loss)
+  { double dx = lostAtOf(x->o.lostAt, x->hold), dy = lostAtOf(y->o.lostAt, y->hold), dlo = dx < dy ? dx : dy, dhi = dx < dy ? dy : dx;
+    if (!x->o.lives && !y->o.lives && dlo >= 0 && dhi < 1e299 && dlo < NEAR_LOSS * rankSave && dhi - dlo >= rankSave) return 0; }
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   return lo >= rankSave && hi - lo < rankSave;
 }

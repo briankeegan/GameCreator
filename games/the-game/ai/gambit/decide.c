@@ -456,7 +456,7 @@ static int32_t carryWaste[5];   // (the line in progress taken out as a wasted t
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
-static int32_t opSpent, opSpentMat, opSpentHeld;   // (the opener's chains refused for spending the board: 1 the extension, 2 the link, 4 the second chain; the panels the last refused leaves once landed, and holding's -- the log's spent=)
+static int32_t opSpent, opSpentMat, opSpentHeld;   // (the opener's chains refused for spending the board: 1 the extension, 2 the link, 4 the second chain, 8 a set-up while it lands; the panels the last refused leaves once landed, and holding's -- the log's spent=)
 static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
                                                                                    // for the next chain, 4 a set-up short of it)
 static int32_t opFallLine[8][6], opFallLineN;   // (each extension under the fall: its swaps, those the judge pressed, its chain as judged, lost, its chain as its search said, the frames to its loss -1 living: the log's fallLines=)   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
@@ -955,6 +955,12 @@ static int opAtRest(const Board *landed, int32_t sw) {
   }
   return 1;
 }
+// (the frames until the chain falling has landed and the board is still: the root run on to its settle -- 0 when it is still already)
+static int32_t opLandIn(void) {
+  static Ctx *lx; lx = ctxOf(lx);
+  int root = rootOf(lx, &decQ), calm = root >= 0 ? settleOf(lx, root) : -1;
+  return root >= 0 && liveNode(lx, calm) ? imax(0, NODE(lx, calm)->t - NODE(lx, root)->t) : 0;
+}
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -1408,7 +1414,7 @@ static Played playOf(const Read *R, int n) {
     const Judge *heldJ = 0; for (int i = 0; i < n; i++) if (order[i]->hold) heldJ = order[i];
     #define SPENDS_BOARD(J) ((J) && heldJ && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldJ->o.matSettled > (J)->o.matSettled && !(J)->o.lives)
     if (heldJ) opSpentHeld = heldJ->o.matSettled;
-    if (SPENDS_BOARD(ext)) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }
+    if (SPENDS_BOARD(ext) && ext->apChainAll < need) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
     // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
     if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
@@ -1485,13 +1491,12 @@ static Played playOf(const Read *R, int n) {
     const Judge *base = pick ? pick : held;
     int slab = garbageRows(&decQ, 2);
     // (lost too soon: before the chain falling has landed and a break could be made after it -- the board's own time, never a fixed count)
-    int32_t fallLost = (ownChainBy > 0 ? ownChainBy : 0) + rankSave;
+    int32_t fallLost = opLandIn() + rankSave;
     if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < fallLost)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
         if (slab && !(J->apBroke > 0)) continue;
         if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= rankSave))) keep = J; }   // (a break's time: set 86 factory 8 finish, 612, a break 156 frames longer passed at OP_FALL_KEEP's 250, the board lost at 776)
     if (!keep) { if (SPENDS_BOARD(lnk)) { opSpent |= 2; opSpentMat = lnk->o.matSettled; lnk = 0; } if (SPENDS_BOARD(two)) { opSpent |= 4; opSpentMat = two->o.matSettled; two = 0; twoReaches = 0; } }
-    #undef SPENDS_BOARD
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
@@ -1516,9 +1521,11 @@ static Played playOf(const Read *R, int n) {
         sk = J; }
       for (int i = 0; i < n && !sk; i++) { const Judge *J = order[i];
         if (J->hold || J->o.dead || !J->k.nseq || !setupKind(J) || wastesThree(J) || spendsReserve(J) || cutsShort(J)) continue;
+        if (SPENDS_BOARD(J)) { opSpent |= 8; opSpentMat = J->o.matSettled; continue; }   // (a set-up that spends what an extension may not)
         if (h && chainReach(J) < chainReach(h)) continue;
         if (!(J->o.lives || (h && !h->o.lives && diesAt(J) >= diesAt(h)))) continue;
         sk = J; }
+      #undef SPENDS_BOARD
       if (sk) { P.line = P.top = sk; opFallWay = kp ? 8 : 9; }
       else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
