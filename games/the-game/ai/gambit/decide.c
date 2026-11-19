@@ -1471,16 +1471,7 @@ static Played playOf(const Read *R, int n) {
       // keeps the window's reserve and is lost no sooner than the hold -- else the hold)
       const Judge *h = 0, *sk = 0;
       for (int i = 0; i < n; i++) if (order[i]->hold) { h = order[i]; break; }
-      // (THE CHAIN LEFT TO LAND, NEVER THE BOARD -- the owner: the opener does not die: where the hold is lost within OP_FALL_LOST, the
-      // line that keeps the board longest, a break's time or more past the hold, its chain shorter or not, is played -- set 86
-      // large_garbage 3, an 8x let land on a board lost at 128 over an extension lost at 454)
-      const Judge *kp = 0;
-      if (h && !h->o.lives && h->o.lostAt != NOT_ASKED && h->o.lostAt < OP_FALL_LOST)
-        for (int i = 0; i < n; i++) { const Judge *J = order[i];
-          if (J->hold || J->o.dead || diesAt(J) < 0) continue;
-          if (!(J->o.lives || diesAt(J) - diesAt(h) >= rankSave)) continue;
-          if (!kp || (J->o.lives && !kp->o.lives) || (!kp->o.lives && diesAt(J) > diesAt(kp))) kp = J; }
-      if (kp) sk = kp;
+      const Judge *kp = 0;   // (no give-way while the chain lands: set 86 combo_storm 1, a line kept a break's time longer taken at 514, the board lost at 800 all the same -- main's opener survives it)
       for (int i = 0; i < n && !sk; i++) { const Judge *J = order[i];
         if (J->hold || J->o.dead || !J->k.nseq || !setupKind(J) || wastesThree(J) || spendsReserve(J) || cutsShort(J)) continue;
         if (h && chainReach(J) < chainReach(h)) continue;
