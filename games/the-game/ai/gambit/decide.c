@@ -1410,10 +1410,11 @@ static Played playOf(const Read *R, int n) {
     // a garbage game, where the panels the next chain is made of come back slowly)
     int tall = tallGarbage(&decQ); const Judge *two = 0; int twoAsked = 0;
     // (THE CHAIN NEVER SPENDS THE BOARD -- the owner: keep enough to break the garbage: an extension that leaves fewer than OP_KEEP_PANELS
-    // panels once its chain has landed (matSettled) is not played where holding keeps more -- the chain falling kept as it is, the raise
+    // panels once its chain has landed (matSettled) is not played where holding keeps more and is lost no sooner (run 4151 large_garbage 8, 519: an
+    // extend lost at 155 refused for a set-up lost at 99) -- the chain falling kept as it is, the raise
     // pressed once it lands; r1412: three chains back to back, the panels 54 to 27 before any garbage landed, the board lost at 2538)
     const Judge *heldJ = 0; for (int i = 0; i < n; i++) if (order[i]->hold) heldJ = order[i];
-    #define SPENDS_BOARD(J) ((J) && heldJ && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldJ->o.matSettled > (J)->o.matSettled && !(J)->o.lives)
+    #define SPENDS_BOARD(J) ((J) && heldJ && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldJ->o.matSettled > (J)->o.matSettled && !(J)->o.lives && diesAt(heldJ) >= diesAt(J))
     if (heldJ) opSpentHeld = heldJ->o.matSettled;
     if (SPENDS_BOARD(ext) && ext->apChainAll < need) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
@@ -1517,7 +1518,9 @@ static Played playOf(const Read *R, int n) {
       // (A BREAK FIRST WHILE IT LANDS -- the owner: it can break with threes while it is still doing things: a line that breaks garbage,
       // keeps the chain falling as far as the hold does and is lost no sooner, is played over the hold and any set-up)
       for (int i = 0; i < n && !sk && h; i++) { const Judge *J = order[i];
-        if (J->hold || J->o.dead || !J->k.nseq || !(J->apBroke > 0) || cutsShort(J) || chainReach(J) < chainReach(h)) continue;
+        // (the chain cut short only by a break that outlives the hold by a break's time -- the garbage broken is the board kept: run 4151
+        // large_garbage 8, 497, a break lost at 390 passed for a set-up lost at 121, the board lost at 733)
+        if (J->hold || J->o.dead || !J->k.nseq || !(J->apBroke > 0) || ((cutsShort(J) || chainReach(J) < chainReach(h)) && !outlives(J, h))) continue;
         if (!(J->o.lives || (!h->o.lives && diesAt(J) >= diesAt(h)))) continue;
         sk = J; }
       for (int i = 0; i < n && !sk; i++) { const Judge *J = order[i];
