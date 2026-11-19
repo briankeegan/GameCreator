@@ -759,7 +759,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (a two-column eight offered and not played: the key the line played was ranked first by, before the best of them, and the two's losses)
   if (n && order[0] && !order[0]->k.twin) for (int i = 1; i < n; i++) if (order[i]->k.twin == 1) {
     int32_t keep = cmpKey; int lost8 = compareJudged(order[0], order[i]) < 0;
-    L_s(" twinKey=k"); L_i(cmpKey); L_s(lost8 ? "" : "+");   // (+: the eight won that comparison and still ranked below -- the order is not transitive) L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)lostOf(order[0])); L_s("/"); L_i(order[i]->o.lives ? -1 : (int32_t)lostOf(order[i])); L_s(":"); L_i(order[i]->o.dead ? 1 : 0);
+    // (+: the eight won that comparison and still ranked below -- the order is not transitive)
+    L_s(" twinKey=k"); L_i(cmpKey); L_s(lost8 ? "" : "+"); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)lostOf(order[0])); L_s("/"); L_i(order[i]->o.lives ? -1 : (int32_t)lostOf(order[i])); L_s(":"); L_i(order[i]->o.dead ? 1 : 0);
     cmpKey = keep; break;
   }
   // (a line played whose first swap swaps back the last swap's pair: the key it was ranked first by, before the best that does not, and
