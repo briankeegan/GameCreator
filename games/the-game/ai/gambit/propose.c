@@ -498,6 +498,7 @@ static int twinTouches(int32_t g[][W + 2], const Twin *t) {
 // (the order the eights are kept and offered in: the fewest swaps, then the one that breaks garbage -- a nearer eight is never put out of
 // the offer by a farther one that breaks: set 86 combo_storm 1, an eight a swap away left unoffered 60 frames for three six swaps off)
 static int twinRank(const Twin *t) { return t->cost * 2 - (t->touch ? 1 : 0); }
+static int twinMin = 8;   // (the least an eight's scan keeps: 8; sixLines asks 6)
 static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topOut, Twin *best, int *rows, int cap) {
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
@@ -529,7 +530,7 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
           int b1 = lb ? b0 + lb - 1 : r;
           if (lb && (b0 < 1 || b1 > top || r - b0 >= 3 || b1 - r >= 3)) continue;
           Twin t = { 0, c, r, X, Y, a0, a1, b0, b1, hx, hy };
-          if (twinSize(&t) < 8) continue;
+          if (twinSize(&t) < twinMin) continue;
           int cost = tc, okAll = 1, qlo = imin(la ? a0 : r, lb ? b0 : r), qhi = imax(la ? a1 : r, lb ? b1 : r);
           for (int q = qlo; q <= qhi && okAll; q++) {
             if (q == r) continue;
@@ -659,6 +660,7 @@ static int twinNextSwap(Board *b, int32_t *swap) {
   *swap = seq[0];
   return 1;
 }
+static int32_t sixOffered;   // (the two-column sixes offered this decision: the log's six=)
 static int32_t twinRoomAt = -1;   // (the frame the board is lost under the line played last decision: answer.c)
 static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
@@ -710,6 +712,31 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
       if (!t->touch && R->F.known[FACT_US_DIES] && room > 0 && (ns + 1) * TWIN_SWAP_FRAMES / 2 > room) { twinNo[4]++; continue; } }
     seq[ns++] = t->r * 8 + t->c;
     if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 1; n++; offered++; twinOffered++; twinTouchOffered += t->touch; }
+  }
+  return n;
+}
+// THE TWO-COLUMN SIX (the players' six -- yoschi, r1361-r1363: 31 of 42 sixes and sevens two vertical threes side by side, fired by one
+// swap, ~5 swaps built, 45% breaking garbage as they fire; the eight is the same seam a row taller): in finish them, the six and seven the
+// eight's scan finds within SIX_MAXSWAPS swaps, sorted with no three on the way, offered whole as a line of the mode's like any other
+#define SIX_MAXSWAPS 6
+#define SIX_OFFER 3
+static int sixLines(const Read *R, Cand *out, int n, int cap) {
+  sixOffered = 0;
+  if (!finishAsked() || R->topped || clockOut() || n >= cap) return n;
+  static int32_t g[MAXROWS + 2][W + 2];
+  static uint8_t ok[MAXROWS + 2][W + 2];
+  static Twin best[TWIN_OFFER * 4];
+  int top, rows; twinMin = 6;
+  int nb = twinScan(decQ.b, g, ok, &top, best, &rows, SIX_MAXSWAPS);
+  twinMin = 8;
+  for (int i = 0; i < nb; i++) for (int j = i + 1; j < nb; j++) if (twinRank(&best[j]) < twinRank(&best[i])) { Twin t = best[i]; best[i] = best[j]; best[j] = t; }
+  for (int i = 0; i < nb && sixOffered < SIX_OFFER && n < cap && !clockOut(); i++) {
+    const Twin *t = &best[i];
+    if (twinSize(t) >= 8) continue;   // (an eight is twinLines')
+    int32_t seq[MAXLINE]; int ns = twinSort(decQ.b, g, ok, top, t, seq);
+    if (ns < 0 || ns + 1 > MAXLINE) continue;
+    seq[ns++] = t->r * 8 + t->c;
+    if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 3; n++; sixOffered++; }
   }
   return n;
 }
@@ -1152,6 +1179,7 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = convertLines(R, out, n, cap);
   n = growLines(out, n, cap);
   n = twinLines(R, out, n, cap);
+  n = sixLines(R, out, n, cap);
   n = wayLines(out, n, cap);
   n = zipLines(R, out, n, cap);
   n = cutLines(R, out, n, cap);
