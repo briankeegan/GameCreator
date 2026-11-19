@@ -397,6 +397,7 @@ static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
+static const Judge *carryCrossJ;   // the line in progress begun in another mode, offered as any line (carryNone 23)
 // (THE OPENER'S LINE IN PROGRESS -- the owner: the opener is one continuous string; only a line no longer possible is put down: the
 // carried line, whatever the filters after its judging take out, while it lives or presses its last swap before the next block lands)
 static const Judge *opCarried;
@@ -467,7 +468,7 @@ static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (an extension of the chain falling: an extend or a lineup, or the line in progress begun as one -- or begun as finish's entry, the chain
 // it fired still falling when the mode turns back to the opener: run 4148 combo_storm 6, 563, the entry's 8 in progress, lost at 366,
 // passed for an extend's 5 lost at 231, the board lost at 804)
-static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || (J->carried && (b == PLAY_EXTEND || b == PLAY_LINEUP || b == PLAY_ENTRY)); }
+static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || ((J->carried || J == carryCrossJ) && (b == PLAY_EXTEND || b == PLAY_LINEUP || b == PLAY_ENTRY)); }
 // (an eight still loaded on the board the line ends on -- one swap from firing)
 static int loadedAfter(const int32_t *seq, int n) {
   static Board *eb; if (!eb) eb = nb_new(); if (!eb) return 0;
@@ -518,7 +519,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -555,7 +556,7 @@ static int ranked(const Read *R, const Found *S) {
     if (cwait && carryWaitsOut()) { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; carryNone = 22; }
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
-    else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
+    else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; carryCrossJ = cj; }
     else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; if (opLineOn && (cj->o.lives || decF.next == NOT_ASKED || (cj->apNats > 0 && cj->apAts[cj->apNats - 1] < decF.next))) opCarried = cj; }
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
@@ -1859,7 +1860,7 @@ static int savesOverHold(const Judge *k) {
 }
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   pvKeep(k, first, qid);
-  if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
+  if (k && !k->carried && k != carryCrossJ && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
   else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   Why keepWhy = k && k->carried ? theCarry.why : (Why){ WHY_NONE, 0, 0 };
