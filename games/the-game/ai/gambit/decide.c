@@ -1467,7 +1467,10 @@ static Played playOf(const Read *R, int n) {
     // (THE OPENER NEVER DIES FOR ITS CHAIN -- the owner: the opener must not die: the hold the chain falls in, its chain made (bar >= need)
     // too, gives way the same; under a slab of two rows or more to a line that breaks it, and to a break that cuts the chain short -- set 86
     // large_garbage 1 finish, 819-1040: an 8x falling held, the board lost at 206, over a break lost at 586, the panels 39 to 16)
-    const Judge *base = ext && ext->apChainAll < need ? ext : (bar >= need || (!ext && !lnk && !brk && !twoReaches && !two)) ? held : 0;
+    // (and whatever the rule would play -- the chain carried into the garbage, a break, the second chain: set 86 combo_storm 8 finish,
+    // 627-667, the chain carried on lost at 166-206 over a break of 36 cells lost at 348-369, the board lost at 832)
+    const Judge *pick = ext && ext->apChainAll >= need ? ext : twoReaches ? two : lnk ? lnk : ext ? ext : brk ? brk : two ? two : held;
+    const Judge *base = pick ? pick : held;
     int slab = garbageRows(&decQ, 2);
     if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
