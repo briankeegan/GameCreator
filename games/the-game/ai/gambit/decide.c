@@ -2128,7 +2128,7 @@ static int32_t bumpOf(const Board *b) {
 }
 static Ctx *whyCtx;
 #define WHY_TRIES 6   // (the lines after the one chosen asked for a reason, where it has none)
-static int32_t noReason;
+static int32_t noReason, nrKey, nrLost[2];
 static Why whyPlayed;   // (the reason of the move played, measured when it was chosen: the log's aim=)   // (the log's: 1 the line chosen had no reason and the next with one was played, 2 none had one and the hold was)
 static Why moveWhy(const Judge *L) {
   Why w = { WHY_NONE, 0, 0 };

@@ -503,6 +503,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       if (wj.kind != WHY_NONE) { alt = J; whyPlayed = wj; }
     }
     noReason = alt ? 1 : 2;
+    // (the key that ranked the line given up first, before the best lost later -- the log's nrKey=kKEY:lost/lost)
+    nrKey = 0; nrLost[0] = nrLost[1] = 0;
+    for (int i = 0; i < n; i++) { const Judge *J = order[i];
+      if (J == P.line || J->hold || J->o.dead || P.line->o.lives || !(J->o.lives || diesAt(J) > diesAt(P.line))) continue;
+      int32_t k = cmpKey; compareJudged(P.line, J); nrKey = cmpKey; cmpKey = k;
+      nrLost[0] = (int32_t)diesAt(P.line); nrLost[1] = J->o.lives ? -1 : (int32_t)diesAt(J); break; }
     P.line = alt; P.top = alt ? alt : H;
   }
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
@@ -597,7 +603,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // THE LOG LINE
   const Rule *rule = &theTables.r[R.rule];
   L_s("GAMBITD "); L_i(at); L_s(" @"); L_i(rule->name); L_s(" play="); L_play(P.name);
-  if (noReason) { L_s(" noreason="); L_i(noReason); }
+  if (noReason) { L_s(" noreason="); L_i(noReason); if (nrKey) { L_s(" nrKey=k"); L_i(nrKey); L_s(":"); L_i(nrLost[0]); L_s("/"); L_i(nrLost[1]); } }
   // (THE GOAL, EVERY DECISION -- the owner: not only why, the intention -- the log's aim=: the line played, for the goal it was begun or chosen
   // for; with none played: raise (the raise pressed or waited for), the line in progress that waits for the board -- its own goal --, the
   // line chosen and held for its timing -- its goal --, fall (our chain falling: let it land), settle (panels falling or a slab popping),
