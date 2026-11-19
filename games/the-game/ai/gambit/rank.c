@@ -900,7 +900,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // worked where the cursor is, and left only for what survives better or breaks where the near one does not
   // (of two that break garbage, begun nearer is no saving where the nearer walks more for the break -- a swap put in front of the break the
   // other already has: the fewer actions for as much garbage decides first, 1'' below)
+  // (never an eight left for a nearer line in finish them: the two 4s fired as one -- set 86 combo_storm 1, 2864: a set-up lost at 150
+  // over an eight lost at 308, for its walk)
   if ((lx || lostAlike(x, y)) && !x->hold && !y->hold && (x->apBroke > 0) == (y->apBroke > 0) && x->k.nseq && y->k.nseq &&
+      !finishEightBy(x, y) && !finishEightBy(y, x) &&
       !(x->apBroke > 0 && imax(0, x->apBroke) == imax(0, y->apBroke) && lineWalk(x) != lineWalk(y))) {
     int bx = focusBand(x), by = focusBand(y);
     // (and a far line that breaks more garbage than the near one is not left for it: the near one is worked only where it breaks as much
