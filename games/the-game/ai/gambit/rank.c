@@ -625,6 +625,9 @@ static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->mode
 // over a 6 with its 2x, both living)
 static int offMode(const Judge *J) {
   if (finishAsked() && !J->hold && J->apCombo >= 4 && J->apChainAll <= 2 && !J->outside) return 0;
+  // (nor a line whose chain is the board's own falling, no longer -- every line on the board carries it: set 86 combo_storm 1, 3734: a break
+  // kept to 576 put after the line in progress lost at 372, both on the board's own 5x)
+  if (finishAsked() && !J->hold && J->apChainAll <= imax(2, aloneChain) && !(J->o.j.whole.combo >= 4 && J->outside)) return 0;
   return !J->hold && !J->o.dead && !J->lengthens && J->met < 0 && (chainReach(J) >= 2 || J->o.j.whole.combo >= 4);
 }
 #define FINISH_SAFE (2 * HORIZON)   // (frames from now a finish board is safe at: rank.c, key 1)
