@@ -699,7 +699,8 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
     }
     // (an eight pressed whole only where its swaps are pressed before the board is lost: one begun and put down for the board's life is
     // swaps spent for nothing -- set 86 combo_storm 1, eights of nine swaps begun 130-160 frames from the loss, put down at 20)
-    if (R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0 && (ns + 1) * TWIN_SWAP_FRAMES > R->F.v[FACT_US_DIES]) { twinNo[4]++; continue; }
+    // (one whose clear touches garbage is judged all the same: it breaks the garbage as it fires, and the judge plays its life)
+    if (!t->touch && R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0 && (ns + 1) * TWIN_SWAP_FRAMES > R->F.v[FACT_US_DIES]) { twinNo[4]++; continue; }
     seq[ns++] = t->r * 8 + t->c;
     if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 1; n++; offered++; twinOffered++; twinTouchOffered += t->touch; }
   }
