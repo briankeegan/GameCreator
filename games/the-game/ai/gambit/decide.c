@@ -15,6 +15,7 @@ static int32_t openerOver, openerChained, openerThrown, openerSum, openerPaused;
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
+static int32_t opRaiseLog[5];   // (the opening raise judged: the rows short, the rows held to, the rows alive, the blocks on their way -- the log's opRaise=)
 static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
 static int32_t carryJudgeDrop = -1;   // (and for 19, why the judging dropped it: rank.c DROP_*, -1 none said)
 static int32_t rescues;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
@@ -301,7 +302,7 @@ static int readBoard_(Read *R) {
   int32_t rowsUp = to - (opening ? fullTop(decQ.b) : panelTop(decQ.b));
   raiseRows = rowsUp;
   R->low = to && (opening || refill || taRaise) && rowsUp > 0; R->up = R->low && !cascadeLive(decQ.b) && canRaiseNow;
-  refillAsked = refillReady = refillAlive = 0; raiseWait = 0;
+  refillAsked = refillReady = refillAlive = 0; raiseWait = 0; opRaiseLog[4] = 0;
   // (THE FLOOR'S RAISE, TIMED: a board busy now -- a cascade, panels moving, the shake -- is one the engine would not raise; it is run on,
   // left alone with the garbage shown landing as the game lands it, to the first frame it would (search/ready.c raiseOpenIn), and the
   // raise is judged on that board and pressed then)
@@ -338,6 +339,7 @@ static int readBoard_(Read *R) {
     // raise into the garbage is a death)
     if ((rq.narr > 0 || R->under) && rows > raiseAlive) rows = raiseAlive;
     { int32_t h = rq.b->height ? rq.b->height : 12; rows = imin(rows, h - 1 - fullTop(rq.b)); }
+    if (opening) { opRaiseLog[0] = rowsUp; opRaiseLog[1] = rows; opRaiseLog[2] = raiseAlive; opRaiseLog[3] = rq.narr; opRaiseLog[4] = 1; }
     if (rows <= 0) { R->up = R->low = 0; raiseWait = 0; } else to = fullTop(rq.b) + rows;
   }
   R->to = to;

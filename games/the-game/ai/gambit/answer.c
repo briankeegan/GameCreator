@@ -967,6 +967,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
   // (A RAISE, AND WHY: asked as the opening's (o) or the floor's refill (r), the rows to raise to and the rows short of them, and whether the
   // engine could raise now (1) or a cascade held it (0) -- on every decision a raise was asked)
+  if (opRaiseLog[4]) { L_s(" opRaise="); L_i(opRaiseLog[0]); L_s("/"); L_i(opRaiseLog[1]); L_s("/"); L_i(opRaiseLog[2]); L_s("/"); L_i(opRaiseLog[3]); }
   if (R.low) { L_s(" raiseFor="); L_s(raiseOpening ? "o" : raiseRefill ? "r" : "-"); L_s(":"); L_i(raiseTo); L_s(":"); L_i(raiseRows); L_s(":"); L_i(R.up ? 1 : 0); }
   if (P.deferred) L_s(" deferred=1");
   // (WHY A HOLD HOLDS, named: raise -- waiting for the raise to open; timing -- its next swap does as well pressed later; nothing -- no
