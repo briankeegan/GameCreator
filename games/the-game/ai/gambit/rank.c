@@ -637,7 +637,15 @@ static int finishSafeCombo(const Judge *J, const Judge *o) {
   if (!FINISH_SAFE_ON || !finishAsked() || J->hold || J->o.dead || J->o.lives || J->outside || J->apCombo < 4 || chainPastTwo(J) || !chainPastTwo(o)) return 0;
   double d = diesAt(J); return d >= HORIZON && d < 1e299;
 }
-static int livesOn(const Judge *J) { return J->o.lives || (J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON); }
+// (the horizon's credit only for a line in progress the window can still press: its walk within the actions the window has left --
+// set 86 combo_storm 1, 2718-2775: a line of five swaps across the board kept on the credit with five actions left, over a break lost
+// at 478; it was put down at 2805 with the board lost in 20)
+static int lineWalk(const Judge *J);
+static int livesOn(const Judge *J) {
+  if (J->o.lives) return 1;
+  if (!(J->carried && !J->o.dead && J->o.lostAt != NOT_ASKED && J->o.lostAt >= HORIZON)) return 0;
+  return pressAllowance < 0 || lineWalk(J) <= pressAllowance;
+}
 // (A BOARD THAT OUTLIVES ANOTHER: c's is lost -- past the horizon or not -- and o's lives, stands the whole judging, or is lost a break's
 // time (rankSave) or more later, on the frame each is lost, no walk charged; a loss not asked outlives nothing)
 static int outlives(const Judge *o, const Judge *c) {
