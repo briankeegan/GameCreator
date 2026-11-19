@@ -6,6 +6,7 @@ static Opp theOpp;
 static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OP_FALL_LOST AT_LEVEL(200)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-193 and a break at 442-465; combo_storm 3's at 205, kept, made its 8; the large slabs', lost at 299-471 a second chain is still made)
+#define OP_KEEP_PANELS 36   // (the panels the opener's chain leaves once landed, at least: six rows -- the owner: keep enough to break)
 #define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_CHAINS 3
@@ -1397,6 +1398,12 @@ static Played playOf(const Read *R, int n) {
     // of: past need - OPENER_LEAST the chain as it falls is kept, and below it the extension that reaches there in the fewest links -- in
     // a garbage game, where the panels the next chain is made of come back slowly)
     int tall = tallGarbage(&decQ); const Judge *two = 0; int twoAsked = 0;
+    // (THE CHAIN NEVER SPENDS THE BOARD -- the owner: keep enough to break the garbage: an extension that leaves fewer than OP_KEEP_PANELS
+    // panels once its chain has landed (matSettled) is not played where holding keeps more -- the chain falling kept as it is, the raise
+    // pressed once it lands; r1412: three chains back to back, the panels 54 to 27 before any garbage landed, the board lost at 2538)
+    const Judge *heldJ = 0; for (int i = 0; i < n; i++) if (order[i]->hold) heldJ = order[i];
+    #define SPENDS_BOARD(J) ((J) && heldJ && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldJ->o.matSettled > (J)->o.matSettled && !(J)->o.lives)
+    if (SPENDS_BOARD(ext)) ext = 0;
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
     // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
     if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
@@ -1476,6 +1483,8 @@ static Played playOf(const Read *R, int n) {
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
         if (slab && !(J->apBroke > 0)) continue;
         if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
+    if (!keep) { if (SPENDS_BOARD(lnk)) lnk = 0; if (SPENDS_BOARD(two)) { two = 0; twoReaches = 0; } }
+    #undef SPENDS_BOARD
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
