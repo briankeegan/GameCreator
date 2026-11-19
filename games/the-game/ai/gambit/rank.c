@@ -822,6 +822,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (px && by && !bx && y->o.lostAt - x->o.lostAt >= rankSave) return (cmpKey = __LINE__, 1);
     if (py && bx && !by && x->o.lostAt - y->o.lostAt >= rankSave) return (cmpKey = __LINE__, -1);
   }
+  // (A BREAK BEGUN IS FINISHED -- the owner: walking up for one swap and back is wasted input; if it had to go there, it finishes its
+  // break: a break in progress that has pressed a swap of it, beside a line that does not live and breaks no more, lost no sooner than a
+  // break's time from now, is kept before the later loss -- runs 4094 and 4119: 180 lines put down by the later loss right after a walk
+  // of six actions or more to them)
+  if (!lx && x->carried != y->carried && !x->hold && !y->hold) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    if (carriedSunk >= 0 && carriedSunk - lineWalk(c) > 0 && !c->o.dead && brokeSeen(c) > 0 && imax(0, brokeSeen(o)) <= brokeSeen(c) && !o->o.lives && lostOf(c) >= rankSave)
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
