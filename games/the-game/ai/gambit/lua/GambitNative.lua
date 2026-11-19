@@ -133,8 +133,7 @@ function GambitNative:startMatch(stack, match)
   if self.ownThinking then self.thinking = ThinkBudget.standard() end
   if self.ownInputs then self.inputs = InputBudget.standard() end
   self.dropped, self.ages, self.pv, self.slowLogged = 0, {}, {}, nil
-  -- (no gn_quit here: joining the last match's Gambit threads hung the bot on its second match; the old instance is left running)
-  if played then open() end
+  if played then C.gn_quit(); open() end
   played = true
   C.gn_match()
   -- (an engine without GarbageDelivery -- upstream's -- lands a transit due now before the frame runs: front.c receiverTimed)
