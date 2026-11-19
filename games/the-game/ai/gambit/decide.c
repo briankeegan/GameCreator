@@ -337,6 +337,9 @@ static int readBoard_(Read *R) {
     if ((rq.narr > 0 || R->under) && rows > raiseAlive) rows = raiseAlive;
     { int32_t h = rq.b->height ? rq.b->height : 12; rows = imin(rows, h - 1 - fullTop(rq.b)); }
     if (opening) { opRaiseLog[0] = rowsUp; opRaiseLog[1] = rows; opRaiseLog[2] = raiseAlive; opRaiseLog[3] = rq.narr; opRaiseLog[4] = 1; }
+    // (the opening's raise a row a decision: the next decision looks again, and garbage told of meanwhile stops it where the board lives
+    // through it -- set 86 large_garbage 2 finish: four rows raised at 192 in one go, a tall block told of at 209, the board lost at 744)
+    if (opening && rows > 1) rows = 1;
     if (rows <= 0) { R->up = R->low = 0; raiseWait = 0; } else to = fullTop(rq.b) + rows;
   }
   R->to = to;
