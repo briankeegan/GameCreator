@@ -705,7 +705,9 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
     // seven swaps refused against the hold's loss while the line in progress kept the board 480-560 frames)
     { int32_t room = R->F.v[FACT_US_DIES];
       if (twinRoomAt > decQ.b->clock) room = imax(room, twinRoomAt - decQ.b->clock);
-      if (!t->touch && R->F.known[FACT_US_DIES] && room > 0 && (ns + 1) * TWIN_SWAP_FRAMES > room) { twinNo[4]++; continue; } }
+      // (only one plainly out of time is left unjudged -- half a swap's frames each: the judge presses the rest on the engine, the pop's
+      // stop and the walk with them; set 86 combo_storm 1, 1603: an eight of seven swaps sorted clean, refused at 192 frames against 149)
+      if (!t->touch && R->F.known[FACT_US_DIES] && room > 0 && (ns + 1) * TWIN_SWAP_FRAMES / 2 > room) { twinNo[4]++; continue; } }
     seq[ns++] = t->r * 8 + t->c;
     if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 1; n++; offered++; twinOffered++; twinTouchOffered += t->touch; }
   }
