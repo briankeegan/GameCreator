@@ -1176,10 +1176,11 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   if (S->haveAp && S->ap.lowest.set) { int m0 = n; ADD(PLAY_CLEAR, S->ap.lowest.seq, S->ap.lowest.nseq, -1, 0); if (n > m0) xFromPlan(&out[m0], &S->ap.lowest); }
   #undef ADD
   // (and from the lines above: the converted row's chain, then every three grown -- the converted lines' own among them)
+  // (the six first of these: proposed last it was judged last, and the clock left 25 of 43 unjudged -- set 86 combo_storm 1, run 4115)
+  n = sixLines(R, out, n, cap);
   n = convertLines(R, out, n, cap);
   n = growLines(out, n, cap);
   n = twinLines(R, out, n, cap);
-  n = sixLines(R, out, n, cap);
   n = wayLines(out, n, cap);
   n = zipLines(R, out, n, cap);
   n = cutLines(R, out, n, cap);
