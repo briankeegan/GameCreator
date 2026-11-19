@@ -686,6 +686,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
     #define PURE_COMBO(J) (!(J)->hold && !(J)->o.dead && (J)->apCombo >= 4 && (J)->apChainAll < 2)
     if (lx && !x->o.lives && !finishSafe(x) && chainPastTwo(x) && PURE_COMBO(y) && finishAlike(x, y)) lx = 0;
     if (ly && !y->o.lives && !finishSafe(y) && chainPastTwo(y) && PURE_COMBO(x) && finishAlike(x, y)) ly = 0;
+    // (and beside any line that runs no chain past 2x and is lost no sooner -- set 86 combo_storm 1, 1422-1486: a 6x in progress lost at
+    // 328 kept over a break with none lost at 351)
+    #define NO_SLAB(J) (!(J)->hold && !(J)->o.dead && !chainPastTwo(J))
+    if (lx && !x->o.lives && !finishSafe(x) && chainPastTwo(x) && NO_SLAB(y) && diesAt(y) >= diesAt(x)) lx = 0;
+    if (ly && !y->o.lives && !finishSafe(y) && chainPastTwo(y) && NO_SLAB(x) && diesAt(x) >= diesAt(y)) ly = 0;
+    #undef NO_SLAB
     #undef PURE_COMBO
   }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
