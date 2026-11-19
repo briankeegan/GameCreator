@@ -659,6 +659,7 @@ static int twinNextSwap(Board *b, int32_t *swap) {
   *swap = seq[0];
   return 1;
 }
+static int32_t twinRoomAt = -1;   // (the frame the board is lost under the line played last decision: answer.c)
 static int twinLines(const Read *R, Cand *out, int n, int cap) {
   int bigAsked = 0;
   for (int i = 0; i < theList.n; i++) { const Test *c = &theList.aim[i].combo; if ((c->op == OP_GE || c->op == OP_GT || c->op == OP_EQ) && c->n + (c->op == OP_GT) >= 8) bigAsked = 1; }
@@ -699,7 +700,14 @@ static int twinLines(const Read *R, Cand *out, int n, int cap) {
     }
     // (an eight pressed whole only where its swaps are pressed before the board is lost: one begun and put down for the board's life is
     // swaps spent for nothing -- set 86 combo_storm 1, eights of nine swaps begun 130-160 frames from the loss, put down at 20)
-    if (R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0 && (ns + 1) * TWIN_SWAP_FRAMES > R->F.v[FACT_US_DIES]) { twinNo[4]++; continue; }
+    // (one whose clear touches garbage is judged all the same: it breaks the garbage as it fires, and the judge plays its life)
+    // (and the board's time is the longer of the hold's and the line played last decision's -- set 86 combo_storm 1, 2145-2225: an eight of
+    // seven swaps refused against the hold's loss while the line in progress kept the board 480-560 frames)
+    { int32_t room = R->F.v[FACT_US_DIES];
+      if (twinRoomAt > decQ.b->clock) room = imax(room, twinRoomAt - decQ.b->clock);
+      // (only one plainly out of time is left unjudged -- half a swap's frames each: the judge presses the rest on the engine, the pop's
+      // stop and the walk with them; set 86 combo_storm 1, 1603: an eight of seven swaps sorted clean, refused at 192 frames against 149)
+      if (!t->touch && R->F.known[FACT_US_DIES] && room > 0 && (ns + 1) * TWIN_SWAP_FRAMES / 2 > room) { twinNo[4]++; continue; } }
     seq[ns++] = t->r * 8 + t->c;
     if (candOf(&out[n], PLAY_ENTRY, seq, ns, -1, 0)) { out[n].x.combo = twinSize(t); out[n].twin = 1; n++; offered++; twinOffered++; twinTouchOffered += t->touch; }
   }

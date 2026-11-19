@@ -503,9 +503,18 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       if (wj.kind != WHY_NONE) { alt = J; whyPlayed = wj; }
     }
     noReason = alt ? 1 : 2;
+    // (the key that ranked the line given up first, before the best lost later -- the log's nrKey=kKEY:lost/lost)
+    nrKey = 0; nrLost[0] = nrLost[1] = 0;
+    for (int i = 0; i < n; i++) { const Judge *J = order[i];
+      if (J == P.line || J->hold || J->o.dead || P.line->o.lives || !(J->o.lives || diesAt(J) > diesAt(P.line))) continue;
+      int32_t k = cmpKey; compareJudged(P.line, J); nrKey = cmpKey; cmpKey = k;
+      nrLost[0] = (int32_t)diesAt(P.line); nrLost[1] = J->o.lives ? -1 : (int32_t)diesAt(J); break; }
     P.line = alt; P.top = alt ? alt : H;
   }
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
+  { int lv = 0; for (int i = 0; i < n; i++) if (!order[i]->hold && !order[i]->carried && order[i]->o.lives) lv = 1; livedPrev = lv; }
+  // (the frame the board is lost under the line played, for the eights' time next decision: propose.c twinLines)
+  twinRoomAt = P.line && !P.line->hold && !P.line->o.dead && P.line->o.lostAt != NOT_ASKED ? (P.line->o.lives || P.line->o.lostAt == FOREVER ? decQ.b->clock + FOREVER / 2 : decQ.b->clock + P.line->o.lostAt) : -1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
   Move d = R.up ? (Move){ 2, 0 } : P.line && !timed ? (Move){ 1, P.line->k.seq[0] } : (Move){ 0, 0 };
@@ -595,7 +604,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // THE LOG LINE
   const Rule *rule = &theTables.r[R.rule];
   L_s("GAMBITD "); L_i(at); L_s(" @"); L_i(rule->name); L_s(" play="); L_play(P.name);
-  if (noReason) { L_s(" noreason="); L_i(noReason); }
+  if (noReason) { L_s(" noreason="); L_i(noReason); if (nrKey) { L_s(" nrKey=k"); L_i(nrKey); L_s(":"); L_i(nrLost[0]); L_s("/"); L_i(nrLost[1]); } }
   // (THE GOAL, EVERY DECISION -- the owner: not only why, the intention -- the log's aim=: the line played, for the goal it was begun or chosen
   // for; with none played: raise (the raise pressed or waited for), the line in progress that waits for the board -- its own goal --, the
   // line chosen and held for its timing -- its goal --, fall (our chain falling: let it land), settle (panels falling or a slab popping),
@@ -759,7 +768,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (a two-column eight offered and not played: the key the line played was ranked first by, before the best of them, and the two's losses)
   if (n && order[0] && !order[0]->k.twin) for (int i = 1; i < n; i++) if (order[i]->k.twin == 1) {
     int32_t keep = cmpKey; int lost8 = compareJudged(order[0], order[i]) < 0;
-    L_s(" twinKey=k"); L_i(cmpKey); L_s(lost8 ? "" : "+");   // (+: the eight won that comparison and still ranked below -- the order is not transitive) L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)lostOf(order[0])); L_s("/"); L_i(order[i]->o.lives ? -1 : (int32_t)lostOf(order[i])); L_s(":"); L_i(order[i]->o.dead ? 1 : 0);
+    // (+: the eight won that comparison and still ranked below -- the order is not transitive)
+    L_s(" twinKey=k"); L_i(cmpKey); L_s(lost8 ? "" : "+"); L_s(":"); L_i(order[0]->o.lives ? -1 : (int32_t)lostOf(order[0])); L_s("/"); L_i(order[i]->o.lives ? -1 : (int32_t)lostOf(order[i])); L_s(":"); L_i(order[i]->o.dead ? 1 : 0);
     cmpKey = keep; break;
   }
   // (a line played whose first swap swaps back the last swap's pair: the key it was ranked first by, before the best that does not, and
@@ -941,7 +951,17 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     A->sooner = late && !late->o.lives && !lostAlike(top, late) && !(walkTurns(top, late) && diesAt(top) > diesAt(late));
     if (late && compareJudged(top, late) < 0) {
       L_s(" sooner="); L_play(late->hold ? PLAY_HOLD : late->k.play); L_s(":"); if (late->o.lives) L_s("L"); else L_i(late->o.lostAt); L_s(":k"); L_i(cmpKey);
+      // (the survival credit each had beside the other: 1 counted as living -- rank.c creditPair)
+      { int a, b; int32_t k = cmpKey; creditPair(top, late, &a, &b); L_s(" cr="); L_i(a); L_s("/"); L_i(b); cmpKey = k; }
     }
+  }
+  // (A BIGGER COMBO PASSED OVER at the finish: the first line in the order that makes a bigger combo with at most a 2x, lost no sooner,
+  // and the key that put it after the line played -- rank.c finishBigger)
+  if (top && !top->hold && finishAsked()) {
+    for (int i = 0; i < P.ncands; i++) { const Judge *j = order[i]; if (j == top || !finishBigger(j, top)) continue;
+      int32_t k = cmpKey; int r = compareJudged(top, j);
+      L_s(" bigger="); L_play(j->k.play); L_s(":c"); L_i(j->apCombo); L_s(":"); if (j->o.lives) L_s("L"); else L_i((int32_t)diesAt(j)); L_s(":k"); L_i(cmpKey); if (r > 0) L_s("+");
+      cmpKey = k; break; }
   }
   L_s(" ms_c="); L_i((int64_t)(nowMs() - tStart)); L_s(" ms_r="); L_i((int64_t)readMs);
   L_s(" why="); if (top) L_play(top->k.play); else L_s(d.kind == 2 ? "raise" : "hold");
@@ -1042,7 +1062,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); taReset(); lifeDumps = 0; openerOver = 0; openerPaused = 0; opKeepOn = 0; opKeepHeld = 0; openerChained = 0; openerThrown = 0; openerSum = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0; opFiredAt = -1;
+  modeLeft(); taReset(); lifeDumps = 0; livedPrev = 0; openerOver = 0; openerPaused = 0; opKeepOn = 0; opKeepHeld = 0; openerChained = 0; openerThrown = 0; openerSum = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0; opFiredAt = -1;
   if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; garbageSeen = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)

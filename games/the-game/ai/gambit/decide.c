@@ -168,6 +168,7 @@ static int readBoard_(Read *R) {
     int ni = modeRule >= 0 && thenRule >= 0 ? namedRule(modeRule) : -1;
     if (thenRule >= 0 && ((ni >= 0 && theTables.r[ni].table == 2) || modeRule < 0)) modeRule = thenRule;
   }
+  inOpener = !openerOver;
   int oi = -1;
   for (int i = 0; i < theTables.n && oi < 0 && !openerOver && !openerPaused && modeRule < 0; i++) if (theTables.r[i].table == 2) oi = i;
   int pausedRule = openerPaused ? (thenRule >= 0 ? namedRule(thenRule) : nswitch ? namedRule(modeAt(0)) : -1) : -1;
@@ -1464,8 +1465,24 @@ static Played playOf(const Read *R, int n) {
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
     else if (opFallWay == 6) P.line = P.top = lnk;
     else if (opFallWay == 5) P.line = P.top = brk;
+    // (never the second chain over the line ranked first where that line outlives it by a break's time: the opener gives way to survival
+    // -- r1351, 807: a set-up lost at 103 played over an extend lost at 428, the board lost at 1119)
+    else if (two && P.line && !P.line->hold && outlives(P.line, two)) { }
     else if (two) P.line = P.top = two;
-    else { P.line = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { P.top = order[i]; break; } } }
+    else {
+      // (WHILE IT LANDS, THE CURSOR WORKS -- the owner: can it not do something while it waits? organize, zip, set up: the best set-up,
+      // lineup, zip, level or line toward a break in the order that keeps the chain falling as far as the hold does, wastes no three,
+      // keeps the window's reserve and is lost no sooner than the hold -- else the hold)
+      const Judge *h = 0, *sk = 0;
+      for (int i = 0; i < n; i++) if (order[i]->hold) { h = order[i]; break; }
+      const Judge *kp = 0;   // (no give-way while the chain lands: set 86 combo_storm 1, a line kept a break's time longer taken at 514, the board lost at 800 all the same -- main's opener survives it)
+      for (int i = 0; i < n && !sk; i++) { const Judge *J = order[i];
+        if (J->hold || J->o.dead || !J->k.nseq || !setupKind(J) || wastesThree(J) || spendsReserve(J) || cutsShort(J)) continue;
+        if (h && chainReach(J) < chainReach(h)) continue;
+        if (!(J->o.lives || (h && !h->o.lives && diesAt(J) >= diesAt(h)))) continue;
+        sk = J; }
+      if (sk) { P.line = P.top = sk; opFallWay = kp ? 8 : 9; }
+      else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
   // as judged still a chain of OPENER_LEAST or more and its board not lost while it is pressed, is played over any line ranked above it
   // for a loss after it -- what comes after the chain is the next decision's, and its stop time is the board's)
@@ -1521,7 +1538,9 @@ static Played playOf(const Read *R, int n) {
       // chain falling cannot top out -- so it gives way only where it does not fire in time: set 86 large_garbage 6, a 3's design half
       // pressed, put down at 190 frames for a break that made a 2)
       int fires = opKeepOn && decQ.b->clock - opKeepAt <= 40 && R->F.known[FACT_US_DIES] && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < R->F.v[FACT_US_DIES];
-      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires)) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
+      // (nor over a line ranked first that outlives the swap by a break's time, where the swap's chain does not fire in time -- r1351, 1048: a
+      // set-up lost at 71 over a line in progress lost at 306, the board lost 71 frames later)
+      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires) && !(P.line && !P.line->hold && !fires && outlives(P.line, t2))) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
       // (and while it waits for its panels to come to rest, the board is held: a clear short of what is needed spends the panels it is
       // made of -- set 86 factory 5, a 3's design half pressed, two 2s played in its waits and no 3)
       else if (!t2 && fires && opKeepOn && (opSecondWhy == 5 || opSecondWhy == 9) && P.line && !P.line->hold &&
@@ -2114,7 +2133,7 @@ static int32_t bumpOf(const Board *b) {
 }
 static Ctx *whyCtx;
 #define WHY_TRIES 6   // (the lines after the one chosen asked for a reason, where it has none)
-static int32_t noReason;
+static int32_t noReason, nrKey, nrLost[2];
 static Why whyPlayed;   // (the reason of the move played, measured when it was chosen: the log's aim=)   // (the log's: 1 the line chosen had no reason and the next with one was played, 2 none had one and the hold was)
 static Why moveWhy(const Judge *L) {
   Why w = { WHY_NONE, 0, 0 };
@@ -2156,9 +2175,12 @@ static Why moveWhy(const Judge *L) {
       Stats st; if (!liveNode(x, o) || !statsOf(x, o, &st)) continue;
       for (int c = 0; c < st.n && c < MAXCOMBOS; c++) { if (st.chainAt[c] > bestX) bestX = st.chainAt[c]; if (st.size[c] > bestC) bestC = st.size[c]; }
     }
-    if (bestX >= 2) { w.kind = WHY_CHAIN; w.a = bestX; }
+    // (in finish them a chain set up, or a lone three, is no reason -- the owner: combos, not chains, and a 3 the last resort; set 86
+    // combo_storm 1, 1644-2250: set-ups toward a 2x and a three pressed for nothing)
+    int fin = finishAsked();
+    if (bestX >= 2 && !fin) { w.kind = WHY_CHAIN; w.a = bestX; }
     else if (L->k.aimC > 0 && L->k.aimLeft > 1) { w.kind = WHY_TWIN; w.a = L->k.aimC; w.b = L->k.aimLeft; }
-    else if (bestC >= 3) { w.kind = WHY_COMBO; w.a = bestC; }
+    else if (bestC >= (fin ? 4 : 3)) { w.kind = WHY_COMBO; w.a = bestC; }
   }
   if (w.kind == WHY_NONE && L->k.aimC > 0) { w.kind = WHY_TWIN; w.a = L->k.aimC; w.b = L->k.aimLeft; }
   ns_reset(x);
