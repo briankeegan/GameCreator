@@ -828,7 +828,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // of six actions or more to them)
   if (!lx && x->carried != y->carried && !x->hold && !y->hold) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (carriedSunk >= 0 && carriedSunk - lineWalk(c) > 0 && !c->o.dead && brokeSeen(c) > 0 && imax(0, brokeSeen(o)) <= brokeSeen(c) && !o->o.lives && lostOf(c) >= rankSave)
+    if (carriedSunk >= 0 && carriedSunk - lineWalk(c) > 0 && !c->o.dead && brokeSeen(c) > 0 && imax(0, brokeSeen(o)) <= brokeSeen(c) && !o->o.lives && lostOf(c) >= rankSave &&
+        diesAt(o) - diesAt(c) < 2 * rankSave)   // (and only for less than two breaks' time of life: finish them, run 4123, 20 of 28 with no bound)
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
