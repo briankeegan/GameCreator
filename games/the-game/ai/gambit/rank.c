@@ -417,6 +417,18 @@ static int awayFromGarbage(const Judge *J) {
   if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; lowG = lowestG(decQ.b); }
   return lowG < gridLen(decQ.b) && lowG - CR(J->k.seq[0]) >= GARBAGE_AWAY;
 }
+// (AMID THE GARBAGE FOR NOTHING -- the owner: going in between the garbage is a wasted move unless the line breaks it and finishes breaking
+// it; r1393, 3821-3955: swaps up among the slabs that came to nothing): a line that breaks no garbage and swaps a panel with garbage below
+// it in its column -- a panel the slabs hold up
+static int amidGarbage(const Judge *J) {
+  if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || !decQ.b) return 0;
+  const Board *b = decQ.b;
+  for (int i = 0; i < J->k.nseq; i++) {
+    int r = CR(J->k.seq[i]), c = CC(J->k.seq[i]);
+    for (int cc = c; cc <= c + 1 && cc <= W; cc++) for (int rr = 1; rr < r && rr < b->nrows; rr++) if (b->p[rr][cc].f[ISGARBAGE]) return 1;
+  }
+  return 0;
+}
 // (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out, of two that
 // both live it is no break to put first -- the owner: a three is for survival only, topped out; the mode's attacks break the garbage)
 static int threeBreakOnly(const Judge *J) { return J->apBroke > 0 && J->apCombo < 4 && J->apChain < 2; }
@@ -744,6 +756,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
       lx = ly = 1;
     }
+  }
+  // 1. NOTHING AMID THE GARBAGE (amidGarbage): under garbage, of two that do not live, a line that swaps among the slabs and breaks nothing
+  // after one that does not -- unless it keeps the board a break's time (rankSave) longer
+  if (!lx && decF.under && !x->o.dead && !y->o.dead) {
+    int ax = amidGarbage(x), ay = amidGarbage(y);
+    if (ax != ay) { const Judge *a = ax ? x : y, *o = ax ? y : x;
+      if (diesAt(a) - diesAt(o) < rankSave) return (cmpKey = __LINE__, (ax ? 1 : -1)); }
   }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
