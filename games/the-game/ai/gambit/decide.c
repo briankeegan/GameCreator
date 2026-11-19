@@ -1458,10 +1458,15 @@ static Played playOf(const Read *R, int n) {
     // the chain falling shorter than the hold's)
     const Judge *keep = 0, *held = 0;
     for (int i = 0; i < n; i++) if (order[i]->hold) held = order[i];
-    const Judge *base = ext && ext->apChainAll < need ? ext : bar < need && !ext && !lnk && !brk && !twoReaches && !two ? held : 0;
-    if (base && !garbageRows(&decQ, 2) && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
+    // (THE OPENER NEVER DIES FOR ITS CHAIN -- the owner: the opener must not die: the hold the chain falls in, its chain made (bar >= need)
+    // too, gives way the same; under a slab of two rows or more to a line that breaks it, and to a break that cuts the chain short -- set 86
+    // large_garbage 1 finish, 819-1040: an 8x falling held, the board lost at 206, over a break lost at 586, the panels 39 to 16)
+    const Judge *base = ext && ext->apChainAll < need ? ext : (bar >= need || (!ext && !lnk && !brk && !twoReaches && !two)) ? held : 0;
+    int slab = garbageRows(&decQ, 2);
+    if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
-        if (J != base && !J->hold && J->apChainAll >= bar && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
+        if (slab && !(J->apBroke > 0)) continue;
+        if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
