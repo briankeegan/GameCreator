@@ -36,6 +36,17 @@ it worked (ours / his).
       And never clear the top with a long queue waiting unless the board lives through all of it landing at once (r1363: four pieces in
       13 frames). Measure: empty cells under garbage.
 
+### Next, after Y1-Y6 (the owner, 2026-11-19)
+
+- [ ] **L1. A low stack is too risky.** It spends far too much when the stack is low -- clears that take it down to few panels, then
+      nothing to break the next garbage with (see the fill and switching losses of 2026-11-19: 36 panels to 9-12 before the end). Measure
+      how it gets low (the clears that take the panel count under the floor, and what they bought) and price spending when low.
+- [ ] **L2. Wasted moves: walking up for one swap and back down.** Way too many times the cursor goes up, makes a single swap, comes
+      back down -- sometimes to go back up later. Distance matters: walking back and forth between places is wasted input; a swap
+      nearby goes before a move far away. The owner's measure: 4 swaps in 6 moves beats 1 swap in 9 moves -- rank by actions per
+      thing done, not swaps. Between garbage it is almost always a wasted move; if the bot must go, it finishes its break first.
+      Measure: cursor actions per swap, round trips (up and back within a second), actions on lines not finished.
+
 ### Now, in this order (the owner, 2026-11-12/13 -- repeated; worked top first, every session)
 
 - [ ] **A. Efficiency.** No wasted threes; no set-ups that build nothing or walk far for little (TODO 8, 9). Every set-up names what
