@@ -304,7 +304,10 @@ static int readBoard_(Read *R) {
   // left alone with the garbage shown landing as the game lands it, to the first frame it would (search/ready.c raiseOpenIn), and the
   // raise is judged on that board and pressed then)
   Question rq = decQ;
-  if (refill && R->low && !R->up && !clockOut()) {
+  // (and THE OPENING'S RAISE, TIMED THE SAME: the owner -- raise up to 11 before the first garbage; a chain begun first holds the raise
+  // shut until it ends, and the garbage lands on the board short of it: set 86 combo_storm 5 fill, the raise asked from 192 and never
+  // pressed, the chain's links spending the panels 36 to 11, the board lost at 766; the players raise in the first second, then build)
+  if ((refill || opening) && R->low && !R->up && !clockOut()) {
     if (!raiseWaitBoard) raiseWaitBoard = nb_new();
     int32_t w = raiseWaitBoard ? raiseOpenIn(&decQ, RAISE_WAIT, raiseWaitBoard) : NOT_ASKED;
     if (w > 0) {
