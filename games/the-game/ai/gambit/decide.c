@@ -1465,6 +1465,9 @@ static Played playOf(const Read *R, int n) {
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
     else if (opFallWay == 6) P.line = P.top = lnk;
     else if (opFallWay == 5) P.line = P.top = brk;
+    // (never the second chain over the line ranked first where that line outlives it by a break's time: the opener gives way to survival
+    // -- r1351, 807: a set-up lost at 103 played over an extend lost at 428, the board lost at 1119)
+    else if (two && P.line && !P.line->hold && outlives(P.line, two)) { }
     else if (two) P.line = P.top = two;
     else {
       // (WHILE IT LANDS, THE CURSOR WORKS -- the owner: can it not do something while it waits? organize, zip, set up: the best set-up,
@@ -1535,7 +1538,9 @@ static Played playOf(const Read *R, int n) {
       // chain falling cannot top out -- so it gives way only where it does not fire in time: set 86 large_garbage 6, a 3's design half
       // pressed, put down at 190 frames for a break that made a 2)
       int fires = opKeepOn && decQ.b->clock - opKeepAt <= 40 && R->F.known[FACT_US_DIES] && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < R->F.v[FACT_US_DIES];
-      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires)) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
+      // (nor over a line ranked first that outlives the swap by a break's time, where the swap's chain does not fire in time -- r1351, 1048: a
+      // set-up lost at 71 over a line in progress lost at 306, the board lost 71 frames later)
+      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires) && !(P.line && !P.line->hold && !fires && outlives(P.line, t2))) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
       // (and while it waits for its panels to come to rest, the board is held: a clear short of what is needed spends the panels it is
       // made of -- set 86 factory 5, a 3's design half pressed, two 2s played in its waits and no 3)
       else if (!t2 && fires && opKeepOn && (opSecondWhy == 5 || opSecondWhy == 9) && P.line && !P.line->hold &&

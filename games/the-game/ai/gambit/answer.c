@@ -512,6 +512,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     P.line = alt; P.top = alt ? alt : H;
   }
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
+  { int lv = 0; for (int i = 0; i < n; i++) if (!order[i]->hold && !order[i]->carried && order[i]->o.lives) lv = 1; livedPrev = lv; }
   // (the frame the board is lost under the line played, for the eights' time next decision: propose.c twinLines)
   twinRoomAt = P.line && !P.line->hold && !P.line->o.dead && P.line->o.lostAt != NOT_ASKED ? (P.line->o.lives || P.line->o.lostAt == FOREVER ? decQ.b->clock + FOREVER / 2 : decQ.b->clock + P.line->o.lostAt) : -1;
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
@@ -1061,7 +1062,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); taReset(); lifeDumps = 0; openerOver = 0; openerPaused = 0; opKeepOn = 0; opKeepHeld = 0; openerChained = 0; openerThrown = 0; openerSum = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0; opFiredAt = -1;
+  modeLeft(); taReset(); lifeDumps = 0; livedPrev = 0; openerOver = 0; openerPaused = 0; opKeepOn = 0; opKeepHeld = 0; openerChained = 0; openerThrown = 0; openerSum = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0; opFiredAt = -1;
   if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; garbageSeen = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)

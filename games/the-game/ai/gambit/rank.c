@@ -570,9 +570,14 @@ static int holdsLine(const Judge *x, const Judge *y) {
 // garbage 19 where it was 23 -- finish 15 against 17)
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
+static int32_t livedPrev;   // (the last decision offered a line, not the one in progress, that lives: answer.c)
 static int32_t inOpener;   // (the opener still playing: its chain is the opener's to build -- decide.c read)
 #define NEAR_GAIN 30
 static int lostAlike(const Judge *x, const Judge *y) {
+  // (never alike near the end where the board itself is lost a break's time apart: the walk's charge is a preference, not a loss --
+  // r1362, 16608: a cut lost at 158 over a line lost at 414, alike on the walk charged; r1351, 478-513: a ready lost at 160 over 315)
+  { double dx = diesAt(x), dy = diesAt(y), dlo = dx < dy ? dx : dy, dhi = dx < dy ? dy : dx;
+    if (!x->o.lives && !y->o.lives && dlo >= 0 && dhi < 1e299 && dlo < NEAR_LOSS * rankSave && dhi - dlo >= rankSave) return 0; }
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
   return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
@@ -687,6 +692,11 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   // lives or is lost a break's time later, is a line that is lost -- death is never an option)
   if (lx && !x->o.lives && outlives(y, x)) lx = 0;
   if (ly && !y->o.lives && outlives(x, y)) ly = 0;
+  // (nor, under garbage, the credit of a line that breaks nothing beside a break lost within a break's time of it: the break is the way
+  // out the board has, the horizon is a promise -- r1363, 14839: a 4x stall in progress lost at 296 kept over a break lost at 282, and no
+  // break offered again; r1362, 16120)
+  if (lx && !x->o.lives && decF.under && brokeSeen(x) <= 0 && !y->hold && !y->o.dead && y->apBroke > 0 && diesAt(x) - diesAt(y) < rankSave) lx = 0;
+  if (ly && !y->o.lives && decF.under && brokeSeen(y) <= 0 && !x->hold && !x->o.dead && x->apBroke > 0 && diesAt(y) - diesAt(x) < rankSave) ly = 0;
   // (IN FINISH THEM, A BOARD THAT STANDS TWICE THE HORIZON IS SAFE -- the owner: survival is not pushed where the board is not dying: a
   // line whose board is lost FINISH_SAFE or more from now, its next moves played (diesAt: its own loss or the life after it), survives as
   // one that lives does, and the combos decide between them)
@@ -721,8 +731,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
     const Judge *l = lx ? x : y, *o = lx ? y : x;
-    if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
-    lx = ly = 1;
+    // (A NEW LINE THAT LIVES PUTS THE ONE IN PROGRESS DOWN ONLY ONCE IT HAS LIVED TWO DECISIONS RUNNING, where the one in progress stands
+    // NEAR_LOSS breaks' time: a line found living one decision and lost the next is garbage not yet told of -- r1344, 7308-7677: five lines
+    // in progress put down after one swap each for lines that lived once, the window spent from 23 presses to 2, the board lost at 8117)
+    int fresh = l->o.lives && !l->carried && !l->hold && o->carried && !o->hold && !o->o.dead && !livedPrev && diesAt(o) >= NEAR_LOSS * rankSave && diesAt(o) < 1e299;
+    if (fresh) lx = ly = 0;
+    else {
+      if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
+      lx = ly = 1;
+    }
   }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
@@ -731,7 +748,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // (only in the race: the enemy topped out -- under garbage mid-game a board is lost within three breaks' time most of the time, and
   // there the line in progress and the mode decide: finish them, sets 86-89, 97 against main's 105 with the key always on)
   if (!lx && raceOn) {
-    double a = lostOf(x), b = lostOf(y), lo = a < b ? a : b, hi = a < b ? b : a;
+    // (the losses as the board has them, no walk charged: the judge pressed the walk on the engine, its time is in the loss already --
+    // r1362, 16763: a level lost at 52 over a break lost at 452, the walk's charge leaving the two 30 frames apart, the board lost at 16820)
+    double a = diesAt(x), b = diesAt(y), lo = a < b ? a : b, hi = a < b ? b : a;
     if (lo >= 0 && lo < NEAR_LOSS * rankSave && hi - lo >= NEAR_GAIN && !x->o.dead == !y->o.dead) return (cmpKey = __LINE__, (a > b ? -1 : 1));
   }
   // 1. NO HOLDING INTO A LOSS: neither living, the hold lost within a break's time and a move lost NEAR_GAIN frames later or more, the move
@@ -789,6 +808,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (finishEightBy(x, y) || finishEightBy(y, x)) goalNoSooner = 1;
+  // (A BREAK IN HAND BEFORE A PROMISE: under garbage, of two that do not live, a line that clears nothing and is credited past its own
+  // loss by the moves after it, beside a line that breaks garbage lost a break's time later than that line's own loss, the break first --
+  // r1350, 5110: a ready lost at 98, then344, over a break in progress lost at 273; the 344 was never kept and the board was lost at 5287)
+  if (!lx && decF.under) {
+    int px = !x->hold && !clears(x) && !x->o.dead && x->o.lostAt >= 0 && diesAt(x) > x->o.lostAt, py = !y->hold && !clears(y) && !y->o.dead && y->o.lostAt >= 0 && diesAt(y) > y->o.lostAt;
+    int bx = !x->hold && !x->o.dead && x->apBroke > 0, by = !y->hold && !y->o.dead && y->apBroke > 0;
+    if (px && by && !bx && y->o.lostAt - x->o.lostAt >= rankSave) return (cmpKey = __LINE__, 1);
+    if (py && bx && !by && x->o.lostAt - y->o.lostAt >= rankSave) return (cmpKey = __LINE__, -1);
+  }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
@@ -1305,6 +1333,15 @@ static void sortJudged(Judge **a, int n) {
       while (j < hi) tmp[k++] = a[j++];
       for (k = lo; k < hi; k++) a[k] = tmp[k];
     }
+  // (THE LINE THAT OUTLIVES THE TOP AND BEATS IT IS THE TOP: the keys are not transitive, and a line that loses to another head to head
+  // on survival can end on top through a third -- r1350, 4490: the hold played, lost at 156, over a break in progress lost at 264 that
+  // beats it alone. Each line that outlives the top by a break's time and beats it compared alone moves up, a bounded number of times)
+  { int32_t keep = cmpKey;
+    for (int pass = 0; pass < 4 && n > 1; pass++) { int moved = 0;
+      for (int i = 1; i < n; i++) if (!a[i]->o.dead && outlives(a[i], a[0]) && compareJudged(a[i], a[0]) < 0) {
+        Judge *e = a[i]; for (int q = i; q > 0; q--) a[q] = a[q - 1]; a[0] = e; moved = 1; break; }
+      if (!moved) break; }
+    cmpKey = keep; }
   // (THE EIGHT THAT BEATS THE TOP IS THE TOP: the keys are not transitive -- an eight put first by the finish's own key beside the line
   // on top can end below it through a third line -- so in finish them, the first eight offered whole that the order puts before the top
   // line, compared with it alone, is moved up to the top)
