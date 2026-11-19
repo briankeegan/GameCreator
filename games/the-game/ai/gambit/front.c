@@ -725,7 +725,13 @@ static int follow(void) {
   static Keys k;
   if (!F.lineN) return 0;
   int32_t due = imax(lineDue(), F.now + 1);
-  if (modeAt(due) != F.lineMode) return lineDropped(due, "another mode", END_MODE);
+  // (a line already begun is finished across a switch of the mode -- the owner: a break begun is finished; r1393, 4078: a break put down
+  // after one of its three swaps for the switch, the walk to it spent for nothing; one not begun is dropped, the new mode plans its own)
+  if (modeAt(due) != F.lineMode) {
+    const LineRec *r = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
+    if (!(r && r->pressed > 0)) return lineDropped(due, "another mode", END_MODE);
+    F.lineMode = modeAt(due);
+  }
   // (THE LINE AS JUDGED: a swap keyed later than the judge pressed it from is pressed on a board the judge never judged -- counted, and
   // the first few logged; plans/gambit-goal.md, the truth)
   if (F.lineAt[0] > 0 && due > F.lineAt[0]) {
