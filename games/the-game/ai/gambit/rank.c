@@ -654,7 +654,9 @@ static int finishComboBy(const Judge *c, const Judge *o) { return !c->hold && !c
 // (A COMBO THE FINISH ASKS, OVER THE ALLOWANCE'S RESERVE: sp a combo of four or more within the list with at most a 2x, beside kp that
 // makes no combo as big with as short a chain, lost no sooner (or living) -- the owner: any combo beats a 3; the combo is the break itself)
 static int finishAsks(const Judge *sp, const Judge *kp) {
-  return finishAsked() && !sp->hold && !sp->outside && sp->apCombo >= 4 && sp->apChainAll <= 2 &&
+  // (its chain held against the other's: the board's own chain falling is sent by both -- set 86 combo_storm 1, run 4086, 7187-7241: an 8
+  // lost at 408 that left the board's 3x falling put after a 4 lost at 366 that sent the same 3x, for the reserve)
+  return finishAsked() && !sp->hold && !sp->outside && sp->apCombo >= 4 && sp->apChainAll <= imax(2, kp->hold ? 0 : kp->apChainAll) &&
          !(!kp->hold && !kp->outside && kp->apCombo >= sp->apCombo && kp->apChainAll <= sp->apChainAll) &&
          (sp->o.lives || (!kp->o.lives && diesAt(sp) >= diesAt(kp)));
 }
