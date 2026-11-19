@@ -294,7 +294,10 @@ static int walkTurns(const Judge *x, const Judge *y) {
     // (nor, under garbage, a line that spends no panels and breaks or walks toward a break, behind the hold or a line that spends them:
     // the hold builds nothing and the spend is the next break's material -- r1336 9240-9268, a toward line lost 43 frames later put
     // behind the hold for its walk while a pop ran, the board left to drain its material on chains after)
-    if ((s->hold || s->spends) && !l->hold && !l->spends && decF.under && (l->apBroke > 0 || l->k.play == PLAY_TOWARD))
+    // (and only for a walk the gain is worth -- the owner: never far for no good reason: within WALK_EARN actions of the other, or
+    // NEAR_GAIN frames later; run 4119, 8442: a toward walked 11 actions for 1 frame past the hold)
+    if ((s->hold || s->spends) && !l->hold && !l->spends && decF.under && (l->apBroke > 0 || l->k.play == PLAY_TOWARD) &&
+        (lineWalk(l) - lineWalk(s) <= 6 || (dx > dy ? dx - dy : dy - dx) >= 30))   // (WALK_EARN, NEAR_GAIN: defined below)
       return (dx > dy) != (lostOf(x) > lostOf(y));
     // (nor, in finish them, a line that fires an eight or more, beside any line lost sooner: the attack the mode asks, its walk pressed
     // on the engine as well)
@@ -1045,7 +1048,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
       int sx = setupKind(x), sy = setupKind(y);
       if (sx != sy) {
         const Judge *m = sx ? x : y, *h = sx ? y : x;
-        if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
+        // (but never far for it -- the owner, 2026-11-19: not moving super far for no good reason, a swap nearby before a move far away:
+        // the set-up first only within WALK_EARN actions of the other, or lost NEAR_GAIN frames later; run 4119, 849: a toward walked 20
+        // actions over a hold lost on the same frame)
+        int nearEnough = lineWalk(m) - lineWalk(h) <= WALK_EARN || (diesAt(m) - diesAt(h) >= NEAR_GAIN && !m->o.dead);
+        if (m->k.nseq && nearEnough && !wastesThree(m) && !spendsReserve(m) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
       if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
