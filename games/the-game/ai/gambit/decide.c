@@ -304,7 +304,10 @@ static int readBoard_(Read *R) {
   // left alone with the garbage shown landing as the game lands it, to the first frame it would (search/ready.c raiseOpenIn), and the
   // raise is judged on that board and pressed then)
   Question rq = decQ;
-  if (refill && R->low && !R->up && !clockOut()) {
+  // (and THE OPENING'S RAISE, TIMED THE SAME: the owner -- raise up to 11 before the first garbage; a chain begun first holds the raise
+  // shut until it ends, and the garbage lands on the board short of it: set 86 combo_storm 5 fill, the raise asked from 192 and never
+  // pressed, the chain's links spending the panels 36 to 11, the board lost at 766; the players raise in the first second, then build)
+  if ((refill || opening) && R->low && !R->up && !clockOut()) {
     if (!raiseWaitBoard) raiseWaitBoard = nb_new();
     int32_t w = raiseWaitBoard ? raiseOpenIn(&decQ, RAISE_WAIT, raiseWaitBoard) : NOT_ASKED;
     if (w > 0) {
@@ -334,6 +337,9 @@ static int readBoard_(Read *R) {
     if ((rq.narr > 0 || R->under) && rows > raiseAlive) rows = raiseAlive;
     { int32_t h = rq.b->height ? rq.b->height : 12; rows = imin(rows, h - 1 - fullTop(rq.b)); }
     if (opening) { opRaiseLog[0] = rowsUp; opRaiseLog[1] = rows; opRaiseLog[2] = raiseAlive; opRaiseLog[3] = rq.narr; opRaiseLog[4] = 1; }
+    // (the opening's raise a row a decision: the next decision looks again, and garbage told of meanwhile stops it where the board lives
+    // through it -- set 86 large_garbage 2 finish: four rows raised at 192 in one go, a tall block told of at 209, the board lost at 744)
+    if (opening && rows > 1) rows = 1;
     if (rows <= 0) { R->up = R->low = 0; raiseWait = 0; } else to = fullTop(rq.b) + rows;
   }
   R->to = to;
@@ -1458,10 +1464,15 @@ static Played playOf(const Read *R, int n) {
     // the chain falling shorter than the hold's)
     const Judge *keep = 0, *held = 0;
     for (int i = 0; i < n; i++) if (order[i]->hold) held = order[i];
-    const Judge *base = ext && ext->apChainAll < need ? ext : bar < need && !ext && !lnk && !brk && !twoReaches && !two ? held : 0;
-    if (base && !garbageRows(&decQ, 2) && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
+    // (THE OPENER NEVER DIES FOR ITS CHAIN -- the owner: the opener must not die: the hold the chain falls in, its chain made (bar >= need)
+    // too, gives way the same; under a slab of two rows or more to a line that breaks it, and to a break that cuts the chain short -- set 86
+    // large_garbage 1 finish, 819-1040: an 8x falling held, the board lost at 206, over a break lost at 586, the panels 39 to 16)
+    const Judge *base = ext && ext->apChainAll < need ? ext : (bar >= need || (!ext && !lnk && !brk && !twoReaches && !two)) ? held : 0;
+    int slab = garbageRows(&decQ, 2);
+    if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
-        if (J != base && !J->hold && J->apChainAll >= bar && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
+        if (slab && !(J->apBroke > 0)) continue;
+        if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
@@ -1478,6 +1489,12 @@ static Played playOf(const Read *R, int n) {
       const Judge *h = 0, *sk = 0;
       for (int i = 0; i < n; i++) if (order[i]->hold) { h = order[i]; break; }
       const Judge *kp = 0;   // (no give-way while the chain lands: set 86 combo_storm 1, a line kept a break's time longer taken at 514, the board lost at 800 all the same -- main's opener survives it)
+      // (A BREAK FIRST WHILE IT LANDS -- the owner: it can break with threes while it is still doing things: a line that breaks garbage,
+      // keeps the chain falling as far as the hold does and is lost no sooner, is played over the hold and any set-up)
+      for (int i = 0; i < n && !sk && h; i++) { const Judge *J = order[i];
+        if (J->hold || J->o.dead || !J->k.nseq || !(J->apBroke > 0) || cutsShort(J) || chainReach(J) < chainReach(h)) continue;
+        if (!(J->o.lives || (!h->o.lives && diesAt(J) >= diesAt(h)))) continue;
+        sk = J; }
       for (int i = 0; i < n && !sk; i++) { const Judge *J = order[i];
         if (J->hold || J->o.dead || !J->k.nseq || !setupKind(J) || wastesThree(J) || spendsReserve(J) || cutsShort(J)) continue;
         if (h && chainReach(J) < chainReach(h)) continue;

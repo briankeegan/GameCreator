@@ -294,7 +294,10 @@ static int walkTurns(const Judge *x, const Judge *y) {
     // (nor, under garbage, a line that spends no panels and breaks or walks toward a break, behind the hold or a line that spends them:
     // the hold builds nothing and the spend is the next break's material -- r1336 9240-9268, a toward line lost 43 frames later put
     // behind the hold for its walk while a pop ran, the board left to drain its material on chains after)
-    if ((s->hold || s->spends) && !l->hold && !l->spends && decF.under && (l->apBroke > 0 || l->k.play == PLAY_TOWARD))
+    // (and only for a walk the gain is worth -- the owner: never far for no good reason: within WALK_EARN actions of the other, or
+    // NEAR_GAIN frames later; run 4119, 8442: a toward walked 11 actions for 1 frame past the hold)
+    if ((s->hold || s->spends) && !l->hold && !l->spends && decF.under && (l->apBroke > 0 || l->k.play == PLAY_TOWARD) &&
+        (lineWalk(l) - lineWalk(s) <= 6 || (dx > dy ? dx - dy : dy - dx) >= 30))   // (WALK_EARN, NEAR_GAIN: defined below)
       return (dx > dy) != (lostOf(x) > lostOf(y));
     // (nor, in finish them, a line that fires an eight or more, beside any line lost sooner: the attack the mode asks, its walk pressed
     // on the engine as well)
@@ -416,6 +419,18 @@ static int awayFromGarbage(const Judge *J) {
   if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || !decQ.b) return 0;
   if (forB != decQ.b || forClock != decQ.b->clock) { forB = decQ.b; forClock = decQ.b->clock; lowG = lowestG(decQ.b); }
   return lowG < gridLen(decQ.b) && lowG - CR(J->k.seq[0]) >= GARBAGE_AWAY;
+}
+// (AMID THE GARBAGE FOR NOTHING -- the owner: going in between the garbage is a wasted move unless the line breaks it and finishes breaking
+// it; r1393, 3821-3955: swaps up among the slabs that came to nothing): a line that breaks no garbage and swaps a panel with garbage below
+// it in its column -- a panel the slabs hold up
+static int amidGarbage(const Judge *J) {
+  if (J->hold || !J->k.nseq || brokeSeen(J) > 0 || !decQ.b) return 0;
+  const Board *b = decQ.b;
+  for (int i = 0; i < J->k.nseq; i++) {
+    int r = CR(J->k.seq[i]), c = CC(J->k.seq[i]);
+    for (int cc = c; cc <= c + 1 && cc <= W; cc++) for (int rr = 1; rr < r && rr < b->nrows; rr++) if (b->p[rr][cc].f[ISGARBAGE]) return 1;
+  }
+  return 0;
 }
 // (A BREAK BY A THREE: a line that breaks garbage with no combo of four or more and no chain of two or more. Not topped out, of two that
 // both live it is no break to put first -- the owner: a three is for survival only, topped out; the mode's attacks break the garbage)
@@ -745,6 +760,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
       lx = ly = 1;
     }
   }
+  // 1. NOTHING AMID THE GARBAGE (amidGarbage): under garbage, of two that do not live, a line that swaps among the slabs and breaks nothing
+  // after one that does not -- unless it keeps the board a break's time (rankSave) longer
+  if (!lx && decF.under && !x->o.dead && !y->o.dead) {
+    int ax = amidGarbage(x), ay = amidGarbage(y);
+    if (ax != ay) { const Judge *a = ax ? x : y, *o = ax ? y : x;
+      if (diesAt(a) - diesAt(o) < rankSave) return (cmpKey = __LINE__, (ax ? 1 : -1)); }
+  }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
   // lost a little later "alike" the hold, or off the mode, and held, and the board died of the holds (live p65, r661, 8097-8204: a
@@ -1026,7 +1048,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
       int sx = setupKind(x), sy = setupKind(y);
       if (sx != sy) {
         const Judge *m = sx ? x : y, *h = sx ? y : x;
-        if (m->k.nseq && !wastesThree(m) && !spendsReserve(m) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
+        // (but never far for it -- the owner, 2026-11-19: not moving super far for no good reason, a swap nearby before a move far away:
+        // the set-up first only within WALK_EARN actions of the other, or lost NEAR_GAIN frames later; run 4119, 849: a toward walked 20
+        // actions over a hold lost on the same frame)
+        int nearEnough = lineWalk(m) - lineWalk(h) <= WALK_EARN || (diesAt(m) - diesAt(h) >= NEAR_GAIN && !m->o.dead);
+        if (m->k.nseq && nearEnough && !wastesThree(m) && !spendsReserve(m) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
       if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
