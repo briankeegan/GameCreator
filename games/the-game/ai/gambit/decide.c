@@ -1391,24 +1391,17 @@ static Played playOf(const Read *R, int n) {
     // of: past need - OPENER_LEAST the chain as it falls is kept, and below it the extension that reaches there in the fewest links -- in
     // a garbage game, where the panels the next chain is made of come back slowly)
     int tall = tallGarbage(&decQ); const Judge *two = 0; int twoAsked = 0;
-    // (AN EXTENSION THAT KEEPS THE BOARD IS NEVER GIVEN UP FOR THE NEXT CHAIN: the hold lost within OP_FALL_LOST and the extension lost
-    // NEAR_GAIN frames later or more -- the chain kept as it falls is the board lost; set 86 combo_storm 5 fill, 444-461: a 6x lost at 192
-    // held back for a 5 lost at 139, the board lost at 666)
-    int extSaves = 0;
-    if (ext) { const Judge *hj = 0; for (int i = 0; i < n; i++) if (order[i]->hold) hj = order[i];
-      extSaves = hj && !hj->o.lives && hj->o.lostAt != NOT_ASKED && hj->o.lostAt < OP_FALL_LOST && !ext->o.dead &&
-                 (ext->o.lives || (ext->o.lostAt != NOT_ASKED && ext->o.lostAt - hj->o.lostAt >= NEAR_GAIN)); }
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
     // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
-    if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast() && !extSaves) ext = 0; }
+    if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
     if (ext && ext->apChainAll < need && (tall || garbageSeen)) {
       int32_t enough = need - OPENER_LEAST;
       // (held for the next chain only where the board the chain lands on has one: the next chain designed there (opSecondSwap) a chain of
       // OPENER_LEAST or more; with none the chain falling is all there is, extended as any chain short of need)
       // (under smaller garbage held all the same: the board it lands on is full of colours its pops have not shown, a next chain seldom
       // designed there, and the 5 and the 3 come; under tall garbage, a 5 often leaves no 3 at all)
-      if (bar >= enough && !tall) { if (!extSaves) ext = 0; }
-      else if (bar >= enough) { if (!twoAsked) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; } if (opSecondCh >= OPENER_LEAST && !extSaves) ext = 0; }
+      if (bar >= enough && !tall) ext = 0;
+      else if (bar >= enough) { if (!twoAsked) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; } if (opSecondCh >= OPENER_LEAST) ext = 0; }
       else if (ext->apChainAll > enough) {
         const Judge *fit = 0;
         for (int i = 0; i < n; i++) { const Judge *J = order[i];
