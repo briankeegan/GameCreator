@@ -644,6 +644,13 @@ static int finishComboBy(const Judge *c, const Judge *o) { return !c->hold && !c
 #define FINISH_SAFE_ON 0   // (the safe board's credit: 0 off -- a board lost later than FINISH_SAFE is ranked by its loss)
 // (A BIGGER COMBO AT THE FINISH: a combo of four or more with at most a 2x, bigger than the other line's and lost no sooner -- never put
 // after it for the reserve or the cursor's place: set 86 combo_storm 1, 1219-1282, a 6 lost later passed over three times for a 4)
+// (A COMBO THE FINISH ASKS, OVER THE ALLOWANCE'S RESERVE: sp a combo of four or more within the list with at most a 2x, beside kp that
+// makes no combo as big with as short a chain, lost no sooner (or living) -- the owner: any combo beats a 3; the combo is the break itself)
+static int finishAsks(const Judge *sp, const Judge *kp) {
+  return finishAsked() && !sp->hold && !sp->outside && sp->apCombo >= 4 && sp->apChainAll <= 2 &&
+         !(!kp->hold && !kp->outside && kp->apCombo >= sp->apCombo && kp->apChainAll <= sp->apChainAll) &&
+         (sp->o.lives || (!kp->o.lives && diesAt(sp) >= diesAt(kp)));
+}
 static int finishBigger(const Judge *a, const Judge *b) {
   return finishAsked() && !a->hold && !a->o.dead && !a->outside && a->apCombo >= 4 && a->apChainAll <= 2 && a->apCombo > (b->hold ? 0 : b->apCombo) && diesAt(a) >= diesAt(b);
 }
@@ -917,8 +924,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int rises = !lx && !decF.under && decQ.narr == 0 && !sp->o.dead && diesAt(sp) >= diesAt(kp) + WALK_FRAMES;
     // (nor, in finish them, against a combo the list asks: a combo of four or more with at most a 2x, beside a line that makes no such
     // combo, is played over the reserve where it is lost no sooner -- the owner: any combo beats a 3; the combo is the break itself)
-    int asks = finishAsked() && !sp->hold && !sp->outside && sp->apCombo >= 4 && sp->apChainAll <= 2 && !(!kp->outside && kp->apCombo >= sp->apCombo) &&
-               (sp->o.lives || (!kp->o.lives && diesAt(sp) >= diesAt(kp)));
+    int asks = finishAsks(sp, kp);
     if (rx != ry && !rises && !asks) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
@@ -1096,9 +1102,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (cutsShort(x) != cutsShort(y)) return (cmpKey = __LINE__, (cutsShort(x) ? 1 : -1));
     // (neither lives, lost alike) THE ALLOWANCE'S RESERVE: a line that walks the input allowance below a break's walk (BREAK_WALK) after
     // one that keeps it, two breaks as two of anything else -- the break the next decisions find has to be pressed out of what is left
+    // (nor over a combo the finish asks, lost no sooner: set 86 combo_storm 1, 7638, a 6x kept, lost at 300, over a 4 lost at 507)
     if (pressAllowance >= 0) {
       int rx = reserveShort(x), ry = reserveShort(y);
-      if (rx != ry) return (cmpKey = __LINE__, (rx - ry));
+      if (rx != ry && !finishAsks(rx < ry ? y : x, rx < ry ? x : y)) return (cmpKey = __LINE__, (rx - ry));
     }
     // 4. (neither lives) a break in reach once the next block lands
     if (x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED && x->readyNext != y->readyNext) return (cmpKey = __LINE__, (x->readyNext ? -1 : 1));
