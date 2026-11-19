@@ -576,7 +576,9 @@ static int32_t inOpener;   // (the opener still playing: its chain is the opener
 static int lostAlike(const Judge *x, const Judge *y) {
   // (never alike near the end where the board itself is lost a break's time apart: the walk's charge is a preference, not a loss --
   // r1362, 16608: a cut lost at 158 over a line lost at 414, alike on the walk charged; r1351, 478-513: a ready lost at 160 over 315)
-  { double dx = diesAt(x), dy = diesAt(y), dlo = dx < dy ? dx : dy, dhi = dx < dy ? dy : dx;
+  // (each line's own loss: no walk charged, and no credit for moves after it -- a promise is no loss told: set 86 combo_storm 1, 6846, a
+  // toward lost at 218 credited 494 put a break in progress lost at 242 down, the promise never kept and the board lost at 7141)
+  { double dx = lostAtOf(x->o.lostAt, x->hold), dy = lostAtOf(y->o.lostAt, y->hold), dlo = dx < dy ? dx : dy, dhi = dx < dy ? dy : dx;
     if (!x->o.lives && !y->o.lives && dlo >= 0 && dhi < 1e299 && dlo < NEAR_LOSS * rankSave && dhi - dlo >= rankSave) return 0; }
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
@@ -750,7 +752,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && raceOn) {
     // (the losses as the board has them, no walk charged: the judge pressed the walk on the engine, its time is in the loss already --
     // r1362, 16763: a level lost at 52 over a break lost at 452, the walk's charge leaving the two 30 frames apart, the board lost at 16820)
-    double a = diesAt(x), b = diesAt(y), lo = a < b ? a : b, hi = a < b ? b : a;
+    // (and its own loss, no credit for moves after it: a promise is no later loss)
+    double a = lostAtOf(x->o.lostAt, x->hold), b = lostAtOf(y->o.lostAt, y->hold), lo = a < b ? a : b, hi = a < b ? b : a;
     if (lo >= 0 && lo < NEAR_LOSS * rankSave && hi - lo >= NEAR_GAIN && !x->o.dead == !y->o.dead) return (cmpKey = __LINE__, (a > b ? -1 : 1));
   }
   // 1. NO HOLDING INTO A LOSS: neither living, the hold lost within a break's time and a move lost NEAR_GAIN frames later or more, the move
