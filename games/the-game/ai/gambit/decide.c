@@ -1479,7 +1479,9 @@ static Played playOf(const Read *R, int n) {
     const Judge *pick = ext && ext->apChainAll >= need ? ext : twoReaches ? two : lnk ? lnk : ext ? ext : brk ? brk : two ? two : held;
     const Judge *base = pick ? pick : held;
     int slab = garbageRows(&decQ, 2);
-    if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
+    // (lost too soon: before the chain falling has landed and a break could be made after it -- the board's own time, never a fixed count)
+    int32_t fallLost = (ownChainBy > 0 ? ownChainBy : 0) + rankSave;
+    if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < fallLost)
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
         if (slab && !(J->apBroke > 0)) continue;
         if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= rankSave))) keep = J; }   // (a break's time: set 86 factory 8 finish, 612, a break 156 frames longer passed at OP_FALL_KEEP's 250, the board lost at 776)
