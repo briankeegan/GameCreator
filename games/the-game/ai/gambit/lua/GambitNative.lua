@@ -133,7 +133,9 @@ function GambitNative:startMatch(stack, match)
   if self.ownThinking then self.thinking = ThinkBudget.standard() end
   if self.ownInputs then self.inputs = InputBudget.standard() end
   self.dropped, self.ages, self.pv, self.slowLogged = 0, {}, {}, nil
-  if played then C.gn_quit(); open() end
+  -- ONE INSTANCE FOR THE WHOLE RUN: gn_match (native.c) begins a match with nothing of the last carried on. A fresh instance per
+  -- match (gn_quit, then open) hung the bot on its second match (gn_quit's thread join), and leaving the last one running instead
+  -- used up the runner's memory (about 6 GB an instance) and killed the bot mid-game. So: no quit, no reload.
   played = true
   C.gn_match()
   -- (an engine without GarbageDelivery -- upstream's -- lands a transit due now before the frame runs: front.c receiverTimed)
