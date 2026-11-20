@@ -6,6 +6,7 @@ static Opp theOpp;
 static int32_t garbageSeen;   // (garbage has been on the board or on its way this game)
 static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OP_FALL_LOST AT_LEVEL(200)   // (frames to the board's loss inside which an extension short of the eight gives way: set 86 combo_storm 7, its extensions lost at 130-193 and a break at 442-465; combo_storm 3's at 205, kept, made its 8; the large slabs', lost at 299-471 a second chain is still made)
+#define OP_KEEP_PANELS 36   // (the panels the opener's chain leaves once landed, at least: six rows -- the owner: keep enough to break)
 #define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
 #define OPENER_CHAINS 3
@@ -15,7 +16,7 @@ static int32_t openerOver, openerChained, openerThrown, openerSum, openerPaused;
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
 static int32_t thenRule = -1;
-static int32_t opRaiseLog[5];   // (the opening raise judged: the rows short, the rows held to, the rows alive, the blocks on their way -- the log's opRaise=)
+static int32_t opRaiseLog[5];   // (the opening raise judged: the rows short, the rows held to, the rows alive, the blocks on their way, negative where the raise was held to the first landing -- the log's opRaise=)
 static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
 static int32_t carryJudgeDrop = -1;   // (and for 19, why the judging dropped it: rank.c DROP_*, -1 none said)
 static int32_t rescues;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
@@ -336,7 +337,7 @@ static int readBoard_(Read *R) {
     // raise into the garbage is a death)
     if ((rq.narr > 0 || R->under) && rows > raiseAlive) rows = raiseAlive;
     { int32_t h = rq.b->height ? rq.b->height : 12; rows = imin(rows, h - 1 - fullTop(rq.b)); }
-    if (opening) { opRaiseLog[0] = rowsUp; opRaiseLog[1] = rows; opRaiseLog[2] = raiseAlive; opRaiseLog[3] = rq.narr; opRaiseLog[4] = 1; }
+    if (opening) { opRaiseLog[0] = rowsUp; opRaiseLog[1] = rows; opRaiseLog[2] = raiseAlive; opRaiseLog[3] = raiseFirstOnly ? -rq.narr : rq.narr; opRaiseLog[4] = 1; }
     // (the opening's raise a row a decision: the next decision looks again, and garbage told of meanwhile stops it where the board lives
     // through it -- set 86 large_garbage 2 finish: four rows raised at 192 in one go, a tall block told of at 209, the board lost at 744)
     if (opening && rows > 1) rows = 1;
@@ -396,6 +397,7 @@ static int carriedFromReady(void), carryWaitsOut(void);
 static void readySpread(int n), readyStop(void);
 static int keptJudged(const Read *R, int n), routeJudged(const Read *R, int n);
 static const Judge *carriedJ;   // the line in progress among the ranked, for the log
+static const Judge *carryCrossJ;   // the line in progress begun in another mode, offered as any line (carryNone 23)
 // (THE OPENER'S LINE IN PROGRESS -- the owner: the opener is one continuous string; only a line no longer possible is put down: the
 // carried line, whatever the filters after its judging take out, while it lives or presses its last swap before the next block lands)
 static const Judge *opCarried;
@@ -455,6 +457,7 @@ static int32_t carryWaste[5];   // (the line in progress taken out as a wasted t
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
+static int32_t opSpent, opSpentMat, opSpentHeld;   // (the opener's chains refused for spending the board: 1 the extension, 2 the link, 4 the second chain, 8 a set-up while it lands; the panels the last refused leaves once landed, and holding's -- the log's spent=)
 static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
                                                                                    // for the next chain, 4 a set-up short of it)
 static int32_t opFallLine[8][6], opFallLineN;   // (each extension under the fall: its swaps, those the judge pressed, its chain as judged, lost, its chain as its search said, the frames to its loss -1 living: the log's fallLines=)   // (and the extensions in the order: how many, the longest judged chain of those not lost, those lost)   // (under the falling chain: the chain the hold reaches, the extension's played, 0 none -- the log's fallBar=)
@@ -462,7 +465,10 @@ static int32_t opTried, opFallHeld, opFalling, opFallAt = -1, opFiredAt = -1;   
 static int32_t carryBeganAt = -1, carryBeganPlay = -1;
 // (an extension of the falling chain: a line played as one -- PLAY_EXTEND, or PLAY_LINEUP, the same search's lines while a garbage slab
 // pops beside the chain -- or the line in progress begun as one)
-static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || (J->carried && (b == PLAY_EXTEND || b == PLAY_LINEUP)); }
+// (an extension of the chain falling: an extend or a lineup, or the line in progress begun as one -- or begun as finish's entry, the chain
+// it fired still falling when the mode turns back to the opener: run 4148 combo_storm 6, 563, the entry's 8 in progress, lost at 366,
+// passed for an extend's 5 lost at 231, the board lost at 804)
+static int opExtLine(const Judge *J) { int p = J->k.play; int b = carryBeganPlay; return p == PLAY_EXTEND || p == PLAY_LINEUP || ((J->carried || J == carryCrossJ) && (b == PLAY_EXTEND || b == PLAY_LINEUP || b == PLAY_ENTRY)); }
 // (an eight still loaded on the board the line ends on -- one swap from firing)
 static int loadedAfter(const int32_t *seq, int n) {
   static Board *eb; if (!eb) eb = nb_new(); if (!eb) return 0;
@@ -513,7 +519,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -550,7 +556,7 @@ static int ranked(const Read *R, const Found *S) {
     if (cwait && carryWaitsOut()) { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; carryNone = 22; }
     // (A LINE BEGUN IN ANOTHER MODE -- the owner: the modes as the enemy's board calls them: past a switch the line in progress is carried
     // on only where it meets the new mode's first entry or breaks garbage; else it is offered as any line, ranked on what it makes)
-    else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; }
+    else if (carryRule() != R->rule && !goalLine(cj) && !(cj->apBroke > 0)) { order[n] = cj; n++; carryNone = 23; carryCrossJ = cj; }
     else { cj->carried = 1; order[n] = cj; n++; carriedJ = cj; if (opLineOn && (cj->o.lives || decF.next == NOT_ASKED || (cj->apNats > 0 && cj->apAts[cj->apNats - 1] < decF.next))) opCarried = cj; }
     // (and, the board still moving, the same line pressed straight through -- each swap as soon as the board lets it, not once the
     // board has settled: a slab converting is frames the line can be pressed in)
@@ -950,6 +956,19 @@ static int opAtRest(const Board *landed, int32_t sw) {
   }
   return 1;
 }
+// (the frames until the chain falling has landed and the board is still: the root run on to its settle -- 0 when it is still already)
+static int32_t opLandIn(void) {
+  static Ctx *lx; lx = ctxOf(lx);
+  int root = rootOf(lx, &decQ), calm = root >= 0 ? settleOf(lx, root) : -1;
+  return root >= 0 && liveNode(lx, calm) ? imax(0, NODE(lx, calm)->t - NODE(lx, root)->t) : 0;
+}
+// (and the panels the board keeps once it has landed, left alone: the hold's, where the order no longer holds the hold)
+static int32_t opRootMat(void) {
+  static Ctx *mx; mx = ctxOf(mx);
+  int root = rootOf(mx, &decQ), calm = root >= 0 ? settleOf(mx, root) : -1;
+  const Board *b = liveNode(mx, calm) ? ensureBoard(mx, calm) : 0;
+  return b ? materialOn(b) : -1;
+}
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -1312,7 +1331,7 @@ static Played playOf(const Read *R, int n) {
   // (THE OPENER'S SECOND HAND -- the owner: the opener has the time to set its chain up and goes for its goal: where its decision is the
   // hold, on a board with no garbage on it and not raising (a block on its way is judged with the line), the trigger of a chain the mode's first entry asks for is
   // pressed, else the set-up swap the trigger chain is longest after (search/chainup.c) -- each judged as any line, pressed only living)
-  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opFallWay = 0; opFallLink = opFallLinkCh = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0; opPairN = opPairBest = 0;
+  chainUp = chainNow = chainAfter = 0; opTried = 0; opFallHeld = 0; opSecondCh = 0; opSecondWhy = 0; opLandedRows[0] = 0; opCdRows[0] = 0; opFallBar = opFallExt = 0; opFallWay = 0; opSpent = opSpentMat = opSpentHeld = 0; opFallLink = opFallLinkCh = 0; opDesigned = 0; opDesignedQuick = 0; opGrew = 0; opTryN = 0; opProveTried = opProved = opProvedBest = 0; opPairN = opPairBest = 0;
   // (not while a chain falls: that chain is extended -- the extension's lines are the move -- and nothing is begun or flattened under it)
   // (and the next chain, the first thrown, is planned under garbage too: its panels are the ones under it)
   int opNext = openerSum > 0 && opNeed > 0;
@@ -1397,6 +1416,18 @@ static Played playOf(const Read *R, int n) {
     // of: past need - OPENER_LEAST the chain as it falls is kept, and below it the extension that reaches there in the fewest links -- in
     // a garbage game, where the panels the next chain is made of come back slowly)
     int tall = tallGarbage(&decQ); const Judge *two = 0; int twoAsked = 0;
+    // (THE CHAIN NEVER SPENDS THE BOARD -- the owner: keep enough to break the garbage: an extension that leaves fewer than OP_KEEP_PANELS
+    // panels once its chain has landed (matSettled) is not played where holding keeps more and is lost no sooner (run 4151 large_garbage 8, 519: an
+    // extend lost at 155 refused for a set-up lost at 99) -- the chain falling kept as it is, the raise
+    // pressed once it lands; r1412: three chains back to back, the panels 54 to 27 before any garbage landed, the board lost at 2538)
+    // (the hold measured on the board itself where the order has dropped it: run 4153 combo_storm 4, 767-921, the hold out of the order
+    // and lineups the floor never saw took the chain 4 to 13 and the panels 26 to 5 under garbage, the board lost at 1533)
+    const Judge *heldJ = 0; for (int i = 0; i < n; i++) if (order[i]->hold) heldJ = order[i];
+    int32_t heldMat = heldJ ? heldJ->o.matSettled : opRootMat();
+    double heldDies = heldJ ? diesAt(heldJ) : R->F.v[FACT_US_DIES];
+    #define SPENDS_BOARD(J) ((J) && heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled && !(J)->o.lives && heldDies >= diesAt(J))
+    opSpentHeld = heldMat;
+    if (SPENDS_BOARD(ext) && ext->apChainAll < need) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
     // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
     if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
@@ -1472,10 +1503,18 @@ static Played playOf(const Read *R, int n) {
     const Judge *pick = ext && ext->apChainAll >= need ? ext : twoReaches ? two : lnk ? lnk : ext ? ext : brk ? brk : two ? two : held;
     const Judge *base = pick ? pick : held;
     int slab = garbageRows(&decQ, 2);
-    if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < OP_FALL_LOST)
+    // (lost too soon: before the chain falling has landed and a break could be made after it -- the board's own time, never a fixed count)
+    int32_t fallLost = opLandIn() + rankSave;
+    // (and under garbage, a break that keeps the board a break's time longer whatever the danger -- the owner: break the garbage
+    // immediately: run 4158 large_garbage 8 fill, 475-585, extensions lost at 162-200 played over a break lost at 444-469, the board
+    // lost at 811)
+    int danger = base && base->o.lostAt != NOT_ASKED && base->o.lostAt < fallLost;
+    if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && (danger || decF.under))
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
         if (slab && !(J->apBroke > 0)) continue;
-        if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= OP_FALL_KEEP))) keep = J; }
+        if (!danger && !(J->apBroke > 0)) continue;
+        if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= rankSave))) keep = J; }   // (a break's time: set 86 factory 8 finish, 612, a break 156 frames longer passed at OP_FALL_KEEP's 250, the board lost at 776)
+    if (!keep) { if (SPENDS_BOARD(lnk)) { opSpent |= 2; opSpentMat = lnk->o.matSettled; lnk = 0; } if (SPENDS_BOARD(two)) { opSpent |= 4; opSpentMat = two->o.matSettled; two = 0; twoReaches = 0; } }
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
@@ -1495,14 +1534,18 @@ static Played playOf(const Read *R, int n) {
       // (A BREAK FIRST WHILE IT LANDS -- the owner: it can break with threes while it is still doing things: a line that breaks garbage,
       // keeps the chain falling as far as the hold does and is lost no sooner, is played over the hold and any set-up)
       for (int i = 0; i < n && !sk && h; i++) { const Judge *J = order[i];
-        if (J->hold || J->o.dead || !J->k.nseq || !(J->apBroke > 0) || cutsShort(J) || chainReach(J) < chainReach(h)) continue;
+        // (the chain cut short only by a break that outlives the hold by a break's time -- the garbage broken is the board kept: run 4151
+        // large_garbage 8, 497, a break lost at 390 passed for a set-up lost at 121, the board lost at 733)
+        if (J->hold || J->o.dead || !J->k.nseq || !(J->apBroke > 0) || ((cutsShort(J) || chainReach(J) < chainReach(h)) && !outlives(J, h))) continue;
         if (!(J->o.lives || (!h->o.lives && diesAt(J) >= diesAt(h)))) continue;
         sk = J; }
       for (int i = 0; i < n && !sk; i++) { const Judge *J = order[i];
         if (J->hold || J->o.dead || !J->k.nseq || !setupKind(J) || wastesThree(J) || spendsReserve(J) || cutsShort(J)) continue;
+        if (SPENDS_BOARD(J)) { opSpent |= 8; opSpentMat = J->o.matSettled; continue; }   // (a set-up that spends what an extension may not)
         if (h && chainReach(J) < chainReach(h)) continue;
         if (!(J->o.lives || (h && !h->o.lives && diesAt(J) >= diesAt(h)))) continue;
         sk = J; }
+      #undef SPENDS_BOARD
       if (sk) { P.line = P.top = sk; opFallWay = kp ? 8 : 9; }
       else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
@@ -1836,7 +1879,7 @@ static int savesOverHold(const Judge *k) {
 }
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   pvKeep(k, first, qid);
-  if (k && !k->carried && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
+  if (k && !k->carried && k != carryCrossJ && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
   else if (!k) carryBeganAt = carryBeganPlay = -1;
   int32_t waits = k && k->k.play == PLAY_CARRYWAIT ? theCarry.waits + 1 : 0;
   Why keepWhy = k && k->carried ? theCarry.why : (Why){ WHY_NONE, 0, 0 };

@@ -30,6 +30,7 @@ typedef struct {
   int32_t lifeLeft;    // the life the board it leaves has by its panels (lifeOf), -1 not asked
   int32_t floorKept;   // the board the line leaves keeps the rule's floor, as the floor is tested (floorOf), the line's breaks aside; -1 not asked
   int32_t matLeft;     // the material the board the line leaves has: its panels under the lowest garbage, the next break's (materialOn); -1 not asked
+  int32_t matSettled;  // the same once the board has settled -- its chain landed (settleOf); -1 not asked
   int32_t groups;      // the threes the board the line leaves has the panels for, a chain's links (groupsOn); -1 not asked
   int32_t twinAfter;   // the swaps to a two-column eight on the board the line leaves (propose.c twinCostOn; 99 none), -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
@@ -174,10 +175,13 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
     o.fits = fitsList(&theList, o.j.made, &o.j, 1) && imax(o.j.made.chain, o.j.chainAll) <= MAXCHAIN;
     // (a break: whether the board it leaves still has a break to build -- the material the next one needs)
     o.nextBuild = -1;
-    o.panelsLeft = -1; o.nearAfter = -1; o.twinAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.groups = -1;
+    o.panelsLeft = -1; o.nearAfter = -1; o.twinAfter = -1; o.lifeLeft = -1; o.floorKept = -1; o.matLeft = -1; o.matSettled = -1; o.groups = -1;
     if (!waitTo) {
       const Board *eb = ensureBoard(judgeCtx, o.j.endNode);
       if (eb) { o.panelsLeft = panelsOn(eb); o.lifeLeft = lifeOf(o.panelsLeft); o.floorKept = floorOf ? floorOf(eb) : -1; o.matLeft = materialOn(eb); o.groups = groupsOn(eb); }
+      // (and once the board has settled: a chain still falling at the line's end spends panels after it -- the opener's chains, r1412)
+      if (eb && eb->chainCounter > 0) { int sn = settleOf(judgeCtx, o.j.endNode); const Board *sb = liveNode(judgeCtx, sn) ? ensureBoard(judgeCtx, sn) : 0; o.matSettled = sb ? materialOn(sb) : o.matLeft; }
+      else o.matSettled = o.matLeft;
       if (eb && endWanted == 1) { if (!endBoard) endBoard = nb_new(); if (endBoard) { cloneBoard(endBoard, eb); endWanted = 2; } }
       // (under garbage, how near the next break is on the board it leaves: a garbage-free board has no break to be near)
       if (eb && decF.under) o.nearAfter = garbageOn(eb) ? nearOf(eb) : 0;
