@@ -772,6 +772,17 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (ax != ay) { const Judge *a = ax ? x : y, *o = ax ? y : x;
       if (diesAt(a) - diesAt(o) < rankSave) return (cmpKey = __LINE__, (ax ? 1 : -1)); }
   }
+  // 1. A FAR WALK IS PAID FOR BY THE BOARD'S OWN LIFE (the owner: no wasted moves, above all far ones -- distance matters): of two that do
+  // not live, the one the cursor walks further for goes first only where its own board -- no credit for moves promised after it -- is
+  // lost later by more than the time the extra walk takes (WALK_FRAMES an action), or it breaks more garbage; else the nearer. r1427,
+  // 3750: a cut walked 8 actions up among the slabs, lost at 125 as the hold was, put first for its promise of 249)
+  if (!lx && !x->o.dead && !y->o.dead) {
+    int wx = lineWalk(x), wy = lineWalk(y);
+    if (wx != wy) { const Judge *f = wx > wy ? x : y, *n = wx > wy ? y : x;
+      double of = lostAtOf(f->o.lostAt, f->hold), on = lostAtOf(n->o.lostAt, n->hold);
+      if (of >= 0 && on >= 0 && !(imax(0, f->apBroke) > imax(0, n->apBroke)) && of - on <= (double)WALK_FRAMES * iabs(wx - wy))
+        return (cmpKey = __LINE__, (f == x ? 1 : -1)); }
+  }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
   // lost a little later "alike" the hold, or off the mode, and held, and the board died of the holds (live p65, r661, 8097-8204: a
