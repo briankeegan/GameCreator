@@ -831,7 +831,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *f = offMode(x) ? x : y, *o = f == x ? y : x;
     // (garbage on its way counts as garbage on the board: set 86 combo_storm 2, 14200, the hold lost at 245 put before a line breaking the
     // garbage 81 frames off and lost at 409 -- the board lost at 14666 with no break)
-    if (livesOn(o) && (!(decF.under || decQ.narr > 0) || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
+    // (never over a line off the mode that outlives the one keeping to it by a break's time -- the horizon's credit is no life beside it --
+    // and garbage told of counts as on its way: g4238 combo_storm 1 fill, 4560-4590, a 3x in progress lost at 291 kept over a break of 32
+    // cells lost at 455, the garbage 111 frames off, the board lost at 4869)
+    int coming = decF.under || decQ.narr > 0 || decF.land != NOT_ASKED;
+    if (livesOn(o) && !outlives(f, o) && (!coming || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
       return (cmpKey = __LINE__, (f == x ? 1 : -1));
   }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
