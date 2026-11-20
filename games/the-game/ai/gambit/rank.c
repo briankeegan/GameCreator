@@ -775,6 +775,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // NEAR_LOSS breaks' time: a line found living one decision and lost the next is garbage not yet told of -- r1344, 7308-7677: five lines
     // in progress put down after one swap each for lines that lived once, the window spent from 23 presses to 2, the board lost at 8117)
     int fresh = l->o.lives && !l->carried && !l->hold && o->carried && !o->hold && !o->o.dead && !livedPrev && diesAt(o) >= NEAR_LOSS * rankSave && diesAt(o) < 1e299;
+    // (NOR A LIFE BOUGHT WITH THE NEXT BREAK'S PANELS: under garbage, a line that lives by clearing panels below the floor and breaking
+    // nothing lives on stop time, and the panels it spends are the next break's -- the break beside it that keeps the board NEAR_LOSS
+    // breaks' time is played first: the garbage broken is the board kept)
+    int bought = decF.under && l->o.lives && !l->hold && !(l->apBroke > 0) && l->spends && !o->hold && !o->o.dead && o->apBroke > 0 &&
+                 diesAt(o) >= NEAR_LOSS * rankSave && diesAt(o) < 1e299;
+    if (bought) return (cmpKey = __LINE__, (lx ? 1 : -1));
     if (fresh) lx = ly = 0;
     else {
       if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
