@@ -442,6 +442,7 @@ static double contLostOf(const Judge *J, double give) {
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
+static int32_t putOffCut;   // (clears taken out for blocks that have not landed: the log's)
 static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
@@ -520,7 +521,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -821,6 +822,23 @@ static int ranked(const Read *R, const Found *S) {
     // (not where the list asks no chain: a 2x taken to three is a bigger slab the mode does not ask)
     // (nor the line in progress begun on its 2x: the input pressed of it is spent, and taken out now it is spent for nothing)
     if (keeps && listChainCap() > 0) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carryTwo)) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 24; } } else order[m++] = order[i]; } n = m; } }
+  // NO CLEAR FOR BLOCKS THAT HAVE NOT LANDED (the owner: low, spend less and break): garbage queued behind the board's own motion and
+  // none on the board (outcome.c holdQueueAt), below the material floor, nothing living -- a clear that breaks nothing (spends) is taken
+  // out of the order where a line that leaves more of the panels is offered, unless its board lasts a break's time (rankSave) longer
+  // than that line's once the blocks have landed, the drop it puts off taken out (outcome.c putOff). However near the kept line's loss,
+  // so long as its board is still there a reaction after the blocks drop, when the first move can answer them: no line breaks a block
+  // before it lands, and the break after it is made of the panels kept. The line in progress is held to it like any other
+  if (n && !order[0]->o.lives && holdQueueAt() != NOT_ASKED) {
+    const Judge *kept = 0;
+    for (int i = 0; i < n; i++) { const Judge *J = order[i];
+      if (J->spends || J->o.dead || J->o.matLeft < 0 || diesAt(J) < holdQueueAt() + rankReact) continue;
+      if (!kept || J->o.matLeft > kept->o.matLeft || (J->o.matLeft == kept->o.matLeft && diesAt(J) > diesAt(kept))) kept = J; }
+    if (kept) { int m = 0;
+      for (int i = 0; i < n; i++) { const Judge *J = order[i];
+        if (J->spends && J != opCarried && J->o.matLeft >= 0 && J->o.matLeft < kept->o.matLeft && diesAt(J) - diesAt(kept) < rankSave) { putOffCut++; if (J == carriedJ) { carriedJ = 0; carryNone = 27; } }
+        else order[m++] = order[i]; }
+      n = m; }
+  }
   // (NO COMBO THE MODE DOES NOT ASK FOR, where a three does as well: the line ranked first making one is played with each of its swaps
   // left out in turn, and one that makes none, lives as long, breaks as much and makes as much of the list is the line -- a fourth panel
   // walked in by a swap the break did not need is a panel and a walk for nothing (the owner: no mode asks a combo of four))
@@ -854,17 +872,21 @@ static int ranked(const Read *R, const Found *S) {
       if (!JL.o.lives && (J->o.lives || (diesAt(&JL) < diesAt(J) && !forNothing))) continue;
       if (imax(0, JL.apBroke) < imax(0, J->apBroke) || JL.apChain < J->apChain || JL.apCombo < J->apCombo || JL.apChainAll < J->apChainAll) continue;
       if (J->o.nearAfter >= 0 && JL.o.nearAfter > J->o.nearAfter) continue;
+      // (nor one that, a swap less, clears panels below the floor and breaks nothing where the line clears none: the panels are what it loses)
+      if (JL.spends && !J->spends) continue;
       if (!forNothing && compareJudged(&JL, J) > 0) continue;
       JL.carried = J->carried; *J = JL; took = 1; needlessTrimmed++;
     }
     if (!took) break;
   }
   // (and a line of one swap that buys less than its own walk takes, making, breaking and bringing nothing nearer, is the hold -- a far
-  // swap for nothing is the waste the owner sees most)
+  // swap for nothing is the waste the owner sees most; a plain three is no chain, and a break brought nearer that keeps the board no
+  // longer is a walk for nothing -- only a board left ready where the hold leaves none is kept)
   if (n && order[0] && !order[0]->hold && order[0]->k.nseq == 1 && !order[0]->o.lives) {
     Judge *J = order[0]; const Judge *h = 0; int hi = -1;
     for (int i = 1; i < n; i++) if (order[i]->hold) { h = order[i]; hi = i; break; }
-    if (h && !h->o.dead && !(J->apBroke > 0) && J->apChainAll <= h->apChainAll && J->apCombo < 3 && !(J->o.nearAfter >= 0 && h->o.nearAfter >= 0 && J->o.nearAfter < h->o.nearAfter) &&
+    if (h && !h->o.dead && !(J->apBroke > 0) && (J->apChainAll <= h->apChainAll || J->apChainAll < 2) && J->apCombo < 3 && !(J->o.j.ready == 1 && h->o.j.ready != 1) &&
+        !(J->o.nearAfter >= 0 && h->o.nearAfter >= 0 && J->o.nearAfter < h->o.nearAfter && lostOf(J) > lostOf(h)) &&
         diesAt(J) - diesAt(h) <= (double)WALK_FRAMES * lineWalk(J) && diesAt(J) - diesAt(h) < rankSave && lostAlike(J, h) && lineWalk(J) > 0) {
       Judge *hh = order[hi]; for (int k = hi; k > 0; k--) order[k] = order[k - 1]; order[0] = hh; needlessTrimmed++; }
   }
@@ -1465,6 +1487,8 @@ static Played playOf(const Read *R, int n) {
     // actions in 600 frames: run 4166 large_garbage 1, 571-749, the opener's lineups under the slab took the window 27 to 0 and the
     // board was held to its loss at 976. With no garbage on the board the opener spends freely: the reserve everywhere cost the eights)
     #define FARTHER_OFF(J) (decF.under && heldJ && (J)->o.nearAfter >= 0 && heldJ->o.nearAfter >= 0 && (J)->o.nearAfter > heldJ->o.nearAfter)
+    // (a chain that buys less than a break's time over holding buys no break with the panels it spends; and the window's reserve is kept
+    // for the break once garbage is on its way, not only once it has landed)
     // (AND NEVER A CHAIN THAT LEAVES THE BOARD UNREADY WHERE ANOTHER WAY KEEPS IT READY -- the owner: just don't die: the chain falling
     // holds the garbage back, and when it lands the whole queue drops at once, so a chain that leaves no break ready once everything
     // lands (judge.c breaksAfterLanding, the window counted) is refused where the hold or another line leaves one -- however much longer
@@ -1472,7 +1496,7 @@ static Played playOf(const Read *R, int n) {
     // on a board with no break, g4228 logging no line ready at 510 and spending 22 actions more on the eight)
     int readyElse = 0; for (int i = 0; i < n && !readyElse; i++) if (!order[i]->o.dead && order[i]->o.j.ready == 1) readyElse = 1;
     #define UNREADY(J) ((J) && readyElse && (J)->o.j.ready == 0)
-    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || (decF.under && spendsReserve(J)))) || UNREADY(J)))
+    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies + rankSave > diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || ((decF.under || decQ.narr > 0) && spendsReserve(J)))) || UNREADY(J)))
     opSpentHeld = heldMat;
     if (SPENDS_BOARD(ext) && (ext->apChainAll < need || UNREADY(ext))) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
@@ -1561,8 +1585,16 @@ static Played playOf(const Read *R, int n) {
         if (slab && !(J->apBroke > 0)) continue;
         if (!danger && !(J->apBroke > 0)) continue;
         if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= rankSave))) keep = J; }   // (a break's time: set 86 factory 8 finish, 612, a break 156 frames longer passed at OP_FALL_KEEP's 250, the board lost at 776)
+    // (AND UNDER GARBAGE, A CHAIN THAT SPENDS THE WINDOW'S RESERVE GIVES WAY TO A BREAK LOST NO SOONER -- the eight too: the chain that
+    // breaks nothing and leaves no walk for the next break leaves the garbage where it is and the window empty; a break that keeps the
+    // board as long is the break made now)
+    // (and a break kept a break's time longer under garbage is played over the eight too: the garbage broken is the board kept)
+    int keepEight = keep && decF.under && keep->apBroke > 0;
+    if (!keep && decF.under && base && base != held && !base->hold && !base->o.lives && !(base->apBroke > 0) && spendsReserve(base) && base->o.lostAt != NOT_ASKED)
+      for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
+        if (J != base && !J->hold && !J->o.dead && J->apBroke > 0 && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt >= base->o.lostAt))) { keep = J; keepEight = 1; } }
     if (!keep) { if (SPENDS_BOARD(lnk)) { opSpent |= 2; opSpentMat = lnk->o.matSettled; lnk = 0; } if (SPENDS_BOARD(two)) { opSpent |= 4; opSpentMat = two->o.matSettled; two = 0; twoReaches = 0; } }
-    opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
+    opFallWay = ext && ext->apChainAll >= need && !keepEight ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
     else if (opFallWay == 6) P.line = P.top = lnk;

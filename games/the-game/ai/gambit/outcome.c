@@ -34,6 +34,7 @@ typedef struct {
   int32_t groups;      // the threes the board the line leaves has the panels for, a chain's links (groupsOn); -1 not asked
   int32_t twinAfter;   // the swaps to a two-column eight on the board the line leaves (propose.c twinCostOn; 99 none), -1 not asked
   int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
+  int32_t putOff;      // the frames the line puts the queue's drop off, beyond the board left alone (holdQueueAt): taken out of lostAt
   Judged j;
 } Outcome;
 
@@ -129,6 +130,14 @@ static int32_t aloneBuildable(void) {
   if (!eb) return 0;   // (no answer: nothing measured, nothing spent -- asked again)
   return rootBuildable = !garbageOn(eb) || breakBuildable(eb);
 }
+// (THE BOARD LEFT ALONE: the frame the engine drops the next block of a queue held off by the board's own motion (judge.c queueWaits),
+// NOT_ASKED none held or none dropped within the judge's horizon. Asked once a decision)
+#define QUEUE_UNSET (NOT_ASKED - 1)
+static int32_t rootQueueAt = QUEUE_UNSET;
+static int32_t holdQueueAt(void) {
+  if (rootQueueAt == QUEUE_UNSET) rootQueueAt = queueWaits(decQ.b) ? queueDropIn(decQ.b, HORIZON + REST) : NOT_ASKED;
+  return rootQueueAt;
+}
 static Board *endBoard;                      // (lineEnd's board)
 static int (*floorOf)(const Board *b);       // (the decision's floor test, decide.c read: 1 kept, 0 not, -1 no floor)
 static int32_t materialOn(const Board *b);   // (facts.c: the panels under the lowest garbage, as the facts read the material)
@@ -167,6 +176,15 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   judge(&decQ, seq, n, &jo, &o.j);
   o.late = o.j.late;
   o.dead = 1; o.lostAt = o.j.lostAt; o.lives = 0; o.ready = NOT_ASKED;
+  // (A LANDING PUT OFF IS NOT A LANDING SURVIVED: garbage queued and none on the board, the engine drops it on the first frame nothing
+  // moves, so a clear's frames are frames the same blocks wait -- they land all the same, on the panels the clear left. The frames a line
+  // puts that drop off beyond the board left alone are taken out of the frame it is lost on: what is ranked is how long the board lasts
+  // once the blocks land. A step that pressed a swap as the block dropped counts from before the press, so the frames taken out are
+  // never more than the line put the drop off by; a line still standing at the judge's horizon is not asked)
+  if (n > 0 && !o.j.dead && o.j.queueAt != NOT_ASKED && o.lostAt != NOT_ASKED && o.lostAt != FOREVER) {
+    int32_t hq = holdQueueAt();
+    if (hq != NOT_ASKED && o.j.queueAt > hq) { o.putOff = o.j.queueAt - hq; o.lostAt = imax(1, o.lostAt - o.putOff); }
+  }
   if (!o.j.dead) {
     int32_t ready = o.j.ready;
     int breaks = o.j.made.broke > 0, stands = o.j.lostAt == FOREVER;
@@ -296,7 +314,7 @@ EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, in
   decQ = hostQ; decQ.b = hostBoard; backBoard = hostBoard;
   Facts f = { land, topped, timeLeft, belowFloor };
   decF = f;
-  ncache = 0; rootBuildable = NOT_ASKED;
+  ncache = 0; rootBuildable = NOT_ASKED; rootQueueAt = QUEUE_UNSET;
   return 0;
 }
 // The line in the io body (nseq words); back: dead, lostAt, lives, fits, ready, late, then the judge's answer as gb_judge writes it.
