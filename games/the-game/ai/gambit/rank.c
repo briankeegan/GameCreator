@@ -568,7 +568,10 @@ static int allowAtNeed(int walk) {
 // (how far below a break's walk a line leaves the allowance -- a break too: of two breaks the board survives alike, the one that leaves
 // the next break its walk; spendsReserve, which sets a line that breaks nothing after one that keeps the reserve, never counts a break)
 static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || (decF.under && !breakOffered) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !(decF.under && !breakOffered) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
+// (with no break offered under garbage, a line that digs toward one may spend the reserve; a chain built there may not -- the window it
+// spends is the break's that comes)
+static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK; }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !(decF.under && !breakOffered && digsForBreak(J)) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
