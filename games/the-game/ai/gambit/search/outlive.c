@@ -76,9 +76,11 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     batchDone();
     // the boards held longest, then the least garbage, then the most panels kept (the owner: keep enough to break the garbage -- of two
     // that hold as long, the one that spent fewer threes to do it; room over the stack is bought by clearing panels, so it comes after),
-    // then the most room, then the fewest actions walked; each run on alone to the frame it is lost
+    // then the fewest actions walked (the game allows 76 in 600 frames: run 4228 factory 5, 335, a survive line walked rows 9, 2, 7, 10,
+    // 5 and 8 and took the window 64 to 33, held at 2 from 753 to its loss at 847), then the most room; each run on alone to the frame
+    // it is lost
     for (int i = 0; i < nk; i++) { idx[i] = i; kh[i] = kids[i].h; kr[i] = kids[i].room; kg[i] = -kids[i].g; kp[i] = kids[i].p; ka[i] = -kids[i].acts; }
-    sortByKeyDesc(idx, nk, ka, tmpI); sortByKeyDesc(idx, nk, kr, tmpI); sortByKeyDesc(idx, nk, kp, tmpI); sortByKeyDesc(idx, nk, kg, tmpI); sortByKeyDesc(idx, nk, kh, tmpI);
+    sortByKeyDesc(idx, nk, kr, tmpI); sortByKeyDesc(idx, nk, ka, tmpI); sortByKeyDesc(idx, nk, kp, tmpI); sortByKeyDesc(idx, nk, kg, tmpI); sortByKeyDesc(idx, nk, kh, tmpI);
     int nkeep = imin(nk, 2 * width);
     static OItem top[PLAN_POOL];
     for (int i = 0; i < nkeep; i++) top[i] = kids[idx[i]];
