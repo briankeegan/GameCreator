@@ -101,9 +101,7 @@ static int readyLines(const Question *q, int32_t land, double ms, int32_t *seq, 
 // garbage shown has landed -- the board raised on the engine, every block landed when the game lands it, then breaksAfterLanding.
 #define RAISE_IN 32       // the raise key (IN_RAISE)
 #define SETTLE_MAX 600    // frames the board may still be busy after the last block is delivered
-static int32_t landedDiedAt;   // (the frame landedAll found the board lost on, NOT_ASKED when it was not)
 static Board *landedAll(const Board *b0, const Arr *arr, int narr, int32_t last, Board *st) {
-  landedDiedAt = NOT_ASKED;
   cloneBoard(st, b0);
   Arr pend[MAXARR]; int np = 0;
   for (int i = 0; i < narr; i++) pend[np++] = arr[i];
@@ -116,7 +114,6 @@ static Board *landedAll(const Board *b0, const Arr *arr, int narr, int32_t last,
       else pend[k++] = pend[a];
     }
     np = k;
-    if (st->gameOverClock > 0) { landedDiedAt = i; return 0; }
   }
   return 0;
 }
@@ -152,11 +149,6 @@ static int32_t raiseOpenIn(const Question *q, int32_t most, Board *at) {
 static int32_t raiseAlive;   // (the rows raiseReady found the board alive through once everything lands, ready or not)
 static int raiseFirstOnly;   // (raiseReady held the raise to the first landing: everything landing kills the board unraised)
 static int32_t raiseReadyOn(const Question *q, int32_t rows, double ms, Ctx *x, Board *st, Board *at, int32_t top0, int32_t last, double t0);
-// (and held to the first landing, each raise still never the death: everything shown landing on the board raised is lost no sooner than
-// on the board left unraised -- the owner: it shouldn't raise to a point that would kill. run 4166 large_garbage 5: 13 blocks on their
-// way, a break ready on the first, raised to ten rows and lost at 772 under the rest)
-static const Question *raiseAllQ; static int32_t raiseAllLast, raiseAllDies;
-static Board *raiseAllBoard;
 static int raiseOpens;       // (the raise asked is the opening's: decide.c sets it before raiseReady)
 static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
   int32_t last = NOT_ASKED;
@@ -194,9 +186,7 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
   // kills it, so each raise is held to the first garbage landed and a break ready on it -- the breaks between the landings are the next
   // decisions'. run 4156 large_garbage 5 fill: 13 blocks on their way, four rows short, none raised, 2 panels left under the slab)
   int narr = q->narr; int32_t lastAt = last;
-  raiseAllQ = q; raiseAllLast = last; raiseAllDies = NOT_ASKED;
   if (narr > 1 && !landedAll(q->b, q->arr, q->narr, last, at)) {
-    raiseAllDies = landedDiedAt;
     int32_t first = q->arr[0].at; for (int i = 1; i < q->narr; i++) if (q->arr[i].at < first) first = q->arr[i].at;
     static Question fq; fq = *q; narr = 0;
     for (int i = 0; i < q->narr; i++) if (q->arr[i].at == first) fq.arr[narr++] = q->arr[i];
@@ -232,12 +222,6 @@ static int32_t raiseReadyOn(const Question *q, int32_t rows, double ms, Ctx *x, 
       if (rest->gameOverClock > 0) break; }
     raiseAlive = k;
     if (r != 1) break;
-    if (raiseFirstOnly && raiseAllDies != NOT_ASKED) {
-      if (!raiseAllBoard) raiseAllBoard = nb_new();
-      Arr all[MAXARR];
-      for (int i = 0; i < raiseAllQ->narr; i++) { all[i] = raiseAllQ->arr[i]; all[i].at = imax(0, raiseAllQ->arr[i].at - f); }
-      if (!landedAll(st, all, raiseAllQ->narr, imax(0, raiseAllLast - f), raiseAllBoard) && landedDiedAt != NOT_ASKED && landedDiedAt + f < raiseAllDies) break;
-    }
     ok = k;
   }
   return ok;
