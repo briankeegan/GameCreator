@@ -1439,9 +1439,16 @@ static Played playOf(const Read *R, int n) {
     // actions in 600 frames: run 4166 large_garbage 1, 571-749, the opener's lineups under the slab took the window 27 to 0 and the
     // board was held to its loss at 976. With no garbage on the board the opener spends freely: the reserve everywhere cost the eights)
     #define FARTHER_OFF(J) (decF.under && heldJ && (J)->o.nearAfter >= 0 && heldJ->o.nearAfter >= 0 && (J)->o.nearAfter > heldJ->o.nearAfter)
-    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || (decF.under && spendsReserve(J))))
+    // (AND NEVER A CHAIN THAT LEAVES THE BOARD UNREADY WHERE ANOTHER WAY KEEPS IT READY -- the owner: just don't die: the chain falling
+    // holds the garbage back, and when it lands the whole queue drops at once, so a chain that leaves no break ready once everything
+    // lands (judge.c breaksAfterLanding, the window counted) is refused where the hold or another line leaves one -- however much longer
+    // its own chain postpones the loss. Runs 4223-4231: 9 of 13 early losses, the opener's chain run to x8-x12 and 5-12 pieces dropped
+    // on a board with no break, g4228 logging no line ready at 510 and spending 22 actions more on the eight)
+    int readyElse = 0; for (int i = 0; i < n && !readyElse; i++) if (!order[i]->o.dead && order[i]->o.j.ready == 1) readyElse = 1;
+    #define UNREADY(J) ((J) && readyElse && (J)->o.j.ready == 0)
+    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || (decF.under && spendsReserve(J)))) || UNREADY(J)))
     opSpentHeld = heldMat;
-    if (SPENDS_BOARD(ext) && ext->apChainAll < need) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
+    if (SPENDS_BOARD(ext) && (ext->apChainAll < need || UNREADY(ext))) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
     // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
     if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
@@ -1561,6 +1568,7 @@ static Played playOf(const Read *R, int n) {
         sk = J; }
       #undef SPENDS_BOARD
       #undef FARTHER_OFF
+      #undef UNREADY
       if (sk) { P.line = P.top = sk; opFallWay = kp ? 8 : 9; }
       else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
@@ -1620,7 +1628,9 @@ static Played playOf(const Read *R, int n) {
       int fires = opKeepOn && decQ.b->clock - opKeepAt <= 40 && R->F.known[FACT_US_DIES] && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < R->F.v[FACT_US_DIES];
       // (nor over a line ranked first that outlives the swap by a break's time, where the swap's chain does not fire in time -- r1351, 1048: a
       // set-up lost at 71 over a line in progress lost at 306, the board lost 71 frames later)
-      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires) && !(P.line && !P.line->hold && !fires && outlives(P.line, t2))) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
+      // (nor over a break that outlives it, fired in time or not -- the garbage broken is the board kept: g4226 combo_storm 8, 715, a
+      // design lost at 51 over a break of 28 cells lost at 646; g4230 factory 6, 1131)
+      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires) && !(P.line && !P.line->hold && !fires && outlives(P.line, t2)) && !(P.line && !P.line->hold && P.line->apBroke > 0 && outlives(P.line, t2))) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
       // (and while it waits for its panels to come to rest, the board is held: a clear short of what is needed spends the panels it is
       // made of -- set 86 factory 5, a 3's design half pressed, two 2s played in its waits and no 3)
       else if (!t2 && fires && opKeepOn && (opSecondWhy == 5 || opSecondWhy == 9) && P.line && !P.line->hold &&
