@@ -39,13 +39,18 @@ it worked (ours / his).
 ### Next, after Y1-Y6 (the owner, 2026-11-19)
 
 - [ ] **L1. A low stack is too risky.** It spends far too much when the stack is low -- clears that take it down to few panels, then
-      nothing to break the next garbage with (see the fill and switching losses of 2026-11-19: 36 panels to 9-12 before the end). Measure
-      how it gets low (the clears that take the panel count under the floor, and what they bought) and price spending when low.
-- [ ] **L2. Wasted moves: walking up for one swap and back down.** Way too many times the cursor goes up, makes a single swap, comes
-      back down -- sometimes to go back up later. Distance matters: walking back and forth between places is wasted input; a swap
-      nearby goes before a move far away. The owner's measure: 4 swaps in 6 moves beats 1 swap in 9 moves -- rank by actions per
-      thing done, not swaps. Between garbage it is almost always a wasted move; if the bot must go, it finishes its break first.
-      Measure: cursor actions per swap, round trips (up and back within a second), actions on lines not finished.
+      nothing to break the next garbage with. Measure how it gets low and price spending when low.
+      On main: the survival search keeps the most panels among lines that hold as long (b1c3f17); below the floor, of two breaks of
+      the same rows the dearer must outlive the cheaper by a break's time per three panels more (8ad090e) -- large_garbage 7 and 8
+      stopped losing. Still open: the opener spends the 76-action window before the first garbage lands (combo_storm 2/4/5/6/8, most
+      of the remaining early losses), and survival threes that buy stop time without breaking anything.
+- [ ] **L2. Wasted moves: walking up for one swap and back down.** Distance matters: a swap nearby goes before a move far away; 4
+      swaps in 6 moves beats 1 swap in 9 moves. Between garbage it is almost always a wasted move; if the bot must go, it finishes its
+      break first. Measure: cursor actions per swap, round trips, actions on lines not finished.
+      On main: under garbage a line that breaks nothing earns no promise unless its own board outlives the hold by its walk's time
+      (e1618e8) -- the r1427 3750 cut is gone, walks chosen on a promise down a third. Round trips are ~2% of swaps; most are one
+      line's own order or a switch to a line that lives; the wasted ones are ~0.7% of swaps, 2.5% of actions. Still open: survival
+      lines that zigzag (factory 5, 335: rows 9, 2, 7, 10, 5, 8) -- in test, the survival search walking least before room (ce908b0).
 
 ### Now, in this order (the owner, 2026-11-12/13 -- repeated; worked top first, every session)
 
