@@ -1425,7 +1425,10 @@ static Played playOf(const Read *R, int n) {
     const Judge *heldJ = 0; for (int i = 0; i < n; i++) if (order[i]->hold) heldJ = order[i];
     int32_t heldMat = heldJ ? heldJ->o.matSettled : opRootMat();
     double heldDies = heldJ ? diesAt(heldJ) : R->F.v[FACT_US_DIES];
-    #define SPENDS_BOARD(J) ((J) && heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled && !(J)->o.lives && heldDies >= diesAt(J))
+    // (and under garbage, a chain that leaves the next break farther than holding does: run 4159 large_garbage 6, 541-680, lineups to
+    // the eight took the stack down from under the slab, left perched on one column, no break proposed again, the board lost at 858)
+    #define FARTHER_OFF(J) (decF.under && heldJ && (J)->o.nearAfter >= 0 && heldJ->o.nearAfter >= 0 && (J)->o.nearAfter > heldJ->o.nearAfter)
+    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J)))
     opSpentHeld = heldMat;
     if (SPENDS_BOARD(ext) && ext->apChainAll < need) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
@@ -1546,6 +1549,7 @@ static Played playOf(const Read *R, int n) {
         if (!(J->o.lives || (h && !h->o.lives && diesAt(J) >= diesAt(h)))) continue;
         sk = J; }
       #undef SPENDS_BOARD
+      #undef FARTHER_OFF
       if (sk) { P.line = P.top = sk; opFallWay = kp ? 8 : 9; }
       else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
