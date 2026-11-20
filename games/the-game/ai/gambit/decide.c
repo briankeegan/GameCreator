@@ -1427,8 +1427,11 @@ static Played playOf(const Read *R, int n) {
     double heldDies = heldJ ? diesAt(heldJ) : R->F.v[FACT_US_DIES];
     // (and under garbage, a chain that leaves the next break farther than holding does: run 4159 large_garbage 6, 541-680, lineups to
     // the eight took the stack down from under the slab, left perched on one column, no break proposed again, the board lost at 858)
+    // (and a chain that spends the input window's reserve for the next break, as every line of the order is held to (rank.c
+    // spendsReserve): run 4163 combo_storm 2, 1114-1207, the opener's extensions took the window 12 to 4, held at 1 to 7 to the landing
+    // at 1453, and the break there needed ten actions, the board lost at 1530)
     #define FARTHER_OFF(J) (decF.under && heldJ && (J)->o.nearAfter >= 0 && heldJ->o.nearAfter >= 0 && (J)->o.nearAfter > heldJ->o.nearAfter)
-    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J)))
+    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || spendsReserve(J)))
     opSpentHeld = heldMat;
     if (SPENDS_BOARD(ext) && ext->apChainAll < need) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
