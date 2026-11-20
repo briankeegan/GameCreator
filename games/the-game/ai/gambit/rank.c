@@ -995,7 +995,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int rises = !lx && !decF.under && decQ.narr == 0 && !sp->o.dead && diesAt(sp) >= diesAt(kp) + WALK_FRAMES;
     // (nor, in finish them, against a combo the list asks: a combo of four or more with at most a 2x, beside a line that makes no such
     // combo, is played over the reserve where it is lost no sooner -- the owner: any combo beats a 3; the combo is the break itself)
-    int asks = finishAsks(sp, kp);
+    // (but under garbage a combo that breaks none of it keeps the reserve like any other line: run 4173 factory 6, 364-480, finish's
+    // eights under the slab took the window 68 to 37, the opener's lineups the rest, and the board was held at 1 action to its loss at 808)
+    int asks = finishAsks(sp, kp) && !(decF.under && !(sp->apBroke > 0));
     if (rx != ry && !rises && !asks) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
