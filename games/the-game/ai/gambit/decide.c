@@ -1439,7 +1439,7 @@ static Played playOf(const Read *R, int n) {
     // actions in 600 frames: run 4166 large_garbage 1, 571-749, the opener's lineups under the slab took the window 27 to 0 and the
     // board was held to its loss at 976. With no garbage on the board the opener spends freely: the reserve everywhere cost the eights)
     #define FARTHER_OFF(J) (decF.under && heldJ && (J)->o.nearAfter >= 0 && heldJ->o.nearAfter >= 0 && (J)->o.nearAfter > heldJ->o.nearAfter)
-    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || ((decF.under || decQ.narr > 0) && spendsReserve(J))))
+    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || (decF.under && spendsReserve(J))))
     opSpentHeld = heldMat;
     if (SPENDS_BOARD(ext) && ext->apChainAll < need) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
