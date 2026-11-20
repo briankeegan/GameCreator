@@ -714,11 +714,8 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   int lx = livesOn(x), ly = livesOn(y);
   // (the horizon's credit is no life beside a board that outlives it: the line in progress lost past the horizon, beside a line that
   // lives or is lost a break's time later, is a line that is lost -- death is never an option)
-  // (but a living line takes nothing from one whose loss lies within a break's time of the window's edge (HORIZON + REST): the judge
-  // never looked past that edge, and a loss there is the edge, not the board -- run 4173's endless games: 955 lines in progress put down
-  // by "lives" in 3,930 decisions, 892 of them judged living the decision before, the cursor walked away and back)
-  if (lx && !x->o.lives && outlives(y, x) && !(y->o.lives && diesAt(x) + rankSave > HORIZON + REST)) lx = 0;
-  if (ly && !y->o.lives && outlives(x, y) && !(x->o.lives && diesAt(y) + rankSave > HORIZON + REST)) ly = 0;
+  if (lx && !x->o.lives && outlives(y, x)) lx = 0;
+  if (ly && !y->o.lives && outlives(x, y)) ly = 0;
   // (nor, under garbage, the credit of a line that breaks nothing beside a break lost within a break's time of it: the break is the way
   // out the board has, the horizon is a promise -- r1363, 14839: a 4x stall in progress lost at 296 kept over a break lost at 282, and no
   // break offered again; r1362, 16120)
@@ -773,9 +770,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && decF.under && !x->o.dead && !y->o.dead) {
     int ax = amidGarbage(x), ay = amidGarbage(y);
     if (ax != ay) { const Judge *a = ax ? x : y, *o = ax ? y : x;
-      // (each board's own loss: a promise of moves after it is no way out of the slabs -- r1427, 3750: a cut walked 8 actions up among
-      // them, lost at 125 as the hold was, passed here for its promise of 249)
-      if (lostAtOf(a->o.lostAt, a->hold) - lostAtOf(o->o.lostAt, o->hold) < rankSave) return (cmpKey = __LINE__, (ax ? 1 : -1)); }
+      if (diesAt(a) - diesAt(o) < rankSave) return (cmpKey = __LINE__, (ax ? 1 : -1)); }
   }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
