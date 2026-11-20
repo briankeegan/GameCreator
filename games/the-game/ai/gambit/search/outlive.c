@@ -51,7 +51,15 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     for (int i = 0; i < nlev; i++) {
       bAt[i] = nb;
       int nm = swapsOfNode(x, level[i].n, ms1);
-      for (int j = 0; j < nm && nb < PLAN_KIDS; j++) { bPar[nb] = level[i].n; bMv[nb++] = ms1[j]; }
+      // (THE WINDOW HOLDS THE LINE: a swap whose walk is over what the input window leaves at its frame is not there to press -- the judge
+      // cuts the line at it and a line cut is dropped whole, so the search never steps one: every swap of the line it keeps is one the
+      // window pays for, by the judge's own count (core/nodes.h allowLeftAt, actionsFor))
+      const Board *pb = pressAllowance >= 0 ? ensureBoard(x, level[i].n) : 0;
+      int32_t left = pb ? allowLeftAt(NODE(x, level[i].n)->t - NODE(x, root)->t, level[i].acts) : -1;
+      for (int j = 0; j < nm && nb < PLAN_KIDS; j++) {
+        if (pb && actionsFor(pb->curRow, pb->curCol, CR(ms1[j]), CC(ms1[j]), left) > left) continue;
+        bPar[nb] = level[i].n; bMv[nb++] = ms1[j];
+      }
     }
     bAt[nlev] = nb;
     stepBatch(x, bPar, bMv, MK_SWAP, nb);
@@ -70,7 +78,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
         for (int s2 = 0; s2 < level[i].nseq && s2 < OUT_SEQ; s2++) k->seq[s2] = level[i].seq[s2];
         if (level[i].nseq < OUT_SEQ) k->seq[level[i].nseq] = ms1[j];
         k->room = ensureBoard(x, out)->height - on->top; k->h = heldOf(x, out); k->g = on->garb; k->p = panelsOn(ensureBoard(x, out));
-        { const Board *pb = ensureBoard(x, level[i].n); k->acts = level[i].acts + (pb ? actionsFor(pb->curRow, pb->curCol, CR(ms1[j]), CC(ms1[j]), pressAllowance >= 0 ? pressAllowance - level[i].acts : HOLDTIGHT + 1) : 0); }
+        { const Board *pb = ensureBoard(x, level[i].n); k->acts = level[i].acts + (pb ? actionsFor(pb->curRow, pb->curCol, CR(ms1[j]), CC(ms1[j]), pressAllowance >= 0 ? allowLeftAt(NODE(x, level[i].n)->t - NODE(x, root)->t, level[i].acts) : HOLDTIGHT + 1) : 0); }
       }
     }
     batchDone();
