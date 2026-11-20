@@ -1583,8 +1583,15 @@ static Played playOf(const Read *R, int n) {
         if (slab && !(J->apBroke > 0)) continue;
         if (!danger && !(J->apBroke > 0)) continue;
         if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= rankSave))) keep = J; }   // (a break's time: set 86 factory 8 finish, 612, a break 156 frames longer passed at OP_FALL_KEEP's 250, the board lost at 776)
+    // (AND UNDER GARBAGE, A CHAIN THAT SPENDS THE WINDOW'S RESERVE GIVES WAY TO A BREAK LOST NO SOONER -- the eight too: the chain that
+    // breaks nothing and leaves no walk for the next break leaves the garbage where it is and the window empty; a break that keeps the
+    // board as long is the break made now)
+    int keepEight = 0;
+    if (!keep && decF.under && base && base != held && !base->hold && !base->o.lives && !(base->apBroke > 0) && spendsReserve(base) && base->o.lostAt != NOT_ASKED)
+      for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
+        if (J != base && !J->hold && !J->o.dead && J->apBroke > 0 && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt >= base->o.lostAt))) { keep = J; keepEight = 1; } }
     if (!keep) { if (SPENDS_BOARD(lnk)) { opSpent |= 2; opSpentMat = lnk->o.matSettled; lnk = 0; } if (SPENDS_BOARD(two)) { opSpent |= 4; opSpentMat = two->o.matSettled; two = 0; twoReaches = 0; } }
-    opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
+    opFallWay = ext && ext->apChainAll >= need && !keepEight ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
     if (opFallWay == 7) { P.top = keep; P.line = keep->hold ? 0 : keep; }
     else if (opFallWay == 1 || opFallWay == 3) P.line = P.top = ext;
     else if (opFallWay == 6) P.line = P.top = lnk;
