@@ -77,7 +77,7 @@ static Node *newNode(Ctx *x) {
     Node *nn = (Node *)grab((unsigned long)cap * sizeof(Node));
     if (!nn) return 0;
     if (x->n) memcpy(nn, x->nodes, (unsigned long)x->n * sizeof(Node));
-    x->nodes = nn; x->cap = cap;   // the old block is left behind: nodes grow rarely
+    if (x->nodes) paRelease(x->nodes, (unsigned long)x->cap * sizeof(Node)); x->nodes = nn; x->cap = cap;   // the old block is left behind (nodes grow rarely), its pages given back: nothing reads it again
   }
   Node *n = &x->nodes[x->n++];
   clearNode(n);
@@ -931,7 +931,7 @@ static int reserveNodes(Ctx *x, int32_t more) {
   Node *nn = (Node *)grab((unsigned long)cap * sizeof(Node));
   if (!nn) return 0;
   if (x->n) memcpy(nn, x->nodes, (unsigned long)x->n * sizeof(Node));
-  x->nodes = nn; x->cap = cap;
+  if (x->nodes) paRelease(x->nodes, (unsigned long)x->cap * sizeof(Node)); x->nodes = nn; x->cap = cap;   // (the old block's pages given back: nothing reads it again)
   return 1;
 }
 #define TASK_COST(c_, k_) ((k_)[1] == -1 ? (k_)[2] - NODE(c_, (k_)[0])->t : (k_)[1] == REPLAY_TASK ? NODE(c_, (k_)[0])->t - NODE(c_, NODE(c_, (k_)[0])->prev)->t : (k_)[1] == SWAPS_TASK ? 12 * (k_)[2] : 0)
