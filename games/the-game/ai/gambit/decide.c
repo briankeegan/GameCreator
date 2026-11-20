@@ -1472,14 +1472,9 @@ static Played playOf(const Read *R, int n) {
     // on a board with no break, g4228 logging no line ready at 510 and spending 22 actions more on the eight)
     int readyElse = 0; for (int i = 0; i < n && !readyElse; i++) if (!order[i]->o.dead && order[i]->o.j.ready == 1) readyElse = 1;
     #define UNREADY(J) ((J) && readyElse && (J)->o.j.ready == 0)
-    // (and under garbage with no line ready, a chain that leaves the next break farther than another line offered -- the owner: break
-    // the garbage immediately, and where it cannot be broken yet, build toward the break: g4240 large_garbage 8, 569-746, the opener's
-    // lineups and extends under the slab, no line ready, the window 32 to 6, the board lost at 916)
-    int nearBest = -1; for (int i = 0; i < n; i++) if (!order[i]->o.dead && order[i]->o.nearAfter >= 0 && (nearBest < 0 || order[i]->o.nearAfter < nearBest)) nearBest = order[i]->o.nearAfter;
-    #define FARTHER_ELSE(J) ((J) && decF.under && !readyElse && nearBest >= 0 && (J)->o.nearAfter > nearBest)
-    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || (decF.under && spendsReserve(J)))) || UNREADY(J) || FARTHER_ELSE(J)))
+    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || (decF.under && spendsReserve(J)))) || UNREADY(J)))
     opSpentHeld = heldMat;
-    if (SPENDS_BOARD(ext) && (ext->apChainAll < need || UNREADY(ext) || FARTHER_ELSE(ext))) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
+    if (SPENDS_BOARD(ext) && (ext->apChainAll < need || UNREADY(ext))) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
     // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
     if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
@@ -1600,7 +1595,6 @@ static Played playOf(const Read *R, int n) {
       #undef SPENDS_BOARD
       #undef FARTHER_OFF
       #undef UNREADY
-      #undef FARTHER_ELSE
       if (sk) { P.line = P.top = sk; opFallWay = kp ? 8 : 9; }
       else { P.line = 0; P.top = h ? h : P.top; } } }
   // (THE OPENER'S PLAN IS NOT PUT DOWN FOR A LATER LOSS -- the owner: nothing stops the opener's chain but survival: the plan in progress,
