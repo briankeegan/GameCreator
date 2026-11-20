@@ -267,6 +267,10 @@ static int extCounts(const Judge *x) {
   if (x->hold || x->extLost == NOT_ASKED) return 0;
   if (lostAtOf(x->o.lostAt, 0) < rankSave) return 0;   // (a board lost inside a break's time presses no promise after it)
   if (rankHoldClock != decQ.b->clock || rankHoldOwn < 0) return 1;
+  // (and under garbage, a line that breaks none of it earns the promise only where its own board outlives the hold by the time its walk
+  // takes -- the owner: no walking far for nothing: r1427, 3750, a cut walked 8 actions among the slabs, lost at 125 as the hold was,
+  // credited 249; run 4173, of the walks wasted in garbage games about half were chosen on a promise)
+  if (decF.under && !(x->apBroke > 0) && lostAtOf(x->o.lostAt, 0) - rankHoldOwn < (double)WALK_FRAMES * lineWalk(x)) return 0;
   return lostAtOf(x->o.lostAt, 0) >= rankHoldOwn;
 }
 static double diesAt(const Judge *x) {
