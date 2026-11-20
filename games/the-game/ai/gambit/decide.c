@@ -1505,9 +1505,14 @@ static Played playOf(const Read *R, int n) {
     int slab = garbageRows(&decQ, 2);
     // (lost too soon: before the chain falling has landed and a break could be made after it -- the board's own time, never a fixed count)
     int32_t fallLost = opLandIn() + rankSave;
-    if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && base->o.lostAt < fallLost)
+    // (and under garbage, a break that keeps the board a break's time longer whatever the danger -- the owner: break the garbage
+    // immediately: run 4158 large_garbage 8 fill, 475-585, extensions lost at 162-200 played over a break lost at 444-469, the board
+    // lost at 811)
+    int danger = base && base->o.lostAt != NOT_ASKED && base->o.lostAt < fallLost;
+    if (base && !base->o.lives && base->o.lostAt != NOT_ASKED && (danger || decF.under))
       for (int i = 0; i < n && !keep; i++) { const Judge *J = order[i];
         if (slab && !(J->apBroke > 0)) continue;
+        if (!danger && !(J->apBroke > 0)) continue;
         if (J != base && !J->hold && (J->apChainAll >= bar || J->apBroke > 0) && (J->o.lives || (J->o.lostAt != NOT_ASKED && J->o.lostAt - base->o.lostAt >= rankSave))) keep = J; }   // (a break's time: set 86 factory 8 finish, 612, a break 156 frames longer passed at OP_FALL_KEEP's 250, the board lost at 776)
     if (!keep) { if (SPENDS_BOARD(lnk)) { opSpent |= 2; opSpentMat = lnk->o.matSettled; lnk = 0; } if (SPENDS_BOARD(two)) { opSpent |= 4; opSpentMat = two->o.matSettled; two = 0; twoReaches = 0; } }
     opFallWay = ext && ext->apChainAll >= need ? 1 : keep ? 7 : twoReaches ? 2 : lnk ? 6 : ext ? 3 : brk ? 5 : two ? 4 : 0;
