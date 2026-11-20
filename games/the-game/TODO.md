@@ -11,7 +11,8 @@ Measured on r1361-r1363 (yoschi at level 10, the only three games against him): 
 the first 20 s 60-76 cells to our 27-30 -- we never recover from the opening. Each item: the change, where, and the number that says
 it worked (ours / his).
 
-- [ ] **Y1. Raise before the first garbage -- with the opener built around it.** Panels when the first block lands: ours 14-21, his
+- [x] **Y1. Raise before the first garbage -- with the opener built around it.** Done on main: the opening raise goes on while a
+      break is ready when the first garbage lands (0d899c8); panels at the first landing now median 54 (18-66), his 30-55. Panels when the first block lands: ours 14-21, his
       30-55; he raises 3-4 rows in the first second. The opener never raised: `search/ready.c raiseReady` held the opening raise to
       standing HORIZON + 2 REST left alone, which no stack at level 11 does. Tried (2026-11-19, fill, 28 games): raised to 11 -- 22;
       capped at 10 until garbage is seen -- 22 (endless 3 lost at 720 to its own rise); main 24. So the raise alone is not it: the
