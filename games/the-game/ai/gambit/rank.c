@@ -772,15 +772,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (ax != ay) { const Judge *a = ax ? x : y, *o = ax ? y : x;
       if (diesAt(a) - diesAt(o) < rankSave) return (cmpKey = __LINE__, (ax ? 1 : -1)); }
   }
-  // 1. NO SPENDING WHEN LOW (the owner, L1: a low stack is too risky -- keep enough panels to break the garbage): under garbage and below
-  // the rules' material floor, of two that do not live, a line that spends panels and breaks nothing (rank.c J->spends) after one that
-  // does not -- unless its own board, no promise credited, is lost a break's time later. Runs 4173-4178: lost games spent 18% of their
-  // decisions under 18 panels, the games that lived 10%
-  if (!lx && decF.under && decF.belowFloor && x->spends != y->spends && !x->o.dead && !y->o.dead) {
-    const Judge *sp = x->spends ? x : y, *ns = x->spends ? y : x;
-    double os = lostAtOf(sp->o.lostAt, sp->hold), on = lostAtOf(ns->o.lostAt, ns->hold);
-    if (os - on < rankSave) return (cmpKey = __LINE__, (x->spends ? 1 : -1));
-  }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
   // lost a little later "alike" the hold, or off the mode, and held, and the board died of the holds (live p65, r661, 8097-8204: a
