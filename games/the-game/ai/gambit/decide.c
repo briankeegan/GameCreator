@@ -457,7 +457,6 @@ static int32_t carryWaste[5];   // (the line in progress taken out as a wasted t
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
-static int32_t walkReordered;   // (the top line played in another order of its own swaps, for a shorter walk -- the log's reorder=)
 static int32_t opSpent, opSpentMat, opSpentHeld;   // (the opener's chains refused for spending the board: 1 the extension, 2 the link, 4 the second chain, 8 a set-up while it lands; the panels the last refused leaves once landed, and holding's -- the log's spent=)
 static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
                                                                                    // for the next chain, 4 a set-up short of it)
@@ -520,7 +519,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; walkReordered = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -842,27 +841,6 @@ static int ranked(const Read *R, const Found *S) {
       JL.carried = J->carried; *J = JL; took = 1; needlessTrimmed++;
     }
     if (!took) break;
-  }
-  // (THE SAME SWAPS, THE SHORTEST WALK -- the owner: distance matters, no walking up for one swap and back down: the line ranked first,
-  // each of its swaps moved to the front and to the end in turn, judged on the engine; the one the cursor walks least for that lives as
-  // long, breaks, chains and combos as much, leaves its next break no farther and is ranked no lower is the line. run 4173 combo_storm 1,
-  // 7385: (1,3) (1,4) (7,1) (1,4) (3,4) from (6,4) -- down to row 1, up to row 7, back to row 1)
-  if (n && order[0] && !order[0]->hold && order[0]->k.nseq >= 3 && !clockOut()) {
-    static Cand w; static Judge JL, JB; Judge *J = order[0]; int best = lineWalk(J), have = 0;
-    for (int i = 0; i < J->k.nseq && !clockOut(); i++) for (int end = 0; end < 2 && !clockOut(); end++) {
-      if ((end == 0 && i == 0) || (end == 1 && i == J->k.nseq - 1)) continue;
-      w = J->k; w.nseq = 0; w.xNats = 0;
-      if (!end) w.seq[w.nseq++] = J->k.seq[i];
-      for (int q = 0; q < J->k.nseq; q++) if (q != i) w.seq[w.nseq++] = J->k.seq[q];
-      if (end) w.seq[w.nseq++] = J->k.seq[i];
-      if (!judgeCand(R, &w, &JL) || JL.o.dead || lineWalk(&JL) >= best) continue;
-      if (!JL.o.lives && (J->o.lives || diesAt(&JL) < diesAt(J))) continue;
-      if (imax(0, JL.apBroke) < imax(0, J->apBroke) || JL.apChain < J->apChain || JL.apCombo < J->apCombo || JL.apChainAll < J->apChainAll) continue;
-      if (J->o.nearAfter >= 0 && JL.o.nearAfter > J->o.nearAfter) continue;
-      if (compareJudged(&JL, J) > 0) continue;
-      JB = JL; best = lineWalk(&JL); have = 1;
-    }
-    if (have) { JB.carried = J->carried; *J = JB; walkReordered++; }
   }
   // (and a line of nothing but swaps of two panels alike is the hold: the board it leaves is the board as it is)
   if (n && order[0] && !order[0]->hold && order[0]->o.j.sames && order[0]->k.nseq >= 1) {

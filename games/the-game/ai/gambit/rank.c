@@ -758,11 +758,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (A NEW LINE THAT LIVES PUTS THE ONE IN PROGRESS DOWN ONLY ONCE IT HAS LIVED TWO DECISIONS RUNNING, where the one in progress stands
     // NEAR_LOSS breaks' time: a line found living one decision and lost the next is garbage not yet told of -- r1344, 7308-7677: five lines
     // in progress put down after one swap each for lines that lived once, the window spent from 23 presses to 2, the board lost at 8117)
-    // (and where the cursor has walked WALK_EARN actions or more to the line in progress, it stands only a break's time to keep its
-    // place -- the owner: if it is going to do it, it completes it: runs 4173-4185, ~300 round trips a run, most of them a line put down
-    // right after the walk to its swap for a line found living that decision)
-    int walkedTo = carriedSunk >= 0 && carriedSunk - lineWalk(o) >= WALK_EARN;
-    int fresh = l->o.lives && !l->carried && !l->hold && o->carried && !o->hold && !o->o.dead && !livedPrev && diesAt(o) >= (walkedTo ? 1 : NEAR_LOSS) * rankSave && diesAt(o) < 1e299;
+    int fresh = l->o.lives && !l->carried && !l->hold && o->carried && !o->hold && !o->o.dead && !livedPrev && diesAt(o) >= NEAR_LOSS * rankSave && diesAt(o) < 1e299;
     if (fresh) lx = ly = 0;
     else {
       if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
@@ -775,6 +771,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int ax = amidGarbage(x), ay = amidGarbage(y);
     if (ax != ay) { const Judge *a = ax ? x : y, *o = ax ? y : x;
       if (diesAt(a) - diesAt(o) < rankSave) return (cmpKey = __LINE__, (ax ? 1 : -1)); }
+  }
+  // 1. NO SPENDING WHEN LOW (the owner, L1: a low stack is too risky -- keep enough panels to break the garbage): under garbage and below
+  // the rules' material floor, of two that do not live, a line that spends panels and breaks nothing (rank.c J->spends) after one that
+  // does not -- unless its own board, no promise credited, is lost a break's time later. Runs 4173-4178: lost games spent 18% of their
+  // decisions under 18 panels, the games that lived 10%
+  if (!lx && decF.under && decF.belowFloor && x->spends != y->spends && !x->o.dead && !y->o.dead) {
+    const Judge *sp = x->spends ? x : y, *ns = x->spends ? y : x;
+    double os = lostAtOf(sp->o.lostAt, sp->hold), on = lostAtOf(ns->o.lostAt, ns->hold);
+    if (os - on < rankSave) return (cmpKey = __LINE__, (x->spends ? 1 : -1));
   }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line
