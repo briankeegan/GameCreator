@@ -117,6 +117,26 @@ static Board *landedAll(const Board *b0, const Arr *arr, int narr, int32_t last,
   }
   return 0;
 }
+// THE NEXT BLOCK LANDED (landedNext): the same board run only until the first block the engine drops is down -- one queued on the board
+// or one on its way, whichever the engine drops first (pa.c dropGarbage counts each block it makes) -- 0 when the board is lost first.
+// The board the next break is made on where everything landing loses it: the break is pressed between the landings
+static Board *landedNext(const Board *b0, const Arr *arr, int narr, int32_t last, Board *st) {
+  cloneBoard(st, b0);
+  Arr pend[MAXARR]; int np = 0;
+  for (int i = 0; i < narr; i++) pend[np++] = arr[i];
+  int32_t made = st->garbageCreatedCount;
+  for (int i = 0; i < last + 2 + SETTLE_MAX && st->gameOverClock <= 0; i++) {
+    if (st->garbageCreatedCount != made && !hasFallingGarbage(st)) return st;
+    st->input = 0; run(st);
+    int k = 0;
+    for (int a = 0; a < np; a++) {
+      if (pend[a].at <= i + 1) { Incoming g = { pend[a].width, pend[a].height, pend[a].isChain, pend[a].isMetal & 1, st->stopWatch, 1 }; receiveGarbage(st, &g); }
+      else pend[k++] = pend[a];
+    }
+    np = k;
+  }
+  return 0;
+}
 // THE FRAMES UNTIL THE STACK TAKES A RAISE (raiseOpenIn): the board left alone, run a frame at a time with the garbage shown landing as the
 // game lands it, to the first frame the engine would act on a raise (raiseOpen, the host's own test: native.c canRaiseOn) -- that board
 // into `at`; NOT_ASKED when it does not within `most` frames, or the board is lost first -- and raiseShut, what held it shut on every

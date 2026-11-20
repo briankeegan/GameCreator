@@ -917,14 +917,20 @@ static LOCAL Ctx *rbCtx;
 static int readyBuild(const Read *R, Cand *out, int n, int cap) {
   (void)R; readyBuilt = 0; readyBuildWhy = 0;
   int under = garbageOn(decQ.b);
-  if (decQ.narr <= 0 && !under) { readyBuildWhy = 1; return n; }
+  // (garbage on its way: shown coming -- or, the board clear of garbage, queued on it to drop (pa.c shouldDropGarbage). With garbage on
+  // the board its break is the one built, as ever: the queue lands behind it)
+  int due = decQ.narr > 0 || (!under && decQ.b->ninc > 0);
+  if (!due && !under) { readyBuildWhy = 1; return n; }
   if (clockOut() || n >= cap) { readyBuildWhy = 2; return n; }
   int32_t last = 0; for (int i = 0; i < decQ.narr; i++) last = imax(last, decQ.arr[i].at);
   static Board *st; if (!st) st = nb_new(); if (!st) return n;
   // (the board the next break is made on: the one the garbage on its way lands on -- or, none on its way or the board lost before it
   // lands, the board as it stands, its garbage the break's)
-  int landing = decQ.narr > 0;
+  // (and where everything landing loses the board, the one the next block lands on -- the owner: it just has to be ready to break the
+  // garbage as soon as it lands; the breaks between the landings are the next decisions' (search/ready.c landedNext, as raiseReady))
+  int landing = due, nextOnly = 0;
   Board *l0 = landing ? landedAll(decQ.b, decQ.arr, decQ.narr, last, st) : 0;
+  if (landing && !l0 && !under) { l0 = landedNext(decQ.b, decQ.arr, decQ.narr, last, st); nextOnly = l0 != 0; }
   if (landing && !l0) { readyBuildWhy = 3; landing = 0; }
   if (!landing && !under) return n;
   int32_t near0 = nearOf(landing ? l0 : decQ.b);
@@ -946,7 +952,7 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
     if (landing) {
       Arr left[MAXARR]; int nl = 0;
       for (int i = 0; i < decQ.narr; i++) { left[nl] = decQ.arr[i]; left[nl].at = imax(0, decQ.arr[i].at - t); nl++; }
-      lb = landedAll(b, left, nl, imax(0, last - t), st);
+      lb = nextOnly ? landedNext(b, left, nl, imax(0, last - t), st) : landedAll(b, left, nl, imax(0, last - t), st);
       if (!lb) continue;
     }
     int32_t g = near0 - nearOf(lb);

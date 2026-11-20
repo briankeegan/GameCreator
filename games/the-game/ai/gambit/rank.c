@@ -91,6 +91,14 @@ static void tierInsert(Tier *t, int pos, double v) {
   t->nsub = imin(t->nsub + 1, MAXSUB);
   if (pos <= t->nlist) t->nlist++;
 }
+// (THE FRAME A LINE'S BOARD IS LOST LEFT ALONE AFTER IT, its readiness not asked -- the judge's own life check: FOREVER a board that
+// stands, NOT_ASKED where the clock stopped it)
+static int32_t lostAfter(const int32_t *seq, int n, int settled) {
+  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, HORIZON + REST, REST, 0 };
+  static LOCAL Judged j;
+  judge(&decQ, seq, n, &jo, &j);
+  return j.late ? NOT_ASKED : j.dead ? j.deadAt : j.lostAt;
+}
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
   J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
@@ -176,7 +184,18 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   if (setupPlay(play)) {
     int fc = firstClear(&decQ, k->seq, k->nseq);
     if (fc == 0) { play = PLAY_CLEAR; memset(&x, 0, sizeof x); x.combo = 3; x.chain = 1; x.floor = -1; m.combo = 3; m.chain = 1; m.broke = 0; m.cells = 0; }
-    else if (fc > 0) k->nseq = fc;
+    // (THE CLEAR THAT IS THE BOARD'S LIFE IS HANDED WITH ITS SET-UP: a set-up is ranked on the whole line as the judge played it, and cut
+    // before its clear it hands the frame loop only the swaps before it. On a board on its way to its loss, where those swaps alone
+    // lose the board sooner than the whole line does, the clear is what the line was ranked first for: the line is handed whole, each
+    // swap from the frame the judge pressed it. A set-up whose swaps alone keep the board as long is cut before its clear as ever)
+    else if (fc > 0) {
+      int whole = 0;
+      if (R->dying && !oc.dead) {
+        int32_t pl = lostAfter(k->seq, fc, st);
+        whole = pl != NOT_ASKED && pl != FOREVER && (oc.lives || oc.lostAt == FOREVER || (oc.lostAt != NOT_ASKED && oc.lostAt > pl));
+      }
+      if (!whole) k->nseq = fc;
+    }
   }
   k->play = play;
   // (ranked on the judge's count and time)

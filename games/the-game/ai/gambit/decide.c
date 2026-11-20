@@ -114,16 +114,25 @@ static int32_t taRaiseRows(const Board *b, int32_t rows, int32_t stand) {
 static int carryOpener(void);   // (the line in progress was begun under the opener: below, with the carry)
 static int32_t twinWaste[5], twinWasteC, twinWasteX, twinWasteN;   // (the two-column eights taken out as wasting a three, by the test that called it so -- rank.c wasteWhy: the log's twinW=)
 static CbSeq opKeepSeq; static CbGrid opKeepPrev; static int opKeepOn; static int32_t opKeepHeld, opKeepAt;   // (the next chain's design carried on, and the decisions it was: the log's keep=)
+// THE FRAMES UNTIL THE QUEUE'S NEXT BLOCK DROPS, the board left alone on the engine (pa.c dropGarbage counts each block it makes):
+// NOT_ASKED when none drops within `most` frames or the board is lost first
+static int32_t queueDropsIn(const Board *b, int32_t most) {
+  static Board *st; if (!st) st = nb_new();
+  if (!st) return NOT_ASKED;
+  cloneBoard(st, b);
+  int32_t made = st->garbageCreatedCount;
+  for (int32_t i = 1; i <= most && st->gameOverClock <= 0; i++) {
+    st->input = 0; run(st);
+    if (st->garbageCreatedCount != made) return i;
+  }
+  return NOT_ASKED;
+}
 static int readBoard_(Read *R) {
   memset(R, 0, sizeof *R);
   FactSet *F = &R->F;
   factsOf(decQ.b, decQ.arr, decQ.narr, hostTopped, F);
   // (what every outcome reads of them: when the last block shown lands, and topped -- JUDGE.lastLanding, R.F.us.topped)
   decF.topped = !!F->v[FACT_US_TOPPED];
-  decF.land = NOT_ASKED;
-  for (int i = 0; i < decQ.narr; i++) if (decF.land == NOT_ASKED || decQ.arr[i].at > decF.land) decF.land = decQ.arr[i].at;
-  if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
-  decF.next = F->known[FACT_US_NEXTLANDS] ? (int32_t)F->v[FACT_US_NEXTLANDS] : NOT_ASKED;
   if (theOpp.has) { factSet(F, FACT_ENEMY_TOPPED, !!theOpp.out); if (theOpp.topKnown) factSet(F, FACT_ENEMY_HEIGHT, theOpp.top); if (theOpp.stopKnown) factSet(F, FACT_ENEMY_STOP, theOpp.stop); }
   // (no enemy board to read -- time attack, nobody across: the rules' `enemy.none`)
   factSet(F, FACT_ENEMY_NONE, !theOpp.has);
@@ -134,6 +143,19 @@ static int readBoard_(Read *R) {
   // (no answer -- the clock stopped it: NOT_ASKED, -1 -- is no death in -1 frames: the stack's own estimate stands; read as a frame count
   // it made the planner's urgency and the log's `dies` say the board was safe at the end of a game)
   if (alone >= 0 && alone < F->v[FACT_US_DIES]) { factSet(F, FACT_US_QUEUEKILLS, 1); F->v[FACT_US_DIES] = alone; }
+  // (THE QUEUE'S NEXT BLOCK, FROM THE ENGINE TOO: a block queued drops on the frame the engine lets it -- the board not topped, no garbage
+  // falling, nothing active (pa.c shouldDropGarbage) -- whatever stop is left: a chain's stop outlasts its fall, and the block is down
+  // while the stop still holds the board. The frame it drops is the frame every outcome asks its readiness from (outcome.c, decF.land):
+  // asked when the stop runs out instead, a board the landing tops out is asked on the frame it is lost, and no line is ever ready on it)
+  if (decQ.b->ninc > 0) {
+    int32_t most = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < HORIZON + REST ? (int32_t)F->v[FACT_US_DIES] : HORIZON + REST;
+    int32_t drop = queueDropsIn(decQ.b, most);
+    if (drop != NOT_ASKED) { for (int i = 0; i < decQ.narr; i++) if (decQ.arr[i].at < drop) drop = decQ.arr[i].at; factSet(F, FACT_US_NEXTLANDS, drop); }
+  }
+  decF.land = NOT_ASKED;
+  for (int i = 0; i < decQ.narr; i++) if (decF.land == NOT_ASKED || decQ.arr[i].at > decF.land) decF.land = decQ.arr[i].at;
+  if (decF.land == NOT_ASKED && F->known[FACT_US_NEXTLANDS]) decF.land = (int32_t)F->v[FACT_US_NEXTLANDS];
+  decF.next = F->known[FACT_US_NEXTLANDS] ? (int32_t)F->v[FACT_US_NEXTLANDS] : NOT_ASKED;
   // (the rule: the mode in force, else the first whose `when` the facts hold -- with no opponent to read, the rule asking `enemy.none`;
   // else the first of the rules, so a board with nobody across still plays)
   // (THE OPENER: in a fight with no mode named, from the game's start until its chain is thrown or either board tops out -- garbage
