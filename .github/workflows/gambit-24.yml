@@ -65,7 +65,7 @@ permissions:
 jobs:
   play:
     if: ${{ inputs.report_run == '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # (pinned: ubuntu-latest put some jobs on a 26.04 image whose apt finds no luajit, clang or libfuse2)
     timeout-minutes: 350
     strategy:
       fail-fast: false
@@ -176,7 +176,7 @@ jobs:
   # (the code's checks, once a run beside the games: a check that fails turns the run red without stopping a game)
   checks:
     if: ${{ inputs.report_run == '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # (pinned: ubuntu-latest put some jobs on a 26.04 image whose apt finds no luajit, clang or libfuse2)
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -208,7 +208,7 @@ jobs:
   report:
     needs: play
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # (pinned: ubuntu-latest put some jobs on a 26.04 image whose apt finds no luajit, clang or libfuse2)
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
