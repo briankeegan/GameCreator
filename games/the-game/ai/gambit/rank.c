@@ -858,6 +858,17 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (carriedSunk >= 0 && carriedSunk - lineWalk(c) > 0 && !c->o.dead && brokeSeen(c) > 0 && imax(0, brokeSeen(o)) <= brokeSeen(c) && !o->o.lives && lostOf(c) >= rankSave)
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
+  // (A LINE WALKED TO IS FINISHED -- the owner: if it is going to do it, it completes what it is going to do; walking there and back is
+  // wasted input: a line in progress the cursor has walked WALK_EARN actions or more for, beside one that does not live, keeps its place
+  // unless the other's own board is lost a break's time later or it breaks more garbage -- runs 4173 and 4182: of ~315 round trips a
+  // run, ~270 were a line put down by the next decision right after the walk to its swap)
+  if (!lx && x->carried != y->carried && carriedSunk >= 0) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    int walked = carriedSunk - lineWalk(c);
+    double oc = lostAtOf(c->o.lostAt, c->hold), oo = lostAtOf(o->o.lostAt, o->hold);
+    if (walked >= WALK_EARN && !c->o.dead && !o->o.lives && oc >= rankSave && oo - oc < rankSave && imax(0, o->apBroke) <= imax(0, c->apBroke))
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
