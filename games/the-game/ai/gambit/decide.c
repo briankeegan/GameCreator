@@ -832,10 +832,15 @@ static int ranked(const Read *R, const Found *S) {
   // (NO SWAP AMONG THE SLABS THAT BREAKS NOTHING -- the owner: it shouldn't go up there to make any swap that doesn't break; if it goes
   // there, it breaks: under garbage, a line that swaps among the garbage and breaks none of it is not played while any line that does
   // not, the hold among them, is not lost already)
+  // (the one exception, the owner's -- a Shogun: the garbage under the swap about to convert -- matched and popping, not converted yet --
+  // and the swap setting up
+  // that drop to make something: a clear or a chain once it lands)
+  #define AMID_BANNED(J) (amidGarbage(J) && !(popLeft(decQ.b) > 0 && ((J)->apChainAll >= 2 || (J)->apCombo >= 3)))
   if (decF.under && n > 1) {
-    int other = 0; for (int i = 0; i < n && !other; i++) if (!order[i]->o.dead && !amidGarbage(order[i])) other = 1;
-    if (other) { int m = 0; for (int i = 0; i < n; i++) { if (amidGarbage(order[i]) && order[i] != opCarried) { amidDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 26; } } else order[m++] = order[i]; } n = m; }
+    int other = 0; for (int i = 0; i < n && !other; i++) if (!order[i]->o.dead && !AMID_BANNED(order[i])) other = 1;
+    if (other) { int m = 0; for (int i = 0; i < n; i++) { if (AMID_BANNED(order[i]) && order[i] != opCarried) { amidDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 26; } } else order[m++] = order[i]; } n = m; }
   }
+  #undef AMID_BANNED
   for (int pass = 0; pass < 4 && n && order[0] && !order[0]->hold && order[0]->k.nseq >= 2 && !clockOut(); pass++) {
     static Cand w; static Judge JL; Judge *J = order[0]; int took = 0;
     for (int i = 0; i < J->k.nseq && !took && !clockOut(); i++) {
