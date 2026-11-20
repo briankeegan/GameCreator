@@ -29,6 +29,14 @@ static void *grab(unsigned long n) {
   return r;
 }
 #endif
+// GIVING MEMORY BACK (a native host, PA_HEAP: gambit/host.c paRelease): a block nothing reads until it is written again -- a spare board
+// past SPARE_KEEP, a node array outgrown -- has its pages handed back to the system; the block stays the heap's and reads as zeros when
+// next touched, as a block fresh from the heap does. Elsewhere (wasm, the bot) nothing is given back.
+#if defined(PA_HEAP)
+void paRelease(void *p, unsigned long n);
+#else
+static void paRelease(void *p, unsigned long n) { (void)p; (void)n; }
+#endif
 #define MAXTHREADS 16
 #if defined(THREADS) || !defined(__wasm__)
 #define LOCAL _Thread_local
@@ -74,8 +82,15 @@ EXPORT(nb_new) Board *nb_new(void) {
 // (Gambit's thread resets the contexts its search between decisions grew) hands it back rather than keeping it while the other grows
 // the heap.
 #define FREE_CAP 4096
+// SPARE_KEEP: the spare boards kept ready; one freed past them keeps its place on the list but not its pages (paRelease) -- a search that
+// grew the pool by a hundred thousand boards (Gambit's, 46 KB each) left them all resident, and a run's memory climbed past the machine's
+#define SPARE_KEEP 4096
 EXPORT(nb_free) void nb_free(Board *b) {
   if (freeCount(thId) >= FREE_CAP) {
+#if defined(PA_HEAP)
+    // (released before it is on the list: once there another thread may take it and write it)
+    if (__atomic_load_n(&spareCount, __ATOMIC_RELAXED) >= SPARE_KEEP) paRelease(b, sizeof(Board));
+#endif
     while (__atomic_exchange_n(&spareLock, 1, __ATOMIC_ACQUIRE)) {}
     *(Board **)b = spareOf; spareOf = b; spareCount++;
     __atomic_store_n(&spareLock, 0, __ATOMIC_RELEASE);
