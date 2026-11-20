@@ -962,6 +962,13 @@ static int32_t opLandIn(void) {
   int root = rootOf(lx, &decQ), calm = root >= 0 ? settleOf(lx, root) : -1;
   return root >= 0 && liveNode(lx, calm) ? imax(0, NODE(lx, calm)->t - NODE(lx, root)->t) : 0;
 }
+// (and the panels the board keeps once it has landed, left alone: the hold's, where the order no longer holds the hold)
+static int32_t opRootMat(void) {
+  static Ctx *mx; mx = ctxOf(mx);
+  int root = rootOf(mx, &decQ), calm = root >= 0 ? settleOf(mx, root) : -1;
+  const Board *b = liveNode(mx, calm) ? ensureBoard(mx, calm) : 0;
+  return b ? materialOn(b) : -1;
+}
 static const Judge *opSecondSwap(const Read *R, int n) {
   static Board *landed; static Ctx *sx;
   if (!landed) landed = nb_new();
@@ -1413,9 +1420,13 @@ static Played playOf(const Read *R, int n) {
     // panels once its chain has landed (matSettled) is not played where holding keeps more and is lost no sooner (run 4151 large_garbage 8, 519: an
     // extend lost at 155 refused for a set-up lost at 99) -- the chain falling kept as it is, the raise
     // pressed once it lands; r1412: three chains back to back, the panels 54 to 27 before any garbage landed, the board lost at 2538)
+    // (the hold measured on the board itself where the order has dropped it: run 4153 combo_storm 4, 767-921, the hold out of the order
+    // and lineups the floor never saw took the chain 4 to 13 and the panels 26 to 5 under garbage, the board lost at 1533)
     const Judge *heldJ = 0; for (int i = 0; i < n; i++) if (order[i]->hold) heldJ = order[i];
-    #define SPENDS_BOARD(J) ((J) && heldJ && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldJ->o.matSettled > (J)->o.matSettled && !(J)->o.lives && diesAt(heldJ) >= diesAt(J))
-    if (heldJ) opSpentHeld = heldJ->o.matSettled;
+    int32_t heldMat = heldJ ? heldJ->o.matSettled : opRootMat();
+    double heldDies = heldJ ? diesAt(heldJ) : R->F.v[FACT_US_DIES];
+    #define SPENDS_BOARD(J) ((J) && heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled && !(J)->o.lives && heldDies >= diesAt(J))
+    opSpentHeld = heldMat;
     if (SPENDS_BOARD(ext) && ext->apChainAll < need) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
     // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
