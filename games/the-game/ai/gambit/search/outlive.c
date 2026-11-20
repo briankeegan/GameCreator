@@ -1,13 +1,13 @@
 // GAMBIT'S SURVIVAL SEARCH: lines of swaps played one after another, a beam of the boards lost latest left alone, of
 // those held longest -- the frame the garbage queued could next drop (the line's frames, then the later of stop + pre-stop and the
-// shake) -- then with the most room over the stack, then the least garbage; each step's clears held to the list. The first line whose
+// shake) -- then the least garbage, the most panels kept, the most room over the stack; each step's clears held to the list. The first line whose
 // board, left alone, is still alive at `to` (frames from now) and `rest` past its own end, and passes the shared line check, is the
 // answer; else the line whose board is lost latest. And THE FRAMES UNTIL THE BOARD IS LOST IF NOTHING IS DONE (diesIn).
 
 #define OUT_SEQ 16
 #define OUT_DEPTH 10   // (the swaps deep the survival beam may grow: its clock stops it first on a busy decision -- a level is begun only
                        // while the time it takes is left -- and a board with time to spare is searched further, not left at six)
-typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, lost, acts; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor
+typedef struct { int32_t n, nseq, seq[OUT_SEQ], room, h, g, p, lost, acts; } OItem;   // acts: the cursor's actions for its swaps, from the root's cursor
 typedef struct { int32_t set, nseq, seq[OUT_SEQ], lostAt, acts; } Outlived;
 static LOCAL int outFree;   // (the save pass: steps not held to the list -- outliveSave)
 static LOCAL Ctx *outCtx;   // (each thread its own: the survival search runs on a worker beside the decision -- answer.c)
@@ -34,7 +34,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
   if (root < 0) return best;
   BS still; memset(&still, 0, sizeof still); still.x = x; still.root = root;
   static OItem level[PLAN_POOL], kids[PLAN_KIDS];
-  static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ka[PLAN_KIDS], ms1[MAXROWS * W];
+  static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ka[PLAN_KIDS], kp[PLAN_KIDS], ms1[MAXROWS * W];
   int nlev = 1;
   memset(&level[0], 0, sizeof level[0]); level[0].n = root;
   int keep = pressAllowance >= 0 ? pressAllowance - OUT_RESERVE : 1 << 20;
@@ -69,15 +69,16 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
         k->n = out; k->nseq = imin(level[i].nseq + 1, OUT_SEQ);
         for (int s2 = 0; s2 < level[i].nseq && s2 < OUT_SEQ; s2++) k->seq[s2] = level[i].seq[s2];
         if (level[i].nseq < OUT_SEQ) k->seq[level[i].nseq] = ms1[j];
-        k->room = ensureBoard(x, out)->height - on->top; k->h = heldOf(x, out); k->g = on->garb;
+        k->room = ensureBoard(x, out)->height - on->top; k->h = heldOf(x, out); k->g = on->garb; k->p = panelsOn(ensureBoard(x, out));
         { const Board *pb = ensureBoard(x, level[i].n); k->acts = level[i].acts + (pb ? actionsFor(pb->curRow, pb->curCol, CR(ms1[j]), CC(ms1[j]), pressAllowance >= 0 ? pressAllowance - level[i].acts : HOLDTIGHT + 1) : 0); }
       }
     }
     batchDone();
-    // the boards held longest, then with the most room, then the least garbage, then the fewest actions walked; each run on alone to the
-    // frame it is lost
-    for (int i = 0; i < nk; i++) { idx[i] = i; kh[i] = kids[i].h; kr[i] = kids[i].room; kg[i] = -kids[i].g; ka[i] = -kids[i].acts; }
-    sortByKeyDesc(idx, nk, ka, tmpI); sortByKeyDesc(idx, nk, kg, tmpI); sortByKeyDesc(idx, nk, kr, tmpI); sortByKeyDesc(idx, nk, kh, tmpI);
+    // the boards held longest, then the least garbage, then the most panels kept (the owner: keep enough to break the garbage -- of two
+    // that hold as long, the one that spent fewer threes to do it; room over the stack is bought by clearing panels, so it comes after),
+    // then the most room, then the fewest actions walked; each run on alone to the frame it is lost
+    for (int i = 0; i < nk; i++) { idx[i] = i; kh[i] = kids[i].h; kr[i] = kids[i].room; kg[i] = -kids[i].g; kp[i] = kids[i].p; ka[i] = -kids[i].acts; }
+    sortByKeyDesc(idx, nk, ka, tmpI); sortByKeyDesc(idx, nk, kr, tmpI); sortByKeyDesc(idx, nk, kp, tmpI); sortByKeyDesc(idx, nk, kg, tmpI); sortByKeyDesc(idx, nk, kh, tmpI);
     int nkeep = imin(nk, 2 * width);
     static OItem top[PLAN_POOL];
     for (int i = 0; i < nkeep; i++) top[i] = kids[idx[i]];
