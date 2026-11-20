@@ -57,6 +57,7 @@ static Board *swapRing[SWAPRING]; static int32_t swapRingAt[SWAPRING], swapRingN
 typedef struct {
   int32_t frames, decisions, played, late, diverged, refused, guarded, unasked, idle, followed, noLine, unforeseen, reasked, revealed,
           raiseCut, actions, maxWindow, overInput, heldWalks, paced, swaps, starved, inHand, aimed;
+  int32_t winChecked, winShort, winShortWorst;   // (THE WINDOW HELD: a line's later swaps checked against the window as the judge read it, those it held too few actions for, and by how many at most)
   int32_t behind, behindWorst;   // (a line's swaps whose keys began later than the frame the judge pressed them from, and by how much at most)
   int32_t revealCleared;         // (plans dropped for a panel unseen when they were made coming to a clear: front.c revealClears)
   int32_t early;                 // (frames the queue held garbage the telegraph had due a frame or few later: front.c arrivedEarly)
@@ -745,9 +746,10 @@ static int follow(void) {
   F.pending = 0;
   pressTap = F.lineTap;
   walkKeys(&k, due, F.pr);
-  if (!keysFit(due, &k)) { F.st.guarded++; return lineDropped(due, "its keys do not fit", END_NOFIT); }
-  int left = allowanceAt(due);
-  if (actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left) > left) return lineDropped(due, "its walk is over the allowance", END_OVERWALK);
+  int left = allowanceAt(due), need = actionsFor(F.pr->curRow, F.pr->curCol, CR(mv), CC(mv), left);
+  F.st.winChecked++;
+  if (!keysFit(due, &k)) { F.st.guarded++; F.st.winShort++; F.st.winShortWorst = imax(F.st.winShortWorst, need - left); return lineDropped(due, "its keys do not fit", END_NOFIT); }
+  if (need > left) { F.st.winShort++; F.st.winShortWorst = imax(F.st.winShortWorst, need - left); return lineDropped(due, "its walk is over the allowance", END_OVERWALK); }
   F.st.heldWalks += k.held;
   // (EVERY SWAP KEYED, ONE LINE (GAMBITK): the frame its keys begin, the frame the judge pressed it from (0 none), the cursor then, the
   // swap, its keys -- its press the last of them -- and the decision whose line it is: a press later than the judge's is read off here)
@@ -1235,10 +1237,10 @@ static void afterFrame(int32_t bits) {
 static void statsLine(char *out, int cap) {
   int k = snprintf(out, (unsigned long)cap, "match over: {\"frames\":%d,\"decisions\":%d,\"played\":%d,\"late\":%d,\"diverged\":%d,\"refused\":%d,"
                    "\"guarded\":%d,\"unasked\":%d,\"idle\":%d,\"followed\":%d,\"noLine\":%d,\"unforeseen\":%d,\"reasked\":%d,\"revealed\":%d,"
-                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"aimed\":%d,\"behind\":%d,\"behindWorst\":%d,\"revealCleared\":%d,\"early\":%d,\"queueOnly\":%d,\"attacks\":{\"combo\":{",
+                   "\"raiseCut\":%d,\"actions\":%d,\"maxWindow\":%d,\"overInput\":%d,\"heldWalks\":%d,\"paced\":%d,\"swaps\":%d,\"starved\":%d,\"inHand\":%d,\"aimed\":%d,\"behind\":%d,\"behindWorst\":%d,\"winChecked\":%d,\"winShort\":%d,\"winShortWorst\":%d,\"revealCleared\":%d,\"early\":%d,\"queueOnly\":%d,\"attacks\":{\"combo\":{",
                    F.st.frames, F.st.decisions, F.st.played, F.st.late, F.st.diverged, F.st.refused, F.st.guarded, F.st.unasked, F.st.idle,
                    F.st.followed, F.st.noLine, F.st.unforeseen, F.st.reasked, F.st.revealed, F.st.raiseCut, F.st.actions, F.st.maxWindow,
-                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.aimed, F.st.behind, F.st.behindWorst, F.st.revealCleared, F.st.early, F.st.queueOnly);
+                   F.st.overInput, F.st.heldWalks, F.st.paced, F.st.swaps, F.st.starved, F.st.inHand, F.st.aimed, F.st.behind, F.st.behindWorst, F.st.winChecked, F.st.winShort, F.st.winShortWorst, F.st.revealCleared, F.st.early, F.st.queueOnly);
   int first = 1;
   for (int z = 0; z < 64 && k < cap; z++) if (F.st.combo[z]) { k += snprintf(out + k, (unsigned long)(cap - k), "%s\"%d\":%d", first ? "" : ",", z, F.st.combo[z]); first = 0; }
   if (k < cap) k += snprintf(out + k, (unsigned long)(cap - k), "},\"chain\":{");
