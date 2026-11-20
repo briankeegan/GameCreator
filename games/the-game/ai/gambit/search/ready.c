@@ -147,10 +147,12 @@ static int32_t raiseOpenIn(const Question *q, int32_t most, Board *at) {
   return NOT_ASKED;
 }
 static int32_t raiseAlive;   // (the rows raiseReady found the board alive through once everything lands, ready or not)
+static int raiseFirstOnly;   // (raiseReady held the raise to the first landing: everything landing kills the board unraised)
+static int32_t raiseReadyOn(const Question *q, int32_t rows, double ms, Ctx *x, Board *st, Board *at, int32_t top0, int32_t last, double t0);
 static int raiseOpens;       // (the raise asked is the opening's: decide.c sets it before raiseReady)
 static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
   int32_t last = NOT_ASKED;
-  raiseAlive = 0;
+  raiseAlive = 0; raiseFirstOnly = 0;
   for (int i = 0; i < q->narr; i++) if (last == NOT_ASKED || q->arr[i].at > last) last = q->arr[i].at;
   if (rows <= 0) return 0;
   double t0 = nowMs();
@@ -179,6 +181,22 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     return ok;
   }
   Ctx *x = readyCtx = ctxOf(readyCtx);
+  // (THE FIRST LANDING WHERE ALL OF IT KILLS ANYWAY -- the owner: it just has to be ready to break the garbage as soon as it lands, and it
+  // stops only where the raise is what kills it: where the board left unraised is lost to everything shown landing, the raise is not what
+  // kills it, so each raise is held to the first garbage landed and a break ready on it -- the breaks between the landings are the next
+  // decisions'. run 4156 large_garbage 5 fill: 13 blocks on their way, four rows short, none raised, 2 panels left under the slab)
+  int narr = q->narr; int32_t lastAt = last;
+  if (narr > 1 && !landedAll(q->b, q->arr, q->narr, last, at)) {
+    int32_t first = q->arr[0].at; for (int i = 1; i < q->narr; i++) if (q->arr[i].at < first) first = q->arr[i].at;
+    static Question fq; fq = *q; narr = 0;
+    for (int i = 0; i < q->narr; i++) if (q->arr[i].at == first) fq.arr[narr++] = q->arr[i];
+    fq.narr = narr; lastAt = first; raiseFirstOnly = 1;
+    return raiseReadyOn(&fq, rows, ms, x, st, at, top0, lastAt, t0);
+  }
+  return raiseReadyOn(q, rows, ms, x, st, at, top0, lastAt, t0);
+}
+static int32_t raiseReadyOn(const Question *q, int32_t rows, double ms, Ctx *x, Board *st, Board *at, int32_t top0, int32_t last, double t0) {
+  int32_t ok = 0;
   for (int k = 1; k <= rows; k++) {
     cloneBoard(st, q->b);
     int32_t f = 0;
@@ -190,7 +208,7 @@ static int32_t raiseReady(const Question *q, int32_t rows, double ms) {
     if (!got || nowMs() - t0 > ms) break;
     // (and once landed, alive a REST left alone (outcome.c): a raise that leaves the board only a break found in its last frames is one
     // it dies of -- the decisions after it have no time to press it)
-    // (a plan once landed: the readiness every move is held to -- a break within two swaps that the list allows)
+    // (a plan once landed: the readiness every move is held to -- the break search's own answer in its share of the time, no count of swaps)
     Question q2 = *q; q2.b = got; q2.narr = 0;
     int rt = rootOf(x, &q2);
     readyShare(rows - k + 1);
