@@ -1409,6 +1409,14 @@ static Played playOf(const Read *R, int n) {
         if (la != lb) { if (la) ext = J; continue; }
         if (!la && J->o.lostAt != NOT_ASKED && ext->o.lostAt != NOT_ASKED && iabs(J->o.lostAt - ext->o.lostAt) >= rankSave) { if (J->o.lostAt > ext->o.lostAt) ext = J; continue; }
       }
+      // (OF TWO ALIKE, THE ONE THAT COSTS FEWER ACTIONS -- the owner: distance matters, a swap nearby before one further away: the same
+      // chain, the boards alike -- both living, or lost within a break's time of each other -- the one the window pays less for; the
+      // window is the game's 76 actions in 600 frames, and run 4165 large_garbage 8 spent 74 of them in 340 frames, the opener's extends
+      // walking row 8 to row 1, and held at 1 to 2 as the garbage landed)
+      if (ext && c == e && J->o.lives == ext->o.lives && (J->o.lives || (J->o.lostAt != NOT_ASKED && ext->o.lostAt != NOT_ASKED && iabs(J->o.lostAt - ext->o.lostAt) < rankSave))) {
+        if (lineWalk(J) < lineWalk(ext)) ext = J;
+        continue;
+      }
       if (!ext || (c >= need ? (e < need || c < e) : (e < need && c > e))) ext = J;
     }
     // (NO LINK PAST WHAT A SECOND CHAIN LEAVES TO DO -- the owner: a 5 and a 3: short of what is still needed, the next chain must be a
