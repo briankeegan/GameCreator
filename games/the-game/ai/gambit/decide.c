@@ -880,11 +880,13 @@ static int ranked(const Read *R, const Found *S) {
     if (!took) break;
   }
   // (and a line of one swap that buys less than its own walk takes, making, breaking and bringing nothing nearer, is the hold -- a far
-  // swap for nothing is the waste the owner sees most; a plain three is no chain)
+  // swap for nothing is the waste the owner sees most; a plain three is no chain, and a break brought nearer that keeps the board no
+  // longer is a walk for nothing -- only a board left ready where the hold leaves none is kept)
   if (n && order[0] && !order[0]->hold && order[0]->k.nseq == 1 && !order[0]->o.lives) {
     Judge *J = order[0]; const Judge *h = 0; int hi = -1;
     for (int i = 1; i < n; i++) if (order[i]->hold) { h = order[i]; hi = i; break; }
-    if (h && !h->o.dead && !(J->apBroke > 0) && (J->apChainAll <= h->apChainAll || J->apChainAll < 2) && J->apCombo < 3 && !(J->o.nearAfter >= 0 && h->o.nearAfter >= 0 && J->o.nearAfter < h->o.nearAfter) &&
+    if (h && !h->o.dead && !(J->apBroke > 0) && (J->apChainAll <= h->apChainAll || J->apChainAll < 2) && J->apCombo < 3 && !(J->o.j.ready == 1 && h->o.j.ready != 1) &&
+        !(J->o.nearAfter >= 0 && h->o.nearAfter >= 0 && J->o.nearAfter < h->o.nearAfter && lostOf(J) > lostOf(h)) &&
         diesAt(J) - diesAt(h) <= (double)WALK_FRAMES * lineWalk(J) && diesAt(J) - diesAt(h) < rankSave && lostAlike(J, h) && lineWalk(J) > 0) {
       Judge *hh = order[hi]; for (int k = hi; k > 0; k--) order[k] = order[k - 1]; order[0] = hh; needlessTrimmed++; }
   }
