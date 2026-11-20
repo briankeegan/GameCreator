@@ -26,46 +26,6 @@ static int outBetter(int32_t l, int32_t a, int32_t ol, int32_t oa) {
   double v = l - (double)OUT_ACT * a, ov = ol - (double)OUT_ACT * oa;
   return v > ov || (v == ov && a < oa);
 }
-// THE CLEARS THE BOARD IS SWAPS FROM (clearLines): every match of three a panel of a colour shown makes with two more of its colour
-// brought to it along their own rows, over cells that hold them up (search/bits.c bitsBring, the break search's own walk) -- each as the
-// line of swaps that makes it, the fewest swaps first; those of two swaps or more (one swap is the beam's first level, which steps every
-// swap there is). The beam ranks a board by the frame it is lost, and a swap that only walks a panel toward a three loses the board on
-// the same frame as every other swap that clears nothing: two such swaps deep the three's line is kept only if it is also the cheapest
-// walk, so the lines are read off the board's shape and played whole.
-typedef struct { int32_t n, seq[OUT_SEQ]; } CLine;
-static int clearLineAdd(CLine *out, int n, int cap, const int32_t *seq, int ns) {
-  if (ns < 2 || ns > OUT_SEQ) return n;
-  for (int i = 0; i < n; i++) if (out[i].n == ns && !memcmp(out[i].seq, seq, sizeof(int32_t) * (unsigned long)ns)) return n;
-  // (kept in order of swaps, a line as short after those before it; the longest dropped when there is no room)
-  int at = n;
-  while (at > 0 && out[at - 1].n > ns) at--;
-  if (at >= cap) return n;
-  for (int i = imin(n, cap - 1); i > at; i--) out[i] = out[i - 1];
-  out[at].n = ns; memcpy(out[at].seq, seq, sizeof(int32_t) * (unsigned long)ns);
-  return imin(n + 1, cap);
-}
-static int clearLines(const Bits *B, CLine *out, int cap) {
-  int n = 0, top = B->top;
-  int32_t seq[MAXPATH];
-  for (int r = 1; r <= top; r++) for (int c = 1; c <= W; c++) {
-    int32_t k = B->code[r][c];
-    if (k <= 0 || k >= BITCOLOURS || k == 9) continue;
-    for (int r0 = r - 2; r0 <= r; r0++) {
-      if (r0 < 1 || r0 + 2 > top) continue;
-      int ok = 1, ns = 0, from;
-      for (int q = r0; q <= r0 + 2 && ok; q++) { if (q == r) continue; int d = bitsBring(B, q, c, k, 0, &from); if (d < 0) ok = 0; else ns = walkTo(q, from, c, seq, ns); }
-      if (ok) n = clearLineAdd(out, n, cap, seq, ns);
-    }
-    for (int c0 = c - 2; c0 <= c; c0++) {
-      if (c0 < 1 || c0 + 2 > W) continue;
-      unsigned used = 1u << c;
-      int ok = 1, ns = 0, from;
-      for (int t = c0; t <= c0 + 2 && ok; t++) { if (t == c) continue; int d = bitsBring(B, r, t, k, used, &from); if (d < 0) ok = 0; else { used |= 1u << from; ns = walkTo(r, from, t, seq, ns); } }
-      if (ok) n = clearLineAdd(out, n, cap, seq, ns);
-    }
-  }
-  return n;
-}
 static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best, over; memset(&best, 0, sizeof best); memset(&over, 0, sizeof over);
   double t0 = nowMs(), perStep = 0;
@@ -78,32 +38,6 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
   int nlev = 1;
   memset(&level[0], 0, sizeof level[0]); level[0].n = root;
   int keep = pressAllowance >= 0 ? pressAllowance - OUT_RESERVE : 1 << 20;
-  // (the clears the board is swaps from, each played whole as the game presses it -- every swap held to the window and the list as the
-  // beam's are -- and run on alone to the frame it is lost: as many as the beam is wide, in the time the search has)
-  { static LOCAL CLine cl[MAXROWS * W]; static LOCAL Bits cb;
-    bitsOf(q->b, &cb);
-    int nc = clearLines(&cb, cl, imin(width, MAXROWS * W));
-    for (int i = 0; i < nc && nowMs() - t0 < ms; i++) {
-      int n = root, acts = 0, ok = 1;
-      for (int k = 0; k < cl[i].n && ok; k++) {
-        int mr = CR(cl[i].seq[k]), mc = CC(cl[i].seq[k]), from;
-        const Board *pb = ensureBoard(x, n);
-        int32_t left = pb && pressAllowance >= 0 ? allowLeftAt(NODE(x, n)->t - NODE(x, root)->t, acts) : HOLDTIGHT + 1;
-        int a = pb ? actionsFor(pb->curRow, pb->curCol, mr, mc, left) : 0;
-        if (!pb || (pressAllowance >= 0 && a > left)) { ok = 0; break; }
-        int out = pressWalk(x, n, MK_SWAP, mr, mc, step, &from);
-        if (!liveNode(x, out) || (!outFree && !stepFitsAt(x, out))) { ok = 0; break; }
-        if (k == 0) { Stats st; statsOf(x, out, &st); if (!firstOk(mr, mc, NODE(x, out)->brk > stillAt(&still, NODE(x, out)->t) ? 2 : st.cleared > 0)) { ok = 0; break; } }
-        acts += a; n = out;
-      }
-      if (!ok) continue;
-      int32_t lost = lostAlone(x, n, imax(to, NODE(x, n)->t + rest));
-      if (lost == FOREVER && !outFree && !lineFits(cl[i].seq, cl[i].n, 0)) continue;
-      Outlived *o = acts <= keep ? &best : &over;
-      if (!o->set || outBetter(lost, acts, o->lostAt, o->acts)) { o->set = 1; o->acts = acts; o->nseq = cl[i].n; for (int s2 = 0; s2 < cl[i].n; s2++) o->seq[s2] = cl[i].seq[s2]; o->lostAt = lost; }
-      if (lost == FOREVER && o == &best) return best;
-    }
-  }
   for (int d = 1; d <= depth && nlev; d++) {
     double tl = nowMs();
     int nsteps = 0;
@@ -117,16 +51,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     for (int i = 0; i < nlev; i++) {
       bAt[i] = nb;
       int nm = swapsOfNode(x, level[i].n, ms1);
-      // (THE WINDOW HOLDS THE LINE: a swap whose walk is over what the input window leaves at its frame is not there to press -- the judge
-      // cuts the line at it (judge.c, cutWhy 1), and a line cut is dropped whole (rank.c judgeCand), the swaps before it that kept the
-      // board with it -- so the search never steps one: every swap of the line it keeps is one the window pays for, by the judge's own
-      // count (core/nodes.h allowLeftAt, actionsFor))
-      const Board *pb = pressAllowance >= 0 ? ensureBoard(x, level[i].n) : 0;
-      int32_t left = pb ? allowLeftAt(NODE(x, level[i].n)->t - NODE(x, root)->t, level[i].acts) : -1;
-      for (int j = 0; j < nm && nb < PLAN_KIDS; j++) {
-        if (pb && actionsFor(pb->curRow, pb->curCol, CR(ms1[j]), CC(ms1[j]), left) > left) continue;
-        bPar[nb] = level[i].n; bMv[nb++] = ms1[j];
-      }
+      for (int j = 0; j < nm && nb < PLAN_KIDS; j++) { bPar[nb] = level[i].n; bMv[nb++] = ms1[j]; }
     }
     bAt[nlev] = nb;
     stepBatch(x, bPar, bMv, MK_SWAP, nb);
@@ -145,8 +70,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
         for (int s2 = 0; s2 < level[i].nseq && s2 < OUT_SEQ; s2++) k->seq[s2] = level[i].seq[s2];
         if (level[i].nseq < OUT_SEQ) k->seq[level[i].nseq] = ms1[j];
         k->room = ensureBoard(x, out)->height - on->top; k->h = heldOf(x, out); k->g = on->garb; k->p = panelsOn(ensureBoard(x, out));
-        { const Board *pb = ensureBoard(x, level[i].n);
-          k->acts = level[i].acts + (pb ? actionsFor(pb->curRow, pb->curCol, CR(ms1[j]), CC(ms1[j]), pressAllowance >= 0 ? allowLeftAt(NODE(x, level[i].n)->t - NODE(x, root)->t, level[i].acts) : HOLDTIGHT + 1) : 0); }
+        { const Board *pb = ensureBoard(x, level[i].n); k->acts = level[i].acts + (pb ? actionsFor(pb->curRow, pb->curCol, CR(ms1[j]), CC(ms1[j]), pressAllowance >= 0 ? pressAllowance - level[i].acts : HOLDTIGHT + 1) : 0); }
       }
     }
     batchDone();

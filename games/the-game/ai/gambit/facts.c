@@ -76,7 +76,7 @@ static void factsOf(const Board *b, const Arr *arr, int narr, int topped, FactSe
   int H = b->nrows - 1, top = FS.top, material = FS.material, contact = FS.contact, garb = FS.garbage, *peaks = FS.peak;
   int32_t stop = b->stopTime + b->preStopTime, coming = 0, next = NUL;
   for (int i = 0; i < narr; i++) { coming += arr[i].height; if (next == NUL || arr[i].at < next) next = arr[i].at; }
-  // (a block queued for the board: the stop time left, until the decision reads the frame the engine drops it on -- decide.c queueDropsIn)
+  // (a block queued for the board drops once the stop time runs out: its landing is the stop time left)
   if (b->ninc > 0) { coming += b->inc[0].height; if (next == NUL || stop < next) next = stop; }
   double dies = topped ? stop + b->health : framesToTop(b) + b->health;
   int breakWaits = 0;
