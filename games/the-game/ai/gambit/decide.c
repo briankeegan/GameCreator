@@ -457,6 +457,7 @@ static int32_t carryWaste[5];   // (the line in progress taken out as a wasted t
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
+static int32_t amidDropped;   // (lines among the slabs that break nothing, not played -- the log's amid=)
 static int32_t opSpent, opSpentMat, opSpentHeld;   // (the opener's chains refused for spending the board: 1 the extension, 2 the link, 4 the second chain, 8 a set-up while it lands; the panels the last refused leaves once landed, and holding's -- the log's spent=)
 static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
                                                                                    // for the next chain, 4 a set-up short of it)
@@ -519,7 +520,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; amidDropped = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -828,6 +829,13 @@ static int ranked(const Read *R, const Found *S) {
   // out in turn; one it loses nothing without -- it lives as long, breaks as much, chains and combos as much, leaves its next break no
   // farther, and is ranked no lower -- is taken out and the line judged again: the walk to that swap and its press are inputs for
   // nothing. A swap and its swap back, a swap of two panels alike and a swap back of the last pair pressed are such swaps.)
+  // (NO SWAP AMONG THE SLABS THAT BREAKS NOTHING -- the owner: it shouldn't go up there to make any swap that doesn't break; if it goes
+  // there, it breaks: under garbage, a line that swaps among the garbage and breaks none of it is not played while any line that does
+  // not, the hold among them, is not lost already)
+  if (decF.under && n > 1) {
+    int other = 0; for (int i = 0; i < n && !other; i++) if (!order[i]->o.dead && !amidGarbage(order[i])) other = 1;
+    if (other) { int m = 0; for (int i = 0; i < n; i++) { if (amidGarbage(order[i]) && order[i] != opCarried) { amidDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 26; } } else order[m++] = order[i]; } n = m; }
+  }
   for (int pass = 0; pass < 4 && n && order[0] && !order[0]->hold && order[0]->k.nseq >= 2 && !clockOut(); pass++) {
     static Cand w; static Judge JL; Judge *J = order[0]; int took = 0;
     for (int i = 0; i < J->k.nseq && !took && !clockOut(); i++) {
