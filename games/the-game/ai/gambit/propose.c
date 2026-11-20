@@ -555,7 +555,10 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
 static int twinCostOn(Board *b) {
   static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2]; static Twin best[TWIN_OFFER * 4]; int top;
   int nb = twinScan(b, g, ok, &top, best, 0, TWIN_REACH), lo = 99;
-  for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost;
+  // (WITH GARBAGE ON THE BOARD, ONLY AN EIGHT THAT TOUCHES IT -- the owner: something is always kept to break the garbage, and in finish
+  // them an eight is the best: the eight the set-ups build toward is the break as well as the attack)
+  int onlyTouch = garbageOn(b);
+  for (int i = 0; i < nb; i++) if (best[i].cost < lo && (!onlyTouch || best[i].touch)) lo = best[i].cost;
   return lo;
 }
 // THE SWAPS THAT SORT ONE: the eight t's rows sorted, the rows nearest the cursor first, then the trigger row, on a copy of the grid g --
