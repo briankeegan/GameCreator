@@ -1487,6 +1487,7 @@ static Played playOf(const Read *R, int n) {
     // actions in 600 frames: run 4166 large_garbage 1, 571-749, the opener's lineups under the slab took the window 27 to 0 and the
     // board was held to its loss at 976. With no garbage on the board the opener spends freely: the reserve everywhere cost the eights)
     #define FARTHER_OFF(J) (decF.under && heldJ && (J)->o.nearAfter >= 0 && heldJ->o.nearAfter >= 0 && (J)->o.nearAfter > heldJ->o.nearAfter)
+    // (a chain that buys less than a break's time over holding buys no break with the panels it spends)
     // (AND NEVER A CHAIN THAT LEAVES THE BOARD UNREADY WHERE ANOTHER WAY KEEPS IT READY -- the owner: just don't die: the chain falling
     // holds the garbage back, and when it lands the whole queue drops at once, so a chain that leaves no break ready once everything
     // lands (judge.c breaksAfterLanding, the window counted) is refused where the hold or another line leaves one -- however much longer
@@ -1494,7 +1495,7 @@ static Played playOf(const Read *R, int n) {
     // on a board with no break, g4228 logging no line ready at 510 and spending 22 actions more on the eight)
     int readyElse = 0; for (int i = 0; i < n && !readyElse; i++) if (!order[i]->o.dead && order[i]->o.j.ready == 1) readyElse = 1;
     #define UNREADY(J) ((J) && readyElse && (J)->o.j.ready == 0)
-    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies >= diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || (decF.under && spendsReserve(J)))) || UNREADY(J)))
+    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies + rankSave > diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || (decF.under && spendsReserve(J)))) || UNREADY(J)))
     opSpentHeld = heldMat;
     if (SPENDS_BOARD(ext) && (ext->apChainAll < need || UNREADY(ext))) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
