@@ -783,7 +783,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && decF.under && !x->o.dead && !y->o.dead) {
     int ax = amidGarbage(x), ay = amidGarbage(y);
     if (ax != ay) { const Judge *a = ax ? x : y, *o = ax ? y : x;
-      if (diesAt(a) - diesAt(o) < rankSave) return (cmpKey = __LINE__, (ax ? 1 : -1)); }
+      // (each board's own loss, no promise credited -- the owner: walking up between the blocks to move things around without breaking
+      // is a waste; if it goes there, it breaks: r1427, 3750, a cut among the slabs lost at 125 as the hold was, put first for its promise)
+      if (lostAtOf(a->o.lostAt, a->hold) - lostAtOf(o->o.lostAt, o->hold) < rankSave) return (cmpKey = __LINE__, (ax ? 1 : -1)); }
   }
   // 1. NEAR THE END A LATER LOSS IS A LATER LOSS: neither living, the sooner lost within NEAR_LOSS breaks' time, the one lost NEAR_GAIN
   // frames later or more first -- before the line in progress, the mode and every key after: each decision near the end found a line

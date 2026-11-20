@@ -457,6 +457,7 @@ static int32_t carryWaste[5];   // (the line in progress taken out as a wasted t
 static int32_t opTryLog[OP_TRY_LOG][8], opTryN, opTrySeq[3][OP_DEPTH + 1], opTrySeqN[3];   // (the opener's plans judged: pass, swaps, planned chain, judged chain, fire frames from now, verdict -- the log's opTries=)
 static int32_t opKept;   // (the opener's plan played over a line ranked above it for a later loss: the log's opKept=1)
 static int32_t opLinkCands, opLinkBest;   // (the lines ranked this decision whose break is a chain's link, and the longest chain of them: the log's linkCands=)
+static int32_t amidDropped; static double amidBest;   // (lines among the slabs that break nothing, not played, and the latest own loss of them -- the log's amid=count/lost)
 static int32_t opSpent, opSpentMat, opSpentHeld;   // (the opener's chains refused for spending the board: 1 the extension, 2 the link, 4 the second chain, 8 a set-up while it lands; the panels the last refused leaves once landed, and holding's -- the log's spent=)
 static int32_t opFallBar, opFallExt, opFallSeen, opFallTop, opFallDead, opFallWay, opFallLink, opFallLinkCh;   // (opFallWay: 1 the extension to the eight, 7 the line that keeps the board over an extension short of it that loses it, 2 a second chain that adds to it, 3 an extension short of it, 6 garbage broken by a link, 5 the garbage broken
                                                                                    // for the next chain, 4 a set-up short of it)
@@ -519,7 +520,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -828,19 +829,44 @@ static int ranked(const Read *R, const Found *S) {
   // out in turn; one it loses nothing without -- it lives as long, breaks as much, chains and combos as much, leaves its next break no
   // farther, and is ranked no lower -- is taken out and the line judged again: the walk to that swap and its press are inputs for
   // nothing. A swap and its swap back, a swap of two panels alike and a swap back of the last pair pressed are such swaps.)
+  // (NO SWAP AMONG THE SLABS THAT BREAKS NOTHING -- the owner: it shouldn't go up there to make any swap that doesn't break; if it goes
+  // there, it breaks: under garbage, a line that swaps among the garbage and breaks none of it is not played while any line that does
+  // not, the hold among them, is not lost already)
+  // (the one exception, the owner's -- a Shogun: the garbage under the swap about to convert -- matched and popping, not converted yet --
+  // and the swap setting up
+  // that drop to make something: a clear or a chain once it lands)
+  #define AMID_BANNED(J) (amidGarbage(J) && !(popLeft(decQ.b) > 0 && ((J)->apChainAll >= 2 || (J)->apCombo >= 3)))
+  if (decF.under && n > 1) {
+    int other = 0; for (int i = 0; i < n && !other; i++) if (!order[i]->o.dead && !AMID_BANNED(order[i])) other = 1;
+    if (other) { int m = 0; for (int i = 0; i < n; i++) { if (AMID_BANNED(order[i]) && order[i] != opCarried) { amidDropped++; if (!order[i]->o.dead) { double dl = order[i]->o.lives ? 99999 : lostAtOf(order[i]->o.lostAt, 0); if (dl > amidBest) amidBest = dl; } if (order[i] == carriedJ) { carriedJ = 0; carryNone = 26; } } else order[m++] = order[i]; } n = m; }
+  }
+  #undef AMID_BANNED
   for (int pass = 0; pass < 4 && n && order[0] && !order[0]->hold && order[0]->k.nseq >= 2 && !clockOut(); pass++) {
     static Cand w; static Judge JL; Judge *J = order[0]; int took = 0;
     for (int i = 0; i < J->k.nseq && !took && !clockOut(); i++) {
       w = J->k; w.nseq = 0; w.xNats = 0;
       for (int q = 0; q < J->k.nseq; q++) if (q != i) w.seq[w.nseq++] = J->k.seq[q];
       if (!judgeCand(R, &w, &JL) || JL.o.dead) continue;
-      if (!JL.o.lives && (J->o.lives || diesAt(&JL) < diesAt(J))) continue;
-      if (imax(0, JL.apBroke) < imax(0, J->apBroke) || JL.apChain < J->apChain || JL.apCombo < J->apCombo) continue;
+      // (a swap whose life bought is less than the time its own walk takes is a swap for nothing -- the owner: pointless moves, the far
+      // ones above all, are a waste of the window: 13-16% of swaps in runs 4237-4238 came to nothing, most of them buying a frame or two)
+      double walkSaved = (double)WALK_FRAMES * imax(0, lineWalk(J) - lineWalk(&JL));
+      int forNothing = !J->o.lives && !JL.o.lives && diesAt(J) - diesAt(&JL) <= walkSaved && walkSaved > 0;
+      if (!JL.o.lives && (J->o.lives || (diesAt(&JL) < diesAt(J) && !forNothing))) continue;
+      if (imax(0, JL.apBroke) < imax(0, J->apBroke) || JL.apChain < J->apChain || JL.apCombo < J->apCombo || JL.apChainAll < J->apChainAll) continue;
       if (J->o.nearAfter >= 0 && JL.o.nearAfter > J->o.nearAfter) continue;
-      if (compareJudged(&JL, J) > 0) continue;
+      if (!forNothing && compareJudged(&JL, J) > 0) continue;
       JL.carried = J->carried; *J = JL; took = 1; needlessTrimmed++;
     }
     if (!took) break;
+  }
+  // (and a line of one swap that buys less than its own walk takes, making, breaking and bringing nothing nearer, is the hold -- a far
+  // swap for nothing is the waste the owner sees most)
+  if (n && order[0] && !order[0]->hold && order[0]->k.nseq == 1 && !order[0]->o.lives) {
+    Judge *J = order[0]; const Judge *h = 0; int hi = -1;
+    for (int i = 1; i < n; i++) if (order[i]->hold) { h = order[i]; hi = i; break; }
+    if (h && !h->o.dead && !(J->apBroke > 0) && J->apChainAll <= h->apChainAll && J->apCombo < 3 && !(J->o.nearAfter >= 0 && h->o.nearAfter >= 0 && J->o.nearAfter < h->o.nearAfter) &&
+        diesAt(J) - diesAt(h) <= (double)WALK_FRAMES * lineWalk(J) && lineWalk(J) > 0) {
+      Judge *hh = order[hi]; for (int k = hi; k > 0; k--) order[k] = order[k - 1]; order[0] = hh; needlessTrimmed++; }
   }
   // (and a line of nothing but swaps of two panels alike is the hold: the board it leaves is the board as it is)
   if (n && order[0] && !order[0]->hold && order[0]->o.j.sames && order[0]->k.nseq >= 1) {
