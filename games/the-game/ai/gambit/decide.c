@@ -442,6 +442,7 @@ static double contLostOf(const Judge *J, double give) {
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
+static int32_t putOffCut;   // (clears taken out for blocks that have not landed: the log's)
 static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to three -- the log's)
 static int32_t twoWhy; static double twoLostLog, twoKeptLog;   // (what let the 2x rule take one out: 1 a line kept lives, 2 one is lost a break's time on, 3 the 2x is lost no later -- the log's)
 static int32_t samesTrimmed;   // (the line played judged again without its swaps of one colour -- the log's)
@@ -520,7 +521,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -821,6 +822,23 @@ static int ranked(const Read *R, const Found *S) {
     // (not where the list asks no chain: a 2x taken to three is a bigger slab the mode does not ask)
     // (nor the line in progress begun on its 2x: the input pressed of it is spent, and taken out now it is spent for nothing)
     if (keeps && listChainCap() > 0) { int m = 0; for (int i = 0; i < n; i++) { if (shortChain(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carryTwo)) { dropAs(order[i]->k.play, DROP_TWO); twoDropped++; if (order[i] == carriedJ) { carriedJ = 0; carryNone = 24; } } else order[m++] = order[i]; } n = m; } }
+  // NO CLEAR FOR BLOCKS THAT HAVE NOT LANDED (the owner: low, spend less and break): garbage queued behind the board's own motion and
+  // none on the board (outcome.c holdQueueAt), below the material floor, nothing living -- a clear that breaks nothing (spends) is taken
+  // out of the order where a line that leaves more of the panels is offered, unless its board lasts a break's time (rankSave) longer
+  // than that line's once the blocks have landed, the drop it puts off taken out (outcome.c putOff). However near the kept line's loss,
+  // so long as its board is still there a reaction after the blocks drop, when the first move can answer them: no line breaks a block
+  // before it lands, and the break after it is made of the panels kept. The line in progress is held to it like any other
+  if (n && !order[0]->o.lives && holdQueueAt() != NOT_ASKED) {
+    const Judge *kept = 0;
+    for (int i = 0; i < n; i++) { const Judge *J = order[i];
+      if (J->spends || J->o.dead || J->o.matLeft < 0 || diesAt(J) < holdQueueAt() + rankReact) continue;
+      if (!kept || J->o.matLeft > kept->o.matLeft || (J->o.matLeft == kept->o.matLeft && diesAt(J) > diesAt(kept))) kept = J; }
+    if (kept) { int m = 0;
+      for (int i = 0; i < n; i++) { const Judge *J = order[i];
+        if (J->spends && J != opCarried && J->o.matLeft >= 0 && J->o.matLeft < kept->o.matLeft && diesAt(J) - diesAt(kept) < rankSave) { putOffCut++; if (J == carriedJ) { carriedJ = 0; carryNone = 27; } }
+        else order[m++] = order[i]; }
+      n = m; }
+  }
   // (NO COMBO THE MODE DOES NOT ASK FOR, where a three does as well: the line ranked first making one is played with each of its swaps
   // left out in turn, and one that makes none, lives as long, breaks as much and makes as much of the list is the line -- a fourth panel
   // walked in by a swap the break did not need is a panel and a walk for nothing (the owner: no mode asks a combo of four))
@@ -854,6 +872,8 @@ static int ranked(const Read *R, const Found *S) {
       if (!JL.o.lives && (J->o.lives || (diesAt(&JL) < diesAt(J) && !forNothing))) continue;
       if (imax(0, JL.apBroke) < imax(0, J->apBroke) || JL.apChain < J->apChain || JL.apCombo < J->apCombo || JL.apChainAll < J->apChainAll) continue;
       if (J->o.nearAfter >= 0 && JL.o.nearAfter > J->o.nearAfter) continue;
+      // (nor one that, a swap less, clears panels below the floor and breaks nothing where the line clears none: the panels are what it loses)
+      if (JL.spends && !J->spends) continue;
       if (!forNothing && compareJudged(&JL, J) > 0) continue;
       JL.carried = J->carried; *J = JL; took = 1; needlessTrimmed++;
     }

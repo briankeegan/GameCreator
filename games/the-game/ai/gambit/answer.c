@@ -701,6 +701,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (comboTimed) { L_s(" timed="); L_i(comboTimed); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
   if (windowCut) { L_s(" windowCut="); L_i(windowCut); }   // (lines taken out: the window not back before their board is lost)
+  // (the queue held off by the board's own motion: the frame it drops left alone, the frames the line played puts that off -- taken out of
+  // its loss -- and the clears taken out of the order for it)
+  if (rootQueueAt != QUEUE_UNSET && rootQueueAt != NOT_ASKED) { L_s(" queue="); L_i(rootQueueAt); L_s("/"); L_i(top && !top->hold ? top->o.putOff : 0); L_s("/"); L_i(putOffCut); }
   if (samesTrimmed) L_s(" samesTrimmed=1");   // (the line played had its swaps of one colour taken out)
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); L_s(" twoWhy="); L_i(twoWhy); L_s("/"); L_i(twoLostLog >= 1e299 ? -2 : (int64_t)twoLostLog); L_s("/"); L_i((int64_t)twoKeptLog); }
   if (twoRemade) { L_s(" twoRemade="); L_i(twoRemade); }
@@ -1146,7 +1149,7 @@ static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, 
   decQ = hostQ; decQ.b = hostBoard;
   levelBreak = C2.reaction + 1 + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (outcome.c: the level's break, as rankSave)
   if (levelBreak <= 0) levelBreak = LEVEL11_BREAK;
-  ncache = 0; rootBuildable = NOT_ASKED;
+  ncache = 0; rootBuildable = NOT_ASKED; rootQueueAt = QUEUE_UNSET;
   // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
   // (the opener plays from the countdown to its end -- the top-out, or nobody across its chain thrown -- and the schedule runs from there)
   switchedNow = 0;

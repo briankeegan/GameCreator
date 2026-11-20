@@ -45,6 +45,8 @@ typedef struct {
                                 // pieces, each chain a slab a link past the first -- a line that fires two ideas throws both -- beyond what
                                 // the board left alone throws
   int32_t dropAt;               // the frame garbage can next drop once the line is over
+  int32_t queueAt;              // the frame the engine drops the next queued block with the line played (queueWaits, queueDrops):
+                                // NOT_ASKED where none waits behind the board's own motion, or it drops none before the line's loss
   int32_t dead, deadAt, done, fire, nats, ats[MAXLINE];
   int32_t risen[MAXLINE];         // the rows the stack has risen, from the root, by the frame each swap is pressed: its row less this is its row on the root's board
   int32_t clearStep;              // the first step of the line after which something clears, -1 none (the log's cstep=)
@@ -369,9 +371,62 @@ static int risenTo(Ctx *x, int node, int32_t any) {
   int r = (rootFeed - b->nRowFeed) + (b->unseenRows - rootUnseen);
   return r > 0 ? r : 0;
 }
+// A QUEUE HELD OFF BY THE BOARD'S OWN MOTION: garbage queued and none on the board. The engine drops a queued one-row block on the
+// first frame no panel moves (pa.c shouldDropGarbage), and a falling block locks the rise (updateRiseLock), so no raise goes in between.
+// A clear made meanwhile only moves that frame: the same blocks land, on a board with the clear's panels gone -- the frames it puts the
+// drop off are no part of how long its board lasts (outcome.c putOff).
+static int queueWaits(const Board *b) {
+  if (!b || b->ninc <= 0) return 0;
+  for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) if (b->p[r][c].f[ISGARBAGE]) return 0;
+  return 1;
+}
+// (the frames until the engine next drops a queued block on board b left alone, `most` at most; NOT_ASKED when it drops none by then)
+static LOCAL Board *queueBoard;
+static int32_t queueDropIn(const Board *b, int32_t most) {
+  if (!queueBoard) queueBoard = nb_new();
+  if (!queueBoard || !b || most <= 0) return NOT_ASKED;
+  cloneBoard(queueBoard, b);
+  int32_t made = b->garbageCreatedCount, f = 0;
+  while (f < most && queueBoard->gameOverClock <= 0 && queueBoard->garbageCreatedCount == made) { queueBoard->input = 0; run(queueBoard); f++; }
+  clockCharge(f);
+  return queueBoard->garbageCreatedCount != made ? f : NOT_ASKED;
+}
+// (and with a line played to node `end` of x from `root`, by frame `by` from the root at the latest: the first of the line's steps whose
+// board has taken a block from the queue, played again a frame at a time from the last key it pressed)
+static int32_t queueDrops(Ctx *x, int root, int end, int32_t by) {
+  int path[4 * MAXLINE + 8], np = 0;
+  for (int m = end; m >= 0 && np < 4 * MAXLINE + 8; m = NODE(x, m)->prev) { path[np++] = m; if (m == root) break; }
+  if (!np || path[np - 1] != root) return NOT_ASKED;
+  const Board *rb = ensureBoard(x, root);
+  if (!rb) return NOT_ASKED;
+  int32_t made = rb->garbageCreatedCount, t0 = NODE(x, root)->t;
+  for (int i = np - 2; i >= 0; i--) {
+    int m = path[i], p = path[i + 1];
+    const Board *mb = ensureBoard(x, m);
+    if (!mb) return NOT_ASKED;
+    if (mb->garbageCreatedCount == made) continue;
+    // (the step it dropped in: one that presses nothing is the board before it left alone; one that presses a swap, the swap pressed
+    // alone and the board left alone from there -- a block dropped by the press came no later than the board left alone drops it)
+    int from = p;
+    if (NODE(x, m)->mr > 0 && (NODE(x, m)->mk == MK_SWAP || NODE(x, m)->mk == MK_SETTLE)) {
+      if (clockOut()) return NOT_ASKED;
+      from = advance(x, p, MK_SWAP, NODE(x, m)->mr, NODE(x, m)->mc, 0);
+      if (!liveNode(x, from)) return NOT_ASKED;
+      clockCharge(NODE(x, from)->t - NODE(x, p)->t);
+      const Board *fb = ensureBoard(x, from);
+      if (!fb) return NOT_ASKED;
+      if (fb->garbageCreatedCount != made) return NODE(x, p)->t - t0;
+    }
+    int32_t f = queueDropIn(ensureBoard(x, from), NODE(x, m)->t - NODE(x, from)->t);
+    return (f == NOT_ASKED ? NODE(x, m)->t : NODE(x, from)->t + f) - t0;
+  }
+  // (none by the line's end: the board it ends on left alone)
+  int32_t f = queueDropIn(ensureBoard(x, end), by - (NODE(x, end)->t - t0));
+  return f == NOT_ASKED ? NOT_ASKED : NODE(x, end)->t - t0 + f;
+}
 static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
-  j->lostAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->clearStep = -1; j->preLast = -1; j->noops = 0; j->sames = 0;
+  j->lostAt = NOT_ASKED; j->queueAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->clearStep = -1; j->preLast = -1; j->noops = 0; j->sames = 0;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -554,6 +609,8 @@ static void judge(const Question *q, const int32_t *seq, int nseq, const JudgeOp
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));
+  // (a line whose board is lost: the frame the queue held off by the board's motion drops with it played -- asked before the loss only)
+  if (!j->dead && !j->late && j->lostAt != NOT_ASKED && j->lostAt != FOREVER && queueWaits(q->b)) j->queueAt = queueDrops(x, root, n, j->lostAt);
   // (readiness, the dearer check, only when the board left alone does not stand to lifeTo -- always, or for a line that breaks)
   int standsOut = j->lostAt == FOREVER && (o->readyIfLost || (o->readyIfBreak && j->made.broke > 0));
   if (o->readyAt != NOT_ASKED && !j->dead && !standsOut) {
