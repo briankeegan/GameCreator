@@ -755,6 +755,15 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
 }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx, ly; creditPair(x, y, &lx, &ly);
+  // THE BREAK THAT PAYS (the owner: keep enough panels to break the garbage): under garbage below the floor, of two breaks that convert
+  // the same rows and neither lives, the one that spends more panels goes first only where it is lost later by a break's time (rankSave)
+  // for each three more it spends -- a three kept is the next break. Runs 4196-4220, large_garbage 7 and 8: every row broke for more than
+  // the six it returns, the losers ~22 panels a game on a break of the same rows offered three or more panels cheaper
+  if (decF.under && !x->o.lives && !y->o.lives && shortOfPanels(x, y) && imax(0, x->apBroke) / W == imax(0, y->apBroke) / W &&
+      lostOf(x) >= rankSave && lostOf(y) >= rankSave) {
+    const Judge *keep = panelsLeft(x) > panelsLeft(y) ? x : y, *sp = keep == x ? y : x;
+    if (lostOf(sp) - lostOf(keep) < ((panelsLeft(keep) - panelsLeft(sp)) / 3) * rankSave) return (cmpKey = __LINE__, (keep == x ? -1 : 1));
+  }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
