@@ -847,10 +847,10 @@ static int ranked(const Read *R, const Found *S) {
       w = J->k; w.nseq = 0; w.xNats = 0;
       for (int q = 0; q < J->k.nseq; q++) if (q != i) w.seq[w.nseq++] = J->k.seq[q];
       if (!judgeCand(R, &w, &JL) || JL.o.dead) continue;
-      // (a swap whose life bought is less than the time its own walk takes is a swap for nothing -- the owner: pointless moves, the far
-      // ones above all, are a waste of the window: 13-16% of swaps in runs 4237-4238 came to nothing, most of them buying a frame or two)
-      double walkSaved = (double)WALK_FRAMES * imax(0, lineWalk(J) - lineWalk(&JL));
-      int forNothing = !J->o.lives && !JL.o.lives && diesAt(J) - diesAt(&JL) <= walkSaved && walkSaved > 0;
+      // (a swap whose life bought is less than the time its own walk takes, and less than a break's time, is a swap for nothing --
+      // pointless moves, the far ones above all, waste the window; a swap that buys a break's time is never one)
+      double walkSaved = (double)WALK_FRAMES * imax(0, lineWalk(J) - lineWalk(&JL)), bought = diesAt(J) - diesAt(&JL);
+      int forNothing = !J->o.lives && !JL.o.lives && bought <= walkSaved && bought < rankSave && walkSaved > 0 && lostAlike(J, &JL);
       if (!JL.o.lives && (J->o.lives || (diesAt(&JL) < diesAt(J) && !forNothing))) continue;
       if (imax(0, JL.apBroke) < imax(0, J->apBroke) || JL.apChain < J->apChain || JL.apCombo < J->apCombo || JL.apChainAll < J->apChainAll) continue;
       if (J->o.nearAfter >= 0 && JL.o.nearAfter > J->o.nearAfter) continue;
@@ -865,7 +865,7 @@ static int ranked(const Read *R, const Found *S) {
     Judge *J = order[0]; const Judge *h = 0; int hi = -1;
     for (int i = 1; i < n; i++) if (order[i]->hold) { h = order[i]; hi = i; break; }
     if (h && !h->o.dead && !(J->apBroke > 0) && J->apChainAll <= h->apChainAll && J->apCombo < 3 && !(J->o.nearAfter >= 0 && h->o.nearAfter >= 0 && J->o.nearAfter < h->o.nearAfter) &&
-        diesAt(J) - diesAt(h) <= (double)WALK_FRAMES * lineWalk(J) && lineWalk(J) > 0) {
+        diesAt(J) - diesAt(h) <= (double)WALK_FRAMES * lineWalk(J) && diesAt(J) - diesAt(h) < rankSave && lostAlike(J, h) && lineWalk(J) > 0) {
       Judge *hh = order[hi]; for (int k = hi; k > 0; k--) order[k] = order[k - 1]; order[0] = hh; needlessTrimmed++; }
   }
   // (and a line of nothing but swaps of two panels alike is the hold: the board it leaves is the board as it is)
