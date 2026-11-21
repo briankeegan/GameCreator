@@ -721,6 +721,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // its loss -- and the clears taken out of the order for it)
   if (rootQueueAt != QUEUE_UNSET && rootQueueAt != NOT_ASKED) { L_s(" queue="); L_i(rootQueueAt); L_s("/"); L_i(top && !top->hold ? top->o.putOff : 0); L_s("/"); L_i(putOffCut); }
   if (samesTrimmed) L_s(" samesTrimmed=1");   // (the line played had its swaps of one colour taken out)
+  if (reachCut) { L_s(" reach="); L_i(reachCut); }
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); L_s(" twoWhy="); L_i(twoWhy); L_s("/"); L_i(twoLostLog >= 1e299 ? -2 : (int64_t)twoLostLog); L_s("/"); L_i((int64_t)twoKeptLog); }
   if (twoRemade) { L_s(" twoRemade="); L_i(twoRemade); }
   if (noopWaits) { L_s(" noopWaits="); L_i(noopWaits); }

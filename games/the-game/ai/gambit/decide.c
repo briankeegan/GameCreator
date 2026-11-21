@@ -483,6 +483,15 @@ static int loadedAfter(const int32_t *seq, int n) {
   return twinCostOn(eb) == 0;
 }
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down, -8 the second eight's swap unloading the first; 0 not asked: the log's)
+#define REACH_ROWS 3   // (the owner's limit on the rows a line that breaks nothing walks up or down between swaps: 88% of swaps already keep within it)
+static int32_t reachCut;   // (lines taken out for walking past the reach this decision: the log's reach=)
+static int goalKeyOf(const Judge *J);
+static int reachesFar(const Judge *J) {
+  int r = decQ.b->curRow;
+  for (int i = 0; i < J->k.nseq; i++) { int sr = CR(J->k.seq[i]); if (iabs(sr - r) > REACH_ROWS) return 1; r = sr; }
+  return 0;
+}
+static int farForNothing(const Judge *J) { return !J->hold && !(J->apBroke > 0) && goalKeyOf(J) != 0 && reachesFar(J); }
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -525,7 +534,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0; rankHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -818,6 +827,17 @@ static int ranked(const Read *R, const Found *S) {
       breakThrough = !lives && !clean;
     }
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave) && !(breakThrough && order[i]->apBroke > 0 && diesAt(order[i]) >= keptDies)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+  // THE REACH UP AND DOWN (the owner: limit how far it can move up and down, to stop the wastes): a line that breaks no garbage and makes
+  // nothing of the mode's first entry may not step more than REACH_ROWS rows from the cursor to its first swap or from one swap to the next
+  // -- unless every line that keeps within the reach, the hold among them, is lost within a break's time (rankSave), or the far line lives
+  // or outlives them all by a break's time on the frames the boards are lost (rank.c diesAt): there the walk buys a life, not a few frames
+  { double keptLost = -1; int keptLives = 0;
+    for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (farForNothing(J)) continue;
+      if (J->o.lives) keptLives = 1; else if (!J->o.dead && diesAt(J) > keptLost) keptLost = diesAt(J); }
+    if (keptLives || keptLost >= rankSave) {
+      int m = 0; for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (farForNothing(J) && !J->o.lives && !(keptLost >= 0 && diesAt(J) - keptLost >= rankSave)) { reachCut++; if (J == carriedJ) { carriedJ = 0; carryNone = 22; } if (J == opCarried) opCarried = 0; continue; } order[m++] = order[i]; }
+      n = m;
+    } }
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
