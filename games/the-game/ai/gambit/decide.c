@@ -1503,7 +1503,8 @@ static Played playOf(const Read *R, int n) {
     // board was held to its loss at 976. With no garbage on the board the opener spends freely: the reserve everywhere cost the eights)
     #define FARTHER_OFF(J) (decF.under && heldJ && (J)->o.nearAfter >= 0 && heldJ->o.nearAfter >= 0 && (J)->o.nearAfter > heldJ->o.nearAfter)
     // (a chain that buys less than a break's time over holding buys no break with the panels it spends; and the window's reserve is kept
-    // for the break once garbage is on its way, not only once it has landed)
+    // for the break once garbage is on its way -- telegraphed, or queued behind the chain falling (rank.c garbageComing) -- not only once
+    // it has landed)
     // (AND NEVER A CHAIN THAT LEAVES THE BOARD UNREADY WHERE ANOTHER WAY KEEPS IT READY -- the owner: just don't die: the chain falling
     // holds the garbage back, and when it lands the whole queue drops at once, so a chain that leaves no break ready once everything
     // lands (judge.c breaksAfterLanding, the window counted) is refused where the hold or another line leaves one -- however much longer
@@ -1511,7 +1512,7 @@ static Played playOf(const Read *R, int n) {
     // on a board with no break, g4228 logging no line ready at 510 and spending 22 actions more on the eight)
     int readyElse = 0; for (int i = 0; i < n && !readyElse; i++) if (!order[i]->o.dead && order[i]->o.j.ready == 1) readyElse = 1;
     #define UNREADY(J) ((J) && readyElse && (J)->o.j.ready == 0)
-    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies + rankSave > diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || ((decF.under || decQ.narr > 0) && spendsReserve(J)))) || UNREADY(J)))
+    #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies + rankSave > diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || ((decF.under || garbageComing()) && spendsReserve(J)))) || UNREADY(J)))
     opSpentHeld = heldMat;
     if (SPENDS_BOARD(ext) && (ext->apChainAll < need || UNREADY(ext))) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
@@ -1548,7 +1549,7 @@ static Played playOf(const Read *R, int n) {
     // extending comes first, any extension -- nor a second chain that adds to the eight, the line that breaks the most garbage beyond the hold, the chain as long as the
     // hold's -- the panels the garbage turns into are the next chain's)
     const Judge *brk = 0;
-    if (bar < need && !(ext && ext->apChainAll >= need) && !twoReaches && (R->under || decQ.narr > 0)) {
+    if (bar < need && !(ext && ext->apChainAll >= need) && !twoReaches && (R->under || garbageComing())) {
       int32_t holdBroke = 0; const Judge *hj = 0; for (int i = 0; i < n; i++) if (order[i]->hold) { holdBroke = imax(0, order[i]->apBroke); hj = order[i]; }
       // (a hold that loses the board: a break that keeps it longer may end the chain falling short of the hold's, down to need -
       // OPENER_LEAST -- a 6 or a 5 the next chain a 3 all the same; the board left alone does not live)

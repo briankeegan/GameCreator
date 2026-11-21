@@ -36,6 +36,10 @@ it worked (ours / his).
       bridged over ~15 empty cells. Price voids under garbage in the levelling search and the flatness key (`search/level.c`, `rank.c`).
       And never clear the top with a long queue waiting unless the board lives through all of it landing at once (r1363: four pieces in
       13 frames). Measure: empty cells under garbage.
+      On main: under garbage with no break offered and nothing living, a perch (the garbage resting on one tall column) gets a
+      let-down line that walks the column's top panel off to a lower column, ranked before the hold when it leaves the garbage
+      nearer coming down and is lost no sooner (deded9d). Still open: a let-down is not offered while a clear pops in the pile,
+      and a perch with no room below (large_garbage 7, 17166) cannot come down at all.
 
 ### Next, after Y1-Y6 (the owner, 2026-11-19)
 
