@@ -552,8 +552,9 @@ static int lineWalk(const Judge *J) {
 // (how far below a break's walk a line that breaks nothing leaves the allowance: 0 when it keeps it, or breaks -- the window already
 // short, the line that spends less of what is left keeps more of the next break)
 // (THE RESERVE, AS THE NEXT BREAK FINDS IT: the window left once a line is pressed, read at the soonest frame a break can be needed --
-// now with garbage on the board, the next block's landing with one on its way, else EARLIEST_LANDING: an attack the enemy makes now is
-// in the telegraph at once and lands that long after -- the actions that leave the window by then counted back. With nobody across
+// now with garbage on the board, the next block's landing with one on its way -- shown in the telegraph, or queued on the board and
+// held off by its own motion (outcome.c holdQueueAt: the frame the engine drops it, the board left alone) -- else EARLIEST_LANDING: an
+// attack the enemy makes now is in the telegraph at once and lands that long after -- the actions that leave the window by then counted back. With nobody across
 // (time attack, the rules' enemy.none) no break is ever needed and no reserve is kept)
 #define EARLIEST_LANDING 151   // (pa-engine.js: GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 staged, GARBAGE_DELAY_LAND_TIME landing)
 static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
@@ -564,8 +565,12 @@ static int allowAtNeed(int walk) {
   if (decF.under) return pressAllowance - walk;
   int32_t t = EARLIEST_LANDING;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
+  { int32_t q = holdQueueAt(); if (q != NOT_ASKED && q >= 0 && q < t) t = q; }
   return allowLeftAt(t, walk);
 }
+// (GARBAGE ON ITS WAY: shown in the telegraph, or past it and queued on the board -- a one-row block waits there for the board's
+// panels to come to rest, pa.c shouldDropGarbage, and a storm's queue is never empty)
+static int garbageComing(void) { return decQ.narr > 0 || (decQ.b && decQ.b->ninc > 0); }
 // (how far below a break's walk a line leaves the allowance -- a break too: of two breaks the board survives alike, the one that leaves
 // the next break its walk; spendsReserve, which sets a line that breaks nothing after one that keeps the reserve, never counts a break)
 static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || (decF.under && !breakOffered) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
@@ -865,7 +870,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *f = offMode(x) ? x : y, *o = f == x ? y : x;
     // (garbage on its way counts as garbage on the board: set 86 combo_storm 2, 14200, the hold lost at 245 put before a line breaking the
     // garbage 81 frames off and lost at 409 -- the board lost at 14666 with no break)
-    if (livesOn(o) && (!(decF.under || decQ.narr > 0) || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
+    if (livesOn(o) && (!(decF.under || garbageComing()) || imax(0, brokeSeen(o)) >= imax(0, brokeSeen(f))))
       return (cmpKey = __LINE__, (f == x ? 1 : -1));
   }
   // 1. (neither lives) SURVIVAL FIRST: the later loss, unless the two are lost alike (lostAlike: as many breaks' time left) -- every key
@@ -876,7 +881,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // more -- the panels it spends to stall are the next break's; it is played only where every line that keeps them is lost within one
   // (and only where the line that keeps them leaves more of them: a board the garbage lands on loses its panels under the lowest garbage
   // held or not, and a hold that leaves no more of them keeps nothing -- outcome.c matLeft)
-  if (!lx && (decF.under || decQ.narr > 0) && x->spends != y->spends) {
+  if (!lx && (decF.under || garbageComing()) && x->spends != y->spends) {
     const Judge *o = x->spends ? y : x, *sp = x->spends ? x : y;
     // (and only where the spend buys less than a break's time more: one that keeps the board alive a break's time longer buys the next
     // break's chance -- death is never an option)
@@ -1047,7 +1052,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (but never against the board's own rise: with no garbage on the board or on its way, the board is lost to the stack rising, and
     // the line that keeps it alive longer by a cursor step's walk or more is played over the reserve -- the board kept doing things)
     const Judge *kp = rx < ry ? x : y, *sp = rx < ry ? y : x;
-    int rises = !lx && !decF.under && decQ.narr == 0 && !sp->o.dead && diesAt(sp) >= diesAt(kp) + WALK_FRAMES;
+    int rises = !lx && !decF.under && !garbageComing() && !sp->o.dead && diesAt(sp) >= diesAt(kp) + WALK_FRAMES;
     // (nor, in finish them, against a combo the list asks: a combo of four or more with at most a 2x, beside a line that makes no such
     // combo, is played over the reserve where it is lost no sooner -- the owner: any combo beats a 3; the combo is the break itself)
     int asks = finishAsks(sp, kp);
