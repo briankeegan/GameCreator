@@ -407,6 +407,15 @@ static int goalKeyOf(const Judge *J) {
   if (J->outside && !(J->apBroke > 0) && (J->apCombo > 0 || J->apChain > 0)) return 3 + MAXAIMS;
   return J->apBroke > 0 || setupPlay(J->k.play) ? 1 : 2;
 }
+// (and under garbage, a set-up that breaks none of it is the mode's goal only where its own board outlives the hold's by the time its
+// walk takes, as a promise is earned there (extCounts) -- else it is the hold's goal with a walk on it: the owner, no walking far for
+// nothing: run 4332, large_garbage 1, 598-842, toward lines lost on the hold's frame put first for the goal, the window walked 23 to 0)
+static int goalKeyUnder(const Judge *J) {
+  int g = goalKeyOf(J);
+  if (g == 1 && decF.under && !J->hold && !(J->apBroke > 0) && rankHoldClock == decQ.b->clock && rankHoldOwn >= 0 &&
+      lostAtOf(J->o.lostAt, 0) - rankHoldOwn < (double)WALK_FRAMES * lineWalk(J)) return 2;
+  return g;
+}
 // A WASTED THREE: a line whose clears break nothing and throw nothing (a combo of three, no chain) -- panels spent for no garbage sent
 // and none broken
 // (a line that breaks garbage beyond the board left alone (apBroke, the judge's count) made its threes on the way to the break -- a block
@@ -1252,7 +1261,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (time attack: nothing coming, the rise never still -- of two that do not live the later loss decides, never the goal: a board held
     // for the mode's goal while it climbs is one that runs out of ways to live)
     if (lx || (!ruleNoEnemy && lo >= rankSave && hi - lo < rankSave)) {
-      int gx = goalKeyOf(x), gy = goalKeyOf(y);
+      int gx = goalKeyUnder(x), gy = goalKeyUnder(y);
       if (gx != gy) return (cmpKey = __LINE__, (gx - gy));
       // (and of two that make the first entry, or two set-ups toward it, the fewer presses: the owner, the goal first and the shortest
       // way to it, the set-up included -- a press is a press, a cursor step or a swap)

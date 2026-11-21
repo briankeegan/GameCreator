@@ -554,6 +554,9 @@ EXPORT(gb_carry_short) int gb_carry_short(const int32_t *rest, int n) {
 // line, and the order put on the two. `keep`: none (nkeep 0) the decision's hold; else a break the break search found on the board,
 // firing `keepAt` frames on. `spend`: a line of the game's own that clears panels for a later loss. 1 the spend is put first, 0 the
 // keep, -1 a line that does not judge
+// (gb_spend_toward 1: the spend is judged as the toward line it was played as, not as a survival line)
+static int spendToward;
+EXPORT(gb_spend_toward) void gb_spend_toward(int on) { spendToward = on; }
 EXPORT(gb_spend_first) int gb_spend_first(const int32_t *keep, int nkeep, int keepAt, const int32_t *spend, int nspend) {
   static Judge K, Sp; Cand c; Read R;
   if (!readBoard_(&R)) return -1;
@@ -566,7 +569,7 @@ EXPORT(gb_spend_first) int gb_spend_first(const int32_t *keep, int nkeep, int ke
     if (ok) { c.x.broke = W; c.xDone = c.xFire = keepAt; c.settled = 0; ok = judgeWalkedIn(&R, &c, &K, c.nseq); }
     if (ok) { readyNextFor(&K); k = &K; }
   }
-  if (ok) ok = candOf(&c, PLAY_SURVIVE, spend, nspend, -1, 0);
+  if (ok) ok = candOf(&c, spendToward ? PLAY_TOWARD : PLAY_SURVIVE, spend, nspend, -1, 0);
   if (ok) { c.settled = 0; ok = judgeWalkedIn(&R, &c, &Sp, c.nseq); }
   if (ok) readyNextFor(&Sp);
   clockIgnore = 0;

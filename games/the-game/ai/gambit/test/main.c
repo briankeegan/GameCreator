@@ -214,6 +214,11 @@ static int spendKept(const char *dir) { return spendKeptOn(dir, "spend.txt", "th
 // walk in the window before its board is lost (spend) -- the spend, lost sooner with its walk charged, is never put first: rank.c
 // windowDead, walkTurns
 static int windowKept(const char *dir) { return spendKeptOn(dir, "windead.txt", "the window that leaves no break"); }
+// THE WALK FOR NOTHING (test DIR toward, its own process, as spend: toward.txt): boards under garbage where a set-up that breaks none of
+// it, lost on the hold's frame, was put first for the mode's goal (the spend judged as the toward it was) -- the hold is kept: rank.c
+// goalKeyUnder
+void gb_spend_toward(int on);
+static int towardKept(const char *dir) { gb_spend_toward(1); int r = spendKeptOn(dir, "toward.txt", "the walk for nothing"); gb_spend_toward(0); return r; }
 int gb_cells(void);
 // THE BOARD DRAWN (test DIR board LOG FRAME): the logged board (GAMBITL, GAMBITQ...) of that frame, top row first -- a colour's digit,
 // garbage G, empty '.', a dimmed (rising) row in lower case; then the garbage on its way
@@ -363,6 +368,7 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
   if (argc > 2 && !strcmp(argv[2], "wait")) return waitWindow(dir);
   if (argc > 2 && !strcmp(argv[2], "windead")) return windowKept(dir);
+  if (argc > 2 && !strcmp(argv[2], "toward")) return towardKept(dir);
   if (argc > 2 && !strcmp(argv[2], "carry")) return carryClock(dir);
   if (argc > 2 && !strcmp(argv[2], "raise")) return raisePressed(dir);
   if (argc > 2 && !strcmp(argv[2], "spend")) return spendKept(dir);
