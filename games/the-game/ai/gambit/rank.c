@@ -291,6 +291,13 @@ static double diesAt(const Judge *x) {
 static int spendsReserve(const Judge *J);
 static int waitWalks(const Judge *J);
 static int waitSpends(const Judge *J);
+// THE WAIT'S WINDOW SPENT FOR NO BREAK: in the wait (waitOf), a line l that breaks nothing and walks the window below a break's walk
+// by the frame the board is at rest, beside s -- the hold, a line that does no better than holding, or a line that keeps that walk. The
+// break the wait is for is pressed out of that window, and frames bought with it are no life where the break cannot then be pressed.
+// Only while the hold's own board stands a break's time: a hold lost inside it waits for nothing.
+static int waitSpent(const Judge *l, const Judge *s) {
+  return rankHoldClock == decQ.b->clock && rankHoldOwn >= rankSave && waitSpends(l) && (s->hold || s->idle || !waitSpends(s));
+}
 static int walkTurns(const Judge *x, const Judge *y) {
   if (x->o.lives || y->o.lives) return 0;
   double dx = diesAt(x), dy = diesAt(y);
@@ -314,12 +321,8 @@ static int walkTurns(const Judge *x, const Judge *y) {
     // (nor, in finish them, a line that fires an eight or more, beside any line lost sooner: the attack the mode asks, its walk pressed
     // on the engine as well)
     if (finishAsked() && !l->hold && l->apCombo >= 8 && l->apChain < 2 && !(s->apCombo >= 8 && s->apChain < 2)) return (dx > dy) != (lostOf(x) > lostOf(y)); }
-  // (nor in the wait (waitOf), where the later one breaks nothing and walks the window below a break's walk by the frame the board is
-  // at rest, beside the hold, a line that does no better than holding, or a line that keeps that walk: the break the wait is for is
-  // pressed out of that window, and frames bought with it are no life where the break cannot then be pressed -- the walk's charge
-  // decides between the two. Only while the hold's own board stands a break's time: a hold lost inside it waits for nothing)
-  { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
-    if (rankHoldClock == decQ.b->clock && rankHoldOwn >= rankSave && waitSpends(l) && (s->hold || s->idle || !waitSpends(s))) return 0; }
+  // (nor in the wait, the later one walking the window out for no break -- waitSpent: the walk's charge decides between the two)
+  if (waitSpent(dx > dy ? x : y, dx > dy ? y : x)) return 0;
   if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
   // (nor where the later one buys less than a break's time with the window the next breaks are pressed from: the actions it spends come
   // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
@@ -685,8 +688,12 @@ static int shortOfPanels(const Judge *x, const Judge *y) {
   return decF.under && decF.belowFloor && x->apBroke > 0 && y->apBroke > 0 && panelsLeft(x) >= 0 && panelsLeft(y) >= 0 &&
          iabs(panelsLeft(x) - panelsLeft(y)) >= 3;
 }
+// (the break's time a line that breaks garbage leaves is read on its board as the engine has it, no walk charged: the judge pressed
+// the walk when its loss was judged, and a break across the board, lost a break's time off or more, is the board kept -- the charge
+// is the order's preference for the nearer, never frames the board does not have)
+static double leftBy(const Judge *J) { return J->apBroke > 0 ? lostAtOf(J->o.lostAt, J->hold) : lostOf(J); }
 static int boughtWithPanels(const Judge *x, const Judge *y) {
-  double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y);
+  double lo = leftBy(x) < leftBy(y) ? leftBy(x) : leftBy(y);
   if (lo >= rankSave && x->spends != y->spends && (lostOf(x) > lostOf(y) ? x : y)->spends) return 1;
   // (and two breaks below the floor: the later loss bought by spending a three's worth of panels more, within two breaks' time -- a board
   // short of panels that spends them for a little more life finds no next break)
@@ -868,8 +875,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (the losses as the board has them, no walk charged: the judge pressed the walk on the engine, its time is in the loss already --
     // r1362, 16763: a level lost at 52 over a break lost at 452, the walk's charge leaving the two 30 frames apart, the board lost at 16820)
     // (and its own loss, no credit for moves after it: a promise is no later loss)
+    // (nor a later loss bought in the wait with the window the break at rest is pressed from -- waitSpent: the wait is not the end;
+    // nor one bought with the panels beside a break that leaves the board a break's time -- boughtWithPanels: the garbage broken is
+    // the board kept, and the keys after this one order the two)
     double a = lostAtOf(x->o.lostAt, x->hold), b = lostAtOf(y->o.lostAt, y->hold), lo = a < b ? a : b, hi = a < b ? b : a;
-    if (lo >= 0 && lo < NEAR_LOSS * rankSave && hi - lo >= NEAR_GAIN && !x->o.dead == !y->o.dead) return (cmpKey = __LINE__, (a > b ? -1 : 1));
+    const Judge *late = a > b ? x : y, *soon = a > b ? y : x;
+    if (lo >= 0 && lo < NEAR_LOSS * rankSave && hi - lo >= NEAR_GAIN && !x->o.dead == !y->o.dead && !waitSpent(late, soon) &&
+        !(soon->apBroke > 0 && boughtWithPanels(x, y)))
+      return (cmpKey = __LINE__, (a > b ? -1 : 1));
   }
   // 1. NO HOLDING INTO A LOSS: neither living, the hold lost within a break's time and a move lost NEAR_GAIN frames later or more, the move
   // first -- a break's time is the least a garbage line takes to come off, and a hold that dies inside it waits for nothing (set 89,

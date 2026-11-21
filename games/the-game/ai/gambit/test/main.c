@@ -23,8 +23,13 @@ double gb_bits_ms(int cells);
 int gb_replay(int nbytes, int narr, int mode, int64_t work, char *out, int cap);
 void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
+void gb_replay_raise(int on);
+int gb_front_raise(int32_t *out);
 void gb_replay_allow(int allow);
 int gb_wait_last(int which);
+void gb_replay_enemy(int top, int out, int stop);
+void gb_replay_ages(const int32_t *ages, int n);
+int gb_spend_first(const int32_t *keep, int nkeep, int keepAt, const int32_t *spend, int nspend);
 int gb_replay_on(int nbytes, int narr, int mode, int64_t work);
 int gb_line_agree(int *n);
 int gb_held_off(int *held, int *offCell);
@@ -162,6 +167,46 @@ static int replayLoss(const char *dir, const char *log, int mode) {
   fclose(f);
   return 0;
 }
+// THE LATER LOSS BOUGHT (test DIR spend, its own process: the game's own profile, wait.words): boards of games on which a line that
+// clears panels and breaks nothing was played for its later loss (spend.txt: the mode, the enemy's top row / topped out / stop time
+// -- a top under 0: none --, what is kept, the line that spends, the frames ago each key inside the input window went down, the board). Kept is `-`, the hold, on a board in the wait whose
+// window the spend walks out; or a break the break search finds on the board, with the frames on it fires after `@`, which leaves the
+// board a break's time. A live game's boards are built from its replay page's frames, the others are the games' own dumps. Each board is answered as its game asked it and the two lines judged on it: the spend is never put first --
+// rank.c waitSpent, boughtWithPanels
+static int seqOf(const char *s, int32_t *out, int cap) {
+  int n = 0;
+  while (s && *s && *s != '@' && n < cap) { int r = atoi(s); const char *c = strchr(s, ','); if (!c) return 0; out[n++] = r * 8 + atoi(c + 1); s = strchr(s, ';'); if (s) s++; }
+  return n;
+}
+static int spendKept(const char *dir) {
+  char path[4096]; static char line[1 << 17], rec[4096];
+  snprintf(path, sizeof path, "%s/wait.words", dir);
+  if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+  snprintf(path, sizeof path, "%s/spend.txt", dir);
+  FILE *f = fopen(path, "r");
+  if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
+  int boards = 0, first = 0, unjudged = 0;
+  while (fgets(line, sizeof line, f)) {
+    int mode, top, out, stop; char keep[256], spend[256]; static char aged[2048];
+    const char *b = strstr(line, "GAMBITL ");
+    if (!b || sscanf(line, "%d %d/%d/%d %255s %255s %2047s", &mode, &top, &out, &stop, keep, spend, aged) != 7) continue;
+    int narr, n = loadLine(b, &narr);
+    const char *al = strstr(b, "] a");
+    gb_replay_allow(al ? atoi(al + 3) : -1); gb_replay_enemy(top, out, stop);
+    { int32_t ages[512]; int na = 0; for (const char *q = aged; *q && na < 512; ) { ages[na++] = atoi(q); q = strchr(q, ','); if (!q) break; q++; } gb_replay_ages(ages, na); }
+    if (n < 0 || gb_replay(n, narr, mode, (int64_t)REPLAY_WORK * WAIT_WORK, rec, sizeof rec) < 0) continue;
+    int32_t ks[64], ss[64]; int nk = keep[0] == '-' ? 0 : seqOf(keep, ks, 64), ns = seqOf(spend, ss, 64);
+    const char *at = strchr(keep, '@');
+    int r = gb_spend_first(ks, nk, at ? atoi(at + 1) : -1, ss, ns);
+    boards++;
+    if (r < 0) { unjudged++; printf("  a line that does not judge (board %d)\n", atoi(b + 8)); }
+    if (r > 0) { first++; printf("  the spend put first (board %d, mode %d): %s over %s\n", atoi(b + 8), mode, spend, keep[0] == '-' ? "the hold" : keep); }
+  }
+  fclose(f);
+  gb_replay_enemy(-1, 0, 0);
+  printf("%s: the later loss bought -- %d boards, the spend put first on %d\n", first || unjudged || !boards ? "FAIL" : "ok", boards, first);
+  return first || unjudged || !boards;
+}
 int gb_cells(void);
 // THE BOARD DRAWN (test DIR board LOG FRAME): the logged board (GAMBITL, GAMBITQ...) of that frame, top row first -- a colour's digit,
 // garbage G, empty '.', a dimmed (rising) row in lower case; then the garbage on its way
@@ -253,6 +298,32 @@ static int carryClock(const char *dir) {
   printf("%s: the line in progress past the clock -- %d pairs with a line in hand, the clock out with lines judged %d times, the line in hand let go unread %d\n", unread || !outs ? "FAIL" : "ok", pairs, outs, unread);
   return unread || !outs;
 }
+// THE RAISE PRESSED AS ANSWERED (test DIR raise, its own process: the game's own profile, wait.words): boards of games lost to a
+// raise, the row partway in when the raise was answered (raise.txt: the mode, then the board). Each is answered, the raise offered, and
+// the raise keyed as the frame loop keys it and played: the rows the answer asked come in, none is begun after them, the board stands
+static int raisePressed(const char *dir) {
+  char path[4096]; static char line[1 << 17], rec[4096];
+  snprintf(path, sizeof path, "%s/wait.words", dir);
+  if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+  snprintf(path, sizeof path, "%s/raise.txt", dir);
+  FILE *f = fopen(path, "r");
+  if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
+  int raises = 0, over = 0;
+  gb_replay_raise(1);
+  while (fgets(line, sizeof line, f)) {
+    int mode = atoi(line), narr; const char *b = strstr(line, "GAMBITL ");
+    if (!b) continue;
+    int n = loadLine(b, &narr);
+    if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) continue;
+    int32_t v[9], o[4]; gb_replay_last(v);
+    if (v[0] != 2 || !gb_front_raise(o)) { printf("  no raise keyed (board %d): %s\n", atoi(b + 8), rec); continue; }
+    raises++;
+    if (o[2] || o[0] > o[1] || o[3]) { over++; printf("  a raise pressed past its rows (board %d): %d rows in of %d asked, a row begun after them %d, lost %d\n", atoi(b + 8), o[0], o[1], o[2], o[3]); }
+  }
+  fclose(f);
+  printf("%s: the raise pressed as answered -- %d raises keyed, %d pressed past the rows they asked\n", over || !raises ? "FAIL" : "ok", raises, over);
+  return over || !raises;
+}
 int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
   if (argc > 4 && !strcmp(argv[2], "board")) return drawBoard(argv[3], atoi(argv[4]));
@@ -261,6 +332,8 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
   if (argc > 2 && !strcmp(argv[2], "wait")) return waitWindow(dir);
   if (argc > 2 && !strcmp(argv[2], "carry")) return carryClock(dir);
+  if (argc > 2 && !strcmp(argv[2], "raise")) return raisePressed(dir);
+  if (argc > 2 && !strcmp(argv[2], "spend")) return spendKept(dir);
   if (argc > 2 && !strcmp(argv[2], "design")) {
     int n = argc > 3 ? atoi(argv[3]) : 6, rows = argc > 4 ? atoi(argv[4]) : 10, cols = argc > 5 ? atoi(argv[5]) : 6, ms = argc > 6 ? atoi(argv[6]) : 2000;
     char path[4096]; snprintf(path, sizeof path, "%s/rules.words", dir); if (!loadWords(path)) return 1;   // (the setup: the workers)
