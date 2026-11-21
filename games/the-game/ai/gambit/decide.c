@@ -522,6 +522,7 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
   return done;
 }
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
+static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
@@ -548,7 +549,7 @@ static int ranked(const Read *R, const Found *S) {
   // until then -- it ranks with the hold)
   Cand ck; int cwait = 0, cc = 0;
   carryNone = 21;
-  carryJudgeDrop = -1;
+  carryJudgeDrop = -1; carryShort = 0;
   // (THE LINE IN PROGRESS IS JUDGED WHATEVER THE DECISION'S CLOCK SAYS: it comes after every proposed line, and where their judging took
   // the decision's time the clock stops its judge before a swap is pressed -- a line whose swaps are already on the board would be let
   // go unread for a line read in time. Its judging runs to the move's own frame, the host's hard stop (clockFrameOut), as the judging
@@ -2315,6 +2316,14 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   carryNBn = imin(nrest, 64); for (int i = 0; i < carryNBn; i++) carryNB[i] = notBefore[i];   // (and the line's ranking judged so: rank.c judgeCand)
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);
+  // (THE WINDOW SHORT AT A LATER SWAP: the judge pressed the line's next swaps and cut it where a walk is over what the input window
+  // holds then (judge.c cutWhy 1) -- the swaps before the cut are still the line's, pressable as they were judged, and what they make
+  // was begun for with the swaps already on the board. The line in progress is those swaps, judged as its own line and ranked on what
+  // they make; the swaps past the cut are let go, as the frame loop drops them (front.c follow))
+  if (!j.dead && j.cutWhy == 1 && j.cut > 0 && j.cut < nrest) {
+    carryShort = nrest - j.cut; nrest = j.cut; jo.nNotBefore = nrest; carryNBn = imin(nrest, 64);
+    judge(&decQ, rest, nrest, &jo, &j);
+  }
   for (int i = 0; i < j.nats && i < nrest; i++) rest[i] = (CR(rest[i]) + j.risen[i]) * 8 + CC(rest[i]);
   carryJ = j;
   carryDropN = nrest; for (int i = 0; i < nrest; i++) carryDropRest[i] = rest[i];

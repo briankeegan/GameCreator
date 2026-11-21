@@ -23,6 +23,9 @@ double gb_bits_ms(int cells);
 int gb_replay(int nbytes, int narr, int mode, int64_t work, char *out, int cap);
 void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
+void gb_replay_raise(int on);
+int gb_front_raise(int32_t *out);
+int gb_carry_short(const int32_t *rest, int n);
 void gb_replay_allow(int allow);
 int gb_wait_last(int which);
 void gb_replay_enemy(int top, int out, int stop);
@@ -293,8 +296,58 @@ static int carryClock(const char *dir) {
     }
     fclose(f);
   }
+  // (THE WINDOW SHORT AT A LATER SWAP: short.txt -- the mode, a line in hand, then the board with the allowance the game gave -- each
+  // answered, then asked for the line in progress with that line in hand: its swaps before the walk the window does not hold are
+  // offered, never the line let go whole)
+  snprintf(path, sizeof path, "%s/short.txt", dir);
+  int shorts = 0, whole = 0;
+  { FILE *f = fopen(path, "r");
+    if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
+    while (fgets(line, sizeof line, f)) {
+      int mode = atoi(line); char hand[256];
+      const char *b = strstr(line, "GAMBITL ");
+      if (!b || sscanf(line, "%*d %255s", hand) != 1) continue;
+      int narr, n = loadLine(b, &narr);
+      const char *al = strstr(b, "] a");
+      gb_replay_allow(al ? atoi(al + 3) : -1);
+      if (n < 0 || gb_replay(n, narr, mode, REPLAY_WORK, rec, sizeof rec) < 0) continue;
+      int32_t sq[64]; int ns = seqOf(hand, sq, 64), got = gb_carry_short(sq, ns);
+      if (got < 0 || got >= ns) continue;
+      shorts++;
+      if (!got) { whole++; printf("  the line in hand let go whole, its next swap within the window (board %d)\n", atoi(b + 8)); }
+    }
+    fclose(f); }
+  printf("%s: the line in progress, the window short -- %d lines in hand cut at a later swap, %d let go whole\n", whole || !shorts ? "FAIL" : "ok", shorts, whole);
   printf("%s: the line in progress past the clock -- %d pairs with a line in hand, the clock out with lines judged %d times, the line in hand let go unread %d\n", unread || !outs ? "FAIL" : "ok", pairs, outs, unread);
-  return unread || !outs;
+  return unread || !outs || whole || !shorts;
+}
+// THE RAISE PRESSED AS ANSWERED (test DIR raise, its own process: the game's own profile, wait.words): boards of games lost to a
+// raise, the row partway in when the raise was answered (raise.txt: the mode, then the board). Each is answered, the raise offered, and
+// the raise keyed as the frame loop keys it and played: the rows the answer asked come in, none is begun after them, the board stands.
+// Answered with RAISE_WORK decisions' work
+#define RAISE_WORK 8   // (decisions' work: the least of 2, 4 and 8 at which the replay's clock leaves raise.txt's raise its rows judged)
+static int raisePressed(const char *dir) {
+  char path[4096]; static char line[1 << 17], rec[4096];
+  snprintf(path, sizeof path, "%s/wait.words", dir);
+  if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+  snprintf(path, sizeof path, "%s/raise.txt", dir);
+  FILE *f = fopen(path, "r");
+  if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
+  int raises = 0, over = 0;
+  gb_replay_raise(1);
+  while (fgets(line, sizeof line, f)) {
+    int mode = atoi(line), narr; const char *b = strstr(line, "GAMBITL ");
+    if (!b) continue;
+    int n = loadLine(b, &narr);
+    if (n < 0 || gb_replay(n, narr, mode, (int64_t)REPLAY_WORK * RAISE_WORK, rec, sizeof rec) < 0) continue;
+    int32_t v[9], o[4]; gb_replay_last(v);
+    if (v[0] != 2 || !gb_front_raise(o)) { printf("  no raise keyed (board %d): %s\n", atoi(b + 8), rec); continue; }
+    raises++;
+    if (o[2] || o[0] > o[1] || o[3]) { over++; printf("  a raise pressed past its rows (board %d): %d rows in of %d asked, a row begun after them %d, lost %d\n", atoi(b + 8), o[0], o[1], o[2], o[3]); }
+  }
+  fclose(f);
+  printf("%s: the raise pressed as answered -- %d raises keyed, %d pressed past the rows they asked\n", over || !raises ? "FAIL" : "ok", raises, over);
+  return over || !raises;
 }
 int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
@@ -304,6 +357,7 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
   if (argc > 2 && !strcmp(argv[2], "wait")) return waitWindow(dir);
   if (argc > 2 && !strcmp(argv[2], "carry")) return carryClock(dir);
+  if (argc > 2 && !strcmp(argv[2], "raise")) return raisePressed(dir);
   if (argc > 2 && !strcmp(argv[2], "spend")) return spendKept(dir);
   if (argc > 2 && !strcmp(argv[2], "design")) {
     int n = argc > 3 ? atoi(argv[3]) : 6, rows = argc > 4 ? atoi(argv[4]) : 10, cols = argc > 5 ? atoi(argv[5]) : 6, ms = argc > 6 ? atoi(argv[6]) : 2000;

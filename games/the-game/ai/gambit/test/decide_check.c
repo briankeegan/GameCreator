@@ -199,6 +199,32 @@ static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int
   }
   return i;
 }
+// THE RAISE AS THE FRAME LOOP PRESSES IT (gb_front_raise, after a replay that answered a raise from the question's own frame): the
+// answer's raise keyed as front.c take() keys it and played on the question's board with its garbage on its way, to two frames past
+// the last frame the button is down. Into out: the rows that came in, the rows the answer asked, 1 where a raise is still going -- a
+// row begun that the answer did not ask -- and 1 where the board is lost. 0 where the last answer is no such raise or makes no keys.
+EXPORT(gb_front_raise) int gb_front_raise(int32_t *out) {
+  const Answer *A = &theAnswer;
+  if (A->d.kind != 2 || A->raiseWait) return 0;
+  paThreadId(MAXTHREADS - 1);
+  frontNew(cfgReaction, 90, -1, 0);
+  Board *b0 = F.truth; cloneBoard(b0, hostBoard);
+  int32_t t0 = b0->clock, hl, hs, keyed = 0;
+  F.now = t0;
+  Arrival arr[MAXARR]; int32_t narr = 0;
+  for (int i = 0; i < hostQ.narr; i++) { Arrival a; memset(&a, 0, sizeof a); a.at = b0->stopWatch + hostQ.arr[i].at; a.g.width = hostQ.arr[i].width; a.g.height = hostQ.arr[i].height; a.g.isChain = hostQ.arr[i].isChain; a.g.frameEarned = NUL; arr[narr++] = a; }
+  static FAnswer fa; static Keys k;
+  memset(&fa, 0, sizeof fa); fa.kind = 2; fa.raiseNow = A->raiseNow; fa.raiseAfter = A->raiseAfter;
+  if (raiseKeysOn(&fa, b0, 0, 0, arr, narr, &k)) {
+    for (int q = 0; q < k.n; q++) planSet(t0 + q, (Planned){ k.ins[q], k.hl[q], k.hs[q], 0, 0 });
+    if (predict(b0, t0 + k.n + k.hl[k.n - 1] + 2, 0, 0, arr, narr, F.pr, &hl, &hs)) {
+      out[0] = fullTop(F.pr) - fullTop(b0); out[1] = 1 + A->raiseAfter / ROW_STEPS; out[2] = F.pr->manualRaise != 0; out[3] = F.pr->gameOverClock > 0;
+      keyed = 1;
+    }
+  }
+  paThreadId(0);
+  return keyed;
+}
 // THE LINE AS THE JUDGE PRESSES IT (gb_judge_line, beside gb_front_line): the question's board, its swaps judged with `allow` actions
 // left and the walks tapped (tap) or not, as a decision judges them. Into out: each swap's frame (ats), then dead, deadAt, lostAt.
 EXPORT(gb_judge_line) int gb_judge_line(int n, const int32_t *mv, int allow, int tap, int settled, int32_t *out) {
@@ -507,6 +533,22 @@ EXPORT(gb_replay_on) int gb_replay_on(int nbytes, int narr, int mode, int64_t wo
   int out = clockWentOut != 0 && rescues == rescued0;
   clockNowOf = 0; clockFrameOut = 0;
   return (held ? 1 : 0) | (out ? 2 : 0) | (held && carryDrop == 2 && carryLate ? 4 : 0);
+}
+// THE LINE IN PROGRESS, THE WINDOW SHORT (gb_carry_short, after a replay): the board just answered with the swaps `rest` in hand as
+// the line in progress, each due as soon as the one before is pressed -- carriedCand's answer: the swaps of it offered (0: let go
+// whole), -1 no board or no bottom-row panel to anchor it
+EXPORT(gb_carry_short) int gb_carry_short(const int32_t *rest, int n) {
+  Read R; Cand k; int wait;
+  if (!readBoard_(&R) || n < 1 || n > MAXLINE) return -1;
+  int32_t row1[W + 2]; for (int c = 1; c <= W; c++) row1[c] = decQ.b->p[1][c].f[ID];
+  Carry *C = &theCarry; memset(C, 0, sizeof *C);
+  if (!anchorOf(row1, rest, n)) return -1;
+  C->set = 1; C->id = carryFrom; carryPressed = 0; carryMoveOff = 0; C->nrest = n; C->rule = R.rule;
+  for (int i = 0; i < n; i++) C->rest[i] = rest[i];
+  clockIgnore = 1;
+  int got = carriedCand(&R, &k, &wait) ? k.nseq : 0;
+  clockIgnore = 0;
+  return got;
 }
 // THE SPEND BESIDE WHAT IS KEPT (gb_spend_first, after a replay): two lines of the board just answered, judged as the decision judges a
 // line, and the order put on the two. `keep`: none (nkeep 0) the decision's hold; else a break the break search found on the board,

@@ -597,6 +597,20 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
 // The answers: an answer's keys go in the plan, and the next decision is due on the frame they end on. One that came after its frame is
 // not played (a swap is pressed only on the board it was judged on); the next question is asked of the board as it is.
 static int follow(void);
+// A RAISE'S KEYS: the button down for the frames the row has left (raiseNow), and raiseAfter held after them for the rows on to the
+// decision's `to` -- the rows the decision judged the board alive through and no more. A button down past the row's end begins the
+// next row, which the engine then brings in whole whether or not the button stays down (pa.c handleManualRaise).
+static void raiseKeys(const FAnswer *a, Keys *k) {
+  k->n = imin(imax(1, a->raiseNow), MAXKEYS); k->held = 0;
+  for (int q = 0; q < k->n; q++) { k->ins[q] = IN_RAISE; k->hl[q] = q == k->n - 1 ? a->raiseAfter : 0; k->hs[q] = q == k->n - 1 && a->raiseAfter > 0; }
+}
+// (a raise answered for the board b: no keys where the search's own raise step makes none there; else the answer's own, whatever
+// that step holds)
+static int raiseKeysOn(const FAnswer *a, const Board *b, int32_t holdLeft, int32_t holdStarted, const Arrival *arr, int32_t narr, Keys *k) {
+  if (!keysOf(b, holdLeft, holdStarted, arr, narr, MK_RAISE, 0, 0, k)) return 0;
+  raiseKeys(a, k);
+  return 1;
+}
 static void take(void) {
   static FAnswer a;
   static Keys k;
@@ -633,8 +647,7 @@ static void take(void) {
     // raise's are, on the board as it will be then. The questions go on meanwhile, from the frame after this answer's: the wait is the
     // board's, and what lands in it is the next decision's to see -- an answer before the raise is due takes its keys' place)
     if (a.kind == 2 && a.raiseWait > 0) {
-      k.n = imin(imax(1, a.raiseNow), MAXKEYS); k.held = 0;
-      for (int q = 0; q < k.n; q++) { k.ins[q] = IN_RAISE; k.hl[q] = q == k.n - 1 ? a.raiseAfter : 0; k.hs[q] = q == k.n - 1 && a.raiseAfter > 0; }
+      raiseKeys(&a, &k);
       planClearFrom(at);
       F.nextAt = at + 1;
       at += a.raiseWait;
@@ -654,15 +667,11 @@ static void take(void) {
     if (a.kind == 0 && a.aim && !a.empty && allowanceAt(at) >= AIM_RESERVE && !(a.nhand && a.handAt[0] > at) &&
         iabs(F.pBoard->curRow - CR(a.aim)) + iabs(F.pBoard->curCol - CC(a.aim)) >= 2 &&
         keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, MK_GO, CR(a.aim), CC(a.aim), &k) && k.n > 0) { aimed = 1; F.st.aimed++; }
-    if (!aimed && !keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k)) {
+    if (!aimed && !(a.kind == 2 ? raiseKeysOn(&a, F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, &k)
+                                : keysOf(F.pBoard, F.pHoldLeft, F.pHoldStarted, F.pArr, F.pNarr, kind, a.kind == 1 ? CR(a.move) : 0, a.kind == 1 ? CC(a.move) : 0, &k))) {
       F.st.refused++;
       if (F.loggedRefused < LOGGED_MAX) { char l[160]; snprintf(l, sizeof l, "REFUSED answer for %d taken at %d: no keys press %d,%d there within a reaction", a.at, F.now, CR(a.move), CC(a.move)); flog(l); F.loggedRefused++; }
       continue;
-    }
-    // (a raise held down: the button stays down for the frames it takes to bring the rows in, and raiseAfter after them)
-    if (a.kind == 2 && a.raiseNow > k.n) {
-      k.n = imin(a.raiseNow, MAXKEYS);
-      for (int q = 0; q < k.n; q++) { k.ins[q] = IN_RAISE; k.hl[q] = q == k.n - 1 ? a.raiseAfter : 0; k.hs[q] = q == k.n - 1 && a.raiseAfter > 0; }
     }
     // (A LINE JUDGED PRESSED LATER: its hold lasts until the line's first swap is due, not a reaction -- the swap pressed on the frame it
     // was judged pressed from)
