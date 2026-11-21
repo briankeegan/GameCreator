@@ -33,7 +33,7 @@ typedef struct {
   int32_t matSettled;  // the same once the board has settled -- its chain landed (settleOf); -1 not asked
   int32_t groups;      // the threes the board the line leaves has the panels for, a chain's links (groupsOn); -1 not asked
   int32_t twinAfter;   // the swaps to a two-column eight on the board the line leaves (propose.c twinCostOn; 99 none), -1 not asked
-  int32_t nearAfter;   // under garbage: the swaps to the nearest break on the board the line leaves (breakNear; NEAR_MISS none), -1 not asked
+  int32_t nearAfter;   // under garbage: how near the next break is on the board the line leaves (search/break.c nearOf: its swaps, NEAR_MISS and over none to walk to), -1 not asked
   int32_t putOff;      // the frames the line puts the queue's drop off, beyond the board left alone (holdQueueAt): taken out of lostAt
   Judged j;
 } Outcome;
@@ -115,7 +115,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
 static int breakBuildable(const Board *b);   // (search/break.c: a break the panels touching garbage can be walked into)
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on the board)
-static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
+static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break; NEAR_MISS and over, how short of one)
 static int32_t perchOf(const Board *b, int *can);   // (search/break.c: how far the garbage is from coming down a row, and whether it can)
 static int twinCostOn(Board *b);              // (propose.c: the swaps to a two-column eight, 99 none)
 static int32_t twinWanted;                    // (some mode of the rules asks a combo of eight or more: decide.c read)

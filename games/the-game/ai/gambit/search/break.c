@@ -170,12 +170,68 @@ static void perchedOf(const Bits *B, Perches *P) {
   }
 }
 static void perchedDrops(const Board *b, Perches *P) { bitsOf(b, &scratchBits); perchedOf(&scratchBits, P); }
-static int nearOf(const Board *b) { return imin(breakNear(b), NEAR_MISS); }
+// HOW SHORT OF A BREAK A BOARD WITH NONE TO WALK TO IS (shortOf): of every three cells in a line with one beside garbage, and every colour
+// the board shows, the one missing the fewest panels -- a cell's panel is there when one of that colour can be walked to it along its
+// row (bitsBring) -- and of those the one walked least. A panel missing is one the board holds: as many more of the colour as the three
+// is short of, in the rows the cell's column runs through between its garbage (reach) -- a row shut in between two slabs is never fed.
+// A three with all its panels is a break, its walk the swaps; one or two short is past every walk (NEAR_MISS), a panel short before two
+// (NEAR_SPAN: more than two panels' walk); with none, NEAR_NONE. A panel whose colour is not shown yet (bits.c seenColour) is no panel
+// of any colour.
+#define NEAR_SPAN (2 * (W - 1) + 1)
+#define NEAR_NONE (NEAR_MISS + 2 * NEAR_SPAN)
+static int shortOf(const Bits *B) {
+  int top = B->top, best = NEAR_NONE;
+  unsigned beside[MAXROWS + 2];
+  uint8_t lo[MAXROWS + 2][W + 2], hi[MAXROWS + 2][W + 2];   // the rows a cell's column runs through, garbage to garbage
+  static LOCAL int32_t upTo[BITCOLOURS][MAXROWS + 2];       // a colour's panels in rows 1..r
+  for (int r = 1; r <= top; r++) {
+    unsigned g = B->gar[r], up = r + 1 <= top ? B->gar[r + 1] : 0, dn = r - 1 >= 1 ? B->gar[r - 1] : 0;
+    beside[r] = ~g & (up | dn | ((g << 1) & ALLCOLS) | (g >> 1)) & ALLCOLS;
+    for (int c = 1; c <= W; c++) lo[r][c] = (uint8_t)(r > 1 && !(B->gar[r - 1] >> c & 1) ? lo[r - 1][c] : r);
+  }
+  for (int r = top; r >= 1; r--) for (int c = 1; c <= W; c++) hi[r][c] = (uint8_t)(r < top && !(B->gar[r + 1] >> c & 1) ? hi[r + 1][c] : r);
+  for (int32_t k = 1; k < BITCOLOURS; k++) { upTo[k][0] = 0; for (int r = 1; r <= top; r++) upTo[k][r] = (upTo[k][r - 1] + bitCount(B->col[k][r])); }
+  #define SPARE(k, r, c) (upTo[k][hi[r][c]] - upTo[k][lo[r][c] - 1])
+  for (int r = 1; r <= top; r++) {
+    // a row of three with a cell beside garbage
+    for (int c0 = 1; c0 + 2 <= W; c0++) {
+      unsigned span = 7u << c0;
+      if (!(beside[r] & span) || (B->gar[r] & span)) continue;
+      for (int32_t k = 1; k < BITCOLOURS; k++) {
+        if (!seenColour(k) || !B->col[k][r]) continue;
+        int miss = 0, walk = 0, from, held = 1 << 30; unsigned used = 0;
+        for (int t = c0; t <= c0 + 2; t++) { int d = bitsBring(B, r, t, k, used, &from); if (d >= 0) { used |= 1u << from; walk += d; } else { miss++; held = imin(held, SPARE(k, r, t)); } }
+        int v = miss ? NEAR_MISS + (miss - 1) * NEAR_SPAN + walk : walk;
+        if (miss < 3 && v < best && (!miss || held >= 3)) best = v;
+      }
+    }
+    // a column of three with a cell beside garbage
+    if (r + 2 > top) continue;
+    for (int c = 1; c <= W; c++) {
+      unsigned bit = 1u << c;
+      if (!((beside[r] | beside[r + 1] | beside[r + 2]) & bit) || ((B->gar[r] | B->gar[r + 1] | B->gar[r + 2]) & bit)) continue;
+      for (int32_t k = 1; k < BITCOLOURS; k++) {
+        if (!seenColour(k) || !(B->col[k][r] | B->col[k][r + 1] | B->col[k][r + 2])) continue;
+        int miss = 0, walk = 0, from;
+        for (int q = r; q <= r + 2; q++) { int d = bitsBring(B, q, c, k, 0, &from); if (d >= 0) walk += d; else miss++; }
+        int v = miss ? NEAR_MISS + (miss - 1) * NEAR_SPAN + walk : walk;
+        if (miss < 3 && v < best && (!miss || SPARE(k, r, c) >= 3)) best = v;
+      }
+    }
+  }
+  #undef SPARE
+  return best;
+}
+// HOW NEAR A BREAK A BOARD IS, one number, lower the nearer (nearOf): the swaps to the nearest break (breakNear); with none to walk to,
+// how short of one it is (shortOf: NEAR_MISS and over)
+static int nearOf(const Board *b) { int n = breakNear(b); return n < NEAR_MISS ? n : shortOf(&scratchBits); }
 static int breakBuildable(const Board *b) { return breakNear(b) < NEAR_MISS; }
 static int garbageOn(const Board *b) { bitsOf(b, &scratchBits); return bitsLowestG(&scratchBits) <= scratchBits.rows; }
 // the panels on the board, garbage not counted -- the material every break is made from
 static int32_t panelsOn(const Board *b) { bitsOf(b, &scratchBits); return bitsPanels(&scratchBits); }
-static int32_t nearScore(const Board *b) { int n = breakNear(b); return -1000 * (n < NEAR_MISS ? n : NEAR_MISS) - uneven(b); }
+// (the swaps to the nearest break alone, every board with none to walk to alike: NEAR_MISS)
+static int walkNear(const Board *b) { return imin(breakNear(b), NEAR_MISS); }
+static int32_t nearScore(const Board *b) { return -1000 * walkNear(b) - uneven(b); }
 // How far a board is toward lining up with the converting row `want`: per column, its top panel below the lowest garbage of that colour,
 // and the one under it too
 static int32_t pairsOf(const Board *b, const int32_t *want) {
