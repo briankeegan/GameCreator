@@ -25,6 +25,7 @@ void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
 void gb_replay_allow(int allow);
 int gb_wait_last(int which);
+int gb_replay_on(int nbytes, int narr, int mode, int64_t work);
 int gb_line_agree(int *n);
 int gb_held_off(int *held, int *offCell);
 const char *gb_line_shown(void);
@@ -214,6 +215,44 @@ static int waitWindow(const char *dir) {
   printf("%s: the wait's window -- %d boards in the wait, %d walked the window out for no break\n", spent || !waits ? "FAIL" : "ok", waits, spent);
   return spent || !waits;
 }
+// THE LINE IN PROGRESS, THE CLOCK OUT (test DIR carry, its own process: the game's own profile, wait.words): pairs of boards a decision
+// apart, of games whose line in progress was let go with the decision's clock out (carry.txt: the mode, then the board; two lines a
+// pair). The first is answered with CARRY_WORK decisions' work, the second as the same game going on with the line played in hand, at
+// each share of a decision's work in CARRY_SHARES: where the clock goes out with lines judged in time, the line in hand is judged all
+// the same, never let go unread
+#define CARRY_WORK 4
+static int carryClock(const char *dir) {
+  char path[4096]; static char line[1 << 17], rec[4096];
+  snprintf(path, sizeof path, "%s/wait.words", dir);
+  if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+  snprintf(path, sizeof path, "%s/carry.txt", dir);
+  static const int CARRY_SHARES[] = { 8, 4, 2, 1 };   // (the second decision's work: a decision's, divided by each)
+  int outs = 0, unread = 0, pairs = 0;
+  for (unsigned s = 0; s < sizeof CARRY_SHARES / sizeof *CARRY_SHARES; s++) {
+    FILE *f = fopen(path, "r");
+    if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
+    int second = 0, ok = 0;
+    while (fgets(line, sizeof line, f)) {
+      int mode = atoi(line);
+      const char *b = strstr(line, "GAMBITL ");
+      if (!b) continue;
+      int narr, n = loadLine(b, &narr);
+      const char *al = strstr(b, "] a");
+      gb_replay_allow(al ? atoi(al + 3) : -1);
+      if (!second) { ok = n >= 0 && gb_replay(n, narr, mode, (int64_t)REPLAY_WORK * CARRY_WORK, rec, sizeof rec) >= 0; second = 1; continue; }
+      second = 0;
+      if (!ok || n < 0) continue;
+      int r = gb_replay_on(n, narr, mode, REPLAY_WORK / CARRY_SHARES[s]);
+      if (r < 0 || !(r & 1)) continue;
+      if (!s) pairs++;
+      if (r & 2) outs++;
+      if (r & 4) { unread++; printf("  the line in hand let go unread, the clock out (board %d, a decision's work / %d)\n", atoi(b + 8), CARRY_SHARES[s]); }
+    }
+    fclose(f);
+  }
+  printf("%s: the line in progress past the clock -- %d pairs with a line in hand, the clock out with lines judged %d times, the line in hand let go unread %d\n", unread || !outs ? "FAIL" : "ok", pairs, outs, unread);
+  return unread || !outs;
+}
 int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
   if (argc > 4 && !strcmp(argv[2], "board")) return drawBoard(argv[3], atoi(argv[4]));
@@ -221,6 +260,7 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
   if (argc > 2 && !strcmp(argv[2], "wait")) return waitWindow(dir);
+  if (argc > 2 && !strcmp(argv[2], "carry")) return carryClock(dir);
   if (argc > 2 && !strcmp(argv[2], "design")) {
     int n = argc > 3 ? atoi(argv[3]) : 6, rows = argc > 4 ? atoi(argv[4]) : 10, cols = argc > 5 ? atoi(argv[5]) : 6, ms = argc > 6 ? atoi(argv[6]) : 2000;
     char path[4096]; snprintf(path, sizeof path, "%s/rules.words", dir); if (!loadWords(path)) return 1;   // (the setup: the workers)
