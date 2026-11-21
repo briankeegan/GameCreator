@@ -14,7 +14,7 @@ fi
 # ./build.sh test [golden|speed]: the C checks, natively (test/main.c: the board as bits, perched blocks, the decisions replayed against the
 # golden; "golden" writes it from this build; "speed" answers questions on the wall clock and prints the engine work a decision does;
 # "replay LOG MODE" answers each of a lost game's last boards (GAMBITL) at half, once, twice and four times a decision's work;
-# "board LOG FRAME" draws the logged board of that frame). With no argument the wait's window (test wait) and the opening (test opening)
+# "board LOG FRAME" draws the logged board of that frame). With no argument the wait's window (test wait), the line in progress past the clock (test carry) and the opening (test opening)
 # are checked after them, a process each.
 # ./build.sh tsan: the C checks built with ThreadSanitizer (gcc's runtime) and run on GC_GAMBIT_WORKERS (default 4) workers -- every
 # search a worker runs beside Gambit's thread is raced against it; any data race fails (exit 66)
@@ -27,7 +27,7 @@ fi
 if [ "${1:-}" = test ]; then
   shift
   clang -O2 -pthread -DPA_HEAP -DGB_TEST -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes \
-    native.c host.c test/main.c -lm -lz -o /tmp/gambit-test && GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-0} /tmp/gambit-test test "$@" && { [ -n "${1:-}" ] || { GC_GAMBIT_WORKERS=0 /tmp/gambit-test test wait && GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-4} /tmp/gambit-test test opening; }; }
+    native.c host.c test/main.c -lm -lz -o /tmp/gambit-test && GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-0} /tmp/gambit-test test "$@" && { [ -n "${1:-}" ] || { GC_GAMBIT_WORKERS=0 /tmp/gambit-test test wait && GC_GAMBIT_WORKERS=0 /tmp/gambit-test test carry && GC_GAMBIT_WORKERS=${GC_GAMBIT_WORKERS:-4} /tmp/gambit-test test opening; }; }
   exit
 fi
 # ./build.sh material DIR...: core/material.h, the life a board has by its panels, measured on the games in DIR... (material.c, on the

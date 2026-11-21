@@ -549,6 +549,12 @@ static int ranked(const Read *R, const Found *S) {
   Cand ck; int cwait = 0, cc = 0;
   carryNone = 21;
   carryJudgeDrop = -1;
+  // (THE LINE IN PROGRESS IS JUDGED WHATEVER THE DECISION'S CLOCK SAYS: it comes after every proposed line, and where their judging took
+  // the decision's time the clock stops its judge before a swap is pressed -- a line whose swaps are already on the board would be let
+  // go unread for a line read in time. Its judging runs to the move's own frame, the host's hard stop (clockFrameOut), as the judging
+  // of a decision with nothing judged in time does)
+  double carryDue = clockDue, carryShare = clockShare; int carryOwnTime = !rescue && clockFrameOut && clockOut();
+  if (carryOwnTime) { clockDue = 0; clockShare = 0; }
   if (R->guides.n && (cc = carriedCand(R, &ck, &cwait))) { lastDrop = -1; if (!judgeCand(R, &ck, &theJudged[n])) { carryNone = 19; carryJudgeDrop = lastDrop; } }
   if (R->guides.n && cc && carryNone != 19) {
     carryNone = 0;
@@ -569,6 +575,7 @@ static int ranked(const Read *R, const Found *S) {
     Cand k2 = ck; k2.settled = 0; k2.play = PLAY_CARRY;
     if (cwait && judgeCand(R, &k2, &thru)) { thru.carried = 1; order[n] = &thru; n++; }
   }
+  if (carryOwnTime) { clockDue = carryDue; clockShare = carryShare; }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
   holdCand(R, 0, H);

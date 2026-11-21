@@ -479,6 +479,26 @@ EXPORT(gb_puzzle_engine) int gb_puzzle_engine(int nbytes, const char *rows, int 
   out[2] = best; out[4] = pressed;
   return 0;
 }
+// THE LINE IN PROGRESS PAST THE DECISION'S CLOCK (gb_replay_on, after a replay of the board before): the next board of the same game
+// answered as the game goes on -- the line the replay played in hand, its first swap pressed -- with `work` of a decision's time and the
+// move's own frame not yet come. Bit 0: a line was in hand; bit 1: the decision's clock went out with lines judged in time (no rescue);
+// bit 2: the line in hand was let go unread, the clock stopping its judge -- decide.c ranked
+static int frameNotCome(void) { return 0; }
+EXPORT(gb_replay_on) int gb_replay_on(int nbytes, int narr, int mode, int64_t work) {
+  int held = carryHeld();
+  if (gb_question_bytes(nbytes, narr) != 0) return -1;
+  modeRule = mode;
+  curQid = abortId + 1;
+  int32_t rescued0 = rescues;
+  replayWork = work; clockNowOf = replayNow; clockFrameOut = frameNotCome; clockWork = 0;
+  int topped = fullTop(hostBoard) >= hostBoard->height;
+  int32_t taps = hostTaps; if (replayAllow >= 0) hostTaps = 1;
+  answerQuestion(2, 0, topped, 0, 0, 0, 0, 0, 0, replayAllow >= 0, imax(0, replayAllow), 1, 1, 0, REPLAY_MS, 0, 0);
+  hostTaps = taps;
+  int out = clockWentOut != 0 && rescues == rescued0;
+  clockNowOf = 0; clockFrameOut = 0;
+  return (held ? 1 : 0) | (out ? 2 : 0) | (held && carryDrop == 2 && carryLate ? 4 : 0);
+}
 // THE WAIT'S WINDOW (gb_wait_last, after a replay): the decision was made in the wait with the hold's own board standing a break's
 // time (which 0), and the line the order puts first breaks nothing, leaves the window under a break's walk at rest and, its walk
 // charged, is lost sooner than the hold (which 1): a walk the break at rest is not pressed after -- rank.c walkTurns
