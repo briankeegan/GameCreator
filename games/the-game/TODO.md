@@ -49,6 +49,8 @@ it worked (ours / his).
       the same rows the dearer must outlive the cheaper by a break's time per three panels more (8ad090e) -- large_garbage 7 and 8
       stopped losing. Still open: the opener spends the 76-action window before the first garbage lands (combo_storm 2/4/5/6/8, most
       of the remaining early losses), and survival threes that buy stop time without breaking anything.
+      While a slab pops, a line that breaks nothing and walks the window under a break's walk no longer wins over the hold on its
+      later loss (b986fb9, gate `test wait`): combo_storm-5's c6 entries at 8593/8620 that left 0-3 actions for the break.
 - [ ] **L2. Wasted moves: walking up for one swap and back down.** Distance matters: a swap nearby goes before a move far away; 4
       swaps in 6 moves beats 1 swap in 9 moves. Between garbage it is almost always a wasted move; if the bot must go, it finishes its
       break first. Measure: cursor actions per swap, round trips, actions on lines not finished.
