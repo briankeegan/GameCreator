@@ -506,16 +506,12 @@ static int undoesLast(const Judge *J) {
   int32_t L = decQ.b->p[r][c].f[ID], R = decQ.b->p[r][c + 1].f[ID];
   return (L > 0 || R > 0) && L == __atomic_load_n(&undoIdL, __ATOMIC_RELAXED) && R == __atomic_load_n(&undoIdR, __ATOMIC_RELAXED);
 }
-// (THE LINES A FILTER TAKES OUT: those it names, unless the line lives or every line it keeps, the hold among them, is lost within a
-// break's time (rankSave) on the frames the boards are lost -- there the line taken out may be the only life. Returns the lines kept)
-static int cutUnlessDying(Judge **ord, int n, int (*named)(const Judge *), int32_t *cut, int carryWhy) {
-  double keptLost = -1; int keptLives = 0;
-  for (int i = 0; i < n; i++) { const Judge *J = ord[i]; if (named(J)) continue;
-    if (J->o.lives) keptLives = 1; else if (!J->o.dead && diesAt(J) > keptLost) keptLost = diesAt(J); }
-  if (!keptLives && keptLost < rankSave) return n;
+// (THE LINES A FILTER TAKES OUT: every one it names, whatever the board -- the owner: everything is an emergency, that is not good enough.
+// The hold names nothing and is always kept. Returns the lines kept)
+static int cutAlways(Judge **ord, int n, int (*named)(const Judge *), int32_t *cut, int carryWhy) {
   int m = 0;
   for (int i = 0; i < n; i++) { Judge *J = ord[i];
-    if (named(J) && !J->o.lives) { (*cut)++; if (J == carriedJ) { carriedJ = 0; carryNone = carryWhy; } if (J == opCarried) opCarried = 0; continue; }
+    if (named(J)) { (*cut)++; if (J == carriedJ) { carriedJ = 0; carryNone = carryWhy; } if (J == opCarried) opCarried = 0; continue; }
     ord[m++] = J; }
   return m;
 }
@@ -854,14 +850,12 @@ static int ranked(const Read *R, const Found *S) {
       breakThrough = !lives && !clean;
     }
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave) && !(breakThrough && order[i]->apBroke > 0 && diesAt(order[i]) >= keptDies)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
-  // THE REACH (the owner: can't move more than five, keep moves close by): no line may walk the cursor more than REACH_STEPS steps, rows
-  // and columns, from the cursor to its first swap or from one swap to the next
-  // -- unless every line that keeps within the reach, the hold among them, is lost within a break's time (rankSave) on the frames the
-  // boards are lost (rank.c diesAt), or the far line lives: there the walk is the board's life
-  n = cutUnlessDying(order, n, farForNothing, &reachCut, 28);
-  // NO FLIP AND BACK ACROSS DECISIONS: a line that swaps straight back the two panels the last decision swapped is taken out -- unless it
-  // lives, or every other line, the hold among them, is lost within a break's time (rankSave) on the frames the boards are lost
-  n = cutUnlessDying(order, n, undoesLast, &undoCut, 29);
+  // THE REACH (the owner: can't move more than five, keep moves close by -- and no emergency lets one through): no line may walk the
+  // cursor more than REACH_STEPS steps, rows and columns, from the cursor to its first swap or from one swap to the next
+  n = cutAlways(order, n, farForNothing, &reachCut, 28);
+  // NO FLIP AND BACK ACROSS DECISIONS: a line that swaps straight back the two panels the last decision swapped is taken out, whatever
+  // the board
+  n = cutAlways(order, n, undoesLast, &undoCut, 29);
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
@@ -2002,12 +1996,11 @@ static Played playOf(const Read *R, int n) {
     }
     clockDue = keepDue; clockShare = keepShare;
   }
-  // (THE REACH HELD TO THE END: a line put in the order's place after it was cut -- a set-up, a plan, a trigger -- walks no further for
-  // nothing than one ranked there: past the reach, where the order kept a line within it that stands a break's time, the best such line
-  // is played instead, the hold among them)
-  if (P.line && !R->up && farForNothing(P.line) && !P.line->o.lives) {
-    const Judge *in = 0; for (int i = 0; i < n && !in; i++) if (!farForNothing(order[i]) && !order[i]->o.dead && (order[i]->o.lives || diesAt(order[i]) >= rankSave)) in = order[i];
-    if (in) { P.line = in->hold || (in->wait && in->k.play != PLAY_CARRYWAIT) ? 0 : in; P.top = in; P.wait = 0; P.deferred = 0; reachCut++; }
+  // (THE REACH HELD TO THE END: a line put in the order's place after the cut -- a set-up, a plan, a trigger -- keeps to the reach and
+  // takes no flip back as the order does: the best line the order kept is played instead, the hold among them)
+  if (P.line && !R->up && (farForNothing(P.line) || undoesLast(P.line))) {
+    const Judge *in = 0; for (int i = 0; i < n && !in; i++) if (!farForNothing(order[i]) && !undoesLast(order[i])) in = order[i];
+    P.line = !in || in->hold || (in->wait && in->k.play != PLAY_CARRYWAIT) ? 0 : in; P.top = in; P.wait = 0; P.deferred = 0; reachCut++;
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
