@@ -911,14 +911,18 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
   if (finishEightBy(x, y) || finishEightBy(y, x)) goalNoSooner = 1;
-  // (A BREAK IN HAND BEFORE A PROMISE: under garbage, of two that do not live, a line that clears nothing and is credited past its own
-  // loss by the moves after it, beside a line that breaks garbage lost a break's time later than that line's own loss, the break first --
-  // r1350, 5110: a ready lost at 98, then344, over a break in progress lost at 273; the 344 was never kept and the board was lost at 5287)
+  // (A BREAK IN HAND BEFORE A PROMISE -- the owner: break the garbage: under garbage, of two that do not live, a line that breaks none of
+  // it and is credited past its own loss by the moves after it, beside a line that breaks garbage and is lost no sooner on its own board,
+  // the break first -- the moves after are planned again each decision, on the window the line spent, and the break is on the board now.
+  // r1350, 5110: a ready lost at 98, then344, over a break in progress lost at 273; the 344 was never kept and the board was lost at
+  // 5287. The finish's eight keeps its own rule: finishEightBy)
   if (!lx && decF.under) {
-    int px = !x->hold && !clears(x) && !x->o.dead && x->o.lostAt >= 0 && diesAt(x) > x->o.lostAt, py = !y->hold && !clears(y) && !y->o.dead && y->o.lostAt >= 0 && diesAt(y) > y->o.lostAt;
     int bx = !x->hold && !x->o.dead && x->apBroke > 0, by = !y->hold && !y->o.dead && y->apBroke > 0;
-    if (px && by && !bx && y->o.lostAt - x->o.lostAt >= rankSave) return (cmpKey = __LINE__, 1);
-    if (py && bx && !by && x->o.lostAt - y->o.lostAt >= rankSave) return (cmpKey = __LINE__, -1);
+    if (bx != by) {
+      const Judge *b = bx ? x : y, *p = bx ? y : x;
+      double own = lostAtOf(p->o.lostAt, 0);
+      if (!p->hold && !p->o.dead && own >= 0 && diesAt(p) > own && lostAtOf(b->o.lostAt, 0) >= own && !finishEightBy(p, b)) return (cmpKey = __LINE__, (bx ? -1 : 1));
+    }
   }
   // (A BREAK BEGUN IS FINISHED -- the owner: walking up for one swap and back is wasted input; if it had to go there, it finishes its
   // break: a break in progress that has pressed a swap of it, beside a line that does not live and breaks no more, lost no sooner than a
