@@ -745,14 +745,21 @@ static int outlives(const Judge *o, const Judge *c) {
   if (o->o.lives || dn >= 1e300) return 1;
   return dn >= 0 && dn < 1e299 && dn - dc >= rankSave;
 }
+// (THE LINE IN PROGRESS PLAYED OUT ON A CALM BOARD -- the owner: no changing minds, no wasted moves: no garbage on the board and none on
+// its way, nothing can land that the judge has not seen, so a line in progress lost past the horizon that still stands NEAR_LOSS breaks'
+// time is finished before the line that lives beside it is begun: the board has that line's time once this one is done, and every
+// swap pressed of a line put down is the window spent for nothing)
+static int calmKept(const Judge *c, const Judge *o) {
+  return !decF.under && !garbageComing() && c->carried && !c->hold && !c->o.dead && o->o.lives && diesAt(c) >= NEAR_LOSS * rankSave && diesAt(c) < 1e299;
+}
 // THE SURVIVAL CREDIT of two lines, each beside the other: lives, or counted as living (the horizon, the finish's safe board), and
 // where it is taken back -- compareJudged's first step, and the log's cr=
 static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   int lx = livesOn(x), ly = livesOn(y);
   // (the horizon's credit is no life beside a board that outlives it: the line in progress lost past the horizon, beside a line that
   // lives or is lost a break's time later, is a line that is lost -- death is never an option)
-  if (lx && !x->o.lives && outlives(y, x)) lx = 0;
-  if (ly && !y->o.lives && outlives(x, y)) ly = 0;
+  if (lx && !x->o.lives && outlives(y, x) && !calmKept(x, y)) lx = 0;
+  if (ly && !y->o.lives && outlives(x, y) && !calmKept(y, x)) ly = 0;
   // (nor, under garbage, the credit of a line that breaks nothing beside a break lost within a break's time of it: the break is the way
   // out the board has, the horizon is a promise -- r1363, 14839: a 4x stall in progress lost at 296 kept over a break lost at 282, and no
   // break offered again; r1362, 16120)
@@ -863,7 +870,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (and a line whose chain stays at 2x or less over one in progress that runs past it -- the owner: combos, not chains; set 86
     // combo_storm 1, 2806-2857: a 4x in progress lost at 365 kept over a break that stops the chain lost at 466)
     if (finishAsked() && !o->hold && !o->o.dead && chainPastTwo(c) && !chainPastTwo(o) && diesAt(o) >= diesAt(c)) modeOver = 1;
-    if (!c->hold && !modeOver && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead && !outlives(o, c)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    if (!c->hold && !modeOver && imax(0, brokeSeen(c)) >= imax(0, brokeSeen(o)) && !c->o.dead && (!outlives(o, c) || calmKept(c, o))) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. THE MODE, AMONG LINES THAT LIVE (the owner: just don't die; the mode is respected, garbage on the board or not): a line off the
   // mode after one that keeps to it and lives -- where the one keeping to it does not live, the later loss decides. Under garbage, only
