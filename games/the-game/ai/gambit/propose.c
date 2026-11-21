@@ -1101,7 +1101,7 @@ static int letDownCand(Cand *k) {
   static LOCAL int32_t line[MAXPATH];
   int n = letDownLine(decQ.b, line);
   if (!n || !candOf(k, PLAY_LEVEL, line, n, -1, 0)) return 0;
-  k->drop = 1; k->settled = 0;
+  k->drop = 1; k->letDown = 1; k->settled = 0;
   return 1;
 }
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {

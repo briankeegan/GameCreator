@@ -9,6 +9,7 @@ typedef struct {
   int32_t set, play, nseq, seq[MAXLINE], aim, extend, settled;
   int32_t grown;   // a line another proposed, one more panel walked into its match (propose.c growLines)
   int32_t drop;    // a perched block let down (search/break.c perchedDrops)
+  int32_t letDown; // the garbage let down off its tallest column (propose.c letDownCand): a set-up read on its own clears (judge.c firstClear)
   int32_t kept;    // an intention the last decision kept, found again (decide.c keptJudged)
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
@@ -107,8 +108,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // judge could not play out is judged on the search's word)
   // (the line in progress waiting for the board to settle: judged on the board settled, as carriedCand found it)
   outNBOn = play == PLAY_CARRY || play == PLAY_CARRYWAIT;
+  outWinWait = k->x.broke > 0 || decF.under;   // (under garbage any line may be the break: judged again cut where it breaks none)
   Outcome oc = play == PLAY_CARRYWAIT ? outcomeOf(k->seq, k->nseq, st, 0, 1) : outcome(k->seq, k->nseq, st);
-  outNBOn = 0;
+  outNBOn = 0; outWinWait = 0;
   // (A LINE THE JUDGE COULD NOT PLAY OUT IS NO LINE: a swap not there to press, however long the board is let settle, and the line
   // stops -- its board is not the one the line makes, so it is not ranked as if it were)
   // (an extension cut: which swap, why, at what frame of its walk, and the search's chain for it -- the log's extCut=)
@@ -175,7 +177,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // play is a clear)
   Xs x = k->x;
   if (setupPlay(play)) {
-    int fc = firstClear(&decQ, k->seq, k->nseq);
+    int fc = firstClear(&decQ, k->seq, k->nseq, k->letDown);
     if (fc == 0) { play = PLAY_CLEAR; memset(&x, 0, sizeof x); x.combo = 3; x.chain = 1; x.floor = -1; m.combo = 3; m.chain = 1; m.broke = 0; m.cells = 0; }
     else if (fc > 0) k->nseq = fc;
   }
@@ -917,6 +919,17 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
     if (carriedSunk >= 0 && carriedSunk - lineWalk(c) > 0 && !c->o.dead && brokeSeen(c) > 0 && imax(0, brokeSeen(o)) <= brokeSeen(c) && !o->o.lives && lostOf(c) >= rankSave)
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
+  // (THE BREAK THE WINDOW STILL PRESSES -- the owner: break the garbage, at once: under garbage with the window under a break's walk
+  // (BREAK_WALK), of two that do not live, a line that breaks garbage before one that presses swaps and breaks none, unless that one's
+  // board outlives the break's (outlives): there every action pressed for no break is one the break is not pressed with, and the
+  // break put off is found again with the window spent)
+  if (!lx && decF.under && pressAllowance >= 0 && pressAllowance < BREAK_WALK) {
+    int bx = !x->hold && !x->o.dead && x->apBroke > 0, by = !y->hold && !y->o.dead && y->apBroke > 0;
+    if (bx != by) {
+      const Judge *b = bx ? x : y, *o = bx ? y : x;
+      if (!o->hold && o->k.nseq > 0 && !outlives(o, b)) return (cmpKey = __LINE__, (bx ? -1 : 1));
+    }
   }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
