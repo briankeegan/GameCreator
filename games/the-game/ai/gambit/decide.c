@@ -491,7 +491,9 @@ static int reachesFar(const Judge *J) {
   for (int i = 0; i < J->k.nseq; i++) { int sr = CR(J->k.seq[i]); if (iabs(sr - r) > REACH_ROWS) return 1; r = sr; }
   return 0;
 }
-static int farForNothing(const Judge *J) { return !J->hold && !(J->apBroke > 0) && goalKeyOf(J) != 0 && reachesFar(J); }
+// (the attack finish them asks -- a combo of eight or more on the mode's first entry -- walks where it must; every other line that breaks
+// nothing keeps to the reach, the threes of the fill's list among them)
+static int farForNothing(const Judge *J) { return !J->hold && !(J->apBroke > 0) && !(goalKeyOf(J) == 0 && J->apCombo >= 8) && reachesFar(J); }
 // (THE SWAP JUST PRESSED: the two panels the last decision swapped, left and right as they stood after it, while no decision since has
 // pressed anything -- answer.c sets them)
 static int32_t undoIdL = -1, undoIdR = -1, undoFresh;
@@ -853,8 +855,8 @@ static int ranked(const Read *R, const Found *S) {
       breakThrough = !lives && !clean;
     }
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave) && !(breakThrough && order[i]->apBroke > 0 && diesAt(order[i]) >= keptDies)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
-  // THE REACH UP AND DOWN (the owner: limit how far it can move up and down, to stop the wastes): a line that breaks no garbage and makes
-  // nothing of the mode's first entry may not step more than REACH_ROWS rows from the cursor to its first swap or from one swap to the next
+  // THE REACH UP AND DOWN (the owner: limit how far it can move up and down, to stop the wastes): a line that breaks no garbage and fires
+  // no eight of the mode's first entry may not step more than REACH_ROWS rows from the cursor to its first swap or from one swap to the next
   // -- unless every line that keeps within the reach, the hold among them, is lost within a break's time (rankSave) on the frames the
   // boards are lost (rank.c diesAt), or the far line lives: there the walk is the board's life
   n = cutUnlessDying(order, n, farForNothing, &reachCut, 22);
@@ -2000,6 +2002,13 @@ static Played playOf(const Read *R, int n) {
       }
     }
     clockDue = keepDue; clockShare = keepShare;
+  }
+  // (THE REACH HELD TO THE END: a line put in the order's place after it was cut -- a set-up, a plan, a trigger -- walks no further for
+  // nothing than one ranked there: past the reach, where the order kept a line within it that stands a break's time, the best such line
+  // is played instead, the hold among them)
+  if (P.line && !R->up && farForNothing(P.line) && !P.line->o.lives) {
+    const Judge *in = 0; for (int i = 0; i < n && !in; i++) if (!farForNothing(order[i]) && !order[i]->o.dead && (order[i]->o.lives || diesAt(order[i]) >= rankSave)) in = order[i];
+    if (in) { P.line = in->hold || (in->wait && in->k.play != PLAY_CARRYWAIT) ? 0 : in; P.top = in; P.wait = 0; P.deferred = 0; reachCut++; }
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
