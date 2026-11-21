@@ -588,10 +588,10 @@ static int ranked(const Read *R, const Found *S) {
   carryNone = 21;
   carryJudgeDrop = -1; carryShort = 0;
   // (THE LINE IN PROGRESS IS JUDGED WHATEVER THE DECISION'S CLOCK SAYS: it comes after every proposed line, and where their judging took
-  // the decision's time the clock stops its judge before a swap is pressed -- a line whose swaps are already on the board would be let
-  // go unread for a line read in time. Its judging runs to the move's own frame, the host's hard stop (clockFrameOut), as the judging
-  // of a decision with nothing judged in time does)
-  double carryDue = clockDue, carryShare = clockShare; int carryOwnTime = !rescue && clockFrameOut && clockOut();
+  // the decision's time -- or a search's share of it still in force -- the clock stops its judge before a swap is pressed: a line whose
+  // swaps are already on the board would be let go unread for a line read in time. Its judging always runs to the move's own frame, the
+  // host's hard stop (clockFrameOut), as the judging of a decision with nothing judged in time does)
+  double carryDue = clockDue, carryShare = clockShare; int carryOwnTime = !rescue && clockFrameOut;
   if (carryOwnTime) { clockDue = 0; clockShare = 0; }
   if (R->guides.n && (cc = carriedCand(R, &ck, &cwait))) { lastDrop = -1; if (!judgeCand(R, &ck, &theJudged[n])) { carryNone = 19; carryJudgeDrop = lastDrop; } }
   if (R->guides.n && cc && carryNone != 19) {
