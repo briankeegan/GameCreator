@@ -36,7 +36,7 @@ static void legMove(int32_t v, int cells, int *row, int *col) {
 }
 // NO DAS (the owner: no DAS): no direction is ever held to auto-repeat -- every walk is tapped a cell at a time, by the search, the judge
 // and the frame loop alike
-#define NO_DAS 0
+#define NO_DAS 1
 static int legHeld(int32_t v, int row, int col) {
   if (NO_DAS) return 0;
   int32_t d = v & 15;
