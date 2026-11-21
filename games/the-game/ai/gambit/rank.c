@@ -289,6 +289,7 @@ static double diesAt(const Judge *x) {
 // (and a board lost within a break's time has no frame to give for a walk: there the later loss decides by any margin -- the hold lost at
 // 8 is never put before the line lost at 19 for the cursor's walk)
 static int spendsReserve(const Judge *J);
+static int waitWalks(const Judge *J);
 static int walkTurns(const Judge *x, const Judge *y) {
   if (x->o.lives || y->o.lives) return 0;
   double dx = diesAt(x), dy = diesAt(y);
@@ -332,7 +333,7 @@ static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
   if (extCounts(x)) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
-  if (x->hold || own >= 1e299 || own < 0) return own;
+  if (x->hold || own >= 1e299 || own < 0 || waitWalks(x)) return own;
   return own - (double)WALK_FRAMES * lineWalk(x);
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
@@ -565,8 +566,10 @@ static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
 // (under garbage a reserve is kept only for a break some line of the decision makes: with none offered, the inputs kept are for a break
 // that is not there, and the board that holds them builds none -- decide.c sets it before the order is made)
 static int breakOffered = 1;
+static int32_t waitOf(void);
+static int cascadeLive(Board *b);   // (propose.c: the board still moving of its own)
 static int allowAtNeed(int walk) {
-  if (decF.under) return pressAllowance - walk;
+  if (decF.under) return allowLeftAt(waitOf(), walk);
   int32_t t = EARLIEST_LANDING;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
   { int32_t q = holdQueueAt(); if (q != NOT_ASKED && q >= 0 && q < t) t = q; }
@@ -595,6 +598,17 @@ static int32_t restOn(const Judge *J0) {
   if (!J->restAsked) { J->restAsked = 1; J->rest = J->hold ? restOf(0, 0, 0, &J->restCan, &J->restAt) : restOf(J->k.seq, J->k.nseq, J->settled, &J->restCan, &J->restAt); }
   return J->rest;
 }
+// THE WAIT (the owner: the wait is for setting up the next break, not for holding): under garbage with no break offered, a slab
+// popping or the board's own chain falling, no break is pressed before the board left alone is at rest (the hold's restAt). The frames
+// to it are the cursor's to walk in: the window is read as the next break finds it there (allowAtNeed), and a walk that leaves it a
+// break's walk then is charged nothing (lostOf). 0: no wait.
+static int32_t waitOf(void) {
+  const Judge *H = rankHold;
+  if (!decF.under || breakOffered || !H || H->o.dead || !decQ.b || !(popLeft(decQ.b) > 0 || cascadeLive(decQ.b))) return 0;
+  restOn(H);
+  return imax(0, H->restAt);
+}
+static int waitWalks(const Judge *J) { return pressAllowance >= 0 && waitOf() > 0 && allowAtNeed(lineWalk(J)) >= BREAK_WALK; }
 static int letsDown(const Judge *J) {
   const Judge *H = rankHold;
   if (!decF.under || breakOffered || !H || J->hold || J->o.dead || H->o.dead || clears(J) || J->o.j.clearedPanels > 0) return 0;
@@ -1369,7 +1383,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (and only a nearer line the input allowance affords with a break's walk to spare (BREAK_WALK): one that walks the allowance down
     // to nothing is nearer a break it cannot then press)
     const Judge *nr = x->o.nearAfter < y->o.nearAfter ? x : y;
-    if (lo >= rankSave && tlo == thi && (pressAllowance < 0 || pressAllowance - lineWalk(nr) >= BREAK_WALK)) return (cmpKey = __LINE__, (x->o.nearAfter - y->o.nearAfter));
+    if (lo >= rankSave && tlo == thi && (pressAllowance < 0 || allowAtNeed(lineWalk(nr)) >= BREAK_WALK)) return (cmpKey = __LINE__, (x->o.nearAfter - y->o.nearAfter));
   }
   if (!lx && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   Tier tx = tierView(x), ty = tierView(y);
