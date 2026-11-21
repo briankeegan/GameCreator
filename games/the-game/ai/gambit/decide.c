@@ -637,7 +637,7 @@ static int ranked(const Read *R, const Found *S) {
     Outlived sv = svDone ? svJob : outliveSave(&decQ, HORIZON + REST, REST, leftMs(), OUT_DEPTH, 30);
     offered[PLAY_SURVIVE] = sv.set && sv.nseq ? 1 : 0;
     Cand sk;
-    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeCand(R, &sk, &theJudged[n + 1])) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
+    if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeWalkedIn(R, &sk, &theJudged[n + 1], sk.nseq)) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
   }
   // (THE LIFE AFTER THE LINE -- the owner: survival is not the line that buys the most frames alone, with nothing pressed after it: in
