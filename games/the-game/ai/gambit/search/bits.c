@@ -26,6 +26,8 @@ static void bitsOf(const Board *b, Bits *B) {
   // (a cell holds a panel up: not garbage, and on the floor or on something)
   for (int r = 1; r <= B->top; r++) B->held[r] = (uint8_t)(~B->gar[r] & (r == 1 ? ALLCOLS : (B->pan[r - 1] | B->gar[r - 1])) & ALLCOLS);
 }
+// a colour the board shows (an unseen one, and the colourless 9, is no colour to plan on)
+static int seenColour(int32_t v) { return v > 0 && v < 30 && v != 9; }
 static int bitCount(unsigned v) { int n = 0; for (; v; v &= v - 1) n++; return n; }
 static int lowBit(unsigned v) { int i = 0; if (!v) return 0; while (!(v >> i & 1)) i++; return i; }
 static int highBit(unsigned v) { int i = 31; if (!v) return 0; while (!(v >> i & 1)) i--; return i; }

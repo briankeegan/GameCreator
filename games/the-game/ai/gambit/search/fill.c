@@ -17,7 +17,6 @@ typedef struct {
 } Land;
 typedef struct { int32_t n, len[FILLMAX], seq[FILLMAX][MAXPATH]; } Fills;
 
-static int seenColour(int32_t v) { return v > 0 && v < 30 && v != 9; }
 static int32_t landAt(const Land *L, int r, int c) { return r < 1 || r > L->top || c < 1 || c > W ? 0 : L->c[r][c]; }
 // the run of colour k through (r, c) along (dr, dc): its length, and the cells just past each end
 static int runOf(const Land *L, int r, int c, int dr, int dc, int32_t k, int *er0, int *ec0, int *er1, int *ec1) {

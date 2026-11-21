@@ -778,7 +778,7 @@ static int convertLines(const Read *R, Cand *out, int n, int cap) {
 }
 // WORK ON THE WAY (plans/gambit-infra.md B, D): a settled line whose first swap is a walk away, again with a swap made first on a cell
 // the cursor passes anyway (a step aside at most) that does something there -- it clears, or it sets up: the board it settles to has the
-// nearest break nearer (search/break.c nearOf, under garbage) or its colours more connected (search/plan.c connectedOf, the planner's own
+// nearest break nearer (search/break.c walkNear, under garbage) or its colours more connected (search/plan.c connectedOf, the planner's own
 // setup measure). Only the swaps on some line's way are stepped (on every thread: core/nodes.h stepBatch), the most useful first: a
 // clear, then the break brought nearer, then the colours joined. Offered as the play it was made from, every swap pressed once the board
 // settles; the engine judges the whole of it, so a swap that spoils the line or leaves the board no better is ranked by what it does.
@@ -819,7 +819,7 @@ static int wayLines(Cand *out, int n, int cap) {
   if (!no) return n;
   const Board *b0 = ensureBoard(x, root);
   int under = garbageOn(decQ.b);
-  int32_t near0 = under ? nearOf(b0) : 0, conn0 = connectedOf(b0);
+  int32_t near0 = under ? walkNear(b0) : 0, conn0 = connectedOf(b0);
   stepBatch(x, par, on, MK_SETTLE, no);
   int nu = 0;
   for (int j = 0; j < no; j++) {
@@ -828,7 +828,7 @@ static int wayLines(Cand *out, int n, int cap) {
     if (!liveNode(x, o) || !statsOf(x, o, &st)) continue;
     const Board *b = ensureBoard(x, o);
     if (!b) continue;
-    int32_t nearer = under ? near0 - nearOf(b) : 0, joined = connectedOf(b) - conn0;
+    int32_t nearer = under ? near0 - walkNear(b) : 0, joined = connectedOf(b) - conn0;
     // (a clear of three that breaks nothing is no work: a wasted three)
     int32_t sc = st.cleared > 3 || st.broke > 0 ? 1000 + st.cleared : nearer > 0 ? 100 + nearer : joined > 0 ? joined : 0;
     if (sc > 0) { on[nu] = on[j]; score[nu++] = sc; }
@@ -912,10 +912,13 @@ static int32_t zipSpread(int32_t g[][W + 2], int top) {
 // settled, and the garbage landed on the board it leaves as the game lands it -- the swaps to the nearest break then (search/break.c
 // nearOf) against the board left alone's; the swaps that bring it nearer offered, most saved first: the time before a slab lands spent
 // putting its break in place
+// (A SWAP THAT LEAVES IT ONLY LESS SHORT OF A BREAK -- none to walk to before or after, a panel fewer missing or a pair nearer (nearOf
+// past walkNear) -- is kept aside and offered after every other line (readyShortLines): judged last, it never takes a break's judging)
 #define READY_BUILD 3
 static LOCAL Ctx *rbCtx;
+static int32_t readyShort[READY_BUILD], readyShortGain[READY_BUILD], readyShortN;
 static int readyBuild(const Read *R, Cand *out, int n, int cap) {
-  (void)R; readyBuilt = 0; readyBuildWhy = 0;
+  (void)R; readyBuilt = 0; readyBuildWhy = 0; readyShortN = 0;
   int under = garbageOn(decQ.b);
   if (decQ.narr <= 0 && !under) { readyBuildWhy = 1; return n; }
   if (clockOut() || n >= cap) { readyBuildWhy = 2; return n; }
@@ -927,13 +930,14 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
   Board *l0 = landing ? landedAll(decQ.b, decQ.arr, decQ.narr, last, st) : 0;
   if (landing && !l0) { readyBuildWhy = 3; landing = 0; }
   if (!landing && !under) return n;
-  int32_t near0 = nearOf(landing ? l0 : decQ.b);
+  int32_t near0 = walkNear(landing ? l0 : decQ.b), short0 = nearOf(landing ? l0 : decQ.b);
   if (near0 <= 1) { readyBuildWhy = 4; return n; }   // (a break a swap away already waits for it)
   Ctx *x = rbCtx = ctxOf(rbCtx);
   int root = rootOf(x, &decQ);
   if (root < 0) return n;
   static int32_t ms[MAXROWS * W], par[MAXROWS * W], gain[MAXROWS * W], idx[MAXROWS * W], tmp[MAXROWS * W];
-  int nm = swapsOfNode(x, root, ms), ng = 0;
+  static int32_t sm[MAXROWS * W], sgain[MAXROWS * W], sidx[MAXROWS * W];
+  int nm = swapsOfNode(x, root, ms), ng = 0, ns = 0;
   for (int j = 0; j < nm; j++) par[j] = root;
   stepBatch(x, par, ms, MK_SETTLE, nm);
   for (int j = 0; j < nm && !clockOut(); j++) {
@@ -949,15 +953,25 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
       lb = landedAll(b, left, nl, imax(0, last - t), st);
       if (!lb) continue;
     }
-    int32_t g = near0 - nearOf(lb);
-    if (g > 0) { ms[ng] = ms[j]; gain[ng] = g; idx[ng] = ng; ng++; }
+    int32_t g = near0 - walkNear(lb), gs = g > 0 ? 0 : short0 - nearOf(lb);
+    if (g > 0) { ms[ng] = ms[j]; gain[ng] = g; idx[ng] = ng; ng++; }   // (ng <= j: the swap's own place is free)
+    else if (gs > 0) { sm[ns] = ms[j]; sgain[ns] = gs; sidx[ns] = ns; ns++; }
   }
   batchDone();
-  if (!ng) readyBuildWhy = 5;
+  if (!ng && !ns) readyBuildWhy = 5;
   sortByKeyDesc(idx, ng, gain, tmp);
   for (int q = 0; q < ng && q < READY_BUILD && n < cap; q++) {
     int32_t s1 = ms[idx[q]];
     if (candOf(&out[n], PLAY_READY, &s1, 1, -1, 0)) { out[n].settled = 1; out[n].readyGain = gain[idx[q]]; n++; readyBuilt++; }
+  }
+  sortByKeyDesc(sidx, ns, sgain, tmp);
+  for (int q = 0; q < ns && readyBuilt + readyShortN < READY_BUILD; q++) { readyShort[readyShortN] = sm[sidx[q]]; readyShortGain[readyShortN++] = sgain[sidx[q]]; }
+  return n;
+}
+static int readyShortLines(Cand *out, int n, int cap) {
+  for (int q = 0; q < readyShortN && n < cap; q++) {
+    int32_t s1 = readyShort[q];
+    if (candOf(&out[n], PLAY_READY, &s1, 1, -1, 0)) { out[n].settled = 1; out[n].readyGain = readyShortGain[q]; n++; readyBuilt++; }
   }
   return n;
 }
@@ -1221,5 +1235,6 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   n = wayLines(out, n, cap);
   n = zipLines(R, out, n, cap);
   n = cutLines(R, out, n, cap);
+  n = readyShortLines(out, n, cap);
   return n;
 }

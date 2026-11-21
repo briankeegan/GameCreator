@@ -231,14 +231,16 @@ static void holdCand(const Read *R, int wait, Judge *J) {
   J->apDone = j ? j->done : -1; J->apFire = -1; J->apChainAll = j ? j->chainAll : 0; J->apPlayed = !!j;
 }
 // A DIG THAT CAN WAIT: a line toward a break that lives no longer than the hold, and is still done before the hold is lost after one
-// more decision (react frames)
+// more decision (react frames) -- never one that leaves the board nearer a break than the hold does: the frames it waits are frames
+// the break is no nearer in
 static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
 }
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
-         k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react;
+         k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react &&
+         !(k->o.nearAfter >= 0 && H->o.nearAfter >= 0 && k->o.nearAfter < H->o.nearAfter);
 }
 // THE ONE ORDER: a line that lives before one that does not; of two that live, the one within the list before the default's own (a
 // list that cannot be made -- nothing within it lives -- falls back to it); of two that do not live, the one whose board is lost later,
