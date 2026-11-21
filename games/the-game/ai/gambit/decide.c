@@ -1295,7 +1295,7 @@ static Played playOf(const Read *R, int n) {
   int holdLives = 0;
   for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.dead) { holdLost = lostOf(order[i]); holdLives = !!order[i]->o.lives; }
   if (P.line && holdLives && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
-      firstClear(&decQ, P.line->k.seq, P.line->k.nseq) != 0 && !clockOut()) {
+      firstClear(&decQ, P.line->k.seq, P.line->k.nseq, 0) != 0 && !clockOut()) {
     const Judge *L = P.line;
     Outcome d = outcomeOf(L->k.seq, L->k.nseq, L->settled, 0, L->apAts[1] - rankReact);
     // (the line pressed later must be known to last as long: a loss it was not judged for never licenses waiting)
@@ -2252,6 +2252,7 @@ static int carriedCand(const Read *R, Cand *k, int *wait) {
   // (each swap's walk begun no sooner than it was judged to begin: the line in progress played in the frames it was judged in)
   int32_t notBefore[MAXLINE]; for (int i = 0; i < nrest; i++) notBefore[i] = C->at[skip + i];
   jo.notBefore = notBefore; jo.nNotBefore = nrest;
+  jo.winWait = C->broke > 0;   // (a break begun waits for the window: judge.c)
   carryNBn = imin(nrest, 64); for (int i = 0; i < carryNBn; i++) carryNB[i] = notBefore[i];   // (and the line's ranking judged so: rank.c judgeCand)
   Judged j;
   judge(&decQ, rest, nrest, &jo, &j);

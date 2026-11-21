@@ -158,6 +158,9 @@ static Outcome outcome(const int32_t *seq, int n, int settled) { return outcomeO
 // (THE LINE IN PROGRESS JUDGED IN ITS OWN FRAMES: the clock each of its swaps' walks was judged to begin on (decide.c carriedCand, into
 // carryNB), the judge pressing none sooner -- asked by rank.c judgeCand for the line in progress only, its own cache entries)
 static int32_t carryNB[64], carryNBn, outNBOn;
+// (A LINE THAT MAY BREAK GARBAGE -- its finder says so, or garbage is on the board (rank.c judgeCand): its walks wait for the window,
+// judge.c winWait)
+static int32_t outWinWait;
 // (A LINE NAMED ON THE ROOT'S BOARD: each swap's row as the board stands now, pressed where its panels have risen to by its frame -- the
 // opener's plans, whose swaps are pressed while the stack rises: their own cache entries)
 static int32_t outRooted;
@@ -171,7 +174,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
   JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
   if (outNBOn) { jo.notBefore = carryNB; jo.nNotBefore = imin(carryNBn, n); }
-  jo.rooted = outRooted;
+  jo.rooted = outRooted; jo.winWait = outWinWait;
   Outcome o;
   memset(&o, 0, sizeof o);
   judge(&decQ, seq, n, &jo, &o.j);

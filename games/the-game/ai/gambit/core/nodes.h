@@ -91,6 +91,14 @@ static int allowLeftAt(int32_t t, int spent) {
   int in = 0; for (int i = 0; i < nWinAges; i++) in += winAges[i] + t < winLen;
   return imax(0, pressAllowance + nWinAges - in - spent);
 }
+// THE WAIT FOR THE WINDOW: the frames from t until the window, less what the line has spent, holds `need` actions again -- its oldest
+// presses leaving it. -1: never, or the window not said
+static int32_t allowWait(int32_t t, int spent, int need) {
+  if (pressAllowance < 0 || nWinAges < 0 || allowLeftAt(t + winLen, spent) < need) return -1;
+  int32_t lo = 0, hi = winLen;
+  while (hi - lo > 1) { int32_t mid = (lo + hi) / 2; if (allowLeftAt(t + mid, spent) >= need) hi = mid; else lo = mid; }
+  return hi;
+}
 static LOCAL int32_t keyBuf[3 * 4096], walkBuf[2 * 4096];
 static int firstSwap(const int32_t *in, int n) { for (int i = 0; i < n; i++) if (in[i] & IN_SWAP) return i; return -1; }
 // A WALK'S LEG in a line's keys, from key i: a direction tapped a cell at a time, TAP_GAP frames apart (in[i] the direction with the
