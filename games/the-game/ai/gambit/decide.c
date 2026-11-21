@@ -652,18 +652,19 @@ static int ranked(const Read *R, const Found *S) {
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
   }
   // (THE LIFE AFTER THE LINE -- the owner: survival is not the line that buys the most frames alone, with nothing pressed after it: in
-  // finish them, where nothing lives, the best lines -- the combos first -- are each judged with the survival search run on from the
-  // board they leave (contLostOf), and ranked on the later of that and their own loss: a line lost at 137 if nothing more is pressed,
-  // on a board with room for the next block made by the next moves, is no emergency that only a chain answers)
+  // every mode, where nothing lives, the best lines -- in finish them the combos first -- are each judged with the survival search run on
+  // from the board they leave (contLostOf), with the window that line leaves, and ranked on the later of that and their own loss: a line
+  // lost at 137 if nothing more is pressed, on a board with room for the next block made by the next moves, is no emergency that only a
+  // chain answers, and a line that walks the window out has no moves after it)
   // (asked up to the move's own frame, the host's hard stop, as the judging is -- the decision's own time is spent by then -- each line its
   // own CONT_MS)
   contAsked = 0;
-  if (finishAsked() && n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
+  if (n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
     double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
     for (int pass = 0; pass < 2; pass++)
       for (int i = 0; i < n && contAsked < CONT_LINES && !clockFrameOut(); i++) {
         Judge *J = order[i];
-        if (J->hold || J->o.lives || J->o.dead || (pass == 0) != (J->apCombo >= 4)) continue;
+        if (J->hold || J->o.lives || J->o.dead || (pass == 0) != (finishAsked() && J->apCombo >= 4)) continue;
         double sh = clockShareBegin(nowMs() + CONT_MS);
         double c = contLostOf(J, CONT_MS); contAsked++;
         clockShareEnd(sh);
