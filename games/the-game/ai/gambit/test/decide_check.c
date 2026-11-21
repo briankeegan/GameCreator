@@ -621,6 +621,23 @@ EXPORT(gb_reach_last) int gb_reach_last(void) {
   for (int i = 0; i < orderN; i++) { const Judge *J = order[i]; if (farForNothing(J) && !J->o.lives) far++; }
   return far;
 }
+// NO FLIP AND BACK ACROSS DECISIONS (gb_undo_cut, after a replay): the order's first line that is no hold and does not live made the
+// one that swaps straight back the swap just pressed -- its first swap's two panels named as that swap left them -- and the order cut as
+// the decision cuts it: 1 where it is taken out (the hold standing a break's time), 0 kept, -1 none to try -- decide.c undoesLast
+EXPORT(gb_undo_cut) int gb_undo_cut(void) {
+  const Judge *T = 0, *H = 0;
+  for (int i = 0; i < orderN; i++) { if (order[i]->hold) { if (!H) H = order[i]; } else if (!T && !order[i]->o.lives && !order[i]->o.dead && order[i]->k.nseq >= 1) T = order[i]; }
+  if (!T || !H || H->o.dead || (!H->o.lives && diesAt(H) < rankSave)) return -1;
+  int r = CR(T->k.seq[0]), c = CC(T->k.seq[0]);
+  if (r < 0 || r >= decQ.b->nrows || c < 1 || c + 1 > W) return -1;
+  undoIdL = decQ.b->p[r][c].f[ID]; undoIdR = decQ.b->p[r][c + 1].f[ID]; undoFresh = 1;
+  if (!(undoIdL > 0 || undoIdR > 0)) { undoFresh = 0; return -1; }
+  static Judge *ord[512]; int n = 0; for (int i = 0; i < orderN && n < 512; i++) ord[n++] = (Judge *)order[i];
+  int32_t cut = 0; int m = cutUnlessDying(ord, n, undoesLast, &cut, 23);
+  undoFresh = 0;
+  int kept = 0; for (int i = 0; i < m; i++) kept |= ord[i] == T;
+  return !kept;
+}
 EXPORT(gb_wait_last) int gb_wait_last(int which) {
   const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
   if (!H || waitOf() <= 0 || rankHoldOwn < rankSave) return 0;

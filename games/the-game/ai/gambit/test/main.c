@@ -342,6 +342,7 @@ static int reasonKept(const char *dir) {
   return held || !boards;
 }
 int gb_reach_last(void);
+int gb_undo_cut(void);
 // THE LINE IN PROGRESS, THE CLOCK OUT (test DIR carry, its own process: the game's own profile, wait.words): pairs of boards a decision
 // apart, of games whose line in progress was let go with the decision's clock out (carry.txt: the mode, then the board; two lines a
 // pair). The first is answered with CARRY_WORK decisions' work, the second as the same game going on with the line played in hand, at
@@ -518,7 +519,7 @@ int main(int argc, char **argv) {
   FILE *g = fopen(path, golden ? "w" : "r");
   if (!g) { fprintf(stderr, "test: no %s (test DIR golden writes it)\n", path); return 2; }
   static char rec[4096], rec2[4096], want[4096];
-  int nq = 0, unsteady = 0, moved = 0, changed = 0, liveDied = 0, sooner = 0, far = 0, lows = 0, lowRaised = 0, raises = 0, raiseHeld = 0, modes[64] = { 0 };
+  int nq = 0, unsteady = 0, moved = 0, changed = 0, liveDied = 0, sooner = 0, far = 0, undoTried = 0, undoKept = 0, lows = 0, lowRaised = 0, raises = 0, raiseHeld = 0, modes[64] = { 0 };
   while (gzgets(z, line, sizeof line)) {
     int mode = atoi(line);
     const char *b = strstr(line, "GAMBITQ ");
@@ -531,6 +532,7 @@ int main(int argc, char **argv) {
     { int32_t v[9]; gb_replay_last(v);
       if (v[2] > 0 && v[0] != 2 && v[1] != 1) { liveDied++; if (liveDied <= 3) printf("  lives but died %d (mode %d): %s\n", nq, mode, rec); }
       if (v[8] && v[0] != 2) { sooner++; if (sooner <= 3) printf("  lost sooner %d (mode %d): %s\n", nq, mode, rec); }
+      { int u = gb_undo_cut(); if (u >= 0) { undoTried++; undoKept += !u; } }
       { int k = gb_reach_last(); far += k; if (k && far <= 3) printf("  past the reach for nothing %d (mode %d): %s\n", nq, mode, rec); }
         if (mode >= 0 && mode < 64) modes[mode]++; }
     n = loadLine(b, &narr);
@@ -633,10 +635,10 @@ int main(int argc, char **argv) {
   printf("%s: decisions replayed -- %d questions, %d answered differently on a second asking%s\n", unsteady && !workers ? "FAIL" : "ok", nq, unsteady,
          workers ? " (workers: not held)" : "");
   { int nm = 0; for (int i = 0; i < 64; i++) nm += modes[i] > 0;
-    printf("%s: the answers -- %d questions over %d modes, %d played a line that dies while one lived, %d one lost a break's time sooner than one offered, %d lines past the reach for nothing kept (decide.c, the owner's reach)\n",
-           liveDied || sooner || far || nm < 4 ? "FAIL" : "ok", nq, nm, liveDied, sooner, far);
+    printf("%s: the answers -- %d questions over %d modes, %d played a line that dies while one lived, %d one lost a break's time sooner than one offered, %d lines past the reach for nothing kept (decide.c, the owner's reach), %d of %d flips back kept (decide.c undoesLast)\n",
+           liveDied || sooner || far || undoKept || !undoTried || nm < 4 ? "FAIL" : "ok", nq, nm, liveDied, sooner, far, undoKept, undoTried);
     printf("%s: the raise -- %d of %d low stacks with no garbage on them (a garbage game) raised, %d of %d raises held down\n", lowRaised < lows || raiseHeld < raises || !raises ? "FAIL" : "ok", lowRaised, lows, raiseHeld, raises);
-    fail |= liveDied || sooner || far || nm < 4 || !lows || lowRaised < lows || raiseHeld < raises; }
+    fail |= liveDied || sooner || far || undoKept || !undoTried || nm < 4 || !lows || lowRaised < lows || raiseHeld < raises; }
   if (golden) printf("wrote %s/decisions.golden\n", dir);
   else printf("%s: against the golden -- %d moves changed, %d records changed\n", moved ? "CHANGED" : "ok", moved, changed);
   fail |= (unsteady && !workers) || !nq;

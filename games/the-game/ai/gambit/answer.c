@@ -533,6 +533,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // THE MOVE (a line whose first swap was judged pressed later than now -- its pair still moving -- is a hold, the line handed on whole)
   int timed = !R.up && P.line && P.line->apNats > 0 && P.line->apAts[0] > 0;
   Move d = R.up ? (Move){ 2, 0 } : P.line && !timed ? (Move){ 1, P.line->k.seq[0] } : (Move){ 0, 0 };
+  // (the swap pressed now, for the next decision's no flip and back: the two panels as they stand once it is pressed)
+  if (d.kind == 1) { int r = CR(d.move), c = CC(d.move); if (r >= 0 && r < decQ.b->nrows && c >= 1 && c + 1 <= W) { undoIdL = decQ.b->p[r][c + 1].f[ID]; undoIdR = decQ.b->p[r][c].f[ID]; undoFresh = 1; } else undoFresh = 0; }
+  else if (d.kind == 2) undoFresh = 0;
   A->d = d;
   // (and a hold where the line in progress was let go only for the clock -- its judging stopped before it pressed a swap: the frame
   // loop presses on the line in hand, never a break worth a life dropped for want of time: fight 813, match 20)
@@ -722,6 +725,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (rootQueueAt != QUEUE_UNSET && rootQueueAt != NOT_ASKED) { L_s(" queue="); L_i(rootQueueAt); L_s("/"); L_i(top && !top->hold ? top->o.putOff : 0); L_s("/"); L_i(putOffCut); }
   if (samesTrimmed) L_s(" samesTrimmed=1");   // (the line played had its swaps of one colour taken out)
   if (reachCut) { L_s(" reach="); L_i(reachCut); }
+  if (undoCut) { L_s(" undo="); L_i(undoCut); }
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); L_s(" twoWhy="); L_i(twoWhy); L_s("/"); L_i(twoLostLog >= 1e299 ? -2 : (int64_t)twoLostLog); L_s("/"); L_i((int64_t)twoKeptLog); }
   if (twoRemade) { L_s(" twoRemade="); L_i(twoRemade); }
   if (noopWaits) { L_s(" noopWaits="); L_i(noopWaits); }
@@ -1091,7 +1095,7 @@ static void modeLeft(void) {
 }
 // A new game: nothing of the last one is carried on.
 EXPORT(gb_new_game) void gb_new_game(void) {
-  modeLeft(); taReset(); lifeDumps = 0; livedPrev = 0; openerOver = 0; openerPaused = 0; opKeepOn = 0; opKeepHeld = 0; openerChained = 0; openerThrown = 0; openerSum = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0; opFiredAt = -1;
+  modeLeft(); taReset(); undoFresh = 0; lifeDumps = 0; livedPrev = 0; openerOver = 0; openerPaused = 0; opKeepOn = 0; opKeepHeld = 0; openerChained = 0; openerThrown = 0; openerSum = 0; openerAt = 0; openingReset(); opLineOn = 0; opFalling = 0; opFiredAt = -1;
   if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; garbageSeen = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
