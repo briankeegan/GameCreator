@@ -54,6 +54,23 @@ static void perchOn(Ctx *x, int root) {
   }
 }
 EXPORT(gb_perch_counts) int gb_perch_counts(int which) { return which ? perchDropped : perchOffered; }
+// THE GARBAGE LET DOWN, on the engine: the line letDownLine offers (propose.c), played and settled; how many leave the garbage nearer
+// coming down a row (search/break.c perchOf) than the board left alone to settle
+static int32_t letOffered, letDowns;
+static void letOn(Ctx *x, int root) {
+  const Board *b = ensureBoard(x, root);
+  if (!b || !garbageOn(b)) return;
+  static int32_t line[MAXPATH]; int len = letDownLine(b, line);
+  if (!len) return;
+  int alone = step(x, root, MK_SETTLE, 0, 0, 0), n = root;
+  for (int k = 0; k < len && liveNode(x, n); k++) n = step(x, n, MK_SWAP, CR(line[k]), CC(line[k]), 0);
+  if (liveNode(x, n)) n = step(x, n, MK_SETTLE, 0, 0, 0);
+  letOffered++;
+  const Board *e = liveNode(x, n) ? ensureBoard(x, n) : 0, *a = liveNode(x, alone) ? ensureBoard(x, alone) : 0;
+  int ce, ca;
+  if (e && a && perchOf(e, &ce) < perchOf(a, &ca)) letDowns++;
+}
+EXPORT(gb_let_counts) int gb_let_counts(int which) { return which ? letDowns : letOffered; }
 static Ctx *bitsCtx;
 EXPORT(gb_bits_agree) int gb_bits_agree(void) {
   if (!hostBoard) return -1;
@@ -62,7 +79,7 @@ EXPORT(gb_bits_agree) int gb_bits_agree(void) {
   Ctx *x = bitsCtx = ctxOf(bitsCtx);
   int root = rootOf(x, &hostQ);
   if (root < 0) return bitsWrong;
-  perchOn(x, root);
+  perchOn(x, root); letOn(x, root);
   static int32_t ms[MAXROWS * W], ms2[MAXROWS * W];
   int nm = swapsOfNode(x, root, ms);
   for (int i = 0; i < nm; i++) {
@@ -70,7 +87,7 @@ EXPORT(gb_bits_agree) int gb_bits_agree(void) {
     if (!liveNode(x, o)) continue;
     const Board *b = ensureBoard(x, o);
     if (b) bitsAgreeOn(b);
-    perchOn(x, o);
+    perchOn(x, o); letOn(x, o);
     if (i % 8) continue;
     int nm2 = swapsOfNode(x, o, ms2);
     for (int j = 0; j < nm2; j += 3) {

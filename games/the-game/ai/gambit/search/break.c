@@ -75,6 +75,28 @@ static int32_t unevenOf(const Bits *B) {
   return u;
 }
 static int32_t uneven(const Board *b) { bitsOf(b, &scratchBits); return unevenOf(&scratchBits); }
+// THE PERCH: the garbage sits on the tallest columns under it (its supports -- hi: their row; n: how many) and comes down a row once
+// each support's top panel has gone into a cell two rows or more under the garbage (room: those cells). How far it is from coming
+// down, one number, lower the nearer (perchOf): the empty cells under the garbage, a row's worth and one for each, and its supports --
+// every support walked off is one fewer, and a row come down is a row of empty cells fewer whatever then holds it. *can: the lower
+// columns have the room for every support, so the garbage can come down
+typedef struct { int32_t hi, n, room, hollow, top[W + 2], firstG[W + 2]; unsigned held; } Perch;
+static void perchRead(const Board *b, Perch *P) {
+  static LOCAL BoardShape S;
+  bitsOf(b, &scratchBits); bitsShape(&scratchBits, &S);
+  P->hi = 0; P->n = 0; P->room = 0; P->held = 0; P->hollow = S.hollow;
+  for (int c = 1; c <= W; c++) { P->top[c] = S.peak[c]; P->firstG[c] = S.firstG[c]; if (S.firstG[c] && S.peak[c] > P->hi) P->hi = S.peak[c]; }
+  for (int c = 1; c <= W; c++) {
+    if (S.firstG[c] && S.peak[c] == P->hi) { P->held |= 1u << c; P->n++; }
+    else if (S.peak[c] <= P->hi - 2 && (!S.firstG[c] || S.firstG[c] > P->hi)) P->room += P->hi - 1 - S.peak[c];
+  }
+}
+static int32_t perchOf(const Board *b, int *can) {
+  static LOCAL Perch P;
+  perchRead(b, &P);
+  *can = P.hi >= 2 && P.room >= P.n;
+  return P.hollow * (W + 1) + P.n;
+}
 // the swaps that walk the panel at (q, from) to column k along its row
 static int walkTo(int q, int from, int k, int32_t *seq, int n) {
   if (from > k) for (int c = from - 1; c >= k && n < MAXPATH; c--) seq[n++] = q * 8 + c;

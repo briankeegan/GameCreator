@@ -1,6 +1,7 @@
 // GAMBIT'S C CHECKS (./build.sh test), on Gambit's own games:
 //   - the board as bits held to the cells it replaced, on boards of games and the boards one and two swaps from them (test/boards.txt);
 //     every perched block the reader finds, its line played on the engine, counted by whether its block came down;
+//     the line that lets the garbage down off its tallest column, played on the engine, counted by whether the garbage is nearer coming down;
 //   - the decision replayed (test/decisions.txt.gz: questions from runs on the fair board, a mode each): each answered twice, the same
 //     answer both times, and against test/decisions.golden -- every question whose answer moved printed, with what decided it;
 //   - the answers: every mode answered, and when any candidate lives, what is played lives (or is the raise);
@@ -17,6 +18,7 @@ int gb_question_bytes(int nbytes, int narr);
 int gb_bits_agree(void);
 int gb_bits_boards(void);
 int gb_perch_counts(int which);
+int gb_let_counts(int which);
 double gb_bits_ms(int cells);
 int gb_replay(int nbytes, int narr, int mode, int64_t work, char *out, int cap);
 void gb_replay_last(int32_t *v);
@@ -249,7 +251,9 @@ int main(int argc, char **argv) {
   printf("%s: bits against cells -- %d boards of games, %d boards in all, %d disagreements\n", wrong ? "FAIL" : "ok", boards, gb_bits_boards(), wrong);
   int offered = gb_perch_counts(0), dropped = gb_perch_counts(1);
   printf("%s: perched blocks -- %d lines offered, %d let their block down\n", offered && !dropped ? "FAIL" : "ok", offered, dropped);
-  fail |= wrong || !boards || (offered && !dropped);
+  int letOff = gb_let_counts(0), letDown = gb_let_counts(1);
+  printf("%s: the garbage let down -- %d lines offered, %d left it nearer coming down a row at rest\n", letOff && !letDown ? "FAIL" : "ok", letOff, letDown);
+  fail |= wrong || !boards || (offered && !dropped) || (letOff && !letDown);
   // ---- the decisions
   snprintf(path, sizeof path, "%s/rules.words", dir);
   if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
