@@ -1308,6 +1308,7 @@ static Played playOf(const Read *R, int n) {
       q++;
     }
     Wt.k.nseq = q; Wt.apNats = nq;
+    int kept = q;
     // (THE LINE AS IT WILL BE KEYED: the judge walked to each flip and paid for it out of the window; the frame loop presses neither, so
     // the swaps left are judged again as it keys them -- the cursor from where it stands, the window unspent, each walk begun no sooner
     // than the judge began it -- and handed on from the frames that judging presses them: a swap is never handed on from a frame
@@ -1322,7 +1323,10 @@ static Played playOf(const Read *R, int n) {
       for (int i = 0; i < q; i++) Wt.apAts[i] = wj.ats[i];
       Wt.k.nseq = q; Wt.apNats = q;
     }
-    P.line = q ? &Wt : 0;
+    // (and where the swaps left cannot be keyed as judged -- the walk without the flips takes longer than the frames the judge pressed
+    // them from -- the line is played as it was judged, flips and all: the board it was judged on is the board the frame loop makes,
+    // and the hold in its place is a board nobody judged it would keep)
+    P.line = q ? &Wt : kept ? L : 0;
   }
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
   // does as well with that swap pressed later -- the next decision plans it again, so a first swap pressed early is undone by the next

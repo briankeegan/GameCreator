@@ -578,6 +578,25 @@ EXPORT(gb_spend_first) int gb_spend_first(const int32_t *keep, int nkeep, int ke
 // THE WAIT'S WINDOW (gb_wait_last, after a replay): the decision was made in the wait with the hold's own board standing a break's
 // time (which 0), and the line the order puts first breaks nothing, leaves the window under a break's walk at rest and, its walk
 // charged, is lost sooner than the hold (which 1): a walk the break at rest is not pressed after -- rank.c walkTurns
+// THE FLIPS KEYED AS JUDGED (gb_flips_late, after a replay): the order's first line that is no hold, with a swap and its swap back put
+// before it and every swap left due past the board's life, so the swaps left without the flips cannot be keyed as judged -- the line
+// is played as judged (1), something else (2), or the hold (0); -1 none to try -- decide.c playOf
+#define FLIPS_FAR 100000   // (frames past any board's life: the swaps left are due where no board stands)
+EXPORT(gb_flips_late) int gb_flips_late(void) {
+  Read R; if (!readBoard_(&R)) return -1;
+  const Judge *T = 0;
+  for (int i = 0; i < orderN && !T; i++) if (!order[i]->hold && !order[i]->o.dead && order[i]->k.nseq >= 1 && order[i]->k.nseq + 2 <= MAXLINE) T = order[i];
+  if (!T) return -1;
+  static Judge L; L = *T;
+  L.k.seq[0] = L.k.seq[1] = T->k.seq[0];
+  for (int q = 0; q < T->k.nseq; q++) L.k.seq[q + 2] = T->k.seq[q];
+  L.k.nseq = T->k.nseq + 2; L.o.j.noops = 2; L.wait = 0;
+  L.apNats = L.k.nseq; for (int q = 0; q < L.k.nseq; q++) L.apAts[q] = FLIPS_FAR;
+  const Judge *first = order[0]; order[0] = &L;
+  Played P = playOf(&R, 1);
+  order[0] = first;
+  return P.line == &L ? 1 : P.line ? 2 : 0;
+}
 EXPORT(gb_wait_last) int gb_wait_last(int which) {
   const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
   if (!H || waitOf() <= 0 || rankHoldOwn < rankSave) return 0;
