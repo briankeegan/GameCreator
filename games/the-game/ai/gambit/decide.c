@@ -829,13 +829,13 @@ static int ranked(const Read *R, const Found *S) {
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave) && !(breakThrough && order[i]->apBroke > 0 && diesAt(order[i]) >= keptDies)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // THE REACH UP AND DOWN (the owner: limit how far it can move up and down, to stop the wastes): a line that breaks no garbage and makes
   // nothing of the mode's first entry may not step more than REACH_ROWS rows from the cursor to its first swap or from one swap to the next
-  // -- unless every line that keeps within the reach, the hold among them, is lost within a break's time (rankSave), or the far line lives
-  // or outlives them all by a break's time on the frames the boards are lost (rank.c diesAt): there the walk buys a life, not a few frames
+  // -- unless every line that keeps within the reach, the hold among them, is lost within a break's time (rankSave) on the frames the
+  // boards are lost (rank.c diesAt), or the far line lives: there the walk is the board's life
   { double keptLost = -1; int keptLives = 0;
     for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (farForNothing(J)) continue;
       if (J->o.lives) keptLives = 1; else if (!J->o.dead && diesAt(J) > keptLost) keptLost = diesAt(J); }
     if (keptLives || keptLost >= rankSave) {
-      int m = 0; for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (farForNothing(J) && !J->o.lives && !(keptLost >= 0 && diesAt(J) - keptLost >= rankSave)) { reachCut++; if (J == carriedJ) { carriedJ = 0; carryNone = 22; } if (J == opCarried) opCarried = 0; continue; } order[m++] = order[i]; }
+      int m = 0; for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (farForNothing(J) && !J->o.lives) { reachCut++; if (J == carriedJ) { carriedJ = 0; carryNone = 22; } if (J == opCarried) opCarried = 0; continue; } order[m++] = order[i]; }
       n = m;
     } }
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
