@@ -22,6 +22,7 @@ typedef struct { int32_t n, ins[MAXKEYS], hl[MAXKEYS], hs[MAXKEYS], held; } Keys
 // what the worker is asked, and what it answers (native.c carries them across)
 typedef struct {
   int32_t id, epoch, at, lead, allowance, topped, lineFrom, linePressed, holdLeft, holdStarted, narr;
+  int32_t moveOff;                           // the swap the answer `lineFrom` played was never pressed and no key of it is planned: its plan was dropped
   int32_t oppHas, oppOut, oppTop, oppStop;   // the opponent's stop: the frames it is held up by at the question's frame
   int32_t refA, refB, refUntil;              // a pair the press guard refused (a wasted three), its panels' ids, kept out until a frame
   int32_t swapA, swapB;                      // the pair the last swap pressed swapped, its panels' ids (0: none): the swap back the judge refuses
@@ -116,7 +117,7 @@ static struct {
   int32_t nextId;
   // the line after the move, pressed as it was decided: its swaps, each from the frame it was judged pressed from (lineAt, 0: as soon as
   // the one before is done)
-  int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf;
+  int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf, lineOfSwap, lineOfMoved;   // (lineOfSwap: the answer played a swap; lineOfMoved: that swap was pressed)
   int32_t actsAtSwap;   // (the action count at the last swap pressed: moveBegin)
   int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
@@ -560,6 +561,14 @@ static int32_t linePressedBy(int32_t at) {
   while (open) { n -= (int32_t)(open & 1); open >>= 1; }
   return imax(0, n);
 }
+// (THE ANSWER'S OWN SWAP NEVER PRESSED BY A FRAME: not pressed yet, and its press not planned before the frame -- the plan was dropped
+// with it still to come; the line it began is carried on whole, decide.c theCarryOff)
+static int32_t moveOffBy(int32_t at) {
+  if (!F.haveLineOf || !F.lineOfSwap || F.lineOfMoved) return 0;
+  for (int i = 0; i < PLANN; i++)
+    if (F.planAt[i] != NUL && F.planAt[i] < at && F.plan[i].swap && (F.plan[i].bits & IN_SWAP) && F.plan[i].lid == F.lineOfId + 1 && F.plan[i].idx == 0) return 0;
+  return 1;
+}
 static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arrival *pend, int32_t npend) {
   static FQuestion q;
   F.pending = 1; F.pPosted = F.now; F.pId = F.nextId++; F.pEpoch = F.epoch; F.pAt = at; F.pPaced = 0; F.pHoldLeft = hl; F.pHoldStarted = hs;
@@ -571,6 +580,7 @@ static void ask(int32_t at, const Board *b, int32_t hl, int32_t hs, const Arriva
   memcpy(F.pKnew, F.arr, sizeof(Arrival) * (unsigned long)F.narr); F.pNknew = F.narr;
   q.id = F.pId; q.epoch = F.epoch; q.at = at; q.lead = at - F.now; q.ms = (at - F.now) * F.msPerFrame; q.posted = fNow();
   q.allowance = allowanceAt(at); q.topped = F.toppedNow; q.lineFrom = F.haveLineOf ? F.lineOfId : -1; q.linePressed = F.haveLineOf ? linePressedBy(at) : 0;
+  q.moveOff = moveOffBy(at);
   q.noRaise = F.askNoRaise;
   q.holdLeft = hl; q.holdStarted = hs; q.narr = F.pNarr; memcpy(q.arr, F.pArr, sizeof(Arrival) * (unsigned long)F.pNarr);
   { int32_t prev = F.prevBits; q.nages = 0; q.window = F.window;
@@ -681,7 +691,7 @@ static void take(void) {
     F.lineWastes = a.wastes; F.linePlay = a.play >= 0 ? a.play + 1 : 0;
     unseenOf(F.pBoard);
     F.lineN = a.nhand; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
-    F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0;
+    F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0; F.lineOfSwap = a.kind == 1; F.lineOfMoved = 0;
   }
 }
 // The frame the line's next swap is pressed from: where the plan ends, or later when it was judged pressed later.
@@ -911,6 +921,7 @@ static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play,
   MoveOpen *m = &F.moves[F.nmoves++]; memset(m, 0, sizeof *m); m->at = b->clock; m->save = save; m->guard = guard; m->play = play; m->lid = lid; m->idx = idx;
   m->row = b->curRow; m->col = b->curCol; m->acts = F.st.actions + 1 - F.actsAtSwap; F.actsAtSwap = F.st.actions + 1;
   { LineRec *r = lineRec(lid); if (r && r->pressed < idx + 1) r->pressed = idx + 1; }
+  if (F.haveLineOf && lid == F.lineOfId + 1 && idx == 0) F.lineOfMoved = 1;
   int r0 = b->curRow;
   if (r0 >= 0 && r0 < b->nrows && b->curCol >= 1 && b->curCol + 1 <= W) {
     int32_t a = b->p[r0][b->curCol].f[ID], z = b->p[r0][b->curCol + 1].f[ID];
@@ -1141,6 +1152,7 @@ static int frontFrame(void) {
         flog(l);
       }
       bits &= ~IN_SWAP; dropAll(); F.st.wasteRefused++; F.st.refusedSpoil += F.guardSpoil;
+      F.lineOfSwap = 0;   // (a swap the guard refused is not carried on)
       // (and its pair kept out of the next decisions' first swaps a while: a three the judge did not see is not planned again)
       if (t->curCol >= 1 && t->curCol + 1 <= W && t->curRow >= 0 && t->curRow < t->nrows) {
         F.refA = t->p[t->curRow][t->curCol].f[ID]; F.refB = t->p[t->curRow][t->curCol + 1].f[ID]; F.refUntil = now + REFUSE_BLOCK;
