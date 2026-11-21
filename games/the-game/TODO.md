@@ -49,6 +49,8 @@ it worked (ours / his).
       the same rows the dearer must outlive the cheaper by a break's time per three panels more (8ad090e) -- large_garbage 7 and 8
       stopped losing. Still open: the opener spends the 76-action window before the first garbage lands (combo_storm 2/4/5/6/8, most
       of the remaining early losses), and survival threes that buy stop time without breaking anything.
+      A later loss whose walk leaves no break's walk in the window before its board is lost no longer beats a line that leaves one
+      (705eb49, gate `test windead`): factory-2's 34-action survive at 474 that left 8 actions until after its board was lost.
       While a slab pops, a line that breaks nothing and walks the window under a break's walk no longer wins over the hold on its
       later loss (b986fb9, gate `test wait`): combo_storm-5's c6 entries at 8593/8620 that left 0-3 actions for the break.
       The line in progress is judged to the move's frame when the proposed lines used the decision's clock (314210b, gate `test
