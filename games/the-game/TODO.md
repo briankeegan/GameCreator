@@ -51,10 +51,20 @@ it worked (ours / his).
       of the remaining early losses), and survival threes that buy stop time without breaking anything.
       A later loss whose walk leaves no break's walk in the window before its board is lost no longer beats a line that leaves one
       (705eb49, gate `test windead`): factory-2's 34-action survive at 474 that left 8 actions until after its board was lost.
+      Still open, measured on 8772e1a-9a7ca2c (best round 83/84): the factory opener raises to 10-11 rows (the owner's rule) and
+      then spends its 76 actions on opener lines and long survive walks before the window gives any back (~frame 900); the losses
+      at 816-931 had 9-14 actions left at 680 where the survivors had 17-32. The danger is not on screen when the spend is chosen
+      (no landing shown makes the 36-action survive at factory-2 369 short), so the budget needs a forecast of garbage not yet shown.
+      The break search is cut by the clock in ~65% of decisions under garbage on every build, but 4x-16x the work on the boards of
+      three "reach" losses found a break on 2 of 12 boards (16x only): those boards had no break in reach.
       While a slab pops, a line that breaks nothing and walks the window under a break's walk no longer wins over the hold on its
       later loss (b986fb9, gate `test wait`): combo_storm-5's c6 entries at 8593/8620 that left 0-3 actions for the break.
       The line in progress is judged to the move's frame when the proposed lines used the decision's clock (314210b, gate `test
       carry`): it was let go unread ~1,100 times a run with its walk spent (endless-3 10901, factory-1 840, factory-3 835).
+      Under garbage a set-up that breaks nothing wins the mode's goal over the hold only where it outlives the hold by its walk's time
+      (fa8de3e, gate `test toward`). A line whose swaps left without a flip pair cannot be keyed as judged is played as judged, not
+      dropped for the hold (8772e1a, gate `test flips`: large_garbage-6 held at 12137-12195 with a break lost at 466-491 put first).
+      A line with no named reason that outlives the hold is kept, not given up for it (9a7ca2c, gate `test reason`: factory-8 3331).
 - [ ] **L2. Wasted moves: walking up for one swap and back down.** Distance matters: a swap nearby goes before a move far away; 4
       swaps in 6 moves beats 1 swap in 9 moves. Between garbage it is almost always a wasted move; if the bot must go, it finishes its
       break first. Measure: cursor actions per swap, round trips, actions on lines not finished.
