@@ -386,7 +386,7 @@ static int fairShare(Cand *c, int n, int cap) {
 }
 #define NSTRIP 12   // the lines judged again with one swap left out (THE THREE TAKEN OUT)
 #define STRIP_LINES 3   // the best lines that waste a three, each judged again so
-static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
+static Judge theJudged[MAXCANDS + 4 + NINTENT + NROUTE], *order[MAXCANDS + 6 + NINTENT + NROUTE + NSTRIP], stripped[NSTRIP];
 static int32_t orderN;   // (the lines in the order the move was picked from: decide's n)
 static int32_t phaseMs[3];
 static Outlived svJob; static int32_t svJobDone;   // (the survival search already searched on a worker: answer.c breakJob)
@@ -522,7 +522,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
-  ideaAims = &R->guides; ideasAsks = 0;
+  ideaAims = &R->guides; ideasAsks = 0; rankHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
   double t1 = nowMs();
@@ -614,6 +614,18 @@ static int ranked(const Read *R, const Found *S) {
     int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
     for (int i = 0; i < n; i++) if (!EXTRA(order[i])) { readyShare(own--); readyNextFor(order[i]); }
     readyShare(0); sortJudged(order, n);
+  }
+  // (THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage, nothing living and no line of
+  // the decision breaking, the swap that lets the garbage down off its tallest column is offered too (propose.c letDownCand), and the
+  // order is made again with the boards at rest read (rank.c letsDown) -- once every line's readiness has been asked: a decision that
+  // has a break, or a line that lives, is the same decision without it)
+  if (decF.under && !breakOffered && n && !order[0]->o.lives) {
+    int breaks = 0; for (int i = 0; i < n && !breaks; i++) breaks = order[i]->apBroke > 0;
+    if (!breaks) {
+      static Cand lk; static Judge letJ;
+      if (!clockOut() && letDownCand(&lk)) { offered[PLAY_LEVEL]++; if (judgeCand(R, &lk, &letJ)) { order[n] = &letJ; n++; } }
+      rankHold = H; sortJudged(order, n);
+    }
   }
   double t2 = nowMs();
   surviveAsked = 0;
@@ -872,6 +884,8 @@ static int ranked(const Read *R, const Found *S) {
       if (!JL.o.lives && (J->o.lives || (diesAt(&JL) < diesAt(J) && !forNothing))) continue;
       if (imax(0, JL.apBroke) < imax(0, J->apBroke) || JL.apChain < J->apChain || JL.apCombo < J->apCombo || JL.apChainAll < J->apChainAll) continue;
       if (J->o.nearAfter >= 0 && JL.o.nearAfter > J->o.nearAfter) continue;
+      // (nor a swap of a line that lets the garbage down, unless the line lets it down as far without it: rank.c letsDown)
+      if (letsDown(J) && !(restOn(&JL) >= 0 && restOn(&JL) <= restOn(J))) continue;
       // (nor one that, a swap less, clears panels below the floor and breaks nothing where the line clears none: the panels are what it loses)
       if (JL.spends && !J->spends) continue;
       if (!forNothing && compareJudged(&JL, J) > 0) continue;
@@ -882,7 +896,8 @@ static int ranked(const Read *R, const Found *S) {
   // (and a line of one swap that buys less than its own walk takes, making, breaking and bringing nothing nearer, is the hold -- a far
   // swap for nothing is the waste the owner sees most; a plain three is no chain, and a break brought nearer that keeps the board no
   // longer is a walk for nothing -- only a board left ready where the hold leaves none is kept)
-  if (n && order[0] && !order[0]->hold && order[0]->k.nseq == 1 && !order[0]->o.lives) {
+  // (nor the swap that lets the garbage down onto more of the stack where no break is offered: rank.c letsDown)
+  if (n && order[0] && !order[0]->hold && order[0]->k.nseq == 1 && !order[0]->o.lives && !letsDown(order[0])) {
     Judge *J = order[0]; const Judge *h = 0; int hi = -1;
     for (int i = 1; i < n; i++) if (order[i]->hold) { h = order[i]; hi = i; break; }
     if (h && !h->o.dead && !(J->apBroke > 0) && (J->apChainAll <= h->apChainAll || J->apChainAll < 2) && J->apCombo < 3 && !(J->o.j.ready == 1 && h->o.j.ready != 1) &&

@@ -40,6 +40,7 @@ typedef struct {
   int32_t saving;      // a break under garbage while the board saves panels up (decide.c read): its panels weighed before the list
   int32_t material;    // a break under garbage: 0 leaves a break to build and keeps the floor, 1 keeps one of them, 2 neither; -1 none
   int32_t ideas, ideasAsked;   // the ideas the board the line leaves holds (search/ideas.c; -1 the clock left none), asked when a key needs it
+  int32_t rest, restCan, restAt, restAsked;   // how far the garbage is from coming down a row once the line's board is at rest, whether it can, and the frame it is (outcome.c restOf; -1 no answer), asked when a key needs it
   int32_t lengthens;            // time attack: the line makes the board's chain longer than it makes alone, below 13 (in the mode)
 } Judge;
 #define EXT_CUT_LOG 6
@@ -572,6 +573,28 @@ static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEne
 // spends is the break's that comes)
 static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK; }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !(decF.under && !breakOffered && digsForBreak(J)) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
+// THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
+// sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
+// the hold's board at rest has the room for it to come down (outcome.c restOf), a line that clears nothing and leaves it nearer
+// coming down than the hold does -- a support walked off, or the garbage a row lower. Only one whose own board is lost no sooner than
+// the hold's, no walk charged, that keeps the board's own chain as the hold does, and whose walk the input window pays for twice
+// over by the frame its board is at rest: the break it sets up is pressed where it was, out of what is left -- a walk that spends
+// the last of the window sets up a break that cannot be pressed.
+static const Judge *rankHold;   // (the decision's hold, set where no line of the decision breaks or lives: decide.c ranked, once every line's readiness has been asked)
+static int32_t restOn(const Judge *J0) {
+  Judge *J = (Judge *)J0;
+  if (!J->restAsked) { J->restAsked = 1; J->rest = J->hold ? restOf(0, 0, 0, &J->restCan, &J->restAt) : restOf(J->k.seq, J->k.nseq, J->settled, &J->restCan, &J->restAt); }
+  return J->rest;
+}
+static int letsDown(const Judge *J) {
+  const Judge *H = rankHold;
+  if (!decF.under || breakOffered || !H || J->hold || J->o.dead || H->o.dead || clears(J) || J->o.j.clearedPanels > 0) return 0;
+  if (lostAtOf(J->o.lostAt, 0) < lostAtOf(H->o.lostAt, 1)) return 0;
+  if (cutsShort(J) || J->o.j.chainAll < H->o.j.chainAll) return 0;
+  if (restOn(H) < 0 || !H->restCan || restOn(J) < 0 || restOn(J) >= restOn(H)) return 0;
+  int walk = lineWalk(J);
+  return pressAllowance < 0 || allowLeftAt(imax(0, J->restAt), walk) >= walk;
+}
 // A SWAP TOWARD AN EIGHT THAT COSTS NOTHING: a leaves the board nearer a two-column eight than b (outcome.c twinAfter, the one distance
 // the set-ups are proposed by too: propose.c twinScan to TWIN_REACH), is lost no sooner (or lives), and leaves the window its reserve --
 // the set-up built between moves, of what is spare: a swap nearer is a swap nearer
@@ -859,6 +882,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // break's chance -- death is never an option)
     if (diesAt(o) >= rankSave && o->o.matLeft >= 0 && sp->o.matLeft >= 0 && o->o.matLeft > sp->o.matLeft && diesAt(sp) - diesAt(o) < rankSave)
       return (cmpKey = __LINE__, (x->spends ? 1 : -1));
+  }
+  // 1. (neither lives, garbage on the board, no break offered) THE GARBAGE LET DOWN (letsDown): a line that lets the garbage down onto
+  // more of the stack before the hold and before a line that does not, where the two survive alike or it is lost later: with no break
+  // to press, the frames a hold keeps build none, and a clear lower down leaves the perch as it is. Two that let it down are ordered
+  // as any two lines
+  if (!lx && decF.under && !breakOffered) {
+    int dx = letsDown(x), dy = letsDown(y);
+    if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x; if (lostOf(d) >= lostOf(o) || lostAlike(d, o)) return (cmpKey = __LINE__, (dx ? -1 : 1)); }
   }
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
   // order charges it -- the mode gives way to survival only)

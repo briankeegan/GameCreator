@@ -116,6 +116,7 @@ static int breakBuildable(const Board *b);   // (search/break.c: a break the pan
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on the board)
 static int nearOf(const Board *b);           // (search/break.c: the swaps to the nearest break, NEAR_MISS none)
+static int32_t perchOf(const Board *b, int *can);   // (search/break.c: how far the garbage is from coming down a row, and whether it can)
 static int twinCostOn(Board *b);              // (propose.c: the swaps to a two-column eight, 99 none)
 static int32_t twinWanted;                    // (some mode of the rules asks a combo of eight or more: decide.c read)
 // (THE BOARD LEFT ALONE, settled as a line is: whether it still has a break to build -- or no garbage to break. Asked once a decision:
@@ -239,6 +240,37 @@ static Board *lineEnd(const int32_t *seq, int n, int settled) {
 }
 // THE BOARD LEFT ALONE, as the proposers read it: its readiness, a break search of its own, is the ranking's to ask (decide.c ranked)
 static Outcome leftAlone(void) { int d = readyDefer; readyDefer = 1; Outcome o = outcome(0, 0, 0); readyDefer = d; return o; }
+// THE BOARD AT REST: a line -- the hold, with n 0 -- pressed as the judge presses it and its board let come to rest: the slab popping
+// converted, its panels landed, the garbage let down onto what holds it. How far the garbage is from coming down a row then
+// (search/break.c perchOf, lower the nearer; -1 no answer -- the board lost first, or the clock), whether it can (*can), and the
+// frame the board is at rest (*at). Asked by the rank where no break is offered (rank.c letsDown), once a line a decision.
+#define RESTN 64
+typedef struct { uint32_t h; int32_t settled, n, perch, can, at; int32_t seq[MAXLINE]; } Rested;
+static LOCAL Rested rested[RESTN]; static LOCAL int32_t nrested;
+static int32_t restOf(const int32_t *seq, int n, int settled, int32_t *can, int32_t *at) {
+  uint32_t h = lineHash(seq, n, settled, 7);
+  for (int i = 0; i < nrested; i++) {
+    const Rested *r = &rested[i];
+    if (r->h != h || r->n != n || r->settled != settled) continue;
+    int same = 1;
+    for (int k = 0; k < n && same; k++) same = r->seq[k] == seq[k];
+    if (same) { *at = r->at; *can = r->can; return r->perch; }
+  }
+  *at = -1; *can = 0;
+  if (n > MAXLINE || clockOut()) return -1;
+  JudgeOpts jo = { settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0 };
+  Judged j;
+  judge(&decQ, seq, n, &jo, &j);
+  int32_t u = -1;
+  if (!j.dead && !j.late) {
+    int rn = settleOf(judgeCtx, j.endNode);
+    const Board *rb = liveNode(judgeCtx, rn) ? ensureBoard(judgeCtx, rn) : 0;
+    if (rb) { int c = 0; u = perchOf(rb, &c); *can = c; *at = NODE(judgeCtx, rn)->t; }
+  }
+  if (clockOut()) { *at = -1; *can = 0; return -1; }   // (a judging the clock stopped is no answer: asked again)
+  if (nrested < RESTN) { Rested *r = &rested[nrested++]; r->h = h; r->n = n; r->settled = settled; r->perch = u; r->can = *can; r->at = *at; for (int k = 0; k < n; k++) r->seq[k] = seq[k]; }
+  return u;
+}
 // READY FOR THE NEXT BLOCK: after the line, a break in reach once the next block shown has landed -- what a board that cannot be ready
 // for everything (the queue outlasts it) can still be ready for. 1, 0, or NOT_ASKED (nothing coming, or out of time). A line that
 // presses something and is ready is worth what its readiness break leads to: the line and the break played on the engine, where the
@@ -314,7 +346,7 @@ EXPORT(gb_decision_on) int gb_decision_on(int land, int topped, int timeLeft, in
   decQ = hostQ; decQ.b = hostBoard; backBoard = hostBoard;
   Facts f = { land, topped, timeLeft, belowFloor };
   decF = f;
-  ncache = 0; rootBuildable = NOT_ASKED; rootQueueAt = QUEUE_UNSET;
+  ncache = 0; nrested = 0; rootBuildable = NOT_ASKED; rootQueueAt = QUEUE_UNSET;
   return 0;
 }
 // The line in the io body (nseq words); back: dead, lostAt, lives, fits, ready, late, then the judge's answer as gb_judge writes it.

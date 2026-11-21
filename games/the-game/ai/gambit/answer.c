@@ -1149,7 +1149,7 @@ static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, 
   decQ = hostQ; decQ.b = hostBoard;
   levelBreak = C2.reaction + 1 + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (outcome.c: the level's break, as rankSave)
   if (levelBreak <= 0) levelBreak = LEVEL11_BREAK;
-  ncache = 0; rootBuildable = NOT_ASKED; rootQueueAt = QUEUE_UNSET;
+  ncache = 0; nrested = 0; rootBuildable = NOT_ASKED; rootQueueAt = QUEUE_UNSET;
   // (switching: the mode in force at the question's frame; a change lets go of what the old mode carried)
   // (the opener plays from the countdown to its end -- the top-out, or nobody across its chain thrown -- and the schedule runs from there)
   switchedNow = 0;

@@ -1067,6 +1067,43 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
   return n;
 }
 static int readyBuild(const Read *R, Cand *out, int n, int cap);
+// THE GARBAGE LET DOWN (the perch, search/break.c perchRead): under garbage the garbage sits on the tallest columns under it, and
+// nothing else touches it. A support's top panel walked along its row to the nearest column two or more lower -- over columns one
+// lower, which hold it up -- falls there, and with the last support walked off the garbage comes down a row onto more of the stack.
+// A full-width block's too, whose supports have no edge to be walked past (perchedDrops). Only where the lower columns have room for
+// every support's panel: where they have not the garbage cannot come down, and a panel walked only moves the perch. One support a
+// line, the one the cursor walks least for, pressed now (a slab popping lands its panels a row on every column: the perch is the
+// same columns after it); the next decision takes the next. Offered where no line of the decision breaks (decide.c ranked), judged
+// as any line; the rank reads the board at rest (rank.c letsDown). letDownLine: its swaps into seq (MAXPATH), 0 none
+static int letDownLine(const Board *b, int32_t *seq) {
+  static LOCAL Perch P;
+  perchRead(b, &P);
+  if (P.hi < 2 || P.room < P.n) return 0;
+  int from = 0, to = 0, cost = 0;
+  // (a cell of the row open: no garbage in its column at the row or under it -- never a swap among the slabs)
+  #define OPEN_AT(q) (!P.firstG[q] || P.firstG[q] > P.hi)
+  for (int c = 1; c <= W; c++) {
+    if (!(P.held >> c & 1)) continue;
+    for (int d = -1; d <= 1; d += 2) {
+      int t = c + d;
+      while (t >= 1 && t <= W && P.top[t] == P.hi - 1 && OPEN_AT(t)) t += d;
+      if (t < 1 || t > W || P.top[t] > P.hi - 2 || !OPEN_AT(t)) continue;
+      int32_t first = P.hi * 8 + (d > 0 ? c : c - 1);
+      if (seenDigHas(b, first)) continue;
+      int acts = iabs(t - c) - 1 + actionsFor(b->curRow, b->curCol, CR(first), CC(first), pressAllowance);
+      if (!from || acts < cost) { from = c; to = t; cost = acts; }
+    }
+  }
+  #undef OPEN_AT
+  return from ? walkTo(P.hi, from, to, seq, 0) : 0;
+}
+static int letDownCand(Cand *k) {
+  static LOCAL int32_t line[MAXPATH];
+  int n = letDownLine(decQ.b, line);
+  if (!n || !candOf(k, PLAY_LEVEL, line, n, -1, 0)) return 0;
+  k->drop = 1; k->settled = 0;
+  return 1;
+}
 static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
   int n = 0;
   pairOffered = 0; twinOffered = 0; twinTouchOffered = 0; memset(twinNo, 0, sizeof twinNo); memset(twinBad, 0, sizeof twinBad); twinLo = -2; twinRows = -1;
