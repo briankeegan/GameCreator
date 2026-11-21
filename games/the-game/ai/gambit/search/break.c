@@ -357,11 +357,13 @@ static int keepsOwnChain(Ctx *x, int n) {
   return b && b->chainCounter >= ownChainN;
 }
 // (NO SWAP STRAIGHT BACK IN A LINE -- the owner: no flip and back: a search never grows a line by the swap the step before it made, its
-// two cells still full: it swaps the same pair back)
+// two cells still full: it swaps the same pair back; and no swap past the reach)
 static int swapsOfNode(Ctx *x, int n, int32_t *ms) {
   Board *b = ensureBoard(x, n);
   if (!b) return 0;
   int m = legalSwaps(b, ms);
+  // (and only within the reach of the cursor where the node leaves it: a line past it is one the order takes out -- core/nodes.h)
+  { int k = 0; for (int i = 0; i < m; i++) if (iabs(CR(ms[i]) - b->curRow) + iabs(CC(ms[i]) - b->curCol) <= REACH_STEPS) ms[k++] = ms[i]; m = k; }
   const Node *d = NODE(x, n);
   if ((d->mk == MK_SWAP || d->mk == MK_SETTLE) && d->mr >= 0 && d->mr < b->nrows && d->mc >= 1 && d->mc + 1 <= W &&
       b->p[d->mr][d->mc].f[ID] != NUL && b->p[d->mr][d->mc + 1].f[ID] != NUL) {

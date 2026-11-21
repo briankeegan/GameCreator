@@ -483,7 +483,6 @@ static int loadedAfter(const int32_t *seq, int n) {
   return twinCostOn(eb) == 0;
 }
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down, -8 the second eight's swap unloading the first; 0 not asked: the log's)
-#define REACH_STEPS 5   // (the owner: can't move more than five -- keep moves close by: the cursor steps, rows and columns, from the cursor to a line's first swap and between its swaps)
 static int32_t reachCut;   // (lines taken out for walking past the reach this decision: the log's reach=)
 static int goalKeyOf(const Judge *J);
 static int reachesFar(const Judge *J) {
