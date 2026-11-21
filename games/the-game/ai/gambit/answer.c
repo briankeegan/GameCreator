@@ -61,7 +61,8 @@ static int seenDigHas(const Board *b, int32_t mv) {
 
 // ---- THE BREAK SEARCH CARRIED ON: this beam's lines, on this board, the garbage they dig toward, the move played and the line handed
 // on after it, a bottom-row panel none of them touches, and the line toward a break played
-typedef struct { int32_t set, gid, anchorRow, anchorCol, anchorId, id, playedHold, played, nhanded, handed[MAXLINE], ntoward, toward[MAXPATH]; Paths paths; } Kept;
+// (key: the board the lines were grown on, cell by cell -- keyOf)
+typedef struct { int32_t set, gid, anchorRow, anchorCol, anchorId, id, playedHold, played, nhanded, handed[MAXLINE], ntoward, toward[MAXPATH]; Paths paths; char key[KEYLEN]; } Kept;
 static Kept theKept;
 // (a life not kept: the last decision's verdict under garbage, its next landing frame and queue -- answerTurn's log)
 #define LIFEDUMPS 20
@@ -79,13 +80,16 @@ static int playedSince(const Kept *K, int32_t lineFrom, int32_t linePressed, int
 }
 static int startsWith(const int32_t *p, int np, const int32_t *pre, int npre) { if (np <= npre) return 0; for (int i = 0; i < npre; i++) if (p[i] != pre[i]) return 0; return 1; }
 static int carriedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, Paths *out) {
-  out->n = 0;
+  out->n = 0; out->cont = 0;
   Kept *K = &theKept;
   if (!K->set || !K->paths.n || digTargetOf(b) != K->gid) return 0;
   int32_t dr = riseSince(b, K->anchorRow, K->anchorCol, K->anchorId);
   if (dr == NOT_ASKED) return 0;
   int32_t pre[MAXLINE + 1];
   int npre = playedSince(K, lineFrom, linePressed, pre);
+  // (THE SAME BOARD, HELD ON: no swap played since and every cell as it was -- a slab popping over a stack that cannot move, garbage at
+  // rest -- so the search goes on from its frontier, Paths.cont; a board that differs in any cell is searched from its own first swaps)
+  { char key[KEYLEN]; keyOf(b, key); out->cont = !npre && !dr && sameDigKey(K->key, key) ? K->paths.cont : 0; }
   // (THE LINE TOWARD A BREAK BEGUN: the rest of the one played last, the same moves taken off)
   if (K->ntoward && startsWith(K->toward, K->ntoward, pre, npre)) {
     towardRestLen = K->ntoward - npre;
@@ -164,6 +168,7 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
     K->set = 1; K->paths = br->keepOut; K->gid = digTargetOf(b); K->anchorRow = 1; K->anchorCol = col; K->anchorId = id; K->id = qid;
     K->playedHold = kind == 0; K->played = move; K->nhanded = nhanded; for (int i = 0; i < nhanded; i++) K->handed[i] = handed[i];
     K->ntoward = towardPlayedN; for (int i = 0; i < towardPlayedN; i++) K->toward[i] = towardPlayed[i];
+    keyOf(b, K->key);
     // (and grown on between decisions: the frontier the next decision resumes -- onThread)
     onWanted = 1; onDecMs = C2.brMs;
     return;
@@ -195,7 +200,7 @@ static void onThread(void) {
         // (a slice the stop cut short is not counted: its frontier is the one before it)
         if (!__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE)) {
           if (onBr.depth) onFound = 1;
-          else if (onBr.keepOut.n) onSeeds = onBr.keepOut;
+          else if (onBr.keepOut.n) onSeeds = onBr.keepOut;   // (the same board: carried on, Paths.cont)
           onSlices++;
         }
       }
@@ -248,7 +253,7 @@ static void onStop(void) {
   if (!onSlices || !onWanted || (!onFound && onLogDeep <= keptDeep && onSlices * ON_SLICE_MS <= onDecMs)) return;
   // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
   static Paths kept;
-  kept.n = 0;
+  kept.n = 0; kept.cont = onFound ? 0 : onSeeds.cont;
   if (onFound && onBr.pathLen > 0) { kept.len[0] = onBr.pathLen; for (int k = 0; k < onBr.pathLen && k < MAXPATH; k++) kept.path[0][k] = onBr.path[k]; kept.n = 1; }
   const Paths *from = onFound ? &onBr.keepOut : &onSeeds;
   for (int i = 0; i < from->n && kept.n < KEEPN; i++, kept.n++) { kept.len[kept.n] = from->len[i]; for (int k = 0; k < from->len[i]; k++) kept.path[kept.n][k] = from->path[i][k]; }

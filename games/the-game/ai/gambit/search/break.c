@@ -31,7 +31,9 @@ static LOCAL int32_t touchFrom;
 #define LINEPOOL 8192   // lines one level holds: TOUCH_WIDE x the swaps of a board
 
 typedef struct { int32_t key, n, s, h, len, kept, carried; int32_t path[MAXPATH]; } Line;   // carried: grown from a line the last decision carried on
-typedef struct { int32_t n, len[KEEPN]; int32_t path[KEEPN][MAXPATH]; } Paths;
+// (cont: the lines are the frontier of a search of this same board, no cell of it changed since; 2 when that search had its line-ups of
+// the popping slab -- breakMovesIn)
+typedef struct { int32_t n, cont, len[KEEPN]; int32_t path[KEEPN][MAXPATH]; } Paths;
 // THE ANSWER (breakMoves' return): depth 1 with the first swaps that break (moves) and how -- the line (path), the line-up pairs
 // (lines, one per first swap found), or depth 0 with the line nearest a break (toward) and the lines to choose among (towards)
 typedef struct {
@@ -268,6 +270,7 @@ typedef struct {
   int32_t anyFound;
   int32_t towardS, haveToward, towardLen, toward[MAXPATH];
   int32_t tries;
+  int32_t again;         // the touch beam asked a second time in one search, from the frontier the first reached
 } BS;
 static LOCAL int32_t outsideBuf[1 << 20];
 // A break is one standing still would not have made by the same frame (still): the root left alone, its breaks at frame t.
@@ -389,7 +392,10 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
   static LOCAL Line *seeds[LINEPOOL], *act[LINEPOOL], *nxt[LINEPOOL], *tl0[LINEPOOL], *tl[LINEPOOL], *tn[LINEPOOL], *kept[LINEPOOL];
   static LOCAL int32_t idx[LINEPOOL], tmp[LINEPOOL], keyS[LINEPOOL], ms[MAXROWS * W];
   // (the search carried on: the lines the last decision's beam was growing, played again swap by swap within the rules)
-  int nseeds = 0, nact = 0;
+  // (THE SAME BOARD SEARCHED ON, resume->cont: a search the clock stops before it has grown anything leaves the frontier as it was; and
+  // carried on within one search, s->again: the first swaps were grown when the frontier was made, so the frontier alone is grown)
+  int nseeds = 0, nact = 0, cont = s->resume && s->resume->cont;
+  if (cont) o->keepOut = *s->resume;
   for (int i = 0; s->resume && i < s->resume->n; i++) {
     if (!(s->resume->len[i] > 0 && s->resume->len[i] < LONGEST)) continue;
     Line *a = lineNew(); if (!a) break;
@@ -411,7 +417,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     for (int i = 0; i < nn; i++) act[i] = nxt[i];
     nact = nn;
   }
-  if (nseeds) keepPaths(&o->keepOut, seeds, nseeds);
+  if (nseeds && !(cont && SEARCH_OUT())) keepPaths(&o->keepOut, seeds, nseeds);
   for (int i = 0; i < nseeds; i++)
     if (breaksAt(s, seeds[i]->n, seeds[i]->path, seeds[i]->len)) {
       found(o, seeds[i]->key); o->touch = 1; o->carried = 1; setPath(o, seeds[i]->path, seeds[i]->len); o->at = NODE(x, seeds[i]->n)->t;
@@ -419,7 +425,7 @@ static int touchBeam(BS *s, Line **firsts, int nfirsts) {
     }
   int n0 = 0;
   for (int i = 0; i < nseeds; i++) tl0[n0++] = seeds[i];
-  for (int i = 0; i < nfirsts; i++) if (liveNode(x, firsts[i]->n) && within(s, firsts[i]->n) && (pressAllowance < 0 || spentOn(s, firsts[i]->path, 1) <= allowLeftAt(0, 0))) tl0[n0++] = firsts[i];
+  for (int i = 0; i < nfirsts && !(s->again && nseeds); i++) if (liveNode(x, firsts[i]->n) && within(s, firsts[i]->n) && (pressAllowance < 0 || spentOn(s, firsts[i]->path, 1) <= allowLeftAt(0, 0))) tl0[n0++] = firsts[i];
   int tpath = 0;
   for (int tb = touchFrom; tb < 2 && !tpath && !SEARCH_OUT(); tb++) {
     int beam = tb ? TOUCH_WIDE : TOUCH_BEAM, ntl = n0;
@@ -715,19 +721,29 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
     // (a slab popping: the touch beam on the garbage elsewhere first, in half what is left -- a line-up's tries can take the whole of
     // it, and the touch beam had none (run 487, factory-1: a break of 7 swaps under a pop of 99 frames, found in 95 ms of 257 searched
     // again, missed)
+    // (THE SAME BOARD, ITS LINE-UPS HAD, resume->cont 2: a line-up is the board's alone -- the same tries in the same order, with the
+    // same ends -- so they are not tried again while no cell changes, and the touch beam has the whole share)
+    int lined = resume && resume->cont == 2;
     if (clockShare > 0) {
-      double half = nowMs() + (clockShare - nowMs()) / 2, old = clockShareBegin(half);
+      double half = lined ? clockShare : nowMs() + (clockShare - nowMs()) / 2, old = clockShareBegin(half);
       int hit = touchBeam(&s, firsts, nfirsts);
       if (hit) trimPath(&s);
       clockShareEnd(old);
       if (hit) { out->depth = 1; return; }
     }
-    int w0 = step(x, s.root, MK_LONG, 0, 0, wait);
-    if (w0 >= 0 && w0 < (1 << 20)) outsideBuf[w0] = 0;   // (made from the root: within the rules so far)
-    if (!breaksAt(&s, w0, 0, 0) && lineups(&s, firsts, nfirsts)) { out->depth = 1; return; }
-    // (no line-up of the popping slab breaks again: a break of the garbage elsewhere while it pops, the cursor being free)
-    if (touchBeam(&s, firsts, nfirsts)) { out->depth = 1; trimPath(&s); return; }
-  }
+    if (!lined) {
+      lined = !SEARCH_OUT();   // (had: begun with time on the clock)
+      int w0 = step(x, s.root, MK_LONG, 0, 0, wait);
+      if (w0 >= 0 && w0 < (1 << 20)) outsideBuf[w0] = 0;   // (made from the root: within the rules so far)
+      if (!breaksAt(&s, w0, 0, 0) && lineups(&s, firsts, nfirsts)) { out->depth = 1; return; }
+      // (no line-up of the popping slab breaks again: a break of the garbage elsewhere while it pops, the cursor being free -- the touch
+      // beam carried on from the frontier it reached before the line-ups, in what they left)
+      static LOCAL Paths reached;
+      if (clockShare > 0 && out->keepOut.n) { reached = out->keepOut; reached.cont = 1; s.resume = &reached; s.again = 1; }
+      if (touchBeam(&s, firsts, nfirsts)) { out->depth = 1; trimPath(&s); return; }
+    }
+    out->keepOut.cont = lined ? 2 : 1;
+  } else out->keepOut.cont = 1;
   // none found: the line nearest a break, and the lines to choose among -- the frontier the beam has grown furthest, then that line
   out->depth = 0;
   if (s.haveToward) { out->towardLen = s.towardLen; for (int k = 0; k < s.towardLen; k++) out->toward[k] = s.toward[k]; }
