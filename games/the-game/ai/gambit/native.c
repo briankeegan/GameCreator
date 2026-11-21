@@ -165,6 +165,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   hostWin = 1; winLen = q->window; nWinAges = imin(q->nages, WINMAX); for (int i = 0; i < nWinAges; i++) winAges[i] = q->ages[i];
   int32_t rescued0 = rescues;
   cdAsk = q->noRaise;
+  hostMoveOff = q->moveOff;
   answerQuestion(q->id, q->at, q->topped, q->oppHas, q->oppOut, q->oppHas, q->oppTop, q->oppHas, q->oppStop, 1, q->allowance, q->lineFrom, q->linePressed,
                  !q->noRaise && canRaiseOn(hostBoard) && raisePresses(q, hostBoard), due, t0, 0);
   // (the closing work: from the moment it ran out of time to its answer -- not a decision whose lines were all judged again past the

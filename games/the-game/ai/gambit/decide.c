@@ -790,7 +790,22 @@ static int ranked(const Read *R, const Found *S) {
     // (and never the line in progress begun on its three as the save: the input pressed of it is spent, and taken out now it is spent for
     // nothing)
     memset(twinWaste, 0, sizeof twinWaste); twinWasteC = twinWasteX = twinWasteN = 0;
-    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
+    // (UNDER GARBAGE A BREAK IS NEVER A THREE FOR NOTHING where it is the only break and lost no sooner than the best line that keeps
+    // its threes: no line lives and no line breaks without a three -- the three is on the way to the break, and taken out the board
+    // is held, or its panels cleared for stop time, until it is lost)
+    // (lost on the frame the engine has it, no walk charged: rank.c diesAt)
+    int breakThrough = 0; double keptDies = -1;
+    if (!saveOk && decF.under) {
+      int lives = 0, clean = 0;
+      for (int i = 0; i < n; i++) {
+        if (order[i]->o.lives) lives = 1;
+        if (wastesThree(order[i])) continue;
+        if (!order[i]->hold && order[i]->apBroke > 0) clean = 1;
+        if (diesAt(order[i]) > keptDies) keptDies = diesAt(order[i]);
+      }
+      breakThrough = !lives && !clean;
+    }
+    if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave) && !(breakThrough && order[i]->apBroke > 0 && diesAt(order[i]) >= keptDies)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
@@ -1945,6 +1960,12 @@ static int carriedFromReady(void) { return theCarry.ready; }
 #define CARRY_WAITS 2
 static int carryWaitsOut(void) { return theCarry.waits >= CARRY_WAITS; }
 static int32_t carryFrom = -1, carryPressed;
+// THE LINE WHOSE FIRST SWAP WAS NEVER PRESSED: the frame loop drops its plan when the board is not the one it was made for, and the
+// swap an answer played can go with it, unpressed. The line played is kept whole beside the line in progress, and where the next
+// question says the swap never went down (carryMoveOff: native.c, the question's moveOff) the whole line is the line in progress
+// -- judged on the board as it is, as any carried line: a break begun is pressed while the board still allows it.
+static Carry theCarryOff;
+static int32_t hostMoveOff, carryMoveOff;
 static Judged carryJ;   // (the line in progress as its own judging found it: the log's cj=)
 // THE ANCHOR a line in progress is found again by: the first panel of the bottom row (its ids, row1) that no swap of the line touches,
 // into theCarry; 0 when every one is touched. carryOf and carryReady ask it.
@@ -1977,6 +1998,28 @@ static int savesOverHold(const Judge *k) {
   if (!H || !k || k->hold || k->o.dead || H->o.lives) return 0;
   return k->o.lives || diesAt(k) > diesAt(H);
 }
+// (the line from its swap `first` on, into C: anchored, each swap named in the rows of the board it was begun on; 0 with no anchor)
+static int carryInto(Carry *C, const Read *R, const Judge *k, int32_t qid, int first) {
+  int32_t row1[W + 1];
+  for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
+  // (the anchor is a panel of the board as it is now that no swap of the line moves: each swap named in this board's rows, the rows risen
+  // by its press taken off)
+  int32_t root[MAXLINE], nroot = imin(k->k.nseq, MAXLINE);
+  for (int i = 0; i < nroot; i++) root[i] = (CR(k->k.seq[i]) - k->o.j.risen[i]) * 8 + CC(k->k.seq[i]);
+  if (!anchorInto(C, row1, root, nroot)) return 0;
+  // (each swap kept in the rows of the board it was begun on: a swap the judge pressed after the stack rose is named in the rows of the
+  // board it is pressed on, so the rows risen by then are taken off, and only the rows risen since the line began beyond those are put
+  // back when it is carried on -- a rise foreseen is never counted twice)
+  C->set = 1; C->id = qid; C->nrest = k->k.nseq - first;
+  for (int i = first; i < k->k.nseq; i++) { int32_t up = i < MAXLINE ? k->o.j.risen[i] : 0; C->rest[i - first] = (CR(k->k.seq[i]) - up) * 8 + CC(k->k.seq[i]); C->risen[i - first] = up;
+    // (and the clock each swap's walk was judged to begin on: the carried line is judged pressing it no sooner)
+    C->at[i - first] = i < k->o.j.nats && i < MAXLINE ? decQ.b->clock + k->o.j.ats[i] : 0; }
+  C->settled = k->settled; C->broke = k->apBroke > 0; C->popping = popLeft(decQ.b) > 0;
+  C->made = (Made){ k->apCombo, k->apChain, k->apBroke, k->k.x.cells };
+  if (k->aim >= 0) { C->hasAim = 1; C->aim = R->guides.aim[k->aim]; }
+  C->rule = R->rule;
+  return 1;
+}
 static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   pvKeep(k, first, qid);
   if (k && !k->carried && k != carryCrossJ && !k->hold) { carryBeganAt = decQ.b ? decQ.b->clock : -1; carryBeganPlay = k->k.play; }
@@ -1991,26 +2034,15 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   // (a line that breaks garbage is carried whatever its tier: under garbage while the break waits, a breaking line ranks in the last
   // tier, and its swaps after the first are the break it was chosen for)
   carrySkip = !k ? 1 : (k->wait && k->k.play != PLAY_CARRYWAIT) ? 2 : k->k.nseq < first + 1 ? 3 : (k->t.tier > 4 && !(k->apBroke > 0) && !savesOverHold(k)) ? 4 : 0;
+  // (the whole line kept, its first swap too, for the answer whose swap is played now: the same lines the line in progress keeps)
+  memset(&theCarryOff, 0, sizeof theCarryOff);
+  if (first == 1 && k && !k->hold && k->k.nseq >= 1 && !(k->wait && k->k.play != PLAY_CARRYWAIT) && !(k->t.tier > 4 && !(k->apBroke > 0) && !savesOverHold(k))) {
+    theCarryOff.why = keepWhy;
+    if (!carryInto(&theCarryOff, R, k, qid, 0)) memset(&theCarryOff, 0, sizeof theCarryOff);
+  }
   if (carrySkip) { carryClr = carrySkip; return; }
-  int32_t row1[W + 1];
-  for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
-  // (the anchor is a panel of the board as it is now that no swap of the line moves: each swap named in this board's rows, the rows risen
-  // by its press taken off)
-  int32_t root[MAXLINE], nroot = imin(k->k.nseq, MAXLINE);
-  for (int i = 0; i < nroot; i++) root[i] = (CR(k->k.seq[i]) - k->o.j.risen[i]) * 8 + CC(k->k.seq[i]);
-  if (!anchorOf(row1, root, nroot)) { carrySkip = 5; carryClr = 5; return; }
-  // (each swap kept in the rows of the board it was begun on: a swap the judge pressed after the stack rose is named in the rows of the
-  // board it is pressed on, so the rows risen by then are taken off, and only the rows risen since the line began beyond those are put
-  // back when it is carried on -- a rise foreseen is never counted twice)
-  theCarry.set = 1; theCarry.id = qid; theCarry.nrest = k->k.nseq - first;
-  for (int i = first; i < k->k.nseq; i++) { int32_t up = i < MAXLINE ? k->o.j.risen[i] : 0; theCarry.rest[i - first] = (CR(k->k.seq[i]) - up) * 8 + CC(k->k.seq[i]); theCarry.risen[i - first] = up;
-    // (and the clock each swap's walk was judged to begin on: the carried line is judged pressing it no sooner)
-    theCarry.at[i - first] = i < k->o.j.nats && i < MAXLINE ? decQ.b->clock + k->o.j.ats[i] : 0; }
-  theCarry.settled = k->settled; theCarry.broke = k->apBroke > 0; theCarry.popping = popLeft(decQ.b) > 0;
-  theCarry.made = (Made){ k->apCombo, k->apChain, k->apBroke, k->k.x.cells };
+  if (!carryInto(&theCarry, R, k, qid, first)) { carrySkip = 5; carryClr = 5; return; }
   carriedSunk = lineWalk(k);
-  if (k->aim >= 0) { theCarry.hasAim = 1; theCarry.aim = R->guides.aim[k->aim]; }
-  theCarry.rule = R->rule;
 }
 static int32_t carryRule(void) { return theCarry.rule; }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise
@@ -2226,6 +2258,9 @@ static void pvCheck(int32_t skip) {
 static int carriedCand(const Read *R, Cand *k, int *wait) {
   Carry *C = &theCarry;
   *wait = 0; carryDrop = 0; carryLate = 0;
+  if (carryMoveOff && theCarryOff.set && theCarryOff.id == carryFrom) {
+    *C = theCarryOff; memset(&theCarryOff, 0, sizeof theCarryOff); memset(&theCarryNext, 0, sizeof theCarryNext); carriedSunk = -1; carryPressed = 0;
+  }
   carryNone = !C->set ? 16 : C->id != carryFrom ? 17 : 0;
   int skip = C->id == carryFrom ? carryPressed : 0;
   if (C->set && C->nrest <= skip && theCarryNext.set) {

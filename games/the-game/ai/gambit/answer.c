@@ -433,6 +433,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the readiness the last decision left searching on the workers taken back first: the pool is this decision's searches' -- breakBegin)
   readyStop();
   carryFrom = lineFrom; carryPressed = linePressed;
+  carryMoveOff = hostMoveOff; hostMoveOff = 0;   // (the answer's own swap never pressed: a native host's, said with the question)
   // (the line the board was last foreseen by: this answer's line in progress, its swaps pressed as the frame loop says; past it -- a
   // hold, a wait -- the swaps it had pressed when last asked)
   { static int32_t lastSkip; pvKind = 0; if (pvSet) { if (pvNew) { lastSkip = 0; pvNew = 0; } if (pvId == lineFrom) lastSkip = linePressed; pvCheck(lastSkip); } }
@@ -614,6 +615,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     else if (P.line && !P.line->hold) {
       wy = P.line->carried ? (theCarry.why.kind != WHY_NONE ? theCarry.why : moveWhy(P.line)) : whyPlayed;
       if (!P.line->carried && theCarry.set) theCarry.why = wy;
+      if (!P.line->carried && theCarryOff.set) theCarryOff.why = wy;
     }
     else if (theCarry.set && theCarry.why.kind != WHY_NONE) wy = theCarry.why;
     else if (P.deferred && P.top && !P.top->hold) wy = moveWhy(P.top);
@@ -1068,7 +1070,7 @@ EXPORT(gb_profile) void gb_profile(int mode, int ms, int extendMs, int width, in
 // for the old mode's list), the dig, the line toward a break.
 static void modeLeft(void) {
   lifeLived = 0;
-  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext); carryClr = 7;
+  memset(&theKept, 0, sizeof theKept); memset(&theCarry, 0, sizeof theCarry); memset(&theCarryNext, 0, sizeof theCarryNext); memset(&theCarryOff, 0, sizeof theCarryOff); carryClr = 7;
   digOn = 0; digN = 0; digGid = NUL; towardPlayedN = 0; towardRestLen = 0; carriedSunk = -1;
 }
 // A new game: nothing of the last one is carried on.
