@@ -298,6 +298,7 @@ static int waitSpends(const Judge *J);
 static int waitSpent(const Judge *l, const Judge *s) {
   return rankHoldClock == decQ.b->clock && rankHoldOwn >= rankSave && waitSpends(l) && (s->hold || s->idle || !waitSpends(s));
 }
+static int windowDead(const Judge *J);
 static int walkTurns(const Judge *x, const Judge *y) {
   if (x->o.lives || y->o.lives) return 0;
   double dx = diesAt(x), dy = diesAt(y);
@@ -323,6 +324,11 @@ static int walkTurns(const Judge *x, const Judge *y) {
     if (finishAsked() && !l->hold && l->apCombo >= 8 && l->apChain < 2 && !(s->apCombo >= 8 && s->apChain < 2)) return (dx > dy) != (lostOf(x) > lostOf(y)); }
   // (nor in the wait, the later one walking the window out for no break -- waitSpent: the walk's charge decides between the two)
   if (waitSpent(dx > dy ? x : y, dx > dy ? y : x)) return 0;
+  // (nor a later loss the window leaves no break against, beside a line that leaves the next break its walk within its own life, a
+  // break's time or more: the frames the later one buys end its game, the other's are frames a break is pressed in -- the walk's charge
+  // decides between the two)
+  { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
+    if ((dx < dy ? dx : dy) >= rankSave && windowDead(l) && !windowDead(s)) return 0; }
   if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
   // (nor where the later one buys less than a break's time with the window the next breaks are pressed from: the actions it spends come
   // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
@@ -617,6 +623,13 @@ static int32_t waitOf(void) {
   if (!decF.under || breakOffered || !H || H->o.dead || !decQ.b || !(popLeft(decQ.b) > 0 || cascadeLive(decQ.b))) return 0;
   restOn(H);
   return imax(0, H->restAt);
+}
+// (A LINE THE WINDOW LEAVES NO BREAK: the actions it leaves hold a break's walk again only after its board is lost -- the window's
+// oldest presses leave it too late, core/nodes.h allowWait -- so no break can be pressed against the loss it buys)
+static int windowDead(const Judge *J) {
+  if (pressAllowance < 0 || nWinAges < 0 || ruleNoEnemy || J->hold || J->o.lives) return 0;
+  int32_t w = allowWait(0, lineWalk(J), BREAK_WALK);
+  return w < 0 || w > diesAt(J);
 }
 static int waitWalks(const Judge *J) { return pressAllowance >= 0 && waitOf() > 0 && allowAtNeed(lineWalk(J)) >= BREAK_WALK; }
 // (and the walk that does not: a line that breaks nothing and leaves the window under a break's walk at rest)

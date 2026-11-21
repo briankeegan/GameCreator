@@ -179,11 +179,11 @@ static int seqOf(const char *s, int32_t *out, int cap) {
   while (s && *s && *s != '@' && n < cap) { int r = atoi(s); const char *c = strchr(s, ','); if (!c) return 0; out[n++] = r * 8 + atoi(c + 1); s = strchr(s, ';'); if (s) s++; }
   return n;
 }
-static int spendKept(const char *dir) {
+static int spendKeptOn(const char *dir, const char *file, const char *what) {
   char path[4096]; static char line[1 << 17], rec[4096];
   snprintf(path, sizeof path, "%s/wait.words", dir);
   if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
-  snprintf(path, sizeof path, "%s/spend.txt", dir);
+  snprintf(path, sizeof path, "%s/%s", dir, file);
   FILE *f = fopen(path, "r");
   if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
   int boards = 0, first = 0, unjudged = 0;
@@ -205,9 +205,15 @@ static int spendKept(const char *dir) {
   }
   fclose(f);
   gb_replay_enemy(-1, 0, 0);
-  printf("%s: the later loss bought -- %d boards, the spend put first on %d\n", first || unjudged || !boards ? "FAIL" : "ok", boards, first);
+  printf("%s: %s -- %d boards, the spend put first on %d\n", first || unjudged || !boards ? "FAIL" : "ok", what, boards, first);
   return first || unjudged || !boards;
 }
+static int spendKept(const char *dir) { return spendKeptOn(dir, "spend.txt", "the later loss bought"); }
+// THE WINDOW THAT LEAVES NO BREAK (test DIR windead, its own process, as spend: windead.txt): boards of games lost with the window
+// spent, each with a line that leaves the next break its walk within its own life (keep) and a later loss whose walk leaves no break's
+// walk in the window before its board is lost (spend) -- the spend, lost sooner with its walk charged, is never put first: rank.c
+// windowDead, walkTurns
+static int windowKept(const char *dir) { return spendKeptOn(dir, "windead.txt", "the window that leaves no break"); }
 int gb_cells(void);
 // THE BOARD DRAWN (test DIR board LOG FRAME): the logged board (GAMBITL, GAMBITQ...) of that frame, top row first -- a colour's digit,
 // garbage G, empty '.', a dimmed (rising) row in lower case; then the garbage on its way
@@ -356,6 +362,7 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
   if (argc > 2 && !strcmp(argv[2], "wait")) return waitWindow(dir);
+  if (argc > 2 && !strcmp(argv[2], "windead")) return windowKept(dir);
   if (argc > 2 && !strcmp(argv[2], "carry")) return carryClock(dir);
   if (argc > 2 && !strcmp(argv[2], "raise")) return raisePressed(dir);
   if (argc > 2 && !strcmp(argv[2], "spend")) return spendKept(dir);
