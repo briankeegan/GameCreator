@@ -26,6 +26,52 @@ static int outBetter(int32_t l, int32_t a, int32_t ol, int32_t oa) {
   double v = l - (double)OUT_ACT * a, ov = ol - (double)OUT_ACT * oa;
   return v > ov || (v == ov && a < oa);
 }
+// THE LINE PLAYED FROM THE ROOT as the beam steps it -- each swap one the board has there, its walk one the window pays for, its step
+// held to the list, the first never the swap back: the node it ends on and the actions it walks (*acts), or -1.
+static int outPlayed(Ctx *x, int root, BS *still, const int32_t *seq, int nseq, int32_t *acts) {
+  int32_t ms1[MAXROWS * W];
+  int n = root; *acts = 0;
+  for (int i = 0; i < nseq; i++) {
+    const Board *pb = ensureBoard(x, n);
+    int nm = swapsOfNode(x, n, ms1), has = 0;
+    for (int j = 0; j < nm && !has; j++) has = ms1[j] == seq[i];
+    if (!pb || !has) return -1;
+    int32_t left = pressAllowance >= 0 ? allowLeftAt(NODE(x, n)->t - NODE(x, root)->t, *acts) : HOLDTIGHT + 1;
+    int a = actionsFor(pb->curRow, pb->curCol, CR(seq[i]), CC(seq[i]), left);
+    if (pressAllowance >= 0 && a > left) return -1;
+    int out = step(x, n, MK_SWAP, CR(seq[i]), CC(seq[i]), 0);
+    if (!liveNode(x, out) || (!outFree && !stepFitsAt(x, out))) return -1;
+    if (i == 0) { Stats st; statsOf(x, out, &st); if (!firstOk(CR(seq[0]), CC(seq[0]), NODE(x, out)->brk > stillAt(still, NODE(x, out)->t) ? 2 : st.cleared > 0)) return -1; }
+    *acts += a; n = out;
+  }
+  return n;
+}
+// NO SWAP THE BOARD LIVES AS LONG WITHOUT (the owner: no walk far away that does nothing): the answer's swaps left out one at a time,
+// the one whose leaving saves the cursor the most actions first -- the line played again without it, and kept so where its board, left
+// alone, is lost no sooner and it walks fewer actions; each swap asked once, while the search's time lasts.
+static void outLean(Ctx *x, int root, BS *still, Outlived *o, int32_t to, int32_t rest, double until) {
+  int32_t asked[OUT_SEQ] = { 0 };
+  const Board *rb = ensureBoard(x, root);
+  while (rb && o->set && o->nseq > 1 && nowMs() < until) {
+    int32_t cut[OUT_SEQ], best = -1, bestActs = 0, n = 0;
+    for (int i = 0; i < o->nseq; i++) {
+      if (asked[i]) continue;
+      int32_t r = rb->curRow, c = rb->curCol, acts = 0;
+      for (int k = 0; k < o->nseq; k++) if (k != i) { acts += actionsFor(r, c, CR(o->seq[k]), CC(o->seq[k]), HOLDTIGHT + 1); r = CR(o->seq[k]); c = CC(o->seq[k]); }
+      if (best < 0 || acts < bestActs) { best = i; bestActs = acts; }
+    }
+    if (best < 0) break;
+    asked[best] = 1;
+    for (int k = 0; k < o->nseq; k++) if (k != best) cut[n++] = o->seq[k];
+    int32_t acts, end = outPlayed(x, root, still, cut, n, &acts);
+    if (end < 0 || acts >= o->acts) continue;
+    int32_t lost = lostAlone(x, end, imax(to, NODE(x, end)->t + rest));
+    if (lost == NOT_ASKED || (lost != FOREVER && (o->lostAt == FOREVER || lost < o->lostAt))) continue;
+    if (lost == FOREVER && !outFree && !lineFits(cut, n, 0)) continue;
+    for (int k = best; k < n; k++) { o->seq[k] = cut[k]; asked[k] = asked[k + 1]; }
+    o->nseq = n; o->acts = acts; o->lostAt = lost;
+  }
+}
 static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) {
   Outlived best, over; memset(&best, 0, sizeof best); memset(&over, 0, sizeof over);
   double t0 = nowMs(), perStep = 0;
@@ -93,19 +139,22 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
     static OItem top[PLAN_POOL];
     for (int i = 0; i < nkeep; i++) top[i] = kids[idx[i]];
     for (int i = 0; i < nkeep; i++) {
+      // (once a line within the reserve lives, only one that walks fewer actions is asked: of the lines that live, the one that walks least)
+      if (best.set && best.lostAt == FOREVER && top[i].acts >= best.acts) continue;
       top[i].lost = lostAlone(x, top[i].n, imax(to, NODE(x, top[i].n)->t + rest));
       if (top[i].lost == FOREVER && !outFree && !lineFits(top[i].seq, top[i].nseq, 0)) { top[i].lost = -1; continue; }
       Outlived *o = top[i].acts <= keep ? &best : &over;
       if (!o->set || outBetter(top[i].lost, top[i].acts, o->lostAt, o->acts)) { o->set = 1; o->acts = top[i].acts; o->nseq = top[i].nseq; for (int s2 = 0; s2 < top[i].nseq; s2++) o->seq[s2] = top[i].seq[s2]; o->lostAt = top[i].lost; }
-      if (top[i].lost == FOREVER && o == &best) return best;
     }
+    if (best.set && best.lostAt == FOREVER) { outLean(x, root, &still, &best, to, rest, t0 + ms); return best; }
     for (int i = 0; i < nkeep; i++) { idx[i] = i; kl[i] = top[i].lost; }
     sortByKeyDesc(idx, nkeep, kl, tmpI);
     nlev = imin(nkeep, width);
     for (int i = 0; i < nlev; i++) level[i] = top[idx[i]];
     perStep = nsteps ? (nowMs() - tl) / nsteps : 0;
   }
-  if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt + OUT_LATER))) return over;
+  if (over.set && (!best.set || (over.lostAt == FOREVER ? best.lostAt != FOREVER : best.lostAt != FOREVER && over.lostAt > best.lostAt + OUT_LATER))) best = over;
+  outLean(x, root, &still, &best, to, rest, t0 + ms);
   return best;
 }
 // (its boards let go once it has answered: every thread that searches has a context of its own, and a tree held is thousands of boards)
