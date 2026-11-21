@@ -83,7 +83,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
   static int32_t idx[PLAN_KIDS], tmpI[PLAN_KIDS], kh[PLAN_KIDS], kr[PLAN_KIDS], kg[PLAN_KIDS], kl[PLAN_KIDS], ka[PLAN_KIDS], kp[PLAN_KIDS], ms1[MAXROWS * W];
   int nlev = 1;
   memset(&level[0], 0, sizeof level[0]); level[0].n = root;
-  int keep = pressAllowance >= 0 ? pressAllowance - OUT_RESERVE : 1 << 20;
+  int keep = pressAllowance >= 0 ? allowLeftAt(0, 0) - OUT_RESERVE : 1 << 20;
   for (int d = 1; d <= depth && nlev; d++) {
     double tl = nowMs();
     int nsteps = 0;

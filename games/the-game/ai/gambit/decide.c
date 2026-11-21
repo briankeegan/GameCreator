@@ -436,7 +436,10 @@ static double contLostOf(const Judge *J, double give) {
   int32_t dt = imax(0, eb->clock - decQ.b->clock);
   Question q2 = decQ; q2.b = eb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
+  // (the moves after the line are pressed out of the window the line leaves, at the frame it ends: core/nodes.h winPast)
+  winPast = dt; winGone = J->hold ? 0 : J->o.j.spent;
   Outlived c = outlive(&q2, HORIZON + REST, REST, give, OUT_DEPTH, 30);
+  winPast = 0; winGone = 0;
   int32_t lost = c.set ? c.lostAt : diesIn(&q2, HORIZON + REST);
   if (lost < 0) return -1;
   return lost == FOREVER ? 1e9 : (double)dt + lost;

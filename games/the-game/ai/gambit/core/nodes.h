@@ -85,8 +85,12 @@ static int32_t pressAllowance = -1;
 // decision's allowance less what is spent.
 #define WINMAX 512
 static int32_t winAges[WINMAX], nWinAges = -1, winLen = 600, hostWin;
+// (A SEARCH BEGUN ON THE BOARD A LINE LEAVES reads the window that line leaves it: the frames from the question's to its root, and the
+// actions the line was pressed with -- decide.c contLostOf)
+static LOCAL int32_t winPast, winGone;
 static int allowLeftAt(int32_t t, int spent) {
   if (pressAllowance < 0) return -1;
+  t += winPast; spent += winGone;
   if (nWinAges < 0) return pressAllowance - spent;
   int in = 0; for (int i = 0; i < nWinAges; i++) in += winAges[i] + t < winLen;
   return imax(0, pressAllowance + nWinAges - in - spent);

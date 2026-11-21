@@ -69,6 +69,7 @@ typedef struct {
   int32_t base;                 // the garbage the board left alone breaks, which the line's own is counted beyond
   int32_t clearedPanels;        // the panels the line clears beyond those the board left alone clears
   int32_t endNode;              // the node the line ends on, in judgeCtx (until the next judging)
+  int32_t spent;                // the actions the line's swaps were pressed with, by the window's own count (actionsFor)
   int32_t cutAt;                // the row and column the cut swap was to be pressed at (row * 8 + column), 0 none
   int32_t preLast;              // the node the line's last swap was pressed from, in judgeCtx (-1 none)
   int32_t pressedAt[MAXLINE];   // each swap pressed: the row and column it was pressed at (row * 8 + column)
@@ -527,7 +528,7 @@ static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const Jud
         if (acts > left) { j->cut = k; j->cutWhy = 1; break; }
         if (winWaited < 0) winWaited = k;
       }
-      spent += acts;
+      spent += acts; j->spent = spent;
     }
     int kind = last || o->settled ? MK_SETTLE : MK_SWAP, out;
     if (last && k < MAXLINE) j->risen[k] = risenTo(x, n, rid);
