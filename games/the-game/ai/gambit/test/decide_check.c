@@ -611,32 +611,16 @@ EXPORT(gb_reason_keeps) int gb_reason_keeps(int span) {
   int gives = !outlivesHold(&L, H);
   return keeps && gives;
 }
-// THE REACH (gb_reach_last, after a replay): the lines the order kept that walk the cursor past REACH_STEPS between swaps, whatever the
-// board -- decide.c farForNothing
+// THE REACH UP AND DOWN (gb_reach_last, after a replay): the lines the order kept that walk past REACH_ROWS for nothing -- break no
+// garbage, make nothing of the mode's first entry -- where a line within the reach stands a break's time and the far one does not
+// live -- decide.c farForNothing
 EXPORT(gb_reach_last) int gb_reach_last(void) {
-  int far = 0;
-  for (int i = 0; i < orderN; i++) far += farForNothing(order[i]);
+  double kept = -1; int lives = 0, far = 0;
+  for (int i = 0; i < orderN; i++) { const Judge *J = order[i]; if (farForNothing(J)) continue; if (J->o.lives) lives = 1; else if (!J->o.dead && diesAt(J) > kept) kept = diesAt(J); }
+  if (!lives && kept < rankSave) return 0;
+  for (int i = 0; i < orderN; i++) { const Judge *J = order[i]; if (farForNothing(J) && !J->o.lives) far++; }
   return far;
 }
-// NO FLIP AND BACK ACROSS DECISIONS (gb_undo_cut, after a replay): the order's first line that is no hold and does not live made the
-// one that swaps straight back the swap just pressed -- its first swap's two panels named as that swap left them -- and the order cut as
-// the decision cuts it: 1 where it is taken out, 0 kept, -1 none to try -- decide.c undoesLast
-EXPORT(gb_undo_cut) int gb_undo_cut(void) {
-  const Judge *T = 0, *H = 0;
-  for (int i = 0; i < orderN; i++) { if (order[i]->hold) { if (!H) H = order[i]; } else if (!T && !order[i]->o.lives && !order[i]->o.dead && order[i]->k.nseq >= 1) T = order[i]; }
-  if (!T || !H) return -1;
-  int r = CR(T->k.seq[0]), c = CC(T->k.seq[0]);
-  if (r < 0 || r >= decQ.b->nrows || c < 1 || c + 1 > W) return -1;
-  undoIdL = decQ.b->p[r][c].f[ID]; undoIdR = decQ.b->p[r][c + 1].f[ID]; undoFresh = 1;
-  if (!(undoIdL > 0 || undoIdR > 0)) { undoFresh = 0; return -1; }
-  static Judge *ord[512]; int n = 0; for (int i = 0; i < orderN && n < 512; i++) ord[n++] = (Judge *)order[i];
-  int32_t cut = 0; int m = cutAlways(ord, n, undoesLast, &cut, 29);
-  undoFresh = 0;
-  int kept = 0; for (int i = 0; i < m; i++) kept |= ord[i] == T;
-  return !kept;
-}
-// (whether walks are ever held: core/nodes.h NO_DAS -- the held-keys check asks none then)
-EXPORT(gb_no_das) int gb_no_das(void) { return NO_DAS; }
 EXPORT(gb_wait_last) int gb_wait_last(int which) {
   const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
   if (!H || waitOf() <= 0 || rankHoldOwn < rankSave) return 0;

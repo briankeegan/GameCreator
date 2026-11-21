@@ -1168,13 +1168,6 @@ static int frontFrame(void) {
       }
     } else { guard = 2; F.st.guardLet++; }
   }
-  // (THE SWAP PRESSED NOW, every one the frame loop presses -- a line's later swaps and those timed after the decision too: the two panels
-  // as they stand once it is pressed, for the next decision's no flip and back -- decide.c undoesLast)
-  if ((bits & IN_SWAP & ~F.prevBits) && t->curCol >= 1 && t->curCol + 1 <= W && t->curRow >= 0 && t->curRow < t->nrows) {
-    __atomic_store_n(&undoFresh, 0, __ATOMIC_RELEASE);
-    __atomic_store_n(&undoIdL, t->p[t->curRow][t->curCol + 1].f[ID], __ATOMIC_RELAXED); __atomic_store_n(&undoIdR, t->p[t->curRow][t->curCol].f[ID], __ATOMIC_RELAXED);
-    __atomic_store_n(&undoFresh, 1, __ATOMIC_RELEASE);
-  }
   if (bits & IN_SWAP & ~F.prevBits) {
     moveBegin(t, save == 1, guard, play, lid, idx);   // (save: the survival search's three, for the count)
     if (t->curCol >= 1 && t->curCol + 1 <= W && t->curRow >= 0 && t->curRow < t->nrows) { F.swapA = t->p[t->curRow][t->curCol].f[ID]; F.swapB = t->p[t->curRow][t->curCol + 1].f[ID]; }
