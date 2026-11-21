@@ -1296,6 +1296,20 @@ static Played playOf(const Read *R, int n) {
       q++;
     }
     Wt.k.nseq = q; Wt.apNats = nq;
+    // (THE LINE AS IT WILL BE KEYED: the judge walked to each flip and paid for it out of the window; the frame loop presses neither, so
+    // the swaps left are judged again as it keys them -- the cursor from where it stands, the window unspent, each walk begun no sooner
+    // than the judge began it -- and handed on from the frames that judging presses them: a swap is never handed on from a frame
+    // sooner than its keys can begin. The swaps it presses are the line; one it cannot press ends it there, and with none the hold.)
+    if (q && nq == q) {
+      int32_t nb[MAXLINE]; Judged wj;
+      for (int i = 0; i < q; i++) nb[i] = decQ.b->clock + Wt.apAts[i];
+      JudgeOpts jo = { L->settled, decQ.tight, NOT_ASKED, 0, 0, -1, 0, 0, 0, 0, 0, 1 };
+      jo.notBefore = nb; jo.nNotBefore = q; jo.winWait = L->apBroke > 0;
+      __atomic_store_n(&clockIgnore, 1, __ATOMIC_RELAXED); judge(&decQ, Wt.k.seq, q, &jo, &wj); __atomic_store_n(&clockIgnore, 0, __ATOMIC_RELAXED);
+      q = wj.late ? 0 : imin(q, wj.nats);
+      for (int i = 0; i < q; i++) Wt.apAts[i] = wj.ats[i];
+      Wt.k.nseq = q; Wt.apNats = q;
+    }
     P.line = q ? &Wt : 0;
   }
   // (JUST IN TIME: a line whose first swap clears nothing and whose next is not due until well after the next decision is held while it
