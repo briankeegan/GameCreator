@@ -199,32 +199,6 @@ static int frontLine(int n, const int32_t *mv, const int32_t *at, int allow, int
   }
   return i;
 }
-// THE RAISE AS THE FRAME LOOP PRESSES IT (gb_front_raise, after a replay that answered a raise from the question's own frame): the
-// answer's raise keyed as front.c take() keys it and played on the question's board with its garbage on its way, to two frames past
-// the last frame the button is down. Into out: the rows that came in, the rows the answer asked, 1 where a raise is still going -- a
-// row begun that the answer did not ask -- and 1 where the board is lost. 0 where the last answer is no such raise or makes no keys.
-EXPORT(gb_front_raise) int gb_front_raise(int32_t *out) {
-  const Answer *A = &theAnswer;
-  if (A->d.kind != 2 || A->raiseWait) return 0;
-  paThreadId(MAXTHREADS - 1);
-  frontNew(cfgReaction, 90, -1, 0);
-  Board *b0 = F.truth; cloneBoard(b0, hostBoard);
-  int32_t t0 = b0->clock, hl, hs, keyed = 0;
-  F.now = t0;
-  Arrival arr[MAXARR]; int32_t narr = 0;
-  for (int i = 0; i < hostQ.narr; i++) { Arrival a; memset(&a, 0, sizeof a); a.at = b0->stopWatch + hostQ.arr[i].at; a.g.width = hostQ.arr[i].width; a.g.height = hostQ.arr[i].height; a.g.isChain = hostQ.arr[i].isChain; a.g.frameEarned = NUL; arr[narr++] = a; }
-  static FAnswer fa; static Keys k;
-  memset(&fa, 0, sizeof fa); fa.kind = 2; fa.raiseNow = A->raiseNow; fa.raiseAfter = A->raiseAfter;
-  if (raiseKeysOn(&fa, b0, 0, 0, arr, narr, &k)) {
-    for (int q = 0; q < k.n; q++) planSet(t0 + q, (Planned){ k.ins[q], k.hl[q], k.hs[q], 0, 0 });
-    if (predict(b0, t0 + k.n + k.hl[k.n - 1] + 2, 0, 0, arr, narr, F.pr, &hl, &hs)) {
-      out[0] = fullTop(F.pr) - fullTop(b0); out[1] = 1 + A->raiseAfter / ROW_STEPS; out[2] = F.pr->manualRaise != 0; out[3] = F.pr->gameOverClock > 0;
-      keyed = 1;
-    }
-  }
-  paThreadId(0);
-  return keyed;
-}
 // THE LINE AS THE JUDGE PRESSES IT (gb_judge_line, beside gb_front_line): the question's board, its swaps judged with `allow` actions
 // left and the walks tapped (tap) or not, as a decision judges them. Into out: each swap's frame (ats), then dead, deadAt, lostAt.
 EXPORT(gb_judge_line) int gb_judge_line(int n, const int32_t *mv, int allow, int tap, int settled, int32_t *out) {
