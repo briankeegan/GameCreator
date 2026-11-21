@@ -24,6 +24,7 @@ int gb_replay(int nbytes, int narr, int mode, int64_t work, char *out, int cap);
 void gb_replay_last(int32_t *v);
 void gb_replay_low(int keep);
 void gb_replay_allow(int allow);
+int gb_wait_last(int which);
 int gb_line_agree(int *n);
 int gb_held_off(int *held, int *offCell);
 const char *gb_line_shown(void);
@@ -44,6 +45,7 @@ int gn_rules(int n);
 void gn_rule_name(int i, const char *name);
 void gn_profile(int mode, int ms, int extendMs, int width, int depth, int pool, int extendDepth, int extendOff);
 #define REPLAY_WORK 20000   // a decision's work in the replay: engine frames, as step() charges them
+#define WAIT_WORK 4   // the decisions' work the wait's boards are answered with: the lines that walk the window out are found from two
 static int b64v(int ch) { return ch >= 'A' && ch <= 'Z' ? ch - 'A' : ch >= 'a' && ch <= 'z' ? ch - 'a' + 26 : ch >= '0' && ch <= '9' ? ch - '0' + 52 : ch == '+' ? 62 : ch == '/' ? 63 : -1; }
 // a GAMBITB line's board into the io, its arrivals after it: the bytes, *narr
 static int loadLine(const char *line, int *narr) {
@@ -184,12 +186,41 @@ static int drawBoard(const char *log, int frame) {
   }
   fclose(f); printf("no board at %d\n", frame); return 1;
 }
+// THE WAIT'S WINDOW (test DIR wait, its own process: the game's own profile, wait.words -- a combo of six is finish them's there):
+// boards of games in the wait -- a slab popping, no break offered -- answered with the allowance the game gave and WAIT_WORK
+// decisions' work, the lines that walk the window out found: none is played that breaks nothing, leaves the window under a break's
+// walk at rest and, its walk charged, is lost sooner than the hold -- rank.c walkTurns
+static int waitWindow(const char *dir) {
+  char path[4096]; static char line[1 << 17], rec[4096];
+  snprintf(path, sizeof path, "%s/wait.words", dir);
+  if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+  snprintf(path, sizeof path, "%s/wait.txt", dir);
+  FILE *f = fopen(path, "r");
+  if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
+  int waits = 0, spent = 0;
+  while (fgets(line, sizeof line, f)) {
+    int mode = atoi(line);
+    const char *b = strstr(line, "GAMBITL ");
+    if (!b) continue;
+    int narr, n = loadLine(b, &narr);
+    const char *al = strstr(b, "] a");
+    gb_replay_allow(al ? atoi(al + 3) : -1);
+    if (n < 0 || gb_replay(n, narr, mode, (int64_t)REPLAY_WORK * WAIT_WORK, rec, sizeof rec) < 0) continue;
+    if (!gb_wait_last(0)) continue;
+    waits++;
+    if (gb_wait_last(1)) { spent++; printf("  the window walked out in the wait (mode %d): %s\n", mode, rec); }
+  }
+  fclose(f);
+  printf("%s: the wait's window -- %d boards in the wait, %d walked the window out for no break\n", spent || !waits ? "FAIL" : "ok", waits, spent);
+  return spent || !waits;
+}
 int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
   if (argc > 4 && !strcmp(argv[2], "board")) return drawBoard(argv[3], atoi(argv[4]));
   if (argc > 4 && !strcmp(argv[2], "replay")) return replayLoss(dir, argv[3], atoi(argv[4]));
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
+  if (argc > 2 && !strcmp(argv[2], "wait")) return waitWindow(dir);
   if (argc > 2 && !strcmp(argv[2], "design")) {
     int n = argc > 3 ? atoi(argv[3]) : 6, rows = argc > 4 ? atoi(argv[4]) : 10, cols = argc > 5 ? atoi(argv[5]) : 6, ms = argc > 6 ? atoi(argv[6]) : 2000;
     char path[4096]; snprintf(path, sizeof path, "%s/rules.words", dir); if (!loadWords(path)) return 1;   // (the setup: the workers)

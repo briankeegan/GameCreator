@@ -479,3 +479,13 @@ EXPORT(gb_puzzle_engine) int gb_puzzle_engine(int nbytes, const char *rows, int 
   out[2] = best; out[4] = pressed;
   return 0;
 }
+// THE WAIT'S WINDOW (gb_wait_last, after a replay): the decision was made in the wait with the hold's own board standing a break's
+// time (which 0), and the line the order puts first breaks nothing, leaves the window under a break's walk at rest and, its walk
+// charged, is lost sooner than the hold (which 1): a walk the break at rest is not pressed after -- rank.c walkTurns
+EXPORT(gb_wait_last) int gb_wait_last(int which) {
+  const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
+  if (!H || waitOf() <= 0 || rankHoldOwn < rankSave) return 0;
+  if (!which) return 1;
+  const Judge *J = order[0];
+  return !J->hold && !J->idle && waitSpends(J) && lostOf(J) < lostOf(H);
+}
