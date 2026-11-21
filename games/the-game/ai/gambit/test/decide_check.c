@@ -611,9 +611,8 @@ EXPORT(gb_reason_keeps) int gb_reason_keeps(int span) {
   int gives = !outlivesHold(&L, H);
   return keeps && gives;
 }
-// THE REACH UP AND DOWN (gb_reach_last, after a replay): the lines the order kept that walk past REACH_ROWS for nothing -- break no
-// garbage, make nothing of the mode's first entry -- where a line within the reach stands a break's time and the far one does not
-// live -- decide.c farForNothing
+// THE REACH (gb_reach_last, after a replay): the lines the order kept that walk the cursor past REACH_STEPS between swaps, where a line
+// within the reach stands a break's time and the far one does not live -- decide.c farForNothing
 EXPORT(gb_reach_last) int gb_reach_last(void) {
   double kept = -1; int lives = 0, far = 0;
   for (int i = 0; i < orderN; i++) { const Judge *J = order[i]; if (farForNothing(J)) continue; if (J->o.lives) lives = 1; else if (!J->o.dead && diesAt(J) > kept) kept = diesAt(J); }
@@ -638,6 +637,8 @@ EXPORT(gb_undo_cut) int gb_undo_cut(void) {
   int kept = 0; for (int i = 0; i < m; i++) kept |= ord[i] == T;
   return !kept;
 }
+// (whether walks are ever held: core/nodes.h NO_DAS -- the held-keys check asks none then)
+EXPORT(gb_no_das) int gb_no_das(void) { return NO_DAS; }
 EXPORT(gb_wait_last) int gb_wait_last(int which) {
   const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
   if (!H || waitOf() <= 0 || rankHoldOwn < rankSave) return 0;

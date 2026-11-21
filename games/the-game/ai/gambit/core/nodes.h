@@ -34,7 +34,11 @@ static void legMove(int32_t v, int cells, int *row, int *col) {
   else if (d & IN_UP) *row += cells;
   else if (d & IN_DOWN) *row = *row - cells < 1 ? 1 : *row - cells;
 }
+// NO DAS (the owner: no DAS): no direction is ever held to auto-repeat -- every walk is tapped a cell at a time, by the search, the judge
+// and the frame loop alike
+#define NO_DAS 1
 static int legHeld(int32_t v, int row, int col) {
+  if (NO_DAS) return 0;
   int32_t d = v & 15;
   return (d & IN_RIGHT) ? col >= W - 1 : (d & IN_LEFT) ? col <= 1 : (d & IN_DOWN) ? row <= 1 : 0;
 }
@@ -42,6 +46,7 @@ static int legHeld(int32_t v, int row, int col) {
 // the wall past its end and tapped back *b cells -- as a player slides to the edge and comes back, where that costs fewer actions than
 // tapping each cell (1 + *b against n); 0 tapped.
 static int legShape(int32_t v, int n, int row, int col, int *w, int *b) {
+  if (NO_DAS) return 0;
   int32_t d = v & 15;
   int wall = (d & IN_RIGHT) ? W - 1 - col : (d & IN_LEFT) ? col - 1 : (d & IN_DOWN) ? row - 1 : -1;
   if (n < 2 || wall < 0) return 0;
