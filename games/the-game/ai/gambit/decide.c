@@ -483,15 +483,38 @@ static int loadedAfter(const int32_t *seq, int n) {
   return twinCostOn(eb) == 0;
 }
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down, -8 the second eight's swap unloading the first; 0 not asked: the log's)
-#define REACH_ROWS 3   // (the owner's limit on the rows a line that breaks nothing walks up or down between swaps: 88% of swaps already keep within it)
+#define REACH_STEPS 5   // (the owner: can't move more than five -- keep moves close by: the cursor steps, rows and columns, from the cursor to a line's first swap and between its swaps)
 static int32_t reachCut;   // (lines taken out for walking past the reach this decision: the log's reach=)
 static int goalKeyOf(const Judge *J);
 static int reachesFar(const Judge *J) {
-  int r = decQ.b->curRow;
-  for (int i = 0; i < J->k.nseq; i++) { int sr = CR(J->k.seq[i]); if (iabs(sr - r) > REACH_ROWS) return 1; r = sr; }
+  int r = decQ.b->curRow, c = decQ.b->curCol;
+  for (int i = 0; i < J->k.nseq; i++) { int sr = CR(J->k.seq[i]), sc = CC(J->k.seq[i]); if (iabs(sr - r) + iabs(sc - c) > REACH_STEPS) return 1; r = sr; c = sc; }
   return 0;
 }
-static int farForNothing(const Judge *J) { return !J->hold && !(J->apBroke > 0) && goalKeyOf(J) != 0 && reachesFar(J); }
+// (every line keeps to the reach -- breaks, attacks and set-ups alike: the owner's rule is the cursor's, not the line's kind)
+static int farForNothing(const Judge *J) { return !J->hold && reachesFar(J); }
+// (THE SWAP JUST PRESSED: the two panels the last decision swapped, left and right as they stood after it, while no decision since has
+// pressed anything -- answer.c sets them)
+static int32_t undoIdL = -1, undoIdR = -1, undoFresh;
+static int32_t undoCut;   // (lines taken out for swapping them straight back this decision: the log's undo=)
+// (A LINE THAT SWAPS THEM STRAIGHT BACK: its first swap trades the same two panels back where they were -- the owner: no flip and back,
+// and a flip pressed by one decision and taken back by the next is two swaps for nothing)
+static int undoesLast(const Judge *J) {
+  if (J->hold || !__atomic_load_n(&undoFresh, __ATOMIC_ACQUIRE) || J->k.nseq < 1) return 0;
+  int r = CR(J->k.seq[0]), c = CC(J->k.seq[0]);
+  if (r < 0 || r >= decQ.b->nrows || c < 1 || c + 1 > W) return 0;
+  int32_t L = decQ.b->p[r][c].f[ID], R = decQ.b->p[r][c + 1].f[ID];
+  return (L > 0 || R > 0) && L == __atomic_load_n(&undoIdL, __ATOMIC_RELAXED) && R == __atomic_load_n(&undoIdR, __ATOMIC_RELAXED);
+}
+// (THE LINES A FILTER TAKES OUT: every one it names, whatever the board -- the owner: everything is an emergency, that is not good enough.
+// The hold names nothing and is always kept. Returns the lines kept)
+static int cutAlways(Judge **ord, int n, int (*named)(const Judge *), int32_t *cut, int carryWhy) {
+  int m = 0;
+  for (int i = 0; i < n; i++) { Judge *J = ord[i];
+    if (named(J)) { (*cut)++; if (J == carriedJ) { carriedJ = 0; carryNone = carryWhy; } if (J == opCarried) opCarried = 0; continue; }
+    ord[m++] = J; }
+  return m;
+}
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -534,7 +557,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0; rankHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -560,10 +583,10 @@ static int ranked(const Read *R, const Found *S) {
   carryNone = 21;
   carryJudgeDrop = -1; carryShort = 0;
   // (THE LINE IN PROGRESS IS JUDGED WHATEVER THE DECISION'S CLOCK SAYS: it comes after every proposed line, and where their judging took
-  // the decision's time the clock stops its judge before a swap is pressed -- a line whose swaps are already on the board would be let
-  // go unread for a line read in time. Its judging runs to the move's own frame, the host's hard stop (clockFrameOut), as the judging
-  // of a decision with nothing judged in time does)
-  double carryDue = clockDue, carryShare = clockShare; int carryOwnTime = !rescue && clockFrameOut && clockOut();
+  // the decision's time -- or a search's share of it still in force -- the clock stops its judge before a swap is pressed: a line whose
+  // swaps are already on the board would be let go unread for a line read in time. Its judging always runs to the move's own frame, the
+  // host's hard stop (clockFrameOut), as the judging of a decision with nothing judged in time does)
+  double carryDue = clockDue, carryShare = clockShare; int carryOwnTime = !rescue && clockFrameOut;
   if (carryOwnTime) { clockDue = 0; clockShare = 0; }
   if (R->guides.n && (cc = carriedCand(R, &ck, &cwait))) { lastDrop = -1; if (!judgeCand(R, &ck, &theJudged[n])) { carryNone = 19; carryJudgeDrop = lastDrop; } }
   if (R->guides.n && cc && carryNone != 19) {
@@ -827,17 +850,12 @@ static int ranked(const Read *R, const Found *S) {
       breakThrough = !lives && !clean;
     }
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave) && !(breakThrough && order[i]->apBroke > 0 && diesAt(order[i]) >= keptDies)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
-  // THE REACH UP AND DOWN (the owner: limit how far it can move up and down, to stop the wastes): a line that breaks no garbage and makes
-  // nothing of the mode's first entry may not step more than REACH_ROWS rows from the cursor to its first swap or from one swap to the next
-  // -- unless every line that keeps within the reach, the hold among them, is lost within a break's time (rankSave) on the frames the
-  // boards are lost (rank.c diesAt), or the far line lives: there the walk is the board's life
-  { double keptLost = -1; int keptLives = 0;
-    for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (farForNothing(J)) continue;
-      if (J->o.lives) keptLives = 1; else if (!J->o.dead && diesAt(J) > keptLost) keptLost = diesAt(J); }
-    if (keptLives || keptLost >= rankSave) {
-      int m = 0; for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (farForNothing(J) && !J->o.lives) { reachCut++; if (J == carriedJ) { carriedJ = 0; carryNone = 22; } if (J == opCarried) opCarried = 0; continue; } order[m++] = order[i]; }
-      n = m;
-    } }
+  // THE REACH (the owner: can't move more than five, keep moves close by -- and no emergency lets one through): no line may walk the
+  // cursor more than REACH_STEPS steps, rows and columns, from the cursor to its first swap or from one swap to the next
+  n = cutAlways(order, n, farForNothing, &reachCut, 28);
+  // NO FLIP AND BACK ACROSS DECISIONS: a line that swaps straight back the two panels the last decision swapped is taken out, whatever
+  // the board
+  n = cutAlways(order, n, undoesLast, &undoCut, 29);
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.
@@ -1977,6 +1995,12 @@ static Played playOf(const Read *R, int n) {
       }
     }
     clockDue = keepDue; clockShare = keepShare;
+  }
+  // (THE REACH HELD TO THE END: a line put in the order's place after the cut -- a set-up, a plan, a trigger -- keeps to the reach and
+  // takes no flip back as the order does: the best line the order kept is played instead, the hold among them)
+  if (P.line && !R->up && (farForNothing(P.line) || undoesLast(P.line))) {
+    const Judge *in = 0; for (int i = 0; i < n && !in; i++) if (!farForNothing(order[i]) && !undoesLast(order[i])) in = order[i];
+    P.line = !in || in->hold || (in->wait && in->k.play != PLAY_CARRYWAIT) ? 0 : in; P.top = in; P.wait = 0; P.deferred = 0; reachCut++;
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise
   for (int i = 0; i < n; i++) if (order[i]->o.lives) P.nlive++;
