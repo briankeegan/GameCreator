@@ -306,6 +306,41 @@ static int flipsKeyed(const char *dir) {
   printf("%s: the flips keyed as judged -- %d boards, %d held\n", held || !boards ? "FAIL" : "ok", boards, held);
   return held || !boards;
 }
+// THE LINE THAT OUTLIVES THE HOLD (test DIR reason, its own process: the game's own profile, wait.words): boards where the line put
+// first had no named reason and nothing after it had one, and the hold played in its place was lost first (reason.txt: the mode, the
+// enemy TOP/OUT/STOP, the ages of the presses in the window, then the board with the allowance the game gave). Each is answered with
+// WAIT_WORK decisions' work, then its first line made lost REASON_SPAN frames past the hold, its walk charged: that line is kept, and
+// one lost on the hold's frame gives way to it -- answer.c outlivesHold (gb_reason_keeps)
+int gb_reason_keeps(int span);
+#define REASON_SPAN 435   // (frames the line outlived the hold by on the board it was lost on: factory 8, fill, 3331 -- 540 against 105)
+static int reasonKept(const char *dir) {
+  char path[4096]; static char line[1 << 17], rec[4096];
+  snprintf(path, sizeof path, "%s/wait.words", dir);
+  if (!loadWords(path)) { fprintf(stderr, "test: %s is not a whole profile\n", path); return 1; }
+  snprintf(path, sizeof path, "%s/reason.txt", dir);
+  FILE *f = fopen(path, "r");
+  if (!f) { fprintf(stderr, "test: no %s\n", path); return 2; }
+  int boards = 0, held = 0;
+  while (fgets(line, sizeof line, f)) {
+    int mode, top, out, stop; static char aged[4096];
+    const char *b = strstr(line, "GAMBITL ");
+    if (!b || sscanf(line, "%d %d/%d/%d %4095s", &mode, &top, &out, &stop, aged) != 5) continue;
+    int narr, n = loadLine(b, &narr);
+    const char *al = strstr(b, "] a");
+    gb_replay_allow(al ? atoi(al + 3) : -1); gb_replay_enemy(top, out, stop);
+    { int32_t ages[512]; int na = 0; for (const char *q = aged; *q && na < 512; ) { ages[na++] = atoi(q); q = strchr(q, ','); if (!q) break; q++; } gb_replay_ages(ages, na); }
+    int r = n < 0 ? -1 : gb_replay(n, narr, mode, (int64_t)REPLAY_WORK * WAIT_WORK, rec, sizeof rec);
+    gb_replay_enemy(-1, 0, 0);
+    if (r < 0) continue;
+    boards++;
+    int k = gb_reason_keeps(REASON_SPAN);
+    if (k < 0) { boards--; continue; }
+    if (!k) { held++; printf("  the hold played for a line that outlives it (board %d)\n", atoi(b + 8)); }
+  }
+  fclose(f);
+  printf("%s: the line that outlives the hold -- %d boards, %d held\n", held || !boards ? "FAIL" : "ok", boards, held);
+  return held || !boards;
+}
 // THE LINE IN PROGRESS, THE CLOCK OUT (test DIR carry, its own process: the game's own profile, wait.words): pairs of boards a decision
 // apart, of games whose line in progress was let go with the decision's clock out (carry.txt: the mode, then the board; two lines a
 // pair). The first is answered with CARRY_WORK decisions' work, the second as the same game going on with the line played in hand, at
@@ -401,6 +436,7 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
   if (argc > 2 && !strcmp(argv[2], "opening")) return opening(dir);
   if (argc > 2 && !strcmp(argv[2], "wait")) return waitWindow(dir);
+  if (argc > 2 && !strcmp(argv[2], "reason")) return reasonKept(dir);
   if (argc > 2 && !strcmp(argv[2], "flips")) return flipsKeyed(dir);
   if (argc > 2 && !strcmp(argv[2], "windead")) return windowKept(dir);
   if (argc > 2 && !strcmp(argv[2], "toward")) return towardKept(dir);

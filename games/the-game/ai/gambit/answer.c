@@ -420,6 +420,12 @@ static int32_t lastA, lastB, pairRuns, blockA, blockB, blockUntil, emptyAt = NUL
 #define MAXSWITCH 256
 static int32_t switchMin, switchMax, nswitch, switchAt[MAXSWITCH], switchMode[MAXSWITCH], switchedNow;
 static double readMs;   // (the board's reading, for the log)
+// (A LINE THAT OUTLIVES THE HOLD, its walk charged as every alternative to a line with no named reason is: kept where nothing after
+// it has a reason -- the frames it buys are its reason -- answer.c, no move without its reason)
+static int outlivesHold(const Judge *L, const Judge *H) {
+  if (!H || H->o.dead) return 1;
+  return !H->o.lives && (L->o.lives || lostOf(L) > lostOf(H));
+}
 static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t allowance, int32_t lineFrom, int32_t linePressed) {
   Answer *A = &theAnswer;
   memset(A, 0, sizeof *A);
@@ -492,7 +498,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (opLineOn && P.line && P.line->carried) R.up = R.low = 0;   // (the opener's line in progress pressed through: no raise in its middle)
   // (NO MOVE WITHOUT ITS REASON -- the owner: a move made for nothing is a bug. The line chosen that makes nothing, shapes nothing and leaves
   // nothing one swap on gives way to the best after it in the order that has a reason and is lost no sooner -- of the next WHY_TRIES --
-  // else to the hold: a swap for nothing spends the window the next break is pressed from)
+  // else to the hold, where the hold is lost no sooner: a swap for nothing spends the window the next break is pressed from; the log's
+  // noreason=3 is a line kept that outlives the hold)
   noReason = 0; whyPlayed = (Why){ WHY_NONE, 0, 0 };
   if (!R.up && P.line && !P.line->hold && !P.line->carried) whyPlayed = moveWhy(P.line);
   if (!R.up && P.line && !P.line->hold && !P.line->carried && whyPlayed.kind == WHY_NONE) {
@@ -515,7 +522,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       if (J == P.line || J->hold || J->o.dead || P.line->o.lives || !(J->o.lives || diesAt(J) > diesAt(P.line))) continue;
       int32_t k = cmpKey; compareJudged(P.line, J); nrKey = cmpKey; cmpKey = k;
       nrLost[0] = (int32_t)diesAt(P.line); nrLost[1] = J->o.lives ? -1 : (int32_t)diesAt(J); break; }
-    P.line = alt; P.top = alt ? alt : H;
+    // (and the hold only where the line is lost no later than it, its walk charged, as each alternative is held to: a line whose board
+    // outlives the hold's is the frames it buys, and a hold in its place is the board given up for want of a named reason)
+    if (alt || !outlivesHold(P.line, H)) { P.line = alt; P.top = alt ? alt : H; } else noReason = 3;
   }
   if (R.F.known[FACT_US_CONTACT] || R.topped) gambitHit = 1;
   { int lv = 0; for (int i = 0; i < n; i++) if (!order[i]->hold && !order[i]->carried && order[i]->o.lives) lv = 1; livedPrev = lv; }

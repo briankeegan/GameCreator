@@ -597,6 +597,20 @@ EXPORT(gb_flips_late) int gb_flips_late(void) {
   order[0] = first;
   return P.line == &L ? 1 : P.line ? 2 : 0;
 }
+// THE LINE THAT OUTLIVES THE HOLD (gb_reason_keeps, after a replay): the order's hold, and its first line that is no hold made lost
+// SPAN frames past the hold, its walk charged, then lost on the hold's frame -- 1 where the first is kept and the second gives way to
+// the hold, 0 otherwise, -1 none to try -- answer.c outlivesHold
+EXPORT(gb_reason_keeps) int gb_reason_keeps(int span) {
+  const Judge *H = 0, *T = 0;
+  for (int i = 0; i < orderN; i++) { if (order[i]->hold) { if (!H) H = order[i]; } else if (!T && !order[i]->o.dead) T = order[i]; }
+  if (!H || !T || H->o.dead || H->o.lives || H->o.lostAt == NOT_ASKED) return -1;
+  static Judge L; L = *T; L.o.lives = 0; L.idle = 0; L.extLost = NOT_ASKED;
+  L.o.lostAt = H->o.lostAt + span + WALK_FRAMES * lineWalk(&L);
+  int keeps = outlivesHold(&L, H);
+  L.o.lostAt = H->o.lostAt;
+  int gives = !outlivesHold(&L, H);
+  return keeps && gives;
+}
 EXPORT(gb_wait_last) int gb_wait_last(int which) {
   const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
   if (!H || waitOf() <= 0 || rankHoldOwn < rankSave) return 0;
