@@ -888,7 +888,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
       for (int i = 0; i < carryJ.nats; i++) { L_s(i ? "," : ":"); L_i(carryJ.ats[i]); L_s("r"); L_i(carryJ.risen[i]); } }
   }
   // (the line in progress the last answer carried, not offered on this board: carriedCand's carryNone -- 17 asked on another line, 18 every
-  // swap pressed, 19 the judging dropped it (the drop's letter, rank.c DROP_CODE), 20 a wasted three, 25 the window -- none carried, or
+  // swap pressed, 19 the judging dropped it (the drop's letter, rank.c DROP_CODE), 20 a wasted three, 25 the window, 28 past the reach,
+  // 29 a flip back -- none carried, or
   // the list asking nothing, is not said)
   if (!carriedJ && !carryDrop && carryNone && carryNone != 16 && carryNone != 21) {
     L_s(" carryNone="); L_i(carryNone);

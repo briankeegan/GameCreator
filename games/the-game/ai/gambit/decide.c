@@ -859,10 +859,10 @@ static int ranked(const Read *R, const Found *S) {
   // no eight of the mode's first entry may not step more than REACH_ROWS rows from the cursor to its first swap or from one swap to the next
   // -- unless every line that keeps within the reach, the hold among them, is lost within a break's time (rankSave) on the frames the
   // boards are lost (rank.c diesAt), or the far line lives: there the walk is the board's life
-  n = cutUnlessDying(order, n, farForNothing, &reachCut, 22);
+  n = cutUnlessDying(order, n, farForNothing, &reachCut, 28);
   // NO FLIP AND BACK ACROSS DECISIONS: a line that swaps straight back the two panels the last decision swapped is taken out -- unless it
   // lives, or every other line, the hold among them, is lost within a break's time (rankSave) on the frames the boards are lost
-  n = cutUnlessDying(order, n, undoesLast, &undoCut, 23);
+  n = cutUnlessDying(order, n, undoesLast, &undoCut, 29);
   // THE WINDOW BACK BEFORE THE TOP (no garbage: the board is lost to its own rise, and saved only by a clear the window has the actions
   // for): a line -- the hold too -- after which the window does not hold a break's walk (BREAK_WALK) again, with the frames to press it
   // (PRESS_FRAMES an action), before its board is lost, leaves a board that cannot save itself; where another line does, it is taken out.

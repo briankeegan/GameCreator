@@ -633,7 +633,7 @@ EXPORT(gb_undo_cut) int gb_undo_cut(void) {
   undoIdL = decQ.b->p[r][c].f[ID]; undoIdR = decQ.b->p[r][c + 1].f[ID]; undoFresh = 1;
   if (!(undoIdL > 0 || undoIdR > 0)) { undoFresh = 0; return -1; }
   static Judge *ord[512]; int n = 0; for (int i = 0; i < orderN && n < 512; i++) ord[n++] = (Judge *)order[i];
-  int32_t cut = 0; int m = cutUnlessDying(ord, n, undoesLast, &cut, 23);
+  int32_t cut = 0; int m = cutUnlessDying(ord, n, undoesLast, &cut, 29);
   undoFresh = 0;
   int kept = 0; for (int i = 0; i < m; i++) kept |= ord[i] == T;
   return !kept;
