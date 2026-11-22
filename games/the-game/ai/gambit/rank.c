@@ -350,12 +350,15 @@ static int finishEightBy(const Judge *e, const Judge *o) {
   double de = diesAt(e), d0 = diesAt(o);
   return de >= rankSave && d0 - de < rankSave;
 }
+static double nextBreakDelay(int walk);
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
   if (extCounts(x)) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
   if (x->hold || own >= 1e299 || own < 0 || waitWalks(x)) return own;
-  return own - (double)WALK_FRAMES * lineWalk(x);
+  int walk = lineWalk(x);
+  double charge = (double)WALK_FRAMES * walk, delay = nextBreakDelay(walk);
+  return own - (delay > charge ? delay : charge);
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
 // is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding
@@ -644,6 +647,16 @@ static int windowDead(const Judge *J) {
   if (pressAllowance < 0 || nWinAges < 0 || ruleNoEnemy || J->hold || J->o.lives) return 0;
   int32_t w = allowWait(0, lineWalk(J), BREAK_WALK);
   return w < 0 || w > diesAt(J);
+}
+// (THE NEXT BREAK PUT OFF: the frames later the window holds a break's walk again (BREAK_WALK) once the line's actions are spent than it
+// would with none spent -- core/nodes.h allowWait. A window near its end makes every action dear: the owner, efficiency is key. 0 where
+// the window is not said)
+static double nextBreakDelay(int walk) {
+  if (pressAllowance < 0 || nWinAges < 0 || ruleNoEnemy || walk <= 0) return 0;
+  int32_t d0 = allowWait(0, 0, BREAK_WALK), d1 = allowWait(0, walk, BREAK_WALK);
+  if (d0 < 0) d0 = winLen;
+  if (d1 < 0) d1 = winLen;
+  return d1 > d0 ? d1 - d0 : 0;
 }
 static int waitWalks(const Judge *J) { return pressAllowance >= 0 && waitOf() > 0 && allowAtNeed(lineWalk(J)) >= BREAK_WALK; }
 // (and the walk that does not: a line that breaks nothing and leaves the window under a break's walk at rest)
