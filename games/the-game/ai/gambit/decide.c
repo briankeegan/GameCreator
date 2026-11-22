@@ -520,9 +520,19 @@ static int cutAlways(Judge **ord, int n, int (*named)(const Judge *), int32_t *c
     ord[m++] = J; }
   return m;
 }
-static int32_t stallCut;   // (lines taken out as stalls under garbage this decision: the log's stall=)
+static int32_t stallCut, enPlayed;   // (lines taken out as stalls under garbage this decision: the log's stall=)
 static int digsForBreak(const Judge *J);
-static int stallsUnder(const Judge *J) { return !J->hold && !J->o.lives && !(J->apBroke > 0) && !digsForBreak(J) && J->k.play != PLAY_CONVERT && J->k.play != PLAY_CARRY && J->k.play != PLAY_CARRYWAIT; }
+// (THE WAY TO THE ACTION -- the owner: instead of waiting, walk over to the area it needs to get to and flatten or zip along the way, so it
+// is closer to the action: the target is the next swap of the line in progress that waits for the board, else under garbage the cell
+// under the lowest garbage nearest the cursor -- where the next break is made. A level or zip line that ends nearer it than the cursor
+// stands is on the way)
+static int enOn, enR, enC;
+static int enRoute(const Judge *J) {
+  if (!enOn || J->hold || J->o.dead || J->k.nseq < 1 || (J->k.play != PLAY_LEVEL && J->k.play != PLAY_ZIP)) return 0;
+  int lr = CR(J->k.seq[J->k.nseq - 1]), lc = CC(J->k.seq[J->k.nseq - 1]);
+  return iabs(lr - enR) + iabs(lc - enC) < iabs(decQ.b->curRow - enR) + iabs(decQ.b->curCol - enC);
+}
+static int stallsUnder(const Judge *J) { return !J->hold && !J->o.lives && !(J->apBroke > 0) && !digsForBreak(J) && !enRoute(J) && J->k.play != PLAY_CONVERT && J->k.play != PLAY_CARRY && J->k.play != PLAY_CARRYWAIT; }
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -565,7 +575,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0; rankHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -583,6 +593,14 @@ static int ranked(const Read *R, const Found *S) {
   { double pd = clockDue, ps = clockShare; if (clockFrameOut) { clockDue = 0; clockShare = 0; }
     if (R->guides.n && (ccPre = carriedCand(R, &ckPre, &cwaitPre))) { lastDrop = -1; carryPreOk = judgeCand(R, &ckPre, &carryPre); if (!carryPreOk) { carryNone = 19; carryJudgeDrop = lastDrop; } }
     clockDue = pd; clockShare = ps; }
+  enOn = 0;
+  if (ccPre && cwaitPre && ckPre.nseq > 0) { enR = CR(ckPre.seq[0]); enC = CC(ckPre.seq[0]); enOn = 1; }
+  else if (decF.under) {
+    const Board *b = decQ.b; int gr = 0;
+    for (int r = 1; r < b->nrows && !gr; r++) for (int c = 1; c <= W && !gr; c++) if (b->p[r][c].f[ISGARBAGE]) gr = r;
+    if (gr > 1) { int bc = -1; for (int c = 1; c <= W; c++) if (b->p[gr][c].f[ISGARBAGE] && (bc < 0 || iabs(c - b->curCol) < iabs(bc - b->curCol))) bc = c;
+      enR = gr - 1; enC = imin(bc, W - 1); enOn = 1; }
+  }
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   // (NOTHING JUDGED IN TIME: the searches and the proposing took the decision's time and the clock stopped the judge on every line --
   // every line is judged again up to the move's own frame, the host's hard stop (clockFrameOut): a board is never held for want of a
@@ -2031,6 +2049,22 @@ static Played playOf(const Read *R, int n) {
       }
     }
     clockDue = keepDue; clockShare = keepShare;
+  }
+  // (AND NO WAITING WHERE THERE IS A WAY TO THE ACTION: where the move is the hold or a line in progress waiting for the board, the best
+  // line on the way to the action (enRoute) is played instead -- lost no sooner than the hold, the next break's reserve kept)
+  if (!R->up && !P.wait && enOn && (!P.line || P.line->k.play == PLAY_CARRYWAIT)) {
+    const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
+    const Judge *T = P.top ? P.top : H;   // (the line it would take the place of: the order's first, the hold among them)
+    for (int i = 0; i < n && H && T && !H->o.dead; i++) { const Judge *J = order[i];
+      if (!enRoute(J) || farForNothing(J) || undoesLast(J) || spendsReserve(J)) continue;
+      // (lost no sooner than the line it takes the place of, nor a break's time sooner than any line offered)
+      if (!(J->o.lives || (!T->o.lives && diesAt(J) >= diesAt(T)))) continue;
+      // (as the answer's own check reads it -- answer.c sooner: no line offered is lost later, its walk charged, and not alike)
+      { int sooner = 0; for (int q = 0; q < n && !sooner; q++) { const Judge *K = order[q]; if (K == J || K->o.dead) continue;
+          if (!(K->o.lives || lostOf(K) > lostOf(J))) continue;
+          sooner = K->o.lives ? !J->o.lives : (!J->o.lives && !lostAlike(J, K) && !(walkTurns(J, K) && diesAt(J) > diesAt(K))); }
+        if (sooner) continue; }
+      P.line = P.top = J; P.deferred = 0; enPlayed++; break; }
   }
   // (THE REACH HELD TO THE END: a line put in the order's place after the cut -- a set-up, a plan, a trigger -- keeps to the reach and
   // takes no flip back as the order does: the best line the order kept is played instead, the hold among them)
