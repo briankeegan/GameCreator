@@ -557,7 +557,8 @@ EXPORT(gb_carry_short) int gb_carry_short(const int32_t *rest, int n) {
 // (gb_spend_toward 1: the spend is judged as the toward line it was played as, not as a survival line)
 static int spendToward;
 // (and with it, the digs let off the reserve: the toward judged digs for a break under garbage with none offered, the hold standing a
-// break's time or more and the window it leaves under a break's walk, yet is found not to spend the reserve -- rank.c digPaid)
+// break's time or more and the window it leaves under a break's walk now and when the next block can land, yet is found not to spend
+// the reserve -- rank.c digPaid)
 static int digFree;
 EXPORT(gb_dig_free) int gb_dig_free(void) { int n = digFree; digFree = 0; return n; }
 EXPORT(gb_spend_toward) void gb_spend_toward(int on) { spendToward = on; }
@@ -579,7 +580,7 @@ EXPORT(gb_spend_first) int gb_spend_first(const int32_t *keep, int nkeep, int ke
   if (ok) { c.settled = 0; ok = judgeWalkedIn(&R, &c, &Sp, c.nseq); }
   if (ok) readyNextFor(&Sp);
   if (ok && spendToward && decF.under && !breakOffered && digsForBreak(&Sp) && rankHold && !rankHold->o.dead && !rankHold->o.lives &&
-      diesAt(rankHold) >= rankSave && allowAtNeed(lineWalk(&Sp)) < BREAK_WALK && !spendsReserve(&Sp)) digFree++;
+      diesAt(rankHold) >= rankSave && allowAtNeed(lineWalk(&Sp)) < BREAK_WALK && allowAtLanding(lineWalk(&Sp)) < BREAK_WALK && !spendsReserve(&Sp)) digFree++;
   clockIgnore = 0;
   int r = ok ? compareJudged(&Sp, k) < 0 : -1;
   theBack = back; refusedA = ra; refusedB = rb;

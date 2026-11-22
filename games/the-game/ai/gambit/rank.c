@@ -601,12 +601,16 @@ static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
 static int breakOffered = 1;
 static int32_t waitOf(void);
 static int cascadeLive(Board *b);   // (propose.c: the board still moving of its own)
-static int allowAtNeed(int walk) {
-  if (decF.under) return allowLeftAt(waitOf(), walk);
+// (the window as the next block finds it: at its landing with one on its way, else EARLIEST_LANDING)
+static int allowAtLanding(int walk) {
   int32_t t = EARLIEST_LANDING;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
   { int32_t q = holdQueueAt(); if (q != NOT_ASKED && q >= 0 && q < t) t = q; }
   return allowLeftAt(t, walk);
+}
+static int allowAtNeed(int walk) {
+  if (decF.under) return allowLeftAt(waitOf(), walk);
+  return allowAtLanding(walk);
 }
 // (GARBAGE ON ITS WAY: shown in the telegraph, or past it and queued on the board -- a one-row block waits there for the board's
 // panels to come to rest, pa.c shouldDropGarbage, and a storm's queue is never empty)
@@ -615,13 +619,13 @@ static int garbageComing(void) { return decQ.narr > 0 || (decQ.b && decQ.b->ninc
 // the next break its walk; spendsReserve, which sets a line that breaks nothing after one that keeps the reserve, never counts a break)
 static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || (decF.under && !breakOffered) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
 // (with no break offered under garbage, a line that digs toward one may spend the reserve only where the hold loses the board within a
-// break's time -- standing longer, the reserve is the next block's break, and garbage always comes -- and only while the window it leaves
-// pays for its walk again: the break it digs for is pressed out of what is left, and a dig that spends the last of the window digs for a
+// break's time, or the window holds a break's walk again by the time the next block can land -- standing longer, the reserve is that
+// block's break, and garbage always comes -- and only while the window it leaves pays for its walk again: the break it digs for is pressed out of what is left, and a dig that spends the last of the window digs for a
 // break that cannot be pressed; a chain built there may not -- the window it spends is the break's that comes)
 static const Judge *rankHold;   // (the decision's hold, set where no line of the decision breaks or lives: decide.c ranked, once every line's readiness has been asked)
 static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK; }
 static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !breakOffered && digsForBreak(J) && allowAtNeed(w) >= w &&
-                                     rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave; }
+                                     (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave)); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !digPaid(J) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
