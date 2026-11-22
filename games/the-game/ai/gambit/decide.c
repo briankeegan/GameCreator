@@ -485,6 +485,12 @@ static int loadedAfter(const int32_t *seq, int n) {
 static int32_t freeSetup;   // (the second hand this decision: 1 a set-up swap pressed over the hold, 2 one before the carried line, 3 the whole eight before it; -1 to -6 asked and turned down, -7 the whole eight turned down, -8 the second eight's swap unloading the first; 0 not asked: the log's)
 static int32_t reachCut;   // (lines taken out for walking past the reach this decision: the log's reach=)
 static int goalKeyOf(const Judge *J);
+// (the swaps of a line before its first step past the reach)
+static int reachPrefix(const Judge *J) {
+  int r = decQ.b->curRow, c = decQ.b->curCol;
+  for (int i = 0; i < J->k.nseq; i++) { int sr = CR(J->k.seq[i]), sc = CC(J->k.seq[i]); if (iabs(sr - r) + iabs(sc - c) > REACH_STEPS) return i; r = sr; c = sc; }
+  return J->k.nseq;
+}
 static int reachesFar(const Judge *J) {
   int r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; i < J->k.nseq; i++) { int sr = CR(J->k.seq[i]), sc = CC(J->k.seq[i]); if (iabs(sr - r) + iabs(sc - c) > REACH_STEPS) return 1; r = sr; c = sc; }
@@ -492,8 +498,8 @@ static int reachesFar(const Judge *J) {
 }
 // (every line keeps to the reach -- breaks, attacks and set-ups alike: the owner's rule is the cursor's, not the line's kind)
 static int farForNothing(const Judge *J) { return !J->hold && reachesFar(J); }
-// (THE SWAP JUST PRESSED: the two panels the last decision swapped, left and right as they stood after it, while no decision since has
-// pressed anything -- answer.c sets them)
+// (THE SWAP JUST PRESSED: the two panels the last swap pressed swapped, left and right as they stood after it -- for the next decision
+// only: one that holds or raises lets it go, the board having moved on (answer.c, front.c set it))
 static int32_t undoIdL = -1, undoIdR = -1, undoFresh;
 static int32_t undoCut;   // (lines taken out for swapping them straight back this decision: the log's undo=)
 // (A LINE THAT SWAPS THEM STRAIGHT BACK: its first swap trades the same two panels back where they were -- the owner: no flip and back,
@@ -851,6 +857,16 @@ static int ranked(const Read *R, const Found *S) {
     if (!saveOk) { int m = 0; for (int i = 0; i < n; i++) { if (wastesThree(order[i]) && order[i] != opCarried && !(order[i] == carriedJ && carrySave) && !(breakThrough && order[i]->apBroke > 0 && diesAt(order[i]) >= keptDies)) { dropAs(order[i]->k.play, DROP_WASTE); if (order[i]->k.twin == 1 && wasteWhy >= 1 && wasteWhy <= 4) { twinWaste[wasteWhy]++; if (wasteWhy == 2) { twinWasteC = order[i]->apCombo; twinWasteX = order[i]->k.x.combo; twinWasteN = order[i]->apChain; } } if (order[i] == carriedJ) { carryWaste[0] = wasteWhy; carryWaste[1] = order[i]->o.j.whole.chain; carryWaste[2] = aloneChain; carryWaste[3] = order[i]->o.j.threes; carryWaste[4] = order[i]->o.dead; carriedJ = strippedCarry; if (!carriedJ) carryNone = 20; } } else order[m++] = order[i]; } n = m; } }
   // THE REACH (the owner: can't move more than five, keep moves close by -- and no emergency lets one through): no line may walk the
   // cursor more than REACH_STEPS steps, rows and columns, from the cursor to its first swap or from one swap to the next
+  // (THE LINE UP TO ITS FIRST FAR STEP: a line past the reach is offered as its swaps before the step that leaves it -- re-judged as a line
+  // of its own, the cursor carried toward what the whole line was for within the reach -- and the rest let go; a line whose first swap is
+  // past the reach has nothing to offer)
+  { static Judge within[64]; int nw = 0, n0 = n;
+    for (int i = 0; i < n0 && nw < 64 && !clockOut(); i++) { const Judge *J = order[i]; if (J->hold || !reachesFar(J)) continue;
+      int p = reachPrefix(J); if (p < 1) continue;
+      Cand c = J->k; c.nseq = p; c.settled = 0;
+      if (judgeCand(R, &c, &within[nw]) && !within[nw].o.dead && !reachesFar(&within[nw])) { readyNextFor(&within[nw]); order[n++] = &within[nw]; nw++; reachCut--; }
+    }
+    if (nw) sortJudged(order, n); }
   n = cutAlways(order, n, farForNothing, &reachCut, 28);
   // NO FLIP AND BACK ACROSS DECISIONS: a line that swaps straight back the two panels the last decision swapped is taken out, whatever
   // the board

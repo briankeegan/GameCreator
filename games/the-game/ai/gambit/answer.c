@@ -535,7 +535,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   Move d = R.up ? (Move){ 2, 0 } : P.line && !timed ? (Move){ 1, P.line->k.seq[0] } : (Move){ 0, 0 };
   // (the swap pressed now, for the next decision's no flip and back: the two panels as they stand once it is pressed)
   if (d.kind == 1) { int r = CR(d.move), c = CC(d.move); __atomic_store_n(&undoFresh, 0, __ATOMIC_RELEASE); if (r >= 0 && r < decQ.b->nrows && c >= 1 && c + 1 <= W) { __atomic_store_n(&undoIdL, decQ.b->p[r][c + 1].f[ID], __ATOMIC_RELAXED); __atomic_store_n(&undoIdR, decQ.b->p[r][c].f[ID], __ATOMIC_RELAXED); __atomic_store_n(&undoFresh, 1, __ATOMIC_RELEASE); } }
-  else if (d.kind == 2) __atomic_store_n(&undoFresh, 0, __ATOMIC_RELEASE);
+  else __atomic_store_n(&undoFresh, 0, __ATOMIC_RELEASE);   // (only the decision straight after a swap can take it back for nothing: a hold or a raise between, and the board has moved on)
   A->d = d;
   // (and a hold where the line in progress was let go only for the clock -- its judging stopped before it pressed a swap: the frame
   // loop presses on the line in hand, never a break worth a life dropped for want of time: fight 813, match 20)
