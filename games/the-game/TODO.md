@@ -41,6 +41,19 @@ it worked (ours / his).
       nearer coming down and is lost no sooner (deded9d). Still open: a let-down is not offered while a clear pops in the pile,
       and a perch with no room below (large_garbage 7, 17166) cannot come down at all.
 
+### The owner's movement rules (2026-11-21) -- on the branch until a round does as well as main, then merged
+
+- [ ] **M1. Keep moves close by: no move more than five, no DAS, no flip and back.** Every line keeps the cursor within five steps
+      (rows and columns) of where it stands, from the cursor to each swap -- no exemptions ("everything is an emergency, that's not
+      good enough"); no direction held to auto-repeat; no swap taken straight back by the next decision. On the branch
+      (claude/newsey-game-ask-qa8u5e), NOT on main: merge only when a full round (finish them, fill, switching) does as well as or
+      better than main -- main is 0c64b39, 82/84. The owner: "only merge once it does better"; "not if, when".
+      Measured so far: strict reach + no DAS 70/84 (c74d276); strict reach with DAS allowed, fill 19/28 -- the reach, not the DAS,
+      costs the games (breaks found more than five steps away and cut). Walks down/up and back for one swap fell from ~450 a run to
+      ~30. Next: every search grows lines only within the reach (d50ff5d, being measured), so a far break is reached in hops of five;
+      then the proposers that build lines outside swapsOfNode (break_line, nearest, line-ups, readiness) offer their far breaks as a
+      first hop within the reach instead of a line the order cuts.
+
 ### Next, after Y1-Y6 (the owner, 2026-11-19)
 
 - [ ] **L1. A low stack is too risky.** It spends far too much when the stack is low -- clears that take it down to few panels, then
