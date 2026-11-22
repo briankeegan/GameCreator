@@ -48,11 +48,11 @@ it worked (ours / his).
       good enough"); no direction held to auto-repeat; no swap taken straight back by the next decision. On the branch
       (claude/newsey-game-ask-qa8u5e), NOT on main: merge only when a full round (finish them, fill, switching) does as well as or
       better than main -- main is 0c64b39, 82/84. The owner: "only merge once it does better"; "not if, when".
-      Measured so far: strict reach + no DAS 70/84 (c74d276); strict reach with DAS allowed, fill 19/28 -- the reach, not the DAS,
-      costs the games (breaks found more than five steps away and cut). Walks down/up and back for one swap fell from ~450 a run to
-      ~30. Next: every search grows lines only within the reach (d50ff5d, being measured), so a far break is reached in hops of five;
-      then the proposers that build lines outside swapsOfNode (break_line, nearest, line-ups, readiness) offer their far breaks as a
-      first hop within the reach instead of a line the order cuts.
+      The reach is six steps (the owner allowed six, closer preferred): five measured 73, six 78 on the same build.
+      Best so far 79/84 (5588c1a: fill 26, switching 25, finish them 28): the next block's reserve held at the end of every move --
+      with garbage on the board or on its way, no line that breaks nothing leaves the panels under the rule's floor or the window
+      under a break's walk while the hold stands a break's time, whichever of the 21 overrides in playOf put it there.
+      The losses left are mostly factory: material run down by clears that buy a break's time, then no break on the board.
 
 ### Next, after Y1-Y6 (the owner, 2026-11-19)
 
