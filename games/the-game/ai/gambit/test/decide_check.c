@@ -562,6 +562,8 @@ EXPORT(gb_spend_first) int gb_spend_first(const int32_t *keep, int nkeep, int ke
   if (!readBoard_(&R)) return -1;
   const Judge *k = 0;
   clockIgnore = 1;
+  // (the two lines are judged on the logged board, not after the replay's own answer: the swap-back record that answer left is lifted)
+  Back back = theBack; int32_t ra = refusedA, rb = refusedB; memset(&theBack, 0, sizeof theBack); refusedA = refusedB = 0;
   int ok = 1;
   if (!nkeep) { for (int i = 0; i < orderN && !k; i++) if (order[i]->hold) k = order[i]; ok = k != 0; }
   else {
@@ -573,7 +575,9 @@ EXPORT(gb_spend_first) int gb_spend_first(const int32_t *keep, int nkeep, int ke
   if (ok) { c.settled = 0; ok = judgeWalkedIn(&R, &c, &Sp, c.nseq); }
   if (ok) readyNextFor(&Sp);
   clockIgnore = 0;
-  return ok ? compareJudged(&Sp, k) < 0 : -1;
+  int r = ok ? compareJudged(&Sp, k) < 0 : -1;
+  theBack = back; refusedA = ra; refusedB = rb;
+  return r;
 }
 // THE WAIT'S WINDOW (gb_wait_last, after a replay): the decision was made in the wait with the hold's own board standing a break's
 // time (which 0), and the line the order puts first breaks nothing, leaves the window under a break's walk at rest and, its walk
