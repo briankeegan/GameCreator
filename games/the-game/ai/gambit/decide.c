@@ -1845,7 +1845,9 @@ static Played playOf(const Read *R, int n) {
       // (under garbage, nor over a break lost no sooner than it at all)
       // (nor over a break that outlives it, fired in time or not -- the garbage broken is the board kept: g4226 combo_storm 8, 715, a
       // design lost at 51 over a break of 28 cells lost at 646; g4230 factory 6, 1131)
-      if (t2 && opSecondCh >= OPENER_LEAST && !(P.line && P.line->o.lives && !t2->o.lives && !fires) && !(P.line && !P.line->hold && !fires && outlives(P.line, t2)) && !(P.line && !P.line->hold && P.line->apBroke > 0 && (outlives(P.line, t2) || (decF.under && !P.line->o.dead && (P.line->o.lives || diesAt(P.line) >= diesAt(t2)))))) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
+      // (and under garbage, never a swap whose walk spends the next break's reserve (rank.c spendsReserve): the design's chain is built
+      // out of the same window the break is pressed from)
+      if (t2 && opSecondCh >= OPENER_LEAST && !(decF.under && spendsReserve(t2)) && !(P.line && P.line->o.lives && !t2->o.lives && !fires) && !(P.line && !P.line->hold && !fires && outlives(P.line, t2)) && !(P.line && !P.line->hold && P.line->apBroke > 0 && (outlives(P.line, t2) || (decF.under && !P.line->o.dead && (P.line->o.lives || diesAt(P.line) >= diesAt(t2)))))) { P.line = P.top = t2; P.wait = 0; P.deferred = 0; opNextDesign = 100 + opSecondCh; }
       // (and while it waits for its panels to come to rest, the board is held: a clear short of what is needed spends the panels it is
       // made of -- set 86 factory 5, a 3's design half pressed, two 2s played in its waits and no 3)
       else if (!t2 && fires && opKeepOn && (opSecondWhy == 5 || opSecondWhy == 9) && P.line && !P.line->hold &&
