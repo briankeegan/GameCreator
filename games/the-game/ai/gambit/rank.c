@@ -648,17 +648,12 @@ static int windowDead(const Judge *J) {
   int32_t w = allowWait(0, lineWalk(J), BREAK_WALK);
   return w < 0 || w > diesAt(J);
 }
-// (THE NEXT BREAKS PUT OFF: the frames later the window holds the walks of the breaks the garbage shown needs (BREAK_WALK each) once the
-// line's actions are spent than it would with none spent -- core/nodes.h allowWait. In the opener no action comes back for 600 frames,
-// so every action spent there is dear: the owner, efficiency is key. 0 where the window is not said)
+// (THE NEXT BREAK PUT OFF: the frames later the window holds a break's walk again (BREAK_WALK) once the line's actions are spent than it
+// would with none spent -- core/nodes.h allowWait. A window near its end makes every action dear: the owner, efficiency is key. 0 where
+// the window is not said)
 static double nextBreakDelay(int walk) {
   if (pressAllowance < 0 || nWinAges < 0 || ruleNoEnemy || walk <= 0) return 0;
-  // (the breaks the window must hold: one for the garbage on the board, one for each landing shown -- each its frame once -- as many as
-  // the window can ever hold)
-  int k = decF.under ? 1 : 0;
-  for (int a = 0; a < decQ.narr; a++) { int32_t t = decQ.arr[a].at; if (t < 0) continue; int seen = 0; for (int b = 0; b < a && !seen; b++) seen = decQ.arr[b].at == t; k += !seen; }
-  int need = imin(imax(1, k) * BREAK_WALK, pressAllowance + nWinAges);
-  int32_t d0 = allowWait(0, 0, need), d1 = allowWait(0, walk, need);
+  int32_t d0 = allowWait(0, 0, BREAK_WALK), d1 = allowWait(0, walk, BREAK_WALK);
   if (d0 < 0) d0 = winLen;
   if (d1 < 0) d1 = winLen;
   return d1 > d0 ? d1 - d0 : 0;
