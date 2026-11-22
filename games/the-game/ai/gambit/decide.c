@@ -536,7 +536,8 @@ static int32_t overNeedAt(void) {
 static int overspends(const Judge *J) {
   if (!overHold || J->hold || J->o.dead || J->o.lives || J->apBroke > 0) return 0;
   if (overMat && J->o.matSettled >= 0 && !test(J->o.matSettled, overFloor) && overHold->o.matSettled > J->o.matSettled) return 1;
-  return pressAllowance >= 0 && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
+  // (a dig toward a break, or a perch let down, with none offered: on the dig's own terms -- rank.c digPaid)
+  return pressAllowance >= 0 && !digPaid(J) && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
 }
 static int32_t stallCut, enPlayed;   // (lines taken out as stalls under garbage this decision: the log's stall=)
 static int digsForBreak(const Judge *J);
@@ -913,7 +914,8 @@ static int ranked(const Read *R, const Found *S) {
     }
     if (nw) sortJudged(order, n); }
   // (NO STALLING UNDER GARBAGE -- the owner: efficiency is key, no wasted moves: under garbage, while the hold's own board stands a break's
-  // time, a line that breaks none of it, does not live and does not dig toward a break (rank.c digsForBreak) is taken out: the actions it
+  // time, a line that breaks none of it, does not live and does not dig toward a break (rank.c digsForBreak, a perch let down among them)
+  // is taken out: the actions it
   // spends are the next break's, and the hold keeps them. Where the hold is lost within a break's time, a stall may be the life)
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     if (decF.under && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) n = cutAlways(order, n, stallsUnder, &stallCut, 30); }
