@@ -2192,6 +2192,7 @@ static void carryOf(const Read *R, const Judge *k, int32_t qid, int first) {
   if (carrySkip) { carryClr = carrySkip; return; }
   if (!carryInto(&theCarry, R, k, qid, first)) { carrySkip = 5; carryClr = 5; return; }
   carriedSunk = lineWalk(k);
+  carriedTold = toldNow(); carriedLostAbs = k->o.lives ? -2 : (k->o.lostAt == NOT_ASKED || k->o.lostAt == FOREVER) ? -1 : (int64_t)decQ.b->clock + k->o.lostAt;
 }
 static int32_t carryRule(void) { return theCarry.rule; }
 // THE BREAK A HOLD WAITS FOR is the line in progress too: a hold chosen because a break is in reach once everything lands is a promise

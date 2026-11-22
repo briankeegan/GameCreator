@@ -581,6 +581,16 @@ static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : action
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
 static int32_t carriedSunk = -1;   // (the actions the line in progress was judged to walk in all when played: decide.c carryOf; -1 not known)
+// (NOTHING NEW TOLD: what the board was told when the line in progress was played -- the next block's landing frame and how many are on
+// their way -- and the frame its own board was judged lost on then (-2 it lived): decide.c carryOf. The same now, and the line still judged
+// lost on that frame, the board is the one the line was planned on, and every other line was there to be found when it was chosen)
+static int64_t carriedTold = -1, carriedLostAbs = -1;
+static int64_t toldNow(void) { return (decF.next == NOT_ASKED ? -1 : (int64_t)decQ.b->clock + decF.next) * 64 + decQ.narr; }
+static int carriedSame(const Judge *c) {
+  if (carriedSunk < 0 || carriedTold < 0 || toldNow() != carriedTold || c->o.dead) return 0;
+  if (c->o.lives) return carriedLostAbs == -2;
+  return c->o.lostAt != NOT_ASKED && c->o.lostAt != FOREVER && (int64_t)decQ.b->clock + c->o.lostAt == carriedLostAbs;
+}
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
@@ -903,6 +913,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
       lx = ly = 1;
     }
+  }
+  // 1. THE PLAN KEPT, NOTHING NEW TOLD (the owner: changing plans is wasteful): the line in progress on the board it was planned on --
+  // nothing told since it was played, and itself judged lost on the frame it was judged then (carriedSame) -- is not put down for another
+  // line found this time: that line was there to be found when it was chosen, and every action spent on the line in progress is thrown
+  // away. Only for a line that breaks more garbage, or outlives it by a break's time (lives before does not, above)
+  if (lx == ly && x->carried != y->carried && !x->hold && !y->hold) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    if (carriedSame(c) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && !outlives(o, c) && !finishEightBy(o, c))
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. NOTHING AMID THE GARBAGE (amidGarbage): under garbage, of two that do not live, a line that swaps among the slabs and breaks nothing
   // after one that does not -- unless it keeps the board a break's time (rankSave) longer
