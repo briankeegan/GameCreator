@@ -329,6 +329,11 @@ static int walkTurns(const Judge *x, const Judge *y) {
   // decides between the two)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
     if ((dx < dy ? dx : dy) >= rankSave && windowDead(l) && !windowDead(s)) return 0; }
+  // (nor, under garbage, a later loss that breaks nothing and leaves the next break less than its walk, beside a line that keeps it --
+  // the owner: efficiency is key: the actions it spends are the next break's, and a board kept on them is one left with none to break
+  // with -- the walk's charge decides between the two, however far apart they are lost)
+  { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
+    if (decF.under && (dx < dy ? dx : dy) >= rankSave && !(l->apBroke > 0) && spendsReserve(l) && !spendsReserve(s)) return 0; }
   if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
   // (nor where the later one buys less than a break's time with the window the next breaks are pressed from: the actions it spends come
   // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
