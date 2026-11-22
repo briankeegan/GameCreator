@@ -521,8 +521,8 @@ static int cutAlways(Judge **ord, int n, int (*named)(const Judge *), int32_t *c
   return m;
 }
 // THE NEXT BLOCK'S RESERVE (the owner: don't overspend if it's killing you; it's all about efficiency): with garbage on the board or on its
-// way, while the hold's own board stands a break's time, a line that breaks none of it and does not live is taken out where it leaves
-// less than the next break needs -- the panels it settles to under the rule's material floor and fewer than the hold keeps, or the window
+// way, while the hold's own board stands a break's time, a line that breaks none of it is taken out where it leaves less than the next
+// break needs -- the panels it settles to under the rule's material floor and fewer than the hold keeps, or, where it does not live, the window
 // under a break's walk (BREAK_WALK) by the sooner of the next block's landing and the hold's own loss. Taken out of the order and held to
 // at the end of the move, whatever put the line there: the opener's chain, a set-up between moves, a dig
 static const Judge *overHold; static int overMat; static Test overFloor; static int32_t overCut;
@@ -534,8 +534,12 @@ static int32_t overNeedAt(void) {
   return t < 0 ? 0 : t;
 }
 static int overspends(const Judge *J) {
-  if (!overHold || J->hold || J->o.dead || J->o.lives || J->apBroke > 0) return 0;
-  if (overMat && J->o.matSettled >= 0 && !test(J->o.matSettled, overFloor) && overHold->o.matSettled > J->o.matSettled) return 1;
+  if (!overHold || J->hold || J->o.dead || J->apBroke > 0) return 0;
+  // (the floor holds a line that lives too: it lives through the garbage told, and the storm tells more -- the rule's floor is for the
+  // breaks of what is not told yet)
+  // (only beside a hold that lives as well: a life is never given up for the floor)
+  if (overMat && (!J->o.lives || overHold->o.lives) && J->o.matSettled >= 0 && !test(J->o.matSettled, overFloor) && overHold->o.matSettled > J->o.matSettled) return 1;
+  if (J->o.lives) return 0;
   // (a dig toward a break, or a perch let down, with none offered: on the dig's own terms -- rank.c digPaid)
   return pressAllowance >= 0 && !digPaid(J) && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
 }
