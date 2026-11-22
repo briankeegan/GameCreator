@@ -536,7 +536,8 @@ static int32_t overNeedAt(void) {
 static int overspends(const Judge *J) {
   if (!overHold || J->hold || J->o.dead || J->o.lives || J->apBroke > 0) return 0;
   if (overMat && J->o.matSettled >= 0 && !test(J->o.matSettled, overFloor) && overHold->o.matSettled > J->o.matSettled) return 1;
-  return pressAllowance >= 0 && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
+  // (a dig toward a break, or a perch let down, with none offered: on the dig's own terms -- rank.c digPaid)
+  return pressAllowance >= 0 && !digPaid(J) && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
 }
 static int32_t stallCut, enPlayed;   // (lines taken out as stalls under garbage this decision: the log's stall=)
 static int digsForBreak(const Judge *J);
@@ -912,8 +913,14 @@ static int ranked(const Read *R, const Found *S) {
       if (judgeCand(R, &c, &within[nw]) && !within[nw].o.dead && !reachesFar(&within[nw])) { readyNextFor(&within[nw]); order[n++] = &within[nw]; nw++; reachCut--; }
     }
     if (nw) sortJudged(order, n); }
+  // (THE WAY TO THE LINE THE REACH CUT: the best line past the reach that breaks garbage, digs toward a break or lets a perch down is where
+  // the cursor is going: the way to the action (enRoute, its own checks: lost no sooner, the reserve kept) walks it there in hops within the
+  // reach, unless a line in progress waits for its own next swap)
+  if (!(ccPre && cwaitPre)) for (int i = 0; i < n; i++) { const Judge *J = order[i];
+    if (!J->hold && !J->o.dead && J->k.nseq > 0 && farForNothing(J) && (J->apBroke > 0 || digsForBreak(J))) { enR = CR(J->k.seq[0]); enC = CC(J->k.seq[0]); enOn = 1; break; } }
   // (NO STALLING UNDER GARBAGE -- the owner: efficiency is key, no wasted moves: under garbage, while the hold's own board stands a break's
-  // time, a line that breaks none of it, does not live and does not dig toward a break (rank.c digsForBreak) is taken out: the actions it
+  // time, a line that breaks none of it, does not live and does not dig toward a break (rank.c digsForBreak, a perch let down among them)
+  // is taken out: the actions it
   // spends are the next break's, and the hold keeps them. Where the hold is lost within a break's time, a stall may be the life)
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     if (decF.under && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) n = cutAlways(order, n, stallsUnder, &stallCut, 30); }
