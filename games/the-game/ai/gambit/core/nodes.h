@@ -37,11 +37,11 @@ static void legMove(int32_t v, int cells, int *row, int *col) {
 // NO DAS (the owner: no DAS): no direction is ever held to auto-repeat -- every walk is tapped a cell at a time, by the search, the judge
 // and the frame loop alike
 #define NO_DAS 1
-// THE REACH (the owner: can't move more than five -- keep moves close by; six tried, closer preferred): the cursor steps, rows and
-// columns, from the cursor to a swap. Closer is preferred within it by the walk's charge (rank.c lostOf).
+// THE REACH (the owner: can't move more than five -- keep moves close by): the cursor steps, rows and columns, from the cursor to a swap.
+// Closer is preferred within it by the walk's charge (rank.c lostOf); six measured no better (73 of 84 against 75-77 at five).
 // Every search grows a line only by swaps within it of where the cursor stands (search/break.c swapsOfNode), and the order keeps no line
 // past it (decide.c farForNothing)
-#define REACH_STEPS 6
+#define REACH_STEPS 5
 static int legHeld(int32_t v, int row, int col) {
   if (NO_DAS) return 0;
   int32_t d = v & 15;
