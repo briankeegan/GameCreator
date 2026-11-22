@@ -709,8 +709,9 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
   for (int i = 0; i < nfirsts; i++)
     if (breaksAt(&s, firsts[i]->n, firsts[i]->path, 1)) { found(out, firsts[i]->key); int32_t t = NODE(x, firsts[i]->n)->t; if (at1 < 0 || t < at1) at1 = t; }
   if (out->nmoves) { out->depth = 1; out->at = at1; return; }
-  // (THE BREAK BUILT: the nearest break's panels walked to it along their rows -- breakNear's own line -- played on the engine)
-  if (!(wait > 0)) {
+  // (THE BREAK BUILT: the nearest break's panels walked to it along their rows -- breakNear's own line -- played on the engine; a slab
+  // popping too: the line is pressed on the engine through the pop, and taken only where it breaks more than the pop alone)
+  {
     static LOCAL int32_t nl[MAXPATH]; int nn = 0;
     if (breakNearLine(q->b, nl, &nn) < NEAR_MISS && nn > 0) {
       int node = s.root;
