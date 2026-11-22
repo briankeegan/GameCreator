@@ -520,6 +520,24 @@ static int cutAlways(Judge **ord, int n, int (*named)(const Judge *), int32_t *c
     ord[m++] = J; }
   return m;
 }
+// THE NEXT BLOCK'S RESERVE (the owner: don't overspend if it's killing you; it's all about efficiency): with garbage on the board or on its
+// way, while the hold's own board stands a break's time, a line that breaks none of it and does not live is taken out where it leaves
+// less than the next break needs -- the panels it settles to under the rule's material floor and fewer than the hold keeps, or the window
+// under a break's walk (BREAK_WALK) by the sooner of the next block's landing and the hold's own loss. Taken out of the order and held to
+// at the end of the move, whatever put the line there: the opener's chain, a set-up between moves, a dig
+static const Judge *overHold; static int overMat; static Test overFloor; static int32_t overCut;
+static int32_t overNeedAt(void) {
+  int32_t t = EARLIEST_LANDING;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
+  { int32_t q = holdQueueAt(); if (q != NOT_ASKED && q >= 0 && q < t) t = q; }
+  if (overHold && !overHold->o.lives && diesAt(overHold) < t) t = (int32_t)diesAt(overHold);
+  return t < 0 ? 0 : t;
+}
+static int overspends(const Judge *J) {
+  if (!overHold || J->hold || J->o.dead || J->o.lives || J->apBroke > 0) return 0;
+  if (overMat && J->o.matSettled >= 0 && !test(J->o.matSettled, overFloor) && overHold->o.matSettled > J->o.matSettled) return 1;
+  return pressAllowance >= 0 && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
+}
 static int32_t stallCut, enPlayed;   // (lines taken out as stalls under garbage this decision: the log's stall=)
 static int digsForBreak(const Judge *J);
 // (THE WAY TO THE ACTION -- the owner: instead of waiting, walk over to the area it needs to get to and flatten or zip along the way, so it
@@ -575,7 +593,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0; rankHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -899,6 +917,12 @@ static int ranked(const Read *R, const Found *S) {
   // spends are the next break's, and the hold keeps them. Where the hold is lost within a break's time, a stall may be the life)
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     if (decF.under && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) n = cutAlways(order, n, stallsUnder, &stallCut, 30); }
+  { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
+    overHold = 0;
+    if ((decF.under || garbageComing()) && !ruleNoEnemy && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) {
+      overHold = H; overMat = R->keepOn && R->keep.t[KEEP_MATERIAL].op; overFloor = R->keep.t[KEEP_MATERIAL];
+      n = cutAlways(order, n, overspends, &overCut, 31);
+    } }
   n = cutAlways(order, n, farForNothing, &reachCut, 28);
   // NO FLIP AND BACK ACROSS DECISIONS: a line that swaps straight back the two panels the last decision swapped is taken out, whatever
   // the board
@@ -2073,8 +2097,8 @@ static Played playOf(const Read *R, int n) {
   }
   // (THE REACH HELD TO THE END: a line put in the order's place after the cut -- a set-up, a plan, a trigger -- keeps to the reach and
   // takes no flip back as the order does: the best line the order kept is played instead, the hold among them)
-  if (P.line && !R->up && (farForNothing(P.line) || undoesLast(P.line))) {
-    const Judge *in = 0; for (int i = 0; i < n && !in; i++) if (!farForNothing(order[i]) && !undoesLast(order[i])) in = order[i];
+  if (P.line && !R->up && (farForNothing(P.line) || undoesLast(P.line) || overspends(P.line))) {
+    const Judge *in = 0; for (int i = 0; i < n && !in; i++) if (!farForNothing(order[i]) && !undoesLast(order[i]) && !overspends(order[i])) in = order[i];
     P.line = !in || in->hold || (in->wait && in->k.play != PLAY_CARRYWAIT) ? 0 : in; P.top = in; P.wait = 0; P.deferred = 0; reachCut++;
   }
   P.name = P.line ? P.line->k.play : R->up ? -2 : PLAY_HOLD;   // -2: the raise

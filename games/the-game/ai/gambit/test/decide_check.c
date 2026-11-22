@@ -629,6 +629,13 @@ EXPORT(gb_reach_last) int gb_reach_last(void) {
   for (int i = 0; i < orderN; i++) far += farForNothing(order[i]);
   return far;
 }
+// THE NEXT BLOCK'S RESERVE (gb_over_last, after a replay): the lines the order kept that spend what the next break needs -- panels under
+// the floor or the window under a break's walk, breaking nothing, the hold standing a break's time -- decide.c overspends
+EXPORT(gb_over_last) int gb_over_last(void) {
+  int over = 0;
+  for (int i = 0; i < orderN; i++) over += overspends(order[i]);
+  return over;
+}
 // NO FLIP AND BACK ACROSS DECISIONS (gb_undo_cut, after a replay): the order's first line that is no hold and does not live made the
 // one that swaps straight back the swap just pressed -- its first swap's two panels named as that swap left them -- and the order cut as
 // the decision cuts it: 1 where it is taken out, 0 kept, -1 none to try -- decide.c undoesLast
