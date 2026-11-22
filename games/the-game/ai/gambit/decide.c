@@ -572,6 +572,14 @@ static int ranked(const Read *R, const Found *S) {
   readyStop(); readyPendClear(); readyCollect = 1;   // (and keeps each landed board: searched once, its nearest break measured)
   rankReact = C2.reaction + 1;
   rankSave = rankReact + decQ.b->fFLASH + decQ.b->fFACE + decQ.b->fPOP * (3 + W);   // (pa.c matchGarbagePanels: a row of W cells)
+  // (THE LINE IN PROGRESS JUDGED FIRST: its swaps are already on the board, so it is read before any proposed line, while the decision
+  // has its time -- judged after them it was let go unread hundreds of times a run, the move's own frame reached before its judge pressed
+  // a swap. Its judging runs to the host's hard stop (clockFrameOut) all the same)
+  static Judge carryPre; Cand ckPre; int ccPre = 0, cwaitPre = 0, carryPreOk = 0;
+  carryNone = 21; carryJudgeDrop = -1; carryShort = 0;
+  { double pd = clockDue, ps = clockShare; if (clockFrameOut) { clockDue = 0; clockShare = 0; }
+    if (R->guides.n && (ccPre = carriedCand(R, &ckPre, &cwaitPre))) { lastDrop = -1; carryPreOk = judgeCand(R, &ckPre, &carryPre); if (!carryPreOk) { carryNone = 19; carryJudgeDrop = lastDrop; } }
+    clockDue = pd; clockShare = ps; }
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
   // (NOTHING JUDGED IN TIME: the searches and the proposing took the decision's time and the clock stopped the judge on every line --
   // every line is judged again up to the move's own frame, the host's hard stop (clockFrameOut): a board is never held for want of a
@@ -584,16 +592,14 @@ static int ranked(const Read *R, const Found *S) {
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
   // until then -- it ranks with the hold)
-  Cand ck; int cwait = 0, cc = 0;
-  carryNone = 21;
-  carryJudgeDrop = -1; carryShort = 0;
+  Cand ck = ckPre; int cwait = cwaitPre, cc = ccPre;
   // (THE LINE IN PROGRESS IS JUDGED WHATEVER THE DECISION'S CLOCK SAYS: it comes after every proposed line, and where their judging took
   // the decision's time -- or a search's share of it still in force -- the clock stops its judge before a swap is pressed: a line whose
   // swaps are already on the board would be let go unread for a line read in time. Its judging always runs to the move's own frame, the
   // host's hard stop (clockFrameOut), as the judging of a decision with nothing judged in time does)
   double carryDue = clockDue, carryShare = clockShare; int carryOwnTime = !rescue && clockFrameOut;
   if (carryOwnTime) { clockDue = 0; clockShare = 0; }
-  if (R->guides.n && (cc = carriedCand(R, &ck, &cwait))) { lastDrop = -1; if (!judgeCand(R, &ck, &theJudged[n])) { carryNone = 19; carryJudgeDrop = lastDrop; } }
+  if (cc && carryPreOk) theJudged[n] = carryPre;   // (judged first, above)
   if (R->guides.n && cc && carryNone != 19) {
     carryNone = 0;
     Judge *cj = &theJudged[n];
