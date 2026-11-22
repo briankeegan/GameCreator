@@ -1629,6 +1629,11 @@ static Played playOf(const Read *R, int n) {
     #define SPENDS_BOARD(J) ((J) && !(J)->o.lives && ((heldDies + rankSave > diesAt(J) && ((heldMat >= 0 && (J)->o.matSettled >= 0 && (J)->o.matSettled < OP_KEEP_PANELS && heldMat > (J)->o.matSettled) || FARTHER_OFF(J) || ((decF.under || garbageComing()) && spendsReserve(J)))) || UNREADY(J)))
     opSpentHeld = heldMat;
     if (SPENDS_BOARD(ext) && (ext->apChainAll < need || UNREADY(ext))) { opSpent |= 1; opSpentMat = ext->o.matSettled; ext = 0; }   // (the eight made is never refused)
+    // (AND NEVER THE NEXT BREAK'S ACTIONS -- the owner: don't overspend if it's killing you: with garbage on the board or on its way, an
+    // extension that breaks none of it and leaves the window under a break's walk (rank.c spendsReserve) is refused, the eight included and
+    // however long its chain keeps the stack still: when it lands the window is empty and the garbage unbroken -- run 4389 large_garbage 8,
+    // x5 extended to x8 over a break of six, the window 57 to 9 and the board lost at 785)
+    if (ext && (decF.under || garbageComing()) && !(ext->apBroke > 0) && spendsReserve(ext)) { opSpent |= 4; ext = 0; }
     // (and in any game, a chain that counts already held where the board it lands on has the rest: the next chain designed there a chain
     // of need - bar or more -- the countdown's pair, a 4 and the 4 it leaves, never spent on links that stop short of need)
     if (ext && ext->apChainAll < need && bar >= OPENER_LEAST) { opSecondFall = bar; two = opSecondSwap(R, n); twoAsked = 1; if (opSecondCh >= opSecondLeast()) ext = 0; }
