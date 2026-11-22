@@ -216,9 +216,16 @@ static int spendKept(const char *dir) { return spendKeptOn(dir, "spend.txt", "th
 static int windowKept(const char *dir) { return spendKeptOn(dir, "windead.txt", "the window that leaves no break"); }
 // THE WALK FOR NOTHING (test DIR toward, its own process, as spend: toward.txt): boards under garbage where a set-up that breaks none of
 // it, lost on the hold's frame, was put first for the mode's goal (the spend judged as the toward it was) -- the hold is kept: rank.c
-// goalKeyUnder
+// goalKeyUnder. And no such toward, digging for a break with the hold standing a break's time, is let spend the next break's reserve:
+// rank.c digPaid
 void gb_spend_toward(int on);
-static int towardKept(const char *dir) { gb_spend_toward(1); int r = spendKeptOn(dir, "toward.txt", "the walk for nothing"); gb_spend_toward(0); return r; }
+int gb_dig_free(void);
+static int towardKept(const char *dir) {
+  gb_dig_free(); gb_spend_toward(1); int r = spendKeptOn(dir, "toward.txt", "the walk for nothing"); gb_spend_toward(0);
+  int freed = gb_dig_free();
+  printf("%s: the dig that keeps no reserve -- %d digs let spend the next break's window with the hold standing a break's time\n", freed ? "FAIL" : "ok", freed);
+  return r || freed;
+}
 int gb_cells(void);
 // THE BOARD DRAWN (test DIR board LOG FRAME): the logged board (GAMBITL, GAMBITQ...) of that frame, top row first -- a colour's digit,
 // garbage G, empty '.', a dimmed (rising) row in lower case; then the garbage on its way
