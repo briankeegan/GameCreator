@@ -49,9 +49,11 @@ it worked (ours / his).
       (claude/newsey-game-ask-qa8u5e), NOT on main: merge only when a full round (finish them, fill, switching) does as well as or
       better than main -- main is 0c64b39, 82/84. The owner: "only merge once it does better"; "not if, when".
       The reach is six steps (the owner allowed six, closer preferred): five measured 73, six 78 on the same build.
-      Best so far 79/84 (5588c1a: fill 26, switching 25, finish them 28): the next block's reserve held at the end of every move --
+      Best so far 80/84 (3ff9c11: fill 27, switching 26, finish them 27; combo storm 23/24, large garbage 24/24, endless 12/12,
+      factory 21/24). The next block's reserve is held at the end of every move --
       with garbage on the board or on its way, no line that breaks nothing leaves the panels under the rule's floor or the window
-      under a break's walk while the hold stands a break's time, whichever of the 21 overrides in playOf put it there.
+      under a break's walk while the hold stands a break's time, whichever of the 21 overrides in playOf put it there; the floor
+      holds a living line too, beside a hold that lives, while garbage is on its way.
       The losses left are mostly factory: material run down by clears that buy a break's time, then no break on the board.
 
 ### Next, after Y1-Y6 (the owner, 2026-11-19)
