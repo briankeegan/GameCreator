@@ -41,7 +41,7 @@ static void legMove(int32_t v, int cells, int *row, int *col) {
 // Closer is preferred within it by the walk's charge (rank.c lostOf); six measured no better (73 of 84 against 75-77 at five).
 // Every search grows a line only by swaps within it of where the cursor stands (search/break.c swapsOfNode), and the order keeps no line
 // past it (decide.c farForNothing)
-#define REACH_STEPS 5
+#define REACH_STEPS 6   // owner: keep moves close, no more than five -- then: try six, but prefer closer (the walk charge)
 static int legHeld(int32_t v, int row, int col) {
   if (NO_DAS) return 0;
   int32_t d = v & 15;
