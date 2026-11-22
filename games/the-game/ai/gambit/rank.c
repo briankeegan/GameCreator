@@ -917,10 +917,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. THE PLAN KEPT, NOTHING NEW TOLD (the owner: changing plans is wasteful): the line in progress on the board it was planned on --
   // nothing told since it was played, and itself judged lost on the frame it was judged then (carriedSame) -- is not put down for another
   // line found this time: that line was there to be found when it was chosen, and every action spent on the line in progress is thrown
-  // away. Only for a line that breaks more garbage, or outlives it by a break's time (lives before does not, above)
+  // away. Only for a line that breaks more garbage -- as seen, or as the line makes it -- or outlives it by a break's time (lives before
+  // does not, above)
   if (lx == ly && x->carried != y->carried && !x->hold && !y->hold) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (carriedSame(c) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && !outlives(o, c) && !finishEightBy(o, c))
+    if (carriedSame(c) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && imax(0, o->apBroke) <= imax(0, c->apBroke) &&
+        !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. NOTHING AMID THE GARBAGE (amidGarbage): under garbage, of two that do not live, a line that swaps among the slabs and breaks nothing
