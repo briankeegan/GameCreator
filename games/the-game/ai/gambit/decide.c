@@ -917,6 +917,11 @@ static int ranked(const Read *R, const Found *S) {
       if (judgeCand(R, &c, &within[nw]) && !within[nw].o.dead && !reachesFar(&within[nw])) { readyNextFor(&within[nw]); order[n++] = &within[nw]; nw++; reachCut--; }
     }
     if (nw) sortJudged(order, n); }
+  // (THE WAY TO THE LINE THE REACH CUT: once the opener is over, under garbage with no break offered, the best line past the reach that
+  // digs toward a break or lets a perch down is where the cursor is going: the way to the action (enRoute, its own checks: lost no sooner,
+  // the reserve kept) walks it there in hops within the reach, unless a line in progress waits for its own next swap)
+  if (openerOver && decF.under && !breakOffered && !(ccPre && cwaitPre)) for (int i = 0; i < n; i++) { const Judge *J = order[i];
+    if (!J->hold && !J->o.dead && J->k.nseq > 0 && farForNothing(J) && digsForBreak(J)) { enR = CR(J->k.seq[0]); enC = CC(J->k.seq[0]); enOn = 1; break; } }
   // (NO STALLING UNDER GARBAGE -- the owner: efficiency is key, no wasted moves: under garbage, while the hold's own board stands a break's
   // time, a line that breaks none of it, does not live and does not dig toward a break (rank.c digsForBreak, a perch let down among them)
   // is taken out: the actions it
