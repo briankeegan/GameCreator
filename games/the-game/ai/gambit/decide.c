@@ -1522,7 +1522,7 @@ static Played playOf(const Read *R, int n) {
       opGrew = 2;
       if (opFlatN > 0) {
         static Judge FL; Cand k;
-        if (candOf(&k, PLAY_LEVEL, opFlat, opFlatN, -1, 0)) { k.settled = 1; if (judgeCand(R, &k, &FL) && !FL.o.dead && (FL.o.lives || !P.top || diesAt(&FL) >= diesAt(P.top))) { P.line = P.top = &FL; P.wait = 0; opFlatPlayed = 1; } }
+        if (!decF.under && candOf(&k, PLAY_LEVEL, opFlat, opFlatN, -1, 0)) { k.settled = 1; if (judgeCand(R, &k, &FL) && !FL.o.dead && (FL.o.lives || !P.top || diesAt(&FL) >= diesAt(P.top))) { P.line = P.top = &FL; P.wait = 0; opFlatPlayed = 1; } }
       }
     }
     clockDue = keepDue; clockShare = keepShare;
@@ -1535,7 +1535,9 @@ static Played playOf(const Read *R, int n) {
   // (the planned opener in progress goes on: no plan is grown or begun over it -- the carry presses it, and survival alone puts it down)
   // (and no other line takes its place while it can still be pressed and either lives or presses its last swap before the next block
   // lands -- one that cannot fire in time is survival's to decide)
-  if (opLineOn && opCarried && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
+  // (but not with garbage on the board: there the opener's line competes as every line does -- the owner: efficiency is key -- and the
+  // window it would spend is the next break's)
+  if (opLineOn && opCarried && !decF.under && !(P.line && P.line->carried)) { P.line = P.top = opCarried; P.wait = 0; P.deferred = 0; }
   // (THE OPENER'S CHAIN FALLING -- the owner: as long as you extend, you can't die: the stack is still while it falls and the garbage
   // waits for it, so nothing is pressed under it but its extension -- a swap of anything else is a link taken from it)
   // (the opener's chain: one falling while the opener is the mode, held to until it lands whatever mode comes after it)
