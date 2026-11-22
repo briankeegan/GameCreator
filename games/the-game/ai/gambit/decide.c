@@ -520,6 +520,9 @@ static int cutAlways(Judge **ord, int n, int (*named)(const Judge *), int32_t *c
     ord[m++] = J; }
   return m;
 }
+static int32_t stallCut;   // (lines taken out as stalls under garbage this decision: the log's stall=)
+static int digsForBreak(const Judge *J);
+static int stallsUnder(const Judge *J) { return !J->hold && !J->o.lives && !(J->apBroke > 0) && !digsForBreak(J) && J->k.play != PLAY_CONVERT && J->k.play != PLAY_CARRY && J->k.play != PLAY_CARRYWAIT; }
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -562,7 +565,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0; rankHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -873,6 +876,11 @@ static int ranked(const Read *R, const Found *S) {
       if (judgeCand(R, &c, &within[nw]) && !within[nw].o.dead && !reachesFar(&within[nw])) { readyNextFor(&within[nw]); order[n++] = &within[nw]; nw++; reachCut--; }
     }
     if (nw) sortJudged(order, n); }
+  // (NO STALLING UNDER GARBAGE -- the owner: efficiency is key, no wasted moves: under garbage, while the hold's own board stands a break's
+  // time, a line that breaks none of it, does not live and does not dig toward a break (rank.c digsForBreak) is taken out: the actions it
+  // spends are the next break's, and the hold keeps them. Where the hold is lost within a break's time, a stall may be the life)
+  { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
+    if (decF.under && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) n = cutAlways(order, n, stallsUnder, &stallCut, 30); }
   n = cutAlways(order, n, farForNothing, &reachCut, 28);
   // NO FLIP AND BACK ACROSS DECISIONS: a line that swaps straight back the two panels the last decision swapped is taken out, whatever
   // the board
