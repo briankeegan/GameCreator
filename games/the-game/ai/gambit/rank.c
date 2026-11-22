@@ -996,6 +996,17 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (carriedSunk >= 0 && carriedSunk - lineWalk(c) > 0 && !c->o.dead && brokeSeen(c) > 0 && imax(0, brokeSeen(o)) <= brokeSeen(c) && !o->o.lives && lostOf(c) >= rankSave)
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
+  // (THE ACTIONS ALREADY SPENT -- the owner: efficiency is key, no wasted moves: a line in progress that has walked and pressed some of
+  // its actions already, beside one that breaks no more and does not live, is kept unless the other outlives it by more than those actions
+  // are worth (WALK_FRAMES each, the walk's own charge) -- put down for less, every action spent on it bought nothing -- and unless it is
+  // lost within a break's time)
+  if (!lx && x->carried != y->carried && !x->hold && !y->hold) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    int sunk = carriedSunk >= 0 ? carriedSunk - lineWalk(c) : 0;
+    if (sunk > 0 && !c->o.dead && !o->o.lives && lostOf(c) >= rankSave && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && !finishEightBy(o, c) &&
+        diesAt(o) - diesAt(c) < (double)WALK_FRAMES * sunk)
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
   // (THE BREAK THE WINDOW STILL PRESSES -- the owner: break the garbage, at once: under garbage with the window under a break's walk
   // (BREAK_WALK), of two that do not live, a line that breaks garbage before one that presses swaps and breaks none, unless that one's
   // board outlives the break's (outlives): there every action pressed for no break is one the break is not pressed with, and the
