@@ -1768,7 +1768,10 @@ static Played playOf(const Read *R, int n) {
       for (int i = 0; i < n && !sk && h; i++) { const Judge *J = order[i];
         // (the chain cut short only by a break that outlives the hold by a break's time -- the garbage broken is the board kept: run 4151
         // large_garbage 8, 497, a break lost at 390 passed for a set-up lost at 121, the board lost at 733)
-        if (J->hold || J->o.dead || !J->k.nseq || !(J->apBroke > 0) || ((cutsShort(J) || chainReach(J) < chainReach(h)) && !outlives(J, h))) continue;
+        // (and under garbage, the break the order itself puts first stands whatever chain it cuts: the garbage on the board is broken now,
+        // and a set-up played in its place spends the window that break is pressed from)
+        int first = decF.under && J == order[0];
+        if (J->hold || J->o.dead || !J->k.nseq || !(J->apBroke > 0) || (!first && (cutsShort(J) || chainReach(J) < chainReach(h)) && !outlives(J, h))) continue;
         if (!(J->o.lives || (!h->o.lives && diesAt(J) >= diesAt(h)))) continue;
         sk = J; }
       for (int i = 0; i < n && !sk; i++) { const Judge *J = order[i];
