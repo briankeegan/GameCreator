@@ -95,9 +95,9 @@ jobs:
           # (a short commit hash cannot be fetched by itself: resolved first against the branches' history)
           case "$from" in *[!0-9a-f]*) ;; *) if [ ${#from} -lt 40 ]; then git fetch -q --filter=blob:none $([ -f .git/shallow ] && echo --unshallow) origin '+refs/heads/*:refs/remotes/origin/*' && from=$(git rev-parse --verify "$from^{commit}"); fi;; esac
           # (that one commit fetched alone, not the history -- and no file of it until checked out: only the gambit folder's are fetched,
-          # not the whole tree's)
+          # not the whole tree's -- with the engine it is built on, eval/native)
           for i in 1 2 3; do timeout 120 git fetch --depth 1 --filter=blob:none --quiet origin "$from" && break; sleep 5; done
-          rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
+          rm -rf games/the-game/ai/gambit games/the-game/ai/eval/native && git checkout FETCH_HEAD -- games/the-game/ai/gambit games/the-game/ai/eval/native
           echo "::notice title=gambit::the Gambit of ${{ inputs.gambit_from }}"
       - uses: actions/checkout@v4
         with:
@@ -192,9 +192,9 @@ jobs:
           # (a short commit hash cannot be fetched by itself: resolved first against the branches' history)
           case "$from" in *[!0-9a-f]*) ;; *) if [ ${#from} -lt 40 ]; then git fetch -q --filter=blob:none $([ -f .git/shallow ] && echo --unshallow) origin '+refs/heads/*:refs/remotes/origin/*' && from=$(git rev-parse --verify "$from^{commit}"); fi;; esac
           # (that one commit fetched alone, not the history -- and no file of it until checked out: only the gambit folder's are fetched,
-          # not the whole tree's)
+          # not the whole tree's -- with the engine it is built on, eval/native)
           for i in 1 2 3; do timeout 120 git fetch --depth 1 --filter=blob:none --quiet origin "$from" && break; sleep 5; done
-          rm -rf games/the-game/ai/gambit && git checkout FETCH_HEAD -- games/the-game/ai/gambit
+          rm -rf games/the-game/ai/gambit games/the-game/ai/eval/native && git checkout FETCH_HEAD -- games/the-game/ai/gambit games/the-game/ai/eval/native
       - name: clang
         timeout-minutes: 10
         run: |
