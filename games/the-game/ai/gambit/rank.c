@@ -926,12 +926,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
         !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
-  // 1. THE THREE OWED (the owner: never a three unless it follows through): the line in progress whose swaps make a three that breaks
-  // nothing, its break still to come (threeOwed: answer.c, the line played last), is carried on to that break -- put down for another
-  // line, the three is wasted and so is every action spent on it. Only a line that outlives it by a break's time puts it down
-  if (lx == ly && threeOwed && x->carried != y->carried) {
+  // 1. THE LINE IN PROGRESS FINISHED (the owner: there has to be a strong reason to stop something in the middle; the game is
+  // deterministic, and a plan dropped is every action spent on it thrown away -- its three, where it made one, wasted): the line in
+  // progress is put down only for a line that lives where it does not (above), outlives it by a break's time, or breaks more garbage --
+  // not for the hold, nor for one lost a few frames later. Where its swaps make a three still owed its break (threeOwed: answer.c), not for
+  // one that breaks more either: that three is the break's first half
+  if (lx == ly && x->carried != y->carried) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (!c->hold && !c->o.dead && c->apBroke > 0 && !outlives(o, c)) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    if (!c->hold && !c->o.dead && !outlives(o, c) && (threeOwed && c->apBroke > 0 ? 1 : imax(0, o->apBroke) <= imax(0, c->apBroke)))
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
   // board, of two that live or are lost alike, the one that leaves a break ready once everything lands (judge.c breaksAfterLanding, the
