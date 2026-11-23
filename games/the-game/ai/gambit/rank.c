@@ -1533,8 +1533,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
 // A LINE IN WALKING ORDER: its swaps pressed in the order the cursor reaches them soonest -- from where the cursor is, each swap's walk
 // counted as the frame loop walks it (core/nodes.h actionsFor) -- two swaps on a shared cell kept in the line's own order. Every order
 // for a short line (WALK_ALL swaps or fewer), the nearest swap next for a longer one; of two orders that walk alike, the line's own first.
-// Two swaps on columns that overlap are kept in the line's own order too: a panel taken off a stack before the one under it, or set
-// beside one that falls there -- swaps on the far sides of the board are free of each other, and are pressed a side at a time.
 // 0 when the line's own order walks least.
 // (A SWAP THAT WAITS: a swap the judge found not there to press in a walking order (judge.c cutWhy 2) is there in the line's own order,
 // so it waits on what that order presses before it. walkNeeds: the swap, and the swaps the line's own order presses before it that the
@@ -1545,10 +1543,10 @@ static int32_t walkSeq[MAXLINE], walkBest[MAXLINE], walkCost;   // (an order: ea
 static int64_t walkPlaced;
 static int32_t walkNeedOf[MAXLINE], nWalkNeeds, walkNotOf[MAXLINE], walkNotAfter[MAXLINE], nWalkNots;
 static int64_t walkNeedAny[MAXLINE];
-static int overlapsColumns(int32_t a, int32_t b) { return iabs(CC(a) - CC(b)) <= 1; }
+static int sharesCell(int32_t a, int32_t b) { return CR(a) == CR(b) && iabs(CC(a) - CC(b)) <= 1; }
 static int walkFree(const Cand *k, int i, int after) {
   if (walkPlaced >> i & 1) return 0;
-  for (int p = 0; p < i; p++) if (!(walkPlaced >> p & 1) && overlapsColumns(k->seq[p], k->seq[i])) return 0;
+  for (int p = 0; p < i; p++) if (!(walkPlaced >> p & 1) && sharesCell(k->seq[p], k->seq[i])) return 0;
   for (int w = 0; w < nWalkNeeds; w++) if (walkNeedOf[w] == i && !(walkPlaced & walkNeedAny[w])) return 0;
   for (int w = 0; w < nWalkNots; w++) if (walkNotOf[w] == i && walkNotAfter[w] == after) return 0;
   return 1;
