@@ -1034,7 +1034,9 @@ PATLS double paCdScan, paCdSup;   // cells countdownRoom looked at, and supporte
 static int32_t countdownRoom(Board *b) {
   int32_t k = 0x7fffffff, popping = 0;
   int n = rowsTo(b), top = imin(n - 1, b->height + 2);
-  for (int r = n - 1; r >= 1; r--)   // from the top, where what moves usually is
+  // (each cell's own state first, every cell, from the top, where what moves usually is; then, only where something pops, whether the
+  // garbage at rest is held up -- a check of the cells below, the same for every cell of a block's row, so asked once a block's row)
+  for (int r = n - 1; r >= 1; r--)
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
       const int32_t *f = p->f;
@@ -1043,13 +1045,25 @@ static int32_t countdownRoom(Board *b) {
       if (r <= top && SETB(f[CHAINING]) && (canMatch(p) || f[COLOR] == 9)) return 0;   // clearChainingFlags would clear it
       if (f[ISGARBAGE]) {
         if (f[STATE] == MATCHED) { if (f[TIMER] < 2) return 0; k = imin(k, f[TIMER] - 1); popping = 1; continue; }
-        paCdSup++;
-        if (f[STATE] != NORMAL || !supportedFromBelow(b, p)) return 0;
+        if (f[STATE] != NORMAL) return 0;
         continue;
       }
       if (f[STATE] != NORMAL || SETN(f[FELL])) return 0;
     }
-  return popping ? k : 0;
+  if (!popping) return 0;
+  for (int r = n - 1; r >= 1; r--) {
+    int32_t lastId = 0, lastY = 0, have = 0;
+    for (int c = 1; c <= W; c++) {
+      Panel *p = P(b, r, c);
+      const int32_t *f = p->f;
+      if (!f[ISGARBAGE] || f[STATE] == MATCHED) { have = 0; continue; }
+      if (have && f[GARBAGEID] == lastId && f[YOFF] == lastY) continue;
+      paCdSup++;
+      if (!supportedFromBelow(b, p)) return 0;
+      have = 1; lastId = f[GARBAGEID]; lastY = f[YOFF];
+    }
+  }
+  return k;
 }
 // COUNTDOWN FRAMES: after a frame played in full leaves the board in that
 // state, the next cdLeft frames skip the panel passes and count the popping
@@ -1070,6 +1084,7 @@ static int countdown(Board *b, int32_t maxk) {
   if (swapQueued(b) || b->manualRaise || b->chainCounter || b->nActive != b->nPrevActive || b->shakeTimeOnFrame) return 0;
   if (b->cursorDirection != CD_NULL || b->quiet || b->speedIncreaseMode != 1) return 0;
   if (shouldDropGarbage(b)) return 0;
+  if (!b->popSeen) return 0;   // (nothing popped on the last frame played in full: countdownRoom finds nothing to count down)
   int32_t k = maxk;
   if (b->nextSpeedIncreaseClock >= b->clock) k = imin(k, b->nextSpeedIncreaseClock - b->clock);
   if (b->health <= 0) k = imin(k, b->shakeTime - 1);
