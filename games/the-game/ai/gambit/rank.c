@@ -1083,6 +1083,18 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (!o->hold && o->k.nseq > 0 && !outlives(o, b)) return (cmpKey = __LINE__, (bx ? -1 : 1));
     }
   }
+  // (A PROMISE NEVER BEATS A BREAK -- the owner: breaking garbage is super important: under garbage, of two that do not live, a line
+  // that breaks garbage before one that breaks none -- the hold too -- unless that one's own board, not what its next moves promise,
+  // outlives the break's by a break's time: 4538 combo_storm 3, 4887, a chain breaking nothing lost at 409, promising 697, played over a
+  // break of 16 lost at 429; the panels drained and the breaks after it came too late)
+  if (!lx && decF.under) {
+    int bx = !x->hold && !x->o.dead && x->apBroke > 0, by = !y->hold && !y->o.dead && y->apBroke > 0;
+    if (bx != by) {
+      const Judge *b = bx ? x : y, *o = bx ? y : x;
+      double bb = lostAtOf(b->o.lostAt, 0), ob = lostAtOf(o->o.lostAt, o->hold);
+      if (!o->o.lives && bb >= rankSave && ob - bb < rankSave) return (cmpKey = __LINE__, (bx ? -1 : 1));
+    }
+  }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
