@@ -515,7 +515,12 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
   for (int r = 1; r <= top; r++) { any[r] = 0; for (int c = 1; c <= W; c++) { ok[r][c] = g[r][c] > 0 && g[r][c] < 8 && b->p[r][c].f[STATE] == NORMAL && (r == 1 || (g[r - 1][c] != 0 && b->p[r - 1][c].f[STATE] == NORMAL)); any[r] += ok[r][c]; } }
   if (rows) { *rows = 0; for (int r = 1; r <= top; r++) *rows += any[r] == W; }
   int nb = 0;
-  for (int c = 1; c < W; c++) for (int r = 1; r <= top; r++) {
+  // (a side row's cost depends on the column, the two colours and which of them it holds -- not on the trigger row or the runs' lengths:
+  // asked once a column, kept by colour pair and row; -2 not asked yet)
+  static LOCAL signed char sideCost[8][8][MAXROWS + 2][4];
+  for (int c = 1; c < W; c++) {
+  memset(sideCost, -2, sizeof sideCost);
+  for (int r = 1; r <= top; r++) {
     if (!any[r]) continue;
     for (int32_t X = 1; X < 8; X++) for (int32_t Y = 1; Y < 8; Y++) for (int hx = 0; hx <= 2; hx += 2) for (int hy = 0; hy <= 2; hy += 2) {
       if (X == Y || (hx && c - 2 < 1) || (hy && c + 3 > W)) continue;
@@ -535,7 +540,9 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
           for (int q = qlo; q <= qhi && okAll; q++) {
             if (q == r) continue;
             int wx = la && q >= a0 && q <= a1, wy = lb && q >= b0 && q <= b1;
-            RowFix f; int k = any[q] ? twinRowFix(g[q], ok[q], wx ? c : 0, X, wy ? c + 1 : 0, Y, &f) : -1;
+            signed char *sc = &sideCost[X][Y][q][wx * 2 + wy];
+            if (*sc == -2) { RowFix f; *sc = (signed char)(any[q] ? twinRowFix(g[q], ok[q], wx ? c : 0, X, wy ? c + 1 : 0, Y, &f) : -1); }
+            int k = *sc;
             if (k < 0) okAll = 0; else cost += k;
           }
           if (!okAll || cost > cap) continue;
@@ -546,6 +553,7 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
         }
       }
     }
+  }
   }
   *topOut = top;
   return nb;

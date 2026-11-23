@@ -50,8 +50,11 @@ it worked (ours / his).
       The reach is six steps (the owner allowed six, closer preferred): five measured 73, six 78 on the same build.
       Best so far 82/84 (075875a, on main: fill 28, switching 27, finish them 27). The search is short of time: on 71 boards
       from lost games, four times the work changed the move on 24, 16 of them lost later and one sooner. The engine's countdown
-      check now does 12% less work for the same answers; the 8-combo scans (twinRowFix, trigFix) are the next largest cost, and
-      the runner's four CPUs sit about 45% idle.
+      check now does 12% less work for the same answers. Twice the work changes little (4 later, 2 sooner of 71); four times
+      finds a break (6) or a surviving line (5) where the hold was played. Under garbage the break search finds none in 57% of
+      decisions, and 92% of those it was stopped by the clock. The searches each hold one worker (break, survive, wide, plan,
+      extension) while the decision judges alone, and the runner's four CPUs sit about 45% idle: the break search split across
+      the workers is the next lever.
       The early losses (about one a round) are decided when a slab of up to 13 rows lands just after the opening raise to 11
       rows: on those boards no garbage breaks within three swaps. Asked the owner whether the raise may give way to a slab
       already on its way. The next block's reserve is held at the end of every move --
