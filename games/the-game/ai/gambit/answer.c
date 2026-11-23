@@ -504,6 +504,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     if (order[0]->apBroke > 0 || (H && !order[0]->hold && lostOf(order[0]) >= lostOf(H) + rankSave)) R.up = R.low = 0;
   }
+  // (nor the opening's to a chain in progress: a carried line making a chain of OPENER_LEAST or more, its board living or lasting as long as
+  // the hold's, is pressed through and the row raised after it)
+  if (R.up && !raiseRefill && n) {
+    const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
+    for (int i = 0; i < n; i++) { const Judge *c = order[i];
+      if (c->carried && !c->hold && !c->o.dead && c->apChainAll >= OPENER_LEAST && (c->o.lives || (H && lostOf(c) >= lostOf(H)))) { R.up = R.low = 0; break; } }
+  }
   Played P = playOf(&R, n);
   if (opFlatPlayed) R.up = R.low = 0;   // (the opener's flattening before its raise: decide.c opTarget)
   if (opLineOn && P.line && P.line->carried) R.up = R.low = 0;   // (the opener's line in progress pressed through: no raise in its middle)
