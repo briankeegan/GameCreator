@@ -926,8 +926,14 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
   static Board *st; if (!st) st = nb_new(); if (!st) return n;
   // (the board the next break is made on: the one the garbage on its way lands on -- or, none on its way or the board lost before it
   // lands, the board as it stands, its garbage the break's)
-  int landing = decQ.narr > 0;
-  Board *l0 = landing ? landedAll(decQ.b, decQ.arr, decQ.narr, last, st) : 0;
+  // (the board lost before all of it lands: the rows that land first -- what it lands on is the part a break is made against, and the
+  // rows after it are ones the break's own clears make room for)
+  int landing = decQ.narr > 0, nland = decQ.narr;
+  static LOCAL Arr byAt[MAXARR];
+  for (int i = 0; i < decQ.narr; i++) byAt[i] = decQ.arr[i];
+  for (int i = 1; i < decQ.narr; i++) for (int k = i; k > 0 && byAt[k].at < byAt[k - 1].at; k--) { Arr t = byAt[k]; byAt[k] = byAt[k - 1]; byAt[k - 1] = t; }
+  Board *l0 = landing ? landedAll(decQ.b, byAt, nland, last, st) : 0;
+  while (landing && !l0 && nland > 1 && !clockOut()) { nland--; last = byAt[nland - 1].at; l0 = landedAll(decQ.b, byAt, nland, last, st); }
   if (landing && !l0) { readyBuildWhy = 3; landing = 0; }
   if (!landing && !under) return n;
   int32_t near0 = walkNear(landing ? l0 : decQ.b), short0 = nearOf(landing ? l0 : decQ.b);
@@ -949,7 +955,7 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
     const Board *lb = b;
     if (landing) {
       Arr left[MAXARR]; int nl = 0;
-      for (int i = 0; i < decQ.narr; i++) { left[nl] = decQ.arr[i]; left[nl].at = imax(0, decQ.arr[i].at - t); nl++; }
+      for (int i = 0; i < nland; i++) { left[nl] = byAt[i]; left[nl].at = imax(0, byAt[i].at - t); nl++; }
       lb = landedAll(b, left, nl, imax(0, last - t), st);
       if (!lb) continue;
     }
