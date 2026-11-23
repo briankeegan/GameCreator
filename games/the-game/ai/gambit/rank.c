@@ -1027,6 +1027,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (rx >= 0 && ry >= 0 && rx != ry) return (cmpKey = __LINE__, (rx < ry ? -1 : 1));
     }
   }
+  // (THE EDGES TAKEN DOWN: under garbage, of two lost alike that break nothing, the one that leaves the stack more even by FLAT_ROWS
+  // or more (judge.c even: its tallest column less its lowest). An edge column is touched by one swap's place, a middle one by two --
+  // 19% and 40% of the swaps pressed under garbage, g4461-g4463 -- so the middle is dug out and the edges left standing, and the
+  // garbage perches on them: two towers over a well, no break within four swaps)
+  if (!lx && decF.under && !x->hold && !y->hold && !(x->apBroke > 0) && !(y->apBroke > 0) && lostAlike(x, y) &&
+      x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
+    return (cmpKey = __LINE__, (x->o.j.even < y->o.j.even ? -1 : 1));
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
   // order charges it -- the mode gives way to survival only)
   int goalNoSooner = goalLine(x) != goalLine(y) && diesAt(goalLine(x) ? x : y) >= diesAt(goalLine(x) ? y : x);
