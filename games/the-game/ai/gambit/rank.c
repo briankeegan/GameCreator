@@ -270,10 +270,6 @@ static double lostOf(const Judge *x);
 static double rankHoldOwn = -1; static int32_t rankHoldClock = -1;   // (the hold's own loss this decision: markIdle)
 static int extCounts(const Judge *x) {
   if (x->hold || x->extLost == NOT_ASKED) return 0;
-  // (THE LAST CHANCE: where the hold itself is lost inside a break's time, a line lost no sooner than it keeps its promise -- holding is
-  // the loss for certain, and the break the line leaves ready is the only frame past it: 244 of 419 lost games held, dying, over a line
-  // promising a break's time more)
-  if (rankHoldClock == decQ.b->clock && rankHoldOwn >= 0 && rankHoldOwn < rankSave && lostAtOf(x->o.lostAt, 0) >= rankHoldOwn) return 1;
   if (lostAtOf(x->o.lostAt, 0) < rankSave) return 0;   // (a board lost inside a break's time presses no promise after it)
   if (rankHoldClock != decQ.b->clock || rankHoldOwn < 0) return 1;
   // (and under garbage, a line that breaks none of it earns the promise only where its own board outlives the hold by the time its walk
@@ -890,6 +886,14 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
 }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx, ly; creditPair(x, y, &lx, &ly);
+  // THE LAST CHANCE: the hold lost inside a break's time, beside a line lost no sooner whose next moves promise a break's time more (the
+  // readiness break, the survival search after it): the line first -- holding is the loss for certain. Only against the hold: the
+  // promise is never weighed against another line's own life. 244 of 419 lost games held, dying, over such a line.
+  if (x->hold != y->hold && rankHoldClock == decQ.b->clock && rankHoldOwn >= 0 && rankHoldOwn < rankSave) {
+    const Judge *h = x->hold ? x : y, *l = h == x ? y : x;
+    if (!l->o.dead && !l->o.lives && l->extLost != NOT_ASKED && lostAtOf(l->o.lostAt, 0) >= rankHoldOwn && lostAtOf(l->extLost, 0) - rankHoldOwn >= rankSave)
+      return (cmpKey = __LINE__, (l == x ? -1 : 1));
+  }
   // THE BREAK THAT PAYS (the owner: keep enough panels to break the garbage): under garbage below the floor, of two breaks that convert
   // the same rows and neither lives, the one that spends more panels goes first only where it is lost later by a break's time (rankSave)
   // for each three more it spends -- a three kept is the next break. Runs 4196-4220, large_garbage 7 and 8: every row broke for more than
