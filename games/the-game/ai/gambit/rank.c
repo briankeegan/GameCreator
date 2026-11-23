@@ -637,7 +637,11 @@ static const Judge *rankHold;   // (the decision's hold, set where no line of th
 static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK || J->k.letDown; }
 static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !breakOffered && digsForBreak(J) && allowAtNeed(w) >= w &&
                                      (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave)); }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !digPaid(J) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
+static int32_t inOpener;   // (the opener still playing: its chain is the opener's to build -- decide.c read)
+// (the reserve: a break's walk; in the opener with garbage on the board or on its way, two -- the slab and the one after it, met with the
+// window the opener's chains would otherwise spend)
+static int reserveWalk(void) { return inOpener && (decF.under || garbageComing()) ? 2 * BREAK_WALK : BREAK_WALK; }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !digPaid(J) && allowAtNeed(lineWalk(J)) < reserveWalk(); }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
 // the hold's board at rest has the room for it to come down (outcome.c restOf), a line that clears nothing and leaves it nearer
@@ -711,7 +715,6 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 static int32_t livedPrev;   // (the last decision offered a line, not the one in progress, that lives: answer.c)
-static int32_t inOpener;   // (the opener still playing: its chain is the opener's to build -- decide.c read)
 #define NEAR_GAIN 30
 static int lostAlike(const Judge *x, const Judge *y) {
   // (never alike near the end where the board itself is lost a break's time apart: the walk's charge is a preference, not a loss --
