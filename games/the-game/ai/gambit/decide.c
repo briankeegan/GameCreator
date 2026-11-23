@@ -2183,12 +2183,6 @@ static int savesOverHold(const Judge *k) {
   return k->o.lives || diesAt(k) > diesAt(H);
 }
 // (the line from its swap `first` on, into C: anchored, each swap named in the rows of the board it was begun on; 0 with no anchor)
-// (THE LINE AS FAR AS IT CAN BE SEEN: a settled line to the swap that breaks garbage -- its swaps after that were planned on panels the
-// break has yet to reveal; a timed one whole, its swaps pressed into the chain it times)
-static int lineSeen(const Judge *k) {
-  int n = k->k.nseq, b = k->o.j.breakStep;
-  return k->settled && b >= 0 && b + 1 < n ? b + 1 : n;
-}
 static int carryInto(Carry *C, const Read *R, const Judge *k, int32_t qid, int first) {
   int32_t row1[W + 1];
   for (int c = 1; c <= W; c++) row1[c] = anchorIdAt(decQ.b, c);
@@ -2200,9 +2194,8 @@ static int carryInto(Carry *C, const Read *R, const Judge *k, int32_t qid, int f
   // (each swap kept in the rows of the board it was begun on: a swap the judge pressed after the stack rose is named in the rows of the
   // board it is pressed on, so the rows risen by then are taken off, and only the rows risen since the line began beyond those are put
   // back when it is carried on -- a rise foreseen is never counted twice)
-  int end = lineSeen(k);
-  C->set = 1; C->id = qid; C->nrest = imax(0, end - first);
-  for (int i = first; i < end; i++) { int32_t up = i < MAXLINE ? k->o.j.risen[i] : 0; C->rest[i - first] = (CR(k->k.seq[i]) - up) * 8 + CC(k->k.seq[i]); C->risen[i - first] = up;
+  C->set = 1; C->id = qid; C->nrest = k->k.nseq - first;
+  for (int i = first; i < k->k.nseq; i++) { int32_t up = i < MAXLINE ? k->o.j.risen[i] : 0; C->rest[i - first] = (CR(k->k.seq[i]) - up) * 8 + CC(k->k.seq[i]); C->risen[i - first] = up;
     // (and the clock each swap's walk was judged to begin on: the carried line is judged pressing it no sooner)
     C->at[i - first] = i < k->o.j.nats && i < MAXLINE ? decQ.b->clock + k->o.j.ats[i] : 0; }
   C->settled = k->settled; C->broke = k->apBroke > 0; C->popping = popLeft(decQ.b) > 0;

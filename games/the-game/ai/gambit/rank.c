@@ -711,7 +711,6 @@ static int holdsLine(const Judge *x, const Judge *y) {
 #define NEAR_LOSS 3
 static int32_t raceOn;   // (the enemy topped out: the game is the race of two boards to the top -- decide.c read)
 static int32_t livedPrev;   // (the last decision offered a line, not the one in progress, that lives: answer.c)
-static int32_t threeOwed;   // (the line played last makes a three that breaks nothing, its break still to come: answer.c)
 static int32_t inOpener;   // (the opener still playing: its chain is the opener's to build -- decide.c read)
 #define NEAR_GAIN 30
 static int lostAlike(const Judge *x, const Judge *y) {
@@ -924,18 +923,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
     if (carriedSame(c) && (c->o.lives || diesAt(c) >= rankSave) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && imax(0, o->apBroke) <= imax(0, c->apBroke) &&
         !outlives(o, c) && !finishEightBy(o, c))
-      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
-  }
-  // 1. THE LINE IN PROGRESS FINISHED (the owner: there has to be a strong reason to stop something in the middle; the game is
-  // deterministic, and a plan dropped is every action spent on it thrown away -- its three, where it made one, wasted): the line in
-  // progress is put down only for a line that lives where it does not (above), outlives it by a break's time, or breaks more garbage --
-  // not for the hold, nor for one lost a few frames later. Where its swaps make a three still owed its break (threeOwed: answer.c), not for
-  // one that breaks more either: that three is the break's first half. A line that breaks nothing is not held to where the rest of it
-  // spends the window under a break's walk (spendsReserve): the frames it buys are paid for with the next break
-  if (lx == ly && x->carried != y->carried) {
-    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (!c->hold && !c->o.dead && !spendsReserve(c) && !outlives(o, c) &&
-        (threeOwed && c->apBroke > 0 ? 1 : imax(0, o->apBroke) <= imax(0, c->apBroke)))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
