@@ -268,7 +268,7 @@ static int32_t ages[512];
 // THE WORKERS: GC_GAMBIT_WORKERS of them (host.c hostWorkers; none unset), each the
 // engine's pool's (search.h workerLoop) -- every batch of steps a search hands the pool (core/nodes.h stepMany) is played on them all.
 static void *gnWorker(void *arg) { paThreadId((int)(long)arg); workerLoop(); return 0; }
-static void *onThreadMain(void *arg) { (void)arg; paThreadId(MAXTHREADS - 2); onThread(); return 0; }
+static void *onThreadMain(void *arg) { (void)arg; int k = __atomic_fetch_add(&onNext, 1, __ATOMIC_SEQ_CST); paThreadId(MAXTHREADS - 2 - k); onThread(k); return 0; }
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {
   hostTaps = 1;
   // (THE GAME'S THREAD, which calls this and plays the frame loop -- its keys are engine steps (front.c keyCtx) -- is the engine's last
@@ -280,10 +280,14 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   static int started;
   if (!started) {
     started = 1;
-    int n = hostWorkers(gnWorker, MAXTHREADS - 3);
+    int n = hostWorkers(gnWorker, MAXTHREADS - 2 - ONN);
     while (__atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST) < n) {}
-    // (and the break search between decisions, a thread of its own beside the pool, where there are workers' CPUs for it)
-    if (n > 0 && hostIdleThread(onThreadMain, "gbetween") == 0) onThreadOn = 1;
+    // (and the break search between decisions, threads of their own beside the pool, where there are workers' CPUs for them: the wider
+    // beam's on a second where there are four)
+    int want = n >= 4 ? 2 : n > 0 ? 1 : 0;
+    // (one begun at a time: each reads what it is to run from the host as it starts -- host.c idleFn)
+    for (int k = 0; k < want; k++) if (hostIdleThread(onThreadMain, "gbetween") == 0) { onThreads++; while (__atomic_load_n(&onNext, __ATOMIC_SEQ_CST) < onThreads) {} }
+    if (onThreads > 0) onThreadOn = 1;
     static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
   }
   return 0;

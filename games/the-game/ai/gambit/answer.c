@@ -149,10 +149,15 @@ static int plannedPaths(const Board *b, int32_t lineFrom, int32_t linePressed, P
 // reached is kept in place of the decision's frontier for the next decision to resume -- when it searched longer than the decision did,
 // or found one. A break it finds is kept as the frontier's first line, played again first.
 #define ON_SLICE_MS (1000.0 / 60)
-static Broke onBr; static Paths onSeeds;
+// (two threads where there are the CPUs for them: the first grows the touch beam, the second its wider beam (touchFrom) from the same
+// frontier -- as the decision's break and wide jobs split it -- each into its own; a break either finds is handed on, the first's first)
+#define ONN 2
+typedef struct { int32_t state, done, slices, found; Broke br; Paths seeds; } OnT;
+static OnT onT[ONN];
+static int32_t onThreads, onNext;
 static int32_t onWanted; static double onDecMs;   // (the decision kept a frontier, and the time its own break search took)
 static int32_t decTap;   // (the decision's pressTap, for its jobs' threads and the search between decisions)
-static int32_t onActive, onGranted, onDone, onSlices, onFound, onLogSlices, onLogFound, onLogDeep, onLogKept;   // (the slices searched and a break found; the log's: the last let go, onStop -- and its deepest line, and whether it was handed on)
+static int32_t onActive, onGranted, onLogSlices, onLogFound, onLogDeep, onLogKept;   // (the log's: the slices the first searched and a break found by either, the last let go -- onStop -- and its deepest line, and whether it was handed on)
 static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t *handed, int nhanded, int32_t qid) {
   memset(&theKept, 0, sizeof theKept); onWanted = 0;
   if (!br || !br->keepOut.n || br->depth || !(kind == 0 || kind == 1)) return;
@@ -174,88 +179,89 @@ static void keepFrontier(const Broke *br, int kind, int32_t move, const int32_t 
     return;
   }
 }
-// (its own thread, beside the pool -- the pool may be the readiness's past the decision: native.c onThreadMain at the idle class on the
-// workers' CPUs. onState: 0 idle, 1 asked to run, 2 running)
-static int32_t onState, onThreadOn, onQuit;
-static void onThread(void) {
-  inJob = 2;
+// (their own threads, beside the pool -- the pool may be the readiness's past the decision: native.c onThreadMain at the idle class on the
+// workers' CPUs. state: 0 idle, 1 asked to run, 2 running)
+static int32_t onThreadOn, onQuit;
+static void onThread(int k) {
+  OnT *T = &onT[k];
+  inJob = 2; touchFrom = k;
   for (;;) {
     int32_t st;
-    while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 1) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
-    if (__atomic_load_n(&onQuit, __ATOMIC_ACQUIRE)) { __atomic_store_n(&onState, 0, __ATOMIC_RELEASE); return; }
-    __atomic_store_n(&onState, 2, __ATOMIC_RELEASE);
+    while ((st = __atomic_load_n(&T->state, __ATOMIC_ACQUIRE)) != 1) __builtin_wasm_memory_atomic_wait32(&T->state, st, -1);
+    if (__atomic_load_n(&onQuit, __ATOMIC_ACQUIRE)) { __atomic_store_n(&T->state, 0, __ATOMIC_RELEASE); return; }
+    __atomic_store_n(&T->state, 2, __ATOMIC_RELEASE);
     pressTight = decQ.tight; pressTap = decTap; ncache = 0;
     int32_t pop = popLeft(decQ.b);
     for (;;) {
       int32_t g;
-      while ((g = __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE)) == __atomic_load_n(&onDone, __ATOMIC_ACQUIRE) && !__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE))
+      while ((g = __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE)) == __atomic_load_n(&T->done, __ATOMIC_ACQUIRE) && !__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE))
         __builtin_wasm_memory_atomic_wait32(&onGranted, g, -1);
       if (__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE)) break;
-      if (!onFound) {
+      if (!T->found) {
         clockWork = 0; clockAborted = 0; clockPoll = 0; clockShare = nowMs() + ON_SLICE_MS;
         listDefault = 1;
-        breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, &onSeeds, &onBr);
+        breakMoves(&decQ, pop ? pop + LINEUP_AFTER : 0, &T->seeds, &T->br);
         listDefault = 0;
         clockShare = 0;
         // (a slice the stop cut short is not counted: its frontier is the one before it)
         if (!__atomic_load_n(&onStopReq, __ATOMIC_ACQUIRE)) {
-          if (onBr.depth) onFound = 1;
-          else if (onBr.keepOut.n) onSeeds = onBr.keepOut;   // (the same board: carried on, Paths.cont)
-          onSlices++;
+          if (T->br.depth) T->found = 1;
+          else if (T->br.keepOut.n) T->seeds = T->br.keepOut;   // (the same board: carried on, Paths.cont)
+          T->slices++;
         }
       }
-      __atomic_add_fetch(&onDone, 1, __ATOMIC_RELEASE);
-      __builtin_wasm_memory_atomic_notify(&onDone, 1);
+      __atomic_add_fetch(&T->done, 1, __ATOMIC_RELEASE);
+      __builtin_wasm_memory_atomic_notify(&T->done, 1);
     }
-    __atomic_store_n(&onState, 0, __ATOMIC_RELEASE);
-    __builtin_wasm_memory_atomic_notify(&onState, 1);
+    __atomic_store_n(&T->state, 0, __ATOMIC_RELEASE);
+    __builtin_wasm_memory_atomic_notify(&T->state, 1);
   }
 }
 // (begun with the decision's break search, from the frontier it resumes, on the decision's thread; let go before the next question is
 // answered, on the same thread)
 static void onStart(const Paths *seeds) {
-  onSlices = 0; onFound = 0; onWanted = 0;
+  onWanted = 0;
+  for (int k = 0; k < ONN; k++) { onT[k].slices = 0; onT[k].found = 0; }
   if (!onThreadOn) return;
-  if (seeds) onSeeds = *seeds; else onSeeds.n = 0;
   __atomic_store_n(&onStopReq, 0, __ATOMIC_SEQ_CST);
-  __atomic_store_n(&onDone, __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE), __ATOMIC_RELEASE);
+  int32_t g = __atomic_load_n(&onGranted, __ATOMIC_ACQUIRE);
+  for (int k = 0; k < onThreads; k++) { OnT *T = &onT[k]; if (seeds) T->seeds = *seeds; else T->seeds.n = 0; __atomic_store_n(&T->done, g, __ATOMIC_RELEASE); }
   __atomic_store_n(&onActive, 1, __ATOMIC_RELEASE);
-  __atomic_store_n(&onState, 1, __ATOMIC_RELEASE);
-  __builtin_wasm_memory_atomic_notify(&onState, 1);
+  for (int k = 0; k < onThreads; k++) { __atomic_store_n(&onT[k].state, 1, __ATOMIC_RELEASE); __builtin_wasm_memory_atomic_notify(&onT[k].state, 1); }
 }
-// (the thread told to end -- the instance quitting, native.c gn_quit -- once nothing runs on it)
+// (the threads told to end -- the instance quitting, native.c gn_quit -- once nothing runs on them)
 static void onEnd(void) {
   if (!onThreadOn) return;
   __atomic_store_n(&onQuit, 1, __ATOMIC_SEQ_CST);
-  __atomic_store_n(&onState, 1, __ATOMIC_RELEASE);
-  __builtin_wasm_memory_atomic_notify(&onState, 1);
+  for (int k = 0; k < onThreads; k++) { __atomic_store_n(&onT[k].state, 1, __ATOMIC_RELEASE); __builtin_wasm_memory_atomic_notify(&onT[k].state, 1); }
 }
-// (every frame: a frame's work handed to it)
+// (every frame: a frame's work handed to them)
 static void onGrant(int wait) {
   if (!__atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) return;
   int32_t g = __atomic_add_fetch(&onGranted, 1, __ATOMIC_RELEASE);
-  __builtin_wasm_memory_atomic_notify(&onGranted, 1);
-  if (wait) { int32_t d; while ((d = __atomic_load_n(&onDone, __ATOMIC_ACQUIRE)) < g && __atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) __builtin_wasm_memory_atomic_wait32(&onDone, d, -1); }
+  __builtin_wasm_memory_atomic_notify(&onGranted, ONN);
+  if (wait) for (int k = 0; k < onThreads; k++) { int32_t d; while ((d = __atomic_load_n(&onT[k].done, __ATOMIC_ACQUIRE)) < g && __atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) __builtin_wasm_memory_atomic_wait32(&onT[k].done, d, -1); }
 }
 static void onStop(void) {
   if (!__atomic_load_n(&onActive, __ATOMIC_ACQUIRE)) return;
   __atomic_store_n(&onStopReq, 1, __ATOMIC_SEQ_CST);
-  __builtin_wasm_memory_atomic_notify(&onGranted, 1);
-  int32_t st;
-  while ((st = __atomic_load_n(&onState, __ATOMIC_ACQUIRE)) != 0) __builtin_wasm_memory_atomic_wait32(&onState, st, -1);
+  __builtin_wasm_memory_atomic_notify(&onGranted, ONN);
+  for (int k = 0; k < onThreads; k++) { int32_t st; while ((st = __atomic_load_n(&onT[k].state, __ATOMIC_ACQUIRE)) != 0) __builtin_wasm_memory_atomic_wait32(&onT[k].state, st, -1); }
   __atomic_store_n(&onActive, 0, __ATOMIC_RELEASE);
-  __builtin_wasm_memory_atomic_notify(&onDone, 1);
-  onLogSlices = onSlices; onLogFound = onFound; onLogKept = 0;
-  onLogDeep = 0; for (int i = 0; i < onSeeds.n; i++) onLogDeep = imax(onLogDeep, onSeeds.len[i]);
-  // (handed on only where the decision kept a frontier, found no break, and the thread searched longer than it did, reached deeper than
-  // the frontier it kept, or found one)
+  for (int k = 0; k < onThreads; k++) __builtin_wasm_memory_atomic_notify(&onT[k].done, 1);
+  const OnT *A = &onT[0], *F = A->found ? A : onThreads > 1 && onT[1].found ? &onT[1] : 0;
+  onLogSlices = A->slices; onLogFound = F != 0;
+  onLogDeep = 0; for (int i = 0; i < A->seeds.n; i++) onLogDeep = imax(onLogDeep, A->seeds.len[i]);
+  // (handed on only where the decision kept a frontier, found no break, and the first thread searched longer than it did, reached deeper
+  // than the frontier it kept, or either found one)
   int keptDeep = 0; for (int i = 0; theKept.set && i < theKept.paths.n; i++) keptDeep = imax(keptDeep, theKept.paths.len[i]);
-  if (!onSlices || !onWanted || (!onFound && onLogDeep <= keptDeep && onSlices * ON_SLICE_MS <= onDecMs)) return;
+  onLogKept = 0;
+  if (!A->slices || !onWanted || (!F && onLogDeep <= keptDeep && A->slices * ON_SLICE_MS <= onDecMs)) return;
   // (kept as the decision kept it -- its board, its move and the swaps it handed on -- the break found first)
   static Paths kept;
-  kept.n = 0; kept.cont = onFound ? 0 : onSeeds.cont;
-  if (onFound && onBr.pathLen > 0) { kept.len[0] = onBr.pathLen; for (int k = 0; k < onBr.pathLen && k < MAXPATH; k++) kept.path[0][k] = onBr.path[k]; kept.n = 1; }
-  const Paths *from = onFound ? &onBr.keepOut : &onSeeds;
+  kept.n = 0; kept.cont = F ? 0 : A->seeds.cont;
+  if (F && F->br.pathLen > 0) { kept.len[0] = F->br.pathLen; for (int k = 0; k < F->br.pathLen && k < MAXPATH; k++) kept.path[0][k] = F->br.path[k]; kept.n = 1; }
+  const Paths *from = F ? &F->br.keepOut : &A->seeds;
   for (int i = 0; i < from->n && kept.n < KEEPN; i++, kept.n++) { kept.len[kept.n] = from->len[i]; for (int k = 0; k < from->len[i]; k++) kept.path[kept.n][k] = from->path[i][k]; }
   if (kept.n && theKept.set) { theKept.paths = kept; onLogKept = 1; }
 }
