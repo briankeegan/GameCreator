@@ -1628,6 +1628,18 @@ static int walkTried(const Read *R, const Cand *k, Judge *J, int ok, int most) {
 static int judgeWalkedIn(const Read *R, const Cand *k, Judge *J, int most) { int ok = judgeCand(R, k, J); return walkTried(R, k, J, ok, most) || ok; }
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) { return judgeWalkedIn(R, k, J, 1); }
 // sorted stably by the one order
+static void outlivingFirst(Judge **a, int n) {
+  // (THE LINE THAT OUTLIVES THE TOP AND BEATS IT IS THE TOP: the keys are not transitive, and a line that loses to another head to head
+  // on survival can end on top through a third -- r1350, 4490: the hold played, lost at 156, over a break in progress lost at 264 that
+  // beats it alone. Each line that outlives the top by a break's time and beats it compared alone moves up, a bounded number of times --
+  // after the sort, and after the hold is put on top in place of a line that does nothing: decide.c)
+  { int32_t keep = cmpKey;
+    for (int pass = 0; pass < 4 && n > 1; pass++) { int moved = 0;
+      for (int i = 1; i < n; i++) if (!a[i]->o.dead && outlives(a[i], a[0]) && compareJudged(a[i], a[0]) < 0) {
+        Judge *e = a[i]; for (int q = i; q > 0; q--) a[q] = a[q - 1]; a[0] = e; moved = 1; break; }
+      if (!moved) break; }
+    cmpKey = keep; }
+}
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   markIdle(a, n);
@@ -1639,15 +1651,7 @@ static void sortJudged(Judge **a, int n) {
       while (j < hi) tmp[k++] = a[j++];
       for (k = lo; k < hi; k++) a[k] = tmp[k];
     }
-  // (THE LINE THAT OUTLIVES THE TOP AND BEATS IT IS THE TOP: the keys are not transitive, and a line that loses to another head to head
-  // on survival can end on top through a third -- r1350, 4490: the hold played, lost at 156, over a break in progress lost at 264 that
-  // beats it alone. Each line that outlives the top by a break's time and beats it compared alone moves up, a bounded number of times)
-  { int32_t keep = cmpKey;
-    for (int pass = 0; pass < 4 && n > 1; pass++) { int moved = 0;
-      for (int i = 1; i < n; i++) if (!a[i]->o.dead && outlives(a[i], a[0]) && compareJudged(a[i], a[0]) < 0) {
-        Judge *e = a[i]; for (int q = i; q > 0; q--) a[q] = a[q - 1]; a[0] = e; moved = 1; break; }
-      if (!moved) break; }
-    cmpKey = keep; }
+  outlivingFirst(a, n);
   // (THE EIGHT THAT BEATS THE TOP IS THE TOP: the keys are not transitive -- an eight put first by the finish's own key beside the line
   // on top can end below it through a third line -- so in finish them, the first eight offered whole that the order puts before the top
   // line, compared with it alone, is moved up to the top)
