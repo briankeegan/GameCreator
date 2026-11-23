@@ -323,7 +323,7 @@ static int breakSearch(const Read *R, int32_t lineFrom, int32_t linePressed, dou
 // (and under garbage, the break search's wider touch beam on a worker of its own from the start, beside the narrower: the break it finds
 // is played when the narrower finds none -- theBrWide)
 enum { JOB_BREAK, JOB_PLAN, JOB_EXT, JOB_WIDE, JOB_SURVIVE };
-static int32_t jobKinds[5], njobKinds;
+static int32_t jobKinds[5], njobKinds, jobsBegun;   // (jobsBegun: a bit a kind, those a thread began this decision -- the log's jb=)
 static Broke theBrWide; static int32_t wideDone;
 // (where the break search ran, for the log: 0 not run, 1 a worker beside the searches, 2 the decision after a worker had not finished it,
 // 3 the decision with no worker free; and the ms it was given)
@@ -334,6 +334,7 @@ static void breakJob(int32_t i) {
   clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
   inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
   int kind = jobKinds[i];
+  __atomic_fetch_or(&jobsBegun, 1 << kind, __ATOMIC_RELAXED);
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
   else if (kind == JOB_PLAN) planJob();
   else if (kind == JOB_EXT) extJob(brJobR, brJobS);
@@ -349,6 +350,7 @@ static void breakJob(int32_t i) {
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
   brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
+  njobKinds = 0; __atomic_store_n(&jobsBegun, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
@@ -356,12 +358,15 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
   // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
+  // (the chain's extension last: one no thread begins is searched on this thread after (propose.c searchMerge), where a plan's half or a
+  // break beam is not searched at all)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
-  if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
+  if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
+  __atomic_store_n(&jobsBegun, 0, __ATOMIC_SEQ_CST);
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
@@ -842,6 +847,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (the deepest line the frontier carries to the next decision: how far the touch beam has grown across decisions)
   if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); }
   L_s(" bat="); L_i(batTaken); L_s("/"); L_i(batOwn); L_s(":"); L_i(batSearch); L_s("/"); L_i(batBusy); L_s("/"); L_i(batSmall); L_s("/"); L_i(batTight); L_s("/"); L_i(__atomic_exchange_n(&batJobs, 0, __ATOMIC_RELAXED));
+  L_s(" jb="); L_i(__atomic_load_n(&jobsBegun, __ATOMIC_RELAXED)); L_s("/"); L_i(njobKinds);
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
   L_s(" plan="); L_i((int64_t)S.planShare); L_s("/"); L_i((int64_t)S.planFirst); L_s("/"); L_i(S.wide); L_s("/"); L_i((int64_t)S.ap.ms); L_s("/d"); L_i(S.planDepth); L_s("/l"); L_i(S.planLong);
   // (the planner and the list's first entry: a line that meets it found, and how near its nearest line comes, the first entry's percent)
