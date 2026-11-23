@@ -273,6 +273,11 @@ typedef struct {
   int32_t again;         // the touch beam asked a second time in one search, from the frontier the first reached
 } BS;
 static LOCAL int32_t outsideBuf[1 << 20];
+// (each entry stamped with the search that wrote it, outsideGen, and its bit: an entry another search wrote reads as within -- no clearing
+// between searches)
+static LOCAL int32_t outsideGen;
+#define OUTSIDE_IS(v) ((v) == ((outsideGen << 1) | 1))
+#define OUTSIDE_SET(on) ((outsideGen << 1) | ((on) ? 1 : 0))
 // A break is one standing still would not have made by the same frame (still): the root left alone, its breaks at frame t.
 static int32_t stillAt(BS *s, int32_t t) {
   for (int i = 0; i < s->nIdle; i++) if (s->idleT[i] == t) return s->idleB[i];
@@ -290,7 +295,7 @@ static int spentOn(const BS *s, const int32_t *path, int len) {
   for (int k = 0; k < len; k++) { acts += actionsFor(r, c, CR(path[k]), CC(path[k]), pressAllowance - acts); r = CR(path[k]); c = CC(path[k]); }
   return acts;
 }
-static int within(BS *s, int i) { return !(BREAK_LIST && i >= 0 && i < (1 << 20) && s->outside[i]); }
+static int within(BS *s, int i) { return !(BREAK_LIST && i >= 0 && i < (1 << 20) && OUTSIDE_IS(s->outside[i])); }
 // (every node a step makes is marked as the rules see it: off them when its parent was, when it is a first swap that is a swap back,
 // or when its own clears are outside the list)
 static void markStep(BS *s, int par, int kind, int mv, int o) {
@@ -301,7 +306,7 @@ static void markStep(BS *s, int par, int kind, int mv, int o) {
     Stats st; statsOf(x, o, &st);
     firstBad = !firstOk(CR(mv), CC(mv), NODE(x, o)->brk > stillAt(s, NODE(x, o)->t) ? 2 : st.cleared > 0);
   }
-  s->outside[o] = (par >= 0 && par < (1 << 20) && s->outside[par]) || firstBad || !stepFitsAt(x, o);
+  s->outside[o] = OUTSIDE_SET((par >= 0 && par < (1 << 20) && OUTSIDE_IS(s->outside[par])) || firstBad || !stepFitsAt(x, o));
 }
 static int stepMarked(BS *s, int par, int kind, int mv, int32_t frames) {
   int o = step(s->x, par, kind, kind == MK_SWAP || kind == MK_SETTLE ? CR(mv) : 0, kind == MK_SWAP || kind == MK_SETTLE ? CC(mv) : 0, frames);
@@ -680,12 +685,10 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
 // (the marks of the last search's nodes are let go before the next: every node of a search starts within the rules)
 static LOCAL int breakBusy;
 static void breakMoves(const Question *q, int32_t wait, const Paths *resume, Broke *out) {
-  static LOCAL int32_t high;
-  memset(outsideBuf, 0, sizeof(int32_t) * (unsigned long)high);
+  if (++outsideGen >= (1 << 29)) { memset(outsideBuf, 0, sizeof outsideBuf); outsideGen = 1; }
   breakBusy = 1;
   breakMovesIn(q, wait, resume, out);
   breakBusy = 0;
-  high = breakCtx && breakCtx->n < (1 << 20) ? breakCtx->n : (1 << 20);
 }
 static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, Broke *out) {
   memset(out, 0, sizeof *out);
@@ -737,7 +740,7 @@ static void breakMovesIn(const Question *q, int32_t wait, const Paths *resume, B
     if (!lined) {
       lined = !SEARCH_OUT();   // (had: begun with time on the clock)
       int w0 = step(x, s.root, MK_LONG, 0, 0, wait);
-      if (w0 >= 0 && w0 < (1 << 20)) outsideBuf[w0] = 0;   // (made from the root: within the rules so far)
+      if (w0 >= 0 && w0 < (1 << 20)) outsideBuf[w0] = OUTSIDE_SET(0);   // (made from the root: within the rules so far)
       if (!breaksAt(&s, w0, 0, 0) && lineups(&s, firsts, nfirsts)) { out->depth = 1; return; }
       // (no line-up of the popping slab breaks again: a break of the garbage elsewhere while it pops, the cursor being free -- the touch
       // beam carried on from the frontier it reached before the line-ups, in what they left)
