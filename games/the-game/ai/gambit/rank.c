@@ -270,6 +270,10 @@ static double lostOf(const Judge *x);
 static double rankHoldOwn = -1; static int32_t rankHoldClock = -1;   // (the hold's own loss this decision: markIdle)
 static int extCounts(const Judge *x) {
   if (x->hold || x->extLost == NOT_ASKED) return 0;
+  // (THE LAST CHANCE: where the hold itself is lost inside a break's time, a line lost no sooner than it keeps its promise -- holding is
+  // the loss for certain, and the break the line leaves ready is the only frame past it: 244 of 419 lost games held, dying, over a line
+  // promising a break's time more)
+  if (rankHoldClock == decQ.b->clock && rankHoldOwn >= 0 && rankHoldOwn < rankSave && lostAtOf(x->o.lostAt, 0) >= rankHoldOwn) return 1;
   if (lostAtOf(x->o.lostAt, 0) < rankSave) return 0;   // (a board lost inside a break's time presses no promise after it)
   if (rankHoldClock != decQ.b->clock || rankHoldOwn < 0) return 1;
   // (and under garbage, a line that breaks none of it earns the promise only where its own board outlives the hold by the time its walk
