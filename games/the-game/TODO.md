@@ -54,7 +54,10 @@ it worked (ours / his).
       finds a break (6) or a surviving line (5) where the hold was played. Under garbage the break search finds none in 57% of
       decisions, and 92% of those it was stopped by the clock. The searches each hold one worker (break, survive, wide, plan,
       extension) while the decision judges alone, and the runner's four CPUs sit about 45% idle: the break search split across
-      the workers is the next lever.
+      the workers is the next lever. With four workers the replay is the same twice over, and twice the work changes 21 of the
+      71 (12 later, 2 sooner). Calibrated on it: the judging's quarter of a decision (propose.c searchesEnd) -- a third, a
+      sixth and an eighth each chose sooner losses more often than later (x2: 3/10, 2/6, 5/4); the touch beam's 30 -- 15 to
+      60 change at most 2 of 71 at x1.
       The early losses (about one a round) are decided when a slab of up to 13 rows lands just after the opening raise to 11
       rows: on those boards no garbage breaks within three swaps. Asked the owner whether the raise may give way to a slab
       already on its way. The next block's reserve is held at the end of every move --
