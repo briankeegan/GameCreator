@@ -916,11 +916,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
     }
   }
   // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress still judged lost on the frame it was judged when
-  // played (carriedSame) is not put down for another line found this time: every action spent on it is thrown away. Only for a line that breaks more garbage -- as seen, or as the line makes it -- or outlives it by a break's time (lives before
-  // does not, above)
+  // played (carriedSame), its board standing a break's time, is not put down for another line found this time: every action spent on it
+  // is thrown away. Only for a line that breaks more garbage -- as seen, or as the line makes it -- or outlives it by a break's time
+  // (lives before does not, above). Near its loss every frame decides, and the later loss is played
   if (lx == ly && x->carried != y->carried && !x->hold && !y->hold) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (carriedSame(c) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && imax(0, o->apBroke) <= imax(0, c->apBroke) &&
+    if (carriedSame(c) && (c->o.lives || diesAt(c) >= rankSave) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && imax(0, o->apBroke) <= imax(0, c->apBroke) &&
         !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
