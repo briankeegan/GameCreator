@@ -55,6 +55,10 @@ it worked (ours / his).
       holds a living line too, beside a hold that lives, while garbage is on its way.
       The losses left are mostly factory: material run down by clears that buy a break's time, then no break on the board.
 
+- [ ] **M2. Finish them goes for the eights, four is the last resort.** (The owner, after survival is at 28 in every mode.) The
+      list asks combo 8, 9, 10 first, then 5, 6, 4 -- but the game throws 4s far more than 8s: finish them on 1e0be50 (g4454),
+      combo 4 x619 (24% of attacks), combo 8 x105 (4%), combo 9 x10, combo 10 x0. Find why an eight is passed over for a four.
+
 ### Next, after Y1-Y6 (the owner, 2026-11-19)
 
 - [ ] **L1. A low stack is too risky.** It spends far too much when the stack is low -- clears that take it down to few panels, then
