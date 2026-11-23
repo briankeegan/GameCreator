@@ -1492,7 +1492,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // fired, the others kept, each to be fired on its own
     if (ax < MAXAIMS && lx) { if (moreIdeas(x, y)) return (cmpKey = __LINE__, (-1)); if (moreIdeas(y, x)) return (cmpKey = __LINE__, (1)); }
     // 8d. THE NEARER LINE: of two that meet the same entry, the one the cursor walks less -- a far line has to earn its walk
-    if (ax < MAXAIMS) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); } }
+    if (ax < MAXAIMS) { int wx = lineWalk(x), wy = lineWalk(y); if (wx != wy) return (cmpKey = __LINE__, (wx - wy)); }
+    // 8e. THE EDGES TAKEN DOWN: under garbage, of two lost alike that break nothing and meet the same entry, the one that leaves the
+    // stack more even by FLAT_ROWS or more (judge.c even). An edge column is touched by one swap's place, a middle one by two (19%
+    // and 40% of the swaps pressed under garbage, g4461-g4463), so the middle is dug out and the garbage perches on the columns left
+    // standing -- the shape of most factory and large_garbage losses and of r1996. After the list: the mode's entries come first
+    if (!lx && decF.under && !x->hold && !y->hold && !(x->apBroke > 0) && !(y->apBroke > 0) && lostAlike(x, y) &&
+        x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
+      return (cmpKey = __LINE__, (x->o.j.even < y->o.j.even ? -1 : 1)); }
   // 9. the tier, then its keys in turn (facts.c tierOf; the life its panels leave and the nearest break after the list's own keys)
   // (two that do not live and survive alike: the later loss, before the kind of line)
   // -- under garbage, of two alike (as many tries left) the one nearer its next break first: with no break in reach, the frames a hold
