@@ -581,13 +581,13 @@ static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : action
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
 static int32_t carriedSunk = -1;   // (the actions the line in progress was judged to walk in all when played: decide.c carryOf; -1 not known)
-// (ITS OWN TRAJECTORY UNMOVED: the frame the line in progress's own board was judged lost on when it was played (-2 it lived): decide.c
-// carryOf. The line still judged lost on that frame, whatever was told since -- a block told that lands past it changes nothing of it --
-// the plan holds as it was chosen)
+// (NOTHING NEW TOLD: what the board was told when the line in progress was played -- the next block's landing frame and how many are on
+// their way -- and the frame its own board was judged lost on then (-2 it lived): decide.c carryOf. The same now, and the line still judged
+// lost on that frame, the board is the one the line was planned on, and every other line was there to be found when it was chosen)
 static int64_t carriedTold = -1, carriedLostAbs = -1;
 static int64_t toldNow(void) { return (decF.next == NOT_ASKED ? -1 : (int64_t)decQ.b->clock + decF.next) * 64 + decQ.narr; }
 static int carriedSame(const Judge *c) {
-  if (carriedSunk < 0 || carriedTold < 0 || c->o.dead) return 0;
+  if (carriedSunk < 0 || carriedTold < 0 || toldNow() != carriedTold || c->o.dead) return 0;
   if (c->o.lives) return carriedLostAbs == -2;
   return c->o.lostAt != NOT_ASKED && c->o.lostAt != FOREVER && (int64_t)decQ.b->clock + c->o.lostAt == carriedLostAbs;
 }
@@ -915,8 +915,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
       lx = ly = 1;
     }
   }
-  // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress still judged lost on the frame it was judged when
-  // played (carriedSame), its board standing a break's time, is not put down for another line found this time: every action spent on it
+  // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress on the board it was planned on -- nothing told since,
+  // itself still judged lost on the frame it was judged when played (carriedSame) -- its board standing a break's time, is not put down for another line found this time: every action spent on it
   // is thrown away. Only for a line that breaks more garbage -- as seen, or as the line makes it -- or outlives it by a break's time
   // (lives before does not, above). Near its loss every frame decides, and the later loss is played
   if (lx == ly && x->carried != y->carried && !x->hold && !y->hold) {
