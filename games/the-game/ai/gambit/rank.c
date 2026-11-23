@@ -884,8 +884,6 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   }
   *lxo = lx; *lyo = ly;
 }
-// (a line that clears panels and breaks no garbage: under a resting slab, the slab's supports spent -- compareJudged, break first)
-static int spendsSlab(const Judge *J) { return !J->hold && !J->o.dead && !(J->apBroke > 0) && (J->apCombo > 0 || J->apChain > 0); }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx, ly; creditPair(x, y, &lx, &ly);
   // THE BREAK THAT PAYS (the owner: keep enough panels to break the garbage): under garbage below the floor, of two breaks that convert
@@ -896,15 +894,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
       lostOf(x) >= rankSave && lostOf(y) >= rankSave) {
     const Judge *keep = panelsLeft(x) > panelsLeft(y) ? x : y, *sp = keep == x ? y : x;
     if (lostOf(sp) - lostOf(keep) < ((panelsLeft(keep) - panelsLeft(sp)) / 3) * rankSave) return (cmpKey = __LINE__, (keep == x ? -1 : 1));
-  }
-  // BREAK FIRST UNDER A SLAB (the owner): with garbage resting on the stack, a line that clears panels and breaks none of it goes after one
-  // that clears nothing -- the hold too -- unless it is lost later, not alike, or lives where the other is lost: the panels it
-  // clears are the slab's supports, and a stack hollowed under it leaves two towers no break is made from (4519 factory 1, 4521
-  // large_garbage 3: chains the mode asked, nothing broken, the board drained to the loss). Never at the cost of the board's own chain.
-  if (decF.under && spendsSlab(x) != spendsSlab(y)) {
-    const Judge *sp = spendsSlab(x) ? x : y, *o = sp == x ? y : x;
-    int later = sp->o.lives ? !o->o.lives : !o->o.lives && !lostAlike(sp, o) && lostOf(sp) > lostOf(o);
-    if (!o->o.dead && !later && !(cutsShort(o) && !cutsShort(sp))) return (cmpKey = __LINE__, (sp == x ? 1 : -1));
   }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
