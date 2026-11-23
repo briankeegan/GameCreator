@@ -1531,6 +1531,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
 // order cut had still to press -- every order made after presses one of them first. Where it had pressed them all, the swap came too
 // soon after the one before it -- walkNots: no order made after presses the two one after the other. Each by its place in the line)
 #define WALK_ALL 6
+#define WALK_TRIES 3   // (the walking orders a line is judged in, each taught by the last: a swap that waits for one before it, learnt)
 static int32_t walkSeq[MAXLINE], walkBest[MAXLINE], walkCost;   // (an order: each swap's place in the line's own)
 static int64_t walkPlaced;
 static int32_t walkNeedOf[MAXLINE], nWalkNeeds, walkNotOf[MAXLINE], walkNotAfter[MAXLINE], nWalkNots;
@@ -1613,7 +1614,7 @@ static int walkTried(const Read *R, const Cand *k, Judge *J, int ok, int most) {
   return 0;
 }
 static int judgeWalkedIn(const Read *R, const Cand *k, Judge *J, int most) { int ok = judgeCand(R, k, J); return walkTried(R, k, J, ok, most) || ok; }
-static int judgeWalked(const Read *R, const Cand *k, Judge *J) { return judgeWalkedIn(R, k, J, 1); }
+static int judgeWalked(const Read *R, const Cand *k, Judge *J) { return judgeWalkedIn(R, k, J, WALK_TRIES); }
 // sorted stably by the one order
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
