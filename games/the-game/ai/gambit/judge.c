@@ -51,6 +51,8 @@ typedef struct {
   int32_t dead, deadAt, done, fire, nats, ats[MAXLINE];
   int32_t risen[MAXLINE];         // the rows the stack has risen, from the root, by the frame each swap is pressed: its row less this is its row on the root's board
   int32_t clearStep;              // the first step of the line after which something clears, -1 none (the log's cstep=)
+  int32_t breakStep;              // the first step after which the line has broken more garbage than the board left alone, -1 none: past it
+                                  // the garbage turns to panels no judge can see, and the decision after plans from them (answer.c)
   int64_t tightBits;             // the swaps pressed tight -- the input window short: their walks held (the log's tb=)
   int32_t lostAt;               // FOREVER, a frame, or NOT_ASKED
   int32_t ready;                // 1, 0, or NOT_ASKED
@@ -432,7 +434,7 @@ static LOCAL int32_t winWaitOff, winWaitAgain;
 static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
   winWaitAgain = 0;
-  j->lostAt = NOT_ASKED; j->queueAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->clearStep = -1; j->preLast = -1; j->noops = 0; j->sames = 0;
+  j->lostAt = NOT_ASKED; j->queueAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->clearStep = -1; j->breakStep = -1; j->preLast = -1; j->noops = 0; j->sames = 0;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -589,6 +591,7 @@ static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const Jud
     if (o->settled || last) links += imax(0, chainOfStats(&st) - 1);
     if (chainOfStats(&st) > chain) chain = chainOfStats(&st);
     broke += st.broke; brokeLink += linkBrokeOf(&st); clearedAll += st.cleared; threes += threesOf(&st);
+    if (j->breakStep < 0 && broke > baseBroke) j->breakStep = k;
     // (A SWAP THAT SPOILS THE BOARD'S OWN CHAIN, a swap at a time: the board it is pressed on left alone to rest makes a chain of two or
     // more, and with the swap pressed and let rest a shorter one, no more garbage broken -- the three that began that chain made for
     // nothing, whatever the line's later swaps make; the press guard's test, front.c wastedSwap)

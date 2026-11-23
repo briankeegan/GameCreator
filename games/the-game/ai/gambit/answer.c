@@ -586,10 +586,12 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   A->wastes = !P.line || R.up ? 0 : wastesThree(P.line) && saveOk ? 1 : P.line->o.j.threes > 0 && P.line->apBroke > 0 ? 2 : 0;   // (a three the survival search found the board needed not to die, or one on the way to a break)
   // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
   // settled line's after the board settles -- so the frame loop presses the line that was judged)
+  // (A SETTLED LINE HANDED ON TO ITS BREAK: past the swap that breaks the garbage, the slab turns to panels no judge can see -- the swaps
+  // after it were planned on colours that were never there, and the decision after plans from the panels the break leaves (lineSeen))
   A->nhand = 0; A->handSettled = P.line && P.line->settled;
   if (P.line && !R.up) {
-    int first = timed ? 0 : 1;
-    for (int i = first; i < P.line->k.nseq; i++, A->nhand++) {
+    int first = timed ? 0 : 1, end = lineSeen(P.line);
+    for (int i = first; i < end; i++, A->nhand++) {
       A->hand[A->nhand] = P.line->k.seq[i]; A->handAt[A->nhand] = i < P.line->apNats ? at + P.line->apAts[i] : 0;
     }
   }
