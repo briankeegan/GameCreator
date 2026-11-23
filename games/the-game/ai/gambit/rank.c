@@ -903,6 +903,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *keep = panelsLeft(x) > panelsLeft(y) ? x : y, *sp = keep == x ? y : x;
     if (lostOf(sp) - lostOf(keep) < ((panelsLeft(keep) - panelsLeft(sp)) / 3) * rankSave) return (cmpKey = __LINE__, (keep == x ? -1 : 1));
   }
+  // BREAK FIRST, SHORT OF PANELS (the owner): under garbage below the floor, a line that clears panels and breaks none of it (spends:
+  // neither the opener's chain nor the finish's eight) goes after one that spends none -- the hold too -- unless it lives where the other
+  // is lost, or is lost later and not alike: the panels it clears are the next break's, and a board drained of them breaks nothing more
+  // (r2151, finish them: chains and holds from 22 panels to 17, the board lost). Never at the cost of the board's own chain.
+  if (decF.under && decF.belowFloor && x->spends != y->spends) {
+    const Judge *sp = x->spends ? x : y, *o = sp == x ? y : x;
+    int later = sp->o.lives ? !o->o.lives : !o->o.lives && !lostAlike(sp, o) && lostOf(sp) > lostOf(o);
+    if (!o->o.dead && !sp->hold && !later && !(cutsShort(o) && !cutsShort(sp))) return (cmpKey = __LINE__, (sp == x ? 1 : -1));
+  }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
   if (lx != ly) {
