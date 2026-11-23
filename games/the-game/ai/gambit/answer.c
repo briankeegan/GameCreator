@@ -358,14 +358,14 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
   // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
-  // (the chain's extension last: one no thread begins is searched on this thread after (propose.c searchMerge), where a plan's half or a
-  // break beam is not searched at all)
+  // (the chain's extension before the wider beam: one no thread begins is searched on this thread after (propose.c searchMerge), out of
+  // half the judging's time)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
+  if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
-  if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&jobsBegun, 0, __ATOMIC_SEQ_CST);
   return startJobs(brCtx, breakJob, njobKinds);
 }
