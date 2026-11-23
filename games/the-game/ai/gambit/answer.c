@@ -1122,7 +1122,7 @@ EXPORT(gb_new_game) void gb_new_game(void) {
   if (thenRule >= 0) modeRule = C2.GP.mode;   // (the opener named again: the mode it gave way to was this game's)
   lastA = lastB = pairRuns = blockA = blockB = blockUntil = 0; emptyAt = NUL; gambitHit = 0; garbageSeen = 0; savingPanels = 0;
   C2.idle = 1;   // (the board left alone until play begins: the opening is idle time, planned with the whole of the searches' share)
-  readyStop(); readyKeptClear();   // (a new game's boards are its own)
+  readyStop(); readyKeptClear(); twinRoomAt = -1;   // (a new game's boards are its own)
   memset(theIntents, 0, sizeof theIntents);
   memset(&thePlanKept, 0, sizeof thePlanKept);
   gb_back(0, 0, 0, 0, 0, 0, 0);
