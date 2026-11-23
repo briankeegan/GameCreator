@@ -6,8 +6,17 @@
 
 #define W 6
 #define MAXROWS 48
-#define NUL (-2147483647 - 1)   // Lua nil
-#define UND (-2147483647)
+#define NUL (-32768)   // Lua nil
+#define UND (-32767)
+// THE WIRE IS WIDE: every host, log and recording carries int32 fields, nil as INT32_MIN and undefined as INT32_MIN + 1; the engine's
+// panels hold 16 bits, so its nil is the 16-bit one. WIDE_NUL/WIDE_UND are the wire's; W2N and N2W convert one value each way, at every
+// crossing (nb_load, nb_save, nb_receive, gambit's question bytes and its board dumps). A panel field outside 16 bits is ERR_FIELD.
+#define WIDE_NUL (-2147483647 - 1)
+#define WIDE_UND (-2147483647)
+#define WIDE_PANEL 116   // bytes of a panel on the wire: NF int32 fields
+#define BOARD_WIDE_MAX (sizeof(Board) + MAXROWS * (W + 1) * WIDE_PANEL)   // a wide board's bytes at most (pa.c boardToWide)
+static inline int32_t W2N(int32_t v) { return v == WIDE_NUL ? NUL : v == WIDE_UND ? UND : v; }
+static inline int32_t N2W(int32_t v) { return v == NUL ? WIDE_NUL : v == UND ? WIDE_UND : v; }
 #define SETB(v) ((v) != NUL && (v) != 0)   // Lua truthiness of a nil-or-boolean
 #define SETN(v) ((v) != NUL)               // of a nil-or-number: 0 is true
 
@@ -17,7 +26,9 @@ enum { ROW, COL, ID, COLOR, CHAINING, MATCHING, TIMER, INITIALTIME, POPTIME, POP
        STATECHANGED, PROPCHAIN, MATCHANYWAY, PROPFALL, GARBAGEID, METAL, NF };
 enum { NORMAL, DIMMED, SWAPPING, MATCHED, POPPING, POPPED, HOVERING, FALLING, LANDING, DEAD };
 
-typedef struct { int32_t f[NF]; } Panel;
+typedef short pf_t;
+typedef struct { pf_t f[NF]; } Panel;
+_Static_assert(NF * 4 == WIDE_PANEL, "a wide panel is NF int32 fields");
 typedef struct { int32_t width, height, isChain, isMetal, frameEarned, finalized; } Incoming;   // finalized: NUL/0/1
 typedef struct { int32_t leftId, rightId, row, col, clock; } Stall;
 
@@ -43,6 +54,7 @@ typedef struct { int32_t leftId, rightId, row, col, clock; } Stall;
 #define ERR_MATCH 32
 #define ERR_WIDTH 64
 #define ERR_STATE 128
+#define ERR_FIELD 256   // a panel field outside 16 bits (W2N)
 
 #define CD_NULL (-1)
 #define DIR_UP 0

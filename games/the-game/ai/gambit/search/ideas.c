@@ -17,7 +17,7 @@ static int ideasOn(const Board *b, const List *aims) {
   static LOCAL uint8_t gone[IDEA_CANDS][MAXROWS * W];
   int np = 0;
   for (int r = 1; r < b0->nrows; r++) for (int c = 1; c <= W; c++) {
-    const int32_t *f = b0->p[r][c].f;
+    const pf_t *f = b0->p[r][c].f;
     if (f[COLOR] > 0 && f[COLOR] < 8 && !f[ISGARBAGE] && f[ID] != NUL && np < MAXROWS * W) pid[np++] = f[ID];
   }
   int nm = swapsOfNode(x, root, ms), ni = 0;
@@ -32,7 +32,7 @@ static int ideasOn(const Board *b, const List *aims) {
     const Board *e = ensureBoard(x, out);
     if (!e) continue;
     int nk = 0;
-    for (int r = 1; r < e->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = e->p[r][c].f; if (f[ID] != NUL && nk < MAXROWS * W) kid[nk++] = f[ID]; }
+    for (int r = 1; r < e->nrows; r++) for (int c = 1; c <= W; c++) { const pf_t *f = e->p[r][c].f; if (f[ID] != NUL && nk < MAXROWS * W) kid[nk++] = f[ID]; }
     for (int i = 0; i < np; i++) { int here = 0; for (int k = 0; k < nk && !here; k++) here = kid[k] == pid[i]; gone[ni][i] = !here; }
     cells[ni] = m.cells; idx[ni] = ni; ni++;
   }

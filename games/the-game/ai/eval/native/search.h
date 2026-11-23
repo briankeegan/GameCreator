@@ -105,7 +105,7 @@ static void readBoard(Node *n, Board *b) {
   uint32_t h = 2166136261u;
   for (r = 1; r <= H + 1 && r < b->nrows; r++)
     for (c = 1; c <= W; c++) {
-      const int32_t *f = b->p[r][c].f;
+      const pf_t *f = b->p[r][c].f;
       if (f[COLOR] != 0) { top = r; if (f[ISGARBAGE]) g++; }
       // The key holds 19 bits of timer: one outside them is clamped, which
       // only lets two boards that differ there share a key.
@@ -585,7 +585,7 @@ EXPORT(ns_field_name) const char *ns_field_name(int i) { return nodeNames[i]; }
 // Returns n, or -1 for a board lost.
 static int32_t gridCell(const Board *b, int r, int c) {
   if (r >= b->nrows) return 0;
-  const int32_t *f = b->p[r][c].f;
+  const pf_t *f = b->p[r][c].f;
   return f[COLOR] == 0 ? 0 : f[ISGARBAGE] ? -2 : f[COLOR];
 }
 static int vreserve(Vec *v, int32_t n);
@@ -623,7 +623,7 @@ EXPORT(ns_grid) int ns_grid(Ctx *x, int i) {
   for (int r = 0; r <= b->height + 1; r++)
     for (int c = 0; c <= W; c++) {
       int32_t v = 0;
-      if (c && r < b->nrows) { const int32_t *f = b->p[r][c].f; v = f[COLOR] == 0 ? 0 : f[ISGARBAGE] ? -2 : f[COLOR]; }
+      if (c && r < b->nrows) { const pf_t *f = b->p[r][c].f; v = f[COLOR] == 0 ? 0 : f[ISGARBAGE] ? -2 : f[COLOR]; }
       ioBody[k++] = v;
     }
   return b->height;

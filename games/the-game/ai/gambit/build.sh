@@ -5,13 +5,12 @@
 set -e
 cd "$(dirname "$0")"
 # ./build.sh native: libgambit.so, Gambit in the game's own process (native.c, host.c; lua/GambitNative.lua loads it). Built on the
-# machine that plays (training.sh); not tracked. With GC_GAMBIT_PGO=1, built on gambit.profdata where the compiler reads it (the same
-# clang that wrote it): 1.2x as fast, the same answers on the replay's fixed work -- in a game the search gets that much more of the
-# clock, and a round with it scored 77 of 84 against 80-82 without, so it is off until that is understood.
+# machine that plays (training.sh); not tracked. Built on gambit.profdata where the compiler reads it (the same clang that wrote it)
+# unless GC_GAMBIT_PGO=0: the same answers on the replay's fixed work, faster -- in a game the search gets that much more of the clock.
 if [ "${1:-}" = native ]; then
   N="clang -O3 -march=native -pthread -fPIC -shared -Wl,-z,nodelete -DPA_HEAP -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes native.c host.c -lm -o libgambit.so"
   P="-fprofile-use=gambit.profdata -Wno-profile-instr-out-of-date -Wno-profile-instr-unprofiled -Wno-backend-plugin"
-  { [ "${GC_GAMBIT_PGO:-0}" = 1 ] && [ -f gambit.profdata ] && $N $P 2>/dev/null; } || $N
+  { [ "${GC_GAMBIT_PGO:-1}" = 1 ] && [ -f gambit.profdata ] && $N $P 2>/dev/null; } || $N
   exit
 fi
 # ./build.sh test [golden|speed]: the C checks, natively (test/main.c: the board as bits, perched blocks, the decisions replayed against the

@@ -1137,7 +1137,7 @@ static char opLandedRows[160], opCdRows[160];   // (the log's landed= and, at th
 static void boardRows(const Board *b, char *out, int cap) {
   int k = 0;
   for (int r = 1; r < b->nrows && k < cap - 9; r++) { if (r > 1) out[k++] = '/';
-    for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; out[k++] = f[ISGARBAGE] ? 'g' : f[ID] > 0 && f[COLOR] > 0 ? (char)('0' + f[COLOR] % 10) : '.'; } }
+    for (int c = 1; c <= W; c++) { const pf_t *f = b->p[r][c].f; out[k++] = f[ISGARBAGE] ? 'g' : f[ID] > 0 && f[COLOR] > 0 ? (char)('0' + f[COLOR] % 10) : '.'; } }
   out[k] = 0;
 }   // (the log's landed=)
 static int32_t opSecondCh, opSecondWhy, opSecondMs, opSecondN;   // (and the time it had, the boards its beam grew: the log's)   // (the second chain's plan, its chain; how far the try went -- 1 begun, 2 no landed board, 8 its chain still counting, 3 time, 4 a plan, 5 a swap on the board, 6 still panels, 7 pressed:
@@ -1148,7 +1148,7 @@ static int32_t opSecondCh, opSecondWhy, opSecondMs, opSecondN;   // (and the tim
 static int garbageRows(const Question *q, int rows) {
   for (int i = 0; i < q->narr; i++) if (q->arr[i].height >= rows) return 1;
   for (int i = 0; i < q->b->ninc; i++) if (q->b->inc[i].height >= rows) return 1;
-  for (int r = 1; r < q->b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = q->b->p[r][c].f; if (f[ISGARBAGE] && f[ISGARBAGE] != NUL && f[GHEIGHT] >= rows) return 1; }
+  for (int r = 1; r < q->b->nrows; r++) for (int c = 1; c <= W; c++) { const pf_t *f = q->b->p[r][c].f; if (f[ISGARBAGE] && f[ISGARBAGE] != NUL && f[GHEIGHT] >= rows) return 1; }
   return 0;
 }
 static int tallGarbage(const Question *q) { return garbageRows(q, OP_TALL); }
@@ -1161,7 +1161,7 @@ static int opAtRest(const Board *landed, int32_t sw) {
   const Board *b = decQ.b; int r = CR(sw), c = CC(sw);
   if (r < 1 || r >= b->nrows || c < 1 || c >= W) return 0;
   for (int cc = c; cc <= c + 1; cc++) for (int rr = 1; rr <= r; rr++) {
-    const int32_t *now = b->p[rr][cc].f, *then = landed->p[rr][cc].f;
+    const pf_t *now = b->p[rr][cc].f, *then = landed->p[rr][cc].f;
     if (now[ID] != then[ID] || (now[ID] > 0 && now[STATE] != NORMAL)) return 0;
   }
   return 1;
@@ -1198,7 +1198,7 @@ static const Judge *opSecondSwap(const Read *R, int n) {
   { static int32_t loggedFor = -1;
     if (loggedFor != opFallAt) { loggedFor = opFallAt; int k = 0;
       for (int r = 1; r < landed->nrows && k < (int)sizeof opLandedRows - 9; r++) { if (r > 1) opLandedRows[k++] = '/';
-        for (int c = 1; c <= W; c++) { const int32_t *f = landed->p[r][c].f; opLandedRows[k++] = f[ISGARBAGE] ? 'g' : f[ID] > 0 ? (char)('0' + f[COLOR] % 10) : '.'; } }
+        for (int c = 1; c <= W; c++) { const pf_t *f = landed->p[r][c].f; opLandedRows[k++] = f[ISGARBAGE] ? 'g' : f[ID] > 0 ? (char)('0' + f[COLOR] % 10) : '.'; } }
       opLandedRows[k] = 0; } else opLandedRows[0] = 0; }
   double left = C2.due ? C2.due - C2.margin - nowMs() : 50, ms = left * OP_SECOND_SHARE;
   opSecondWhy = 3;

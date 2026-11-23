@@ -34,7 +34,7 @@ static int keyOf(const Board *b, char *out) {
   int k = 0;
   for (int r = 1; r < b->nrows && k < KEYLEN - 8; r++) {
     for (int c = 1; c <= W; c++) {
-      const int32_t *f = b->p[r][c].f;
+      const pf_t *f = b->p[r][c].f;
       if (f[ISGARBAGE]) out[k++] = 'G';
       else { int32_t v = f[COLOR] == NUL ? 0 : f[COLOR]; char d[12]; int nd = 0; if (!v) d[nd++] = '0'; while (v > 0) { d[nd++] = (char)('0' + v % 10); v /= 10; } while (nd) out[k++] = d[--nd]; }
     }
