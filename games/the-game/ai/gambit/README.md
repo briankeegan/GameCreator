@@ -18,7 +18,7 @@ differ. Its only imports are the host's abort flag and clock (`abort_poll`, `clo
   questions asked ahead, answers turned into keys, the input budget kept), `native.c` (Gambit's thread and the host's calls), `host.c`
   (the heap, clock, lock, thread and log). `lua/GambitNative.lua` writes the stack into the engine (`lua/board.lua`, as the player sees
   it) and presses what comes back; `words.js` hands it the profile as numbers; `lua/check.lua` checks the hookup headless.
-  `libgambit.so` is built on `gambit.profdata`, the branch profile `build.sh` writes from the replay of `test/pgo.txt.gz`'s boards.
+  With `GC_GAMBIT_PGO=1`, `libgambit.so` is built on `gambit.profdata`, the branch profile `build.sh` writes from the replay of `test/pgo.txt.gz`'s boards.
 
 - Reading a run's logs (no engine): `describe.py` (a rank key's line to its rule), `turn.py` (each lost game's last decision with a
   line living or a break offered), `landing.py` (each landing: a break offered after it or not, and what was played before it).
