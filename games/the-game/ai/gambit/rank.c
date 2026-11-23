@@ -930,10 +930,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // deterministic, and a plan dropped is every action spent on it thrown away -- its three, where it made one, wasted): the line in
   // progress is put down only for a line that lives where it does not (above), outlives it by a break's time, or breaks more garbage --
   // not for the hold, nor for one lost a few frames later. Where its swaps make a three still owed its break (threeOwed: answer.c), not for
-  // one that breaks more either: that three is the break's first half
+  // one that breaks more either: that three is the break's first half. Only a line that breaks garbage or lives is held to: one that buys
+  // frames and breaks nothing spends the window the next break is pressed from, and is weighed afresh each decision
   if (lx == ly && x->carried != y->carried) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    if (!c->hold && !c->o.dead && !outlives(o, c) && (threeOwed && c->apBroke > 0 ? 1 : imax(0, o->apBroke) <= imax(0, c->apBroke)))
+    if (!c->hold && !c->o.dead && (c->apBroke > 0 || c->o.lives) && !outlives(o, c) &&
+        (threeOwed && c->apBroke > 0 ? 1 : imax(0, o->apBroke) <= imax(0, c->apBroke)))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
