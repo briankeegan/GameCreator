@@ -556,12 +556,19 @@ EXPORT(gb_carry_short) int gb_carry_short(const int32_t *rest, int n) {
 // keep, -1 a line that does not judge
 // (gb_spend_toward 1: the spend is judged as the toward line it was played as, not as a survival line)
 static int spendToward;
+// (and with it, the digs let off the reserve: the toward judged digs for a break under garbage with none offered, the hold standing a
+// break's time or more and the window it leaves under a break's walk now and when the next block can land, yet is found not to spend
+// the reserve -- rank.c digPaid)
+static int digFree;
+EXPORT(gb_dig_free) int gb_dig_free(void) { int n = digFree; digFree = 0; return n; }
 EXPORT(gb_spend_toward) void gb_spend_toward(int on) { spendToward = on; }
 EXPORT(gb_spend_first) int gb_spend_first(const int32_t *keep, int nkeep, int keepAt, const int32_t *spend, int nspend) {
   static Judge K, Sp; Cand c; Read R;
   if (!readBoard_(&R)) return -1;
   const Judge *k = 0;
   clockIgnore = 1;
+  // (the two lines are judged on the logged board, not after the replay's own answer: the swap-back record that answer left is lifted)
+  Back back = theBack; int32_t ra = refusedA, rb = refusedB; memset(&theBack, 0, sizeof theBack); refusedA = refusedB = 0;
   int ok = 1;
   if (!nkeep) { for (int i = 0; i < orderN && !k; i++) if (order[i]->hold) k = order[i]; ok = k != 0; }
   else {
@@ -572,8 +579,12 @@ EXPORT(gb_spend_first) int gb_spend_first(const int32_t *keep, int nkeep, int ke
   if (ok) ok = candOf(&c, spendToward ? PLAY_TOWARD : PLAY_SURVIVE, spend, nspend, -1, 0);
   if (ok) { c.settled = 0; ok = judgeWalkedIn(&R, &c, &Sp, c.nseq); }
   if (ok) readyNextFor(&Sp);
+  if (ok && spendToward && decF.under && !breakOffered && digsForBreak(&Sp) && rankHold && !rankHold->o.dead && !rankHold->o.lives &&
+      diesAt(rankHold) >= rankSave && allowAtNeed(lineWalk(&Sp)) < BREAK_WALK && allowAtLanding(lineWalk(&Sp)) < BREAK_WALK && !spendsReserve(&Sp)) digFree++;
   clockIgnore = 0;
-  return ok ? compareJudged(&Sp, k) < 0 : -1;
+  int r = ok ? compareJudged(&Sp, k) < 0 : -1;
+  theBack = back; refusedA = ra; refusedB = rb;
+  return r;
 }
 // THE WAIT'S WINDOW (gb_wait_last, after a replay): the decision was made in the wait with the hold's own board standing a break's
 // time (which 0), and the line the order puts first breaks nothing, leaves the window under a break's walk at rest and, its walk
@@ -611,16 +622,39 @@ EXPORT(gb_reason_keeps) int gb_reason_keeps(int span) {
   int gives = !outlivesHold(&L, H);
   return keeps && gives;
 }
-// THE REACH UP AND DOWN (gb_reach_last, after a replay): the lines the order kept that walk past REACH_ROWS for nothing -- break no
-// garbage, make nothing of the mode's first entry -- where a line within the reach stands a break's time and the far one does not
-// live -- decide.c farForNothing
+// THE REACH (gb_reach_last, after a replay): the lines the order kept that walk the cursor past REACH_STEPS between swaps, whatever the
+// board -- decide.c farForNothing
 EXPORT(gb_reach_last) int gb_reach_last(void) {
-  double kept = -1; int lives = 0, far = 0;
-  for (int i = 0; i < orderN; i++) { const Judge *J = order[i]; if (farForNothing(J)) continue; if (J->o.lives) lives = 1; else if (!J->o.dead && diesAt(J) > kept) kept = diesAt(J); }
-  if (!lives && kept < rankSave) return 0;
-  for (int i = 0; i < orderN; i++) { const Judge *J = order[i]; if (farForNothing(J) && !J->o.lives) far++; }
+  int far = 0;
+  for (int i = 0; i < orderN; i++) far += farForNothing(order[i]);
   return far;
 }
+// THE NEXT BLOCK'S RESERVE (gb_over_last, after a replay): the lines the order kept that spend what the next break needs -- panels under
+// the floor or the window under a break's walk, breaking nothing, the hold standing a break's time -- decide.c overspends
+EXPORT(gb_over_last) int gb_over_last(void) {
+  int over = 0;
+  for (int i = 0; i < orderN; i++) over += overspends(order[i]);
+  return over;
+}
+// NO FLIP AND BACK ACROSS DECISIONS (gb_undo_cut, after a replay): the order's first line that is no hold and does not live made the
+// one that swaps straight back the swap just pressed -- its first swap's two panels named as that swap left them -- and the order cut as
+// the decision cuts it: 1 where it is taken out, 0 kept, -1 none to try -- decide.c undoesLast
+EXPORT(gb_undo_cut) int gb_undo_cut(void) {
+  const Judge *T = 0, *H = 0;
+  for (int i = 0; i < orderN; i++) { if (order[i]->hold) { if (!H) H = order[i]; } else if (!T && !order[i]->o.lives && !order[i]->o.dead && order[i]->k.nseq >= 1) T = order[i]; }
+  if (!T || !H) return -1;
+  int r = CR(T->k.seq[0]), c = CC(T->k.seq[0]);
+  if (r < 0 || r >= decQ.b->nrows || c < 1 || c + 1 > W) return -1;
+  undoIdL = decQ.b->p[r][c].f[ID]; undoIdR = decQ.b->p[r][c + 1].f[ID]; undoFresh = 1;
+  if (!(undoIdL > 0 || undoIdR > 0)) { undoFresh = 0; return -1; }
+  static Judge *ord[512]; int n = 0; for (int i = 0; i < orderN && n < 512; i++) ord[n++] = (Judge *)order[i];
+  int32_t cut = 0; int m = cutAlways(ord, n, undoesLast, &cut, 29);
+  undoFresh = 0;
+  int kept = 0; for (int i = 0; i < m; i++) kept |= ord[i] == T;
+  return !kept;
+}
+// (whether walks are ever held: core/nodes.h NO_DAS -- the held-keys check asks none then)
+EXPORT(gb_no_das) int gb_no_das(void) { return NO_DAS; }
 EXPORT(gb_wait_last) int gb_wait_last(int which) {
   const Judge *H = 0; for (int i = 0; i < orderN && !H; i++) if (order[i]->hold) H = order[i];
   if (!H || waitOf() <= 0 || rankHoldOwn < rankSave) return 0;

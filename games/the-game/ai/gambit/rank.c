@@ -329,6 +329,11 @@ static int walkTurns(const Judge *x, const Judge *y) {
   // decides between the two)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
     if ((dx < dy ? dx : dy) >= rankSave && windowDead(l) && !windowDead(s)) return 0; }
+  // (nor, under garbage, a later loss that breaks nothing and leaves the next break less than its walk, beside a line that keeps it --
+  // the owner: efficiency is key: the actions it spends are the next break's, and a board kept on them is one left with none to break
+  // with -- the walk's charge decides between the two, however far apart they are lost)
+  { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
+    if (decF.under && (dx < dy ? dx : dy) >= rankSave && !(l->apBroke > 0) && spendsReserve(l) && !spendsReserve(s)) return 0; }
   if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
   // (nor where the later one buys less than a break's time with the window the next breaks are pressed from: the actions it spends come
   // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
@@ -345,12 +350,15 @@ static int finishEightBy(const Judge *e, const Judge *o) {
   double de = diesAt(e), d0 = diesAt(o);
   return de >= rankSave && d0 - de < rankSave;
 }
+static double nextBreakDelay(int walk);
 static double lostOf(const Judge *x) {
   if (x->idle) return x->idleLost;   // (a move must beat doing nothing: markIdle)
   double own = lostAtOf(x->o.lostAt, x->hold);
   if (extCounts(x)) { double ext = lostAtOf(x->extLost, 0); if (ext > own) own = ext; }
   if (x->hold || own >= 1e299 || own < 0 || waitWalks(x)) return own;
-  return own - (double)WALK_FRAMES * lineWalk(x);
+  int walk = lineWalk(x);
+  double charge = (double)WALK_FRAMES * walk, delay = nextBreakDelay(walk);
+  return own - (delay > charge ? delay : charge);
 }
 // A LINE'S TIER AS THE ORDER READS IT: a line that must wait for the board ranks with the hold (at the hold's tier, or its own when that
 // is lower for the line in progress, waitMax), before the hold itself; a line that clears nothing and does no better than holding
@@ -573,6 +581,16 @@ static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : action
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
 static int32_t carriedSunk = -1;   // (the actions the line in progress was judged to walk in all when played: decide.c carryOf; -1 not known)
+// (NOTHING NEW TOLD: what the board was told when the line in progress was played -- the next block's landing frame and how many are on
+// their way -- and the frame its own board was judged lost on then (-2 it lived): decide.c carryOf. The same now, and the line still judged
+// lost on that frame, the board is the one the line was planned on, and every other line was there to be found when it was chosen)
+static int64_t carriedTold = -1, carriedLostAbs = -1;
+static int64_t toldNow(void) { return (decF.next == NOT_ASKED ? -1 : (int64_t)decQ.b->clock + decF.next) * 64 + decQ.narr; }
+static int carriedSame(const Judge *c) {
+  if (carriedSunk < 0 || carriedTold < 0 || toldNow() != carriedTold || c->o.dead) return 0;
+  if (c->o.lives) return carriedLostAbs == -2;
+  return c->o.lostAt != NOT_ASKED && c->o.lostAt != FOREVER && (int64_t)decQ.b->clock + c->o.lostAt == carriedLostAbs;
+}
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
@@ -593,12 +611,16 @@ static int ruleNoEnemy;   // (the rule in force asks enemy.none: decide.c)
 static int breakOffered = 1;
 static int32_t waitOf(void);
 static int cascadeLive(Board *b);   // (propose.c: the board still moving of its own)
-static int allowAtNeed(int walk) {
-  if (decF.under) return allowLeftAt(waitOf(), walk);
+// (the window as the next block finds it: at its landing with one on its way, else EARLIEST_LANDING)
+static int allowAtLanding(int walk) {
   int32_t t = EARLIEST_LANDING;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at >= 0 && decQ.arr[a].at < t) t = decQ.arr[a].at;
   { int32_t q = holdQueueAt(); if (q != NOT_ASKED && q >= 0 && q < t) t = q; }
   return allowLeftAt(t, walk);
+}
+static int allowAtNeed(int walk) {
+  if (decF.under) return allowLeftAt(waitOf(), walk);
+  return allowAtLanding(walk);
 }
 // (GARBAGE ON ITS WAY: shown in the telegraph, or past it and queued on the board -- a one-row block waits there for the board's
 // panels to come to rest, pa.c shouldDropGarbage, and a storm's queue is never empty)
@@ -606,10 +628,16 @@ static int garbageComing(void) { return decQ.narr > 0 || (decQ.b && decQ.b->ninc
 // (how far below a break's walk a line leaves the allowance -- a break too: of two breaks the board survives alike, the one that leaves
 // the next break its walk; spendsReserve, which sets a line that breaks nothing after one that keeps the reserve, never counts a break)
 static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || (decF.under && !breakOffered) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
-// (with no break offered under garbage, a line that digs toward one may spend the reserve; a chain built there may not -- the window it
-// spends is the break's that comes)
-static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK; }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !(decF.under && !breakOffered && digsForBreak(J)) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
+// (with no break offered under garbage, a line that digs toward one -- or lets a perched block down onto the stack, the way to the break
+// the perch holds off -- may spend the reserve only where the hold loses the board within a
+// break's time, or the window holds a break's walk again by the time the next block can land -- standing longer, the reserve is that
+// block's break, and garbage always comes -- and only while the window it leaves pays for its walk again: the break it digs for is pressed out of what is left, and a dig that spends the last of the window digs for a
+// break that cannot be pressed; a chain built there may not -- the window it spends is the break's that comes)
+static const Judge *rankHold;   // (the decision's hold, set where no line of the decision breaks or lives: decide.c ranked, once every line's readiness has been asked)
+static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK || J->k.letDown; }
+static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !breakOffered && digsForBreak(J) && allowAtNeed(w) >= w &&
+                                     (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave)); }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !digPaid(J) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
 // the hold's board at rest has the room for it to come down (outcome.c restOf), a line that clears nothing and leaves it nearer
@@ -617,7 +645,6 @@ static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->ap
 // the hold's, no walk charged, that keeps the board's own chain as the hold does, and whose walk the input window pays for twice
 // over by the frame its board is at rest: the break it sets up is pressed where it was, out of what is left -- a walk that spends
 // the last of the window sets up a break that cannot be pressed.
-static const Judge *rankHold;   // (the decision's hold, set where no line of the decision breaks or lives: decide.c ranked, once every line's readiness has been asked)
 static int32_t restOn(const Judge *J0) {
   Judge *J = (Judge *)J0;
   if (!J->restAsked) { J->restAsked = 1; J->rest = J->hold ? restOf(0, 0, 0, &J->restCan, &J->restAt) : restOf(J->k.seq, J->k.nseq, J->settled, &J->restCan, &J->restAt); }
@@ -639,6 +666,16 @@ static int windowDead(const Judge *J) {
   if (pressAllowance < 0 || nWinAges < 0 || ruleNoEnemy || J->hold || J->o.lives) return 0;
   int32_t w = allowWait(0, lineWalk(J), BREAK_WALK);
   return w < 0 || w > diesAt(J);
+}
+// (THE NEXT BREAK PUT OFF: the frames later the window holds a break's walk again (BREAK_WALK) once the line's actions are spent than it
+// would with none spent -- core/nodes.h allowWait. A window near its end makes every action dear: the owner, efficiency is key. 0 where
+// the window is not said)
+static double nextBreakDelay(int walk) {
+  if (pressAllowance < 0 || nWinAges < 0 || ruleNoEnemy || walk <= 0) return 0;
+  int32_t d0 = allowWait(0, 0, BREAK_WALK), d1 = allowWait(0, walk, BREAK_WALK);
+  if (d0 < 0) d0 = winLen;
+  if (d1 < 0) d1 = winLen;
+  return d1 > d0 ? d1 - d0 : 0;
 }
 static int waitWalks(const Judge *J) { return pressAllowance >= 0 && waitOf() > 0 && allowAtNeed(lineWalk(J)) >= BREAK_WALK; }
 // (and the walk that does not: a line that breaks nothing and leaves the window under a break's walk at rest)
@@ -878,6 +915,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
       lx = ly = 1;
     }
   }
+  // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress on the board it was planned on -- nothing told since,
+  // itself still judged lost on the frame it was judged when played (carriedSame) -- its board standing a break's time, is not put down for another line found this time: every action spent on it
+  // is thrown away. Only for a line that breaks more garbage -- as seen, or as the line makes it -- or outlives it by a break's time
+  // (lives before does not, above). Near its loss every frame decides, and the later loss is played
+  if (lx == ly && x->carried != y->carried && !x->hold && !y->hold) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    if (carriedSame(c) && (c->o.lives || diesAt(c) >= rankSave) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && imax(0, o->apBroke) <= imax(0, c->apBroke) &&
+        !outlives(o, c) && !finishEightBy(o, c))
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
   // 1. NOTHING AMID THE GARBAGE (amidGarbage): under garbage, of two that do not live, a line that swaps among the slabs and breaks nothing
   // after one that does not -- unless it keeps the board a break's time (rankSave) longer
   if (!lx && decF.under && !x->o.dead && !y->o.dead) {
@@ -963,7 +1010,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // as any two lines
   if (!lx && decF.under && !breakOffered) {
     int dx = letsDown(x), dy = letsDown(y);
-    if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x; if (lostOf(d) >= lostOf(o) || lostAlike(d, o)) return (cmpKey = __LINE__, (dx ? -1 : 1)); }
+    // (never over a line that breaks garbage -- the line in progress, an entry: letting the garbage down stands in for a break, and that
+    // line is one)
+    if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x; if (!(o->apBroke > 0) && (lostOf(d) >= lostOf(o) || lostAlike(d, o))) return (cmpKey = __LINE__, (dx ? -1 : 1)); }
+    // (and of two lost alike that break nothing, the one whose board at rest leaves the garbage nearer coming down onto the stack
+    // (restOn, outcome.c restOf): a perch built up is a break put further off -- the garbage on two towers over a well, every break
+    // walked to it a support at a time)
+    if (!x->hold && !y->hold && !(x->apBroke > 0) && !(y->apBroke > 0) && lostAlike(x, y)) {
+      int32_t rx = restOn(x), ry = restOn(y);
+      if (rx >= 0 && ry >= 0 && rx != ry) return (cmpKey = __LINE__, (rx < ry ? -1 : 1));
+    }
   }
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
   // order charges it -- the mode gives way to survival only)
@@ -989,6 +1045,17 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && x->carried != y->carried && !x->hold && !y->hold) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
     if (carriedSunk >= 0 && carriedSunk - lineWalk(c) > 0 && !c->o.dead && brokeSeen(c) > 0 && imax(0, brokeSeen(o)) <= brokeSeen(c) && !o->o.lives && lostOf(c) >= rankSave)
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
+  // (THE ACTIONS ALREADY SPENT -- the owner: efficiency is key, no wasted moves: a line in progress that has walked and pressed some of
+  // its actions already, beside one that breaks no more and does not live, is kept unless the other outlives it by more than those actions
+  // are worth (WALK_FRAMES each, the walk's own charge) -- put down for less, every action spent on it bought nothing -- and unless it is
+  // lost within a break's time, its walk charged: a line the window cannot pay for is no plan to keep)
+  if (!lx && x->carried != y->carried && !x->hold && !y->hold) {
+    const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
+    int sunk = carriedSunk >= 0 ? carriedSunk - lineWalk(c) : 0;
+    if (sunk > 0 && !c->o.dead && !o->o.lives && lostOf(c) >= rankSave && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && !finishEightBy(o, c) &&
+        diesAt(o) - diesAt(c) < (double)WALK_FRAMES * sunk)
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // (THE BREAK THE WINDOW STILL PRESSES -- the owner: break the garbage, at once: under garbage with the window under a break's walk
