@@ -48,8 +48,13 @@ it worked (ours / his).
       good enough"); no direction held to auto-repeat; no swap taken straight back by the next decision. On main (the owner, at
       81/84 against the free-moving 82: merge it, then keep working toward 28 in every mode).
       The reach is six steps (the owner allowed six, closer preferred): five measured 73, six 78 on the same build.
-      Best so far 80/84 (3ff9c11: fill 27, switching 26, finish them 27; combo storm 23/24, large garbage 24/24, endless 12/12,
-      factory 21/24). The next block's reserve is held at the end of every move --
+      Best so far 82/84 (075875a, on main: fill 28, switching 27, finish them 27). The search is short of time: on 71 boards
+      from lost games, four times the work changed the move on 24, 16 of them lost later and one sooner. The engine's countdown
+      check now does 12% less work for the same answers; the 8-combo scans (twinRowFix, trigFix) are the next largest cost, and
+      the runner's four CPUs sit about 45% idle.
+      The early losses (about one a round) are decided when a slab of up to 13 rows lands just after the opening raise to 11
+      rows: on those boards no garbage breaks within three swaps. Asked the owner whether the raise may give way to a slab
+      already on its way. The next block's reserve is held at the end of every move --
       with garbage on the board or on its way, no line that breaks nothing leaves the panels under the rule's floor or the window
       under a break's walk while the hold stands a break's time, whichever of the 21 overrides in playOf put it there; the floor
       holds a living line too, beside a hold that lives, while garbage is on its way.
