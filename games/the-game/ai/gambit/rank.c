@@ -1019,12 +1019,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (never over a line that breaks garbage -- the line in progress, an entry: letting the garbage down stands in for a break, and that
     // line is one)
     if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x; if (!(o->apBroke > 0) && (lostOf(d) >= lostOf(o) || lostAlike(d, o))) return (cmpKey = __LINE__, (dx ? -1 : 1)); }
-    // (and of two lost alike that break nothing, the one whose board at rest leaves the garbage nearer coming down onto the stack
-    // (restOn, outcome.c restOf): a perch built up is a break put further off -- the garbage on two towers over a well, every break
-    // walked to it a support at a time)
-    if (!x->hold && !y->hold && !(x->apBroke > 0) && !(y->apBroke > 0) && lostAlike(x, y)) {
+    // (and of two that break nothing, the one whose board at rest leaves the garbage nearer coming down onto the stack (restOn,
+    // outcome.c restOf), where the other buys less than a break's time more: a perch built up is a break put further off, and a clear
+    // under the perch that buys frames digs the hollow deeper -- g4461 large_garbage 6, 3885-4400, survive lines took the stack from
+    // 42 panels to 23 under garbage held up on two columns, no break offered)
+    if (!x->hold && !y->hold && !(x->apBroke > 0) && !(y->apBroke > 0)) {
       int32_t rx = restOn(x), ry = restOn(y);
-      if (rx >= 0 && ry >= 0 && rx != ry) return (cmpKey = __LINE__, (rx < ry ? -1 : 1));
+      if (rx >= 0 && ry >= 0 && rx != ry) { const Judge *lo = rx < ry ? x : y, *hi = rx < ry ? y : x;
+        if (!lo->o.dead && (lostAlike(x, y) || diesAt(hi) - diesAt(lo) < rankSave)) return (cmpKey = __LINE__, (lo == x ? -1 : 1)); }
     }
   }
   // (survival as the board is lost: a line that meets the mode's first entry and is lost no sooner is never passed over for the walk the
