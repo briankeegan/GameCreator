@@ -499,6 +499,9 @@ static int twinTouches(int32_t g[][W + 2], const Twin *t) {
 // the offer by a farther one that breaks: set 86 combo_storm 1, an eight a swap away left unoffered 60 frames for three six swaps off)
 static int twinRank(const Twin *t) { return t->cost * 2 - (t->touch ? 1 : 0); }
 static int twinMin = 8;   // (the least an eight's scan keeps: 8; sixLines asks 6)
+// (THE LEAST ONLY: twinCostOn asks the fewest swaps alone -- a sort that cannot come in under the fewest found is not costed further, and
+// the scan's least is in twinLeastLo)
+static LOCAL int twinLeast; static LOCAL int twinLeastLo;
 static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topOut, Twin *best, int *rows, int cap) {
   int top = 0, H = imin(gridLen(b) - 2, MAXROWS);
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) g[r][c] = 0;
@@ -530,7 +533,7 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
       if (X == Y || (hx && c - 2 < 1) || (hy && c + 3 > W)) continue;
       if (has[r][X] < 1 + hx || has[r][Y] < 1 + hy) continue;
       RowFix trig; int tc = trigFix(g[r], ok[r], c, X, Y, hx, hy, &trig);
-      if (tc < 0 || tc > cap) continue;
+      if (tc < 0 || tc > cap || (twinLeast && tc >= twinLeastLo)) continue;
       // (each side a run of its colour in its column through row r (3 to 5, split by the trigger row so neither clears before it), or
       // none where its arm makes the three; eight or more in all -- each row's cost alone, a row shared by both counted once)
       for (int la = hx ? 0 : 3; la <= 5; la = la ? la + 1 : 3) for (int a0 = la ? r - la + 1 : r + 1; a0 <= r; a0++) {
@@ -549,8 +552,10 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
             if (*sc == -2) { RowFix f; *sc = (signed char)(any[q] ? twinRowFix(g[q], ok[q], wx ? c : 0, X, wy ? c + 1 : 0, Y, &f) : -1); }
             int k = *sc;
             if (k < 0) okAll = 0; else cost += k;
+            if (twinLeast && cost >= twinLeastLo) okAll = 0;
           }
           if (!okAll || cost > cap) continue;
+          if (twinLeast) { if (cost < twinLeastLo) twinLeastLo = cost; continue; }
           t.cost = cost; t.touch = twinTouches(g, &t);
           int at = nb < TWIN_OFFER * 4 ? nb++ : -1;
           if (at < 0) { int w = 0; for (int i = 1; i < nb; i++) if (twinRank(&best[i]) > twinRank(&best[w])) w = i; if (twinRank(&best[w]) <= twinRank(&t)) continue; at = w; }
@@ -567,9 +572,10 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
 // within TWIN_REACH -- a distance every line's end board has, so a line that leaves the board nearer one is seen as nearer
 static int twinCostOn(Board *b) {
   static int32_t g[MAXROWS + 2][W + 2]; static uint8_t ok[MAXROWS + 2][W + 2]; static Twin best[TWIN_OFFER * 4]; int top;
-  int nb = twinScan(b, g, ok, &top, best, 0, TWIN_REACH), lo = 99;
-  for (int i = 0; i < nb; i++) if (best[i].cost < lo) lo = best[i].cost;
-  return lo;
+  twinLeast = 1; twinLeastLo = 99;
+  twinScan(b, g, ok, &top, best, 0, TWIN_REACH);
+  twinLeast = 0;
+  return twinLeastLo;
 }
 // THE SWAPS THAT SORT ONE: the eight t's rows sorted, the rows nearest the cursor first, then the trigger row, on a copy of the grid g --
 // the trigger left unpressed; how many, or -1 where a row cannot be sorted or a three clears before the trigger

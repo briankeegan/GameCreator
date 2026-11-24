@@ -1097,6 +1097,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     }
   }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
+  // (the board lost within a break's time left alone: the frame each board is lost on decides, the walk not charged -- the walk is a
+  // preference for the nearer, and a dying board keeps the line that keeps it longest)
+  if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && rankHoldClock == decQ.b->clock && rankHoldOwn >= 0 && rankHoldOwn < rankSave && diesAt(x) != diesAt(y))
+    return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
   // more panels -- before the mode and the walk
