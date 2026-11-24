@@ -330,6 +330,7 @@ static Broke theBrWide; static int32_t wideDone;
 static int32_t brWhere; static double brGiven;
 static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as the answer says: the native one, native.c gn_setup)
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
+static double jobEndLog[5]; static int32_t jobKindLog[5];   // (the log's tJ=: each job's kind and when it ended, from the searches' start)
 static void breakJob(int32_t i) {
   clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
   inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
@@ -345,9 +346,11 @@ static void breakJob(int32_t i) {
     __atomic_store_n(&svJobDone, 1, __ATOMIC_RELEASE);
   }
   inJob = 0;
+  jobEndLog[i] = nowMs() - brJobT0;
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
+  for (int i = 0; i < 5; i++) { jobEndLog[i] = -1; jobKindLog[i] = -1; }
   brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
@@ -362,6 +365,7 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
+  for (int i = 0; i < njobKinds; i++) jobKindLog[i] = jobKinds[i];
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
@@ -864,6 +868,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   L_s(" cof="); L_i(carrySkip);
   if (A->ended == 16) { L_s(" c16="); L_i(carryClr); }
   L_s(" tS="); for (int i = 0; i < 6; i++) { if (i) L_s("/"); L_i((int64_t)tsLog[i]); }
+  L_s(" tJ="); for (int i = 0; i < 5 && jobKindLog[i] >= 0; i++) { if (i) L_s(","); L_i(jobKindLog[i]); L_s(":"); L_i((int64_t)jobEndLog[i]); }
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
   int any = 0;
