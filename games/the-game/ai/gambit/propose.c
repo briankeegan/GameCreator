@@ -29,7 +29,7 @@ static int cascadeLive(Board *b) {
 }
 static int32_t popLeft(const Board *b) {
   int32_t t = 0;
-  for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const pf_t *f = b->p[r][c].f; if (f[ISGARBAGE] && f[STATE] == MATCHED && f[TIMER] > t) t = f[TIMER]; }
+  for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; if (f[ISGARBAGE] && f[STATE] == MATCHED && f[TIMER] > t) t = f[TIMER]; }
   return t;
 }
 
@@ -997,7 +997,7 @@ static int zipLines(const Read *R, Cand *out, int n, int cap) {
   int H = imin(gridLen(b) - 2, MAXROWS), top = 0;
   for (int r = 0; r <= H + 1 && r < MAXROWS + 2; r++) for (int c = 0; c <= W + 1; c++) { g[r][c] = 0; ok[r][c] = 0; }
   for (int r = 1; r <= H; r++) for (int c = 1; c <= W; c++) {
-    int32_t v = cellAt(b, r, c); const pf_t *f = b->p[r][c].f;
+    int32_t v = cellAt(b, r, c); const int32_t *f = b->p[r][c].f;
     g[r][c] = f[STATE] == NORMAL ? v : -1;
     if (v != 0) top = r;
     ok[r][c] = v > 0 && v < 8 && f[STATE] == NORMAL && (r == 1 || (cellAt(b, r - 1, c) != 0 && b->p[r - 1][c].f[STATE] == NORMAL));
@@ -1038,7 +1038,7 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
   int h = b->height ? b->height : 12;
   uint8_t moving[MAXROWS + 2][W + 2]; memset(moving, 0, sizeof moving);
   for (int r = 1; r <= h + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = P(b, r, c)->f;
+    const int32_t *f = P(b, r, c)->f;
     if (f[ISGARBAGE] ? f[STATE] == MATCHED : f[COLOR] != 0 && (f[STATE] != NORMAL || SETB(f[CHAINING]))) moving[r][c] = 1;   // (a slab popping among them: what it turns into chains with what lies beside it)
   }
   // (THE NEXT LINK'S PARTNERS first: a panel of the chain falling lands on its column's resting top; a resting panel of its colour beside
@@ -1048,20 +1048,20 @@ static int cutLines(const Read *R, Cand *out, int n, int cap) {
   // the next link's as surely as one already falling -- its partners are swapped aside while the pop runs)
   int32_t tg[4 * W * MAXROWS]; int nt = 0;
   static uint8_t popsUnder[MAXROWS + 2][W + 2];
-  for (int c = 1; c <= W; c++) { int k = 0; for (int r = 1; r <= h + 1 && r < b->nrows; r++) { const pf_t *f = P(b, r, c)->f;
+  for (int c = 1; c <= W; c++) { int k = 0; for (int r = 1; r <= h + 1 && r < b->nrows; r++) { const int32_t *f = P(b, r, c)->f;
     popsUnder[r][c] = (uint8_t)k; if (!f[ISGARBAGE] && f[COLOR] > 0 && (f[STATE] == MATCHED || f[STATE] == POPPING || f[STATE] == POPPED)) k++; } }
   for (int r = 2; r <= h + 1 && r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = P(b, r, c)->f;
+    const int32_t *f = P(b, r, c)->f;
     int clearing = f[STATE] == MATCHED || f[STATE] == POPPING || f[STATE] == POPPED;
     int falls = f[STATE] == FALLING || f[STATE] == HOVERING || (SETB(f[CHAINING]) && f[STATE] != NORMAL) || (!clearing && popsUnder[r][c] > 0);
     if (f[ISGARBAGE] || f[COLOR] <= 0 || f[COLOR] >= 8 || clearing || !falls) continue;
     int land = r - popsUnder[r][c];
-    while (land > 1) { const pf_t *u = P(b, land - 1, c)->f; if (u[COLOR] != 0 && !moving[land - 1][c] && !(u[STATE] == MATCHED || u[STATE] == POPPING || u[STATE] == POPPED)) break; land--; }
+    while (land > 1) { const int32_t *u = P(b, land - 1, c)->f; if (u[COLOR] != 0 && !moving[land - 1][c] && !(u[STATE] == MATCHED || u[STATE] == POPPING || u[STATE] == POPPED)) break; land--; }
     static const int dr[6] = { 0, 0, 0, 0, -1, -2 }, dc[6] = { -2, -1, 1, 2, 0, 0 };
     for (int q = 0; q < 6; q++) {
       int pr = land + dr[q], pc = c + dc[q];
       if (pr < 1 || pc < 1 || pc > W || pr >= b->nrows) continue;
-      const pf_t *g = P(b, pr, pc)->f;
+      const int32_t *g = P(b, pr, pc)->f;
       if (g[ISGARBAGE] || g[COLOR] != f[COLOR] || g[STATE] != NORMAL || moving[pr][pc] || popsUnder[pr][pc] > 0) continue;
       for (int s = pc - 1; s <= pc; s++) {
         int32_t cost;

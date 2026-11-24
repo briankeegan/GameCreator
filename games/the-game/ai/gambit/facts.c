@@ -10,12 +10,12 @@ typedef struct { int32_t known[NFACTS]; double v[NFACTS]; } FactSet;   // (dies 
 #define US(F, k) ((F)->v[FACT_US_##k])
 static void factSet(FactSet *F, int k, double v) { F->known[k] = 1; F->v[k] = v; }
 
-static int32_t cellOfB(const Board *b, int r, int c) { const pf_t *f = b->p[r][c].f; return f[ISGARBAGE] ? -1 : (f[COLOR] == NUL ? 0 : f[COLOR]); }
+static int32_t cellOfB(const Board *b, int r, int c) { const int32_t *f = b->p[r][c].f; return f[ISGARBAGE] ? -1 : (f[COLOR] == NUL ? 0 : f[COLOR]); }
 // the highest row with a panel or landed garbage on it (garbage still falling is not part of the stack)
 static int32_t fullTop(const Board *b) {
   int32_t top = 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = b->p[r][c].f;
+    const int32_t *f = b->p[r][c].f;
     int falling = f[ISGARBAGE] && f[STATE] == FALLING;
     if ((f[COLOR] || f[ISGARBAGE]) && !falling && r > top) top = r;
   }
@@ -25,7 +25,7 @@ static int32_t fullTop(const Board *b) {
 static int32_t panelTop(const Board *b) {
   int32_t top = 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = b->p[r][c].f;
+    const int32_t *f = b->p[r][c].f;
     if (f[COLOR] > 0 && !f[ISGARBAGE] && r > top) top = r;
   }
   return top;
@@ -43,7 +43,7 @@ static void lowestGroupTop(const Board *b, int H, int32_t *top, int32_t *onScree
   int32_t low = NUL, h = b->height ? b->height : H;
   static int32_t idAt[MAXROWS][W + 2];
   for (int r = 0; r < MAXROWS; r++) for (int c = 0; c < W + 2; c++) idAt[r][c] = NUL;
-  for (int r = 1; r <= H && r < MAXROWS; r++) for (int c = 1; c <= W; c++) { const pf_t *f = b->p[r][c].f; if (f[ISGARBAGE]) { idAt[r][c] = f[GARBAGEID]; if (low == NUL) low = f[GARBAGEID]; } }
+  for (int r = 1; r <= H && r < MAXROWS; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; if (f[ISGARBAGE]) { idAt[r][c] = f[GARBAGEID]; if (low == NUL) low = f[GARBAGEID]; } }
   *top = 0; *onScreen = 0;
   if (low == NUL) return;
   int32_t ids[256], nid = 0, todo[256], ntodo = 0;

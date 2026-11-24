@@ -34,7 +34,7 @@ static int keyOf(const Board *b, char *out) {
   int k = 0;
   for (int r = 1; r < b->nrows && k < KEYLEN - 8; r++) {
     for (int c = 1; c <= W; c++) {
-      const pf_t *f = b->p[r][c].f;
+      const int32_t *f = b->p[r][c].f;
       if (f[ISGARBAGE]) out[k++] = 'G';
       else { int32_t v = f[COLOR] == NUL ? 0 : f[COLOR]; char d[12]; int nd = 0; if (!v) d[nd++] = '0'; while (v > 0) { d[nd++] = (char)('0' + v % 10); v /= 10; } while (nd) out[k++] = d[--nd]; }
     }
@@ -369,8 +369,16 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 // (a decision the host let go takes its jobs back at once: a job keeps its own share and never reads the host's abort, so the decision
 // would wait out the share -- and the question asked after it with it, answered past its frame. One whose frame came keeps them: its
 // answer is pressed, and what they found is in it)
+static int jobKindDone(int kind) {
+  int32_t *f = kind == JOB_BREAK ? &brJobDone : kind == JOB_PLAN ? &planBDone : kind == JOB_EXT ? &extDone : kind == JOB_WIDE ? &wideDone : &svJobDone;
+  return __atomic_load_n(f, __ATOMIC_ACQUIRE);
+}
+static int jobsAllDone(void) { for (int i = 0; i < njobKinds; i++) if (!jobKindDone(jobKinds[i])) return 0; return 1; }
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  if (clockAborted || abort_poll() == 1) __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
+  // (the jobs have the searches' time and not a frame past it: searches done sooner wait for them up to its end, then every job still
+  // searching is stopped -- a job's judging can drop its own share, so the stop is the decision's)
+  if (!clockAborted && abort_poll() != 1) while (nowMs() < brJobBy && !jobsAllDone() && abort_poll() != 1) {}
+  __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
   jobsDone(brCtx);
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = leftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;

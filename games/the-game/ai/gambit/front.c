@@ -197,13 +197,13 @@ static int unseenColour(int32_t c);
 static void unseenOf(const Board *b) {
   F.nunseen = 0;
   for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = b->p[r][c].f;
+    const int32_t *f = b->p[r][c].f;
     if (!f[ISGARBAGE] && unseenColour(f[COLOR]) && F.nunseen < MAXROWS * W) F.unseenIds[F.nunseen++] = f[ID];
   }
 }
 static int revealClears(const Board *t) {
   for (int r = 1; r < t->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = t->p[r][c].f;
+    const int32_t *f = t->p[r][c].f;
     if (f[ISGARBAGE] || f[STATE] != MATCHED) continue;
     for (int i = 0; i < F.nunseen; i++) if (F.unseenIds[i] == f[ID]) return 1;
   }
@@ -829,7 +829,7 @@ static void countAttacks(const Board *b) {
   static int32_t now[MAXROWS * W], freshIds[MAXROWS * W];
   int nn = 0, fresh = 0, fromGarbage = 0, gm = 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = b->p[r][c].f;
+    const int32_t *f = b->p[r][c].f;
     if (f[ISGARBAGE] && f[ID] != NUL) wasGarbage[f[ID] & (WASG - 1)] = 1;
     if (f[ISGARBAGE] && f[STATE] == MATCHED) gm++;
     if (f[STATE] == MATCHED && !f[ISGARBAGE] && f[COLOR] > 0) {
@@ -864,11 +864,11 @@ static void countAttacks(const Board *b) {
     // (each logged, the first few hundred: where, and the swap it came of -- to find what pressed it)
     if (F.loggedWasted < 400 && !F.pendLog[0]) {
       char *l = F.pendLog; int k = snprintf(l, sizeof F.pendLog, "GAMBITW %d three", b->clock);
-      for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const pf_t *f = b->p[r][c].f; for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q] && k < (int)sizeof F.pendLog) k += snprintf(l + k, sizeof F.pendLog - (unsigned long)k, " %d,%d", r, c); }
+      for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q] && k < (int)sizeof F.pendLog) k += snprintf(l + k, sizeof F.pendLog - (unsigned long)k, " %d,%d", r, c); }
       // (touch: a garbage cell beside one of its cells -- a three beside garbage breaks it, whatever frame the garbage is matched on)
       int touch = 0;
       for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-        const pf_t *f = b->p[r][c].f; int mine = 0;
+        const int32_t *f = b->p[r][c].f; int mine = 0;
         for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q]) mine = 1;
         if (!mine) continue;
         static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
@@ -942,7 +942,7 @@ static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play,
   }
   for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
     for (int r = r0; r < b->nrows && m->n < MOVE_IDS; r++) {
-      const pf_t *f = b->p[r][c].f;
+      const int32_t *f = b->p[r][c].f;
       if (f[COLOR] <= 0 || f[ISGARBAGE] || f[ID] == NUL) continue;
       m->ids[m->n] = f[ID]; m->moved[m->n++] = r == r0;
     }
@@ -953,7 +953,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
   int nc = 0, k = 0, bySwap = 0;
   if (!F.nmoves) return 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = b->p[r][c].f;
+    const int32_t *f = b->p[r][c].f;
     if (f[COLOR] > 0 && !f[ISGARBAGE] && f[ID] != NUL) { ids[nc] = f[ID]; states[nc++] = f[STATE]; }
   }
   for (int i = 0; i < F.nmoves; i++) {
