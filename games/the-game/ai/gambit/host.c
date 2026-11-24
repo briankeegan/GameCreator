@@ -53,7 +53,6 @@ void hostThreadStats(double *out) {
   struct rusage u; getrusage(RUSAGE_THREAD, &u);
   out[0] = (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6; out[1] = (double)u.ru_nivcsw; out[2] = (double)u.ru_nvcsw;
   out[3] = (double)(u.ru_minflt + u.ru_majflt);
-  out[4] = (double)u.ru_utime.tv_sec * 1e3 + (double)u.ru_utime.tv_usec / 1e3; out[5] = (double)u.ru_stime.tv_sec * 1e3 + (double)u.ru_stime.tv_usec / 1e3;
 }
 double hostNowMs(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6; }
 
