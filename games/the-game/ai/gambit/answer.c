@@ -369,6 +369,9 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 // (a decision the host let go takes its jobs back at once: a job keeps its own share and never reads the host's abort, so the decision
 // would wait out the share -- and the question asked after it with it, answered past its frame. One whose frame came keeps them: its
 // answer is pressed, and what they found is in it)
+// (the log's tS=: the searches begun at, from the decision's start; then from their start, the searches' own end, the jobs taken back,
+// the merge done; their share's end and the decision's deadline)
+static double tsLog[6];
 static int jobKindDone(int kind) {
   int32_t *f = kind == JOB_BREAK ? &brJobDone : kind == JOB_PLAN ? &planBDone : kind == JOB_EXT ? &extDone : kind == JOB_WIDE ? &wideDone : &svJobDone;
   return __atomic_load_n(f, __ATOMIC_ACQUIRE);
@@ -491,10 +494,13 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   if (R.under) onStart(brHave ? &brResume : 0);   // (the search beside the decision, from the frontier this one resumes)
   double ts = nowMs();
+  tsLog[0] = ts - tStart; tsLog[4] = searchesEnd() - ts; tsLog[5] = C2.due ? C2.due - ts : -1;
   searchAll(&R, &S);
+  tsLog[1] = nowMs() - ts;
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
+  tsLog[2] = nowMs() - ts;
   searchMerge(&R, &S);
-  S.searchMs = nowMs() - ts;
+  S.searchMs = nowMs() - ts; tsLog[3] = S.searchMs;
   batSearch = batOwn;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
   clockShareEnd(searchShare);
@@ -857,6 +863,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (S.haveAp) { L_s(" p0="); L_i(S.ap.perAim[0].set ? 1 : 0); L_s("/"); L_i(S.ap.nearest.set ? (int64_t)S.ap.nearest.near : -1); }
   L_s(" cof="); L_i(carrySkip);
   if (A->ended == 16) { L_s(" c16="); L_i(carryClr); }
+  L_s(" tS="); for (int i = 0; i < 6; i++) { if (i) L_s("/"); L_i((int64_t)tsLog[i]); }
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
   int any = 0;
