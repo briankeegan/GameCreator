@@ -14,6 +14,9 @@
 #   PA_ROUND_BURST  frames back to back per 60th of a second (lockstep catch-up; default 1)
 #   FRAMES          a game's length if the bot lives (default 21600)
 #   GAMES           which games, "scenario:seed ..." (default all 28)
+#   GC_GAMBIT_FIGHT, GC_GAMBIT_ENEMY  1 and virtual by default: the live bot always has an opponent across, and with none Gambit
+#                   plays time attack's rules (no reserve kept, no break needed); the training attacker shows no board, so the virtual
+#                   enemy (lua/GambitNative.lua) stands in for one
 #
 # Out: one line per game, then summary.json (survived per mode, late and refused answers per game). Exits 1 when any game is
 # lost or any answer was refused.
@@ -66,8 +69,8 @@ for c in $(seq 1 $(( $(nproc) - 1 ))); do
 done
 [ -n "$gcpu" ] || { gcpu=0; wcpus=0; }
 export GC_EVAL_DIR="$EVAL" GC_GAMBIT_WORDS="$OUT/gambit.words" GC_GAMBIT_WORKERS=4 GC_GAMBIT_CPUS="$gcpu" GC_GAMBIT_WORKER_CPUS="${wcpus:-$gcpu}"
-export PA_LEVEL=${PA_LEVEL:-10}
-echo "upstream $(git -C "$WORK" log -1 --format='%h %s' | cut -c1-80); bot/ ${BOT_SHA:0:8}, link ${LINK_SHA:0:8}; Gambit $COMMIT, ${GC_PROFILE:-survivor-profiles/gambit.json}; level $PA_LEVEL; client CPU 0, Gambit $gcpu, workers ${wcpus:-$gcpu}"
+export PA_LEVEL=${PA_LEVEL:-10} GC_GAMBIT_FIGHT=${GC_GAMBIT_FIGHT-1} GC_GAMBIT_ENEMY=${GC_GAMBIT_ENEMY-virtual}
+echo "upstream $(git -C "$WORK" log -1 --format='%h %s' | cut -c1-80); bot/ ${BOT_SHA:0:8}, link ${LINK_SHA:0:8}; Gambit $COMMIT, ${GC_PROFILE:-survivor-profiles/gambit.json}; level $PA_LEVEL; fight ${GC_GAMBIT_FIGHT:-0}, enemy ${GC_GAMBIT_ENEMY:-none}; client CPU 0, Gambit $gcpu, workers ${wcpus:-$gcpu}"
 
 # 4. THE GAMES
 games=${GAMES:-$(for s in combo_storm factory large_garbage; do for n in 1 2 3 4 5 6 7 8; do printf '%s:%d ' $s $n; done; done; printf 'endless:%d ' 1 2 3 4)}
