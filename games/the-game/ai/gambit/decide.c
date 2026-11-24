@@ -1499,6 +1499,10 @@ static Played playOf(const Read *R, int n) {
   // swap toward the eight kept as the target (propose.c twinNextSwap), judged on the engine, is pressed instead -- only where it lives
   // as the hold does or is lost no sooner, breaks the board's chain no shorter, wastes no three and keeps the window's reserve)
   freeSetup = 0;
+  // (a swap pressed in the hold's place, or before the line in progress, is pressed out of the window as it stands: under garbage a break
+  // can be offered on the very next decision -- a slab converting while it pops -- so the second hand leaves a break's walk in the window
+  // now, besides at the need. baseWalk: the walk the decision pressed without it)
+#define SPENDS_NOW(J, baseWalk) (decF.under && pressAllowance >= 0 && !ruleNoEnemy && lineWalk(J) > (baseWalk) && allowLeftAt(0, lineWalk(J)) < BREAK_WALK)
   if (!P.line && P.top && P.top->hold && !P.deferred && !R->up && !P.wait && twinWanted && !clockOut()) {
     int32_t sw;
     if (twinNextSwap(decQ.b, &sw)) {
@@ -1512,7 +1516,7 @@ static Played playOf(const Read *R, int n) {
         else if (!(H->o.lives ? FS.o.lives : (FS.o.lives || (FS.o.lostAt != NOT_ASKED && diesAt(&FS) >= diesAt(H))))) freeSetup = -2;   // (an unknown loss is never no sooner)
         else if (cutsShort(&FS)) freeSetup = -3;
         else if (wastesThree(&FS)) freeSetup = -4;
-        else if (spendsReserve(&FS)) freeSetup = -5;
+        else if (spendsReserve(&FS) || SPENDS_NOW(&FS, 0)) freeSetup = -5;
         else if (twinSecond && !loadedAfter(one, 1)) freeSetup = -8;   // (the second eight's swap: never one that unloads the first)
         else { P.line = &FS; freeSetup = 1; }
       }
@@ -1533,7 +1537,7 @@ static Played playOf(const Read *R, int n) {
         if (judgeCand(R, &k, &FW) && !FW.o.dead &&
             (C->o.lives ? FW.o.lives : (FW.o.lives || (FW.o.lostAt != NOT_ASKED && diesAt(&FW) >= diesAt(C)))) &&
             imax(0, FW.apBroke) >= imax(0, C->apBroke) && (FW.met < 0 ? MAXAIMS : FW.met) <= (C->met < 0 ? MAXAIMS : C->met) &&
-            !cutsShort(&FW) && !wastesThree(&FW)) { P.line = P.top = &FW; P.wait = 0; freeSetup = 2; }
+            !cutsShort(&FW) && !wastesThree(&FW) && !SPENDS_NOW(&FW, lineWalk(C))) { P.line = P.top = &FW; P.wait = 0; freeSetup = 2; }
       }
     }
   }
