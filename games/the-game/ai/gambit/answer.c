@@ -332,7 +332,7 @@ static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as 
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static double jobEndLog[5]; static int32_t jobKindLog[5];   // (the log's tJ=: each job's kind and when it ended, from the searches' start)
 static void breakJob(int32_t i) {
-  clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
+  clockWork = brJobWork; clockShare = brJobBy; clockAborted = 0; clockPoll = 0;   // (within the searches' share, as the decision's own searches are: a share a search begins inside it never runs past it)
   inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
   int kind = jobKinds[i];
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
