@@ -30,7 +30,7 @@ static const int DIR_ROW[4] = { 1, -1, 0, 0 }, DIR_COL[4] = { 0, 0, -1, 1 };
 
 // ------------------------------------------------------------------ panels
 static void clearFlags(Panel *p, int clearChaining) {
-  pf_t *f = p->f;
+  int32_t *f = p->f;
   f[STATE] = NORMAL;
   f[COMBOINDEX] = NUL; f[COMBOSIZE] = NUL; f[SWAPFROMLEFT] = NUL; f[DONTSWAP] = NUL; f[QUEUEDHOVER] = NUL;
   if (clearChaining) f[CHAINING] = NUL;
@@ -38,7 +38,7 @@ static void clearFlags(Panel *p, int clearChaining) {
   f[STATECHANGED] = 0; f[PROPCHAIN] = 0; f[MATCHANYWAY] = 0;
 }
 static void clearPanel(Panel *p, int clearChaining, int clearColor) {
-  pf_t *f = p->f;
+  int32_t *f = p->f;
   if (clearColor) f[COLOR] = 0;
   f[TIMER] = 0;
   f[INITIALTIME] = NUL; f[POPTIME] = NUL; f[POPINDEX] = NUL;
@@ -48,7 +48,7 @@ static void clearPanel(Panel *p, int clearChaining, int clearColor) {
   clearFlags(p, clearChaining);
 }
 static void makePanel(Panel *p, int32_t row, int32_t col, int32_t id) {
-  pf_t *f = p->f;
+  int32_t *f = p->f;
   f[ROW] = row; f[COL] = col; f[ID] = id;
   f[COLOR] = 0; f[CHAINING] = NUL; f[MATCHING] = NUL; f[PROPFALL] = NUL; f[GARBAGEID] = NUL;
   clearPanel(p, 1, 1);
@@ -60,7 +60,7 @@ static Panel *createPanelAt(Board *b, int row, int col) {
 }
 static Panel *below(Board *b, const Panel *p) { return P(b, p->f[ROW] - 1, p->f[COL]); }
 static int supportedFromBelow(Board *b, Panel *p) {
-  pf_t *f = p->f;
+  int32_t *f = p->f;
   if (f[ROW] <= 1) return 1;
   if (f[ISGARBAGE]) {
     int start = f[COL] - f[XOFF], end = f[COL] - f[XOFF] + f[GWIDTH] - 1;
@@ -267,7 +267,7 @@ static void updateLanding(Board *b, Panel *p) {
   }
 }
 static void updatePanel(Board *b, Panel *p) {
-  pf_t *f = p->f;
+  int32_t *f = p->f;
   f[STATECHANGED] = 0; f[PROPCHAIN] = 0; f[PROPFALL] = 0; f[MATCHING] = 0;
   switch (f[STATE]) {
     case NORMAL: updateNormal(b, p); break;
@@ -307,7 +307,7 @@ static int canMatch(const Panel *p) {
 // every frame stop there. Nothing in a frame moves a panel up; a new row, a
 // drop, a swap and a loaded board raise hi, and updatePanels lowers it again.
 static int rowsTo(const Board *b) { return b->hi < b->nrows ? b->hi : b->nrows; }
-static int settled(const pf_t *f) {
+static int settled(const int32_t *f) {
   return f[COLOR] == 0 && !f[ISGARBAGE] && f[STATE] == NORMAL && f[STATECHANGED] == 0 && f[PROPCHAIN] == 0 && f[PROPFALL] == 0 &&
          f[MATCHING] == 0 && !SETB(f[CHAINING]) && !f[MATCHANYWAY] && !SETB(f[QUEUEDHOVER]) && !SETN(f[FELL]);
 }
@@ -604,7 +604,7 @@ static int getConnectedGarbagePanels(Board *b, Cells *matching, Cells *out) {
   for (r = 1; r <= TOP(b); r++)
     for (c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
-      pf_t *f = p->f;
+      int32_t *f = p->f;
       if (!(f[ISGARBAGE] && f[STATE] == NORMAL)) continue;
       int seen = 0;
       for (i = 0; i < nid; i++) if (ids[i] == f[GARBAGEID]) { seen = 1; break; }
@@ -768,7 +768,7 @@ static void dropGarbage(Board *b, int32_t width, int32_t height, int32_t isMetal
     for (int c = 1; c <= W; c++) {
       Panel *p = createPanelAt(b, r, c);
       if (c >= originCol && c < originCol + width) {
-        pf_t *f = p->f;
+        int32_t *f = p->f;
         f[GARBAGEID] = b->garbageCreatedCount; f[ISGARBAGE] = 1; f[COLOR] = 9; f[GWIDTH] = width; f[GHEIGHT] = height;
         f[YOFF] = r - originRow; f[XOFF] = c - originCol; f[SHAKETIME] = shake; f[STATE] = FALLING;
         if (isMetal) f[METAL] = 1;
@@ -823,7 +823,7 @@ static void receiveGarbage(Board *b, const Incoming *g) {
 static int restingRow(const Board *b, int r) {
   const Panel *row = b->p[r], *under = b->p[r - 1];
   for (int c = 1; c <= W; c++) {
-    const pf_t *f = row[c].f, *u = under[c].f;
+    const int32_t *f = row[c].f, *u = under[c].f;
     if (!f[ISGARBAGE] || f[STATE] != NORMAL || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
     if (!u[ISGARBAGE] || u[COLOR] == 0 || u[GARBAGEID] != f[GARBAGEID] || u[YOFF] == f[YOFF]) return 0;
   }
@@ -836,7 +836,7 @@ static int restingRow(const Board *b, int r) {
 static int poppingRow(Board *b, int r) {
   Panel *row = b->p[r];
   for (int c = 1; c <= W; c++) {
-    const pf_t *f = row[c].f;
+    const int32_t *f = row[c].f;
     if (!f[ISGARBAGE] || f[STATE] != MATCHED || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
     if (f[TIMER] <= 1 || f[TIMER] - 1 == f[POPTIME]) return 0;
   }
@@ -850,7 +850,7 @@ static int poppingRow(Board *b, int r) {
 static int quietRow(const Board *b, int r) {
   const Panel *row = b->p[r], *under = b->p[r - 1];
   for (int c = 1; c <= W; c++) {
-    const pf_t *f = row[c].f;
+    const int32_t *f = row[c].f;
     if (f[STATE] != NORMAL || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
     if (f[COLOR] == 0) continue;
     if (f[ISGARBAGE] || under[c].f[STATECHANGED]) return 0;
@@ -891,7 +891,7 @@ static int isQuiet(Board *b) {
   // on row 1) reads a change flag only a row sets.
   for (int r = 1, n = rowsTo(b); r < n; r++)
     for (int c = 1; c <= W; c++) {
-      const pf_t *f = b->p[r][c].f;
+      const int32_t *f = b->p[r][c].f;
       if (f[STATE] != NORMAL || f[STATECHANGED] != 0 || f[PROPCHAIN] != 0 || f[MATCHING] != 0 || f[PROPFALL] != 0 ||
           SETB(f[CHAINING]) || f[MATCHANYWAY] || SETB(f[QUEUEDHOVER]) || SETN(f[FELL])) return 0;
       if (f[ISGARBAGE] && !supportedFromBelow(b, &b->p[r][c])) return 0;
@@ -1039,7 +1039,7 @@ static int32_t countdownRoom(Board *b) {
   for (int r = n - 1; r >= 1; r--)
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
-      const pf_t *f = p->f;
+      const int32_t *f = p->f;
       paCdScan++;
       if (f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING] || f[MATCHANYWAY] || SETB(f[QUEUEDHOVER])) return 0;
       if (r <= top && SETB(f[CHAINING]) && (canMatch(p) || f[COLOR] == 9)) return 0;   // clearChainingFlags would clear it
@@ -1055,7 +1055,7 @@ static int32_t countdownRoom(Board *b) {
     int32_t lastId = 0, lastY = 0, have = 0;
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
-      const pf_t *f = p->f;
+      const int32_t *f = p->f;
       if (!f[ISGARBAGE] || f[STATE] == MATCHED) { have = 0; continue; }
       if (have && f[GARBAGEID] == lastId && f[YOFF] == lastY) continue;
       paCdSup++;
@@ -1072,7 +1072,7 @@ static int32_t countdownRoom(Board *b) {
 static void countdownFrame(Board *b) {
   int n = rowsTo(b);
   for (int r = 1; r < n; r++)
-    for (int c = 1; c <= W; c++) { pf_t *f = P(b, r, c)->f; if (f[ISGARBAGE] && f[STATE] == MATCHED) f[TIMER]--; }
+    for (int c = 1; c <= W; c++) { int32_t *f = P(b, r, c)->f; if (f[ISGARBAGE] && f[STATE] == MATCHED) f[TIMER]--; }
   b->shakeTimeOnFrame = 0;
   b->nPrevActive = b->nActive;
   if (b->chainCounter != 0 && !hasChainingPanels(b)) b->chainCounter = 0;
@@ -1092,7 +1092,7 @@ static int countdown(Board *b, int32_t maxk) {
   k = imin(k, countdownRoom(b));   // with nothing popping the board is quiet, which run() already makes cheap
   if (k <= 0) return 0;
   for (int r = 1; r < n; r++)
-    for (int c = 1; c <= W; c++) { pf_t *f = P(b, r, c)->f; if (f[ISGARBAGE] && f[STATE] == MATCHED) f[TIMER] -= k; }
+    for (int c = 1; c <= W; c++) { int32_t *f = P(b, r, c)->f; if (f[ISGARBAGE] && f[STATE] == MATCHED) f[TIMER] -= k; }
   // decrementInvincibilityTimers, k times
   b->prevShakeTime = imax(b->shakeTime - (k - 1), 0);
   b->shakeTime = imax(b->shakeTime - k, 0);
@@ -1169,39 +1169,6 @@ static const char *headNames[] = { "riseTimer", HEAD(NAME1) };
 EXPORT(nb_head_name) const char *nb_head_name(int i) { return i >= 0 && i < NHEAD ? headNames[i] : 0; }
 static int32_t fromD(double v) { return v != v ? NUL : (int32_t)v; }
 static double toD(int32_t v) { return v == NUL ? __builtin_nan("") : (double)v; }
-// THE BOARD AS BYTES, WIDE (gambit's question bytes and its dumps, the logs' GAMBITL/GAMBITB): the head as the struct lays it out with its
-// nil-able fields (HEAD) in the wire's nil, then the incoming, then every panel's NF fields as int32 -- the form every log carries,
-// whatever the engine's panels hold. Returns the bytes written / read, or -1 for a board that does not fit (or a field outside 16 bits).
-static long boardToWide(const Board *b, unsigned char *out, unsigned long cap) {
-  unsigned long qn = (unsigned long)b->ninc * sizeof(Incoming), rn = (unsigned long)b->nrows * WIDE_PANEL * (W + 1);
-  if (BOARD_HEAD + qn + rn > cap) return -1;
-  Board *h = (Board *)out;
-  memcpy(out, b, BOARD_HEAD);
-#define WIDEN1(fl, n) h->fl = N2W(b->fl);
-  HEAD(WIDEN1)
-#undef WIDEN1
-  Incoming *q = (Incoming *)(out + BOARD_HEAD);
-  memcpy(q, b->inc, qn);
-  for (int i = 0; i < b->ninc; i++) q[i].finalized = N2W(b->inc[i].finalized);
-  int32_t *w = (int32_t *)(out + BOARD_HEAD + qn);
-  for (int r = 0; r < b->nrows; r++) for (int c = 0; c <= W; c++) for (int f = 0; f < NF; f++) *w++ = N2W(b->p[r][c].f[f]);
-  return (long)(BOARD_HEAD + qn + rn);
-}
-static long boardFromWide(Board *b, const unsigned char *in, unsigned long n) {
-  if (n < BOARD_HEAD) return -1;
-  memcpy(b, in, BOARD_HEAD);
-#define NARROW1(fl, nm) b->fl = W2N(b->fl);
-  HEAD(NARROW1)
-#undef NARROW1
-  if (b->ninc < 0 || b->ninc > MAXINC || b->nrows < 13 || b->nrows > MAXROWS) return -1;
-  unsigned long qn = (unsigned long)b->ninc * sizeof(Incoming), rn = (unsigned long)b->nrows * WIDE_PANEL * (W + 1);
-  if (BOARD_HEAD + qn + rn > n) return -1;
-  memcpy(b->inc, in + BOARD_HEAD, qn);
-  for (int i = 0; i < b->ninc; i++) b->inc[i].finalized = W2N(b->inc[i].finalized);
-  const int32_t *w = (const int32_t *)(in + BOARD_HEAD + qn);
-  for (int r = 0; r < b->nrows; r++) for (int c = 0; c <= W; c++) for (int f = 0; f < NF; f++) { int32_t v = W2N(*w++); if (v != (pf_t)v) return -1; b->p[r][c].f[f] = (pf_t)v; }
-  return (long)(BOARD_HEAD + qn + rn);
-}
 EXPORT(nb_load) int nb_load(Board *b) {
   int k = 0, i, r, c, f;
   const int32_t *x = ioBody;
@@ -1215,11 +1182,10 @@ EXPORT(nb_load) int nb_load(Board *b) {
   if (b->nstall < 0 || b->nstall > MAXSTALL) err |= ERR_STALL;
   if (b->nlanded < 0 || b->nlanded > MAXLANDED) err |= ERR_LANDED;
   if (err) return err;
-  for (r = 0; r < b->nrows; r++) for (c = 1; c <= W; c++) for (f = 0; f < NF; f++) { int32_t v = W2N(*x++); if (v != (pf_t)v) err |= ERR_FIELD; b->p[r][c].f[f] = (pf_t)v; }
-  if (err) return err;
+  for (r = 0; r < b->nrows; r++) for (c = 1; c <= W; c++) for (f = 0; f < NF; f++) b->p[r][c].f[f] = *x++;
   for (i = 0; i < b->ninc; i++) {
     Incoming *g = &b->inc[i];
-    g->width = *x++; g->height = *x++; g->isChain = *x++; g->isMetal = *x++; g->frameEarned = *x++; g->finalized = W2N(*x++);
+    g->width = *x++; g->height = *x++; g->isChain = *x++; g->isMetal = *x++; g->frameEarned = *x++; g->finalized = *x++;
   }
   for (i = 0; i < b->nstall; i++) {
     Stall *s = &b->stall[i];
@@ -1237,10 +1203,10 @@ EXPORT(nb_save) int nb_save(Board *b) {
   ioHead[k++] = b->riseTimer;
 #define SAVE1(fl, n) ioHead[k++] = toD(b->fl);
   HEAD(SAVE1)
-  for (r = 0; r < b->nrows; r++) for (c = 1; c <= W; c++) for (f = 0; f < NF; f++) *x++ = N2W(b->p[r][c].f[f]);
+  for (r = 0; r < b->nrows; r++) for (c = 1; c <= W; c++) for (f = 0; f < NF; f++) *x++ = b->p[r][c].f[f];
   for (i = 0; i < b->ninc; i++) {
     Incoming *g = &b->inc[i];
-    *x++ = g->width; *x++ = g->height; *x++ = g->isChain; *x++ = g->isMetal; *x++ = g->frameEarned; *x++ = N2W(g->finalized);
+    *x++ = g->width; *x++ = g->height; *x++ = g->isChain; *x++ = g->isMetal; *x++ = g->frameEarned; *x++ = g->finalized;
   }
   for (i = 0; i < b->nstall; i++) { Stall *s = &b->stall[i]; *x++ = s->leftId; *x++ = s->rightId; *x++ = s->row; *x++ = s->col; *x++ = s->clock; }
   for (i = 0; i < b->nlanded; i++) *x++ = b->landed[i];
@@ -1260,7 +1226,7 @@ EXPORT(nb_push_incoming) void nb_push_incoming(Board *b, int32_t w, int32_t h, i
 }
 // A piece as the Lua has it: when it was earned and whether it is final.
 EXPORT(nb_receive) void nb_receive(Board *b, int32_t w, int32_t h, int32_t isChain, int32_t isMetal, int32_t frameEarned, int32_t finalized) {
-  Incoming g = { w, h, isChain, isMetal, frameEarned, W2N(finalized) };
+  Incoming g = { w, h, isChain, isMetal, frameEarned, finalized };
   receiveGarbage(b, &g);
 }
 EXPORT(nb_game_over) int nb_game_over(Board *b) { return b->gameOver; }

@@ -252,7 +252,7 @@ static int converting(const Board *b, int32_t *want) {
   for (int r = 1; r < b->nrows; r++) {
     int any = 0;
     for (int c = 1; c <= W; c++) {
-      const pf_t *f = b->p[r][c].f;
+      const int32_t *f = b->p[r][c].f;
       if (f[ISGARBAGE] && f[STATE] == MATCHED && f[COLOR] >= 1 && f[COLOR] <= 8) { want[c] = f[COLOR]; any = 1; } else want[c] = 0;
     }
     if (any) return 1;

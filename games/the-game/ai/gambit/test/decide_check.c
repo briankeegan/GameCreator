@@ -267,10 +267,10 @@ EXPORT(gb_reveal_apply) int gb_reveal_apply(void) {
   int n = 0;
   if (!revealSrc) return 0;
   for (int r = 0; r < hostBoard->nrows; r++) for (int c = 1; c <= W; c++) {
-    pf_t *f = hostBoard->p[r][c].f;
+    int32_t *f = hostBoard->p[r][c].f;
     if (!((f[COLOR] >= 30 && f[COLOR] <= 119) || (f[COLOR] >= 130 && f[COLOR] <= 219))) continue;
     for (int r2 = 0; r2 < revealSrc->nrows; r2++) for (int c2 = 1; c2 <= W; c2++) {
-      const pf_t *g = revealSrc->p[r2][c2].f;
+      const int32_t *g = revealSrc->p[r2][c2].f;
       if (g[ID] == f[ID] && g[COLOR] >= 1 && g[COLOR] <= 10 && f[COLOR] != g[COLOR]) { f[COLOR] = g[COLOR]; n++; }
     }
   }

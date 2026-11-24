@@ -144,13 +144,13 @@ static int wastedThree(Board *g, Board *a) {
   for (int f = 0; f < FIRST_LOOK && g->gameOverClock <= 0; f++) {
     run(g); run(a); g->input = a->input = 0; g->pressSwap = a->pressSwap = 0;
     for (int r = 1; r < a->nrows; r++) for (int c = 1; c <= W; c++) {
-      const pf_t *p = a->p[r][c].f;
+      const int32_t *p = a->p[r][c].f;
       if (p[STATE] != MATCHED || p[ISGARBAGE]) continue;
       int old = 0; for (int q = 0; q < nw && !old; q++) old = was[q] == p[ID];
       if (!old && nw < MAXROWS * W * 2) was[nw++] = p[ID];
     }
     for (int r = 1; r < g->nrows; r++) for (int c = 1; c <= W; c++) {
-      const pf_t *p = g->p[r][c].f;
+      const int32_t *p = g->p[r][c].f;
       if (p[STATE] != MATCHED || p[ISGARBAGE]) continue;
       int old = 0; for (int q = 0; q < nw && !old; q++) old = was[q] == p[ID];
       for (int q = 0; q < ng && !old; q++) old = got[q] == p[ID];
@@ -246,7 +246,7 @@ static LOCAL int32_t readyRow1Buf[W + 1];
 // the stack as each panel above it falls into its place (pa.c switchPanels), so a line anchored to one is found rows above where it was
 static int32_t anchorIdAt(const Board *b, int c) {
   if (!b || b->nrows < 2) return NUL;
-  const pf_t *f = b->p[1][c].f;
+  const int32_t *f = b->p[1][c].f;
   return f[COLOR] && !f[ISGARBAGE] && f[STATE] == NORMAL ? f[ID] : NUL;
 }
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
@@ -552,7 +552,7 @@ static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const Jud
         if (bf && mr >= 0 && mr < bf->nrows && mc >= 1 && mc + 1 <= W) {
           int32_t a = bf->p[mr][mc].f[ID], b = bf->p[mr][mc + 1].f[ID];
           if (k > 0 && seq[k] == seq[k - 1] && a != NUL && b != NUL && a == prevB && b == prevA) { if (j->noopAt < 0) j->noopAt = k; if (k < 64) j->noops |= (int64_t)1 << k; }
-          { const pf_t *fa = bf->p[mr][mc].f, *fb = bf->p[mr][mc + 1].f;
+          { const int32_t *fa = bf->p[mr][mc].f, *fb = bf->p[mr][mc + 1].f;
             if (k < 64 && fa[COLOR] > 0 && fa[COLOR] == fb[COLOR] && !fa[ISGARBAGE] && !fb[ISGARBAGE]) j->sames |= (int64_t)1 << k; }
           prevA = a; prevB = b;
         } else prevA = prevB = NUL; }
@@ -695,7 +695,13 @@ static void onStop(void);   // (answer.c: the search beside the decisions)
 EXPORT(gb_question_bytes) int gb_question_bytes(int nbytes, int narr) {
   onStop();   // (the search beside the last decision let go before the question's board is written over the one it reads)
   if (!hostBoard) hostBoard = nb_new();
-  if (narr > MAXARR || boardFromWide(hostBoard, (const unsigned char *)gbIo, (unsigned long)nbytes) != nbytes) return -1;
+  const unsigned char *p = (const unsigned char *)gbIo;
+  memcpy(hostBoard, p, BOARD_HEAD);
+  if (hostBoard->ninc < 0 || hostBoard->ninc > MAXINC || hostBoard->nrows < 13 || hostBoard->nrows > MAXROWS || narr > MAXARR) return -1;
+  unsigned long qn = (unsigned long)hostBoard->ninc * sizeof(Incoming), rn = (unsigned long)hostBoard->nrows * sizeof(Panel) * (W + 1);
+  if (BOARD_HEAD + qn + rn != (unsigned long)nbytes) return -1;
+  memcpy(hostBoard->inc, p + BOARD_HEAD, qn);
+  memcpy(hostBoard->p, p + BOARD_HEAD + qn, rn);
   const int32_t *a = gbIo + (nbytes + 3) / 4;
   memset(&hostQ, 0, sizeof hostQ);
   hostQ.b = hostBoard; hostQ.narr = narr;
@@ -710,7 +716,7 @@ EXPORT(gb_cells) int gb_cells(void) {
   int k = 0;
   gbIo[k++] = b->nrows; gbIo[k++] = b->stopTime + b->preStopTime; gbIo[k++] = b->shakeTime;
   for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = b->p[r][c].f;
+    const int32_t *f = b->p[r][c].f;
     gbIo[k++] = f[COLOR] == NUL ? 0 : f[COLOR]; gbIo[k++] = f[ISGARBAGE]; gbIo[k++] = f[STATE];
   }
   return k;

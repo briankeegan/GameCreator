@@ -147,7 +147,7 @@ static int32_t materialOn(const Board *b);   // (facts.c: the panels under the l
 static int32_t groupsOn(const Board *b) {
   int32_t n[16] = { 0 }, any = 0;
   for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const pf_t *f = b->p[r][c].f;
+    const int32_t *f = b->p[r][c].f;
     if (f[ISGARBAGE] || f[ID] <= 0 || f[COLOR] <= 0) continue;
     if (f[COLOR] >= 130) any++; else if (f[COLOR] < 8) n[f[COLOR]]++;
   }
