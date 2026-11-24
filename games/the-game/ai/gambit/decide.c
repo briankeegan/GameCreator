@@ -284,12 +284,16 @@ static int readBoard_(Read *R) {
   // (and A LOW STACK: under LOW_ROWS rows of panels, not topped, it is raised all the same -- the owner's rule: below six rows, raise high;
   // in a game garbage has reached or is on its way to -- the owner: the opener raise changed only where it kills, and with no garbage
   // ever it does: endless at level 11, 15 of 28 raising, 25 of 28 not)
-  int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < LOW_ROWS) && !R->topped;
+  // (and IN THE QUIET between attacks -- nothing on the board, nothing on its way -- the floor is FINISH_ROWS: a storm of small pieces
+  // pops all through, the stack never rises under it, and the board meets the next storm with only the panels it rose to before)
+  int quiet = !R->under && !decQ.narr && !decQ.b->ninc;
+  int refill = !opening && garbageGame && (R->belowFloor || panelTop(decQ.b) < (quiet ? FINISH_ROWS : LOW_ROWS)) && !R->topped;
   // (and FINISH THEM'S RAISE: the eights it fires need rows to sort -- three to five tall in two columns side by side -- so a stack
   // under LOW_ROWS is raised to FINISH_ROWS in a game garbage has not reached too; set 86 endless, a stack of four rows cleared by 4s
   // and 6s, no eight in reach in four decisions of five)
   int finishRefill = !opening && !refill && !garbageGame && finishAsked() && panelTop(decQ.b) < LOW_ROWS && !R->topped;
   if (finishRefill) { refill = 1; if (!rule->raiseTo || rule->raiseTo > FINISH_ROWS) to = FINISH_ROWS; }
+  if (refill && quiet && !R->belowFloor && panelTop(decQ.b) >= LOW_ROWS && (!to || to < FINISH_ROWS)) to = FINISH_ROWS;
   // (TIME ATTACK'S RAISE: no design being built and the stack under its top -- the owner: flatten, raise to the top, then the chain; no
   // garbage is coming, so the rows are raised as they are, never held to a break's readiness. The top is TA_TOP less each row the tallest
   // column stands over the shortest past TA_EVEN: an uneven stack raised to TA_TOP puts its tallest column where the rise ends it)
