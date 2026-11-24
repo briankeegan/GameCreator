@@ -596,9 +596,9 @@ static int lineWalk(const Judge *J) {
   for (int i = 0; !J->hold && i < J->k.nseq; i++) { n += actionsFor(r, c, CR(J->k.seq[i]), CC(J->k.seq[i]), HOLDTIGHT + 1); r = CR(J->k.seq[i]); c = CC(J->k.seq[i]); }
   return n;
 }
-// (a line that breaks nothing and walks the input allowance below a break's walk: the next break is pressed out of what is left)
-// (how far below a break's walk a line that breaks nothing leaves the allowance: 0 when it keeps it, or breaks -- the window already
-// short, the line that spends less of what is left keeps more of the next break)
+// (a line that walks the input allowance below a break's walk: the next break is pressed out of what is left -- a break's own walk too,
+// the window read as the next block finds it; the window already short, the line that spends less of what is left keeps more of the
+// next break)
 // (THE RESERVE, AS THE NEXT BREAK FINDS IT: the window left once a line is pressed, read at the soonest frame a break can be needed --
 // now with garbage on the board, the next block's landing with one on its way -- shown in the telegraph, or queued on the board and
 // held off by its own motion (outcome.c holdQueueAt: the frame the engine drops it, the board left alone) -- else EARLIEST_LANDING: an
@@ -625,10 +625,12 @@ static int allowAtNeed(int walk) {
 // (GARBAGE ON ITS WAY: shown in the telegraph, or past it and queued on the board -- a one-row block waits there for the board's
 // panels to come to rest, pa.c shouldDropGarbage, and a storm's queue is never empty)
 static int garbageComing(void) { return decQ.narr > 0 || (decQ.b && decQ.b->ninc > 0); }
-// (how far below a break's walk a line leaves the allowance -- a break too: of two breaks the board survives alike, the one that leaves
-// the next break its walk; spendsReserve, which sets a line that breaks nothing after one that keeps the reserve, never counts a break)
+// (how far below a break's walk a line leaves the allowance -- a break too, read at the next block's landing: the garbage it breaks is
+// gone, the next block is the next break's, and a break that spends the window that one is pressed from saves the board only until it
+// lands)
 static int digPaid(const Judge *J);
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || digPaid(J) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
+static int reserveLeft(const Judge *J) { int w = lineWalk(J); return J->apBroke > 0 ? allowAtLanding(w) : allowAtNeed(w); }
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || digPaid(J) ? 0 : imax(0, BREAK_WALK - reserveLeft(J)); }
 // (with no break offered under garbage, a line that digs toward one -- or lets a perched block down onto the stack, the way to the break
 // the perch holds off -- may spend the reserve only where the hold loses the board within a
 // break's time, or the window holds a break's walk again by the time the next block can land -- standing longer, the reserve is that
@@ -638,7 +640,7 @@ static const Judge *rankHold;   // (the decision's hold, set where no line of th
 static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK || J->k.letDown; }
 static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !breakOffered && digsForBreak(J) && allowAtNeed(w) >= w &&
                                      (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave)); }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !digPaid(J) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < BREAK_WALK; }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
 // the hold's board at rest has the room for it to come down (outcome.c restOf), a line that clears nothing and leaves it nearer
