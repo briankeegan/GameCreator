@@ -210,7 +210,7 @@ static void planIn(const Question *q, const PlanOpts *o, Plan *P) {
     // the level read in the order it was made: every board within the rules is a kid of its parent; one that clears is weighed
     for (int pi = 0; pi < npool; pi++) pool[pi].kid0 = -1;
     for (int j = 0; j < nj; j++) {
-      if ((j & 3) == 3 && clockOut()) break;
+      if ((j & 31) == 31 && clockOut()) break;
       PItem *it = &pool[jobP[j]];
       int32_t m = jobM[j];
       int out = jobOut[j];

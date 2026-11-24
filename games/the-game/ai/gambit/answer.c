@@ -476,9 +476,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   // (THE SEARCHES' SHARE: the decision's time but the judging's quarter -- propose.c searchesEnd -- every search within it)
   double searchShare = clockShareBegin(searchesEnd());
   static Found S;
-  phAt[8] = nowMs();
   searchPrep(&R, &S);
-  phAt[9] = nowMs();
   extLogged = 0; extSkip = 0; extCutN = 0;   // (the extension's log is this decision's: cleared before any search begins, the ones beside this thread too)
   int beside = breakBegin(&R, &S, lineFrom, linePressed);
   if (!beside) searchUnsplit();
@@ -488,13 +486,9 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   if (R.under) onStart(brHave ? &brResume : 0);   // (the search beside the decision, from the frontier this one resumes)
   double ts = nowMs();
-  phAt[10] = ts;
   searchAll(&R, &S);
-  phAt[11] = nowMs();
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
-  phAt[12] = nowMs();
   searchMerge(&R, &S);
-  phAt[13] = nowMs();
   S.searchMs = nowMs() - ts;
   batSearch = batOwn;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
