@@ -337,8 +337,11 @@ static int walkTurns(const Judge *x, const Judge *y) {
   if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
   // (nor where the later one buys less than a break's time with the window the next breaks are pressed from: the actions it spends come
   // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
+  // (never a break lost later put after a line that breaks nothing for the reserve: under garbage the break comes first -- the reserve
+  // decides between two breaks, or two lines that break nothing. Run 4581, large_garbage 1, 15783: a break lost at 171 put after a
+  // survive lost at 101 for the window, the board lost at 101)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
-    if ((dx > dy ? dx - dy : dy - dx) < rankSave && spendsReserve(l) && !spendsReserve(s)) return 0; }
+    if ((dx > dy ? dx - dy : dy - dx) < rankSave && spendsReserve(l) && !spendsReserve(s) && !(l->apBroke > 0 && !(s->apBroke > 0))) return 0; }
   return (dx > dy) != (lostOf(x) > lostOf(y));
 }
 // (THE FINISH'S EIGHT: in finish them, a line that fires an eight or more beside one that does not, lost within a break's time of it or
