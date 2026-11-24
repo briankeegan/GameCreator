@@ -330,9 +330,8 @@ static Broke theBrWide; static int32_t wideDone;
 static int32_t brWhere; static double brGiven;
 static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as the answer says: the native one, native.c gn_setup)
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
-static double jobEndLog[5]; static int32_t jobKindLog[5];   // (the log's tJ=: each job's kind and when it ended, from the searches' start)
 static void breakJob(int32_t i) {
-  clockWork = brJobWork; clockShare = brJobBy; clockAborted = 0; clockPoll = 0;   // (within the searches' share, as the decision's own searches are: a share a search begins inside it never runs past it)
+  clockWork = brJobWork; clockShare = 0; clockAborted = 0; clockPoll = 0;
   inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
   int kind = jobKinds[i];
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
@@ -346,11 +345,9 @@ static void breakJob(int32_t i) {
     __atomic_store_n(&svJobDone, 1, __ATOMIC_RELEASE);
   }
   inJob = 0;
-  jobEndLog[i] = nowMs() - brJobT0;
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
-  for (int i = 0; i < 5; i++) { jobEndLog[i] = -1; jobKindLog[i] = -1; }
   brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
   if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
@@ -365,7 +362,6 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
   __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
   if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
-  for (int i = 0; i < njobKinds; i++) jobKindLog[i] = jobKinds[i];
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of
@@ -373,19 +369,8 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
 // (a decision the host let go takes its jobs back at once: a job keeps its own share and never reads the host's abort, so the decision
 // would wait out the share -- and the question asked after it with it, answered past its frame. One whose frame came keeps them: its
 // answer is pressed, and what they found is in it)
-// (the log's tS=: the searches begun at, from the decision's start; then from their start, the searches' own end, the jobs taken back,
-// the merge done; their share's end and the decision's deadline)
-static double tsLog[6];
-static int jobKindDone(int kind) {
-  int32_t *f = kind == JOB_BREAK ? &brJobDone : kind == JOB_PLAN ? &planBDone : kind == JOB_EXT ? &extDone : kind == JOB_WIDE ? &wideDone : &svJobDone;
-  return __atomic_load_n(f, __ATOMIC_ACQUIRE);
-}
-static int jobsAllDone(void) { for (int i = 0; i < njobKinds; i++) if (!jobKindDone(jobKinds[i])) return 0; return 1; }
 static int breakEnd(const Read *R, int32_t lineFrom, int32_t linePressed, double *ms) {
-  // (the jobs have the searches' time and not a frame past it: searches done sooner wait for them up to its end, then every job still
-  // searching is stopped -- a job's judging can drop its own share, so the stop is the decision's)
-  if (!clockAborted && abort_poll() != 1) while (nowMs() < brJobBy && !jobsAllDone() && abort_poll() != 1) {}
-  __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
+  if (clockAborted || abort_poll() == 1) __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
   jobsDone(brCtx);
   if (!__atomic_load_n(&brJobDone, __ATOMIC_ACQUIRE)) { brWhere = 2; brGiven = leftMs(); return breakSearch(R, lineFrom, linePressed, ms); }
   brWhere = 1; brGiven = brJobBy - brJobT0;
@@ -498,13 +483,10 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   int ran = beside ? 0 : breakSearch(&R, lineFrom, linePressed, &brMs);
   if (R.under) onStart(brHave ? &brResume : 0);   // (the search beside the decision, from the frontier this one resumes)
   double ts = nowMs();
-  tsLog[0] = ts - tStart; tsLog[4] = searchesEnd() - ts; tsLog[5] = C2.due ? C2.due - ts : -1;
   searchAll(&R, &S);
-  tsLog[1] = nowMs() - ts;
   if (beside) ran = breakEnd(&R, lineFrom, linePressed, &brMs);
-  tsLog[2] = nowMs() - ts;
   searchMerge(&R, &S);
-  S.searchMs = nowMs() - ts; tsLog[3] = S.searchMs;
+  S.searchMs = nowMs() - ts;
   batSearch = batOwn;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
   clockShareEnd(searchShare);
@@ -867,8 +849,6 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (S.haveAp) { L_s(" p0="); L_i(S.ap.perAim[0].set ? 1 : 0); L_s("/"); L_i(S.ap.nearest.set ? (int64_t)S.ap.nearest.near : -1); }
   L_s(" cof="); L_i(carrySkip);
   if (A->ended == 16) { L_s(" c16="); L_i(carryClr); }
-  L_s(" tS="); for (int i = 0; i < 6; i++) { if (i) L_s("/"); L_i((int64_t)tsLog[i]); }
-  L_s(" tJ="); for (int i = 0; i < 5 && jobKindLog[i] >= 0; i++) { if (i) L_s(","); L_i(jobKindLog[i]); L_s(":"); L_i((int64_t)jobEndLog[i]); }
   L_s(" ms="); L_i((int64_t)brMs); L_s("/"); L_i((int64_t)S.searchMs); L_s("/"); L_i(phaseMs[0]); L_s("/"); L_i(phaseMs[1]); L_s("/"); L_i(phaseMs[2]);
   L_s(" cands=");
   int any = 0;
