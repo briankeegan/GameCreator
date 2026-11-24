@@ -1104,6 +1104,17 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (!o->o.lives && bb >= rankSave && ob - bb < rankSave) return (cmpKey = __LINE__, (bx ? -1 : 1));
     }
   }
+  // (A PROMISE NEVER BEATS A LIFE: of two that do not live, one whose own board -- no next moves credited, the walk pressed on the
+  // engine -- outlives the other's by a break's time comes first, where the other is ahead only on what its next moves promise
+  // (extCounts): run 4609, factory 3, 11099, an entry lost at 128 promising 282 over a survive lost at 293, the board lost to the next
+  // block with no break)
+  if (!lx && !x->o.dead && !y->o.dead) {
+    double ox = lostAtOf(x->o.lostAt, x->hold), oy = lostAtOf(y->o.lostAt, y->hold);
+    if (ox >= 0 && oy >= 0 && ox < 1e299 && oy < 1e299) {
+      if (oy - ox >= rankSave && extCounts(x) && !extCounts(y)) return (cmpKey = __LINE__, 1);
+      if (ox - oy >= rankSave && extCounts(y) && !extCounts(x)) return (cmpKey = __LINE__, -1);
+    }
+  }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
   // (neither lives, lost alike, under garbage, the window short) OF TWO BREAKS, THE CHEAPER: the game allows 76 actions in 600 frames, a
