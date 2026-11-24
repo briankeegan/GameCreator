@@ -16,6 +16,7 @@ static void **heapBlocks; static long heapN, heapCap;
 static unsigned long heapBytes;
 static pthread_mutex_t heapMu = PTHREAD_MUTEX_INITIALIZER;
 void hostLog(const char *s);
+void hostLogFlush(void);
 // The bytes the heap has given this instance, in MB
 int hostHeapMB(void) { return (int)(__atomic_load_n(&heapBytes, __ATOMIC_RELAXED) >> 20); }
 void *paHeap(unsigned long n) {
@@ -24,7 +25,7 @@ void *paHeap(unsigned long n) {
   unsigned long sz = (n + 15) & ~15ul;
   if (__atomic_add_fetch(&heapBytes, sz, __ATOMIC_RELAXED) > capBytes) {
     char m[160]; snprintf(m, sizeof m, "GAMBITHEAP over the cap: %lu MB held, %lu MB asked, cap %lu MB", heapBytes >> 20, n >> 20, capBytes >> 20);
-    hostLog(m); fprintf(stderr, "%s\n", m); abort();
+    hostLog(m); hostLogFlush(); fprintf(stderr, "%s\n", m); abort();
   }
   void *p = calloc(1, sz);
   if (!p) return 0;
@@ -151,22 +152,49 @@ int hostWorkers(void *(*fn)(void *), int most) {
   }
   return n;
 }
+// THE RUN'S LOG: a line is copied into memory under the lock and written to the file by hostLogFlush, outside it -- Gambit's thread
+// flushes after each decision, the game's thread only when the game is over -- so the game's frame never waits on the disk. Two
+// buffers: the one written out is swapped for the other under the lock, and lines go on into that one meanwhile.
 static FILE *logFile;
-static pthread_mutex_t logMu = PTHREAD_MUTEX_INITIALIZER;
-int hostOpenLog(const char *path) { if (!logFile) logFile = fopen(path, "a"); return logFile ? 0 : -1; }
+static pthread_mutex_t logMu = PTHREAD_MUTEX_INITIALIZER, logFlushMu = PTHREAD_MUTEX_INITIALIZER;
+#define LOGBUF (1 << 20)
+static char *logBuf[2]; static size_t logLen[2]; static int logCur;
+int hostOpenLog(const char *path) {
+  if (!logFile) logFile = fopen(path, "a");
+  if (logFile && !logBuf[0]) { logBuf[0] = malloc(LOGBUF); logBuf[1] = malloc(LOGBUF); if (!logBuf[0] || !logBuf[1]) { free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; } }
+  return logFile ? 0 : -1;
+}
+static void logWriteOut(void) {   // (logFlushMu held)
+  pthread_mutex_lock(&logMu); int k = logCur; logCur ^= 1; pthread_mutex_unlock(&logMu);
+  if (logLen[k]) { fwrite(logBuf[k], 1, logLen[k], logFile); fflush(logFile); logLen[k] = 0; }
+}
+void hostLogFlush(void) {
+  if (!logFile || !logBuf[0]) return;
+  pthread_mutex_lock(&logFlushMu); logWriteOut(); pthread_mutex_unlock(&logFlushMu);
+}
 // THE INSTANCE ENDED (native.c gn_quit, its threads joined): its memory freed and its log closed
 void hostQuit(void) {
   pthread_mutex_lock(&heapMu);
   for (long i = 0; i < heapN; i++) free(heapBlocks[i]);
   free(heapBlocks); heapBlocks = 0; heapN = heapCap = 0; heapBytes = 0;
   pthread_mutex_unlock(&heapMu);
+  hostLogFlush();
   pthread_mutex_lock(&logMu);
   if (logFile) { fclose(logFile); logFile = 0; }
+  free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; logLen[0] = logLen[1] = 0;
   pthread_mutex_unlock(&logMu);
 }
 void hostLog(const char *s) {
   if (!logFile) return;
-  pthread_mutex_lock(&logMu);
-  fputs(s, logFile); fputc('\n', logFile); fflush(logFile);
-  pthread_mutex_unlock(&logMu);
+  size_t n = strlen(s);
+  if (logBuf[0]) {
+    pthread_mutex_lock(&logMu);
+    if (logLen[logCur] + n + 1 <= LOGBUF) { memcpy(logBuf[logCur] + logLen[logCur], s, n); logLen[logCur] += n; logBuf[logCur][logLen[logCur]++] = '\n'; pthread_mutex_unlock(&logMu); return; }
+    pthread_mutex_unlock(&logMu);
+  }
+  // (the buffer full, or none: what it holds written out first, then the line, in order)
+  pthread_mutex_lock(&logFlushMu);
+  if (logBuf[0]) logWriteOut();
+  pthread_mutex_lock(&logMu); fputs(s, logFile); fputc('\n', logFile); fflush(logFile); pthread_mutex_unlock(&logMu);
+  pthread_mutex_unlock(&logFlushMu);
 }

@@ -21,6 +21,7 @@ int hostWorkers(void *(*fn)(void *), int most);
 int hostIdleThread(void *(*fn)(void *), const char *name);
 int hostOpenLog(const char *path);
 void hostLog(const char *s);
+void hostLogFlush(void);
 int hostHeapMB(void);
 int snprintf(char *s, unsigned long n, const char *fmt, ...);
 int strncmp(const char *a, const char *b, unsigned long n);
@@ -196,6 +197,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   }
   snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0, hostHeapMB());
   flog(line);
+  hostLogFlush();   // (the log written on Gambit's thread, between decisions: the game's frame never waits on the disk)
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
   if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last], ringAllow[last]); hostUnlock(); }
   if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : A->dumpBoard == 3 ? "GAMBITK" : A->dumpBoard == 4 ? "GAMBITO" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance);
@@ -397,9 +399,10 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   if (t3 - t0 > 8) { char l[200]; snprintf(l, sizeof l, "SLOWLOOP clock %d: %.1f ms (arrivals %.1f, frame %.1f, after %.1f)", clock, t3 - t0, t1 - t0, t2 - t1, t3 - t2); flog(l); }
   // (the stats now and then, and when the game is lost: a client may be stopped at any frame)
   if (++gnFrames % 600 == 0 || F.truth->gameOverClock > 0) statsOut();
+  if (F.truth->gameOverClock > 0) hostLogFlush();   // (the game over: the stats written now, whatever ends the process next)
   return bits;
 }
-void gn_end(void) { statsOut(); frontTraceOut(); ringOut(); }
+void gn_end(void) { statsOut(); frontTraceOut(); ringOut(); hostLogFlush(); }
 // THE INSTANCE ENDS (lua/GambitNative.lua, a match's own instance let go): Gambit's thread told to stop and joined, the search between
 // decisions and the pool's workers likewise, then every block of its memory freed and its log closed -- the library can be unloaded
 void hostJoin(int kind); void hostQuit(void);
