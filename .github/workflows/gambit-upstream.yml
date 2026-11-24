@@ -10,9 +10,15 @@ on:
       gambit_from:
         description: 'The GameCreator commit or branch whose Gambit plays (default: the ref dispatched on)'
         default: ''
+      mode:
+        description: 'finish_them, fill or switching -- each as its gambit-24.yml round plays it (run28.sh GC_MODE)'
+        default: 'finish_them'
       profile:
-        description: "Gambit's profile under games/the-game/ai/eval (gambit-24.yml's: survivor-profiles/gambit-finish.json)"
-        default: 'survivor-profiles/gambit-finish.json'
+        description: "A profile under games/the-game/ai/eval in place of the mode's (empty: the mode's)"
+        default: ''
+      seed:
+        description: 'The panel seed base, as gambit-24.yml: PA_SEED = base*100 + pattern*10 + game'
+        default: '86'
       level:
         description: 'The modern level (the goal and gambit-24.yml: 11)'
         default: '11'
@@ -20,7 +26,7 @@ on:
         description: 'A game survived this many frames counts as survived (21600 = six minutes)'
         default: '21600'
       enemy:
-        description: "virtual: played as a fight against the virtual enemy (GC_GAMBIT_FIGHT=1, GC_GAMBIT_ENEMY=virtual); empty: as gambit-24.yml plays"
+        description: "virtual: the virtual enemy across (GC_GAMBIT_ENEMY); empty: as gambit-24.yml plays"
         default: ''
       upstream_ref:
         description: 'Upstream Panel Attack ref (beta: the game panelattack.com runs)'
@@ -30,7 +36,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gambit-upstream-${{ inputs.gambit_from || github.sha }}-${{ inputs.profile }}-${{ inputs.level }}-${{ inputs.enemy }}
+  group: gambit-upstream-${{ inputs.gambit_from || github.sha }}-${{ inputs.mode }}-${{ inputs.profile }}-${{ inputs.level }}-${{ inputs.enemy }}-${{ inputs.seed }}
   cancel-in-progress: false
 
 jobs:
@@ -67,9 +73,10 @@ jobs:
         env:
           GAMES: ${{ matrix.pattern }}:${{ matrix.game }}
           PA_LEVEL: ${{ inputs.level }}
+          GC_MODE: ${{ inputs.mode }}
           GC_PROFILE: ${{ inputs.profile }}
+          GC_SEED_BASE: ${{ inputs.seed }}
           GC_GAMBIT_ENEMY: ${{ inputs.enemy }}
-          GC_GAMBIT_FIGHT: ${{ inputs.enemy == 'virtual' && '1' || '' }}
           FRAMES: ${{ inputs.frames }}
           GC_UPSTREAM_REF: ${{ inputs.upstream_ref }}
         run: |
@@ -103,7 +110,7 @@ jobs:
           refused=$(grep -o 'refused=[0-9]*' rounds.txt | cut -d= -f2 | paste -sd+ | bc)
           starved=$(grep -o 'starved=[0-9]*' rounds.txt | cut -d= -f2 | paste -sd+ | bc)
           per=$(for m in combo_storm factory large_garbage endless; do echo "$m $(grep -c "^ROUND $m .* survived " rounds.txt)/$(grep -c "^ROUND $m " rounds.txt)"; done | paste -sd, -)
-          echo "::notice title=survived::$per; late $late, refused $refused, starved $starved ($n games read back)"
+          echo "::notice title=survived (${{ inputs.mode }}, level ${{ inputs.level }})::$per; late $late, refused $refused, starved $starved ($n games read back)"
           { echo "## Gambit on upstream"; echo; echo "$per"; echo; echo "late $late, refused $refused, starved $starved"; echo; echo '```'; cat rounds.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           [ "$n" -eq 28 ] || { echo "::error::$n games read back, 28 played"; exit 1; }
           [ "$lost" -eq 0 ] && [ "$refused" -eq 0 ] || exit 1
