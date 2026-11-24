@@ -152,7 +152,8 @@ static int32_t gameBurst;
 static int32_t burstOf(void) { int32_t b = __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST); return b > MARGIN_FRAMES ? b : MARGIN_FRAMES; }
 // (A RESCUE'S HARD STOP, RESCUE_FRAMES sooner: a decision that judged nothing in time judges every line again up to the hard stop
 // (decide.c rescue), and the ranking and the answer after it are 25-56 ms its closing work does not count -- run 4596, every late move
-// a rescue, 1-4 frames late; at 3, runs 4600-4607 still 0-6 late, every one a rescue)
+// a rescue, 1-4 frames late; at 3, runs 4600-4607 still 0-6 late, every one a rescue; and kept for the rest of the decision -- run 4612,
+// 7 late in endless, the line in progress and the hold judged after the rescue to the plain stop)
 #define RESCUE_FRAMES 6
 static int frameOut(void) {
   int32_t more = rescueOn ? RESCUE_FRAMES : 0;
@@ -163,7 +164,7 @@ static void ringKeep(int32_t at, int32_t allow);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
-  dueFrame = q->at - 1; clockFrameOut = frameOut;
+  dueFrame = q->at - 1; clockFrameOut = frameOut; rescueOn = 0;
   // (the searches' deadline is the frame loop's own: the start of the frame the decision is cut at -- the one before its move, sooner by
   // the burst -- less its closing work)
   double due = moveStartMs(dueFrame - burstOf()) - closeWorst();

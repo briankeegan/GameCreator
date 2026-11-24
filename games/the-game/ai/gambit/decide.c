@@ -631,9 +631,10 @@ static int ranked(const Read *R, const Found *S) {
   double rescueDue = clockDue, rescueShare = clockShare; int rescue = 0;
   if (!n && nc && clockFrameOut && clockOut()) {
     rescue = 1; clockDue = 0; clockShare = 0;
-    rescueOn = 1;   // (its hard stop RESCUE_FRAMES sooner: the ranking and the answer after it are frames too -- native.c frameOut)
+    // (its hard stop RESCUE_FRAMES sooner, for the rest of the decision -- the line in progress and the hold judged after it, the ranking
+    // and the answer are frames too: native.c frameOut; the host clears it at the next question)
+    rescueOn = 1;
     for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
-    rescueOn = 0;
   }
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
