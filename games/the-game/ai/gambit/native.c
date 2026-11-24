@@ -150,9 +150,14 @@ static double moveStartMs(int32_t at) {
 #define MARGIN_FRAMES 2
 static int32_t gameBurst;
 static int32_t burstOf(void) { int32_t b = __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST); return b > MARGIN_FRAMES ? b : MARGIN_FRAMES; }
+// (A RESCUE'S HARD STOP, RESCUE_FRAMES sooner: a decision that judged nothing in time judges every line again up to the hard stop
+// (decide.c rescue), and the ranking and the answer after it are 25-56 ms its closing work does not count -- run 4596, every late move
+// a rescue, 1-4 frames late)
+#define RESCUE_FRAMES 3
 static int frameOut(void) {
-  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - burstOf()) return 1;
-  return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1 - burstOf());
+  int32_t more = rescueOn ? RESCUE_FRAMES : 0;
+  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - burstOf() - more) return 1;
+  return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1 - burstOf() - more);
 }
 static void ringKeep(int32_t at, int32_t allow);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
