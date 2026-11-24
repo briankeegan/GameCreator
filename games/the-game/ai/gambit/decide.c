@@ -19,7 +19,7 @@ static int32_t thenRule = -1;
 static int32_t opRaiseLog[5];   // (the opening raise judged: the rows short, the rows held to, the rows alive, the blocks on their way, negative where the raise was held to the first landing -- the log's opRaise=)
 static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
 static int32_t carryJudgeDrop = -1;   // (and for 19, why the judging dropped it: rank.c DROP_*, -1 none said)
-static int32_t rescues; static int32_t rescueOn;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
+static int32_t rescues; static int32_t rescueOn; static double phAt[8], phOut;   // (a probe: when each phase of a decision ended, and when its frame stop first fired)   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
@@ -624,7 +624,9 @@ static int ranked(const Read *R, const Found *S) {
     if (gr > 1) { int bc = -1; for (int c = 1; c <= W; c++) if (b->p[gr][c].f[ISGARBAGE] && (bc < 0 || iabs(c - b->curCol) < iabs(bc - b->curCol))) bc = c;
       enR = gr - 1; enC = imin(bc, W - 1); enOn = 1; }
   }
+  phAt[1] = nowMs();
   for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+  phAt[2] = nowMs();
   // (NOTHING JUDGED IN TIME: the searches and the proposing took the decision's time and the clock stopped the judge on every line --
   // every line is judged again up to the move's own frame, the host's hard stop (clockFrameOut): a board is never held for want of a
   // look at its lines. The line in progress and the hold are judged in that time too.)
@@ -635,6 +637,7 @@ static int ranked(const Read *R, const Found *S) {
     // and the answer are frames too: native.c frameOut; the host clears it at the next question)
     rescueOn = 1;
     for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
+    phAt[3] = nowMs();
   }
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold
@@ -669,7 +672,9 @@ static int ranked(const Read *R, const Found *S) {
   if (carryOwnTime) { clockDue = carryDue; clockShare = carryShare; }
   // (the hold, always: the chain the board makes alone is the board's, however far past the list it runs -- never one to stop)
   Judge *H = &theJudged[n];
+  phAt[4] = nowMs();
   holdCand(R, 0, H);
+  phAt[5] = nowMs();
   if (rescue) { clockDue = rescueDue; clockShare = rescueShare; rescues++; }
   order[n] = H; n++;
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
