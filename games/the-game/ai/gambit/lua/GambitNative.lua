@@ -167,12 +167,20 @@ function GambitNative:load(a)
   put("unseenRows", 0); put("unseenBreaks", 0); put("nextInput", 0); put("pressSwap", 0); put("swapDeniedThisFrame", 0)
   local x, flash = 0, a.levelData.frameConstants.FLASH
   local lp0 = ThinkBudget.now()
+  local worst, wr, wc, wk, copyT = 0, -1, -1, 0, 0
   for r = 0, #a.panels do
     for c = 1, a.width do
+      local q0 = ThinkBudget.now()
       B.panel(a.panels[r][c], pv, a.width, flash)
+      local q1 = ThinkBudget.now()
       for i = 1, B.NF do Bd[x] = pv[i]; x = x + 1 end
+      local q2 = ThinkBudget.now()
+      copyT = copyT + (q2 - q1)
+      if q2 - q0 > worst then worst, wr, wc, wk = q2 - q0, r, c, (q1 - q0) end
     end
   end
+  self.panelWorst = string.format("worst cell %d,%d %.2f ms (fields %.2f), copies %.2f ms, state %s", wr, wc, worst * 1000, wk * 1000, copyT * 1000,
+    tostring(wr >= 0 and a.panels[wr][wc] and a.panels[wr][wc].state))
   local l2 = ThinkBudget.now()
   for j = from, #inc do x = B.putIncoming(inc[j], Bd, x) end
   for i = 1, #stall do x = B.putStall(stall[i], Bd, x) end
@@ -553,7 +561,7 @@ function GambitNative:input(stack, sources, view)
     C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d; %s",
       stack.clock, took * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3],
       string.format("rows %d, queued %d; user %.1f sys %.1f ms; load: %s; jit %s", self.nrows or 0, self.nqueued or 0, b[4] - a[4], b[5] - a[5],
-        self.loadSplit or "-", tostring(jitWas))))
+        self.loadSplit or "-", tostring(jitWas)) .. "; " .. (self.panelWorst or "-")))
   end
   self.stepLoad = nil
   return key
