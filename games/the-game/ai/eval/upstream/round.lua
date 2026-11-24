@@ -12,6 +12,7 @@
 --
 -- One line out, for a script to read: ROUND scenario seed survived|lost frames=N swaps=N cleared=N (late answers are in GC_GAMBIT_LOG)
 io.stdout:setvbuf("no")
+if os.getenv("GITHUB_ACTIONS") ~= "true" then io.stderr:write("round.lua: games run on GitHub Actions, not here -- dispatch gambit-upstream.yml\n") os.exit(2) end
 package.path = "./?.lua;" .. package.path
 require("bot.headlessBoot")
 local logger = require("common.lib.logger"); logger.setLogLevel(logger.levels.ERROR)

@@ -194,7 +194,8 @@ ways: a tool not listed, or a path listed that doesn't exist.
   the genome from the run's own log, the last snapshot's score and chains
   fired, the chip count, and the git/origin gap. Run it before answering any
   question about what is going on.
-- **Training runs on GitHub Actions, not in this sandbox.**
+- **Training and every game run on GitHub Actions, not in this sandbox** -- the sandbox times nothing like a runner. `run28.sh`,
+  `round.lua` and `training.sh` exit outside Actions, and `.claude/hooks/guard-games-on-actions.sh` refuses a command that plays one.
   `node -e "require('.../train.js')"` STARTS A RUN. To answer "is anything
   training", look at Actions, not at `ps`.
 - **Use the real puzzles**, not hand-built boards: 235 authored puzzles in

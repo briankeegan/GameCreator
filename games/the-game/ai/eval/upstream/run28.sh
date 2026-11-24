@@ -21,6 +21,7 @@
 # Out: one line per game, then summary.json (survived per mode, late and refused answers per game). Exits 1 when any game is
 # lost or any answer was refused.
 set -eu
+[ "${GITHUB_ACTIONS:-}" = true ] || { echo "run28.sh: games run on GitHub Actions, not here -- dispatch gambit-upstream.yml" >&2; exit 2; }
 HERE=$(cd "$(dirname "$0")" && pwd)
 GC=${GC_DIR:-$(git -C "$HERE" rev-parse --show-toplevel)}
 EVAL="$GC/games/the-game/ai/eval"
