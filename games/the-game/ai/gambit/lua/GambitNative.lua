@@ -52,6 +52,7 @@ void gn_end(void);
 void gn_quit(void);
 void gn_log(const char *s);
 void gn_thread_stats(double *out);
+void gn_probe(int on);
 ]]
 local B = dofile(DIR .. "/lua/board.lua")
 local NUL = B.NUL
@@ -529,11 +530,13 @@ end
 -- The frame's work, charged to the thinking budget, its key pressed on the input budget -- the game's own.
 function GambitNative:input(stack, sources, view)
   collectgarbage("stop")
+  C.gn_probe(1)
   C.gn_thread_stats(self.ts0)
   local began = ThinkBudget.now()
   local ok, key = pcall(self.think, self, stack, sources, view)
   if ok and self.ownInputs then key = self:press(key, stack.clock) end
   local took = ThinkBudget.now() - began
+  C.gn_probe(0)
   collectgarbage("restart")
   if not ok then error(key, 0) end
   if self.ownThinking then self.thinking:charge(took) end
