@@ -121,7 +121,7 @@ function GambitNative.new(opts)
   self.inputs = opts.inputBudget or InputBudget.standard()
   self.ownInputs = opts.inputBudget == nil
   self.dropped, self.frames, self.ages, self.pv = 0, 0, {}, {}
-  self.ts0, self.ts1 = ffi.new("double[4]"), ffi.new("double[4]")
+  self.ts0, self.ts1 = ffi.new("double[6]"), ffi.new("double[6]")
   return self
 end
 
@@ -156,25 +156,30 @@ end
 function GambitNative:load(a)
   if a.do_countdown ~= nil then a.in_countdown = a.do_countdown and true or false end
   local pv = self.pv
+  local l0 = ThinkBudget.now()
   for i = 0, NH - 1 do H[i] = 0 / 0 end
   B.head(a, put)
+  local l1 = ThinkBudget.now()
   local inc, stall, landed = B.staged(a), B.stall(a), B.landed(a)
   local from = math.max(1, #inc - KEEP_QUEUED + 1)
   self.nrows, self.nqueued = #a.panels + 1, #inc
   put("nrows", #a.panels + 1); put("ninc", #inc - from + 1); put("nstall", #stall); put("nlanded", #landed); put("err", 0)
   put("unseenRows", 0); put("unseenBreaks", 0); put("nextInput", 0); put("pressSwap", 0); put("swapDeniedThisFrame", 0)
   local x, flash = 0, a.levelData.frameConstants.FLASH
+  local lp0 = ThinkBudget.now()
   for r = 0, #a.panels do
     for c = 1, a.width do
       B.panel(a.panels[r][c], pv, a.width, flash)
       for i = 1, B.NF do Bd[x] = pv[i]; x = x + 1 end
     end
   end
+  local l2 = ThinkBudget.now()
   for j = from, #inc do x = B.putIncoming(inc[j], Bd, x) end
   for i = 1, #stall do x = B.putStall(stall[i], Bd, x) end
   for i = 1, #landed do Bd[x] = landed[i]; x = x + 1 end
   local drop = B.drop(a)
   for i = 1, #drop do Bd[x] = drop[i]; x = x + 1 end
+  self.loadSplit = string.format("head %.1f, staged %.1f, panels %.1f, rest %.1f", (l1 - l0) * 1000, (lp0 - l1) * 1000, (l2 - lp0) * 1000, (ThinkBudget.now() - l2) * 1000)
 end
 
 -- The garbage each source has sent and not yet delivered, as its telegraph shows it: whether its queue is held back (an attack engine's),
@@ -547,7 +552,8 @@ function GambitNative:input(stack, sources, view)
     C.gn_thread_stats(b)
     C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d; %s",
       stack.clock, took * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3],
-      string.format("rows %d, queued %d", self.nrows or 0, self.nqueued or 0)))
+      string.format("rows %d, queued %d; user %.1f sys %.1f ms; load: %s; jit %s", self.nrows or 0, self.nqueued or 0, b[4] - a[4], b[5] - a[5],
+        self.loadSplit or "-", tostring(jitWas))))
   end
   self.stepLoad = nil
   return key
