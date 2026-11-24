@@ -213,6 +213,7 @@ static void searchAll(const Read *R, Found *S) {
     S->tried++;
     PlanOpts po = planOptsOf(R, planSplit ? &planHalfA : &R->guides, ms);
     double planEnd = nowMs() + ms;
+    phAt[0] = nowMs();
     plan(&decQ, &po, &S->ap); S->haveAp = 1; S->planShare = ms; S->planFirst = S->ap.ms;
     // (THE BEAM SIZED BY THE TIME: the profile's beam is the first pass; a pass done with time over is planned again from its own best
     // lines (its seeds), deeper and as much wider as the time left pays for at the pass's own rate -- each pass holds the last one's
@@ -239,9 +240,12 @@ static void searchAll(const Read *R, Found *S) {
       for (int i = 0; i < MAXAIMS; i++) if (S->ap.perAim[i].set && S->ap.perAim[i].nseq > S->planLong) S->planLong = S->ap.perAim[i].nseq; }
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
   }
+  phAt[14] = nowMs();
   int32_t nl = R->F.known[FACT_US_NEXTLANDS] ? (int32_t)R->F.v[FACT_US_NEXTLANDS] : 0;
   S->lvU = R->dying ? level(&decQ, nl > 0 ? nl : (R->by ? R->by : NOT_ASKED)) : 0;
+  phAt[15] = nowMs();
   if (!R->under && R->readyAt != NOT_ASKED && decQ.narr) { double m2 = leftMs() < 60 ? leftMs() : 60; S->rd = readyFor(&decQ, m2 > 1 ? m2 : 1); S->haveRd = 1; }
+  phAt[6] = nowMs();
   // (the board left alone with no plan once everything shown has landed: a line of one or two swaps that leaves one)
   int32_t lastLand = NOT_ASKED;
   for (int i = 0; i < decQ.narr; i++) if (lastLand == NOT_ASKED || decQ.arr[i].at > lastLand) lastLand = decQ.arr[i].at;
@@ -249,6 +253,7 @@ static void searchAll(const Read *R, Found *S) {
     double m3 = leftMs() / 2 < READY_LINE_MS ? leftMs() / 2 : READY_LINE_MS;
     S->haveRl = readyLines(&decQ, lastLand, m3 > 1 ? m3 : 1, S->rl, &S->rlN, &S->rlAt);
   }
+  phAt[7] = nowMs();
   S->lvG = !R->under && R->readyAt != NOT_ASKED && !(S->haveRd && !S->rd.ready && S->rd.setup) ? level(&decQ, R->readyAt ? R->readyAt : NOT_ASKED) : 0;
 }
 
