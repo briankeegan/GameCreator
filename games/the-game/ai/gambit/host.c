@@ -198,3 +198,42 @@ void hostLog(const char *s) {
   pthread_mutex_lock(&logMu); fputs(s, logFile); fputc('\n', logFile); fflush(logFile); pthread_mutex_unlock(&logMu);
   pthread_mutex_unlock(&logFlushMu);
 }
+
+// THE GAME THREAD'S SLEEPS (a probe): a thread reads the game thread's state and the kernel function it sleeps in
+// (/proc/self/task/TID/stat, wchan) every half millisecond and tallies each sleep's function; hostSleepTally logs them.
+#define SLEEPN 64
+static char sleepName[SLEEPN][48]; static long sleepCount[SLEEPN]; static long sleepSamples, sleepRunning;
+static int sleepTid, probeOn;
+void hostProbeOn(int on) { __atomic_store_n(&probeOn, on, __ATOMIC_RELAXED); }
+static void *sleepProbe(void *u) {
+  (void)u;
+  pinnedTo(getenv("GC_GAMBIT_CPUS"));
+  char path[96], buf[512];
+  for (;;) {
+    struct timespec ts = { 0, 500000 }; nanosleep(&ts, 0);
+    if (!__atomic_load_n(&probeOn, __ATOMIC_RELAXED)) continue;
+    snprintf(path, sizeof path, "/proc/self/task/%d/stat", sleepTid);
+    FILE *f = fopen(path, "r"); if (!f) continue;
+    size_t n = fread(buf, 1, sizeof buf - 1, f); fclose(f); buf[n] = 0;
+    char *p = strrchr(buf, ')'); if (!p || !p[1] || !p[2]) continue;
+    char st = p[2];
+    sleepSamples++;
+    if (st == 'R') { sleepRunning++; continue; }
+    snprintf(path, sizeof path, "/proc/self/task/%d/wchan", sleepTid);
+    char w[48] = "?"; f = fopen(path, "r"); if (f) { size_t m = fread(w, 1, sizeof w - 2, f); fclose(f); w[m] = 0; }
+    char key[48]; snprintf(key, sizeof key, "%c:%s", st, w);
+    int i; for (i = 0; i < SLEEPN && sleepName[i][0] && strcmp(sleepName[i], key); i++) {}
+    if (i < SLEEPN) { if (!sleepName[i][0]) snprintf(sleepName[i], sizeof sleepName[i], "%s", key); sleepCount[i]++; }
+  }
+  return 0;
+}
+void hostSleepProbe(void) {
+  if (sleepTid) return;
+  sleepTid = (int)syscall(SYS_gettid);
+  pthread_t t; pthread_create(&t, 0, sleepProbe, 0); pthread_detach(t);
+}
+void hostSleepTally(void) {
+  char line[2048]; int k = snprintf(line, sizeof line, "SLEEPS of the game thread: %ld samples, %ld running;", sleepSamples, sleepRunning);
+  for (int i = 0; i < SLEEPN && sleepName[i][0] && k < (int)sizeof line - 64; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, " %s=%ld", sleepName[i], sleepCount[i]);
+  hostLog(line);
+}
