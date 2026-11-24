@@ -212,6 +212,8 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
              phAt[1] ? (int)(phAt[1] - t0) : -1, phAt[2] ? (int)(phAt[2] - t0) : -1, phAt[3] ? (int)(phAt[3] - t0) : -1, phAt[4] ? (int)(phAt[4] - t0) : -1, phAt[5] ? (int)(phAt[5] - t0) : -1,
              phOut ? (int)(phOut - t0) : -1, gf, dueFrame);
     k = 0; while (line[k]) k++; snprintf(line + k, sizeof line - (unsigned long)k, " gap=%d@%d", (int)gapMax, gapEnd ? (int)(gapEnd - t0) : -1);
+    k = 0; while (line[k]) k++; snprintf(line + k, sizeof line - (unsigned long)k, " pha=%d/%d/%d/%d/%d", phAt[0] ? (int)(phAt[0] - t0) : -1, phAt[14] ? (int)(phAt[14] - t0) : -1,
+             phAt[15] ? (int)(phAt[15] - t0) : -1, phAt[6] ? (int)(phAt[6] - t0) : -1, phAt[7] ? (int)(phAt[7] - t0) : -1);
     k = 0; while (line[k]) k++; snprintf(line + k, sizeof line - (unsigned long)k, " phs=%d/%d/%d/%d/%d/%d",
              phAt[8] ? (int)(phAt[8] - t0) : -1, phAt[9] ? (int)(phAt[9] - t0) : -1, phAt[10] ? (int)(phAt[10] - t0) : -1, phAt[11] ? (int)(phAt[11] - t0) : -1,
              phAt[12] ? (int)(phAt[12] - t0) : -1, phAt[13] ? (int)(phAt[13] - t0) : -1); }
