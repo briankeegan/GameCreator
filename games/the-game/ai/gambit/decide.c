@@ -1455,11 +1455,11 @@ static Played playOf(const Read *R, int n) {
   double holdLost = -1;
   // (the hold's loss as the order reads it, rank.c lostOf: a hold whose loss was not judged is lost now, never 'never' -- an unknown
   // never licenses waiting)
-  // (and only while the hold lives: on a board left alone that is lost, a swap put off is put off again by the next plan until the board
-  // is gone -- a line that saves it is played now)
+  // (and only while the hold lives, or lasts a break's time (rankSave) past the frame the swap would be pressed: on a board left alone
+  // lost sooner, a swap put off is put off again by the next plan until the board is gone -- a line that saves it is played now)
   int holdLives = 0;
   for (int i = 0; i < n; i++) if (order[i]->hold && !order[i]->o.dead) { holdLost = lostOf(order[i]); holdLives = !!order[i]->o.lives; }
-  if (P.line && holdLives && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
+  if (P.line && (holdLives || (holdLost >= 0 && P.line->apNats >= 2 && holdLost - P.line->apAts[1] >= rankSave)) && P.line->apNats >= 2 && P.line->apAts[1] - P.line->apAts[0] > 2 * rankReact && holdLost > P.line->apAts[1] &&
       firstClear(&decQ, P.line->k.seq, P.line->k.nseq, 0) != 0 && !clockOut()) {
     const Judge *L = P.line;
     Outcome d = outcomeOf(L->k.seq, L->k.nseq, L->settled, 0, L->apAts[1] - rankReact);
