@@ -630,7 +630,13 @@ static int garbageComing(void) { return decQ.narr > 0 || (decQ.b && decQ.b->ninc
 // lands)
 static int digPaid(const Judge *J);
 static int reserveLeft(const Judge *J) { int w = lineWalk(J); return J->apBroke > 0 ? allowAtLanding(w) : allowAtNeed(w); }
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || digPaid(J) ? 0 : imax(0, BREAK_WALK - reserveLeft(J)); }
+// (THE RESERVE A LINE LEAVES: a break, the next break's walk at the next landing; a line that breaks nothing, two breaks' walks -- the
+// owner: don't overspend. Garbage comes every 150-250 frames at level 11, a break walks 15-25 actions and the window holds 76 in 600
+// frames: what a line that breaks nothing spends is the next breaks', and one break's walk left is a board one block from having none
+// (factory 6, run 4574: a walk and three levels lost on the hold's own frame spent 13 of 45, two breaks the rest, dead at 828). The hold's
+// walk to the next work keeps the same, front.c AIM_RESERVE)
+static int reserveNeed(const Judge *J) { return J->apBroke > 0 ? BREAK_WALK : 2 * BREAK_WALK; }
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || digPaid(J) ? 0 : imax(0, reserveNeed(J) - reserveLeft(J)); }
 // (with no break offered under garbage, a line that digs toward one -- or lets a perched block down onto the stack, the way to the break
 // the perch holds off -- may spend the reserve only where the hold loses the board within a
 // break's time, or the window holds a break's walk again by the time the next block can land -- standing longer, the reserve is that
@@ -640,7 +646,7 @@ static const Judge *rankHold;   // (the decision's hold, set where no line of th
 static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK || J->k.letDown; }
 static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !breakOffered && digsForBreak(J) && allowAtNeed(w) >= w &&
                                      (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave)); }
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < BREAK_WALK; }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < reserveNeed(J); }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
 // the hold's board at rest has the room for it to come down (outcome.c restOf), a line that clears nothing and leaves it nearer
