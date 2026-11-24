@@ -522,13 +522,20 @@ function GambitNative:press(key, clock)
 end
 
 -- The frame's work, charged to the thinking budget, its key pressed on the input budget -- the game's own.
+-- (and no compiler at all while the frame is worked: a trace compiled anywhere in it -- the game's own code it calls included -- flips the
+-- machine code's pages writable and back, and each flip waits for the process's memory map while Gambit's threads fault pages in: a
+-- frame over the think budget on a millisecond of CPU. jit.off keeps the traces compiled; jit.on after the frame)
+local JIT_OFF = jit and jit.off and jit.on and jit.status
 function GambitNative:input(stack, sources, view)
   collectgarbage("stop")
+  local jitWas = JIT_OFF and jit.status()
+  if jitWas then jit.off() end
   C.gn_thread_stats(self.ts0)
   local began = ThinkBudget.now()
   local ok, key = pcall(self.think, self, stack, sources, view)
   if ok and self.ownInputs then key = self:press(key, stack.clock) end
   local took = ThinkBudget.now() - began
+  if jitWas then jit.on() end
   collectgarbage("restart")
   if not ok then error(key, 0) end
   if self.ownThinking then self.thinking:charge(took) end
