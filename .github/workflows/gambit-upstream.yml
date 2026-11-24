@@ -100,9 +100,28 @@ jobs:
         with:
           pattern: upstream-*
           path: games
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.gambit_from || github.sha }}
+          path: gc
+          sparse-checkout: games/the-game/ai/eval
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: The 28, written up as gambit-24.yml's are
+        timeout-minutes: 5
+        run: |
+          bash gc/games/the-game/ai/eval/upstream/summary.sh games laid-out | tee summary.txt
+          { echo '## Written up as gambit-24.yml'"'"'s are'; echo; echo '```'; cat summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-report
+          path: summary.txt
+          retention-days: 14
       - name: The 28, read back
         run: |
-          cat games/*/rounds.txt | sort -k2,2 -k3,3n > rounds.txt
+          cat games/upstream-*/rounds.txt | sort -k2,2 -k3,3n > rounds.txt
           cat rounds.txt
           n=$(wc -l < rounds.txt)
           lost=$(grep -vc ' survived ' rounds.txt || true)
