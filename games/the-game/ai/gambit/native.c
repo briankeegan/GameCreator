@@ -22,7 +22,6 @@ int hostIdleThread(void *(*fn)(void *), const char *name);
 int hostOpenLog(const char *path);
 void hostLog(const char *s);
 void hostLogFlush(void);
-void hostSleepProbe(void), hostSleepTally(void), hostProbeOn(int on);
 int hostHeapMB(void);
 int snprintf(char *s, unsigned long n, const char *fmt, ...);
 int strncmp(const char *a, const char *b, unsigned long n);
@@ -277,7 +276,6 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   // (THE GAME'S THREAD, which calls this and plays the frame loop -- its keys are engine steps (front.c keyCtx) -- is the engine's last
   // thread, its own board pool: thread 0 is Gambit's, the one the workers' phases hand boards out of)
   paThreadId(MAXTHREADS - 1);
-  hostSleepProbe();
   gnReaction = reaction; gnAhead = ahead; gnGap = gap; gnJitter = jitter; gnPlanHealth = planHealth;
   gb_config(reaction, swapGap, cursor);
   if (logPath && *logPath) hostOpenLog(logPath);
@@ -314,7 +312,6 @@ void gn_share(int under, int otherwise) { gb_share(under, otherwise); }
 // The mode a named opener gives way to at the top-out (answer.c gb_then; -1 none)
 void gn_then(int rule) { gb_then(rule); }
 void gn_thread_stats(double *out) { hostThreadStats(out); }
-void gn_probe(int on) { hostProbeOn(on); }
 int32_t *gn_tele(void) { return tele; }
 int32_t *gn_ages(void) { return ages; }
 static void statsOut(void) { static char line[4096]; if (!F.st.frames) return; statsLine(line, sizeof line); flog(line); }
@@ -405,7 +402,7 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   if (F.truth->gameOverClock > 0) hostLogFlush();   // (the game over: the stats written now, whatever ends the process next)
   return bits;
 }
-void gn_end(void) { statsOut(); frontTraceOut(); ringOut(); hostSleepTally(); hostLogFlush(); }
+void gn_end(void) { statsOut(); frontTraceOut(); ringOut(); hostLogFlush(); }
 // THE INSTANCE ENDS (lua/GambitNative.lua, a match's own instance let go): Gambit's thread told to stop and joined, the search between
 // decisions and the pool's workers likewise, then every block of its memory freed and its log closed -- the library can be unloaded
 void hostJoin(int kind); void hostQuit(void);
