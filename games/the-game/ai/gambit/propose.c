@@ -512,7 +512,11 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
   if (top > b->topCurRow) top = b->topCurRow;
   // (a cell that can be sorted: a panel of colour at rest, on one at rest -- or the floor; a row with any is a row the runs may pass)
   uint32_t any[MAXROWS + 2];
-  for (int r = 1; r <= top; r++) { any[r] = 0; for (int c = 1; c <= W; c++) { ok[r][c] = g[r][c] > 0 && g[r][c] < 8 && b->p[r][c].f[STATE] == NORMAL && (r == 1 || (g[r - 1][c] != 0 && b->p[r - 1][c].f[STATE] == NORMAL)); any[r] += ok[r][c]; } }
+  // (and each row's cells that can be sorted, by colour: a trigger row needs one of each colour it asks, three where an arm asks two
+  // more -- the swaps only move colours between such cells, so a row short of them sorts into no trigger, and is not asked)
+  uint8_t has[MAXROWS + 2][8];
+  for (int r = 1; r <= top; r++) { any[r] = 0; for (int k = 0; k < 8; k++) has[r][k] = 0;
+    for (int c = 1; c <= W; c++) { ok[r][c] = g[r][c] > 0 && g[r][c] < 8 && b->p[r][c].f[STATE] == NORMAL && (r == 1 || (g[r - 1][c] != 0 && b->p[r - 1][c].f[STATE] == NORMAL)); any[r] += ok[r][c]; if (ok[r][c]) has[r][g[r][c]]++; } }
   if (rows) { *rows = 0; for (int r = 1; r <= top; r++) *rows += any[r] == W; }
   int nb = 0;
   // (a side row's cost depends on the column, the two colours and which of them it holds -- not on the trigger row or the runs' lengths:
@@ -524,6 +528,7 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
     if (!any[r]) continue;
     for (int32_t X = 1; X < 8; X++) for (int32_t Y = 1; Y < 8; Y++) for (int hx = 0; hx <= 2; hx += 2) for (int hy = 0; hy <= 2; hy += 2) {
       if (X == Y || (hx && c - 2 < 1) || (hy && c + 3 > W)) continue;
+      if (has[r][X] < 1 + hx || has[r][Y] < 1 + hy) continue;
       RowFix trig; int tc = trigFix(g[r], ok[r], c, X, Y, hx, hy, &trig);
       if (tc < 0 || tc > cap) continue;
       // (each side a run of its colour in its column through row r (3 to 5, split by the trigger row so neither clears before it), or
