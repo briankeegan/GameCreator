@@ -5,6 +5,17 @@
 Each line: the ask, then where it stands. A fix ships to main only when it holds survival over two runs; one that costs survival is
 narrowed, not dropped.
 
+### Live deaths the owner flagged
+
+- [ ] **r2239 (r18 vs bramp, lost at 3544, finish them): the window spent on clears that break nothing, then topped with 1-5
+      actions for 170 frames.** No garbage was broken in its last 630 frames (br=0: none of it was touchable). The allowance went
+      22 to 3 on two "survive" lines of 6 and 7 swaps (3030, 3220), each a 2x on a three that breaks nothing. Topped from 3372
+      (dies=1), it held, or played 1-swap levels, with 1-5 actions until it died. The enemy was topped out from 2916 to 3206 and
+      again from 3534, and was never killed. The mode also flips between finish them and fill at 3454-3534 as the enemy goes
+      12 / 7 / 12. Not touched by the breaks' reserve (6595f13b): nothing here breaks. To look at: a survive line that spends the
+      window beside one that keeps it, under garbage nothing can reach, and the cells sent while the enemy was topped.
+      Replay: ranmaru-stats r2239, frame 3544.
+
 ### Offense, from yoschi (the owner, 2026-11-19: "make this into actionable items")
 
 Measured on r1361-r1363 (yoschi at level 10, the only three games against him): he sends about 145 cells a minute to our 119, and in
