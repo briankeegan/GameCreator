@@ -111,13 +111,11 @@ static int b64(const unsigned char *p, int n, char *out) {
 }
 #define SAMPLEQ 32   // (a board is about 20 KB of log: one in 32 decisions keeps a game's log under a megabyte of them)
 static void dumpBoard(const char *tag, int32_t at, const Board *b, const Arr *arr, int narr, int32_t allow) {
-  static unsigned char bytes[sizeof(Board)];
-  static char line[sizeof(Board) * 2];
-  unsigned long n = BOARD_HEAD;
-  memcpy(bytes, b, BOARD_HEAD);
-  memcpy(bytes + n, b->inc, (unsigned long)b->ninc * sizeof(Incoming)); n += (unsigned long)b->ninc * sizeof(Incoming);
-  memcpy(bytes + n, b->p, (unsigned long)b->nrows * sizeof(Panel) * (W + 1)); n += (unsigned long)b->nrows * sizeof(Panel) * (W + 1);
-  int k = snprintf(line, sizeof line, "%s %d C%d:", tag, at, (int)sizeof(Board));
+  static unsigned char bytes[BOARD_WIDE_MAX];
+  static char line[BOARD_WIDE_MAX * 2];
+  long n = boardToWide(b, bytes, sizeof bytes);
+  if (n < 0) return;
+  int k = snprintf(line, sizeof line, "%s %d C%d:", tag, at, (int)n);
   k += b64(bytes, (int)n, line + k);
   k += snprintf(line + k, sizeof line - (unsigned long)k, " [");
   for (int i = 0; i < narr; i++) k += snprintf(line + k, sizeof line - (unsigned long)k, "%s[%d,%d,%d]", i ? "," : "", arr[i].at, arr[i].width, arr[i].height);
@@ -178,7 +176,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   out->tap = A->tap; out->raiseNow = A->raiseNow; out->raiseAfter = A->raiseAfter; out->raiseWait = A->raiseWait; out->nhand = A->nhand;
   for (int i = 0; i < A->nhand; i++) { out->hand[i] = A->hand[i]; out->handAt[i] = A->handAt[i]; }
   out->wastes = A->wastes; out->play = A->play; out->ended = A->ended;
-  out->holdLives = A->holdLives; out->brk = A->brk; out->urgent = A->urgent; out->idleMs = A->idleMs;
+  out->lineBreaks = A->lineBreaks; out->holdLives = A->holdLives; out->brk = A->brk; out->urgent = A->urgent; out->idleMs = A->idleMs;
   out->aim = A->aim;
   out->empty = A->empty; out->nalt = A->nalt; for (int i = 0; i < A->nalt; i++) out->alt[i] = A->alt[i];
   out->ms = clock_ms() - t0; out->closeMs = clockWentOut ? clock_ms() - clockWentOut : 0;

@@ -886,6 +886,14 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
 }
 static int compareJudged(const Judge *x, const Judge *y) {
   int lx, ly; creditPair(x, y, &lx, &ly);
+  // THE LAST CHANCE: the hold lost inside a break's time, beside a line lost no sooner whose next moves promise a break's time more (the
+  // readiness break, the survival search after it): the line first -- holding is the loss for certain. Only against the hold: the
+  // promise is never weighed against another line's own life. 244 of 419 lost games held, dying, over such a line.
+  if (x->hold != y->hold && rankHoldClock == decQ.b->clock && rankHoldOwn >= 0 && rankHoldOwn < rankSave) {
+    const Judge *h = x->hold ? x : y, *l = h == x ? y : x;
+    if (!l->o.dead && !l->o.lives && l->extLost != NOT_ASKED && lostAtOf(l->o.lostAt, 0) >= rankHoldOwn && lostAtOf(l->extLost, 0) - rankHoldOwn >= rankSave)
+      return (cmpKey = __LINE__, (l == x ? -1 : 1));
+  }
   // THE BREAK THAT PAYS (the owner: keep enough panels to break the garbage): under garbage below the floor, of two breaks that convert
   // the same rows and neither lives, the one that spends more panels goes first only where it is lost later by a break's time (rankSave)
   // for each three more it spends -- a three kept is the next break. Runs 4196-4220, large_garbage 7 and 8: every row broke for more than
@@ -1073,6 +1081,18 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (bx != by) {
       const Judge *b = bx ? x : y, *o = bx ? y : x;
       if (!o->hold && o->k.nseq > 0 && !outlives(o, b)) return (cmpKey = __LINE__, (bx ? -1 : 1));
+    }
+  }
+  // (A PROMISE NEVER BEATS A BREAK -- the owner: breaking garbage is super important: under garbage, of two that do not live, a line
+  // that breaks garbage before one that breaks none -- the hold too -- unless that one's own board, not what its next moves promise,
+  // outlives the break's by a break's time: 4538 combo_storm 3, 4887, a chain breaking nothing lost at 409, promising 697, played over a
+  // break of 16 lost at 429; the panels drained and the breaks after it came too late)
+  if (!lx && decF.under) {
+    int bx = !x->hold && !x->o.dead && x->apBroke > 0, by = !y->hold && !y->o.dead && y->apBroke > 0;
+    if (bx != by) {
+      const Judge *b = bx ? x : y, *o = bx ? y : x;
+      double bb = lostAtOf(b->o.lostAt, 0), ob = lostAtOf(o->o.lostAt, o->hold);
+      if (!o->o.lives && bb >= rankSave && ob - bb < rankSave) return (cmpKey = __LINE__, (bx ? -1 : 1));
     }
   }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
@@ -1615,6 +1635,18 @@ static int walkTried(const Read *R, const Cand *k, Judge *J, int ok, int most) {
 static int judgeWalkedIn(const Read *R, const Cand *k, Judge *J, int most) { int ok = judgeCand(R, k, J); return walkTried(R, k, J, ok, most) || ok; }
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) { return judgeWalkedIn(R, k, J, 1); }
 // sorted stably by the one order
+static void outlivingFirst(Judge **a, int n) {
+  // (THE LINE THAT OUTLIVES THE TOP AND BEATS IT IS THE TOP: the keys are not transitive, and a line that loses to another head to head
+  // on survival can end on top through a third -- r1350, 4490: the hold played, lost at 156, over a break in progress lost at 264 that
+  // beats it alone. Each line that outlives the top by a break's time and beats it compared alone moves up, a bounded number of times --
+  // after the sort, and after the hold is put on top in place of a line that does nothing: decide.c)
+  { int32_t keep = cmpKey;
+    for (int pass = 0; pass < 4 && n > 1; pass++) { int moved = 0;
+      for (int i = 1; i < n; i++) if (!a[i]->o.dead && outlives(a[i], a[0]) && compareJudged(a[i], a[0]) < 0) {
+        Judge *e = a[i]; for (int q = i; q > 0; q--) a[q] = a[q - 1]; a[0] = e; moved = 1; break; }
+      if (!moved) break; }
+    cmpKey = keep; }
+}
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
   markIdle(a, n);
@@ -1626,15 +1658,7 @@ static void sortJudged(Judge **a, int n) {
       while (j < hi) tmp[k++] = a[j++];
       for (k = lo; k < hi; k++) a[k] = tmp[k];
     }
-  // (THE LINE THAT OUTLIVES THE TOP AND BEATS IT IS THE TOP: the keys are not transitive, and a line that loses to another head to head
-  // on survival can end on top through a third -- r1350, 4490: the hold played, lost at 156, over a break in progress lost at 264 that
-  // beats it alone. Each line that outlives the top by a break's time and beats it compared alone moves up, a bounded number of times)
-  { int32_t keep = cmpKey;
-    for (int pass = 0; pass < 4 && n > 1; pass++) { int moved = 0;
-      for (int i = 1; i < n; i++) if (!a[i]->o.dead && outlives(a[i], a[0]) && compareJudged(a[i], a[0]) < 0) {
-        Judge *e = a[i]; for (int q = i; q > 0; q--) a[q] = a[q - 1]; a[0] = e; moved = 1; break; }
-      if (!moved) break; }
-    cmpKey = keep; }
+  outlivingFirst(a, n);
   // (THE EIGHT THAT BEATS THE TOP IS THE TOP: the keys are not transitive -- an eight put first by the finish's own key beside the line
   // on top can end below it through a third line -- so in finish them, the first eight offered whole that the order puts before the top
   // line, compared with it alone, is moved up to the top)

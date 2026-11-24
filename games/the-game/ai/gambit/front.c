@@ -34,6 +34,7 @@ typedef struct {
 } FQuestion;
 typedef struct {
   int32_t id, epoch, at, kind, move, raiseNow, raiseAfter, nhand, hand[MAXLINE], holdLives, brk, urgent, error;
+  int32_t lineBreaks;          // the line handed on breaks garbage (answer.c): carried across a switch of the mode
   int32_t tap;                 // the board near its end: the line's walks tapped while the allowance has some to spare (core/nodes.h pressTap)
   int32_t raiseWait;           // a raise held from this many frames after `at`, the first the stack takes one (0: from `at`)
   int32_t handAt[MAXLINE];     // the frame each swap handed on was judged pressed from (0: as soon as the one before is done)
@@ -119,7 +120,7 @@ static struct {
   // the one before is done)
   int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf, lineOfSwap, lineOfMoved;   // (lineOfSwap: the answer played a swap; lineOfMoved: that swap was pressed)
   int32_t actsAtSwap;   // (the action count at the last swap pressed: moveBegin)
-  int32_t lineMode, altMode, lineTap;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
+  int32_t lineMode, altMode, lineTap, lineBreaks;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
   int32_t linePlay;     // and the kind of line it is, plus one
@@ -196,13 +197,13 @@ static int unseenColour(int32_t c);
 static void unseenOf(const Board *b) {
   F.nunseen = 0;
   for (int r = 0; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const int32_t *f = b->p[r][c].f;
+    const pf_t *f = b->p[r][c].f;
     if (!f[ISGARBAGE] && unseenColour(f[COLOR]) && F.nunseen < MAXROWS * W) F.unseenIds[F.nunseen++] = f[ID];
   }
 }
 static int revealClears(const Board *t) {
   for (int r = 1; r < t->nrows; r++) for (int c = 1; c <= W; c++) {
-    const int32_t *f = t->p[r][c].f;
+    const pf_t *f = t->p[r][c].f;
     if (f[ISGARBAGE] || f[STATE] != MATCHED) continue;
     for (int i = 0; i < F.nunseen; i++) if (F.unseenIds[i] == f[ID]) return 1;
   }
@@ -634,7 +635,7 @@ static void take(void) {
     if (a.kind == 0 && a.empty) {
       F.st.starved++;
       if (F.nalt && F.altMode != modeAt(at)) F.nalt = 0;
-      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineTap = 0; F.lineN = F.nalt; F.lineAsked = F.altAsked; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
+      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineTap = 0; F.lineBreaks = 0; F.lineN = F.nalt; F.lineAsked = F.altAsked; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
       if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
       // (and nothing in hand to follow: the keys already planned -- the rest of the line in progress, every swap of it made keys -- are
       // pressed on as they are, never cleared for a hold nobody judged)
@@ -699,7 +700,7 @@ static void take(void) {
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
     F.lineWastes = a.wastes; F.linePlay = a.play >= 0 ? a.play + 1 : 0;
     unseenOf(F.pBoard);
-    F.lineN = a.nhand; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
+    F.lineN = a.nhand; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; F.lineBreaks = a.lineBreaks; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0; F.lineOfSwap = a.kind == 1; F.lineOfMoved = 0;
   }
 }
@@ -746,10 +747,12 @@ static int follow(void) {
   if (!F.lineN) return 0;
   int32_t due = imax(lineDue(), F.now + 1);
   // (a line already begun is finished across a switch of the mode -- the owner: a break begun is finished; r1393, 4078: a break put down
-  // after one of its three swaps for the switch, the walk to it spent for nothing; one not begun is dropped, the new mode plans its own)
+  // after one of its three swaps for the switch, the walk to it spent for nothing -- and so is a line that breaks garbage, begun or not:
+  // breaking garbage is every mode's; 4538 combo_storm 3 and 4, a break due 13 and 18 frames on dropped at the switch, the board lost.
+  // Any other line not begun is dropped, the new mode plans its own)
   if (modeAt(due) != F.lineMode) {
     const LineRec *r = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
-    if (!(r && r->pressed > 0)) return lineDropped(due, "another mode", END_MODE);
+    if (!(r && r->pressed > 0) && !F.lineBreaks) return lineDropped(due, "another mode", END_MODE);
     F.lineMode = modeAt(due);
   }
   // (THE LINE AS JUDGED: a swap keyed later than the judge pressed it from is pressed on a board the judge never judged -- counted, and
@@ -825,7 +828,7 @@ static void countAttacks(const Board *b) {
   static int32_t now[MAXROWS * W], freshIds[MAXROWS * W];
   int nn = 0, fresh = 0, fromGarbage = 0, gm = 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const int32_t *f = b->p[r][c].f;
+    const pf_t *f = b->p[r][c].f;
     if (f[ISGARBAGE] && f[ID] != NUL) wasGarbage[f[ID] & (WASG - 1)] = 1;
     if (f[ISGARBAGE] && f[STATE] == MATCHED) gm++;
     if (f[STATE] == MATCHED && !f[ISGARBAGE] && f[COLOR] > 0) {
@@ -860,11 +863,11 @@ static void countAttacks(const Board *b) {
     // (each logged, the first few hundred: where, and the swap it came of -- to find what pressed it)
     if (F.loggedWasted < 400 && !F.pendLog[0]) {
       char *l = F.pendLog; int k = snprintf(l, sizeof F.pendLog, "GAMBITW %d three", b->clock);
-      for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = b->p[r][c].f; for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q] && k < (int)sizeof F.pendLog) k += snprintf(l + k, sizeof F.pendLog - (unsigned long)k, " %d,%d", r, c); }
+      for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) { const pf_t *f = b->p[r][c].f; for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q] && k < (int)sizeof F.pendLog) k += snprintf(l + k, sizeof F.pendLog - (unsigned long)k, " %d,%d", r, c); }
       // (touch: a garbage cell beside one of its cells -- a three beside garbage breaks it, whatever frame the garbage is matched on)
       int touch = 0;
       for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-        const int32_t *f = b->p[r][c].f; int mine = 0;
+        const pf_t *f = b->p[r][c].f; int mine = 0;
         for (int q = 0; q < fresh; q++) if (f[ID] == freshIds[q]) mine = 1;
         if (!mine) continue;
         static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
@@ -938,7 +941,7 @@ static void moveBegin(const Board *b, int32_t save, int32_t guard, int32_t play,
   }
   for (int c = b->curCol; c <= b->curCol + 1 && c <= W; c++)
     for (int r = r0; r < b->nrows && m->n < MOVE_IDS; r++) {
-      const int32_t *f = b->p[r][c].f;
+      const pf_t *f = b->p[r][c].f;
       if (f[COLOR] <= 0 || f[ISGARBAGE] || f[ID] == NUL) continue;
       m->ids[m->n] = f[ID]; m->moved[m->n++] = r == r0;
     }
@@ -949,7 +952,7 @@ static int movesOn(const Board *b, const int32_t *fresh, int nfresh, int broke) 
   int nc = 0, k = 0, bySwap = 0;
   if (!F.nmoves) return 0;
   for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
-    const int32_t *f = b->p[r][c].f;
+    const pf_t *f = b->p[r][c].f;
     if (f[COLOR] > 0 && !f[ISGARBAGE] && f[ID] != NUL) { ids[nc] = f[ID]; states[nc++] = f[STATE]; }
   }
   for (int i = 0; i < F.nmoves; i++) {

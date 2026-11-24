@@ -34,7 +34,7 @@ static int keyOf(const Board *b, char *out) {
   int k = 0;
   for (int r = 1; r < b->nrows && k < KEYLEN - 8; r++) {
     for (int c = 1; c <= W; c++) {
-      const int32_t *f = b->p[r][c].f;
+      const pf_t *f = b->p[r][c].f;
       if (f[ISGARBAGE]) out[k++] = 'G';
       else { int32_t v = f[COLOR] == NUL ? 0 : f[COLOR]; char d[12]; int nd = 0; if (!v) d[nd++] = '0'; while (v > 0) { d[nd++] = (char)('0' + v % 10); v /= 10; } while (nd) out[k++] = d[--nd]; }
     }
@@ -404,6 +404,7 @@ typedef struct {
   Move d; int32_t raiseNow, raiseAfter, raiseWait, nhand, hand[MAXLINE], handAt[MAXLINE], handSettled, tap;
   int32_t verdict;    // 0 none, 1 lives, 2 dies, 3 raise
   int32_t holdLives, brk, urgent, offered, lineup, touch, took, clears, dumpBoard;
+  int32_t lineBreaks;   // the line handed on breaks garbage (front.c follow: carried across a switch of the mode)
   int32_t sooner;   // the line played is lost sooner than one offered, and not alike (rank.c lostAlike): survival was not first
   int32_t ended;   // what ended the line in progress (front.c lineEnds): 1 carried on, 2 held over it, 3 none carried, 4-6 the carry
                     // dropped it (carryDrop 1-3), or the line number of the order's key that put it down (rank.c cmpKey)
@@ -573,7 +574,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   A->wastes = !P.line || R.up ? 0 : wastesThree(P.line) && saveOk ? 1 : P.line->o.j.threes > 0 && P.line->apBroke > 0 ? 2 : 0;   // (a three the survival search found the board needed not to die, or one on the way to a break)
   // (THE LINE PRESSED ON: the line played is handed to the frame loop whole, each swap from the frame the judge pressed it from -- a
   // settled line's after the board settles -- so the frame loop presses the line that was judged)
-  A->nhand = 0; A->handSettled = P.line && P.line->settled;
+  A->nhand = 0; A->handSettled = P.line && P.line->settled; A->lineBreaks = P.line && !P.line->hold && P.line->apBroke > 0;
   if (P.line && !R.up) {
     int first = timed ? 0 : 1;
     for (int i = first; i < P.line->k.nseq; i++, A->nhand++) {
