@@ -9,13 +9,15 @@
 #   GC_DIR          the GameCreator checkout whose Gambit plays (default: the one this script is in)
 #   GC_UPSTREAM_REF upstream ref (default beta: the game panelattack.com runs, as the live job resolves it)
 #   GC_PANEL_DIR    a panel-game checkout to take bot/ and SurvivalLink from (default: fetched from GitHub)
-#   GC_PROFILE      Gambit's profile under eval/ (default survivor-profiles/gambit-finish.json, as gambit-24.yml)
+#   GC_MODE         finish_them | fill | switching -- as the gambit-24.yml rounds play each: gambit.json giving way to the mode at
+#                   the opener's end (GC_GAMBIT_THEN), or gambit-switch.json; every one as a fight (GC_GAMBIT_FIGHT=1). Default finish_them
+#   GC_PROFILE      a profile under eval/ in place of the mode's
+#   GC_SEED_BASE    the panel seed base, as gambit-24.yml's seed input: PA_SEED = base*100 + pattern*10 + game (default 86)
 #   PA_LEVEL        the modern level (default 10, the live one)
 #   PA_ROUND_BURST  frames back to back per 60th of a second (lockstep catch-up; default 1)
 #   FRAMES          a game's length if the bot lives (default 21600)
 #   GAMES           which games, "scenario:seed ..." (default all 28)
-#   GC_GAMBIT_FIGHT, GC_GAMBIT_ENEMY  off by default, as gambit-24.yml plays: 1 and virtual play the game as a fight against the
-#                   virtual enemy (lua/GambitNative.lua), which changes the opening (no opener rule) and what finish them reads
+#   GC_GAMBIT_ENEMY virtual: the virtual enemy across (lua/GambitNative.lua); empty by default, as gambit-24.yml
 #
 # Out: one line per game, then summary.json (survived per mode, late and refused answers per game). Exits 1 when any game is
 # lost or any answer was refused.
@@ -33,16 +35,18 @@ PANEL_REPO=https://github.com/briankeegan/panel-game.git
 BOT_REF=claude/game-bot-creation-action-0e7emk   # bot-prod-smoke-test.yml's UPSTREAM_BOT_REF
 LINK_REF=bramp/multi-player                      # the ref the live job is dispatched on: SurvivalLink and its test
 mkdir -p "$OUT" "$HERE/work"
+# (a fetch from GitHub can be refused for minutes at a time: each tried four times)
+retry() { for i in 1 2 3 4; do "$@" && return 0; sleep $((i * 20)); done; return 1; }
 
 # 1. UPSTREAM, AS THE LIVE JOB FETCHES IT: a fresh checkout of the ref, the client's bot/ dropped on top, the link copied in.
 rm -rf "$WORK"; git init -q "$WORK"
-git -C "$WORK" fetch -q --depth 1 "$UPSTREAM_REPO" "${GC_UPSTREAM_REF:-beta}"
+retry git -C "$WORK" fetch -q --depth 1 "$UPSTREAM_REPO" "${GC_UPSTREAM_REF:-beta}"
 git -C "$WORK" checkout -q FETCH_HEAD
 [ ! -e "$WORK/bot" ] || { echo "upstream now has its own bot/ -- refusing to overwrite it"; exit 1; }
 PANEL=${GC_PANEL_DIR:-}
 if [ -z "$PANEL" ]; then
   PANEL="$HERE/work/panel"; rm -rf "$PANEL"; git init -q "$PANEL"
-  git -C "$PANEL" fetch -q --depth 1 "$PANEL_REPO" "$BOT_REF" "$LINK_REF"
+  retry git -C "$PANEL" fetch -q --depth 1 "$PANEL_REPO" "$BOT_REF" "$LINK_REF"
 fi
 git -C "$PANEL" fetch -q origin "$BOT_REF" "$LINK_REF" 2>/dev/null || true
 rev() { git -C "$PANEL" rev-parse -q --verify "origin/$1" 2>/dev/null || git -C "$PANEL" ls-remote "$PANEL_REPO" "refs/heads/$1" | cut -f1; }
@@ -57,9 +61,15 @@ eval "$(luarocks path --local --lua-version 5.1 2>/dev/null)" || true
 export LUA_PATH="./?.lua;./common/lib/?.lua;${LUA_PATH:-};;" LUA_CPATH="./common/lib/?.so;./common/lib/?/?.so;${LUA_CPATH:-};;"
 (cd "$WORK" && luajit bot/tests/survivalLinkTelegraphVerify.lua) > "$OUT/link-verify.log" 2>&1 || { cat "$OUT/link-verify.log"; echo "the link's own test failed on upstream"; exit 1; }
 
-# 2. GAMBIT, AS THE LIVE JOB BUILDS IT
+# 2. GAMBIT, AS THE LIVE JOB BUILDS IT, ON THE MODE'S PROFILE
+MODE=${GC_MODE:-finish_them}
+case "$MODE" in
+  switching) PROFILE=${GC_PROFILE:-survivor-profiles/gambit-switch.json}; export GC_GAMBIT_THEN= ;;
+  finish_them|fill) PROFILE=${GC_PROFILE:-survivor-profiles/gambit.json}; export GC_GAMBIT_THEN=$MODE ;;
+  *) echo "run28.sh: GC_MODE is finish_them, fill or switching, not $MODE" >&2; exit 2 ;;
+esac
 sh "$G/build.sh" native > "$OUT/gambit-build.log" 2>&1 || { cat "$OUT/gambit-build.log"; echo "libgambit.so did not build"; exit 1; }
-GC_SURVIVOR_PROFILE="$EVAL/${GC_PROFILE:-survivor-profiles/gambit-finish.json}" node "$G/words.js" > "$OUT/gambit.words" 2>> "$OUT/gambit-build.log" || { cat "$OUT/gambit-build.log"; echo "Gambit's profile did not encode"; exit 1; }
+GC_SURVIVOR_PROFILE="$EVAL/$PROFILE" node "$G/words.js" > "$OUT/gambit.words" 2>> "$OUT/gambit-build.log" || { cat "$OUT/gambit-build.log"; echo "Gambit's profile did not encode"; exit 1; }
 
 # 3. THE MACHINE AS THE LIVE JOB PINS IT: the client on CPU 0, Gambit alone on a CPU of another core, its 4 workers on the rest
 core() { cat "/sys/devices/system/cpu/cpu$1/topology/core_id" 2>/dev/null || echo "$1"; }
@@ -69,16 +79,17 @@ for c in $(seq 1 $(( $(nproc) - 1 ))); do
 done
 [ -n "$gcpu" ] || { gcpu=0; wcpus=0; }
 export GC_EVAL_DIR="$EVAL" GC_GAMBIT_WORDS="$OUT/gambit.words" GC_GAMBIT_WORKERS=4 GC_GAMBIT_CPUS="$gcpu" GC_GAMBIT_WORKER_CPUS="${wcpus:-$gcpu}"
-export PA_LEVEL=${PA_LEVEL:-10} GC_GAMBIT_FIGHT=${GC_GAMBIT_FIGHT:-} GC_GAMBIT_ENEMY=${GC_GAMBIT_ENEMY:-}
-echo "upstream $(git -C "$WORK" log -1 --format='%h %s' | cut -c1-80); bot/ ${BOT_SHA:0:8}, link ${LINK_SHA:0:8}; Gambit $COMMIT, ${GC_PROFILE:-survivor-profiles/gambit-finish.json}; level $PA_LEVEL; fight ${GC_GAMBIT_FIGHT:-0}, enemy ${GC_GAMBIT_ENEMY:-none}; client CPU 0, Gambit $gcpu, workers ${wcpus:-$gcpu}"
+export PA_LEVEL=${PA_LEVEL:-10} GC_GAMBIT_FIGHT=1 GC_GAMBIT_ENEMY=${GC_GAMBIT_ENEMY:-}
+echo "upstream $(git -C "$WORK" log -1 --format='%h %s' | cut -c1-80); bot/ ${BOT_SHA:0:8}, link ${LINK_SHA:0:8}; Gambit $COMMIT, $MODE ($PROFILE, then ${GC_GAMBIT_THEN:-none}); level $PA_LEVEL; fight, enemy ${GC_GAMBIT_ENEMY:-none}, seed base ${GC_SEED_BASE:-86}; client CPU 0, Gambit $gcpu, workers ${wcpus:-$gcpu}"
 
 # 4. THE GAMES
 games=${GAMES:-$(for s in combo_storm factory large_garbage; do for n in 1 2 3 4 5 6 7 8; do printf '%s:%d ' $s $n; done; done; printf 'endless:%d ' 1 2 3 4)}
 : > "$OUT/rounds.txt"
 for g in $games; do
   s=${g%%:*} n=${g##*:} log="$OUT/$s-$n.log"
+  case "$s" in combo_storm) P=1;; factory) P=2;; large_garbage) P=3;; endless) P=4;; *) P=9;; esac
   rm -f "$log"
-  line=$(cd "$WORK" && GC_GAMBIT_LOG="$log" PA_SEED="$n" taskset -c 0 luajit bot/upstreamRound.lua "$s" "$n" "${FRAMES:-21600}" 2> "$OUT/$s-$n.err" | grep '^ROUND' || true)
+  line=$(cd "$WORK" && GC_GAMBIT_LOG="$log" PA_SEED=$(( ${GC_SEED_BASE:-86} * 100 + P * 10 + n )) taskset -c 0 luajit bot/upstreamRound.lua "$s" "$n" "${FRAMES:-21600}" 2> "$OUT/$s-$n.err" | grep '^ROUND' || true)
   [ -n "$line" ] || line="ROUND $s $n crashed frames=0 swaps=0 cleared=0"
   # (the frame loop's own counts, from its last stats line: the LATE and REFUSED lines stop being written after the first few)
   stats=$(grep -o 'match over: {[^}]*' "$log" 2>/dev/null | tail -1)

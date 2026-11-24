@@ -37,7 +37,8 @@ local function trainingAttack(width, height)
 end
 
 local mode = GameModes.getPreset(SIZES[SCENARIO] and GameModes.IDs.ONE_PLAYER_TRAINING or GameModes.IDs.ONE_PLAYER_ENDLESS)
-local match = Match(GeneratorSource(SEED, true), mode.matchRules)
+-- (the panels' seed: PA_SEED as gambit-24.yml derives it, else the game's number)
+local match = Match(GeneratorSource(tonumber(os.getenv("PA_SEED") or "") or SEED, true), mode.matchRules)
 local stack = match:createStackWithSettings(LevelPresets.getModern(LEVEL), true, "controller")
 local attacker
 if SIZES[SCENARIO] then
