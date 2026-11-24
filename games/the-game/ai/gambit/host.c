@@ -40,12 +40,19 @@ void *paHeap(unsigned long n) {
   return p;
 }
 // GIVING PAGES BACK (eval/native/memory.h paRelease): the whole pages inside a block nothing reads until it writes it again, handed back
-// to the system -- the block stays this heap's (freed with the rest when the instance quits) and reads as zeros when next touched. Only
-// pages wholly inside the block: the allocator's own words before and after it are left alone.
+// to the system -- the block stays this heap's (freed with the rest when the instance quits) and reads as anything when next touched.
+// Only pages wholly inside the block: the allocator's own words before and after it are left alone. MADV_FREE: the system takes the
+// pages only when it needs the memory, so a board taken again is written in place with no page fault -- every fault holds the process's
+// memory map, and the game's own thread waits behind it for any mapping it makes (a frame over the think budget at 0.7 ms of CPU).
+// Where the kernel has no MADV_FREE, MADV_DONTNEED.
 #include <sys/mman.h>
 void paRelease(void *p, unsigned long n) {
   unsigned long a = ((unsigned long)p + 4095) & ~4095ul, e = ((unsigned long)p + n) & ~4095ul;
-  if (e > a) madvise((void *)a, e - a, MADV_DONTNEED);
+  if (e <= a) return;
+#ifdef MADV_FREE
+  if (madvise((void *)a, e - a, MADV_FREE) == 0) return;
+#endif
+  madvise((void *)a, e - a, MADV_DONTNEED);
 }
 // The calling thread's own account: its CPU time (ms), the times it was taken off its core and gave it up, its page faults.
 void hostThreadStats(double *out) {
