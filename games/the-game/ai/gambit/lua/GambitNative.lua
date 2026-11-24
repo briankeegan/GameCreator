@@ -121,7 +121,7 @@ function GambitNative.new(opts)
   self.inputs = opts.inputBudget or InputBudget.standard()
   self.ownInputs = opts.inputBudget == nil
   self.dropped, self.frames, self.ages, self.pv = 0, 0, {}, {}
-  self.ts0, self.ts1 = ffi.new("double[4]"), ffi.new("double[4]")
+  self.ts0, self.ts1, self.ts2, self.ts3 = ffi.new("double[4]"), ffi.new("double[4]"), ffi.new("double[4]"), ffi.new("double[4]")
   return self
 end
 
@@ -487,10 +487,15 @@ function GambitNative:think(stack, sources, view)
   local t0 = ThinkBudget.now()
   self:load(stack)
   local t1 = ThinkBudget.now()
+  C.gn_thread_stats(self.ts2)
   self:telegraph(sources, stack, view)
+  C.gn_thread_stats(self.ts3)
+  local t1a = ThinkBudget.now()
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
+  local t1b = ThinkBudget.now()
   local has, out, top, stop, stand = opponentOf(sources, view, stack.clock)
+  self.stepTeleOwn, self.stepAges = t1a - t1, t1b - t1a
   local onWay
   if stand and VIRTUAL then top, out, onWay = virtualEnemy(stack, stack.clock) end
   -- (the enemy as our garbage will leave it: most of its board, and every row we have sent it that has not landed -- a combo lands on
@@ -540,7 +545,9 @@ function GambitNative:input(stack, sources, view)
     C.gn_thread_stats(b)
     C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d; %s",
       stack.clock, took * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3],
-      string.format("rows %d, queued %d", self.nrows or 0, self.nqueued or 0)))
+      string.format("rows %d, queued %d; telegraph's own %.1f (cpu %.2f, preempted %d, yielded %d, faults %d), ages %.1f, lua heap %d KB", self.nrows or 0,
+        self.nqueued or 0, (self.stepTeleOwn or 0) * 1000, self.ts3[0] - self.ts2[0], self.ts3[1] - self.ts2[1], self.ts3[2] - self.ts2[2],
+        self.ts3[3] - self.ts2[3], (self.stepAges or 0) * 1000, collectgarbage("count"))))
   end
   self.stepLoad = nil
   return key
