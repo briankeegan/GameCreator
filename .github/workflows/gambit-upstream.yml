@@ -10,6 +10,9 @@ on:
       gambit_from:
         description: 'The GameCreator commit or branch whose Gambit plays (default: the ref dispatched on)'
         default: ''
+      profile:
+        description: "Gambit's profile under games/the-game/ai/eval (the live bot's: survivor-profiles/gambit.json)"
+        default: 'survivor-profiles/gambit.json'
       level:
         description: 'The modern level (the live bot plays 10)'
         default: '10'
@@ -24,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gambit-upstream-${{ inputs.gambit_from || github.sha }}
+  group: gambit-upstream-${{ inputs.gambit_from || github.sha }}-${{ inputs.profile }}-${{ inputs.level }}
   cancel-in-progress: false
 
 jobs:
@@ -61,6 +64,7 @@ jobs:
         env:
           GAMES: ${{ matrix.pattern }}:${{ matrix.game }}
           PA_LEVEL: ${{ inputs.level }}
+          GC_PROFILE: ${{ inputs.profile }}
           FRAMES: ${{ inputs.frames }}
           GC_UPSTREAM_REF: ${{ inputs.upstream_ref }}
         run: |
