@@ -143,11 +143,16 @@ static double moveStartMs(int32_t at) {
   int32_t f = __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST);
   return began + (at - f) * per;
 }
-// (the client runs frames back to back to catch up: the longest such run seen, which a decision's frame comes that much sooner by)
+// (the client runs frames back to back to catch up: the longest such run seen, which a decision's frame comes that much sooner by --
+// and never under MARGIN_FRAMES: the frame loop takes an answer at the start of its frame, and a decision stopped on the last
+// millisecond before it is late by its own closing work, which a rescue's is not counted in (closeWorst). 1-4 frames late in endless,
+// run 4577, once the game's frames stopped stalling and its bursts went to 0)
+#define MARGIN_FRAMES 2
 static int32_t gameBurst;
+static int32_t burstOf(void) { int32_t b = __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST); return b > MARGIN_FRAMES ? b : MARGIN_FRAMES; }
 static int frameOut(void) {
-  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) return 1;
-  return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1);
+  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - burstOf()) return 1;
+  return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1 - burstOf());
 }
 static void ringKeep(int32_t at, int32_t allow);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
@@ -156,7 +161,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   dueFrame = q->at - 1; clockFrameOut = frameOut;
   // (the searches' deadline is the frame loop's own: the start of the frame the decision is cut at -- the one before its move, sooner by
   // the burst -- less its closing work)
-  double due = moveStartMs(dueFrame - __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST)) - closeWorst();
+  double due = moveStartMs(dueFrame - burstOf()) - closeWorst();
   if (!hostBoard) hostBoard = nb_new();
   cloneBoard(hostBoard, b);
   memset(&hostQ, 0, sizeof hostQ);
