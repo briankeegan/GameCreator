@@ -34,7 +34,7 @@ typedef struct {
 } FQuestion;
 typedef struct {
   int32_t id, epoch, at, kind, move, raiseNow, raiseAfter, nhand, hand[MAXLINE], holdLives, brk, urgent, error;
-  int32_t lineBreaks;          // the line handed on breaks garbage (answer.c): carried across a switch of the mode
+  int32_t lineKept;            // the line handed on breaks garbage, lives, or outlives the hold by a break's time (answer.c): carried across a switch of the mode
   int32_t tap;                 // the board near its end: the line's walks tapped while the allowance has some to spare (core/nodes.h pressTap)
   int32_t raiseWait;           // a raise held from this many frames after `at`, the first the stack takes one (0: from `at`)
   int32_t handAt[MAXLINE];     // the frame each swap handed on was judged pressed from (0: as soon as the one before is done)
@@ -120,7 +120,7 @@ static struct {
   // the one before is done)
   int32_t lineN, line[MAXLINE], lineAt[MAXLINE], lineOfId, lineOfPressed, haveLineOf, lineOfSwap, lineOfMoved;   // (lineOfSwap: the answer played a swap; lineOfMoved: that swap was pressed)
   int32_t actsAtSwap;   // (the action count at the last swap pressed: moveBegin)
-  int32_t lineMode, altMode, lineTap, lineBreaks;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
+  int32_t lineMode, altMode, lineTap, lineKept;   // the mode each was handed under (answer.c modeAt): a line is never pressed into another mode's game
   int32_t lastHold, lastBrk, lastUrgent, havePace;
   int32_t lineWastes;   // the line in hand was played for a three, as the board's save
   int32_t linePlay;     // and the kind of line it is, plus one
@@ -635,7 +635,7 @@ static void take(void) {
     if (a.kind == 0 && a.empty) {
       F.st.starved++;
       if (F.nalt && F.altMode != modeAt(at)) F.nalt = 0;
-      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineTap = 0; F.lineBreaks = 0; F.lineN = F.nalt; F.lineAsked = F.altAsked; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
+      if (!F.lineN && F.nalt) { F.lineMode = F.altMode; F.lineTap = 0; F.lineKept = 0; F.lineN = F.nalt; F.lineAsked = F.altAsked; for (int i = 0; i < F.nalt; i++) { F.line[i] = F.alt[i]; F.lineAt[i] = 0; } F.nalt = 0; F.haveLineOf = 0; }
       if (F.lineN) { if (F.nextAt < at) F.nextAt = at; if (follow()) { F.st.inHand++; continue; } }
       // (and nothing in hand to follow: the keys already planned -- the rest of the line in progress, every swap of it made keys -- are
       // pressed on as they are, never cleared for a hold nobody judged)
@@ -700,7 +700,7 @@ static void take(void) {
     memcpy(F.knew, F.pKnew, sizeof(Arrival) * (unsigned long)F.pNknew); F.nknew = F.pNknew;
     F.lineWastes = a.wastes; F.linePlay = a.play >= 0 ? a.play + 1 : 0;
     unseenOf(F.pBoard);
-    F.lineN = a.nhand; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; F.lineBreaks = a.lineBreaks; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
+    F.lineN = a.nhand; F.lineAsked = F.pPosted; F.lineMode = modeAt(a.at); F.lineTap = a.tap; F.lineKept = a.lineKept; for (int i = 0; i < a.nhand; i++) { F.line[i] = a.hand[i]; F.lineAt[i] = a.handAt[i]; }
     F.haveLineOf = 1; F.lineOfId = a.id; F.lineOfPressed = 0; F.lineOfSwap = a.kind == 1; F.lineOfMoved = 0;
   }
 }
@@ -747,12 +747,13 @@ static int follow(void) {
   if (!F.lineN) return 0;
   int32_t due = imax(lineDue(), F.now + 1);
   // (a line already begun is finished across a switch of the mode -- the owner: a break begun is finished; r1393, 4078: a break put down
-  // after one of its three swaps for the switch, the walk to it spent for nothing -- and so is a line that breaks garbage, begun or not:
-  // breaking garbage is every mode's; 4538 combo_storm 3 and 4, a break due 13 and 18 frames on dropped at the switch, the board lost.
-  // Any other line not begun is dropped, the new mode plans its own)
+  // after one of its three swaps for the switch, the walk to it spent for nothing -- and so is a line the board's life hangs on, begun or
+  // not: one that breaks garbage, lives, or outlives the hold by a break's time; breaking garbage and surviving are every mode's. 4538
+  // combo_storm 3 and 4, a break due 13 and 18 frames on, and 4551 combo_storm 1, a chain the board lived on, each dropped at the switch
+  // and the board lost. Any other line not begun is dropped, the new mode plans its own)
   if (modeAt(due) != F.lineMode) {
     const LineRec *r = F.haveLineOf ? lineRec(F.lineOfId + 1) : 0;
-    if (!(r && r->pressed > 0) && !F.lineBreaks) return lineDropped(due, "another mode", END_MODE);
+    if (!(r && r->pressed > 0) && !F.lineKept) return lineDropped(due, "another mode", END_MODE);
     F.lineMode = modeAt(due);
   }
   // (THE LINE AS JUDGED: a swap keyed later than the judge pressed it from is pressed on a board the judge never judged -- counted, and
