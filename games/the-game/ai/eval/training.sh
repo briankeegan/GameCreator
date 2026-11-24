@@ -16,6 +16,7 @@
 # Env: OUT_DIR (default ./training-out), PORT (47777), MINUTES (330, each client's limit), PROFILE, FRAMES, LEVEL (the modern level
 # the player's stack plays, 11; set on the character select and checked before Ready).
 # $OUT_DIR/results.txt holds a line per game.
+[ "${GITHUB_ACTIONS:-}" = true ] || { echo "training.sh: games run on GitHub Actions, not here -- dispatch gambit-24.yml" >&2; exit 2; }
 set -u
 EVAL="$(cd "$(dirname "$0")" && pwd)"
 BOT=${1:-wasm}; PATTERN=${2:-large_garbage}; GAMES=${3:-10}; LEVEL=${LEVEL:-11}
