@@ -97,7 +97,6 @@ static PlanOpts planOptsOf(const Read *R, const List *aims, double ms) {
                   planSeedsHave ? &planSeeds : 0 };
   return po;
 }
-#define PLAN_URGENT AT_LEVEL(240)   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
 static void searchPrep(const Read *R, Found *S) {
   memset(S, 0, sizeof *S);
   planSplit = 0; extBeside = 0; planBDone = 0; extDone = 0;
@@ -112,9 +111,6 @@ static void searchPrep(const Read *R, Found *S) {
     if (S->xAims.n < MAXAIMS) { Aim brk; memset(&brk, 0, sizeof brk); brk.brk = 1; S->xAims.aim[S->xAims.n++] = brk; }
   }
   if (pool.nworkers < 3 || !C2.due || poolBusy) return;
-  // (buried and the board lost soon: nothing split off -- the workers' CPUs, two on a runner, go to the break and survival searches,
-  // and an attack found beside the decision is not played on a board that dies first)
-  if (R->under && R->F.known[FACT_US_DIES] && R->F.v[FACT_US_DIES] > 0 && R->F.v[FACT_US_DIES] < PLAN_URGENT) return;
   extBeside = !GP->extendOff && ((cascadeLive(board) || R->pop) || wantsChain(&R->guides));
   extMsBeside = leftMs();
   if (R->guides.n >= 2) {
@@ -195,6 +191,7 @@ static void searchMerge(const Read *R, Found *S) {
 #define OP_FALL_EXT_DRY 0.5   // (and where the last found nothing longer: half -- the chain changes as each link lands, and the next chain's designs search on from their last)
 #define OP_FALL_EXT 0.8   // (the share of the decision's time the extension of the opener's falling chain takes)
 #define CD_PLAN_MS 120   // (the planner's time in the countdown's decision: the opening's plan has the rest)
+#define PLAN_URGENT AT_LEVEL(240)   // (frames to the board's loss inside which the planner gives the judging its time: about two breaks' worth)
 static void searchAll(const Read *R, Found *S) {
   if (!R->guides.n) return;
   // (EVERY SEARCH TAKES A SHARE OF THE TIME THE DECISION HAS: half of what is left when it begins -- leftMs already keeps back the
