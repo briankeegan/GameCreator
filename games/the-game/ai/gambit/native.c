@@ -210,7 +210,10 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   { double e = clock_ms(); int32_t gf = __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST);
     snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d ph=%d/%d/%d/%d/%d/fo%d/gf%d/due%d", s, (int)(e - t0), clockWentOut ? (int)(e - clockWentOut) + 1 : 0, hostHeapMB(),
              phAt[1] ? (int)(phAt[1] - t0) : -1, phAt[2] ? (int)(phAt[2] - t0) : -1, phAt[3] ? (int)(phAt[3] - t0) : -1, phAt[4] ? (int)(phAt[4] - t0) : -1, phAt[5] ? (int)(phAt[5] - t0) : -1,
-             phOut ? (int)(phOut - t0) : -1, gf, dueFrame); }
+             phOut ? (int)(phOut - t0) : -1, gf, dueFrame);
+    k = 0; while (line[k]) k++; snprintf(line + k, sizeof line - (unsigned long)k, " phs=%d/%d/%d/%d/%d/%d",
+             phAt[8] ? (int)(phAt[8] - t0) : -1, phAt[9] ? (int)(phAt[9] - t0) : -1, phAt[10] ? (int)(phAt[10] - t0) : -1, phAt[11] ? (int)(phAt[11] - t0) : -1,
+             phAt[12] ? (int)(phAt[12] - t0) : -1, phAt[13] ? (int)(phAt[13] - t0) : -1); }
   flog(line);
   hostLogFlush();   // (the log written on Gambit's thread, between decisions: the game's frame never waits on the disk)
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
