@@ -335,7 +335,7 @@ static void breakJob(int32_t i) {
   // and work past the deadline is an answer taken after its frame, never pressed: run 4580, endless 1, 19500, the planner's half 469 ms
   // of a decision 860 ms long asked 51 frames ahead, late by a frame)
   clockWork = brJobWork; clockShare = C2.due; clockAborted = 0; clockPoll = 0;
-  inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
+  inJob = 1; jobFrame = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
   int kind = jobKinds[i];
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
   else if (kind == JOB_PLAN) planJob();
@@ -347,7 +347,7 @@ static void breakJob(int32_t i) {
     clockShareEnd(old);
     __atomic_store_n(&svJobDone, 1, __ATOMIC_RELEASE);
   }
-  inJob = 0;
+  inJob = 0; jobFrame = 0;
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {

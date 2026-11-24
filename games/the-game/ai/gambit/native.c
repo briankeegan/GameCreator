@@ -157,14 +157,15 @@ static int32_t burstOf(void) { int32_t b = __atomic_load_n(&gameBurst, __ATOMIC_
 #define RESCUE_FRAMES 6
 static int frameOut(void) {
   int32_t more = rescueOn ? RESCUE_FRAMES : 0;
-  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - burstOf() - more) return 1;
-  return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1 - burstOf() - more);
+  int out = __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - burstOf() - more || clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1 - burstOf() - more);
+  if (out && !phOut) phOut = clock_ms();
+  return out;
 }
 static void ringKeep(int32_t at, int32_t allow);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
-  dueFrame = q->at - 1; clockFrameOut = frameOut; rescueOn = 0;
+  dueFrame = q->at - 1; clockFrameOut = frameOut; rescueOn = 0; memset(phAt, 0, sizeof phAt); phOut = 0;
   // (the searches' deadline is the frame loop's own: the start of the frame the decision is cut at -- the one before its move, sooner by
   // the burst -- less its closing work)
   double due = moveStartMs(dueFrame - burstOf()) - closeWorst();
@@ -206,7 +207,10 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
       s = at + 2; while (*s >= '0' && *s <= '9') s++;
     }
   }
-  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0, hostHeapMB());
+  { double e = clock_ms(); int32_t gf = __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST);
+    snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d ph=%d/%d/%d/%d/%d/fo%d/gf%d/due%d", s, (int)(e - t0), clockWentOut ? (int)(e - clockWentOut) + 1 : 0, hostHeapMB(),
+             phAt[1] ? (int)(phAt[1] - t0) : -1, phAt[2] ? (int)(phAt[2] - t0) : -1, phAt[3] ? (int)(phAt[3] - t0) : -1, phAt[4] ? (int)(phAt[4] - t0) : -1, phAt[5] ? (int)(phAt[5] - t0) : -1,
+             phOut ? (int)(phOut - t0) : -1, gf, dueFrame); }
   flog(line);
   hostLogFlush();   // (the log written on Gambit's thread, between decisions: the game's frame never waits on the disk)
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
