@@ -19,7 +19,7 @@ static int32_t thenRule = -1;
 static int32_t opRaiseLog[5];   // (the opening raise judged: the rows short, the rows held to, the rows alive, the blocks on their way, negative where the raise was held to the first landing -- the log's opRaise=)
 static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
 static int32_t carryJudgeDrop = -1;   // (and for 19, why the judging dropped it: rank.c DROP_*, -1 none said)
-static int32_t rescues; static int32_t rescueOn; static double phAt[16], phOut;   // (a probe: when each phase of a decision ended, and when its frame stop first fired)   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
+static int32_t rescues; static int32_t rescueOn;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
