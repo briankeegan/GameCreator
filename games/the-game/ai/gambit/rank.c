@@ -627,7 +627,8 @@ static int allowAtNeed(int walk) {
 static int garbageComing(void) { return decQ.narr > 0 || (decQ.b && decQ.b->ninc > 0); }
 // (how far below a break's walk a line leaves the allowance -- a break too: of two breaks the board survives alike, the one that leaves
 // the next break its walk; spendsReserve, which sets a line that breaks nothing after one that keeps the reserve, never counts a break)
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || (decF.under && !breakOffered) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
+static int digPaid(const Judge *J);
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || digPaid(J) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
 // (with no break offered under garbage, a line that digs toward one -- or lets a perched block down onto the stack, the way to the break
 // the perch holds off -- may spend the reserve only where the hold loses the board within a
 // break's time, or the window holds a break's walk again by the time the next block can land -- standing longer, the reserve is that
@@ -902,16 +903,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
       lostOf(x) >= rankSave && lostOf(y) >= rankSave) {
     const Judge *keep = panelsLeft(x) > panelsLeft(y) ? x : y, *sp = keep == x ? y : x;
     if (lostOf(sp) - lostOf(keep) < ((panelsLeft(keep) - panelsLeft(sp)) / 3) * rankSave) return (cmpKey = __LINE__, (keep == x ? -1 : 1));
-  }
-  // THE RESERVE KEPT FOR THE BREAK (the owner: efficiency is key, break the garbage): under garbage, a line that breaks none of it and
-  // leaves the input window under a break's walk (spendsReserve) goes after the hold -- unless the hold is lost inside a break's time,
-  // or the line lives where the hold is lost or outlives it: the actions it spends are the ones the next break is pressed with. Lost
-  // factory games ran their last 1,500 frames on 14.6 actions against 19.3 in those that lived, and a break found with the window spent
-  // is a break not pressed (4547 factory 3, 3701: a break lost at 258 on offer with 2 actions left).
-  if (decF.under && x->hold != y->hold) {
-    const Judge *h = x->hold ? x : y, *l = h == x ? y : x;
-    if (!h->o.dead && !l->o.dead && spendsReserve(l) && lostAtOf(h->o.lostAt, 1) >= rankSave && !(l->o.lives && !h->o.lives) && !outlives(l, h) &&
-        !(cutsShort(h) && !cutsShort(l))) return (cmpKey = __LINE__, (h == x ? -1 : 1));
   }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
   // than it, the two alike: the mode gives way to survival only (the owner), never to a plan that lives by the horizon alone
