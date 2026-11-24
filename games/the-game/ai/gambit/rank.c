@@ -1373,10 +1373,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int oBreaks = o->apBroke > 0 && oOwn >= rankSave && !(c->apBroke > 0) && (decF.belowFloor || cOwn - oOwn < rankSave);
     // (in finish them, alike within a break's time -- set 86 combo_storm 1, 2387: a 5x in progress lost at 351 kept over a combo of 6
     // lost at 580, both three breaks off)
-    int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : (lostOf(o) <= lostOf(c) || (finishAsked() ? finishAlike(c, o) : lostAlike(c, o))) && !oBreaks;
+    // (and never over a line the engine has outliving it by a break's time, its walk already pressed there -- run 4608, combo_storm 1,
+    // 506: a survive lost at 227 read below the line in progress lost at 115 for the walk charged again, the board lost at 115)
+    int oOutlives = !lx && !o->o.dead && oOwn < 1e299 && cOwn < 1e299 && oOwn - cOwn >= rankSave;
+    int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : (lostOf(o) <= lostOf(c) || (finishAsked() ? finishAlike(c, o) : lostAlike(c, o))) && !oBreaks && !oOutlives;
     // (and under garbage, a break in progress over another break that costs more presses than what is left of it -- switching spends the
     // window on swaps pressed for nothing -- unless the one in progress is lost within a break's time)
-    if (!keep && decF.under && c->apBroke > 0 && o->apBroke > 0 && lineWalk(o) > lineWalk(c) && lostOf(c) >= rankSave) keep = 1;
+    if (!keep && !oOutlives && decF.under && c->apBroke > 0 && o->apBroke > 0 && lineWalk(o) > lineWalk(c) && lostOf(c) >= rankSave) keep = 1;
     if (finishEightBy(o, c)) keep = 0;
     if (keep) return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
