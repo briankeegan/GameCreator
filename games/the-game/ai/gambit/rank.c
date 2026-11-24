@@ -555,11 +555,6 @@ static void markIdle(Judge **a, int n) {
   rankHoldClock = decQ.b->clock; rankHoldOwn = H && !H->o.dead && H->o.lostAt != NOT_ASKED ? lostAtOf(H->o.lostAt, 1) : -1;
   double holdLost = H ? lostOf(H) : 0;
   for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H) && !(a[i]->k.readyGain > 0 && !a[i]->o.dead && diesAt(a[i]) >= diesAt(H))) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
-  // (AND UNDER GARBAGE, ON THE NEXT BREAKS' WINDOW: a line that breaks nothing, does no better than the hold and spends the reserve the next
-  // breaks are pressed from (spendsReserve) is idle too, whatever it clears -- the owner: don't overspend; what it spends buys nothing
-  // the hold does not have, and the break after it has less to be pressed with. Run 4583, factory 2, 4487: a three lost on the hold's own
-  // frame with 10 actions left, a clear after it, the next break's walk over the 2 left, dead at 4647)
-  for (int i = 0; i < n; i++) if (H && !a[i]->idle && !a[i]->hold && decF.under && !(a[i]->apBroke > 0) && !a[i]->o.lives && !beatsHold(a[i], H) && spendsReserve(a[i])) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
