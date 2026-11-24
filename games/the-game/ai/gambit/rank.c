@@ -1347,7 +1347,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // converts are the board's next, and only a break gives back what a clear spends)
   if (x->carried != y->carried && !x->hold && !y->hold) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    int oBreaks = o->apBroke > 0 && lostOf(o) >= rankSave && !(c->apBroke > 0) && (decF.belowFloor || lostOf(c) - lostOf(o) < rankSave);
+    // (the losses as the engine has them, the walk pressed on it: charged again, a break of 14 actions lost at 174 read as 60 beside a
+    // line in progress lost at 107 -- run 4597, factory 2, 8856, the board lost at 107)
+    double oOwn = lostAtOf(o->o.lostAt, 0), cOwn = lostAtOf(c->o.lostAt, 0);
+    int oBreaks = o->apBroke > 0 && oOwn >= rankSave && !(c->apBroke > 0) && (decF.belowFloor || cOwn - oOwn < rankSave);
     // (in finish them, alike within a break's time -- set 86 combo_storm 1, 2387: a 5x in progress lost at 351 kept over a combo of 6
     // lost at 580, both three breaks off)
     int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : (lostOf(o) <= lostOf(c) || (finishAsked() ? finishAlike(c, o) : lostAlike(c, o))) && !oBreaks;
