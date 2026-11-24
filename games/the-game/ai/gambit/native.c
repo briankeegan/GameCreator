@@ -152,8 +152,8 @@ static int32_t gameBurst;
 static int32_t burstOf(void) { int32_t b = __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST); return b > MARGIN_FRAMES ? b : MARGIN_FRAMES; }
 // (A RESCUE'S HARD STOP, RESCUE_FRAMES sooner: a decision that judged nothing in time judges every line again up to the hard stop
 // (decide.c rescue), and the ranking and the answer after it are 25-56 ms its closing work does not count -- run 4596, every late move
-// a rescue, 1-4 frames late)
-#define RESCUE_FRAMES 3
+// a rescue, 1-4 frames late; at 3, runs 4600-4607 still 0-6 late, every one a rescue)
+#define RESCUE_FRAMES 6
 static int frameOut(void) {
   int32_t more = rescueOn ? RESCUE_FRAMES : 0;
   if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - burstOf() - more) return 1;
