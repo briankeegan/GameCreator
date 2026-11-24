@@ -1122,9 +1122,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // spends CHEAP_STEP actions fewer comes first, before the panels and the mode: the actions it keeps are the next break's (run 4604,
   // factory 5 of 8, every loss a board with a break on it and 0-7 actions to press it)
   #define CHEAP_STEP 3
-  if (!lx && decF.under && pressAllowance >= 0 && allowLeftAt(0, 0) < 3 * BREAK_WALK && x->apBroke > 0 && y->apBroke > 0 && !x->o.dead && !y->o.dead) {
-    int wx = lineWalk(x), wy = lineWalk(y);
-    if (wx - wy >= CHEAP_STEP || wy - wx >= CHEAP_STEP) return (cmpKey = __LINE__, (wx - wy));
+  // (and with the window full, the garbage on the board or on its way, the break that spends CHEAP_FULL fewer: the opener walked 24
+  // actions on its first break with 71 left, before the block had landed, and its window was empty by the second -- run 4613,
+  // combo_storm 4, 244, dead at 843)
+  #define CHEAP_FULL 5
+  if (!lx && (decF.under || garbageComing()) && pressAllowance >= 0 && x->apBroke > 0 && y->apBroke > 0 && !x->o.dead && !y->o.dead) {
+    int wx = lineWalk(x), wy = lineWalk(y), step = allowLeftAt(0, 0) < 3 * BREAK_WALK ? CHEAP_STEP : CHEAP_FULL;
+    if (wx - wy >= step || wy - wx >= step) return (cmpKey = __LINE__, (wx - wy));
   }
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
   // more panels -- before the mode and the walk
