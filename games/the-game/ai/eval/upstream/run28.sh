@@ -9,14 +9,13 @@
 #   GC_DIR          the GameCreator checkout whose Gambit plays (default: the one this script is in)
 #   GC_UPSTREAM_REF upstream ref (default beta: the game panelattack.com runs, as the live job resolves it)
 #   GC_PANEL_DIR    a panel-game checkout to take bot/ and SurvivalLink from (default: fetched from GitHub)
-#   GC_PROFILE      Gambit's profile under eval/ (default survivor-profiles/gambit.json, the live one)
+#   GC_PROFILE      Gambit's profile under eval/ (default survivor-profiles/gambit-finish.json, as gambit-24.yml)
 #   PA_LEVEL        the modern level (default 10, the live one)
 #   PA_ROUND_BURST  frames back to back per 60th of a second (lockstep catch-up; default 1)
 #   FRAMES          a game's length if the bot lives (default 21600)
 #   GAMES           which games, "scenario:seed ..." (default all 28)
-#   GC_GAMBIT_FIGHT, GC_GAMBIT_ENEMY  1 and virtual by default: the live bot always has an opponent across, and with none Gambit
-#                   plays time attack's rules (no reserve kept, no break needed); the training attacker shows no board, so the virtual
-#                   enemy (lua/GambitNative.lua) stands in for one
+#   GC_GAMBIT_FIGHT, GC_GAMBIT_ENEMY  off by default, as gambit-24.yml plays: 1 and virtual play the game as a fight against the
+#                   virtual enemy (lua/GambitNative.lua), which changes the opening (no opener rule) and what finish them reads
 #
 # Out: one line per game, then summary.json (survived per mode, late and refused answers per game). Exits 1 when any game is
 # lost or any answer was refused.
@@ -60,7 +59,7 @@ export LUA_PATH="./?.lua;./common/lib/?.lua;${LUA_PATH:-};;" LUA_CPATH="./common
 
 # 2. GAMBIT, AS THE LIVE JOB BUILDS IT
 sh "$G/build.sh" native > "$OUT/gambit-build.log" 2>&1 || { cat "$OUT/gambit-build.log"; echo "libgambit.so did not build"; exit 1; }
-GC_SURVIVOR_PROFILE="$EVAL/${GC_PROFILE:-survivor-profiles/gambit.json}" node "$G/words.js" > "$OUT/gambit.words" 2>> "$OUT/gambit-build.log" || { cat "$OUT/gambit-build.log"; echo "Gambit's profile did not encode"; exit 1; }
+GC_SURVIVOR_PROFILE="$EVAL/${GC_PROFILE:-survivor-profiles/gambit-finish.json}" node "$G/words.js" > "$OUT/gambit.words" 2>> "$OUT/gambit-build.log" || { cat "$OUT/gambit-build.log"; echo "Gambit's profile did not encode"; exit 1; }
 
 # 3. THE MACHINE AS THE LIVE JOB PINS IT: the client on CPU 0, Gambit alone on a CPU of another core, its 4 workers on the rest
 core() { cat "/sys/devices/system/cpu/cpu$1/topology/core_id" 2>/dev/null || echo "$1"; }
@@ -70,8 +69,8 @@ for c in $(seq 1 $(( $(nproc) - 1 ))); do
 done
 [ -n "$gcpu" ] || { gcpu=0; wcpus=0; }
 export GC_EVAL_DIR="$EVAL" GC_GAMBIT_WORDS="$OUT/gambit.words" GC_GAMBIT_WORKERS=4 GC_GAMBIT_CPUS="$gcpu" GC_GAMBIT_WORKER_CPUS="${wcpus:-$gcpu}"
-export PA_LEVEL=${PA_LEVEL:-10} GC_GAMBIT_FIGHT=${GC_GAMBIT_FIGHT-1} GC_GAMBIT_ENEMY=${GC_GAMBIT_ENEMY-virtual}
-echo "upstream $(git -C "$WORK" log -1 --format='%h %s' | cut -c1-80); bot/ ${BOT_SHA:0:8}, link ${LINK_SHA:0:8}; Gambit $COMMIT, ${GC_PROFILE:-survivor-profiles/gambit.json}; level $PA_LEVEL; fight ${GC_GAMBIT_FIGHT:-0}, enemy ${GC_GAMBIT_ENEMY:-none}; client CPU 0, Gambit $gcpu, workers ${wcpus:-$gcpu}"
+export PA_LEVEL=${PA_LEVEL:-10} GC_GAMBIT_FIGHT=${GC_GAMBIT_FIGHT:-} GC_GAMBIT_ENEMY=${GC_GAMBIT_ENEMY:-}
+echo "upstream $(git -C "$WORK" log -1 --format='%h %s' | cut -c1-80); bot/ ${BOT_SHA:0:8}, link ${LINK_SHA:0:8}; Gambit $COMMIT, ${GC_PROFILE:-survivor-profiles/gambit-finish.json}; level $PA_LEVEL; fight ${GC_GAMBIT_FIGHT:-0}, enemy ${GC_GAMBIT_ENEMY:-none}; client CPU 0, Gambit $gcpu, workers ${wcpus:-$gcpu}"
 
 # 4. THE GAMES
 games=${GAMES:-$(for s in combo_storm factory large_garbage; do for n in 1 2 3 4 5 6 7 8; do printf '%s:%d ' $s $n; done; done; printf 'endless:%d ' 1 2 3 4)}
