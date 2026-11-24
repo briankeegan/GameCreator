@@ -19,7 +19,7 @@ static int32_t thenRule = -1;
 static int32_t opRaiseLog[5];   // (the opening raise judged: the rows short, the rows held to, the rows alive, the blocks on their way, negative where the raise was held to the first landing -- the log's opRaise=)
 static int32_t carryNone;   // (why no line in progress was offered: carriedCand)
 static int32_t carryJudgeDrop = -1;   // (and for 19, why the judging dropped it: rank.c DROP_*, -1 none said)
-static int32_t rescues; static int32_t rescueOn;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
+static int32_t rescues;   // (decisions whose lines were all judged again past the clock: ranked, nothing judged in time)   // (the mode a named opener gives way to at the top-out; -1: none)
 
 // 1. READ: the facts of both boards, the mode and its list, the deadline, the floor every line keeps
 #define RAISE_MS 150
@@ -631,9 +631,7 @@ static int ranked(const Read *R, const Found *S) {
   double rescueDue = clockDue, rescueShare = clockShare; int rescue = 0;
   if (!n && nc && clockFrameOut && clockOut()) {
     rescue = 1; clockDue = 0; clockShare = 0;
-    rescueOn = 1;   // (its hard stop RESCUE_FRAMES sooner: the ranking and the answer after it are frames too -- native.c frameOut)
     for (int i = 0; i < nc; i++) if (judgeWalked(R, &theCands[i], &theJudged[n])) { order[n] = &theJudged[n]; n++; }
-    rescueOn = 0;
   }
   n = keptJudged(R, n);   // (the intentions the last decision kept, found again)
   // (the line in progress: first of its tier when its next step is due now; one whose next step must wait for the board is a hold

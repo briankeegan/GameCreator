@@ -630,12 +630,12 @@ static int garbageComing(void) { return decQ.narr > 0 || (decQ.b && decQ.b->ninc
 // lands)
 static int digPaid(const Judge *J);
 static int reserveLeft(const Judge *J) { int w = lineWalk(J); return J->apBroke > 0 ? allowAtLanding(w) : allowAtNeed(w); }
-// (THE RESERVE A LINE LEAVES: a break, two breaks' walks at the next landing; a line that breaks nothing, three breaks' walks -- the
+// (THE RESERVE A LINE LEAVES: a break, the next break's walk at the next landing; a line that breaks nothing, two breaks' walks -- the
 // owner: don't overspend. Garbage comes every 150-250 frames at level 11, a break walks 15-25 actions and the window holds 76 in 600
 // frames: what a line that breaks nothing spends is the next breaks', and one break's walk left is a board one block from having none
 // (factory 6, run 4574: a walk and three levels lost on the hold's own frame spent 13 of 45, two breaks the rest, dead at 828). The hold's
 // walk to the next work keeps the same, front.c AIM_RESERVE)
-static int reserveNeed(const Judge *J) { return J->apBroke > 0 ? 2 * BREAK_WALK : 3 * BREAK_WALK; }
+static int reserveNeed(const Judge *J) { return J->apBroke > 0 ? BREAK_WALK : 2 * BREAK_WALK; }
 static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || digPaid(J) ? 0 : imax(0, reserveNeed(J) - reserveLeft(J)); }
 // (with no break offered under garbage, a line that digs toward one -- or lets a perched block down onto the stack, the way to the break
 // the perch holds off -- may spend the reserve only where the hold loses the board within a
@@ -1347,10 +1347,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // converts are the board's next, and only a break gives back what a clear spends)
   if (x->carried != y->carried && !x->hold && !y->hold) {
     const Judge *c = x->carried ? x : y, *o = x->carried ? y : x;
-    // (the losses as the engine has them, the walk pressed on it: charged again, a break of 14 actions lost at 174 read as 60 beside a
-    // line in progress lost at 107 -- run 4597, factory 2, 8856, the board lost at 107)
-    double oOwn = lostAtOf(o->o.lostAt, 0), cOwn = lostAtOf(c->o.lostAt, 0);
-    int oBreaks = o->apBroke > 0 && oOwn >= rankSave && !(c->apBroke > 0) && (decF.belowFloor || cOwn - oOwn < rankSave);
+    int oBreaks = o->apBroke > 0 && lostOf(o) >= rankSave && !(c->apBroke > 0) && (decF.belowFloor || lostOf(c) - lostOf(o) < rankSave);
     // (in finish them, alike within a break's time -- set 86 combo_storm 1, 2387: a 5x in progress lost at 351 kept over a combo of 6
     // lost at 580, both three breaks off)
     int keep = lx ? !(o->met >= 0 && (c->met < 0 || o->met < c->met)) : (lostOf(o) <= lostOf(c) || (finishAsked() ? finishAlike(c, o) : lostAlike(c, o))) && !oBreaks;
