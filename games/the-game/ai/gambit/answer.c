@@ -335,7 +335,7 @@ static void breakJob(int32_t i) {
   // and work past the deadline is an answer taken after its frame, never pressed: run 4580, endless 1, 19500, the planner's half 469 ms
   // of a decision 860 ms long asked 51 frames ahead, late by a frame)
   clockWork = brJobWork; clockShare = C2.due; clockAborted = 0; clockPoll = 0;
-  inJob = 1; jobFrame = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
+  inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
   int kind = jobKinds[i];
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
   else if (kind == JOB_PLAN) planJob();
@@ -347,7 +347,7 @@ static void breakJob(int32_t i) {
     clockShareEnd(old);
     __atomic_store_n(&svJobDone, 1, __ATOMIC_RELEASE);
   }
-  inJob = 0; jobFrame = 0;
+  inJob = 0;
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
@@ -359,15 +359,12 @@ static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePre
   __atomic_store_n(&jobStop, 0, __ATOMIC_SEQ_CST);
   // (in the order a thread takes them, and a job no thread has begun when the searches end is not begun at all (jobsDone): the survival
   // search second, the backup where nothing lives, begun every decision with a thread to spare)
-  // (under garbage the wider touch beam second, beside the break search: queued after the planner's half and the chain extended it was
-  // never begun where four workers were taken first -- run 4601, two boards lost to an 11-swap break the wide beam finds in the
-  // decision's own time, the live search finding a walk toward it of 6)
   njobKinds = 0; jobKinds[njobKinds++] = JOB_BREAK;
-  __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
-  if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   if (pool.nworkers >= 2) jobKinds[njobKinds++] = JOB_SURVIVE;
   if (planSplit) jobKinds[njobKinds++] = JOB_PLAN;
   if (extBeside) jobKinds[njobKinds++] = JOB_EXT;
+  __atomic_store_n(&wideDone, 0, __ATOMIC_SEQ_CST);
+  if (R->under && pool.nworkers >= 4) jobKinds[njobKinds++] = JOB_WIDE;
   return startJobs(brCtx, breakJob, njobKinds);
 }
 // (taken back when its time is up, searchesEnd: cut short when the other searches end early, the break search missed breaks -- 18 of

@@ -1106,6 +1106,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
   if (!lx && !lostAlike(x, y) && !boughtWithPanels(x, y) && !goalNoSooner && lostOf(x) != lostOf(y)) return (cmpKey = __LINE__, (lostOf(y) > lostOf(x) ? 1 : -1));
+  // (neither lives, lost alike, under garbage, the window short) OF TWO BREAKS, THE CHEAPER: the game allows 76 actions in 600 frames, a
+  // block lands every 100-150 in factory and a break walks 15-25 -- once the window holds less than three breaks' walks, the break that
+  // spends CHEAP_STEP actions fewer comes first, before the panels and the mode: the actions it keeps are the next break's (run 4604,
+  // factory 5 of 8, every loss a board with a break on it and 0-7 actions to press it)
+  #define CHEAP_STEP 3
+  if (!lx && decF.under && pressAllowance >= 0 && allowLeftAt(0, 0) < 3 * BREAK_WALK && x->apBroke > 0 && y->apBroke > 0 && !x->o.dead && !y->o.dead) {
+    int wx = lineWalk(x), wy = lineWalk(y);
+    if (wx - wy >= CHEAP_STEP || wy - wx >= CHEAP_STEP) return (cmpKey = __LINE__, (wx - wy));
+  }
   // (neither lives, lost alike or bought with panels, under garbage below the floor) of two breaks, the one that leaves the next break
   // more panels -- before the mode and the walk
   // (not in finish them between a combo and a line that makes none: the combo is the attack, and the panels it spends are what it is made of)
