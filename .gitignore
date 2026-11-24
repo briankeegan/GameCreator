@@ -53,3 +53,4 @@ games/the-game/ai/eval/.pbt-clean-stop
 # Scratch from the duel fan-out (duels.js). Cleaned up on exit; a killed
 # run leaks them, and a leaked one must never be committable.
 .duels.*.json
+games/the-game/ai/eval/upstream/work/
