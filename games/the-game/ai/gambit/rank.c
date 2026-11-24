@@ -337,11 +337,8 @@ static int walkTurns(const Judge *x, const Judge *y) {
   if ((dx > dy ? dx - dy : dy - dx) < rankSave && (dx < dy ? dx : dy) >= rankSave) return 0;
   // (nor where the later one buys less than a break's time with the window the next breaks are pressed from: the actions it spends come
   // back only a window later, and a board kept a few frames on them is a board left with none when it needs them)
-  // (never a break lost later put after a line that breaks nothing for the reserve: under garbage the break comes first -- the reserve
-  // decides between two breaks, or two lines that break nothing. Run 4581, large_garbage 1, 15783: a break lost at 171 put after a
-  // survive lost at 101 for the window, the board lost at 101)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
-    if ((dx > dy ? dx - dy : dy - dx) < rankSave && spendsReserve(l) && !spendsReserve(s) && !(l->apBroke > 0 && !(s->apBroke > 0))) return 0; }
+    if ((dx > dy ? dx - dy : dy - dx) < rankSave && spendsReserve(l) && !spendsReserve(s)) return 0; }
   return (dx > dy) != (lostOf(x) > lostOf(y));
 }
 // (THE FINISH'S EIGHT: in finish them, a line that fires an eight or more beside one that does not, lost within a break's time of it or
@@ -558,6 +555,11 @@ static void markIdle(Judge **a, int n) {
   rankHoldClock = decQ.b->clock; rankHoldOwn = H && !H->o.dead && H->o.lostAt != NOT_ASKED ? lostAtOf(H->o.lostAt, 1) : -1;
   double holdLost = H ? lostOf(H) : 0;
   for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H) && !(a[i]->k.readyGain > 0 && !a[i]->o.dead && diesAt(a[i]) >= diesAt(H))) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  // (AND UNDER GARBAGE, ON THE NEXT BREAKS' WINDOW: a line that breaks nothing, does no better than the hold and spends the reserve the next
+  // breaks are pressed from (spendsReserve) is idle too, whatever it clears -- the owner: don't overspend; what it spends buys nothing
+  // the hold does not have, and the break after it has less to be pressed with. Run 4583, factory 2, 4487: a three lost on the hold's own
+  // frame with 10 actions left, a clear after it, the next break's walk over the 2 left, dead at 4647)
+  for (int i = 0; i < n; i++) if (H && !a[i]->idle && !a[i]->hold && decF.under && !(a[i]->apBroke > 0) && !a[i]->o.lives && !beatsHold(a[i], H) && spendsReserve(a[i])) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
