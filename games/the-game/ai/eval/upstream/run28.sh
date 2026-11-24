@@ -76,8 +76,10 @@ for g in $games; do
   rm -f "$log"
   line=$(cd "$WORK" && GC_GAMBIT_LOG="$log" PA_SEED="$n" taskset -c 0 luajit bot/upstreamRound.lua "$s" "$n" "${FRAMES:-21600}" 2> "$OUT/$s-$n.err" | grep '^ROUND' || true)
   [ -n "$line" ] || line="ROUND $s $n crashed frames=0 swaps=0 cleared=0"
-  late=$(grep -c '^LATE answer' "$log" 2>/dev/null || true) refused=$(grep -c 'REFUSED' "$log" 2>/dev/null || true)
-  echo "$line late=${late:-0} refused=${refused:-0}" | tee -a "$OUT/rounds.txt"
+  # (the frame loop's own counts, from its last stats line: the LATE and REFUSED lines stop being written after the first few)
+  stats=$(grep -o 'match over: {[^}]*' "$log" 2>/dev/null | tail -1)
+  num() { echo "$stats" | grep -o "\"$1\":[0-9]*" | cut -d: -f2; }
+  echo "$line late=$(num late || true) refused=$(num refused || true) starved=$(num starved || true) decisions=$(num decisions || true)" | sed 's/=\( \|$\)/=0\1/g' | tee -a "$OUT/rounds.txt"
 done
 
 # 5. THE SUMMARY, AS DATA (the count read back is the count sent)
@@ -86,8 +88,8 @@ import json, re, sys
 out, sent = sys.argv[1], int(sys.argv[2])
 games = []
 for l in open(out + "/rounds.txt"):
-    m = re.match(r"ROUND (\S+) (\d+) (\S+) frames=(\d+) swaps=(\d+) cleared=(\d+) late=(\d+) refused=(\d+)", l)
-    if m: games.append(dict(mode=m[1], seed=int(m[2]), result=m[3], frames=int(m[4]), swaps=int(m[5]), cleared=int(m[6]), late=int(m[7]), refused=int(m[8])))
+    m = re.match(r"ROUND (\S+) (\d+) (\S+) frames=(\d+) swaps=(\d+) cleared=(\d+) late=(\d+) refused=(\d+) starved=(\d+) decisions=(\d+)", l)
+    if m: games.append(dict(mode=m[1], seed=int(m[2]), result=m[3], frames=int(m[4]), swaps=int(m[5]), cleared=int(m[6]), late=int(m[7]), refused=int(m[8]), starved=int(m[9]), decisions=int(m[10])))
 assert len(games) == sent, f"summary: {len(games)} games read back, {sent} played"
 modes = {}
 for g in games:

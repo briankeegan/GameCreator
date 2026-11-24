@@ -1,0 +1,100 @@
+# GAMBIT ON UPSTREAM, AS THE LIVE BOT RUNS: the 28 games (8 combo_storm, 8 factory, 8 large_garbage, 4 endless) on upstream Panel
+# Attack's own engine and the live client's bot/ and link, Gambit built and pinned as bot-prod-smoke-test.yml builds and pins it, each
+# game on a runner of its own of the same kind the live bot runs on, in real time against upstream's training attacker. No server.
+# The games are games/the-game/ai/eval/upstream/run28.sh; this only spreads them over runners and reads them back.
+name: Gambit on upstream
+
+on:
+  workflow_dispatch:
+    inputs:
+      gambit_from:
+        description: 'The GameCreator commit or branch whose Gambit plays (default: the ref dispatched on)'
+        default: ''
+      level:
+        description: 'The modern level (the live bot plays 10)'
+        default: '10'
+      frames:
+        description: 'A game survived this many frames counts as survived (21600 = six minutes)'
+        default: '21600'
+      upstream_ref:
+        description: 'Upstream Panel Attack ref (beta: the game panelattack.com runs)'
+        default: 'beta'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gambit-upstream-${{ inputs.gambit_from || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  play:
+    runs-on: ubuntu-latest   # (the live bot's: bot-prod-smoke-test.yml)
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 29   # (the runners are shared: 30 jobs at most with the report)
+      matrix:
+        pattern: [combo_storm, factory, large_garbage, endless]
+        game: [1, 2, 3, 4, 5, 6, 7, 8]
+        exclude:
+          - { pattern: endless, game: 5 }
+          - { pattern: endless, game: 6 }
+          - { pattern: endless, game: 7 }
+          - { pattern: endless, game: 8 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.gambit_from || github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: luajit, luarocks and clang, as the live job installs them
+        timeout-minutes: 15
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 300 sudo apt-get $APT install -y luajit luarocks liblua5.1-0-dev build-essential unzip libreadline-dev clang && break; sleep 10; done
+          for r in luasocket luafilesystem luautf8; do for i in 1 2 3; do timeout 180 luarocks install --local $r --lua-version 5.1 && break; sleep 10; done; done
+      - name: Play
+        timeout-minutes: 25
+        env:
+          GAMES: ${{ matrix.pattern }}:${{ matrix.game }}
+          PA_LEVEL: ${{ inputs.level }}
+          FRAMES: ${{ inputs.frames }}
+          GC_UPSTREAM_REF: ${{ inputs.upstream_ref }}
+        run: |
+          echo "::notice title=cores::$(nproc) CPUs, cpu:core $(lscpu -e=CPU,CORE | tail -n +2 | awk '{printf "%s:%s ", $1, $2}')"
+          bash games/the-game/ai/eval/upstream/run28.sh "$PWD/out" || true
+          test -s out/rounds.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-${{ matrix.pattern }}-${{ matrix.game }}
+          path: out/
+          retention-days: 14
+
+  report:
+    needs: play
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: upstream-*
+          path: games
+      - name: The 28, read back
+        run: |
+          cat games/*/rounds.txt | sort -k2,2 -k3,3n > rounds.txt
+          cat rounds.txt
+          n=$(wc -l < rounds.txt)
+          lost=$(grep -vc ' survived ' rounds.txt || true)
+          late=$(grep -o 'late=[0-9]*' rounds.txt | cut -d= -f2 | paste -sd+ | bc)
+          refused=$(grep -o 'refused=[0-9]*' rounds.txt | cut -d= -f2 | paste -sd+ | bc)
+          starved=$(grep -o 'starved=[0-9]*' rounds.txt | cut -d= -f2 | paste -sd+ | bc)
+          per=$(for m in combo_storm factory large_garbage endless; do echo "$m $(grep -c "^ROUND $m .* survived " rounds.txt)/$(grep -c "^ROUND $m " rounds.txt)"; done | paste -sd, -)
+          echo "::notice title=survived::$per; late $late, refused $refused, starved $starved ($n games read back)"
+          { echo "## Gambit on upstream"; echo; echo "$per"; echo; echo "late $late, refused $refused, starved $starved"; echo; echo '```'; cat rounds.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$n" -eq 28 ] || { echo "::error::$n games read back, 28 played"; exit 1; }
+          [ "$lost" -eq 0 ] && [ "$refused" -eq 0 ] || exit 1
