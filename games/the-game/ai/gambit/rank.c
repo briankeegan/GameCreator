@@ -627,7 +627,8 @@ static int allowAtNeed(int walk) {
 static int garbageComing(void) { return decQ.narr > 0 || (decQ.b && decQ.b->ninc > 0); }
 // (how far below a break's walk a line leaves the allowance -- a break too: of two breaks the board survives alike, the one that leaves
 // the next break its walk; spendsReserve, which sets a line that breaks nothing after one that keeps the reserve, never counts a break)
-static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || (decF.under && !breakOffered) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
+static int digPaid(const Judge *J);
+static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || digPaid(J) ? 0 : imax(0, BREAK_WALK - allowAtNeed(lineWalk(J))); }
 // (with no break offered under garbage, a line that digs toward one -- or lets a perched block down onto the stack, the way to the break
 // the perch holds off -- may spend the reserve only where the hold loses the board within a
 // break's time, or the window holds a break's walk again by the time the next block can land -- standing longer, the reserve is that
