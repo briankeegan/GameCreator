@@ -638,9 +638,7 @@ static const Judge *rankHold;   // (the decision's hold, set where no line of th
 static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK || J->k.letDown; }
 static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !breakOffered && digsForBreak(J) && allowAtNeed(w) >= w &&
                                      (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave)); }
-// (a break pays for the window it spends only where it breaks a garbage cell an action walked: a small break walked far, the reserve
-// short, is the window the next break needs -- upstream fill factory 4, run 45322355636: a break of 6 walked out of 14, the window dry)
-static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0 && J->apBroke >= lineWalk(J)) && !ruleNoEnemy && !digPaid(J) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
+static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !(J->apBroke > 0) && !ruleNoEnemy && !digPaid(J) && allowAtNeed(lineWalk(J)) < BREAK_WALK; }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
 // the hold's board at rest has the room for it to come down (outcome.c restOf), a line that clears nothing and leaves it nearer
