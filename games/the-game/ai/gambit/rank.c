@@ -299,7 +299,6 @@ static int waitSpent(const Judge *l, const Judge *s) {
   return rankHoldClock == decQ.b->clock && rankHoldOwn >= rankSave && waitSpends(l) && (s->hold || s->idle || !waitSpends(s));
 }
 static int windowDead(const Judge *J);
-static double nextBreakDelay(int walk);
 static int walkTurns(const Judge *x, const Judge *y) {
   if (x->o.lives || y->o.lives) return 0;
   double dx = diesAt(x), dy = diesAt(y);
@@ -330,12 +329,6 @@ static int walkTurns(const Judge *x, const Judge *y) {
   // decides between the two)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
     if ((dx < dy ? dx : dy) >= rankSave && windowDead(l) && !windowDead(s)) return 0; }
-  // (nor, under garbage, a later loss walked far for little: a line that walks more than WALK_EARN (defined below) actions past the
-  // other's and puts the next break off by more frames than it buys -- the window gives those actions back only once the frames are
-  // spent, and the breaks of those frames are pressed out of what is left: the walk's charge decides between the two)
-  { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
-    int wl = l->hold ? 0 : lineWalk(l), ws = s->hold ? 0 : lineWalk(s);
-    if (decF.under && (dx < dy ? dx : dy) >= rankSave && wl - ws > 6 && nextBreakDelay(wl) - nextBreakDelay(ws) > (dx > dy ? dx - dy : dy - dx)) return 0; }
   // (nor, under garbage, a later loss that breaks nothing and leaves the next break less than its walk, beside a line that keeps it --
   // the owner: efficiency is key: the actions it spends are the next break's, and a board kept on them is one left with none to break
   // with -- the walk's charge decides between the two, however far apart they are lost)
@@ -974,6 +967,21 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (carriedSame(c) && (c->o.lives || diesAt(c) >= rankSave) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && imax(0, o->apBroke) <= imax(0, c->apBroke) &&
         !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
+  // 1. THE WINDOW KEPT (the owner: efficiency is key, never far for little): under garbage, of two that do not live, a line that walks
+  // more than WALK_EARN actions past the other's and puts the next break off by more frames than it is lost later goes after the other,
+  // where the other's board stands a break's time -- the window gives those actions back only once the frames they buy are spent, and
+  // the breaks of those frames are pressed out of what is left. The other breaks garbage too, or neither does and the other is the hold
+  // or clears nothing: a break is never put after a line that breaks none, nor a clear for nothing before anything (the later loss
+  // bought). A window with room for both walks puts no break off
+  if (!lx && !ly && decF.under && !x->o.lives && !y->o.lives && !x->o.dead && !y->o.dead) {
+    int wx = x->hold ? 0 : lineWalk(x), wy = y->hold ? 0 : lineWalk(y);
+    const Judge *d = wx > wy ? x : y, *c = d == x ? y : x;
+    int wd = d == x ? wx : wy, wc = d == x ? wy : wx;
+    double dd = diesAt(d), dc = diesAt(c);
+    if (wd - wc > WALK_EARN && (c->apBroke > 0 || (!(d->apBroke > 0) && (c->hold || (!clears(c) && !(c->o.j.clearedPanels > 0))))) && dc >= rankSave && dc < 1e299 && dd < 1e299 && !finishEightBy(d, c) &&
+        nextBreakDelay(wd) - nextBreakDelay(wc) > dd - dc)
+      return (cmpKey = __LINE__, (c == x ? -1 : 1));
   }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
   // board, of two that live or are lost alike, the one that leaves a break ready once everything lands (judge.c breaksAfterLanding, the
