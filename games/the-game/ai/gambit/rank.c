@@ -171,8 +171,9 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // could not play the line out)
   int32_t fire = j && j->fire >= 0 ? j->fire : (k->xFire >= 0 ? k->xFire : k->xDone);
   // (never the line in progress: late is a frame that moves with what the board does next -- it is put down only when it can no longer be
-  // pressed or no longer makes what it was begun for, and ranked by survival as any line is)
-  if (R->by != NOT_ASKED && R->by && fire >= 0 && fire > R->by && play != PLAY_CARRY && play != PLAY_CARRYWAIT) { dropAs(play, DROP_LATE); return 0; }
+  // pressed or no longer makes what it was begun for, and ranked by survival as any line is. Nor a line the survival search found: the
+  // deadline is the mode's attack's, and the mode gives way to survival)
+  if (R->by != NOT_ASKED && R->by && fire >= 0 && fire > R->by && play != PLAY_CARRY && play != PLAY_CARRYWAIT && play != PLAY_SURVIVE) { dropAs(play, DROP_LATE); return 0; }
   // (a set-up is to clear nothing: it ends before its first step that clears panels and breaks nothing; when that is its first, the
   // play is a clear)
   Xs x = k->x;

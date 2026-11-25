@@ -150,6 +150,11 @@ static double moveStartMs(int32_t at) {
 #define MARGIN_FRAMES 2
 static int32_t gameBurst;
 static int32_t burstOf(void) { int32_t b = __atomic_load_n(&gameBurst, __ATOMIC_SEQ_CST); return b > MARGIN_FRAMES ? b : MARGIN_FRAMES; }
+// (THE BURST A DECISION ALLOWS FOR: burstOf, but never so many frames that the decision begins with its own frame already cut -- one cut
+// before it begins can only hold, and the hold is asked again a frame later just as near its move, every decision of the burst's
+// window. THINK_FRAMES are left it before the frame it is cut at; set once a decision, read by its guard on every thread)
+#define THINK_FRAMES 3
+static int32_t decBurst = MARGIN_FRAMES;
 // (A RESCUE'S HARD STOP, RESCUE_FRAMES sooner: a decision that judged nothing in time judges every line again up to the hard stop
 // (decide.c rescue), and the ranking and the answer after it are 25-56 ms its closing work does not count -- run 4596, every late move
 // a rescue, 1-4 frames late; at 3, runs 4600-4607 still 0-6 late, every one a rescue; and kept for the rest of the decision -- run 4612,
@@ -157,17 +162,20 @@ static int32_t burstOf(void) { int32_t b = __atomic_load_n(&gameBurst, __ATOMIC_
 #define RESCUE_FRAMES 6
 static int frameOut(void) {
   int32_t more = rescueOn ? RESCUE_FRAMES : 0;
-  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - burstOf() - more) return 1;
-  return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1 - burstOf() - more);
+  int32_t burst = __atomic_load_n(&decBurst, __ATOMIC_SEQ_CST);
+  if (__atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) >= dueFrame - burst - more) return 1;
+  return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1 - burst - more);
 }
 static void ringKeep(int32_t at, int32_t allow);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
   dueFrame = q->at - 1; clockFrameOut = frameOut; rescueOn = 0;
+  { int32_t room = dueFrame - __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) - THINK_FRAMES, burst = burstOf();
+    __atomic_store_n(&decBurst, burst > room ? imax(MARGIN_FRAMES, room) : burst, __ATOMIC_SEQ_CST); }
   // (the searches' deadline is the frame loop's own: the start of the frame the decision is cut at -- the one before its move, sooner by
   // the burst -- less its closing work)
-  double due = moveStartMs(dueFrame - burstOf()) - closeWorst();
+  double due = moveStartMs(dueFrame - __atomic_load_n(&decBurst, __ATOMIC_SEQ_CST)) - closeWorst();
   if (!hostBoard) hostBoard = nb_new();
   cloneBoard(hostBoard, b);
   memset(&hostQ, 0, sizeof hostQ);
