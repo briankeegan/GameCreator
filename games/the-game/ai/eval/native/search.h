@@ -966,7 +966,7 @@ static int startPhase(Ctx *x, Vec *tasks, int32_t *res, int32_t extra) {
   while (__atomic_exchange_n(&spareLock, 1, __ATOMIC_ACQUIRE)) {}
   while (freeCount(0) > each) {
     Board *b = freeOf(0); freeOf(0) = *(Board **)b; freeCount(0)--;
-    *(Board **)b = spareOf; spareOf = b; spareCount++;
+    *(Board **)b = spareOf; spareOf = b; __atomic_fetch_add(&spareCount, 1, __ATOMIC_RELAXED);
   }
   __atomic_store_n(&spareLock, 0, __ATOMIC_RELEASE);
   pool.ctx = x; pool.tasks = tasks->a; pool.res = res; pool.ntasks = n; pool.ack = 0;
@@ -987,7 +987,7 @@ static void finishPhase(Ctx *x) {
   x->later.n = 0;
   // (under the spares' lock: a thread outside the pool -- Gambit's search between decisions -- may be taking one now)
   while (__atomic_exchange_n(&spareLock, 1, __ATOMIC_ACQUIRE)) {}
-  while (spareOf && freeCount(0) < FREE_CAP) { Board *b = spareOf; spareOf = *(Board **)b; spareCount--; *(Board **)b = freeOf(0); freeOf(0) = b; freeCount(0)++; }
+  while (spareOf && freeCount(0) < FREE_CAP) { Board *b = spareOf; spareOf = *(Board **)b; __atomic_fetch_sub(&spareCount, 1, __ATOMIC_RELAXED); *(Board **)b = freeOf(0); freeOf(0) = b; freeCount(0)++; }
   __atomic_store_n(&spareLock, 0, __ATOMIC_RELEASE);
   if (x->n > x->cap) x->n = x->cap;
 }
