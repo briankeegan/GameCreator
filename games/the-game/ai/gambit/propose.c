@@ -87,6 +87,7 @@ static void startChains(const Read *R, Found *S, double ms) {
 // begun on a worker too; each its own thread's nodes and buffers (LOCAL), its lines merged into this decision's after (searchMerge).
 // Asked of before the jobs begin (searchPrep); with fewer workers, or none begun, every search is this thread's, one after another.
 static int32_t planSplit, planSplitAt, extBeside, planBDone, extDone;
+static int32_t brNoneLast;   // (the decision before: under garbage, no break found -- answer.c)
 static List planHalfA, planHalfB;
 static PlanOpts planOptsB; static Plan planB; static Paths planOutB;
 static double extMsBeside;
@@ -113,7 +114,9 @@ static void searchPrep(const Read *R, Found *S) {
   if (pool.nworkers < 3 || !C2.due || poolBusy) return;
   extBeside = !GP->extendOff && ((cascadeLive(board) || R->pop) || wantsChain(&R->guides));
   extMsBeside = leftMs();
-  if (R->guides.n >= 2) {
+  // (UNDER GARBAGE WITH NO BREAK FOUND, THE PLANNER STAYS ON THIS THREAD: the decision before found none, and a worker given the planner's
+  // half is one the break search's steps are not played on -- the attack is planned on this thread alone, the break searched on the rest)
+  if (R->guides.n >= 2 && !(R->under && brNoneLast)) {
     planSplitAt = (R->guides.n + 1) / 2;
     planHalfA = R->guides; planHalfA.n = planSplitAt;
     memset(&planHalfB, 0, sizeof planHalfB);
