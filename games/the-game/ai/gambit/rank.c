@@ -647,6 +647,14 @@ static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TO
 static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !breakOffered && digsForBreak(J) && allowAtNeed(w) >= w &&
                                      (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave)); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < reserveNeed(J); }
+// (A FLATTEN BETWEEN MOVES -- the owner: it had time to set things up while it waited and did nothing; flatter, it would not have to move
+// so far to get things done: a set-up of any kind -- a level, a zip, a lineup -- that walks no more than WALK_EARN actions, wastes no
+// three and leaves the input allowance two breaks' walks at the next landing, as a break leaves it. The window a break needs is kept;
+// what is over it flattens the board the next break is walked on)
+static int flattenFree(const Judge *J) {
+  return setupKind(J) && !J->o.dead && J->k.nseq > 0 && pressAllowance >= 0 && lineWalk(J) <= WALK_EARN &&
+         allowAtLanding(lineWalk(J)) >= 2 * BREAK_WALK && !wastesThree(J);
+}
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
 // the hold's board at rest has the room for it to come down (outcome.c restOf), a line that clears nothing and leaves it nearer
@@ -1328,7 +1336,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
         // the set-up first only within WALK_EARN actions of the other, or lost NEAR_GAIN frames later; run 4119, 849: a toward walked 20
         // actions over a hold lost on the same frame)
         int nearEnough = lineWalk(m) - lineWalk(h) <= WALK_EARN || (diesAt(m) - diesAt(h) >= NEAR_GAIN && !m->o.dead);
-        if (m->k.nseq && nearEnough && !wastesThree(m) && !spendsReserve(m) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
+        if (m->k.nseq && nearEnough && !wastesThree(m) && (!spendsReserve(m) || flattenFree(m)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
       if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));

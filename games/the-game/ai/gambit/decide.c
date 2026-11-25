@@ -555,7 +555,7 @@ static int enRoute(const Judge *J) {
   int lr = CR(J->k.seq[J->k.nseq - 1]), lc = CC(J->k.seq[J->k.nseq - 1]);
   return iabs(lr - enR) + iabs(lc - enC) < iabs(decQ.b->curRow - enR) + iabs(decQ.b->curCol - enC);
 }
-static int stallsUnder(const Judge *J) { return !J->hold && !J->o.lives && !(J->apBroke > 0) && !digsForBreak(J) && !enRoute(J) && J->k.play != PLAY_CONVERT && J->k.play != PLAY_CARRY && J->k.play != PLAY_CARRYWAIT; }
+static int stallsUnder(const Judge *J) { return !J->hold && !J->o.lives && !(J->apBroke > 0) && !digsForBreak(J) && !enRoute(J) && !flattenFree(J) && J->k.play != PLAY_CONVERT && J->k.play != PLAY_CARRY && J->k.play != PLAY_CARRYWAIT; }
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -926,8 +926,8 @@ static int ranked(const Read *R, const Found *S) {
   if (openerOver && decF.under && !breakOffered && !(ccPre && cwaitPre)) for (int i = 0; i < n; i++) { const Judge *J = order[i];
     if (!J->hold && !J->o.dead && J->k.nseq > 0 && farForNothing(J) && digsForBreak(J)) { enR = CR(J->k.seq[0]); enC = CC(J->k.seq[0]); enOn = 1; break; } }
   // (NO STALLING UNDER GARBAGE -- the owner: efficiency is key, no wasted moves: under garbage, while the hold's own board stands a break's
-  // time, a line that breaks none of it, does not live and does not dig toward a break (rank.c digsForBreak, a perch let down among them)
-  // is taken out: the actions it
+  // time, a line that breaks none of it, does not live, does not dig toward a break (rank.c digsForBreak, a perch let down among them)
+  // and is no flatten the window has room for (rank.c flattenFree) is taken out: the actions it
   // spends are the next break's, and the hold keeps them. Where the hold is lost within a break's time, a stall may be the life)
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     if (decF.under && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) n = cutAlways(order, n, stallsUnder, &stallCut, 30); }
