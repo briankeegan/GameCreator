@@ -938,7 +938,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (decF.under && !x->o.lives && !y->o.lives && shortOfPanels(x, y) && imax(0, x->apBroke) / W == imax(0, y->apBroke) / W &&
       lostOf(x) >= rankSave && lostOf(y) >= rankSave) {
     const Judge *keep = panelsLeft(x) > panelsLeft(y) ? x : y, *sp = keep == x ? y : x;
-    int begun = sp->carried && !sp->hold && !keep->carried && lostOf(sp) > lostOf(keep);
+    int begun = sp->carried && !sp->hold && !keep->carried && diesAt(sp) > diesAt(keep);
     if (!begun && lostOf(sp) - lostOf(keep) < ((panelsLeft(keep) - panelsLeft(sp)) / 3) * rankSave) return (cmpKey = __LINE__, (keep == x ? -1 : 1));
   }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
