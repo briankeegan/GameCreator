@@ -1047,7 +1047,8 @@ static int ranked(const Read *R, const Found *S) {
   // swap for nothing is the waste the owner sees most; a plain three is no chain, and a break brought nearer that keeps the board no
   // longer is a walk for nothing -- only a board left ready where the hold leaves none is kept)
   // (nor the swap that lets the garbage down onto more of the stack where no break is offered: rank.c letsDown)
-  if (n && order[0] && !order[0]->hold && order[0]->k.nseq == 1 && !order[0]->o.lives && !letsDown(order[0])) {
+  // (but never a flatten the window has room for: rank.c flattenFree -- the board it leaves is the one the next break is walked on)
+  if (n && order[0] && !order[0]->hold && order[0]->k.nseq == 1 && !order[0]->o.lives && !letsDown(order[0]) && !flattenFree(order[0])) {
     Judge *J = order[0]; const Judge *h = 0; int hi = -1;
     for (int i = 1; i < n; i++) if (order[i]->hold) { h = order[i]; hi = i; break; }
     if (h && !h->o.dead && !(J->apBroke > 0) && (J->apChainAll <= h->apChainAll || J->apChainAll < 2) && J->apCombo < 3 && !(J->o.j.ready == 1 && h->o.j.ready != 1) &&
