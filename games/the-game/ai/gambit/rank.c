@@ -639,13 +639,15 @@ static int reserveNeed(const Judge *J) { return J->apBroke > 0 ? 2 * BREAK_WALK 
 static int reserveShort(const Judge *J) { return pressAllowance < 0 || ruleNoEnemy || digPaid(J) ? 0 : imax(0, reserveNeed(J) - reserveLeft(J)); }
 // (with no break offered under garbage, a line that digs toward one -- or lets a perched block down onto the stack, the way to the break
 // the perch holds off -- may spend the reserve only where the hold loses the board within a
-// break's time, or the window holds a break's walk again by the time the next block can land -- standing longer, the reserve is that
+// break's time and the window keeps half a break's walk at the next landing, or the window holds a break's walk again by the time the
+// next block can land -- standing longer, the reserve is that
 // block's break, and garbage always comes -- and only while the window it leaves pays for its walk again: the break it digs for is pressed out of what is left, and a dig that spends the last of the window digs for a
 // break that cannot be pressed; a chain built there may not -- the window it spends is the break's that comes)
 static const Judge *rankHold;   // (the decision's hold, set where no line of the decision breaks or lives: decide.c ranked, once every line's readiness has been asked)
 static int digsForBreak(const Judge *J) { int p = J->k.play; return p == PLAY_TOWARD || p == PLAY_READY || p == PLAY_NEAREST || p == PLAY_BREAKSEARCH || p == PLAY_BREAKLINE || p == PLAY_ENTRY || p == PLAY_LINEUPBREAK || J->k.letDown; }
 static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !breakOffered && digsForBreak(J) && allowAtNeed(w) >= w &&
-                                     (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave)); }
+                                     (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave &&
+                                                                          allowAtLanding(w) >= BREAK_WALK / 2)); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < reserveNeed(J); }
 // (A FLATTEN BETWEEN MOVES -- the owner: it had time to set things up while it waited and did nothing; flatter, it would not have to move
 // so far to get things done: a set-up of any kind -- a level, a zip, a lineup -- that walks no more than WALK_EARN actions, wastes no
