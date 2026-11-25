@@ -165,7 +165,7 @@ static void ringKeep(int32_t at, int32_t allow);
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
-  dueFrame = q->at - 1; clockFrameOut = frameOut; rescueOn = 0; memset(phAt, 0, sizeof phAt); phOut = 0; gapLast = 0; gapMax = 0; gapEnd = 0;
+  dueFrame = q->at - 1; clockFrameOut = frameOut; rescueOn = 0; memset(phAt, 0, sizeof phAt); phOut = 0; gapLast = 0; gapMax = 0; gapEnd = 0; phWhere = 1; gapWhere = 0; gapWhereLast = 0;
   // (the searches' deadline is the frame loop's own: the start of the frame the decision is cut at -- the one before its move, sooner by
   // the burst -- less its closing work)
   double due = moveStartMs(dueFrame - burstOf()) - closeWorst();
@@ -211,7 +211,7 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
     snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d ph=%d/%d/%d/%d/%d/fo%d/gf%d/due%d", s, (int)(e - t0), clockWentOut ? (int)(e - clockWentOut) + 1 : 0, hostHeapMB(),
              phAt[1] ? (int)(phAt[1] - t0) : -1, phAt[2] ? (int)(phAt[2] - t0) : -1, phAt[3] ? (int)(phAt[3] - t0) : -1, phAt[4] ? (int)(phAt[4] - t0) : -1, phAt[5] ? (int)(phAt[5] - t0) : -1,
              phOut ? (int)(phOut - t0) : -1, gf, dueFrame);
-    k = 0; while (line[k]) k++; snprintf(line + k, sizeof line - (unsigned long)k, " gap=%d@%d", (int)gapMax, gapEnd ? (int)(gapEnd - t0) : -1);
+    k = 0; while (line[k]) k++; snprintf(line + k, sizeof line - (unsigned long)k, " gap=%d@%d/w%d", (int)gapMax, gapEnd ? (int)(gapEnd - t0) : -1, gapWhere);
     k = 0; while (line[k]) k++; snprintf(line + k, sizeof line - (unsigned long)k, " pha=%d/%d/%d/%d/%d", phAt[0] ? (int)(phAt[0] - t0) : -1, phAt[14] ? (int)(phAt[14] - t0) : -1,
              phAt[15] ? (int)(phAt[15] - t0) : -1, phAt[6] ? (int)(phAt[6] - t0) : -1, phAt[7] ? (int)(phAt[7] - t0) : -1);
     k = 0; while (line[k]) k++; snprintf(line + k, sizeof line - (unsigned long)k, " phs=%d/%d/%d/%d/%d/%d",

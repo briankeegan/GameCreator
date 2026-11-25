@@ -179,6 +179,7 @@ static void planIn(const Question *q, const PlanOpts *o, Plan *P) {
   }
   int na = o->aims ? o->aims->n : 0;
   for (int d = 1; d <= o->depth && npool && !clockOut(); d++) {
+    phWhere = 2;
     int nk = 0, nj = 0;
     static LOCAL int32_t jobP[PLAN_KIDS], jobM[PLAN_KIDS], jobOut[PLAN_KIDS];
     for (int pi = 0; pi < npool; pi++) { pool[pi].reach = 0; pool[pi].nkids = 0; pool[pi].ideas = 0; }
@@ -209,6 +210,7 @@ static void planIn(const Question *q, const PlanOpts *o, Plan *P) {
       }
     // the level read in the order it was made: every board within the rules is a kid of its parent; one that clears is weighed
     for (int pi = 0; pi < npool; pi++) pool[pi].kid0 = -1;
+    phWhere = 4;
     for (int j = 0; j < nj; j++) {
       if ((j & 3) == 3 && clockOut()) break;
       PItem *it = &pool[jobP[j]];
@@ -295,6 +297,7 @@ static void planIn(const Question *q, const PlanOpts *o, Plan *P) {
     sortByKeyDesc(idx, npool, ideaK, tmpI);
     sortByDoubleDesc(idx, npool, reachK, tmpI);
     int nn = 0;
+    phWhere = 5;
     for (int r = 0; r < npool && r < o->width; r++) {
       int pr = idx[r];
       if (clockOut() && nn) break;
@@ -320,6 +323,7 @@ static void planIn(const Question *q, const PlanOpts *o, Plan *P) {
         P->setup = P->setupLine[0];
       }
     }
+    phWhere = 6;
     static LOCAL int32_t nidx[PLAN_POOL];
     for (int q2 = 0; q2 < nn; q2++) { nidx[q2] = q2; keyB[q2] = next[q2].h; }
     sortByKeyDesc(nidx, nn, keyB, tmpI);
@@ -341,6 +345,7 @@ static void planIn(const Question *q, const PlanOpts *o, Plan *P) {
     for (int ai = 0; ai < na; ai++) if (P->perAim[ai].set && !clockOut() && !readyAfter(x, P->perAim[ai].n, o->readyAt)) P->perAim[ai].set = 0;
     if (P->nearest.set && !readyAfter(x, P->nearest.n, o->readyAt)) P->nearest.set = 0;
   }
+  phWhere = 7;
   if (!haveSetup) { P->setup = 0; P->nsetupLine = 0; }
   // (the plan kept for the next decision: the lines it found, then the beam's last boards, most connected first)
   planOut.n = 0;

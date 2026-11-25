@@ -240,7 +240,7 @@ static void searchAll(const Read *R, Found *S) {
       for (int i = 0; i < MAXAIMS; i++) if (S->ap.perAim[i].set && S->ap.perAim[i].nseq > S->planLong) S->planLong = S->ap.perAim[i].nseq; }
     if (extra > 0) { double v = S->ap.ms - (usual > 0 ? usual : 0); S->idleMs = v < extra ? v : extra; if (S->idleMs < 0) S->idleMs = 0; }
   }
-  phAt[14] = nowMs();
+  phAt[14] = nowMs(); phWhere = 10;
   int32_t nl = R->F.known[FACT_US_NEXTLANDS] ? (int32_t)R->F.v[FACT_US_NEXTLANDS] : 0;
   S->lvU = R->dying ? level(&decQ, nl > 0 ? nl : (R->by ? R->by : NOT_ASKED)) : 0;
   phAt[15] = nowMs();
