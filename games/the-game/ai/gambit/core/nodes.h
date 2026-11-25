@@ -277,12 +277,17 @@ static Ctx *ctxOf(Ctx *x) {
 // THE QUESTION: the board a decision is made on, the raise in hand and the garbage on its way -- what every search roots its lines at.
 typedef struct { Board *b; int32_t holdLeft, holdStarted, narr; Arr arr[MAXARR]; int32_t tight; } Question;
 // THE LAST SEARCH'S TREE LET GO AT A ROOT (rootResetOf): a tree of REAP_AT nodes or more is swapped for an emptied one of the reaper's and
-// handed to it whole -- the context the search keeps stays its own, only its nodes change -- else emptied here. Only for one that holds
-// half the nodes this one does at least: a smaller one is grown, every node copied at each growth, with no clock asked either
+// handed to it whole -- the context the search keeps stays its own, only its nodes change -- else emptied here. The one swapped in holds
+// half the nodes this one does at least (a smaller one is grown, every node copied at each growth, with no clock asked either); with none
+// ready, a new one is made with room for as many (its pages untouched until written), and the reaper hands this one back for the next
 #define REAP_AT 4096
 static void rootResetOf(Ctx *x) {
   if (reapHand && x->n >= REAP_AT && !x->par) {
     Ctx *f = reapTake(x->cap / 2);
+    if (!f && (f = ns_ctx_new())) {
+      f->nodes = (Node *)grab((unsigned long)x->cap * sizeof(Node));
+      if (f->nodes) f->cap = x->cap; else { reapReturn(f); f = 0; }
+    }
     if (f) {
       Node *nn = f->nodes; int32_t ncap = f->cap;
       f->nodes = x->nodes; f->n = x->n; f->cap = x->cap; f->later.n = 0;
