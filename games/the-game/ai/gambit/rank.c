@@ -649,11 +649,12 @@ static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < reserveNeed(J); }
 // (A FLATTEN BETWEEN MOVES -- the owner: it had time to set things up while it waited and did nothing; flatter, it would not have to move
 // so far to get things done: a set-up of any kind -- a level, a zip, a lineup -- that walks no more than WALK_EARN actions, wastes no
-// three and leaves the input allowance two breaks' walks at the next landing, as a break leaves it. The window a break needs is kept;
-// what is over it flattens the board the next break is walked on)
+// three and leaves the input allowance FLAT_KEEP at the next landing: the next break's walk and half another kept, what is over it
+// flattens the board the next break is walked on)
+#define FLAT_KEEP (3 * BREAK_WALK / 2)
 static int flattenFree(const Judge *J) {
   return setupKind(J) && !J->o.dead && J->k.nseq > 0 && pressAllowance >= 0 && lineWalk(J) <= WALK_EARN &&
-         allowAtLanding(lineWalk(J)) >= 2 * BREAK_WALK && !wastesThree(J);
+         allowAtLanding(lineWalk(J)) >= FLAT_KEEP && !wastesThree(J);
 }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
