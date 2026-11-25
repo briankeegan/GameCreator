@@ -11,7 +11,7 @@ cd "$(dirname "$0")"
 if [ "${1:-}" = native ]; then
   N="clang -O3 -march=native -pthread -fPIC -shared -Wl,-z,nodelete -DPA_HEAP -Wall -Wno-unused-function -Wno-unknown-attributes -Wno-ignored-attributes native.c host.c -lm -o libgambit.so"
   P="-fprofile-use=gambit.profdata -Wno-profile-instr-out-of-date -Wno-profile-instr-unprofiled -Wno-backend-plugin"
-  { [ "${GC_GAMBIT_PGO:-0}" = 1 ] && [ -f gambit.profdata ] && $N $P 2>/dev/null; } || $N
+  { [ "${GC_GAMBIT_PGO:-1}" = 1 ] && [ -f gambit.profdata ] && $N $P 2>/dev/null; } || $N
   exit
 fi
 # ./build.sh test [golden|speed]: the C checks, natively (test/main.c: the board as bits, perched blocks, the decisions replayed against the
