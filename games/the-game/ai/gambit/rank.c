@@ -796,6 +796,13 @@ static int shortChain(const Judge *J) { int32_t reach = J->o.dead ? imax(J->apCh
 // is told. The line in progress keeps its place while it stands HORIZON frames from now, so it is put down only where it fails, not where
 // the next decision's horizon reaches a frame further: every swap of a plan put down is a move for nothing)
 static int goalLine(const Judge *J) { return !J->hold && (J->met == 0 || J->modeFirst); }
+// (THE FINISH UNDER GARBAGE -- the owner: in finish them a combo only where it can kill, and the enemy is where it can: an attack the
+// list asks, a combo of four or more with at most a 2x, that leaves the input allowance a break's walk at the next landing -- under
+// garbage it is no stall, the attack is the mode's whole aim)
+static int finishFree(const Judge *J) {
+  return finishAsked() && goalLine(J) && !J->o.dead && J->apCombo >= 4 && J->apChainAll <= 2 && J->k.nseq > 0 &&
+         (pressAllowance < 0 || allowAtLanding(lineWalk(J)) >= BREAK_WALK);
+}
 // (OFF THE MODE: a line whose attack the mode's list does not ask -- a chain where it asks combos, a 2x or a chain past its length, a combo
 // of four or more it does not ask -- the board's own chain going on counted, as every line has it alike)
 #define OFF_MODE_LIFE 2   // (breaks' time, rankSave: the life a line that keeps to the mode needs for the off-mode one to go after it)
