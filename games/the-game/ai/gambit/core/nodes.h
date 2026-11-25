@@ -248,6 +248,17 @@ static void batchDone(void) { batchN = 0; }
 // context a search makes is set so (surviveFrames and surviveRest 0).
 static int32_t cfgReaction = 12, cfgSwapGap = 12, cfgCursor = 4;
 EXPORT(gb_config) void gb_config(int reaction, int swapGap, int cursorMoveFrames) { cfgReaction = reaction; cfgSwapGap = swapGap; cfgCursor = cursorMoveFrames; }
+// A CONTEXT LET GO OFF THE SEARCH'S THREAD (native.c's reaper, where the host has one): its boards are freed there, and a context it
+// has emptied comes back for the next search (0: none ready, a new one is made). Freeing tens of thousands of boards is 120-220 ms
+// with no clock check; on the thread that searched it would land in the decision's last moments. With no reaper, or its queue full,
+// the context is emptied here.
+static int (*reapHand)(Ctx *x); static Ctx *(*reapTake)(void);
+static Ctx *ctxLetGo(Ctx *x) {
+  if (!x) return 0;
+  if (reapHand && reapHand(x)) return reapTake();
+  ns_reset(x);
+  return x;
+}
 static Ctx *ctxOf(Ctx *x) {
   if (!x) x = ns_ctx_new();
   ns_ctx_set(x, cfgReaction, cfgCursor, 0, 0); ns_ctx_gap(x, cfgSwapGap);
