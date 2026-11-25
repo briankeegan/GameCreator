@@ -282,6 +282,50 @@ static int32_t ages[512];
 // engine's pool's (search.h workerLoop) -- every batch of steps a search hands the pool (core/nodes.h stepMany) is played on them all.
 static void *gnWorker(void *arg) { paThreadId((int)(long)arg); workerLoop(); return 0; }
 static void *onThreadMain(void *arg) { (void)arg; int k = __atomic_fetch_add(&onNext, 1, __ATOMIC_SEQ_CST); paThreadId(MAXTHREADS - 2 - k); onThread(k); return 0; }
+// THE REAPER (core/nodes.h ctxLetGo): a thread at the idle class beside the workers, with a board pool of its own, that empties the
+// contexts handed to it and hands them back. REAPN waiting at most; past them the searching thread empties its own.
+#define REAPN 4
+static Ctx *reapWaiting[REAPN], *reapReady[4 * REAPN];
+static int32_t reapNWaiting, reapNReady, reapLock, reapWord, reapQuit, reapInline;
+static void reapIn(void) { while (__atomic_exchange_n(&reapLock, 1, __ATOMIC_ACQUIRE)) {} }
+static void reapOut(void) { __atomic_store_n(&reapLock, 0, __ATOMIC_RELEASE); }
+static int reapHandOn(Ctx *x) {
+  reapIn();
+  int ok = reapNWaiting < REAPN;
+  if (ok) reapWaiting[reapNWaiting++] = x;
+  reapOut();
+  if (!ok) { __atomic_fetch_add(&reapInline, 1, __ATOMIC_RELAXED); return 0; }
+  __atomic_fetch_add(&reapWord, 1, __ATOMIC_SEQ_CST); hostFutexWake(&reapWord, 1);
+  return 1;
+}
+static Ctx *reapTakeOn(void) {
+  reapIn();
+  Ctx *x = reapNReady ? reapReady[--reapNReady] : 0;
+  reapOut();
+  return x;
+}
+static void *reapMain(void *arg) {
+  (void)arg;
+  paThreadId(MAXTHREADS - 2 - ONN);
+  for (;;) {
+    int32_t w = __atomic_load_n(&reapWord, __ATOMIC_SEQ_CST);
+    reapIn();
+    Ctx *x = reapNWaiting ? reapWaiting[--reapNWaiting] : 0;
+    reapOut();
+    if (x) {
+      ns_reset(x);
+      reapIn();
+      // (the ready list never fills: a context is made only when it is empty, so there are never more than the threads that plan and
+      // the ones waiting)
+      if (reapNReady < 4 * REAPN) reapReady[reapNReady++] = x;
+      reapOut();
+      continue;
+    }
+    if (__atomic_load_n(&reapQuit, __ATOMIC_SEQ_CST)) return 0;
+    hostFutexWait(&reapWord, w);
+  }
+}
+static void reapEnd(void) { __atomic_store_n(&reapQuit, 1, __ATOMIC_SEQ_CST); __atomic_fetch_add(&reapWord, 1, __ATOMIC_SEQ_CST); hostFutexWake(&reapWord, -1); }
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {
   hostTaps = 1;
   // (THE GAME'S THREAD, which calls this and plays the frame loop -- its keys are engine steps (front.c keyCtx) -- is the engine's last
@@ -293,7 +337,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   static int started;
   if (!started) {
     started = 1;
-    int n = hostWorkers(gnWorker, MAXTHREADS - 2 - ONN);
+    int n = hostWorkers(gnWorker, MAXTHREADS - 3 - ONN);
     while (__atomic_load_n(&pool.nworkers, __ATOMIC_SEQ_CST) < n) {}
     // (and the break search between decisions, threads of their own beside the pool, where there are workers' CPUs for them: the wider
     // beam's on a second where there are four)
@@ -301,6 +345,8 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
     // (one begun at a time: each reads what it is to run from the host as it starts -- host.c idleFn)
     for (int k = 0; k < want; k++) if (hostIdleThread(onThreadMain, "gbetween") == 0) { onThreads++; while (__atomic_load_n(&onNext, __ATOMIC_SEQ_CST) < onThreads) {} }
     if (onThreads > 0) onThreadOn = 1;
+    // (the reaper where there are workers' CPUs for it)
+    if (n > 0 && hostIdleThread(reapMain, "greap") == 0) { reapHand = reapHandOn; reapTake = reapTakeOn; }
     static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
   }
   return 0;
@@ -422,8 +468,9 @@ void gn_quit(void) {
   __atomic_store_n(&jobStop, 1, __ATOMIC_SEQ_CST);
   hostLock(); gnQuit = 1; qHas = 0; hostSignal(); hostUnlock();
   hostJoin(0);
-  onStop(); onEnd(); hostJoin(1);
+  reapHand = 0; onStop(); onEnd(); reapEnd(); hostJoin(1);
   poolEnd(); hostJoin(2);
+  { static char line[64]; snprintf(line, sizeof line, "GAMBIT reaped here %d", reapInline); flog(line); }
   hostQuit();
 }
 // A line from the host into the run's log (a slow frame's parts, say)
