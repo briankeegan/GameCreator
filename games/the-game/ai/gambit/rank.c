@@ -968,20 +968,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
         !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
-  // 1. THE WINDOW KEPT (the owner: efficiency is key, never far for little): under garbage, of two that do not live, a line that walks
-  // more than WALK_EARN actions past the other's and puts the next break off by more frames than it is lost later goes after the other,
-  // where the other's board stands a break's time -- the window gives those actions back only once the frames they buy are spent, and
-  // the breaks of those frames are pressed out of what is left. The other breaks garbage too, or neither does and the other is the hold
-  // or clears nothing: a break is never put after a line that breaks none, nor a clear for nothing before anything (the later loss
-  // bought). A window with room for both walks puts no break off
+  // 1. THE PERCH NOT DUG (the owner: flatten, leave the board where moves are easy): under garbage, of two that do not live, a clear that
+  // breaks none of it and leaves it further from coming down onto the stack at rest (restOn: the middle cleared out from under it, the
+  // towers at its edges left holding it) goes after a line that clears nothing or breaks garbage, where that line's board stands a
+  // break's time -- the frames the clear buys are stop time, and the garbage it leaves perched is out of every break's reach after them
   if (!lx && !ly && decF.under && !x->o.lives && !y->o.lives && !x->o.dead && !y->o.dead) {
-    int wx = x->hold ? 0 : lineWalk(x), wy = y->hold ? 0 : lineWalk(y);
-    const Judge *d = wx > wy ? x : y, *c = d == x ? y : x;
-    int wd = d == x ? wx : wy, wc = d == x ? wy : wx;
-    double dd = diesAt(d), dc = diesAt(c);
-    if (wd - wc > WALK_EARN && (c->apBroke > 0 || (!(d->apBroke > 0) && (c->hold || (!clears(c) && !(c->o.j.clearedPanels > 0))))) && dc >= rankSave && dc < 1e299 && dd < 1e299 && !finishEightBy(d, c) &&
-        nextBreakDelay(wd) - nextBreakDelay(wc) > dd - dc)
-      return (cmpKey = __LINE__, (c == x ? -1 : 1));
+    int gx = !x->hold && !(x->apBroke > 0) && (clears(x) || x->o.j.clearedPanels > 0), gy = !y->hold && !(y->apBroke > 0) && (clears(y) || y->o.j.clearedPanels > 0);
+    if (gx != gy) { const Judge *g = gx ? x : y, *o = gx ? y : x;
+      if (diesAt(o) >= rankSave && diesAt(o) < 1e299) { int32_t rg = restOn(g), ro = restOn(o); if (rg >= 0 && ro >= 0 && rg > ro) return (cmpKey = __LINE__, (gx ? 1 : -1)); } }
   }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
   // board, of two that live or are lost alike, the one that leaves a break ready once everything lands (judge.c breaksAfterLanding, the
