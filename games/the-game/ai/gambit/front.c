@@ -73,8 +73,8 @@ typedef struct {
   int32_t moveClear, moveSetup, moveBreak, moveNone, cursorCells;
   int32_t noneBy[NPLAYS];   // (the swaps that came to nothing, by the kind of line that pressed them)
   int32_t noneDropped, noneOn, noneLast;
-  int32_t noneWhy[1024];   // (and dropped, by what ended the line: lineEnds)
-  int32_t actsBy[NPLAYS + 1], actsLost[1024];   // (THE WINDOW SPENT: the actions pressed, by the kind of line -- 0 none -- and those of a line put down or dropped before its end, by what ended it)   // (and by what became of their line: dropped before its later swaps, those pressed, its last swap)
+  int32_t noneWhy[4096];   // (and dropped, by what ended the line: lineEnds)
+  int32_t actsBy[NPLAYS + 1], actsLost[4096];   // (THE WINDOW SPENT: the actions pressed, by the kind of line -- 0 none -- and those of a line put down or dropped before its end, by what ended it)   // (and by what became of their line: dropped before its later swaps, those pressed, its last swap)
   int32_t together;   // (several ideas at once: a clear begun, no link of a chain, while another is still clearing)
   int32_t wasted, wastedAlone, wasteRefused, saved, guardLet, refusedSpoil, through;   // (a wasted three: a clear of three that broke no garbage, was no link of a chain and whose line broke none after it -- a swap's, the stack's own; saved: one of a line the survival search found the board needed not to die; through: a three whose line broke garbage after it)
 } FStats;
@@ -96,7 +96,7 @@ static LineRec lineRecs[LINE_RECS];
 static LineRec *lineRec(int32_t lid) { LineRec *r = lid > 0 ? &lineRecs[(lid - 1) % LINE_RECS] : 0; return r && r->id == lid ? r : 0; }
 // WHAT ENDED A LINE, for the swaps of it that came to nothing (noneWhy): the answer's word (answer.c ended: carried on, held, not
 // carried, dropped by the carry -- or the line number of the order's key that put it down, rank.c cmpKey), or the frame loop's own drop
-enum { END_ON = 1, END_HELD, END_NOTCARRIED, END_ANCHOR, END_STEP, END_NOBREAK, END_RAISE, END_MODE = 10, END_NOBOARD, END_NOKEYS, END_NOFIT, END_OVERWALK, END_DROPPED, NEND = 1024 };   // (16-21: answer.c ended, decide.c carryNone)
+enum { END_ON = 1, END_HELD, END_NOTCARRIED, END_ANCHOR, END_STEP, END_NOBREAK, END_RAISE, END_MODE = 10, END_NOBOARD, END_NOKEYS, END_NOFIT, END_OVERWALK, END_DROPPED, NEND = 4096 };   // (16-21: answer.c ended, decide.c carryNone)
 static void lineEnds(int32_t why);
 
 static struct {
