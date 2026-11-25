@@ -483,6 +483,7 @@ local function rowsOnItsWay(me)
   return n
 end
 function GambitNative:think(stack, sources, view)
+  local tIn = ThinkBudget.now()
   local idle = KeyDataEncoding.base64encode[1]
   -- (the countdown: once the cursor has come to rest, the opening asked of the board as play will begin with it -- gn_countdown)
   if counting(stack) then
@@ -501,6 +502,7 @@ function GambitNative:think(stack, sources, view)
     C.gn_log(string.format("SCORE clock %d score %d chain %d", stack.clock or 0, stack.score, stack.chain_counter or 0))
   end
   local t0 = ThinkBudget.now()
+  self.stepPre = t0 - tIn
   self:load(stack)
   local t1 = ThinkBudget.now()
   self:telegraph(sources, stack, view)
@@ -522,6 +524,7 @@ function GambitNative:think(stack, sources, view)
     self.stopSet = true; rawset(_G, "GC_TRAINING_STOP_AT", stack.clock + STOP_AFTER)
   end
   self.frames = self.frames + 1
+  self.stepPost = ThinkBudget.now() - t2 - self.stepFrame
   return KeyDataEncoding.base64encode[bits + 1] or idle
 end
 
@@ -549,8 +552,10 @@ function GambitNative:input(stack, sources, view)
   C.gn_thread_stats(self.ts0)
   local began = ThinkBudget.now()
   local ok, key = pcall(self.think, self, stack, sources, view)
+  local tPress = ThinkBudget.now()
   if ok and self.ownInputs then key = self:press(key, stack.clock) end
   local took = ThinkBudget.now() - began
+  self.stepPress = began + took - tPress
   if jitWas then jit.on() end
   collectgarbage("restart")
   if not ok then error(key, 0) end
@@ -561,8 +566,9 @@ function GambitNative:input(stack, sources, view)
     -- (and the game thread's own account of it: its CPU time, the times it was taken off its core or gave it up, its page faults)
     local a, b, P = self.ts0, self.ts1, self.loadParts
     C.gn_thread_stats(b)
-    C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d (major %d); %s",
-      stack.clock, took * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3], b[4] - a[4],
+    C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (before %.1f, load %.1f, telegraph %.1f, frame loop %.1f, after %.1f, press %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d (major %d); %s",
+      stack.clock, took * 1000, (self.stepPre or 0) * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, (self.stepPost or 0) * 1000, (self.stepPress or 0) * 1000,
+      b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3], b[4] - a[4],
       string.format("rows %d, queued %d; load head %.1f, queues %.1f, panels %.1f, queues written %.1f", self.nrows or 0, self.nqueued or 0,
         P and P[1] * 1000 or -1, P and P[2] * 1000 or -1, P and P[3] * 1000 or -1, P and P[4] * 1000 or -1)))
   end
