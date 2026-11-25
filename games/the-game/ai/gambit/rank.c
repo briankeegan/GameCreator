@@ -1208,10 +1208,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (cx != cy && !brokeMore && !spends) return (cmpKey = __LINE__, (cy - cx));
     }
   }
-  // 1'e. FLAT, NO GARBAGE ON ITS WAY (the stack at speed: a well between towers is where the board dies -- a canyon is never dug out at
-  // forty-seven frames a row): with no garbage on the board, held or due, and the board not chaining, of two that survive alike the
-  // one that leaves the board flatter by FLAT_ROWS or more, whatever the window holds
-  if ((lx || lostAlike(x, y)) && !decF.under && decQ.narr == 0 && decF.next == NOT_ASKED && decQ.b->chainCounter < 2 &&
+  // 1'e. FLAT BEFORE THE GARBAGE (the stack at speed: a well between towers is where the board dies -- a canyon is never dug out at
+  // forty-seven frames a row, and a block on its way lands on the towers over it): with no garbage on the board and the board not
+  // chaining, of two that survive alike the one that leaves the board flatter by FLAT_ROWS or more, whatever the window holds
+  if ((lx || lostAlike(x, y)) && !decF.under && decQ.b->chainCounter < 2 &&
       x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS)
     return (cmpKey = __LINE__, (x->o.j.even - y->o.j.even));
   // 1'f. NO SLAB AT THE FINISH: where the list is the finish (finishAsked), of two that survive alike, the line that sends no slab of two
