@@ -331,10 +331,10 @@ static int32_t brWhere; static double brGiven;
 static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as the answer says: the native one, native.c gn_setup)
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
 static void breakJob(int32_t i) {
-  // (every job ends by the decision's own deadline at the latest -- the planner's half and the chain extended keep no share of their own,
-  // and work past the deadline is an answer taken after its frame, never pressed: run 4580, endless 1, 19500, the planner's half 469 ms
-  // of a decision 860 ms long asked 51 frames ahead, late by a frame)
-  clockWork = brJobWork; clockShare = C2.due; clockAborted = 0; clockPoll = 0;
+  // (every job ends halfway into the judging's quarter at the latest (propose.c searchesEnd to the decision's deadline) -- the planner's
+  // half and the chain extended keep no share of their own past it: the decision waits on its jobs (breakEnd, jobsDone), and a job let
+  // run on to the deadline leaves the lines unjudged and the answer taken after its frame)
+  clockWork = brJobWork; clockShare = C2.due ? (C2.due + brJobBy) / 2 : 0; clockAborted = 0; clockPoll = 0;
   inJob = 1; pressTight = decQ.tight; pressTap = decTap; ncache = 0;
   int kind = jobKinds[i];
   if (kind == JOB_BREAK) breakRun(brJobR, brJobBy);
