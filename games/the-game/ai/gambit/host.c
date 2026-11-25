@@ -43,7 +43,12 @@ void *paHeap(unsigned long n) {
 // to the system -- the block stays this heap's (freed with the rest when the instance quits) and reads as zeros when next touched. Only
 // pages wholly inside the block: the allocator's own words before and after it are left alone.
 #include <sys/mman.h>
+// Below RELEASE_ABOVE_MB of heap the pages are kept: a release is a system call a board, and a search's tree let go at once
+// (search.h ns_reset) gave back thousands of boards one call each -- 123-222 ms the decision never asked the clock in, the move
+// answered after its frame (run 4621). Kept, they are the next search's boards. Above it, given back as before.
+#define RELEASE_ABOVE_MB 6144
 void paRelease(void *p, unsigned long n) {
+  if ((__atomic_load_n(&heapBytes, __ATOMIC_RELAXED) >> 20) < RELEASE_ABOVE_MB) return;
   unsigned long a = ((unsigned long)p + 4095) & ~4095ul, e = ((unsigned long)p + n) & ~4095ul;
   if (e > a) madvise((void *)a, e - a, MADV_DONTNEED);
 }
