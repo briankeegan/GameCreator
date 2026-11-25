@@ -968,13 +968,13 @@ static int compareJudged(const Judge *x, const Judge *y) {
         !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
-  // 1. THE WINDOW'S FLOOR (the owner: efficiency is key): under garbage, of two that do not live, a line that leaves the input window
-  // under half a break's walk (BREAK_WALK) at the next landing goes after one that keeps it -- and of two that both leave it under, the
+  // 1. THE WINDOW'S FLOOR (the owner: efficiency is key): under garbage or with garbage on its way, of two that do not live, a line that
+  // leaves the input window under half a break's walk (BREAK_WALK) at the next landing goes after one that keeps it -- and of two that both leave it under, the
   // one that leaves FLOOR_STEP actions fewer goes after -- where the other's board stands a break's time and it is the hold, or breaks
   // as much garbage and is no clear for nothing: a board left under that floor is one that cannot press the break the next block needs
   // (runs 4658-4660: under ten actions left, 11% of decisions lost within 900 frames, else 3%)
   #define FLOOR_STEP 4
-  if (!lx && !ly && decF.under && pressAllowance >= 0 && !ruleNoEnemy && !x->o.lives && !y->o.lives && !x->o.dead && !y->o.dead) {
+  if (!lx && !ly && (decF.under || garbageComing()) && pressAllowance >= 0 && !ruleNoEnemy && !x->o.lives && !y->o.lives && !x->o.dead && !y->o.dead) {
     int ax = allowAtLanding(x->hold ? 0 : lineWalk(x)), ay = allowAtLanding(y->hold ? 0 : lineWalk(y));
     int kx = ax >= BREAK_WALK / 2, ky = ay >= BREAK_WALK / 2;
     if (!kx && !ky && (ax - ay >= FLOOR_STEP || ay - ax >= FLOOR_STEP)) { kx = ax > ay; ky = !kx; }
