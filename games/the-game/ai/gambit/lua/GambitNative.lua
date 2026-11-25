@@ -53,7 +53,13 @@ void gn_quit(void);
 void gn_log(const char *s);
 void gn_thread_stats(double *out);
 ]]
-local B = dofile(DIR .. "/lua/board.lua")
+-- (THE LOAD NEVER COMPILED: a trace made of the first boards, garbage-free, leaves on every garbage panel once garbage lands, and on a
+-- trace's exit LuaJIT drives the collector forward (lj_trace_exit, lj_gc_step) -- stopped or not, a step of it inside the frame: 9-14 ms
+-- in the panels of the first frames with garbage. Run by the interpreter, the load leaves no trace to exit.)
+local JIT_CTL = jit and jit.off and true
+local boardChunk = assert(loadfile(DIR .. "/lua/board.lua"))
+if JIT_CTL then jit.off(boardChunk, true) end
+local B = boardChunk()
 local NUL = B.NUL
 -- (the instance in play -- open: its library, its io's head names, and the io's head and body)
 local C, HI, NH, H, Bd
@@ -153,6 +159,7 @@ local function put(k, v)
   local i = HI[k]
   if i and v ~= nil then H[i] = v == true and 1 or v == false and 0 or v end
 end
+if JIT_CTL then jit.off(put) end
 function GambitNative:load(a)
   if a.do_countdown ~= nil then a.in_countdown = a.do_countdown and true or false end
   local pv = self.pv
@@ -184,6 +191,7 @@ function GambitNative:load(a)
   local P = self.loadParts
   P[1], P[2], P[3], P[4] = l1 - l0, l2 - l1, l3 - l2, ThinkBudget.now() - l3
 end
+if JIT_CTL then jit.off(GambitNative.load, true) end
 
 -- The garbage each source has sent and not yet delivered, as its telegraph shows it: whether its queue is held back (an attack engine's),
 -- its transit by the stopWatch it lands on, then its staged that ship first (the end of the list), SOURCE_PIECES in all. Colours are not
