@@ -1078,7 +1078,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int dx = letsDown(x), dy = letsDown(y);
     // (never over a line that breaks garbage -- the line in progress, an entry: letting the garbage down stands in for a break, and that
     // line is one)
-    if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x; if (!(o->apBroke > 0) && (lostOf(d) >= lostOf(o) || lostAlike(d, o))) return (cmpKey = __LINE__, (dx ? -1 : 1)); }
+    // (and before a clear that breaks none of it and leaves it perched higher at rest, where the let-down's board stands a break's time
+    // and is lost less than a break's time before the clear's: the clear's frames are stop time, the well it digs holds the garbage up
+    // out of every break's reach after them, and the support walked off is the way to the next break)
+    if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x;
+      int digs = !o->hold && (clears(o) || o->o.j.clearedPanels > 0);
+      if (!(o->apBroke > 0) && (lostOf(d) >= lostOf(o) || lostAlike(d, o) ||
+                                (digs && diesAt(d) >= rankSave && diesAt(o) - diesAt(d) < rankSave && restOn(o) > restOn(d))))
+        return (cmpKey = __LINE__, (dx ? -1 : 1)); }
     // (and of two lost alike that break nothing, the one whose board at rest leaves the garbage nearer coming down onto the stack
     // (restOn, outcome.c restOf): a perch built up is a break put further off -- the garbage on two towers over a well, every break
     // walked to it a support at a time)
