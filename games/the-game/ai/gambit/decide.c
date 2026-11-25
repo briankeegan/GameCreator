@@ -973,12 +973,13 @@ static int ranked(const Read *R, const Found *S) {
     if (twoRemade) sortJudged(order, n); }
   { int keeps = 0, twoLives = 0; double twoLost = -1, keptLost = -1;
     for (int i = 0; i < n; i++) {
-      if (shortChain(order[i])) { if (order[i]->o.lives) twoLives = 1; else if (lostOf(order[i]) > twoLost) twoLost = lostOf(order[i]); }
+      if (shortChain(order[i])) { if (order[i]->o.lives) twoLives = 1; else if (diesAt(order[i]) > twoLost) twoLost = diesAt(order[i]); }
       else if (spendsReserve(order[i])) continue;   // (a line that spends the window the next break is pressed from keeps nothing)
-      else if (order[i]->o.lives) keeps = 1; else if (lostOf(order[i]) > keptLost) keptLost = lostOf(order[i]);
+      else if (order[i]->o.lives) keeps = 1; else if (diesAt(order[i]) > keptLost) keptLost = diesAt(order[i]);
     }
     int why = keeps ? 1 : 0;
-    // (the owner: don't die -- a 2x is kept out only where a line that makes none lives, or is lost no sooner than the best 2x)
+    // (the owner: don't die -- a 2x is kept out only where a line that makes none lives, or is lost no sooner than the best 2x: each
+    // board's own loss, no walk charged -- the walk's charge is a preference, never a loss, and a 2x a save is a save however far it walks)
     if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1, why = 3;
     twoWhy = why; twoLostLog = twoLives ? 1e300 : twoLost; twoKeptLog = keptLost;
     // (not where the list asks no chain: a 2x taken to three is a bigger slab the mode does not ask)
