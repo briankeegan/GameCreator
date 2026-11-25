@@ -291,8 +291,10 @@ static int32_t ages[512];
 static void *gnWorker(void *arg) { paThreadId((int)(long)arg); workerLoop(); return 0; }
 static void *onThreadMain(void *arg) { (void)arg; int k = __atomic_fetch_add(&onNext, 1, __ATOMIC_SEQ_CST); paThreadId(MAXTHREADS - 2 - k); onThread(k); return 0; }
 // THE REAPER (core/nodes.h ctxLetGo): a thread at the idle class beside the workers, with a board pool of its own, that empties the
-// contexts handed to it and hands them back. REAPN waiting at most; past them the searching thread empties its own.
-#define REAPN 4
+// contexts handed to it and hands them back. REAPN waiting at most; past them the searching thread empties its own -- 120-220 ms with
+// no clock asked, on a job's thread past its stop and the decision's answer after its frame -- so REAPN covers the contexts several
+// decisions let go while the reaper, at the idle class, waits for a CPU the workers leave it
+#define REAPN 16
 static Ctx *reapWaiting[REAPN], *reapReady[16 * REAPN];
 static int32_t reapNWaiting, reapNReady, reapLock, reapWord, reapQuit, reapInline;
 static void reapIn(void) { while (__atomic_exchange_n(&reapLock, 1, __ATOMIC_ACQUIRE)) {} }
