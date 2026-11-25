@@ -9,6 +9,7 @@ static double breakShare = BREAK_SHARE, underShare = UNDER_SHARE;
 #define FILL_UNDER_SHARE 0.9   // in fill, with garbage on the board: fill buries the board in slabs, and only breaks keep it (seed 86: 27 and 27 of 28
                                // at 0.9, 23, 24 and 24 at 0.75; finish them at 0.9 for every mode: 22, at 0.75: 27)
 static int32_t fillName = -1;  // the host's index of the fill rule's name (native.c gn_rule_name), -1 none
+static int32_t opReadyNow;   // (this decision: the opening's raise put after a line that leaves a break ready -- the log's opReady=)
 #define BREAK_MIN_MS 5
 #define BREAK_MAX_MS 400
 #define ROW_STEPS 16
@@ -506,6 +507,18 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     if (order[0]->apBroke > 0 || (H && !order[0]->hold && lostOf(order[0]) >= lostOf(H) + rankSave)) R.up = R.low = 0;
   }
+  // (THE OPENING'S RAISE AND A BREAK READY -- the owner: just have something ready, you need the panels: with garbage shown on its way,
+  // where no row the opening raises now leaves a break in reach once it lands (decide.c refillReady) and the hold leaves none either, a
+  // line that leaves one ready and is lost no sooner than the hold is played first; the raise comes at the next decision)
+  opReadyNow = 0;
+  if (R.up && raiseOpening && refillReady <= 0 && decQ.narr > 0 && n) {
+    int h = -1, rd = -1;
+    for (int i = 0; i < n && h < 0; i++) if (order[i]->hold) h = i;
+    const Judge *H = h >= 0 ? order[h] : 0;
+    for (int i = 0; i < n && rd < 0; i++) { const Judge *J = order[i];
+      if (!J->hold && !J->o.dead && J->readyNext == 1 && (!H || J->o.lives || lostOf(J) >= lostOf(H) || lostAlike(J, H))) rd = i; }
+    if (rd >= 0 && !(H && H->readyNext == 1)) { R.up = R.low = 0; Judge *t = order[0]; order[0] = order[rd]; order[rd] = t; opReadyNow = 1; }
+  }
   Played P = playOf(&R, n);
   if (opFlatPlayed) R.up = R.low = 0;   // (the opener's flattening before its raise: decide.c opTarget)
   if (opLineOn && P.line && P.line->carried) R.up = R.low = 0;   // (the opener's line in progress pressed through: no raise in its middle)
@@ -930,6 +943,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   }
   // (WHY THIS LINE: the order's key that put the line played before the best line it passed over, and what that line was -- rank.c's
   // line number, named by eval/rank_keys.js; none where nothing else was offered)
+  if (opReadyNow) L_s(" opReady=1");
   if (top && P.ncands > 1) { const Judge *ru = order[0] == top ? order[1] : order[0]; int32_t keepKey = cmpKey;
     if (ru && ru != top && compareJudged(top, ru) < 0) { L_s(" won=k"); L_i(cmpKey); L_s(":"); L_play(ru->hold ? PLAY_HOLD : ru->k.play);
       // (both sides as the order read them: the frame each board is lost on, then that less the walk charged -- inf a board that lives)
