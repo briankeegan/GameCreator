@@ -249,13 +249,13 @@ static void batchDone(void) { batchN = 0; }
 static int32_t cfgReaction = 12, cfgSwapGap = 12, cfgCursor = 4;
 EXPORT(gb_config) void gb_config(int reaction, int swapGap, int cursorMoveFrames) { cfgReaction = reaction; cfgSwapGap = swapGap; cfgCursor = cursorMoveFrames; }
 // A CONTEXT LET GO OFF THE SEARCH'S THREAD (native.c's reaper, where the host has one): its boards are freed there, and a context it
-// has emptied comes back for the next search (0: none ready, a new one is made). Freeing tens of thousands of boards is 120-220 ms
+// has emptied comes back for the next search (0: none ready, a new one is made; `least`: the fewest nodes it holds room for). Freeing tens of thousands of boards is 120-220 ms
 // with no clock check; on the thread that searched it would land in the decision's last moments. With no reaper, or its queue full,
 // the context is emptied here.
-static int (*reapHand)(Ctx *x); static Ctx *(*reapTake)(void);
+static int (*reapHand)(Ctx *x); static Ctx *(*reapTake)(int32_t least); static void (*reapReturn)(Ctx *x);
 static Ctx *ctxLetGo(Ctx *x) {
   if (!x) return 0;
-  if (reapHand && reapHand(x)) return reapTake();
+  if (reapHand && reapHand(x)) return reapTake(0);
   ns_reset(x);
   return x;
 }
@@ -266,9 +266,30 @@ static Ctx *ctxOf(Ctx *x) {
 }
 // THE QUESTION: the board a decision is made on, the raise in hand and the garbage on its way -- what every search roots its lines at.
 typedef struct { Board *b; int32_t holdLeft, holdStarted, narr; Arr arr[MAXARR]; int32_t tight; } Question;
+// THE LAST SEARCH'S TREE LET GO AT A ROOT (rootResetOf): a tree of REAP_AT nodes or more is swapped for an emptied one of the reaper's and
+// handed to it whole -- the context the search keeps stays its own, only its nodes change -- else emptied here. Only for one that holds
+// half the nodes this one does at least: a smaller one is grown, every node copied at each growth, with no clock asked either
+#define REAP_AT 4096
+static void rootResetOf(Ctx *x) {
+  if (reapHand && x->n >= REAP_AT && !x->par) {
+    Ctx *f = reapTake(x->cap / 2);
+    if (f) {
+      Node *nn = f->nodes; int32_t ncap = f->cap;
+      f->nodes = x->nodes; f->n = x->n; f->cap = x->cap; f->later.n = 0;
+      x->nodes = nn; x->n = 0; x->cap = ncap; x->later.n = 0;
+      if (reapHand(f)) return;
+      // (the reaper's queue full: the two put back, the tree emptied here, the empty one returned)
+      nn = x->nodes; ncap = x->cap;
+      x->nodes = f->nodes; x->n = f->n; x->cap = f->cap;
+      f->nodes = nn; f->n = 0; f->cap = ncap;
+      reapReturn(f);
+    }
+  }
+  ns_reset(x);
+}
 // A search's root, made from the question: every node before it is let go.
 static int rootOf(Ctx *x, const Question *q) {
-  ns_reset(x);
+  rootResetOf(x);
   Board *b = nb_new();
   if (!b) return STEP_ERR;
   cloneBoard(b, q->b);
