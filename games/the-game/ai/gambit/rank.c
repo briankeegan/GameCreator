@@ -968,6 +968,16 @@ static int compareJudged(const Judge *x, const Judge *y) {
         !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
+  // 1. THE WINDOW'S FLOOR (the owner: efficiency is key): under garbage, of two that do not live, a line that leaves the input window
+  // under half a break's walk (BREAK_WALK) at the next landing goes after one that keeps it, where that one's board stands a break's
+  // time and it is the hold, or breaks as much garbage and is no clear for nothing -- a board left under that floor is one that cannot
+  // press the break the next block needs (runs 4658-4660: under ten actions left, 11% of decisions lost within 900 frames, else 3%)
+  if (!lx && !ly && decF.under && pressAllowance >= 0 && !ruleNoEnemy && !x->o.lives && !y->o.lives && !x->o.dead && !y->o.dead) {
+    int kx = allowAtLanding(x->hold ? 0 : lineWalk(x)) >= BREAK_WALK / 2, ky = allowAtLanding(y->hold ? 0 : lineWalk(y)) >= BREAK_WALK / 2;
+    if (kx != ky) { const Judge *k = kx ? x : y, *d = kx ? y : x;
+      int ok = k->hold || (imax(0, k->apBroke) >= imax(0, d->apBroke) && (k->apBroke > 0 || (!clears(k) && !(k->o.j.clearedPanels > 0))));
+      if (ok && diesAt(k) >= rankSave && diesAt(k) < 1e299) return (cmpKey = __LINE__, (kx ? -1 : 1)); }
+  }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
   // board, of two that live or are lost alike, the one that leaves a break ready once everything lands (judge.c breaksAfterLanding, the
   // window counted) goes first: the break is in place when the block arrives, not walked to after it
