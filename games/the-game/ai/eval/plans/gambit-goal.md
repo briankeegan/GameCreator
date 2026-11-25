@@ -2036,3 +2036,12 @@ Measured (`1b4d1b88`, 3313-3316, set 86): finish 26, fill 23, switching 22, open
 26, 100/100. The answers on a given work are byte for byte the same: the gap between the two is the clock's, not the play's -- what one
 run per mode cannot see past. Instructions on the profiled boards 12.7 G to 4.7 G; what is left is the boards copied (27%) and the
 engine's frame (31%).
+THE OPENING'S RAISE, A BREAK READY: with garbage on its way and no break ready after it, the raise waits a decision for a line that
+leaves a break ready when the block shown lands (answer.c, the log's opReady=). THE BREAK THAT PAYS never puts the line in progress
+down for a cheaper one lost sooner: its swaps are on the board, the other is a walk begun again. The frame loop counts a line put down
+by any rank.c key under that key (front.c NEND), so the summary's window spent on lines not played out names each key.
+Measured (`33e14979`, 4673-4676): fill 28 (seed 147), finish 26 (seed 141), switching 25 (seed 143); 0 late moves, 0 frames over, 0
+divergences. Each run, 15.7% of the actions went to lines not played out; 8.5 actions a break.
+Measured, one run each, not kept: the window's floor with garbage on its way (4668: fill 24); the perch not dug (4670, 4671: fill 26
+each -- factory 2 lost to the perch both times, the rule holding under garbage over clears lost later); a 2x weighed on its own loss
+(4674: fill 25).

@@ -938,7 +938,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (decF.under && !x->o.lives && !y->o.lives && shortOfPanels(x, y) && imax(0, x->apBroke) / W == imax(0, y->apBroke) / W &&
       lostOf(x) >= rankSave && lostOf(y) >= rankSave) {
     const Judge *keep = panelsLeft(x) > panelsLeft(y) ? x : y, *sp = keep == x ? y : x;
-    int begun = sp->carried && !sp->hold && !keep->carried && diesAt(sp) > diesAt(keep);
+    int begun = sp->carried && !sp->hold && !keep->carried && lostOf(sp) > lostOf(keep);
     if (!begun && lostOf(sp) - lostOf(keep) < ((panelsLeft(keep) - panelsLeft(sp)) / 3) * rankSave) return (cmpKey = __LINE__, (keep == x ? -1 : 1));
   }
   // 1. lives before does not -- the line in progress that lives by the horizon alone beside a line of the mode's first entry lost no sooner
@@ -983,6 +983,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!kx && !ky && (ax - ay >= FLOOR_STEP || ay - ax >= FLOOR_STEP)) { kx = ax > ay; ky = !kx; }
     if (kx != ky) { const Judge *k = kx ? x : y, *d = kx ? y : x;
       int ok = k->hold || (imax(0, k->apBroke) >= imax(0, d->apBroke) && (k->apBroke > 0 || (!clears(k) && !(k->o.j.clearedPanels > 0))));
+      // (never the hold before a break whose own board is lost no sooner than the hold's: the garbage it breaks is the next block's
+      // demand taken off, and the hold keeps the window only to spend it on that garbage later)
+      if (k->hold && d->apBroke > 0 && !d->o.dead && diesAt(d) >= diesAt(k)) ok = 0;
       if (ok && diesAt(k) >= rankSave && diesAt(k) < 1e299) return (cmpKey = __LINE__, (kx ? -1 : 1)); }
   }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
@@ -1078,14 +1081,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int dx = letsDown(x), dy = letsDown(y);
     // (never over a line that breaks garbage -- the line in progress, an entry: letting the garbage down stands in for a break, and that
     // line is one)
-    // (and before a clear that breaks none of it and leaves it perched higher at rest, where the let-down's board stands a break's time
-    // and is lost less than a break's time before the clear's: the clear's frames are stop time, the well it digs holds the garbage up
-    // out of every break's reach after them, and the support walked off is the way to the next break)
-    if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x;
-      int digs = !o->hold && (clears(o) || o->o.j.clearedPanels > 0);
-      if (!(o->apBroke > 0) && (lostOf(d) >= lostOf(o) || lostAlike(d, o) ||
-                                (digs && diesAt(d) >= rankSave && diesAt(o) - diesAt(d) < rankSave && restOn(o) > restOn(d))))
-        return (cmpKey = __LINE__, (dx ? -1 : 1)); }
+    if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x; if (!(o->apBroke > 0) && (lostOf(d) >= lostOf(o) || lostAlike(d, o))) return (cmpKey = __LINE__, (dx ? -1 : 1)); }
     // (and of two lost alike that break nothing, the one whose board at rest leaves the garbage nearer coming down onto the stack
     // (restOn, outcome.c restOf): a perch built up is a break put further off -- the garbage on two towers over a well, every break
     // walked to it a support at a time)
