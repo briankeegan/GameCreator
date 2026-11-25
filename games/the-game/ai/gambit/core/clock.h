@@ -29,18 +29,14 @@ static int (*clockFrameOut)(void);
 // A JOB BESIDE THE DECISION (decide.c readySpread): no deadline of the decision's -- its searches end in their own share, or when the
 // next decision takes the pool back (jobStop)
 static LOCAL int inJob;
-static LOCAL int jobFrame;   // (a job of the decision's own, answer.c breakJob: it stops on the decision's frame too, as the decision does)
 static int32_t jobStop;
 // (THE SEARCH BETWEEN DECISIONS, answer.c onThread: inJob 2 -- its slice and its own stop, never the decision's jobs' stop)
 static int32_t onStopReq;
 static int32_t clockIgnore;   // (a fixed piece of work run whatever the clock says: decide.c moveWhy, its few steps measured once)
-static double phAt[16], phOut;   // (a probe: when each phase of a decision ended, and when its frame stop first fired)
-static double gapLast, gapMax, gapEnd; static int phWhere, gapWhere, gapWhereLast;   // (a probe: the longest stretch the decision's thread went without asking the clock, and when it ended)
 static int clockOut(void) {
-  if (!inJob && !clockNowOf) { double t = clock_ms(); if (gapLast && t - gapLast > gapMax) { gapMax = t - gapLast; gapEnd = t; gapWhere = gapWhereLast * 100 + phWhere; } gapLast = t; gapWhereLast = phWhere; }
   if (!inJob && __atomic_load_n(&clockIgnore, __ATOMIC_RELAXED)) return 0;
   if (inJob == 2) return __atomic_load_n(&onStopReq, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
-  if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare) || (jobFrame && clockFrameOut && clockFrameOut());
+  if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (clockAborted) return 1;
 #ifdef __wasm__
   if (clockWork >= clockPoll) { clockPoll = clockWork + 400; if (abort_poll() == 1) { clockAborted = 1; return 1; } }

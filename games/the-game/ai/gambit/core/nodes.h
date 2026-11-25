@@ -210,37 +210,25 @@ static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 // A search run as a job on the threads (search/break.c readyJob) is a thread's whole: its steps are its own, never a batch; and while jobs
 // hold the pool (search.h poolBusy) the decision's own steps are made one at a time.
 #define UNBATCHED (-97)
-#define BATCH_CHUNK 256
 static Vec batchTasks, batchRes, batchDead;
 static LOCAL int batchN;
 static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int kind, int n) {
   batchN = 0;
   if (!inJob && pool.nworkers > 0) { if (__atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE)) batBusy += n; else if (n < 8) batSmall += n; }
   if (inJob || __atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE) || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
-  // (played BATCH_CHUNK steps at a time, the clock asked between: the threads play a phase to its end, and a batch of a wide beam's
-  // kids -- up to PLAN_KIDS -- was hundreds of ms the decision's thread never asked the clock in, the move answered after its frame (run
-  // 4618, endless 4: a 257 ms stretch at the planner's end). A step left unplayed stays UNBATCHED, made when it is taken.)
-  phWhere = 8;
-  for (int j = 0; j < n; j++) batchRes.a[j] = UNBATCHED;
-  pool.deadAt = batchDead.a; pool.moves = 0;
-  int any = 0;
-  for (int j0 = 0; j0 < n && !(any && clockOut()); j0 += BATCH_CHUNK) {
-    int j1 = j0 + BATCH_CHUNK < n ? j0 + BATCH_CHUNK : n;
-    batchTasks.n = 0;
-    for (int j = j0; j < j1; j++) {
-      int mr = CR(moves[j]), mc = CC(moves[j]);
-      if ((pressTight && mr && pressDelay(x, parents[j], mr, mc) > 0) || !ensureBoard(x, parents[j])) { batTight++; continue; }
-      batchTasks.a[batchTasks.n++] = parents[j]; batchTasks.a[batchTasks.n++] = ADVANCE_TASK - ((((mr << 3) | mc) << 3) | kind);
-      batchTasks.a[batchTasks.n++] = 0; batchTasks.a[batchTasks.n++] = j;
-      batchRes.a[j] = PENDING;
-    }
-    if (!batchTasks.n) continue;
-    if (!runPhase(x, &batchTasks, batchRes.a)) { for (int j = j0; j < j1; j++) if (batchRes.a[j] == PENDING) batchRes.a[j] = UNBATCHED; break; }
-    any = 1;
+  batchTasks.n = 0;
+  for (int j = 0; j < n; j++) {
+    int mr = CR(moves[j]), mc = CC(moves[j]);
+    batchRes.a[j] = UNBATCHED;
+    if ((pressTight && mr && pressDelay(x, parents[j], mr, mc) > 0) || !ensureBoard(x, parents[j])) { batTight++; continue; }
+    batchTasks.a[batchTasks.n++] = parents[j]; batchTasks.a[batchTasks.n++] = ADVANCE_TASK - ((((mr << 3) | mc) << 3) | kind);
+    batchTasks.a[batchTasks.n++] = 0; batchTasks.a[batchTasks.n++] = j;
+    batchRes.a[j] = PENDING;
   }
+  pool.deadAt = batchDead.a; pool.moves = 0;
+  int ok = runPhase(x, &batchTasks, batchRes.a);
   pool.deadAt = 0;
-  phWhere = 9;
-  if (!any) return;
+  if (!ok) return;
   batchN = n;
 }
 // the batch's step j (its parent pi, its move), as step() would make it now
