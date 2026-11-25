@@ -158,7 +158,7 @@ static Outlived outliveIn(const Question *q, int32_t to, int32_t rest, double ms
   return best;
 }
 // (its boards let go once it has answered: every thread that searches has a context of its own, and a tree held is thousands of boards)
-static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) { Outlived r = outliveIn(q, to, rest, ms, depth, width); if (outCtx) ns_reset(outCtx); return r; }
+static Outlived outlive(const Question *q, int32_t to, int32_t rest, double ms, int depth, int width) { Outlived r = outliveIn(q, to, rest, ms, depth, width); outCtx = ctxLetGo(outCtx); return r; }
 // THE SAVE (the owner: death is never an option): where no line held to the list lives, the search again in the time left with its steps
 // free of the list -- a plain three is the only move a board topped by its own panels has. Its line is offered only; the decision's no
 // wasted three (decide.c) plays it only where every line within the rule is lost and the save, asked, outlasts them
@@ -182,4 +182,4 @@ static int32_t diesInOn(const Question *q, double horizon) {
   return lostAlone(x, root, imax(1, h));
 }
 // (its boards let go once it has answered: every thread that searches has a context of its own, and a tree held is thousands of boards)
-static int32_t diesIn(const Question *q, double horizon) { int32_t r = diesInOn(q, horizon); if (outCtx) ns_reset(outCtx); return r; }
+static int32_t diesIn(const Question *q, double horizon) { int32_t r = diesInOn(q, horizon); outCtx = ctxLetGo(outCtx); return r; }

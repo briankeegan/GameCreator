@@ -285,7 +285,7 @@ static void *onThreadMain(void *arg) { (void)arg; int k = __atomic_fetch_add(&on
 // THE REAPER (core/nodes.h ctxLetGo): a thread at the idle class beside the workers, with a board pool of its own, that empties the
 // contexts handed to it and hands them back. REAPN waiting at most; past them the searching thread empties its own.
 #define REAPN 4
-static Ctx *reapWaiting[REAPN], *reapReady[4 * REAPN];
+static Ctx *reapWaiting[REAPN], *reapReady[16 * REAPN];
 static int32_t reapNWaiting, reapNReady, reapLock, reapWord, reapQuit, reapInline;
 static void reapIn(void) { while (__atomic_exchange_n(&reapLock, 1, __ATOMIC_ACQUIRE)) {} }
 static void reapOut(void) { __atomic_store_n(&reapLock, 0, __ATOMIC_RELEASE); }
@@ -315,9 +315,9 @@ static void *reapMain(void *arg) {
     if (x) {
       ns_reset(x);
       reapIn();
-      // (the ready list never fills: a context is made only when it is empty, so there are never more than the threads that plan and
-      // the ones waiting)
-      if (reapNReady < 4 * REAPN) reapReady[reapNReady++] = x;
+      // (the ready list never fills: a context is made only when it is empty, so there are never more than the searches each thread
+      // keeps one for -- the planner's, the extension's, the survival search's -- and the ones waiting)
+      if (reapNReady < 16 * REAPN) reapReady[reapNReady++] = x;
       reapOut();
       continue;
     }

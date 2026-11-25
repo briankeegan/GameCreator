@@ -195,4 +195,4 @@ static void extendIn(const Question *q, const ExtOpts *o, Ext *E) {
   clockShareEnd(shareOld);
 }
 // (its boards let go once it has answered: every thread that searches has a context of its own, and a tree held is thousands of boards)
-static void extend(const Question *q, const ExtOpts *o, Ext *E) { extendIn(q, o, E); if (extCtx) ns_reset(extCtx); }
+static void extend(const Question *q, const ExtOpts *o, Ext *E) { extendIn(q, o, E); extCtx = ctxLetGo(extCtx); }

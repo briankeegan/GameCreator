@@ -1203,14 +1203,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1'r. READY FOR THE NEXT BLOCK (the owner: there should always be pieces): of two that survive alike, the readier before the other
   // where it breaks no less and the other meets no goal it misses -- readier is a break in reach once the next block lands (readyNext,
   // asked where none lives), else, under garbage, a swap that brings the nearest break nearer (propose.c readyBuild), the hold included
-  // -- but never readiness bought with the window the break is pressed from: a readier line that leaves the input allowance under a
-  // break's walk at the next landing, and shorter than the other leaves it, is ready for a break it cannot press (the reserve decides)
   if (lx || lostAlike(x, y)) {
     int rx = readier(x, y);
     if (rx) {
       const Judge *r = rx < 0 ? x : y, *o = rx < 0 ? y : x;
-      int unpressable = pressAllowance >= 0 && decF.under && allowAtLanding(lineWalk(r)) < BREAK_WALK && reserveShort(r) > reserveShort(o);
-      if (imax(0, brokeSeen(r)) >= imax(0, brokeSeen(o)) && !(goalLine(o) && !goalLine(r)) && !cutsShort(r) && !unpressable) return (cmpKey = __LINE__, rx);
+      if (imax(0, brokeSeen(r)) >= imax(0, brokeSeen(o)) && !(goalLine(o) && !goalLine(r)) && !cutsShort(r)) return (cmpKey = __LINE__, rx);
     }
   }
   // 1'g. UNDER GARBAGE, NOT AWAY FROM IT (the owner: the garbage at the top, a move at the bottom makes no sense): of two that survive
