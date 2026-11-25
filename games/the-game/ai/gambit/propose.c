@@ -939,6 +939,7 @@ static int32_t zipSpread(int32_t g[][W + 2], int top) {
 // (A SWAP THAT LEAVES IT ONLY LESS SHORT OF A BREAK -- none to walk to before or after, a panel fewer missing or a pair nearer (nearOf
 // past walkNear) -- is kept aside and offered after every other line (readyShortLines): judged last, it never takes a break's judging)
 #define READY_BUILD 3
+#define READY_FIRST 8   // (the first swaps a pair is looked for after, where no one swap brings a break nearer: readyBuild)
 static LOCAL Ctx *rbCtx;
 static int32_t readyShort[READY_BUILD], readyShortGain[READY_BUILD], readyShortN;
 static int readyBuild(const Read *R, Cand *out, int n, int cap) {
@@ -968,11 +969,13 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
   static int32_t ms[MAXROWS * W], par[MAXROWS * W], gain[MAXROWS * W], idx[MAXROWS * W], tmp[MAXROWS * W];
   static int32_t sm[MAXROWS * W], sgain[MAXROWS * W], sidx[MAXROWS * W];
   int nm = swapsOfNode(x, root, ms), ng = 0, ns = 0;
+  static int32_t firstNode[MAXROWS * W], firstMove[MAXROWS * W], firstShort[MAXROWS * W]; int nf = 0;
   for (int j = 0; j < nm; j++) par[j] = root;
   stepBatch(x, par, ms, MK_SETTLE, nm);
   for (int j = 0; j < nm && !clockOut(); j++) {
     int o = stepTake(x, j, root, MK_SETTLE, ms[j]);
     if (!liveNode(x, o)) continue;
+    firstNode[nf] = o; firstMove[nf] = ms[j]; firstShort[nf] = 0x7fffffff; nf++;
     const Board *b = ensureBoard(x, o);
     if (!b) continue;
     int32_t t = NODE(x, o)->t;
@@ -984,11 +987,53 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap) {
       if (!lb) continue;
     }
     int32_t g = near0 - walkNear(lb), gs = g > 0 ? 0 : short0 - nearOf(lb);
+    firstShort[nf - 1] = nearOf(lb);
     if (g > 0) { ms[ng] = ms[j]; gain[ng] = g; idx[ng] = ng; ng++; }   // (ng <= j: the swap's own place is free)
     else if (gs > 0) { sm[ns] = ms[j]; sgain[ns] = gs; sidx[ns] = ns; ns++; }
   }
   batchDone();
-  if (!ng && !ns) readyBuildWhy = 5;
+  // (TWO SWAPS WHERE ONE BRINGS NONE NEARER -- the owner: set up and leave the board where the next move is easy: from the READY_FIRST
+  // first swaps that leave the board least short of a break once the garbage lands, each second swap, settled, the garbage landed on what
+  // it leaves -- the pairs that bring the nearest break nearer offered as lines of two, most saved first)
+  int n2 = 0; static int32_t pair1[READY_BUILD * 4], pair2[READY_BUILD * 4], pairG[READY_BUILD * 4];
+  if (!ng && nf && !clockOut()) {
+    static int32_t fo[MAXROWS * W], fk[MAXROWS * W], ftmp[MAXROWS * W];
+    for (int i = 0; i < nf; i++) { fo[i] = i; fk[i] = -firstShort[i]; }
+    sortByKeyDesc(fo, nf, fk, ftmp);
+    static int32_t ms2[MAXROWS * W], par2[MAXROWS * W];
+    for (int q = 0; q < nf && q < READY_FIRST && !clockOut(); q++) {
+      int o1 = firstNode[fo[q]];
+      int nm2 = swapsOfNode(x, o1, ms2);
+      for (int j = 0; j < nm2; j++) par2[j] = o1;
+      stepBatch(x, par2, ms2, MK_SETTLE, nm2);
+      for (int j = 0; j < nm2 && !clockOut(); j++) {
+        int o2 = stepTake(x, j, o1, MK_SETTLE, ms2[j]);
+        if (!liveNode(x, o2)) continue;
+        const Board *b2 = ensureBoard(x, o2);
+        if (!b2) continue;
+        int32_t t2 = NODE(x, o2)->t;
+        const Board *lb2 = b2;
+        if (landing) {
+          Arr left[MAXARR]; int nl = 0;
+          for (int i = 0; i < nland; i++) { left[nl] = byAt[i]; left[nl].at = imax(0, byAt[i].at - t2); nl++; }
+          lb2 = landedAll(b2, left, nl, imax(0, last - t2), st);
+          if (!lb2) continue;
+        }
+        int32_t g2 = near0 - walkNear(lb2);
+        if (g2 <= 0) continue;
+        // (kept the READY_BUILD best, most saved first)
+        int at = n2 < READY_BUILD ? n2++ : -1;
+        if (at < 0) { int w = 0; for (int i = 1; i < READY_BUILD; i++) if (pairG[i] < pairG[w]) w = i; if (pairG[w] >= g2) continue; at = w; }
+        pair1[at] = firstMove[fo[q]]; pair2[at] = ms2[j]; pairG[at] = g2;
+      }
+      batchDone();
+    }
+  }
+  if (!ng && !ns && !n2) readyBuildWhy = 5;
+  for (int q = 0; q < n2 && n < cap; q++) {
+    int32_t s2[2] = { pair1[q], pair2[q] };
+    if (candOf(&out[n], PLAY_READY, s2, 2, -1, 0)) { out[n].settled = 1; out[n].readyGain = pairG[q]; n++; readyBuilt++; }
+  }
   sortByKeyDesc(idx, ng, gain, tmp);
   for (int q = 0; q < ng && q < READY_BUILD && n < cap; q++) {
     int32_t s1 = ms[idx[q]];

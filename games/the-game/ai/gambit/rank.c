@@ -237,12 +237,6 @@ static void readyNextFor(Judge *J) {
   if (J->o.lives || J->readyNext != NOT_ASKED) return;
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
 }
-// (A LINE THAT LIVES ASKED TOO, where garbage is on the board or on its way: whether its board has a break in reach once the next block
-// lands -- the board the next break is made on; decide.c ranked, the first READY_LIVE lines of the order)
-static void readyNextLive(Judge *J) {
-  if (J->readyNext != NOT_ASKED || J->o.dead) return;
-  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
-}
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
          k->o.lostAt <= H->o.lostAt && (double)H->o.lostAt - k->o.j.done > react &&
