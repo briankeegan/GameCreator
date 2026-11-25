@@ -328,6 +328,9 @@ static void *reapMain(void *arg) {
 static void reapEnd(void) { __atomic_store_n(&reapQuit, 1, __ATOMIC_SEQ_CST); __atomic_fetch_add(&reapWord, 1, __ATOMIC_SEQ_CST); hostFutexWake(&reapWord, -1); }
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {
   hostTaps = 1;
+  // (the io the host writes every frame, every page of it written once here, before play: a page the kernel maps on its first write cost
+  // the frame that first reached it 9-17 ms -- a stack or a queue grown past any before)
+  memset(ioBody, 0, sizeof ioBody); memset(ioHead, 0, sizeof ioHead);
   // (THE GAME'S THREAD, which calls this and plays the frame loop -- its keys are engine steps (front.c keyCtx) -- is the engine's last
   // thread, its own board pool: thread 0 is Gambit's, the one the workers' phases hand boards out of)
   paThreadId(MAXTHREADS - 1);
