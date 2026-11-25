@@ -377,6 +377,8 @@ static int twinRowFix(const int32_t *row, const uint8_t *ok, int cx, int32_t X, 
   for (int ax = 1; ax <= W; ax++) for (int ay = 1; ay <= W; ay++) {
     if (cx ? row[ax] != X || !ok[ax] : ax > 1) continue;
     if (cy ? row[ay] != Y || !ok[ay] || (cx && ay == ax) : ay > 1) continue;
+    // (no fewer swaps than X's walk and Y's, less the one X's walk past it may save: a pair that cannot beat the best is not walked)
+    if ((cx ? iabs(ax - cx) : 0) + (cy ? imax(0, iabs(ay - cy) - 1) : 0) >= best) continue;
     for (int order = 0; order < 2; order++) {
       int id[W + 2]; for (int c = 1; c <= W; c++) id[c] = c;
       int src[2] = { cx ? ax : 0, cy ? ay : 0 }, to[2] = { cx, cy }, n = 0; int32_t at[8];

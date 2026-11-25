@@ -870,18 +870,7 @@ static void updatePanels(Board *b) {
     if (r > 1 && restingRow(b, r)) { b->rowActive[r] = 0; continue; }
     if (quietRow(b, r)) { b->rowActive[r] = 0; continue; }
     if (poppingRow(b, r)) { b->rowActive[r] = W; continue; }
-    // (A GARBAGE ROW HELD UP, ONCE: the cell right after one of the same block, normal, found held up -- nothing moved between the two --
-    // is held up too: updatePanel would clear its flags and find it so)
-    int held = 0; int32_t heldId = 0, heldYoff = 0;
-    for (c = 1; c <= W; c++) {
-      Panel *p = P(b, r, c); int32_t *f = p->f;
-      int gn = f[ISGARBAGE] && f[STATE] == NORMAL;
-      if (gn && held && f[GARBAGEID] == heldId && f[YOFF] == heldYoff) { f[STATECHANGED] = 0; f[PROPCHAIN] = 0; f[PROPFALL] = 0; f[MATCHING] = 0; continue; }
-      int32_t id = f[ID];
-      updatePanel(b, p);
-      held = gn && f[ID] == id && f[ISGARBAGE] && f[STATE] == NORMAL;
-      if (held) { heldId = f[GARBAGEID]; heldYoff = f[YOFF]; }
-    }
+    for (c = 1; c <= W; c++) updatePanel(b, P(b, r, c));
   }
   for (r = n - 1; r >= 1; r--) {
     for (c = 1; c <= W; c++) if (!settled(P(b, r, c)->f)) break;
