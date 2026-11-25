@@ -121,7 +121,7 @@ function GambitNative.new(opts)
   self.inputs = opts.inputBudget or InputBudget.standard()
   self.ownInputs = opts.inputBudget == nil
   self.dropped, self.frames, self.ages, self.pv = 0, 0, {}, {}
-  self.ts0, self.ts1 = ffi.new("double[4]"), ffi.new("double[4]")
+  self.ts0, self.ts1 = ffi.new("double[5]"), ffi.new("double[5]")
   return self
 end
 
@@ -545,8 +545,8 @@ function GambitNative:input(stack, sources, view)
     -- (and the game thread's own account of it: its CPU time, the times it was taken off its core or gave it up, its page faults)
     local a, b = self.ts0, self.ts1
     C.gn_thread_stats(b)
-    C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d; %s",
-      stack.clock, took * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3],
+    C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d (major %d); %s",
+      stack.clock, took * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3], b[4] - a[4],
       string.format("rows %d, queued %d", self.nrows or 0, self.nqueued or 0)))
   end
   self.stepLoad = nil
