@@ -15,6 +15,13 @@ narrowed, not dropped.
       12 / 7 / 12. Not touched by the breaks' reserve (6595f13b): nothing here breaks. To look at: a survive line that spends the
       window beside one that keeps it, under garbage nothing can reach, and the cells sent while the enemy was topped.
       Replay: ranmaru-stats r2239, frame 3544.
+- [ ] **r2301 (r25 vs javi, lost at 10300, finish them): no break found for 240 frames with 40 actions, then panels 45 to 16.**
+      From 9448 to 9683 it held through 16 decisions with the allowance at 20-40. Each one, the break search took about 196 ms,
+      found nothing (cut by the clock, 4-7 deep), and only the hold was judged (live=0/1). The enemy was topped out (12/1) the
+      whole time and was never finished. The breaks that came next were 10-11 swaps each (9756, 9935: 28 cells for 11 swaps).
+      They spent the window and the panels: 45 to 16 by 10236, with 3-6 actions left at the end. To look at: a garbage board where
+      the break search finds nothing within the decision, and the attack never fired at a topped enemy.
+      Replay: ranmaru-stats r2301, frame 10300.
 
 ### Offense, from yoschi (the owner, 2026-11-19: "make this into actionable items")
 
