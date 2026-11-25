@@ -968,19 +968,28 @@ static int compareJudged(const Judge *x, const Judge *y) {
         !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
-  // 1. THE WINDOW'S FLOOR (the owner: efficiency is key): under garbage or with garbage on its way, of two that do not live, a line that
-  // leaves the input window under half a break's walk (BREAK_WALK) at the next landing goes after one that keeps it -- and of two that both leave it under, the
+  // 1. THE WINDOW'S FLOOR (the owner: efficiency is key): under garbage, of two that do not live, a line that leaves the input window
+  // under half a break's walk (BREAK_WALK) at the next landing goes after one that keeps it -- and of two that both leave it under, the
   // one that leaves FLOOR_STEP actions fewer goes after -- where the other's board stands a break's time and it is the hold, or breaks
   // as much garbage and is no clear for nothing: a board left under that floor is one that cannot press the break the next block needs
   // (runs 4658-4660: under ten actions left, 11% of decisions lost within 900 frames, else 3%)
   #define FLOOR_STEP 4
-  if (!lx && !ly && (decF.under || garbageComing()) && pressAllowance >= 0 && !ruleNoEnemy && !x->o.lives && !y->o.lives && !x->o.dead && !y->o.dead) {
+  if (!lx && !ly && decF.under && pressAllowance >= 0 && !ruleNoEnemy && !x->o.lives && !y->o.lives && !x->o.dead && !y->o.dead) {
     int ax = allowAtLanding(x->hold ? 0 : lineWalk(x)), ay = allowAtLanding(y->hold ? 0 : lineWalk(y));
     int kx = ax >= BREAK_WALK / 2, ky = ay >= BREAK_WALK / 2;
     if (!kx && !ky && (ax - ay >= FLOOR_STEP || ay - ax >= FLOOR_STEP)) { kx = ax > ay; ky = !kx; }
     if (kx != ky) { const Judge *k = kx ? x : y, *d = kx ? y : x;
       int ok = k->hold || (imax(0, k->apBroke) >= imax(0, d->apBroke) && (k->apBroke > 0 || (!clears(k) && !(k->o.j.clearedPanels > 0))));
       if (ok && diesAt(k) >= rankSave && diesAt(k) < 1e299) return (cmpKey = __LINE__, (kx ? -1 : 1)); }
+  }
+  // 1. THE PERCH NOT DUG (the owner: flatten, leave the board where moves are easy): under garbage, of two that do not live, a clear that
+  // breaks none of it and leaves it further from coming down onto the stack at rest (restOn: the middle cleared out from under it, the
+  // towers at its edges left holding it) goes after a line that clears nothing or breaks garbage, where that line's board stands a
+  // break's time -- the frames the clear buys are stop time, and the garbage it leaves perched is out of every break's reach after them
+  if (!lx && !ly && decF.under && !x->o.lives && !y->o.lives && !x->o.dead && !y->o.dead) {
+    int gx = !x->hold && !(x->apBroke > 0) && (clears(x) || x->o.j.clearedPanels > 0), gy = !y->hold && !(y->apBroke > 0) && (clears(y) || y->o.j.clearedPanels > 0);
+    if (gx != gy) { const Judge *g = gx ? x : y, *o = gx ? y : x;
+      if (diesAt(o) >= rankSave && diesAt(o) < 1e299) { int32_t rg = restOn(g), ro = restOn(o); if (rg >= 0 && ro >= 0 && rg > ro) return (cmpKey = __LINE__, (gx ? 1 : -1)); } }
   }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
   // board, of two that live or are lost alike, the one that leaves a break ready once everything lands (judge.c breaksAfterLanding, the
