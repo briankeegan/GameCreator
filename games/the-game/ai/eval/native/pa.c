@@ -333,18 +333,20 @@ static int hasChainingPanels(Board *b) {
 // ROWS COUNTED: a row updatePanels passed over -- at rest, garbage resting,
 // garbage popping -- has the active panels it was found with, swapping none,
 // unless a panel fell into it after (fall).
-static void updateActivePanelCount(Board *b) {
+// (and returns the active panels that are not garbage: a row counted already -- at rest, or every cell garbage popping -- has none)
+static int32_t updateActivePanelCount(Board *b) {
   b->nPrevActive = b->nActive;
-  int32_t count = 0, swapping = 0;
+  int32_t count = 0, swapping = 0, moving = 0;
   for (int r = 1, top = imin(b->height, rowsTo(b) - 1); r <= top; r++) {
     if (b->rowActive[r] >= 0) { count += b->rowActive[r]; continue; }
     for (int c = 1; c <= W; c++) {
       Panel *p = P(b, r, c);
       if (p->f[ISGARBAGE]) { if (p->f[STATE] != NORMAL) count++; }
-      else if (p->f[COLOR] != 0 && p->f[STATE] != NORMAL && p->f[STATE] != LANDING) { count++; if (p->f[STATE] == SWAPPING) swapping++; }
+      else if (p->f[COLOR] != 0 && p->f[STATE] != NORMAL && p->f[STATE] != LANDING) { count++; moving++; if (p->f[STATE] == SWAPPING) swapping++; }
     }
   }
   b->nActive = count; b->swappingCount = swapping;
+  return moving;
 }
 static void updateRiseLock(Board *b) {
   int prev = b->riseLock;
@@ -824,7 +826,7 @@ static int restingRow(const Board *b, int r) {
   const Panel *row = b->p[r], *under = b->p[r - 1];
   for (int c = 1; c <= W; c++) {
     const int32_t *f = row[c].f, *u = under[c].f;
-    if (!f[ISGARBAGE] || f[STATE] != NORMAL || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
+    if (!f[ISGARBAGE] || f[STATE] != NORMAL || (f[STATECHANGED] | f[PROPCHAIN] | f[PROPFALL] | f[MATCHING])) return 0;
     if (!u[ISGARBAGE] || u[COLOR] == 0 || u[GARBAGEID] != f[GARBAGEID] || u[YOFF] == f[YOFF]) return 0;
   }
   return 1;
@@ -837,7 +839,7 @@ static int poppingRow(Board *b, int r) {
   Panel *row = b->p[r];
   for (int c = 1; c <= W; c++) {
     const int32_t *f = row[c].f;
-    if (!f[ISGARBAGE] || f[STATE] != MATCHED || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
+    if (!f[ISGARBAGE] || f[STATE] != MATCHED || (f[STATECHANGED] | f[PROPCHAIN] | f[PROPFALL] | f[MATCHING])) return 0;
     if (f[TIMER] <= 1 || f[TIMER] - 1 == f[POPTIME]) return 0;
   }
   for (int c = 1; c <= W; c++) row[c].f[TIMER]--;
@@ -851,7 +853,7 @@ static int quietRow(const Board *b, int r) {
   const Panel *row = b->p[r], *under = b->p[r - 1];
   for (int c = 1; c <= W; c++) {
     const int32_t *f = row[c].f;
-    if (f[STATE] != NORMAL || f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING]) return 0;
+    if (f[STATE] != NORMAL || (f[STATECHANGED] | f[PROPCHAIN] | f[PROPFALL] | f[MATCHING])) return 0;
     if (f[COLOR] == 0) continue;
     if (f[ISGARBAGE] || under[c].f[STATECHANGED]) return 0;
   }
@@ -868,7 +870,18 @@ static void updatePanels(Board *b) {
     if (r > 1 && restingRow(b, r)) { b->rowActive[r] = 0; continue; }
     if (quietRow(b, r)) { b->rowActive[r] = 0; continue; }
     if (poppingRow(b, r)) { b->rowActive[r] = W; continue; }
-    for (c = 1; c <= W; c++) updatePanel(b, P(b, r, c));
+    // (A GARBAGE ROW HELD UP, ONCE: the cell right after one of the same block, normal, found held up -- nothing moved between the two --
+    // is held up too: updatePanel would clear its flags and find it so)
+    int held = 0; int32_t heldId = 0, heldYoff = 0;
+    for (c = 1; c <= W; c++) {
+      Panel *p = P(b, r, c); int32_t *f = p->f;
+      int gn = f[ISGARBAGE] && f[STATE] == NORMAL;
+      if (gn && held && f[GARBAGEID] == heldId && f[YOFF] == heldYoff) { f[STATECHANGED] = 0; f[PROPCHAIN] = 0; f[PROPFALL] = 0; f[MATCHING] = 0; continue; }
+      int32_t id = f[ID];
+      updatePanel(b, p);
+      held = gn && f[ID] == id && f[ISGARBAGE] && f[STATE] == NORMAL;
+      if (held) { heldId = f[GARBAGEID]; heldYoff = f[YOFF]; }
+    }
   }
   for (r = n - 1; r >= 1; r--) {
     for (c = 1; c <= W; c++) if (!settled(P(b, r, c)->f)) break;
@@ -934,13 +947,14 @@ static void runPhysics(Board *b) {
     STAT(16)++; paFrA++; paWork += FRAMEWORK_ACTIVE;
     checkMatches(b);
     updatePanels(b);
-    updateActivePanelCount(b);
+    int32_t moving = updateActivePanelCount(b);
     paFrCells += b->nActive;
     if (b->chainCounter != 0 && !hasChainingPanels(b)) b->chainCounter = 0;
     removeExtraRows(b);
     b->quiet = !b->noQuiet && isQuiet(b);
-    // countdownRoom needs garbage popping, and every cell of it was updated just now
-    b->cdLeft = b->popSeen && !b->quiet && !b->noQuiet && b->nActive > 0 && !b->swappingCount && !swapQueued(b) ? countdownRoom(b) : 0;
+    // countdownRoom needs garbage popping, and every cell of it was updated just now; a panel moving that is not garbage is one it
+    // returns 0 on
+    b->cdLeft = b->popSeen && !b->quiet && !b->noQuiet && b->nActive > 0 && !b->swappingCount && !moving && !swapQueued(b) ? countdownRoom(b) : 0;
   }
   if (checkDeath(b)) recordDeath(b);
 }
@@ -1041,7 +1055,7 @@ static int32_t countdownRoom(Board *b) {
       Panel *p = P(b, r, c);
       const int32_t *f = p->f;
       paCdScan++;
-      if (f[STATECHANGED] || f[PROPCHAIN] || f[PROPFALL] || f[MATCHING] || f[MATCHANYWAY] || SETB(f[QUEUEDHOVER])) return 0;
+      if ((f[STATECHANGED] | f[PROPCHAIN] | f[PROPFALL] | f[MATCHING] | f[MATCHANYWAY]) || SETB(f[QUEUEDHOVER])) return 0;
       if (r <= top && SETB(f[CHAINING]) && (canMatch(p) || f[COLOR] == 9)) return 0;   // clearChainingFlags would clear it
       if (f[ISGARBAGE]) {
         if (f[STATE] == MATCHED) { if (f[TIMER] < 2) return 0; k = imin(k, f[TIMER] - 1); popping = 1; continue; }
