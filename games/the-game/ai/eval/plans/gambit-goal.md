@@ -2045,3 +2045,12 @@ divergences. Each run, 15.7% of the actions went to lines not played out; 8.5 ac
 Measured, one run each, not kept: the window's floor with garbage on its way (4668: fill 24); the perch not dug (4670, 4671: fill 26
 each -- factory 2 lost to the perch both times, the rule holding under garbage over clears lost later); a 2x weighed on its own loss
 (4674: fill 25).
+A SURVIVE LINE IS NEVER LATE: the deadline a mode sets its lines (the opener's: before the next block lands) dropped the lines the
+survival search found -- 132 decisions a run, every one in the opener, 94 of them with the board lost within 300 frames (combo_storm 8,
+lost at 393 and 471 with its survive line dropped each decision). A DECISION NEVER BEGINS WITH ITS FRAME CUT: the allowance for the
+client's burst took a decision's whole lead after a stall of Gambit's own (283 ms closing), and each decision then held with no time,
+asked again a frame later (large_garbage 6: 282 such decisions, lost at 5938); a decision keeps THINK_FRAMES (native.c decBurst).
+Measured (`2cc28c69`, 4681-4684): fill 26, 26 (seed 147), finish 26 (seed 141), switching 26 (seed 143); survive lines dropped late 0,
+decisions begun cut 0; 0 divergences, 0 frames over; 1 late move in 4682 (a chain extension past its stop by 124 ms, large_garbage 7).
+Measured, one run each, not kept: the garbage let down before a clear that digs the well (4677-4678: switching 26, fill 26); the flatness
+key with garbage on its way (4685: switching 23).

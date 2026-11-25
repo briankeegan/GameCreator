@@ -984,9 +984,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (!kx && !ky && (ax - ay >= FLOOR_STEP || ay - ax >= FLOOR_STEP)) { kx = ax > ay; ky = !kx; }
     if (kx != ky) { const Judge *k = kx ? x : y, *d = kx ? y : x;
       int ok = k->hold || (imax(0, k->apBroke) >= imax(0, d->apBroke) && (k->apBroke > 0 || (!clears(k) && !(k->o.j.clearedPanels > 0))));
-      // (never the hold before a break whose own board is lost no sooner than the hold's: the garbage it breaks is the next block's
-      // demand taken off, and the hold keeps the window only to spend it on that garbage later)
-      if (k->hold && d->apBroke > 0 && !d->o.dead && diesAt(d) >= diesAt(k)) ok = 0;
       if (ok && diesAt(k) >= rankSave && diesAt(k) < 1e299) return (cmpKey = __LINE__, (kx ? -1 : 1)); }
   }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
