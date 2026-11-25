@@ -20,6 +20,11 @@ var wrongIn = {};   // (THE WRONG ATTACKS: each mode's attacks that met none of 
 var heapMost = { mb: -1, game: '', over: 0 };   // (GAMBITD heapMB=: the most memory a game's instance held; GAMBITHEAP: an instance stopped at the cap)
 var purp = { lines: 0, swaps: 0, none: 0, firstNone: 0, asked: 0 };   // (GAMBITD purpose=: each swap of the line played judged without it -- n where nothing is lost; the first swap is the one pressed now)
 var aimsIn = {}, goalMiss = { n: 0, dec: 0, keys: {} }, outMiss = { n: 0, keys: {} }, brkOver = { n: 0, keys: {} }, dips = { n: 0, none: 0, up: 0, upNone: 0 };   var overG = { n: 0, none: 0, all: 0, acts: 0, useful: 0 };   var lostOwn = { lines: 0, acts: 0, own: 0, never: 0, neverOwn: 0, by: {} };   var idleM = { wins: 0, keyed: 0, games: 0 };   // (GAMBITI: the half-seconds in play and those with a key pressed -- the goal's never idle)
+   // (THE BOARD READY FOR THE BLOCK: on the first decision after each block of garbage lands -- the landing the decision before
+   // expected came, and the next one, if any, is later -- the break the search found by its swaps: 1-2, 3-4, 5 or more, none; and THE
+   // ACTIONS A BREAK COSTS: every action pressed from one swap that broke garbage to the next, the set-ups and walks between included --
+   // what the input window pays for each break)
+   var readyM = { landed: 0, r12: 0, r34: 0, r5: 0, none: 0 }, costM = { breaks: 0, acts: 0, cheap: 0 };
    var stackM = { n: 0, bump: 0, even: 0, zip: 0, under: 0, bumpU: 0, zipU: 0, calm: 0, bumpC: 0, zipC: 0 };   // (GAMBITD stack=: the stack's bumpiness, tallest less shortest and zip, every decision; under garbage apart)   // (GAMBITE: the lines not played out, the actions charged, those of their own -- not taken over from the line they carried on -- and those never pressed a swap)   // (swaps over unbroken garbage, GAMBITM's last field: their share and what they came to; the actions a swap that came to something)   // (dips: a swap GAMBITM 4+ rows under the swaps either side of it, within 4 s -- the walk down and back)   // (each attack in the mode it was made in, front.c GAMBITA; the decisions that passed the mode over, answer.c goalMiss)
 // (why a line in progress was not carried on, by decide.c's carryDrop code)
 var frontS = {};   // (the frontiers carried on, search/frontier.c: per frontier, the lines kept and carried in, the decisions it was let go whole)
@@ -219,6 +224,23 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       stackM.n++; stackM.bump += +m[1]; stackM.even += +m[2]; stackM.zip += +m[3]; if (u) { stackM.under++; stackM.bumpU += +m[1]; stackM.zipU += +m[3]; }
       // (calm: no garbage on the board or on its way, nothing falling or popping -- the stack the bot leaves, not one still settling)
       if (!u && / casc=0/.test(l) && / pop=0/.test(l) && !/ land=\d/.test(l)) { stackM.calm++; stackM.bumpC += +m[1]; stackM.zipC += +m[3]; } });
+    (function () {
+      var sw = [];
+      lines.forEach(function (l) { var m = /^GAMBITM (\d+) \d+,\d+ \S+ ([csbn]) \d+\/\d+ (\d+) /.exec(l); if (m) sw.push({ t: +m[1], o: m[2], a: +m[3] }); });
+      sw.sort(function (x, y) { return x.t - y.t; });
+      var acts = 0, begun = false;
+      sw.forEach(function (m) { acts += m.a; if (m.o !== 'b') return; if (begun) { costM.breaks++; costM.acts += acts; if (acts <= 10) costM.cheap++; } begun = true; acts = 0; });
+      var ds = [], seen = {};
+      lines.forEach(function (l) { var m = /^GAMBITD (\d+) /.exec(l); if (!m || seen[m[1]]) return; seen[m[1]] = 1; ds.push({ t: +m[1], l: l }); });
+      ds.sort(function (x, y) { return x.t - y.t; });
+      for (var k = 1; k < ds.length; k++) {
+        var pl = / land=(\d+)/.exec(ds[k - 1].l), cl = / land=(\d+)/.exec(ds[k].l);
+        if (!pl || +pl[1] > ds[k].t - ds[k - 1].t || (cl && +cl[1] <= +pl[1])) continue;
+        readyM.landed++;
+        var br = / br=(\d+)\/(\d+)/.exec(ds[k].l);
+        if (!br || +br[1] === 0 || +br[2] === 0) readyM.none++; else if (+br[2] <= 2) readyM.r12++; else if (+br[2] <= 4) readyM.r34++; else readyM.r5++;
+      }
+    })();
     lines.forEach(function (l) { var e = /^GAMBITE \d+ (-?\d+) (\d+)\/(\d+) (\d+) (\d+)$/.exec(l); if (!e) return; var own = +e[4] - +e[5];
       lostOwn.lines++; lostOwn.acts += +e[4]; lostOwn.own += own; lostOwn.by[e[1]] = (lostOwn.by[e[1]] || 0) + own; if (e[2] === '0') { lostOwn.never++; lostOwn.neverOwn += own; } });
     lines.forEach(function (l) { var m = /^GAMBITM \d+ \d+,\d+ .*? ([csbn]) \d+\/\d+ (\d+) -?\d+ \d+ \d+(?: (\d))?$/.exec(l); if (!m) return;
@@ -490,6 +512,8 @@ Object.keys(wrongIn).sort().forEach(function (k) { var w = wrongIn[k], t = aimsI
   if (lostOwn.lines) console.log('the measure, input spent for nothing: ' + lostOwn.own + ' of ' + actsAll + ' actions (' + (actsAll ? (100 * lostOwn.own / actsAll).toFixed(1) : '-') + '%, target under 10%) on ' + lostOwn.lines + ' lines not played out, their own -- ' + (lostOwn.acts - lostOwn.own) + ' more taken over from the lines they carried on; ' + lostOwn.neverOwn + ' on ' + lostOwn.never + ' lines no swap of which was pressed; by what ended them: ' +
               Object.keys(lostOwn.by).sort(function (a, b) { return lostOwn.by[b] - lostOwn.by[a]; }).slice(0, 6).map(function (k) { return k + ' ' + lostOwn.by[k]; }).join(', '));
   if (idleM.wins) console.log('the measure, never idle: ' + (100 * (idleM.wins - idleM.keyed) / idleM.wins).toFixed(1) + '% of ' + idleM.wins + ' half-seconds in play with no key pressed (target 5%), over ' + idleM.games + ' games');
+  if (readyM.landed) console.log('the measure, ready when it lands: of ' + readyM.landed + ' blocks landed, the break found on the decision after -- ' + Math.round(100 * readyM.r12 / readyM.landed) + '% of 1-2 swaps, ' + Math.round(100 * readyM.r34 / readyM.landed) + '% of 3-4, ' + Math.round(100 * readyM.r5 / readyM.landed) + '% of 5 or more, ' + Math.round(100 * readyM.none / readyM.landed) + '% none');
+  if (costM.breaks) console.log('the measure, the actions a break costs: ' + costM.breaks + ' breaks, ' + (costM.acts / costM.breaks).toFixed(1) + ' actions pressed from one to the next, ' + Math.round(100 * costM.cheap / costM.breaks) + '% in 10 or fewer (the window: 76 in 600 frames)');
   if (stackM.n) console.log('the measure, the stack: bumpiness ' + (stackM.bump / stackM.n).toFixed(2) + ', tallest less shortest ' + (stackM.even / stackM.n).toFixed(2) + ', zip ' + (stackM.zip / stackM.n).toFixed(2) + ' (a swap apart less touching) a decision over ' + stackM.n + '; under garbage (' + stackM.under + ') bumpiness ' + (stackM.under ? (stackM.bumpU / stackM.under).toFixed(2) : '-') + ', zip ' + (stackM.under ? (stackM.zipU / stackM.under).toFixed(2) : '-') + ', with none ' + (stackM.n - stackM.under ? ((stackM.bump - stackM.bumpU) / (stackM.n - stackM.under)).toFixed(2) : '-') + ', zip ' + (stackM.n - stackM.under ? ((stackM.zip - stackM.zipU) / (stackM.n - stackM.under)).toFixed(2) : '-') + '; calm -- nothing falling, no garbage on it or on its way -- (' + stackM.calm + ') bumpiness ' + (stackM.calm ? (stackM.bumpC / stackM.calm).toFixed(2) : '-') + ', zip ' + (stackM.calm ? (stackM.zipC / stackM.calm).toFixed(2) : '-'));
   if (overG.all) console.log('the measure, organised: ' + overG.n + ' of ' + overG.all + ' swaps over unbroken garbage (' + Math.round(100 * overG.n / overG.all) + '%), ' + overG.none + ' of them came to nothing (' + (overG.n ? Math.round(100 * overG.none / overG.n) : 0) + '%); ' +
               (overG.useful ? (overG.acts / overG.useful).toFixed(1) : '-') + ' actions pressed a swap that came to something');

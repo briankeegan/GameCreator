@@ -555,6 +555,7 @@ static int enRoute(const Judge *J) {
   int lr = CR(J->k.seq[J->k.nseq - 1]), lc = CC(J->k.seq[J->k.nseq - 1]);
   return iabs(lr - enR) + iabs(lc - enC) < iabs(decQ.b->curRow - enR) + iabs(decQ.b->curCol - enC);
 }
+#define READY_LIVE 6   // (the lines that live asked whether the next block finds a break in reach: decide.c ranked)
 static int stallsUnder(const Judge *J) { return !J->hold && !J->o.lives && !(J->apBroke > 0) && !digsForBreak(J) && !enRoute(J) && !flattenFree(J) && !finishFree(J) && J->k.play != PLAY_CONVERT && J->k.play != PLAY_CARRY && J->k.play != PLAY_CARRYWAIT; }
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
@@ -715,6 +716,17 @@ static int ranked(const Read *R, const Found *S) {
     int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
     for (int i = 0; i < n; i++) if (!EXTRA(order[i])) { readyShare(own--); readyNextFor(order[i]); }
     readyShare(0); sortJudged(order, n);
+  }
+  // (and where lines live, with garbage on the board or on its way: the first READY_LIVE of the order and the hold are asked the same --
+  // the owner: set up and leave the board where the next move is easy; the order's readiness keys then put the readier first)
+  else if (decF.under || garbageComing()) {
+    int asked = 0;
+    for (int i = 0; i < n && !clockOut(); i++) {
+      if (EXTRA(order[i]) || order[i]->o.dead) continue;
+      if (!order[i]->hold && asked >= READY_LIVE) continue;
+      readyNextLive(order[i]); asked++;
+    }
+    sortJudged(order, n);
   }
   // (THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage, nothing living and no line of
   // the decision breaking, the swap that lets the garbage down off its tallest column is offered too (propose.c letDownCand), and the
