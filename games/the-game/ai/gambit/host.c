@@ -42,13 +42,10 @@ void *paHeap(unsigned long n) {
 // GIVING PAGES BACK (eval/native/memory.h paRelease): the whole pages inside a block nothing reads until it writes it again, handed back
 // to the system -- the block stays this heap's (freed with the rest when the instance quits) and reads as zeros when next touched. Only
 // pages wholly inside the block: the allocator's own words before and after it are left alone.
-// Given back RELEASE_STEP at a time: one call over a large block holds the process's memory map for as long as it runs, and every page
-// fault and allocation of the other threads -- the game's own frame among them -- waits behind it; a piece at a time lets them through.
 #include <sys/mman.h>
-#define RELEASE_STEP (1ul << 21)
 void paRelease(void *p, unsigned long n) {
   unsigned long a = ((unsigned long)p + 4095) & ~4095ul, e = ((unsigned long)p + n) & ~4095ul;
-  while (a < e) { unsigned long s = e - a < RELEASE_STEP ? e - a : RELEASE_STEP; madvise((void *)a, s, MADV_DONTNEED); a += s; }
+  if (e > a) madvise((void *)a, e - a, MADV_DONTNEED);
 }
 // The calling thread's own account: its CPU time (ms), the times it was taken off its core and gave it up, its page faults.
 void hostThreadStats(double *out) {
