@@ -14,7 +14,7 @@ int hostFutexWait(int *p, int v), hostFutexWake(int *p, int n);
 // ---------------------------------------------------------------- host.c
 void *paHeap(unsigned long n);
 double hostNowMs(void);
-void hostThreadStats(double *out);
+void hostThreadStats(double *out); void hostPopulate(void);
 void hostLock(void), hostUnlock(void), hostWait(void), hostSignal(void);
 int hostThread(void *(*fn)(void *));
 int hostWorkers(void *(*fn)(void *), int most);
@@ -331,6 +331,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
   // (the io the host writes every frame, every page of it written once here, before play: a page the kernel maps on its first write cost
   // the frame that first reached it 9-17 ms -- a stack or a queue grown past any before)
   memset(ioBody, 0, sizeof ioBody); memset(ioHead, 0, sizeof ioHead);
+  hostPopulate();
   // (THE GAME'S THREAD, which calls this and plays the frame loop -- its keys are engine steps (front.c keyCtx) -- is the engine's last
   // thread, its own board pool: thread 0 is Gambit's, the one the workers' phases hand boards out of)
   paThreadId(MAXTHREADS - 1);

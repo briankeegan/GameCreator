@@ -52,7 +52,26 @@ void hostThreadStats(double *out) {
   struct timespec t; clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);
   struct rusage u; getrusage(RUSAGE_THREAD, &u);
   out[0] = (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6; out[1] = (double)u.ru_nivcsw; out[2] = (double)u.ru_nvcsw;
-  out[3] = (double)(u.ru_minflt + u.ru_majflt);
+  out[3] = (double)(u.ru_minflt + u.ru_majflt); out[4] = (double)u.ru_majflt;
+}
+// EVERY PAGE THE PROCESS HAS MAPPED, IN ITS PAGE TABLES BEFORE PLAY (MADV_POPULATE_READ, Linux 5.14): the code and data of the game, the
+// interpreter and the libraries, read in once here rather than on the frame that first reaches a page -- one page fault in a frame's load
+// cost it 8-17 ms. A mapping over POPULATE_MOST is left as it is (a heap reserved, not used), and one the kernel refuses is skipped.
+#ifndef MADV_POPULATE_READ
+#define MADV_POPULATE_READ 22
+#endif
+#define POPULATE_MOST (256ul << 20)
+void hostPopulate(void) {
+  FILE *f = fopen("/proc/self/maps", "r");
+  if (!f) return;
+  char line[512];
+  while (fgets(line, sizeof line, f)) {
+    unsigned long a, e; char perm[8];
+    if (sscanf(line, "%lx-%lx %7s", &a, &e, perm) != 3 || perm[0] != 'r' || e - a > POPULATE_MOST) continue;
+    if (strstr(line, "[vvar") || strstr(line, "[vsyscall]")) continue;
+    madvise((void *)a, e - a, MADV_POPULATE_READ);
+  }
+  fclose(f);
 }
 double hostNowMs(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6; }
 
