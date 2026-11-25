@@ -156,13 +156,16 @@ end
 function GambitNative:load(a)
   if a.do_countdown ~= nil then a.in_countdown = a.do_countdown and true or false end
   local pv = self.pv
+  local l0 = ThinkBudget.now()
   for i = 0, NH - 1 do H[i] = 0 / 0 end
   B.head(a, put)
+  local l1 = ThinkBudget.now()
   local inc, stall, landed = B.staged(a), B.stall(a), B.landed(a)
   local from = math.max(1, #inc - KEEP_QUEUED + 1)
   self.nrows, self.nqueued = #a.panels + 1, #inc
   put("nrows", #a.panels + 1); put("ninc", #inc - from + 1); put("nstall", #stall); put("nlanded", #landed); put("err", 0)
   put("unseenRows", 0); put("unseenBreaks", 0); put("nextInput", 0); put("pressSwap", 0); put("swapDeniedThisFrame", 0)
+  local l2 = ThinkBudget.now()
   local x, flash = 0, a.levelData.frameConstants.FLASH
   for r = 0, #a.panels do
     for c = 1, a.width do
@@ -170,11 +173,16 @@ function GambitNative:load(a)
       for i = 1, B.NF do Bd[x] = pv[i]; x = x + 1 end
     end
   end
+  local l3 = ThinkBudget.now()
   for j = from, #inc do x = B.putIncoming(inc[j], Bd, x) end
   for i = 1, #stall do x = B.putStall(stall[i], Bd, x) end
   for i = 1, #landed do Bd[x] = landed[i]; x = x + 1 end
   local drop = B.drop(a)
   for i = 1, #drop do Bd[x] = drop[i]; x = x + 1 end
+  -- (where a load's time went, by part: the head, the queues read, the panels, the queues written -- a slow frame's log)
+  self.loadParts = self.loadParts or {}
+  local P = self.loadParts
+  P[1], P[2], P[3], P[4] = l1 - l0, l2 - l1, l3 - l2, ThinkBudget.now() - l3
 end
 
 -- The garbage each source has sent and not yet delivered, as its telegraph shows it: whether its queue is held back (an attack engine's),
@@ -543,11 +551,12 @@ function GambitNative:input(stack, sources, view)
   if took > self.thinking:snapshot().ceiling and self.stepLoad and (self.slowLogged or 0) < 50 then
     self.slowLogged = (self.slowLogged or 0) + 1
     -- (and the game thread's own account of it: its CPU time, the times it was taken off its core or gave it up, its page faults)
-    local a, b = self.ts0, self.ts1
+    local a, b, P = self.ts0, self.ts1, self.loadParts
     C.gn_thread_stats(b)
     C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (load %.1f, telegraph %.1f, frame loop %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d (major %d); %s",
       stack.clock, took * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3], b[4] - a[4],
-      string.format("rows %d, queued %d", self.nrows or 0, self.nqueued or 0)))
+      string.format("rows %d, queued %d; load head %.1f, queues %.1f, panels %.1f, queues written %.1f", self.nrows or 0, self.nqueued or 0,
+        P and P[1] * 1000 or -1, P and P[2] * 1000 or -1, P and P[3] * 1000 or -1, P and P[4] * 1000 or -1)))
   end
   self.stepLoad = nil
   return key

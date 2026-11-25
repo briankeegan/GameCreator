@@ -64,11 +64,11 @@ static int32_t statTake(int i) { int32_t v = 0; for (int k = 0; k < MAXTHREADS; 
 // the other threads' boards go) hands its surplus round through them
 // (search.h runPhase).
 static Board *spareOf;
-static int32_t spareCount, spareLock;
+static int32_t spareCount, spareLock;   // (spareCount changed under the lock, read outside it: every access atomic)
 static Board *takeSpare(void) {
   while (__atomic_exchange_n(&spareLock, 1, __ATOMIC_ACQUIRE)) {}
   Board *b = spareOf;
-  if (b) { spareOf = *(Board **)b; spareCount--; }
+  if (b) { spareOf = *(Board **)b; __atomic_fetch_sub(&spareCount, 1, __ATOMIC_RELAXED); }
   __atomic_store_n(&spareLock, 0, __ATOMIC_RELEASE);
   return b;
 }
@@ -92,14 +92,14 @@ EXPORT(nb_free) void nb_free(Board *b) {
     if (__atomic_load_n(&spareCount, __ATOMIC_RELAXED) >= SPARE_KEEP) paRelease(b, sizeof(Board));
 #endif
     while (__atomic_exchange_n(&spareLock, 1, __ATOMIC_ACQUIRE)) {}
-    *(Board **)b = spareOf; spareOf = b; spareCount++;
+    *(Board **)b = spareOf; spareOf = b; __atomic_fetch_add(&spareCount, 1, __ATOMIC_RELAXED);
     __atomic_store_n(&spareLock, 0, __ATOMIC_RELEASE);
     return;
   }
   *(Board **)b = freeOf(thId); freeOf(thId) = b; freeCount(thId)++;
 }
 // Spare boards on thread k's list; k = -1: the heap's top, in 64 KiB pages; k = -2: SPARES.
-EXPORT(nb_pool_stat) int nb_pool_stat(int k) { return k == -2 ? spareCount : k < 0 ? (int)(heapTop >> 16) : k < MAXTHREADS ? freeCount(k) : 0; }
+EXPORT(nb_pool_stat) int nb_pool_stat(int k) { return k == -2 ? __atomic_load_n(&spareCount, __ATOMIC_RELAXED) : k < 0 ? (int)(heapTop >> 16) : k < MAXTHREADS ? freeCount(k) : 0; }
 #ifdef COPY_BOARD
 static void copyBoard(Board *dst, const Board *src) { COPY_BOARD(dst, src); }
 #else
