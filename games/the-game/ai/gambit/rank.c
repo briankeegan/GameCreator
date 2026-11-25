@@ -586,8 +586,16 @@ static int32_t carriedSunk = -1;   // (the actions the line in progress was judg
 // lost on that frame, the board is the one the line was planned on, and every other line was there to be found when it was chosen)
 static int64_t carriedTold = -1, carriedLostAbs = -1;
 static int64_t toldNow(void) { return (decF.next == NOT_ASKED ? -1 : (int64_t)decQ.b->clock + decF.next) * 64 + decQ.narr; }
+// (and WHERE SOMETHING NEW WAS TOLD, THE PLAN NO WORSE FOR IT -- the owner: a line begun is pressed to its end unless survival needs
+// another: the garbage told since leaves the line in progress living, or lost no sooner than it was judged lost when played -- the
+// board it was planned on is not the one now, but the line still stands as it did, and survival still puts it down where another
+// outlives it or breaks more)
 static int carriedSame(const Judge *c) {
-  if (carriedSunk < 0 || carriedTold < 0 || toldNow() != carriedTold || c->o.dead) return 0;
+  if (carriedSunk < 0 || carriedTold < 0 || c->o.dead) return 0;
+  if (toldNow() != carriedTold) {
+    if (c->o.lives) return 1;
+    return carriedLostAbs >= 0 && c->o.lostAt != NOT_ASKED && c->o.lostAt != FOREVER && (int64_t)decQ.b->clock + c->o.lostAt >= carriedLostAbs;
+  }
   if (c->o.lives) return carriedLostAbs == -2;
   return c->o.lostAt != NOT_ASKED && c->o.lostAt != FOREVER && (int64_t)decQ.b->clock + c->o.lostAt == carriedLostAbs;
 }

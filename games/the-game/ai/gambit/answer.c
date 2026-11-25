@@ -330,6 +330,7 @@ static Broke theBrWide; static int32_t wideDone;
 static int32_t brWhere; static double brGiven;
 static int32_t hostTaps;   // (a host whose frame loop presses a line's taps as the answer says: the native one, native.c gn_setup)
 static Ctx *brCtx; static const Read *brJobR; static Found *brJobS; static int64_t brJobWork; static double brJobT0, brJobBy, brJobMs; static int32_t brJobDone;
+static int32_t jobEndMs[5];   // (each job's end, ms from the jobs' start, -1 not run: the log's jobs=)
 static void breakJob(int32_t i) {
   // (every job ends halfway into the judging's quarter at the latest (propose.c searchesEnd to the decision's deadline) -- the planner's
   // half and the chain extended keep no share of their own past it: the decision waits on its jobs (breakEnd, jobsDone), and a job let
@@ -348,10 +349,12 @@ static void breakJob(int32_t i) {
     __atomic_store_n(&svJobDone, 1, __ATOMIC_RELEASE);
   }
   inJob = 0;
+  if (kind >= 0 && kind < 5) jobEndMs[kind] = (int32_t)(nowMs() - brJobT0);
   if (kind == JOB_BREAK) { brJobMs = nowMs() - brJobT0; __atomic_store_n(&brJobDone, 1, __ATOMIC_RELEASE); }
 }
 static int breakBegin(const Read *R, Found *S, int32_t lineFrom, int32_t linePressed) {
   brCut = 0; brResumed = 0; __atomic_store_n(&brJobDone, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&svJobDone, 0, __ATOMIC_SEQ_CST);
+  for (int k = 0; k < 5; k++) jobEndMs[k] = -1;
   if (pool.nworkers <= 0 || poolBusy || !C2.due || leftMs() < BREAK_MIN_MS) return 0;
   brHave = carriedPaths(decQ.b, lineFrom, linePressed, &brResume);
   brJobR = R; brJobS = S; brJobWork = clockWork; brJobT0 = nowMs(); brJobBy = searchesEnd();
@@ -848,6 +851,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (ran) { int deep = 0; for (int i = 0; i < theBr.keepOut.n; i++) deep = imax(deep, theBr.keepOut.len[i]); L_s(" brDeep="); L_i(deep); }
   L_s(" bat="); L_i(batTaken); L_s("/"); L_i(batOwn); L_s(":"); L_i(batSearch); L_s("/"); L_i(batBusy); L_s("/"); L_i(batSmall); L_s("/"); L_i(batTight); L_s("/"); L_i(__atomic_exchange_n(&batJobs, 0, __ATOMIC_RELAXED));
   L_s(" brMs="); L_i((int64_t)brMs); L_s(" brAt="); L_i(brWhere); L_s("/"); L_i((int64_t)brGiven);
+  // (the jobs beside the decision, each one's end in ms from their start -- break, plan, ext, wide, survive; - not run -- and their stop)
+  if (brWhere == 1 || brWhere == 2) { L_s(" jobs="); for (int k = 0; k < 5; k++) { if (k) L_s("/"); if (jobEndMs[k] < 0) L_s("-"); else L_i(jobEndMs[k]); } L_s(":"); L_i((int64_t)(brJobBy - brJobT0)); L_s(":"); L_i((int64_t)(C2.due ? (C2.due + brJobBy) / 2 - brJobT0 : 0)); }
   L_s(" plan="); L_i((int64_t)S.planShare); L_s("/"); L_i((int64_t)S.planFirst); L_s("/"); L_i(S.wide); L_s("/"); L_i((int64_t)S.ap.ms); L_s("/d"); L_i(S.planDepth); L_s("/l"); L_i(S.planLong);
   // (the planner and the list's first entry: a line that meets it found, and how near its nearest line comes, the first entry's percent)
   if (S.haveAp) { L_s(" p0="); L_i(S.ap.perAim[0].set ? 1 : 0); L_s("/"); L_i(S.ap.nearest.set ? (int64_t)S.ap.nearest.near : -1); }
