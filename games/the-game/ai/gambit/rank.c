@@ -299,6 +299,7 @@ static int waitSpent(const Judge *l, const Judge *s) {
   return rankHoldClock == decQ.b->clock && rankHoldOwn >= rankSave && waitSpends(l) && (s->hold || s->idle || !waitSpends(s));
 }
 static int windowDead(const Judge *J);
+static double nextBreakDelay(int walk);
 static int walkTurns(const Judge *x, const Judge *y) {
   if (x->o.lives || y->o.lives) return 0;
   double dx = diesAt(x), dy = diesAt(y);
@@ -329,6 +330,12 @@ static int walkTurns(const Judge *x, const Judge *y) {
   // decides between the two)
   { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
     if ((dx < dy ? dx : dy) >= rankSave && windowDead(l) && !windowDead(s)) return 0; }
+  // (nor, under garbage, a later loss walked far for little: a line that walks more than WALK_EARN (defined below) actions past the
+  // other's and puts the next break off by more frames than it buys -- the window gives those actions back only once the frames are
+  // spent, and the breaks of those frames are pressed out of what is left: the walk's charge decides between the two)
+  { const Judge *l = dx > dy ? x : y, *s = dx > dy ? y : x;
+    int wl = l->hold ? 0 : lineWalk(l), ws = s->hold ? 0 : lineWalk(s);
+    if (decF.under && (dx < dy ? dx : dy) >= rankSave && wl - ws > 6 && nextBreakDelay(wl) - nextBreakDelay(ws) > (dx > dy ? dx - dy : dy - dx)) return 0; }
   // (nor, under garbage, a later loss that breaks nothing and leaves the next break less than its walk, beside a line that keeps it --
   // the owner: efficiency is key: the actions it spends are the next break's, and a board kept on them is one left with none to break
   // with -- the walk's charge decides between the two, however far apart they are lost)

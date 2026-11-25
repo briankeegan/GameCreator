@@ -205,7 +205,8 @@ The modes: fill, finish them and switching (the owner).
   block, continued a link at a time up to 13; combos worth nothing; never a sooner death.
 - **Live deaths are read every session** (the owner): `https://ranmaru-stats.pages.dev/data/replay_r<N>.json.gz`, a loss's last
   decision carries `dies=1`. Every loss since the last session is read before other work, and reported.
-- **A change is judged over three runs or more per build, alternated** -- the same code scores 28 and 23 an hour apart.
+- **It works regardless of the noise** (the owner): one run of 28 games per change, judged on whether its deaths go away -- the bot
+  survives every game whatever the seed, so no change is run several times over to be compared.
 
 ## How -- infra, not patches
 
@@ -221,8 +222,8 @@ The modes: fill, finish them and switching (the owner).
   (`gambit_reach.js`) -- written by the run on Actions; and the time it finishes, in ET on the 24-hour clock.
 - Commit and push every change. Never rerun code that has not changed.
 - **Small first** (the owner): a change runs 24 games of one mode -- the weakest first -- the goal's measure (`fight` 1, `profile`
-  gambit.json, `then` that mode); the other modes only once it does well there. Every run new games: a seed not run before (a seed
-  run again only to set two builds side by side). Main is not run again: its measure is the one on record. Its log goes in the same
+  gambit.json, `then` that mode); the other modes only once it does well there. The same seeds may be run again (the owner): each
+  mode is worked on its current seed set until it is 28/28 there, and only then are the seeds changed. Main is not run again: its measure is the one on record. Its log goes in the same
   run, and a run is never spent on a log alone.
 - **A run, as fast as it goes** (the owner): one change, one run -- of one mode, the weakest on record of fill, finish them and
   switching, until each is at 22; from then on the three together, each change checked for a mode it set back (the list's 6). Never a
@@ -236,8 +237,6 @@ The modes: fill, finish them and switching (the owner).
 - **A run's seed is a set of games, not one** (the owner): `seed` N gives each of a mode's 24 games its own seed, N x 100 + the
   pattern x 10 + the game (PA_SEED), so "seed 82" is 24 different games a mode. Round r plays base N + r - 1: seed 82's round 2 is
   seed 83's round 1, never run as a new set.
-  A change is judged on more than one set (the owner): the same sets as what it is compared with, for the comparison, and never one set
-  alone -- `rounds` [1,2] plays two.
 - **The measure, every run** (the owner): the run's own report on Actions prints it (`gambit_summary.js`, "the measure"): survived; the
   attacks each mode made that met its aims and its first; the decisions that passed the mode over; the swaps that came to nothing; the
   wasted threes a minute. A change is judged on all of them, not on survived alone.
