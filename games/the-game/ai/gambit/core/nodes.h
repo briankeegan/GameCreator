@@ -220,6 +220,7 @@ static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int 
   // (played BATCH_CHUNK steps at a time, the clock asked between: the threads play a phase to its end, and a batch of a wide beam's
   // kids -- up to PLAN_KIDS -- was hundreds of ms the decision's thread never asked the clock in, the move answered after its frame (run
   // 4618, endless 4: a 257 ms stretch at the planner's end). A step left unplayed stays UNBATCHED, made when it is taken.)
+  phWhere = 8;
   for (int j = 0; j < n; j++) batchRes.a[j] = UNBATCHED;
   pool.deadAt = batchDead.a; pool.moves = 0;
   int any = 0;
@@ -238,6 +239,7 @@ static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int 
     any = 1;
   }
   pool.deadAt = 0;
+  phWhere = 9;
   if (!any) return;
   batchN = n;
 }

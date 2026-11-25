@@ -34,7 +34,10 @@ static int32_t jobStop;
 // (THE SEARCH BETWEEN DECISIONS, answer.c onThread: inJob 2 -- its slice and its own stop, never the decision's jobs' stop)
 static int32_t onStopReq;
 static int32_t clockIgnore;   // (a fixed piece of work run whatever the clock says: decide.c moveWhy, its few steps measured once)
+static double phAt[16], phOut;   // (a probe: when each phase of a decision ended, and when its frame stop first fired)
+static double gapLast, gapMax, gapEnd; static int phWhere, gapWhere, gapWhereLast;   // (a probe: the longest stretch the decision's thread went without asking the clock, and when it ended)
 static int clockOut(void) {
+  if (!inJob && !clockNowOf) { double t = clock_ms(); if (gapLast && t - gapLast > gapMax) { gapMax = t - gapLast; gapEnd = t; gapWhere = gapWhereLast * 100 + phWhere; } gapLast = t; gapWhereLast = phWhere; }
   if (!inJob && __atomic_load_n(&clockIgnore, __ATOMIC_RELAXED)) return 0;
   if (inJob == 2) return __atomic_load_n(&onStopReq, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare);
   if (inJob) return __atomic_load_n(&jobStop, __ATOMIC_RELAXED) || (clockShare && nowMs() >= clockShare) || (jobFrame && clockFrameOut && clockFrameOut());
