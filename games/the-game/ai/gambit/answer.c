@@ -619,6 +619,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
     A->done = l->apDone; A->fire = l->apFire; A->nseq = l->k.nseq; for (int i = 0; i < l->k.nseq; i++) A->seq[i] = l->k.seq[i];
   } else { A->play = P.name; A->whole = -1; }
   A->clears = d.kind == 1 && (A->combo > 0 || A->broke > 0);
+  brNoneLast = R.under && !(ran && theBr.depth);
   A->brk = ran && theBr.depth; A->offered = ran ? theBr.depth : 0; A->lineup = ran && theBr.lineup; A->touch = ran && theBr.touch;
   if (ran && theBr.depth && d.kind == 1) for (int i = 0; i < theBr.nmoves; i++) if (theBr.moves[i] == d.move) A->took = 1;
   A->idleMs = S.idleMs; A->brMs = brMs;
