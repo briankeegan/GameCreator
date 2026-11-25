@@ -298,11 +298,17 @@ static int reapHandOn(Ctx *x) {
   __atomic_fetch_add(&reapWord, 1, __ATOMIC_SEQ_CST); hostFutexWake(&reapWord, 1);
   return 1;
 }
-static Ctx *reapTakeOn(void) {
+static Ctx *reapTakeOn(int32_t least) {
   reapIn();
-  Ctx *x = reapNReady ? reapReady[--reapNReady] : 0;
+  Ctx *x = 0;
+  for (int i = reapNReady - 1; i >= 0 && !x; i--) if (reapReady[i]->cap >= least) { x = reapReady[i]; reapReady[i] = reapReady[--reapNReady]; }
   reapOut();
   return x;
+}
+static void reapReturnOn(Ctx *x) {
+  reapIn();
+  if (reapNReady < 16 * REAPN) reapReady[reapNReady++] = x;
+  reapOut();
 }
 static void *reapMain(void *arg) {
   (void)arg;
@@ -350,7 +356,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
     for (int k = 0; k < want; k++) if (hostIdleThread(onThreadMain, "gbetween") == 0) { onThreads++; while (__atomic_load_n(&onNext, __ATOMIC_SEQ_CST) < onThreads) {} }
     if (onThreads > 0) onThreadOn = 1;
     // (the reaper where there are workers' CPUs for it)
-    if (n > 0 && hostIdleThread(reapMain, "greap") == 0) { reapHand = reapHandOn; reapTake = reapTakeOn; }
+    if (n > 0 && hostIdleThread(reapMain, "greap") == 0) { reapHand = reapHandOn; reapTake = reapTakeOn; reapReturn = reapReturnOn; }
     static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
   }
   return 0;
