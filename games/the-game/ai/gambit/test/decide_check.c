@@ -57,6 +57,7 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   answerQuestion(1, 0, topped, opp, opp && replayOppOut, opp, opp ? replayOppTop : 0, opp && replayOppStop >= 0, opp ? replayOppStop : 0,
                  replayAllow >= 0, imax(0, replayAllow), -1, 0, (replayLow || replayRaise) && canRaiseOn(hostBoard), due, t0, 0);
   hostTaps = taps;   // (the raise asked of a low stack only)
+  readyStop();   // (the readiness the workers search on past the decision taken back before its clock is: the next decision would)
   clockNowOf = 0;
   const Answer *A = &theAnswer;
   replayLast[0] = A->d.kind; replayLast[1] = A->verdict; replayLast[2] = A->nlive; replayLast[3] = garbageOn(hostBoard);

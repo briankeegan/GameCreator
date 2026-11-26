@@ -696,7 +696,7 @@ static int ranked(const Read *R, const Found *S) {
   // fifty, in nearly all of the time a decision spends on readiness -- so those in reach are asked first, best-ranked first, and the
   // rest in the time left)
   for (int pass = 0; pass < 2; pass++)
-  for (int i = 0; i < n && leftMs() > 0; i++) {
+  for (int i = 0; i < n && judgeLeftMs() > 0; i++) {
     Judge *J = order[i];
     if (!READY_ASKS(J) || (J->o.j.readyNear < NEAR_MISS) != (pass == 0)) continue;
     readyKnownOnly = EXTRA(J);
@@ -2269,7 +2269,7 @@ static void carryReady(const Judge *H, int32_t qid) {
 // decision itself runs as it would with no workers.
 static Ctx *jobCtx;   // (the phase's own: the jobs make nodes only on their threads' contexts)
 static void readySpread(int n) {
-  if (pool.nworkers <= 0 || !readyPendN || leftMs() <= 0) return;
+  if (pool.nworkers <= 0 || !readyPendN) return;   // (whatever the searches' share: the workers search on past the decision)
   uint8_t queued[READYPEND] = { 0 };
   int nj = 0;
   for (int i = n - 1; i >= 0 && nj < READYPEND; i--) {
