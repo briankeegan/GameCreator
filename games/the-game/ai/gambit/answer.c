@@ -748,6 +748,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
   if (contAsked) { L_s(" cont="); L_i(contAsked); }
   if (rnSeen[0] + rnSeen[1] + rnSeen[2]) { L_s(" rn="); L_i(rnSeen[0]); L_s("/"); L_i(rnSeen[1]); L_s("/"); L_i(rnSeen[2]); }   // (ready for the next block: a break / none / not answered)
+  if (decQ.b) { L_s(" tw="); L_i(towerOf(decQ.b)); }   // (the board's tower: its tallest column of panels over the median, judge.c towerOf)
   if (comboTimed) { L_s(" timed="); L_i(comboTimed); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
   if (windowCut) { L_s(" windowCut="); L_i(windowCut); }   // (lines taken out: the window not back before their board is lost)
