@@ -979,6 +979,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (carriedSame(c) && (c->o.lives || diesAt(c) >= rankSave) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && imax(0, o->apBroke) <= imax(0, c->apBroke) &&
         !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    // (A BREAK IN PROGRESS IS NOT PUT DOWN FOR LESS: under garbage, the line in progress that breaks garbage, no worse than when it was
+    // played and its board standing a break's time, before a line that breaks less however much later that one is lost -- garbage
+    // broken comes off the board for good, panels cleared for the frames buy them only until the next block lands)
+    if (decF.under && carriedSame(c) && c->apBroke > 0 && diesAt(c) >= rankSave && imax(0, o->apBroke) < c->apBroke &&
+        imax(0, brokeSeen(o)) < imax(1, brokeSeen(c)) && !o->o.lives && !finishEightBy(o, c))
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
   // 1. THE WINDOW'S FLOOR (the owner: efficiency is key): under garbage, of two that do not live, a line that leaves the input window
   // under half a break's walk (BREAK_WALK) at the next landing goes after one that keeps it -- and of two that both leave it under, the
