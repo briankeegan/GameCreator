@@ -2127,3 +2127,8 @@ THE DIVE: each level of the touch beam, its first 30 lines played on along their
 Measured (`ace9dcb6`, 4729-4731): switching 26 (seed 143), fill 28 (seed 147, 0 late, 0 over), finish 26 (seed 141) -- 80 of 84;
 factory lost one board of 24, combo_storm three, each with the window spent before the end; 2 late in switching, one a decision out
 by its frame 6 ms in while its break job kept a 178 ms share.
+THE FRAME COME EARLY: a decision out by its frame with more than half its jobs' time to go takes them back -- their shares were set by
+a deadline the client's catch-up frames overtook (4729: out 6 ms in, the break job's 178 ms kept, the answer 10 frames late); one out
+near their end keeps them. Measured (`43c8c616`, 4732-4734): switching 27 (seed 143), fill 27 (seed 147), finish 28 (seed 141) -- 82 of
+84; 0 late moves, 0 frames over, 0 divergences in each. Switching lost combo_storm 8 and fill factory 7 at 836, each with the window
+spent before its end.
