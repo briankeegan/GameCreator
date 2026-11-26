@@ -567,6 +567,19 @@ static int cutsShort(const Judge *J) {
   return aloneChain > 1 && J->apWhole < aloneChain && ownChainAsked(aloneChain);
 }
 #define FLAT_ROWS 2
+#define EXCESS_STEP 3   // (cells over the lowest column, of two as flat by the tallest less the lowest, that make one the flatter: half a row)
+// (ON THE TALL -- the owner: flatten by making the combos where it is tall, an eight on the tall columns above all: the board asked is
+// uneven by FLAT_ROWS or more, and of the two lines x leaves the flatter stack -- its tallest less its lowest lower, or as low and
+// EXCESS_STEP fewer cells standing over the lowest column. 1 x flatter, -1 y, 0 neither)
+static int onTall(const Judge *x, const Judge *y) {
+  if (!decQ.b || evenOf(decQ.b) < FLAT_ROWS) return 0;
+  int32_t ex = x->o.j.even, ey = y->o.j.even;
+  if (ex < 0 || ey < 0) return 0;
+  if (ex != ey) return ex < ey ? 1 : -1;
+  int32_t sx = x->o.j.excess, sy = y->o.j.excess;
+  if (sx < 0 || sy < 0 || iabs(sx - sy) < EXCESS_STEP) return 0;
+  return sx < sy ? 1 : -1;
+}
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int downtime(void) {
   return !decF.under && (decF.next == NOT_ASKED || decF.next > 2 * rankSave) && decQ.b->chainCounter < 2 &&
@@ -1607,7 +1620,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // is in reach and the rows it is sorted from are made; only between lines meeting the same entry, and where it is lost no sooner or alike
   if (finishAsked() && (x->met >= 0 ? x->met : MAXAIMS) == (y->met >= 0 ? y->met : MAXAIMS)) {
     const Judge *fb = 0; int fk = 0;
-    if (x->o.j.seams != y->o.j.seams) { fb = x->o.j.seams > y->o.j.seams ? x : y; fk = __LINE__; }
+    // (on an uneven board the combo on the tall columns first: it flattens as it attacks -- onTall)
+    int tall = onTall(x, y);
+    if (tall) { fb = tall > 0 ? x : y; fk = __LINE__; }
+    else if (x->o.j.seams != y->o.j.seams) { fb = x->o.j.seams > y->o.j.seams ? x : y; fk = __LINE__; }
     else if (x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS) { fb = x->o.j.even < y->o.j.even ? x : y; fk = __LINE__; }
     else if (x->o.j.spread != y->o.j.spread) { fb = x->o.j.spread > y->o.j.spread ? x : y; fk = __LINE__; }
     if (fb) { const Judge *ob = fb == x ? y : x;
@@ -1619,6 +1635,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 8a. MORE THROWN (several ideas at once): of two that live and meet the same entry, the one that throws more blocks, every attack
     // its own -- two ideas fired before one. (Not of two that die: there the panels a line spends are the next break's material.)
     if (ax < MAXAIMS && lx) { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) return (cmpKey = __LINE__, (ty - tx)); }
+    // 8a'. ON THE TALL (the owner: flatten by making the attack where it is tall): of two that meet the same entry and throw alike, on an
+    // uneven board, the one that leaves the flatter stack (onTall) -- where it lives, or neither does and it is lost no sooner
+    if (ax < MAXAIMS) { int tall = onTall(x, y);
+      if (tall) { const Judge *fb = tall > 0 ? x : y, *ob = tall > 0 ? y : x;
+        if (fb->o.lives || (!ob->o.lives && diesAt(fb) >= diesAt(ob))) return (cmpKey = __LINE__, (tall > 0 ? -1 : 1)); } }
     // 8b. MORE DONE ON THE WAY: of two that meet the same entry, one that presses every swap of the other and more that helps -- work
     // on its way (propose.c wayLines), a second line made one with it (decide.c routeJudged), a second idea fired (search/plan.c pair)
     // -- first: the keys above found it no worse, and every step the cursor takes does something rather than only going there
