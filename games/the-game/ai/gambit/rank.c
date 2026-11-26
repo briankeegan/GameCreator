@@ -1212,8 +1212,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && !x->o.dead && !y->o.dead) {
     double ox = lostAtOf(x->o.lostAt, x->hold), oy = lostAtOf(y->o.lostAt, y->hold);
     if (ox >= 0 && oy >= 0 && ox < 1e299 && oy < 1e299) {
-      if (oy - ox >= rankSave && extCounts(x) && !extCounts(y)) return (cmpKey = __LINE__, 1);
-      if (ox - oy >= rankSave && extCounts(y) && !extCounts(x)) return (cmpKey = __LINE__, -1);
+      // (but a promise the readiness search has found -- a break on the board once the next block lands, the window counted (readyNext)
+      // -- is a break, not a promise: where its life after that break is no shorter than the other's own, it is not put after it)
+      #define FOUND_KEEPS(P, O, OO) ((P)->readyNext == 1 && lostAtOf((P)->extLost, 0) >= (OO) && lostAtOf((P)->extLost, 0) < 1e299)
+      if (oy - ox >= rankSave && extCounts(x) && !extCounts(y) && !FOUND_KEEPS(x, y, oy)) return (cmpKey = __LINE__, 1);
+      if (ox - oy >= rankSave && extCounts(y) && !extCounts(x) && !FOUND_KEEPS(y, x, ox)) return (cmpKey = __LINE__, -1);
     }
   }
   if (!lx && walkTurns(x, y)) return (cmpKey = __LINE__, (diesAt(y) > diesAt(x) ? 1 : -1));
