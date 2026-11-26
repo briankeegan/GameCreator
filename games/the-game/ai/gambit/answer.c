@@ -1226,7 +1226,7 @@ static void answerQuestion(int qid, int at, int topped, int oppHas, int oppOut, 
   canRaiseNow = canRaise;
   C2.due = due; C2.t0 = t0; C2.margin = margin;
   clockStart(due ? due - margin : 0);
-  decF.timeLeft = -1;   // (readiness is asked while the searches have time left, as each outcome finds it)
+  decF.timeLeft = -1;   // (readiness is asked while the decision has time to its deadline, as each outcome finds it)
   answerTurn(qid, at, allowanceKnown, allowance, lineFrom, linePressed);
 }
 // A QUESTION: its board, hold and garbage on its way are node i of the host's search (the root it made); then its own facts. The answer

@@ -17,7 +17,7 @@ static int32_t levelBreak = 97;
 typedef struct {
   int32_t land;        // frames until the last block shown lands (NOT_ASKED: none coming) -- JUDGE.lastLanding
   int32_t topped;      // the board is topped out
-  int32_t timeLeft;    // the decision's searches still have time (c.left() > 0): readiness is asked only then
+  int32_t timeLeft;    // the decision still has time to its deadline: readiness is asked only then (-1: read the clock)
   int32_t belowFloor;  // below the rule's material floor: a line that clears panels and breaks nothing is no candidate
   int32_t under;       // garbage on the board, as the decision reads it (decide.c read: R->under) -- the one under-garbage test
   int32_t next;        // frames until the next block shown lands (NOT_ASKED: none coming)
@@ -112,6 +112,7 @@ static int32_t lifePeakOf(void) { static int32_t peak = -1; if (peak < 0) { peak
 // or it dies when the stop runs out. A line that lives only by being ready lives as its readiness break does, played where the
 // readiness found it and judged as any break is (waitTo): a break kept for later is worth no more than the break played.
 static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int32_t waitTo);
+static double judgeLeftMs(void);   // (propose.c: the time to the decision's own deadline)
 static int breakBuildable(const Board *b);   // (search/break.c: a break the panels touching garbage can be walked into)
 static int garbageOn(const Board *b);        // (search/break.c: garbage on the board)
 static int32_t panelsOn(const Board *b);     // (search/break.c: the panels on the board)
@@ -171,7 +172,7 @@ static Outcome outcomeOf(const int32_t *seq, int n, int settled, int waitAt, int
   // (the board left alone asked first: its judging is the judge's own nodes, which the line's end board is read from below)
   int32_t alone = n > 0 && !waitTo && decF.under ? aloneBuildable() : 0;
   int coming = decF.land != NOT_ASKED;
-  int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : leftMsOf() > 0;
+  int timeLeft = decF.timeLeft >= 0 ? decF.timeLeft : judgeLeftMs() > 0;   // (the decision's own deadline: readiness is the judging's, asked after the searches' share)
   JudgeOpts jo = { settled, decQ.tight, timeLeft ? (coming ? decF.land : 0) : NOT_ASKED, !coming, 1, HORIZON + REST, REST, !waitTo, waitAt, waitTo, 1 };
   if (outNBOn) { jo.notBefore = carryNB; jo.nNotBefore = imin(carryNBn, n); }
   jo.rooted = outRooted; jo.winWait = outWinWait;
