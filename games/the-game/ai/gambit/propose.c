@@ -19,6 +19,9 @@ static Ctx2 C2;
 static double searchesEnd(void) { return C2.due ? C2.due - C2.margin - (C2.due - C2.t0) / 4 : 0; }
 static double leftMs(void) { return C2.due ? searchesEnd() - nowMs() : 1e9; }
 static double leftMsOf(void) { return leftMs(); }
+// (THE JUDGING'S TIME LEFT: to the decision's own deadline -- the readiness checks are the judging's, asked in its quarter, after the
+// searches' share has ended; leftMs, the searches' share, is spent by then)
+static double judgeLeftMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
 
 // ---- the board's state the proposers read
 static int cascadeLive(Board *b) {
