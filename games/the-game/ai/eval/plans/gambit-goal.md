@@ -2091,3 +2091,9 @@ window from 18 to 4 (4704, lost at 8203). Measured (`94c1f98c`, 4705-4707): swit
 (seed 147); 0 late moves, 0 divergences. Fill is 28 twice running (4703, 4707) with 0 frames over. Frames over the think budget: 1
 (4705) and 3 (4706), each the board's load in the game thread, run by the interpreter -- 93 blocks queued (telegraph 5.5 ms, load 4.6),
 and a board of 23-24 rows (its panels 7.0-10.6 ms); the frame loop under 0.1 ms in each.
+FRAMES OVER THE THINK BUDGET: 9 in 25 runs (4680-4706), each 8-12 ms in the game thread's own work -- the board's load (its panels 7-10.6 ms
+on boards of 23-24 rows) or the telegraph -- the frame loop under 0.1 ms; the load itself is 0.21 ms on 24 rows run by the interpreter.
+Measured, not kept: the collector stepped before each frame, so none begins with its atomic phase pending (`23947a84`, 4708-4710):
+finish 28 (seed 141, 0 over), switching 24 (seed 143), fill 25 (seed 147, 1 over) -- the switching and fill losses the break search cut
+by the clock; the frame over 11.6 ms with 0.5 ms of CPU, three waits and the heap unchanged: the game thread waiting, not collecting.
+A slow frame's log now carries the Lua heap at each part and the pages every thread released in it (paRelease).
