@@ -2163,4 +2163,12 @@ two-cell walk where no one swap flattens (`search/level.c` levelWalk). Measured 
 (seed 147), switching 27 (seed 143) -- 82 of 84; 0 late moves, 0 frames over, 0 divergences in each. The floor decided 2% of decisions
 under garbage; the boards 4 rows uneven or more stayed where they were (combo_storm 64%, factory 46%, large_garbage 21%).
 Every run now reports, by pattern: the next break held at each landing (combo_storm 80%, factory 66%, large_garbage 71% in 4766), each
-line's readiness for the next block (`rn=`: nearly all answered, nearly all no break -- the board, not the clock), and the share towered.
+line's readiness for the next block (`rn=`), and the share towered.
+THE READINESS GIVEN ITS TIME: the readiness checks are asked in the judging's quarter, after the searches' share has ended, and their
+shares were cut from that share (`leftMs`) -- spent by then: 69-88% of them answered no break with no time to look (`rcut=`), while 43% of
+the breaks found took over 5 ms (`rfound=`), and the landed boards were handed to the workers only while that share lasted -- 8 searched a
+game (`rjob=`). The shares are now cut from the time to the decision's own deadline (`propose.c` judgeLeftMs), the pass that asks them runs
+while it lasts, and the landed boards go to the workers whatever the searches' share. Cut by their share: 51-59%; breaks found a game:
+600-1,000 (229 before); the workers' readiness searches: about 200 a game; lines ready for the next block 2-3x as many. Measured
+(`55e66ebc`, 4776-4778): fill 28 (seed 147), switching 28 (seed 143), finish 27 (seed 141) -- 83 of 84; 0 late moves, 0 frames over,
+0 divergences in each. Finish lost factory 5 at 883: the opening's window spent by 726 on an eight and two breaks before the next block.
