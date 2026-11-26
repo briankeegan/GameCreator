@@ -671,11 +671,12 @@ static int landsBetter(const Judge *J) {
 // (A FLATTEN BETWEEN MOVES -- the owner: do it between moves, the board landing flatter and zipped; flatter, it would not have to move
 // so far to get things done: a set-up of any kind -- a level, a zip, a lineup -- that walks no more than WALK_EARN actions, wastes no
 // three, leaves the input allowance a break's walk (BREAK_WALK) when the next block lands -- what the window holds then is what the next
-// break is pressed out of -- and lands the board better than the hold does (landsBetter))
+// break is pressed out of -- and, with garbage resting on the board, a break's walk now too: that garbage's break is pressed now, not at
+// the next landing -- and lands the board better than the hold does (landsBetter))
 static int flattenFree(const Judge *J) {
   int w = lineWalk(J);
   return setupKind(J) && !J->o.dead && J->k.nseq > 0 && pressAllowance >= 0 && w <= WALK_EARN &&
-         allowAtLanding(w) >= BREAK_WALK && !wastesThree(J) && landsBetter(J);
+         (!decF.under || allowLeftAt(0, w) >= BREAK_WALK) && allowAtLanding(w) >= BREAK_WALK && !wastesThree(J) && landsBetter(J);
 }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
