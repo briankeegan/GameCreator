@@ -982,8 +982,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int ax = allowAtLanding(x->hold ? 0 : lineWalk(x)), ay = allowAtLanding(y->hold ? 0 : lineWalk(y));
     int kx = ax >= BREAK_WALK / 2, ky = ay >= BREAK_WALK / 2;
     if (!kx && !ky && (ax - ay >= FLOOR_STEP || ay - ax >= FLOOR_STEP)) { kx = ax > ay; ky = !kx; }
+    // (never over a break begun -- the owner: a break begun is finished: the line in progress that breaks garbage has its walk pressed
+    // already, and the hold that keeps the window throws that walk away with the garbage still on the board; runs 4697-4699, 1494 holds
+    // put before a break in progress, each break's board lost 60 frames or more later than the hold's)
     if (kx != ky) { const Judge *k = kx ? x : y, *d = kx ? y : x;
-      int ok = k->hold || (imax(0, k->apBroke) >= imax(0, d->apBroke) && (k->apBroke > 0 || (!clears(k) && !(k->o.j.clearedPanels > 0))));
+      int begun = d->carried && !d->hold && d->apBroke > 0;
+      int ok = !begun && (k->hold || (imax(0, k->apBroke) >= imax(0, d->apBroke) && (k->apBroke > 0 || (!clears(k) && !(k->o.j.clearedPanels > 0)))));
       if (ok && diesAt(k) >= rankSave && diesAt(k) < 1e299) return (cmpKey = __LINE__, (kx ? -1 : 1)); }
   }
   // 1. NO DEEP WELL UNDER THE GARBAGE (the owner: flatten, leave the board where moves are easy): under garbage, of two that do not live,
