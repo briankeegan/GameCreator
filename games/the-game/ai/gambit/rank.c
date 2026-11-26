@@ -986,6 +986,20 @@ static int compareJudged(const Judge *x, const Judge *y) {
         imax(0, brokeSeen(o)) < imax(1, brokeSeen(c)) && !o->o.lives && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
   }
+  // 1. NOT DYING AT THE LANDING (the owner: death is never an option, regardless of the circumstance): the next block landing within
+  // LANDING_NEAR frames, of two that do not live, one lost by the landing even with its next moves played (extLost) goes after one whose
+  // next moves outlive the landing by a break's time -- the hold included, which no move after it is credited to: a promise is all a
+  // board that dies on the landing has, and a window kept for a break on a board that does not live to make it is kept for nothing
+  #define LANDING_NEAR 150
+  if (!lx && !ly && decF.land != NOT_ASKED && decF.land >= 0 && decF.land <= LANDING_NEAR) {
+    double la = decF.land;
+    double ox0 = lostAtOf(x->o.lostAt, x->hold), oy0 = lostAtOf(y->o.lostAt, y->hold);
+    double xn = !x->hold && x->extLost != NOT_ASKED ? lostAtOf(x->extLost, 0) : -1, yn = !y->hold && y->extLost != NOT_ASKED ? lostAtOf(y->extLost, 0) : -1;
+    double ex = xn > ox0 ? xn : ox0, ey = yn > oy0 ? yn : oy0;
+    int dx = !x->o.dead && ex >= 0 && ex <= la + 2, dy = !y->o.dead && ey >= 0 && ey <= la + 2;
+    int ox = !x->o.dead && ex >= la + rankSave && ex < 1e299, oy = !y->o.dead && ey >= la + rankSave && ey < 1e299;
+    if ((dx && oy) || (dy && ox)) return (cmpKey = __LINE__, (dx ? 1 : -1));
+  }
   // 1. THE FLATNESS FLOOR (the owner: it prefers not dying, and flatness -- both floors): of two that do not live, the one that leaves the
   // stack towered -- its tallest column of panels TOWER_ROWS or more over its lowest (judge.c towerOf) -- goes after one that leaves it under, and of
   // two that both leave it towered, the one that leaves it TOWER_STEP rows taller goes after -- not dying first: only where the two are
