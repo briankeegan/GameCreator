@@ -2104,3 +2104,7 @@ A FLATTER LANDING OUT OF HALF A BREAK'S WALK: a flatten that lands the board fla
 half a break's walk after it now; one only more zipped, a whole one. Measured, not merged (`a4866fce`, 4714-4716): finish 28 (1 late),
 switching 25, fill 28 (0 over, 0 late) -- 81 of 84 as main's 81; switching lost combo_storm 5 and factory 4 to the window (a level in the
 1000 frames before each, the window spent on breaks, carries and an extension) and large_garbage 6 to a slab of nine rows over 19 panels.
+THE HEAP IN CHUNKS: the native heap's blocks cut in turn from 512 MB mappings, not one calloc a block -- the process's memory map changed
+once a chunk. Measured (`e38c93b1`, with the flatter landing's floor, 4717-4719): switching 26 (seed 143), finish 27 (seed 141), fill 27
+(seed 147) -- 80 of 84; 0 late moves, 0 frames over (slowest 4-5 ms). Every loss a factory board, three of four no break found: the
+slab on one tower over cleared middle columns, or a well a column deep beside the edges' towers.
