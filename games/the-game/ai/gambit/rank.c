@@ -582,23 +582,17 @@ static int firstWalk(const Judge *J) { return J->hold || !J->k.nseq ? 0 : action
 // (the cursor's actions over the whole line, swap after swap in the order it is pressed, from where the cursor is)
 #define WALK_EARN 6     // the actions more a far line may walk than a nearer one that also attacks
 static int32_t carriedSunk = -1;   // (the actions the line in progress was judged to walk in all when played: decide.c carryOf; -1 not known)
-// (NOTHING NEW TOLD: what the board was told when the line in progress was played -- the next block's landing frame and how many are on
-// their way -- and the frame its own board was judged lost on then (-2 it lived): decide.c carryOf. The same now, and the line still judged
-// lost on that frame, the board is the one the line was planned on, and every other line was there to be found when it was chosen)
+// (WHAT THE LINE IN PROGRESS WAS PLAYED ON: what the board was told then -- the next block's landing frame and how many are on their way
+// -- and the frame its own board was judged lost on then (-2 it lived): decide.c carryOf)
 static int64_t carriedTold = -1, carriedLostAbs = -1;
 static int64_t toldNow(void) { return (decF.next == NOT_ASKED ? -1 : (int64_t)decQ.b->clock + decF.next) * 64 + decQ.narr; }
-// (and WHERE SOMETHING NEW WAS TOLD, THE PLAN NO WORSE FOR IT -- the owner: a line begun is pressed to its end unless survival needs
-// another: the garbage told since leaves the line in progress living, or lost no sooner than it was judged lost when played -- the
-// board it was planned on is not the one now, but the line still stands as it did, and survival still puts it down where another
-// outlives it or breaks more)
+// (THE PLAN NO WORSE -- the owner: a line begun is pressed to its end unless survival needs another: told something since or not, the line
+// in progress living, or lost no sooner than it was judged lost when played, still stands as it did; survival still puts it down where
+// another outlives it or breaks more)
 static int carriedSame(const Judge *c) {
   if (carriedSunk < 0 || carriedTold < 0 || c->o.dead) return 0;
-  if (toldNow() != carriedTold) {
-    if (c->o.lives) return 1;
-    return carriedLostAbs >= 0 && c->o.lostAt != NOT_ASKED && c->o.lostAt != FOREVER && (int64_t)decQ.b->clock + c->o.lostAt >= carriedLostAbs;
-  }
-  if (c->o.lives) return carriedLostAbs == -2;
-  return c->o.lostAt != NOT_ASKED && c->o.lostAt != FOREVER && (int64_t)decQ.b->clock + c->o.lostAt == carriedLostAbs;
+  if (c->o.lives) return 1;
+  return carriedLostAbs >= 0 && c->o.lostAt != NOT_ASKED && c->o.lostAt != FOREVER && (int64_t)decQ.b->clock + c->o.lostAt >= carriedLostAbs;
 }
 static int lineWalk(const Judge *J) {
   int n = 0, r = decQ.b->curRow, c = decQ.b->curCol;
@@ -674,11 +668,12 @@ static int landsBetter(const Judge *J) {
 }
 // (A FLATTEN BETWEEN MOVES -- the owner: do it between moves, the board landing flatter and zipped; flatter, it would not have to move
 // so far to get things done: a set-up of any kind -- a level, a zip, a lineup -- that walks no more than WALK_EARN actions, wastes no
-// three, leaves the input allowance a break's walk (BREAK_WALK) at the next landing, and lands the board better than the hold does
-// (landsBetter))
+// three, is pressed out of what the input allowance holds over a break's walk (BREAK_WALK) -- now, and at the next landing -- and lands
+// the board better than the hold does (landsBetter))
 static int flattenFree(const Judge *J) {
-  return setupKind(J) && !J->o.dead && J->k.nseq > 0 && pressAllowance >= 0 && lineWalk(J) <= WALK_EARN &&
-         allowAtLanding(lineWalk(J)) >= BREAK_WALK && !wastesThree(J) && landsBetter(J);
+  int w = lineWalk(J);
+  return setupKind(J) && !J->o.dead && J->k.nseq > 0 && pressAllowance >= 0 && w <= WALK_EARN &&
+         allowLeftAt(0, w) >= BREAK_WALK && allowAtLanding(w) >= BREAK_WALK && !wastesThree(J) && landsBetter(J);
 }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
@@ -975,8 +970,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
       lx = ly = 1;
     }
   }
-  // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress on the board it was planned on -- nothing told since,
-  // itself still judged lost on the frame it was judged when played (carriedSame) -- its board standing a break's time, is not put down for another line found this time: every action spent on it
+  // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress no worse than when it was played -- living, or lost no
+  // sooner (carriedSame) -- its board standing a break's time, is not put down for another line found this time: every action spent on it
   // is thrown away. Only for a line that breaks more garbage -- as seen, or as the line makes it -- or outlives it by a break's time
   // (lives before does not, above). Near its loss every frame decides, and the later loss is played
   if (lx == ly && x->carried != y->carried && !x->hold && !y->hold) {
