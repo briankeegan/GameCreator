@@ -121,7 +121,7 @@ jobs:
         timeout-minutes: 15
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
-          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang luajit zlib1g-dev && break; sleep 10; done
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update || true; timeout 240 sudo apt-get $APT install -y libfuse2 xvfb clang luajit zlib1g-dev && break; sleep 10; done   # (an update one source fails still updates the others: the install is tried anyway)
           mkdir -p ~/love2d
           [ -s /tmp/love.tar.gz ] || for i in 1 2 3 4 5 6; do curl -fsSL "https://github.com/panel-attack/panel-game/releases/download/love2d-12.0/love-12.0-linux-x86_64.tar.gz" -o /tmp/love.tar.gz && break; sleep $((i * 15)); done
           tar -xzf /tmp/love.tar.gz -C ~/love2d
@@ -199,7 +199,7 @@ jobs:
         timeout-minutes: 10
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
-          for i in 1 2 3; do timeout 240 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y clang luajit zlib1g-dev && break; sleep 10; done
+          for i in 1 2 3; do timeout 240 sudo apt-get $APT update || true; timeout 240 sudo apt-get $APT install -y clang luajit zlib1g-dev && break; sleep 10; done
       - name: Gambit's C checks (the bits, perched blocks, the decisions replayed against the golden)
         timeout-minutes: 15
         # (and again on two workers: the readiness searched on every thread -- every check but the golden, which their search may move)
