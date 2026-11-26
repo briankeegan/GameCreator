@@ -178,8 +178,7 @@ The modes: fill, finish them and switching (the owner).
   comes back.
 - Topped out, there is always some stop.
 - Ready when everything lands, with a plan -- several steps if it takes them.
-- Raise in the opening, to 11 rows (`gambit-rules.json` `raise.to`; the owner: not changed) -- a large first block shown changes nothing:
-  the raise is never cut, the board has its break ready when the block lands (the owner, asked and answered: do not ask again).
+- Raise in the opening, to 11 rows (`gambit-rules.json` `raise.to`; the owner: not changed).
 - **The goal within the floor**: a line that makes the mode's first entry keeps the material floor like any other (a break excepted);
   spending below it cost every mode games (`gambit-since-base.md`).
 - **DAS, always**: a walk is held to the wall and tapped otherwise, on every board -- a dying one too (`core/nodes.h` `TAP_DIES` -1,
