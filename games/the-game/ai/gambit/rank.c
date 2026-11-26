@@ -1352,7 +1352,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (nor against a flatten the window has room for, beside the hold or a line that is none: rank.c flattenFree -- the set-up key below
     // decides between them)
     int flat = flattenFree(sp) && !flattenFree(kp);
-    if (rx != ry && !rises && !asks && !flat) return (cmpKey = __LINE__, (rx - ry));
+    // (nor, with no garbage resting on the board, between two that both leave a break's walk when the next block lands: its break is
+    // pressed out of that, and the keys after it -- survival, the mode, the set-ups -- decide; counted past it, the reserve puts the hold
+    // first whatever the board needs, the board rising to the top with the window in hand)
+    int kept = !decF.under && reserveLeft(x) >= BREAK_WALK && reserveLeft(y) >= BREAK_WALK;
+    if (rx != ry && !rises && !asks && !flat && !kept) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
