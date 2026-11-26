@@ -208,18 +208,15 @@ static int step(Ctx *x, int pi, int kind, int mr, int mc, int32_t frames) {
 // the same children and spends the same clock as one step at a time. With no workers, a batch too small to share, or a swap whose press
 // waits its walk first (pressDelay), the step is made when it is taken.
 // A search run as a job on the threads (search/break.c readyJob) is a thread's whole: its steps are its own, never a batch; and while jobs
-// hold the pool (search.h poolBusy) the decision's own batches go to the side (search.h sideBatch), made by the workers done with theirs.
+// hold the pool (search.h poolBusy) the decision's own steps are made one at a time.
 #define UNBATCHED (-97)
 #define BATCH_CHUNK 256
 static Vec batchTasks, batchRes, batchDead;
 static LOCAL int batchN;
 static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int kind, int n) {
   batchN = 0;
-  // (while jobs hold the pool the batch goes to the side, taken by this thread and every worker done with its job -- search.h sideBatch;
-  // the pool is held and let go only by this thread, so it stays held or free for the whole batch)
-  int busy = __atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE);
-  if (!inJob && pool.nworkers > 0 && n < 8) batSmall += n;
-  if (inJob || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
+  if (!inJob && pool.nworkers > 0) { if (__atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE)) batBusy += n; else if (n < 8) batSmall += n; }
+  if (inJob || __atomic_load_n(&poolBusy, __ATOMIC_ACQUIRE) || pool.nworkers <= 0 || n < 8 || clockOut() || !vreserve(&batchTasks, 4 * n) || !vreserve(&batchRes, n) || !vreserve(&batchDead, n)) return;
   // (played BATCH_CHUNK steps at a time, the clock asked between: the threads play a phase to its end, and a batch of a wide beam's
   // kids -- up to PLAN_KIDS -- is hundreds of ms the decision's thread does not ask the clock in. A step left unplayed stays UNBATCHED,
   // made when it is taken.)
@@ -237,8 +234,7 @@ static void stepBatch(Ctx *x, const int32_t *parents, const int32_t *moves, int 
       batchRes.a[j] = PENDING;
     }
     if (!batchTasks.n) continue;
-    int ok = busy ? sideBatch(x, &batchTasks, batchRes.a, batchDead.a) : runPhase(x, &batchTasks, batchRes.a);
-    if (!ok) { if (busy) batBusy += j1 - j0; for (int j = j0; j < j1; j++) if (batchRes.a[j] == PENDING) batchRes.a[j] = UNBATCHED; break; }
+    if (!runPhase(x, &batchTasks, batchRes.a)) { for (int j = j0; j < j1; j++) if (batchRes.a[j] == PENDING) batchRes.a[j] = UNBATCHED; break; }
     any = 1;
   }
   pool.deadAt = 0;
