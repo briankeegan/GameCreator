@@ -665,6 +665,10 @@ static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !
                                      (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave &&
                                                                           allowAtLanding(w) >= BREAK_WALK / 2)); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < reserveNeed(J); }
+// (THE RESERVE SPENT, AGAINST THE HOLD: with garbage resting on the board, the reserve as it is (spendsReserve); with none, a line that
+// leaves under a break's walk when the next block lands -- what that block's break is pressed out of; the hold is never first only for
+// spending nothing)
+static int reserveSpent(const Judge *J) { return decF.under ? spendsReserve(J) : pressAllowance >= 0 && !ruleNoEnemy && reserveLeft(J) < BREAK_WALK; }
 // (THE BOARD THE NEXT BLOCK LANDS ON, as a line leaves it: under garbage resting on the board, the empty cells under it (judge.c
 // hollowOf) -- the well a slab perches over; with none resting, the stack's tallest column less its lowest (judge.c evenOf) -- the
 // towers a slab lands on. Fewer is flatter; -1 not known)
@@ -1422,7 +1426,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
         // the set-up first only within WALK_EARN actions of the other, or lost NEAR_GAIN frames later; run 4119, 849: a toward walked 20
         // actions over a hold lost on the same frame)
         int nearEnough = lineWalk(m) - lineWalk(h) <= WALK_EARN || (diesAt(m) - diesAt(h) >= NEAR_GAIN && !m->o.dead);
-        if (m->k.nseq && nearEnough && !wastesThree(m) && (!spendsReserve(m) || flattenFree(m)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
+        if (m->k.nseq && nearEnough && !wastesThree(m) && (!reserveSpent(m) || flattenFree(m)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
       // (of two set-ups: the one that lands the board flatter (landShape), then the zip among them, then the more zipped)
@@ -1434,7 +1438,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (then the fewer actions -- against the hold only where the move spends the reserve: a window that keeps a break's walk either way
       // buys nothing by holding)
       int wx = lineWalk(x), wy = lineWalk(y);
-      if (wx != wy && ((!x->hold && !y->hold) || spendsReserve(x->hold ? y : x))) return (cmpKey = __LINE__, (wx - wy));
+      if (wx != wy && ((!x->hold && !y->hold) || reserveSpent(x->hold ? y : x))) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
     // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
