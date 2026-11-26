@@ -2120,3 +2120,9 @@ run of three modes moves by 8 of 84 with nothing changed. By the runner's CPU, o
 648 lost, EPYC 9V74 9.9% of 162, EPYC 7763 14.1% of 198 -- the search is held to the clock, and a slower machine searches less; a run's
 own mix of machines does not explain it alone (4728 lost 4 with 23 of 28 on the 6975P-C, 4705 none with 7 on the 7763). At 6% a game a
 run is 28/28 about one time in five, and every mode twice running asks the games' loss nearer 1%.
+LESS WORK, ON THE LOSING BOARDS: the last 64 boards of the 28 games lost in 4700-4728 (1729 boards) answered by main's code at fixed
+work, single-threaded (`replay`, the work 177k frames a decision is on the wall clock here): at 90k the line chosen is lost 30+ frames
+sooner than at 180k on 102 boards and later on 13, a break taken on 178 against 211; at 360k, 91 sooner against 25 later at 180k, 229
+breaks. Of the 36 breaks only full work takes, 31 are the touch beam cut by the clock after 2-4k nodes where it found them in 5-8k; most
+of the rest are holds where more work finds a survive or a walk toward that lives longer. When a break is there it is mostly found at
+once (0 ms in 1316 of 1605 decisions under garbage); the beam cut in the other 289 is where a slower machine misses.
