@@ -2108,3 +2108,5 @@ THE HEAP IN CHUNKS: the native heap's blocks cut in turn from 512 MB mappings, n
 once a chunk. Measured (`e38c93b1`, with the flatter landing's floor, 4717-4719): switching 26 (seed 143), finish 27 (seed 141), fill 27
 (seed 147) -- 80 of 84; 0 late moves, 0 frames over (slowest 4-5 ms). Every loss a factory board, three of four no break found: the
 slab on one tower over cleared middle columns, or a well a column deep beside the edges' towers.
+Measured, not kept: under resting garbage, of two as hollow the landing with the flatter panels the flatter (`e6a8660e`, 4720-4722):
+switching 24, finish 25, fill 25 -- 74 of 84 against 80; seven factory boards lost, the panels under a slab levelled for nothing.
