@@ -2132,3 +2132,19 @@ a deadline the client's catch-up frames overtook (4729: out 6 ms in, the break j
 near their end keeps them. Measured (`43c8c616`, 4732-4734): switching 27 (seed 143), fill 27 (seed 147), finish 28 (seed 141) -- 82 of
 84; 0 late moves, 0 frames over, 0 divergences in each. Switching lost combo_storm 8 and fill factory 7 at 836, each with the window
 spent before its end.
+Measured, not merged (4735-4754; main 27/27/28 on seeds 143/147/141):
+- A set-up judged on the board at rest while a slab pops (`fd43bf7e`): switching 27, fill 26 -- set-ups during pops 13.7% -> 13.4%,
+  the hold still first there: the flatten's window floor decides before the board it lands.
+- A flatten held to the window at the next landing, not now (`7f9b6b08`): switching 25, factory losing two boards to levels pressed
+  under resting garbage with 4-17 actions left; held to both under resting garbage (`72260dff`): 27, 27, 26 -- set-ups on a clear board
+  8.5% -> 11.4%.
+- The reserve deciding nothing between two lines both keeping two breaks' walks (`65e41494`): finish 28, switching 28 (0 over), fill 25;
+  the same only with no garbage resting (`3f49fad3`): fill 25, and without the board at rest (`2d29d63f`): fill 26.
+- On an uneven board the attack on the tall columns first (`ee03b512`, the owner's: an eight on the tall): finish 26, switching 27 --
+  the key decided 11 of 30825 decisions; an eight in the tallest columns offered a swap ahead (`878925d3`): finish 27.
+- With no garbage resting, the reserve deciding only where a line leaves under a break's walk at the next landing (`953c7ad4`):
+  switching 27, fill 26 -- holds on a clear board 28.5% -> 22.9%; the same for the set-up and fewer-actions keys (`786d27fe`): fill 28
+  (0 over, 0 late), switching 26 (1 over), finish 25.
+The losses across these runs, as they came: the opening raise to 54-60 panels before a large first slab (6 games, before frame 3500);
+the touch beam cut by the clock for hundreds of frames on the slowest machines; combo_storm's window drained by survive lines and the
+mode's lines; boards run down to 9-25 panels. Fill's own spread on seed 147, every run since 4700: 24-28.
