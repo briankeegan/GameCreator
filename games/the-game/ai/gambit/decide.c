@@ -1087,14 +1087,17 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
   cloneBoard(cur, q->b); opFlatN = 0;
   for (int k = 0; k < OP_FLAT && !clockOut(); k++) {
     Question t = *q; t.b = cur; t.narr = 0;
-    int32_t sw = level(&t, NOT_ASKED);
-    if (!sw) break;
+    int32_t sw = level(&t, NOT_ASKED), walk[2], nw = 0;
+    // (with no one swap that flattens, a panel walked two cells -- search/level.c levelWalk)
+    if (!sw && opFlatN + 2 <= OP_FLAT) nw = levelWalk(&t, NOT_ASKED, walk);
+    if (!sw && !nw) break;
     Ctx *x = opTCtx = ctxOf(opTCtx);
     int root = rootOf(x, &t); if (root < 0) break;
-    int nd = step(x, root, MK_SETTLE, CR(sw), CC(sw), 0);
+    int nd = sw ? step(x, root, MK_SETTLE, CR(sw), CC(sw), 0) : step(x, step(x, root, MK_SETTLE, CR(walk[0]), CC(walk[0]), 0), MK_SETTLE, CR(walk[1]), CC(walk[1]), 0);
     if (!liveNode(x, nd)) break;
     const Board *b = ensureBoard(x, nd); if (!b) break;
-    cloneBoard(cur, b); opFlat[opFlatN++] = sw;
+    cloneBoard(cur, b);
+    if (sw) opFlat[opFlatN++] = sw; else { opFlat[opFlatN++] = walk[0]; opFlat[opFlatN++] = walk[1]; }
   }
   cloneBoard(tgt, cur);
   int32_t top0 = fullTop(tgt);
