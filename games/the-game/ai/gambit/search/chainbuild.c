@@ -188,7 +188,8 @@ static int32_t cbDesign(const CbGrid *G0, const CbGrid *start, double ms, CbGrid
   { static LOCAL int32_t ord0[CB_MAXSWAPS + 1];
     if (curV > 0 && t0 && cbOrder(G0, &cur, t0, ord0, CB_MAXSWAPS + 1) > 0) { best = cur; bestV = curV; bestT = t0; bestL = l0; bestS = cbSwapsTo(G0, &cur); } }
   double end = nowMs() + ms, temp = 400;
-  for (int it = 0; ; it++) {
+  for (int it = 0; ; it++) {   // (each try charged as a step: a replay's clock runs on the work done)
+    clockCharge(1);
     if ((it & 63) == 0) { double now = nowMs(); if (now >= end) break; temp = 400 * (end - now) / ms + 5; }
     int r = full[cbNext() % (unsigned)nf], a = 1 + (int)(cbNext() % W), b = 1 + (int)(cbNext() % W);
     if (a == b || cur.g[r][a] == cur.g[r][b]) continue;
@@ -255,7 +256,8 @@ static int cbSeqDesign(const CbGrid *G0, double ms, int maxSw, int32_t *seq, int
     if (vk > bestV && tk) { best = cbSeqKeep; bestV = vk; bestT = tk; bestL = lk; }
   }
   double end = nowMs() + ms, temp = 400;
-  for (int it = 0; ; it++) {
+  for (int it = 0; ; it++) {   // (each try charged as a step: a replay's clock runs on the work done)
+    clockCharge(1);
     if ((it & 63) == 0) { double now = nowMs(); if (now >= end) break; temp = 400 * (end - now) / ms + 5; }
     nx = cur; cbSeqMutate(G0, &nx, maxSw);
     int32_t tt = 0, v; int ll = 0;
