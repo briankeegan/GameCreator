@@ -206,7 +206,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       var seenH = {}, rows = [];
       ds.forEach(function (l) { var f = +l.split(' ')[1]; if (seenH[f]) return; seenH[f] = 1; rows.push({ f: f, land: num(l, 'land'), br: (/ br=(\S+)/.exec(l) || [0, ''])[1], lives: l.indexOf(' v=lives') >= 0 }); });
       rows.sort(function (a, b) { return a.f - b.f; });
-      var pat = held[m[1]] || (held[m[1]] = { survived: { n: 0, held: 0 }, lost: { n: 0, held: 0 } }), side = pat[m[2]];
+      var pat = held[m[1]] || (held[m[1]] = { survived: { n: 0, held: 0 }, lost: { n: 0, held: 0 }, rn: [0, 0, 0], rnDec: 0 }), side = pat[m[2]];
+      ds.forEach(function (l) { var r = / rn=(\d+)\/(\d+)\/(\d+)/.exec(l); if (!r || l.indexOf(' under=1') < 0) return; pat.rnDec++; for (var q = 0; q < 3; q++) pat.rn[q] += +r[q + 1]; });
       for (var hi = 0; hi + 1 < rows.length; hi++) {
         var a = rows[hi], b = rows[hi + 1];
         if (a.land === null || a.land > HELD_NEAR || (b.land !== null && b.land <= a.land + HELD_NEW)) continue;
@@ -615,7 +616,8 @@ if (rule.preKept) console.log('boards searched once: ' + rule.preHit + ' readine
 if (sooner.dec) console.log('the order not one order: ' + beaten.n + ' of ' + sooner.dec + ' decisions played a line beaten head to head by one ranked under it (answer.c beaten=) -- ' + (Object.keys(beaten.by).sort(function (a, b) { return beaten.by[b] - beaten.by[a]; }).map(function (k) { return 'rule ' + k + ' x' + beaten.by[k]; }).join(', ') || '-'));
 if (sooner.dec) console.log('played a line lost sooner than one offered: ' + sooner.n + ' of ' + sooner.dec + ' decisions, by the rule of the order that put it first (rank.c compareJudged) -- ' + (Object.keys(sooner.by).sort(function (a, b) { return sooner.by[b] - sooner.by[a]; }).map(function (k) { return 'rule ' + k + ' x' + sooner.by[k]; }).join(', ') || '-'));
 Object.keys(held).sort().forEach(function (k) { var h = held[k], all = h.survived.n + h.lost.n, got = h.survived.held + h.lost.held; if (!all) return;
-  console.log('the next break held, ' + k + ': ' + got + ' of ' + all + ' landings (' + Math.round(100 * got / all) + '%); games survived ' + h.survived.held + ' of ' + h.survived.n + ', lost ' + h.lost.held + ' of ' + h.lost.n); });
+  console.log('the next break held, ' + k + ': ' + got + ' of ' + all + ' landings (' + Math.round(100 * got / all) + '%); games survived ' + h.survived.held + ' of ' + h.survived.n + ', lost ' + h.lost.held + ' of ' + h.lost.n +
+    (h.rnDec ? '; ready for the next block, asked of each line where none lives (' + h.rnDec + ' decisions under garbage): ' + h.rn[0] + ' a break, ' + h.rn[1] + ' none, ' + h.rn[2] + ' not answered' : '')); });
 if (kept.n) console.log('a life kept: ' + kept.held + ' of ' + kept.n + ' lines that lived, nothing new told, lived on at the next decision (' + Math.round(100 * kept.held / kept.n) + '%)');
 if (rule.rdyAsked) console.log('kept plan: ' + rule.rdyHit + ' of ' + rule.rdyAsked + ' readiness checks answered by a break already found (' + Math.round(100 * rule.rdyHit / rule.rdyAsked) + '%)');
 if (rule.keptOff || rule.routeOff || rule.wayOff) console.log('intentions: ' + (rule.keptOff || 0) + ' kept lines offered again, ' + (rule.keptPlayed || 0) + ' played; routes: ' + (rule.routeOff || 0) + ' judged, ' + (rule.routePlayed || 0) + ' played; on the way: ' + (rule.wayOff || 0) + ' offered, ' + (rule.wayPlayed || 0) + ' played');
