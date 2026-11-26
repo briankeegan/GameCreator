@@ -2148,3 +2148,19 @@ Measured, not merged (4735-4754; main 27/27/28 on seeds 143/147/141):
 The losses across these runs, as they came: the opening raise to 54-60 panels before a large first slab (6 games, before frame 3500);
 the touch beam cut by the clock for hundreds of frames on the slowest machines; combo_storm's window drained by survive lines and the
 mode's lines; boards run down to 9-25 panels. Fill's own spread on seed 147, every run since 4700: 24-28.
+THE TOWER: garbage rests on the tallest columns under it. Rows of three cross the middle columns three times as often as the edges, so
+clears left to themselves leave the edges standing (under garbage, factory's edge columns a row taller than its middle on average,
+large_garbage's half a row); combo_storm's staggered pieces all cover the middle, and a stack of them converts into a pyramid there --
+each column gains exactly its garbage cells. The block then rests on a column or two whose panels make the fewest matches, and no break
+is in reach. Under the training patterns every line is lost on the bot's own reckoning on 99% of decisions, so the order ranks the
+later loss, and a three that breaks nothing outlives flattening.
+THE FLATNESS FLOOR (the owner's: it prefers not dying, and flatness -- both floors; `rank.c`, `judge.c` towerOf): of two that do not live,
+lost alike or the flatter no sooner, the line that leaves the tallest column of panels 4 rows or more over the lowest goes after one that
+leaves it under, and of two both over, the one 2 rows higher goes after -- where the flatter breaks no less garbage, stands a break's time,
+and is the hold, walks 6 actions or fewer, or keeps a break's walk at the next landing. With it: an eight in the tallest columns offered a
+swap ahead (`propose.c` twinRank); a break in progress, no worse than when played, kept over a line breaking less; the opener's level by a
+two-cell walk where no one swap flattens (`search/level.c` levelWalk). Measured (`dbc07add`, 4766-4768): finish 28 (seed 141), fill 27
+(seed 147), switching 27 (seed 143) -- 82 of 84; 0 late moves, 0 frames over, 0 divergences in each. The floor decided 2% of decisions
+under garbage; the boards 4 rows uneven or more stayed where they were (combo_storm 64%, factory 46%, large_garbage 21%).
+Every run now reports, by pattern: the next break held at each landing (combo_storm 80%, factory 66%, large_garbage 71% in 4766), each
+line's readiness for the next block (`rn=`: nearly all answered, nearly all no break -- the board, not the clock), and the share towered.
