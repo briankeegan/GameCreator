@@ -989,7 +989,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. NO DEEP WELL UNDER THE GARBAGE (the owner: flatten, leave the board where moves are easy): under garbage, of two that do not live,
   // where either leaves DEEP_WELL or more empty cells under the garbage on the board it ends on (judge.c hollowOf), the one that leaves
   // WELL_STEP fewer goes first -- a well not dug that deep, or once that deep not dug deeper -- where its board stands a break's time
-  // and is lost less than a break's time before the deeper one's, and never a line that breaks none put before one that breaks. The
+  // and the two are lost alike (or it is lost no sooner), and never a line that breaks none put before one that breaks. The
   // well is dug under garbage already resting, and once that deep the board is lost within 600 frames four times as often (runs
   // 4673-4684, factory and large_garbage: 1.4% of boards, 0.35% under it)
   #define DEEP_WELL 12
@@ -998,7 +998,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int32_t hx = x->o.j.hollow, hy = y->o.j.hollow;
     if (hx >= 0 && hy >= 0) { int dx = hx > hy, dy = hy > hx;
       if ((hx >= DEEP_WELL || hy >= DEEP_WELL) && iabs(hx - hy) >= WELL_STEP) { const Judge *s = dx ? y : x, *d = dx ? x : y;
-        if (!(d->apBroke > 0 && !(s->apBroke > 0)) && diesAt(s) >= rankSave && diesAt(s) < 1e299 && diesAt(d) - diesAt(s) < rankSave)
+        if (!(d->apBroke > 0 && !(s->apBroke > 0)) && diesAt(s) >= rankSave && diesAt(s) < 1e299 && (lostAlike(s, d) || lostOf(s) >= lostOf(d)))
           return (cmpKey = __LINE__, (dx ? 1 : -1)); } }
   }
   // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
