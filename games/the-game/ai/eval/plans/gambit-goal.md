@@ -2126,3 +2126,8 @@ sooner than at 180k on 102 boards and later on 13, a break taken on 178 against 
 breaks. Of the 36 breaks only full work takes, 31 are the touch beam cut by the clock after 2-4k nodes where it found them in 5-8k; most
 of the rest are holds where more work finds a survive or a walk toward that lives longer. When a break is there it is mostly found at
 once (0 ms in 1316 of 1605 decisions under garbage); the beam cut in the other 289 is where a slower machine misses.
+THE DIVE: each level of the touch beam, its first 30 lines played on along their own board's nearest break before the level is grown.
+On those 1729 boards at a decision's work, 224 breaks taken where 212 were (20 boards lost later, 8 sooner); at half the work 184 where
+178. Measured (`ace9dcb6`, 4729-4731): switching 26 (seed 143), fill 28 (seed 147, 0 late, 0 over), finish 26 (seed 141) -- 80 of 84;
+factory lost one board of 24, combo_storm three, each with the window spent before the end; 2 late in switching, one a decision out
+by its frame 6 ms in while its break job kept a 178 ms share.
