@@ -1037,6 +1037,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (kx != ky) { const Judge *k = kx ? x : y, *d = kx ? y : x;
       int begun = d->carried && !d->hold && d->apBroke > 0;
       int ok = !begun && (k->hold || (imax(0, k->apBroke) >= imax(0, d->apBroke) && (k->apBroke > 0 || (!clears(k) && !(k->o.j.clearedPanels > 0)))));
+      // (nor over a break in hand that outlives the one keeping the window: the window is kept for a break, and this one is here)
+      if (d->apBroke > 0 && !(k->apBroke > 0) && diesAt(d) >= diesAt(k)) ok = 0;
       if (ok && diesAt(k) >= rankSave && diesAt(k) < 1e299) return (cmpKey = __LINE__, (kx ? -1 : 1)); }
   }
   // 1. NO DEEP WELL UNDER THE GARBAGE (the owner: flatten, leave the board where moves are easy): under garbage, of two that do not live,
