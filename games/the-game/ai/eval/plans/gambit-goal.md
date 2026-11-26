@@ -2082,3 +2082,12 @@ Measured (`9b2a53e5`, the begun break alone, 4700): finish 25 (seed 141), 1 late
 the window, an eight-swap break carried from 32 actions to 6. (`45da3ee6`, both, 4701-4703): finish 28 (seed 141), switching 26 (seed
 143, 1 late; combo_storm 1 and 6 lost to the window, a six-swap break from 16 actions and a level and a toward of five and seven swaps
 from 13), fill 28 (seed 147); 0 frames over, 0 divergences. The zip under garbage 4.53 against 3.98.
+THE PLAN NO WORSE: the line in progress is kept over a line found later wherever it lives or is lost no sooner than it was judged lost
+when played, told something since or not (rank.c carriedSame); it was kept only where nothing had been told and its loss fell on the
+very frame judged then. Measured (`bedb953b`, 4704): switching 26 (seed 143), 0 late; the input spent for nothing 12.4%.
+THE FLATTEN OUT OF THE SURPLUS: a flatten between moves is pressed only out of what the window holds over a break's walk now as well as
+at the next landing -- a landing far off counts the presses that leave the window by then, and six levels in a row took factory 1's
+window from 18 to 4 (4704, lost at 8203). Measured (`94c1f98c`, 4705-4707): switching 28 (seed 143), finish 28 (seed 141), fill 28
+(seed 147); 0 late moves, 0 divergences. Fill is 28 twice running (4703, 4707) with 0 frames over. Frames over the think budget: 1
+(4705) and 3 (4706), each the board's load in the game thread, run by the interpreter -- 93 blocks queued (telegraph 5.5 ms, load 4.6),
+and a board of 23-24 rows (its panels 7.0-10.6 ms); the frame loop under 0.1 ms in each.
