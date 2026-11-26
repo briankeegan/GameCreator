@@ -599,7 +599,7 @@ static int32_t carryShort;   // (the swaps of the line in progress let go past a
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
-  ideaAims = &R->guides; ideasAsks = 0; rankHold = 0;
+  ideaAims = &R->guides; ideasAsks = 0; rankHold = 0; flatHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
   double t1 = nowMs();
@@ -671,7 +671,7 @@ static int ranked(const Read *R, const Found *S) {
   Judge *H = &theJudged[n];
   holdCand(R, 0, H);
   if (rescue) { clockDue = rescueDue; clockShare = rescueShare; rescues++; }
-  order[n] = H; n++;
+  order[n] = H; n++; flatHold = H;
   for (int i = 0; i < n; i++) if (order[i] != H && digWaits(order[i], H, C2.reaction + 1)) order[i]->wait = 1;
   breakOffered = 0; for (int i = 0; i < n && !breakOffered; i++) breakOffered = order[i]->apBroke > 0;
   sortJudged(order, n);

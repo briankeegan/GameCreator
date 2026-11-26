@@ -658,14 +658,27 @@ static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !
                                      (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave &&
                                                                           allowAtLanding(w) >= BREAK_WALK / 2)); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < reserveNeed(J); }
-// (A FLATTEN BETWEEN MOVES -- the owner: it had time to set things up while it waited and did nothing; flatter, it would not have to move
+// (THE BOARD THE NEXT BLOCK LANDS ON, as a line leaves it: under garbage resting on the board, the empty cells under it (judge.c
+// hollowOf) -- the well a slab perches over; with none resting, the stack's tallest column less its lowest (judge.c evenOf) -- the
+// towers a slab lands on. Fewer is flatter; -1 not known)
+static int32_t landShape(const Judge *J) { return decF.under ? J->o.j.hollow : J->o.j.even; }
+// (A LINE THAT LANDS THE BOARD BETTER THAN THE HOLD: flatter (landShape), or as flat and more zipped -- its colours a swap apart, not
+// touching (judge.c spreadOf). flatHold: the decision's hold, decide.c ranked)
+static const Judge *flatHold;
+static int landsBetter(const Judge *J) {
+  const Judge *H = flatHold;
+  if (!H || H == J || J->hold || H->o.dead) return 0;
+  int32_t sj = landShape(J), sh = landShape(H);
+  if (sj < 0 || sh < 0) return 0;
+  return sj < sh || (sj == sh && J->o.j.spread > H->o.j.spread);
+}
+// (A FLATTEN BETWEEN MOVES -- the owner: do it between moves, the board landing flatter and zipped; flatter, it would not have to move
 // so far to get things done: a set-up of any kind -- a level, a zip, a lineup -- that walks no more than WALK_EARN actions, wastes no
-// three and leaves the input allowance FLAT_KEEP at the next landing: the next break's walk and half another kept, what is over it
-// flattens the board the next break is walked on)
-#define FLAT_KEEP (3 * BREAK_WALK / 2)
+// three, leaves the input allowance a break's walk (BREAK_WALK) at the next landing, and lands the board better than the hold does
+// (landsBetter))
 static int flattenFree(const Judge *J) {
   return setupKind(J) && !J->o.dead && J->k.nseq > 0 && pressAllowance >= 0 && lineWalk(J) <= WALK_EARN &&
-         allowAtLanding(lineWalk(J)) >= FLAT_KEEP && !wastesThree(J);
+         allowAtLanding(lineWalk(J)) >= BREAK_WALK && !wastesThree(J) && landsBetter(J);
 }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
@@ -1400,7 +1413,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
         if (m->k.nseq && nearEnough && !wastesThree(m) && (!spendsReserve(m) || flattenFree(m)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
+      // (of two set-ups: the one that lands the board flatter (landShape), then the zip among them, then the more zipped)
+      if (sx && sy) { int32_t fx = landShape(x), fy = landShape(y); if (fx >= 0 && fy >= 0 && fx != fy) return (cmpKey = __LINE__, (fx < fy ? -1 : 1)); }
       if (sx && sy && zipOver(x, y)) return (cmpKey = __LINE__, zipOver(x, y));
+      if (sx && sy && x->o.j.spread != y->o.j.spread) return (cmpKey = __LINE__, (x->o.j.spread > y->o.j.spread ? -1 : 1));
       // (of two set-ups: the one that leaves more crossed seams -- a swap finishing two colours at once, the players' 8+ combo)
       if (sx && sy && x->o.j.seams != y->o.j.seams) return (cmpKey = __LINE__, (x->o.j.seams > y->o.j.seams ? -1 : 1));
       // (then the fewer actions -- against the hold only where the move spends the reserve: a window that keeps a break's walk either way
