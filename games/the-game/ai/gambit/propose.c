@@ -441,7 +441,7 @@ static int twinThreeAt(int32_t g[][W + 2], int top, int r, int c) {
   n = 1; for (int y = r - 1; y >= 1 && g[y][c] == k; y--) n++; for (int y = r + 1; y <= top && g[y][c] == k; y++) n++;
   return n >= 3;
 }
-typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1, hx, hy, touch, tall; } Twin;   // (hx, hy: the arms -- X at c-2, c-1 and Y at c+2, c+3 of the trigger row -- 2 or 0; a0 > a1, b0 > b1: no column run; tall: twinScan)
+typedef struct { int32_t cost, c, r, X, Y, a0, a1, b0, b1, hx, hy, touch; } Twin;   // (hx, hy: the arms -- X at c-2, c-1 and Y at c+2, c+3 of the trigger row -- 2 or 0; a0 > a1, b0 > b1: no column run)
 // (the panels an eight clears: each side its column run and its arm, the trigger cell once)
 static int twinSize(const Twin *t) { return (t->a1 >= t->a0 ? t->a1 - t->a0 + 1 : 1) + t->hx + (t->b1 >= t->b0 ? t->b1 - t->b0 + 1 : 1) + t->hy; }
 // (A ROW SORTED TO SEVERAL COLUMNS: each target column's colour walked in from the nearest panel of it that need not cross a column already
@@ -501,10 +501,8 @@ static int twinTouches(int32_t g[][W + 2], const Twin *t) {
   return 0;
 }
 // (the order the eights are kept and offered in: the fewest swaps, then the one that breaks garbage -- a nearer eight is never put out of
-// the offer by a farther one that breaks: set 86 combo_storm 1, an eight a swap away left unoffered 60 frames for three six swaps off.
-// And ON THE TALL -- the owner: flatten by making the combos where it is tall, an eight on a tall above all: on a stack uneven by two
-// rows or more, an eight in its tallest columns is worth a swap -- it takes the tower down as it attacks)
-static int twinRank(const Twin *t) { return t->cost * 2 - (t->touch ? 1 : 0) - (t->tall ? 2 : 0); }
+// the offer by a farther one that breaks: set 86 combo_storm 1, an eight a swap away left unoffered 60 frames for three six swaps off)
+static int twinRank(const Twin *t) { return t->cost * 2 - (t->touch ? 1 : 0); }
 static int twinMin = 8;   // (the least an eight's scan keeps: 8; sixLines asks 6)
 // (THE LEAST ONLY: twinCostOn asks the fewest swaps alone -- a sort that cannot come in under the fewest found is not costed further, and
 // the scan's least is in twinLeastLo)
@@ -528,10 +526,6 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
   for (int r = 1; r <= top; r++) { any[r] = 0; for (int k = 0; k < 8; k++) has[r][k] = 0;
     for (int c = 1; c <= W; c++) { ok[r][c] = g[r][c] > 0 && g[r][c] < 8 && b->p[r][c].f[STATE] == NORMAL && (r == 1 || (g[r - 1][c] != 0 && b->p[r - 1][c].f[STATE] == NORMAL)); any[r] += ok[r][c]; if (ok[r][c]) has[r][g[r][c]]++; } }
   if (rows) { *rows = 0; for (int r = 1; r <= top; r++) *rows += any[r] == W; }
-  // (each column's top panel, and whether the stack is uneven by two rows or more: an eight in its tallest columns is on the tall -- twinRank)
-  int colH[W + 2] = { 0 }, hmax = 0, hmin = 1 << 20;
-  for (int c = 1; c <= W; c++) { for (int r = 1; r <= top; r++) if (g[r][c] > 0) colH[c] = r; hmax = imax(hmax, colH[c]); hmin = imin(hmin, colH[c]); }
-  int uneven = hmax - hmin >= 2;
   int nb = 0;
   // (a side row's cost depends on the column, the two colours and which of them it holds -- not on the trigger row or the runs' lengths:
   // asked once a column, kept by colour pair and row; -2 not asked yet)
@@ -554,7 +548,6 @@ static int twinScan(Board *b, int32_t g[][W + 2], uint8_t ok[][W + 2], int *topO
           int b1 = lb ? b0 + lb - 1 : r;
           if (lb && (b0 < 1 || b1 > top || r - b0 >= 3 || b1 - r >= 3)) continue;
           Twin t = { 0, c, r, X, Y, a0, a1, b0, b1, hx, hy };
-          t.tall = uneven && imax(colH[c], colH[c + 1]) >= hmax - 1;
           if (twinSize(&t) < twinMin) continue;
           int cost = tc, okAll = 1, qlo = imin(la ? a0 : r, lb ? b0 : r), qhi = imax(la ? a1 : r, lb ? b1 : r);
           for (int q = qlo; q <= qhi && okAll; q++) {

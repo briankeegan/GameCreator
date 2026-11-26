@@ -567,19 +567,6 @@ static int cutsShort(const Judge *J) {
   return aloneChain > 1 && J->apWhole < aloneChain && ownChainAsked(aloneChain);
 }
 #define FLAT_ROWS 2
-#define EXCESS_STEP 3   // (cells over the lowest column, of two as flat by the tallest less the lowest, that make one the flatter: half a row)
-// (ON THE TALL -- the owner: flatten by making the combos where it is tall, an eight on the tall columns above all: the board asked is
-// uneven by FLAT_ROWS or more, and of the two lines x leaves the flatter stack -- its tallest less its lowest lower, or as low and
-// EXCESS_STEP fewer cells standing over the lowest column. 1 x flatter, -1 y, 0 neither)
-static int onTall(const Judge *x, const Judge *y) {
-  if (!decQ.b || evenOf(decQ.b) < FLAT_ROWS) return 0;
-  int32_t ex = x->o.j.even, ey = y->o.j.even;
-  if (ex < 0 || ey < 0) return 0;
-  if (ex != ey) return ex < ey ? 1 : -1;
-  int32_t sx = x->o.j.excess, sy = y->o.j.excess;
-  if (sx < 0 || sy < 0 || iabs(sx - sy) < EXCESS_STEP) return 0;
-  return sx < sy ? 1 : -1;
-}
 #define BREAK_WALK 20   // the actions a break's line is pressed in, as the allowance keeps them (an estimate: a few swaps and their walks)
 static int downtime(void) {
   return !decF.under && (decF.next == NOT_ASKED || decF.next > 2 * rankSave) && decQ.b->chainCounter < 2 &&
@@ -665,10 +652,6 @@ static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !
                                      (allowAtLanding(w) >= BREAK_WALK || (rankHold && !rankHold->o.dead && !rankHold->o.lives && diesAt(rankHold) < rankSave &&
                                                                           allowAtLanding(w) >= BREAK_WALK / 2)); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < reserveNeed(J); }
-// (THE RESERVE SPENT, AGAINST THE HOLD: with garbage resting on the board, the reserve as it is (spendsReserve); with none, a line that
-// leaves under a break's walk when the next block lands -- what that block's break is pressed out of; the hold is never first only for
-// spending nothing)
-static int reserveSpent(const Judge *J) { return decF.under ? spendsReserve(J) : pressAllowance >= 0 && !ruleNoEnemy && reserveLeft(J) < BREAK_WALK; }
 // (THE BOARD THE NEXT BLOCK LANDS ON, as a line leaves it: under garbage resting on the board, the empty cells under it (judge.c
 // hollowOf) -- the well a slab perches over; with none resting, the stack's tallest column less its lowest (judge.c evenOf) -- the
 // towers a slab lands on. Fewer is flatter; -1 not known)
@@ -1356,11 +1339,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (nor against a flatten the window has room for, beside the hold or a line that is none: rank.c flattenFree -- the set-up key below
     // decides between them)
     int flat = flattenFree(sp) && !flattenFree(kp);
-    // (nor, with no garbage resting on the board, between two that both leave a break's walk when the next block lands: its break is
-    // pressed out of that, and the keys after it -- survival, the mode, the set-ups -- decide; counted past it, the reserve puts the hold
-    // first whatever the board needs, the board rising to the top with the window in hand)
-    int kept = !decF.under && reserveLeft(x) >= BREAK_WALK && reserveLeft(y) >= BREAK_WALK;
-    if (rx != ry && !rises && !asks && !flat && !kept) return (cmpKey = __LINE__, (rx - ry));
+    if (rx != ry && !rises && !asks && !flat) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
@@ -1426,7 +1405,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
         // the set-up first only within WALK_EARN actions of the other, or lost NEAR_GAIN frames later; run 4119, 849: a toward walked 20
         // actions over a hold lost on the same frame)
         int nearEnough = lineWalk(m) - lineWalk(h) <= WALK_EARN || (diesAt(m) - diesAt(h) >= NEAR_GAIN && !m->o.dead);
-        if (m->k.nseq && nearEnough && !wastesThree(m) && (!reserveSpent(m) || flattenFree(m)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
+        if (m->k.nseq && nearEnough && !wastesThree(m) && (!spendsReserve(m) || flattenFree(m)) && (!chaining || (chainReach(m) >= chainReach(h) && !cutsShort(m))))
           return (cmpKey = __LINE__, (sx ? -1 : 1));
       }
       // (of two set-ups: the one that lands the board flatter (landShape), then the zip among them, then the more zipped)
@@ -1438,7 +1417,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
       // (then the fewer actions -- against the hold only where the move spends the reserve: a window that keeps a break's walk either way
       // buys nothing by holding)
       int wx = lineWalk(x), wy = lineWalk(y);
-      if (wx != wy && ((!x->hold && !y->hold) || reserveSpent(x->hold ? y : x))) return (cmpKey = __LINE__, (wx - wy));
+      if (wx != wy && ((!x->hold && !y->hold) || spendsReserve(x->hold ? y : x))) return (cmpKey = __LINE__, (wx - wy));
     }
     // (of two that break: one that leaves a break in reach once the next block lands, where neither lives -- a dig runs dry on the
     // break it did not keep; then the one that breaks more garbage for each action it walks -- the window pays for every cell walked)
@@ -1628,10 +1607,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // is in reach and the rows it is sorted from are made; only between lines meeting the same entry, and where it is lost no sooner or alike
   if (finishAsked() && (x->met >= 0 ? x->met : MAXAIMS) == (y->met >= 0 ? y->met : MAXAIMS)) {
     const Judge *fb = 0; int fk = 0;
-    // (on an uneven board the combo on the tall columns first: it flattens as it attacks -- onTall)
-    int tall = onTall(x, y);
-    if (tall) { fb = tall > 0 ? x : y; fk = __LINE__; }
-    else if (x->o.j.seams != y->o.j.seams) { fb = x->o.j.seams > y->o.j.seams ? x : y; fk = __LINE__; }
+    if (x->o.j.seams != y->o.j.seams) { fb = x->o.j.seams > y->o.j.seams ? x : y; fk = __LINE__; }
     else if (x->o.j.even >= 0 && y->o.j.even >= 0 && iabs(x->o.j.even - y->o.j.even) >= FLAT_ROWS) { fb = x->o.j.even < y->o.j.even ? x : y; fk = __LINE__; }
     else if (x->o.j.spread != y->o.j.spread) { fb = x->o.j.spread > y->o.j.spread ? x : y; fk = __LINE__; }
     if (fb) { const Judge *ob = fb == x ? y : x;
@@ -1643,11 +1619,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // 8a. MORE THROWN (several ideas at once): of two that live and meet the same entry, the one that throws more blocks, every attack
     // its own -- two ideas fired before one. (Not of two that die: there the panels a line spends are the next break's material.)
     if (ax < MAXAIMS && lx) { int tx = thrownOf(x), ty = thrownOf(y); if (tx != ty) return (cmpKey = __LINE__, (ty - tx)); }
-    // 8a'. ON THE TALL (the owner: flatten by making the attack where it is tall): of two that meet the same entry and throw alike, on an
-    // uneven board, the one that leaves the flatter stack (onTall) -- where it lives, or neither does and it is lost no sooner
-    if (ax < MAXAIMS) { int tall = onTall(x, y);
-      if (tall) { const Judge *fb = tall > 0 ? x : y, *ob = tall > 0 ? y : x;
-        if (fb->o.lives || (!ob->o.lives && diesAt(fb) >= diesAt(ob))) return (cmpKey = __LINE__, (tall > 0 ? -1 : 1)); } }
     // 8b. MORE DONE ON THE WAY: of two that meet the same entry, one that presses every swap of the other and more that helps -- work
     // on its way (propose.c wayLines), a second line made one with it (decide.c routeJudged), a second idea fired (search/plan.c pair)
     // -- first: the keys above found it no worse, and every step the cursor takes does something rather than only going there
