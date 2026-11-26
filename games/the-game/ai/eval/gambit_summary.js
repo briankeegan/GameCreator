@@ -58,6 +58,9 @@ var moves = { clear: 0, setup: 0, break: 0, none: 0, open: 0, cells: 0, together
 var several = { pairOff: 0, pairPlayed: 0, thrownLines: 0, thrown: 0, thrown2: 0, ideasN: 0, ideas: 0, ideas2: 0 };
 var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over: 0, worst: 0, dropped: 0, late: 0, lateWorst: 0, pastFrame: 0, games: 0, decisions: 0, out: 0, diverged: 0, divergedGames: 0, behind: 0, behindGames: 0, behindWorst: 0, starved: 0, inHand: 0, guarded: 0, refused: 0 };
 var kept = { n: 0, held: 0 };
+// (the next break held at each landing, by pattern and outcome: the floor is every landing -- HELD_NEAR the frames off a landing is read
+// at, HELD_NEW how much later the next block must come for the last to have landed)
+var held = {}, HELD_NEAR = 20, HELD_NEW = 30;
 // LOSSES BY THE PIECE THAT FAILED: a lost game read from its last line that broke garbage to its end (the dead phase) by the judge's
 // categories (cat=, plans/gambit-next.md): order -- a category better than the line played's passed over; window; search -- no
 // line better than buys time offered (reach where the break search was cut by the clock, else board); press -- something better was
@@ -197,6 +200,19 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
       if (+da.split(' ')[1] + num(da, 'land') !== +db.split(' ')[1] + num(db, 'land') || num(da, 'qk') !== num(db, 'qk')) continue;
       kept.n++; if (num(db, 'live') > 0) kept.held++;
     }
+    // (THE NEXT BREAK HELD: each landing -- a decision with the next block HELD_NEAR frames off or less, the next decision's block more
+    // than HELD_NEW frames later than it, so the block came down -- and whether that decision held a break (br=1...) or a line that lives)
+    (function () {
+      var seenH = {}, rows = [];
+      ds.forEach(function (l) { var f = +l.split(' ')[1]; if (seenH[f]) return; seenH[f] = 1; rows.push({ f: f, land: num(l, 'land'), br: (/ br=(\S+)/.exec(l) || [0, ''])[1], lives: l.indexOf(' v=lives') >= 0 }); });
+      rows.sort(function (a, b) { return a.f - b.f; });
+      var pat = held[m[1]] || (held[m[1]] = { survived: { n: 0, held: 0 }, lost: { n: 0, held: 0 } }), side = pat[m[2]];
+      for (var hi = 0; hi + 1 < rows.length; hi++) {
+        var a = rows[hi], b = rows[hi + 1];
+        if (a.land === null || a.land > HELD_NEAR || (b.land !== null && b.land <= a.land + HELD_NEW)) continue;
+        side.n++; if (a.br.charAt(0) === '1' || a.lives) side.held++;
+      }
+    })();
     // (THE LINE PUT DOWN WITH NOTHING NEW TOLD: a decision that put the line in progress down for another (carryBy), its garbage the
     // same as the decision before's -- the next block landing on the same frame, as many queued -- so the engine's prediction was all
     // either had: the one trajectory judged two ways)
@@ -598,6 +614,8 @@ if (rule.n) console.log('the one rule: of ' + rule.n + ' lines played that met a
 if (rule.preKept) console.log('boards searched once: ' + rule.preHit + ' readiness checks answered by a board this decision had searched already (or a worker), of ' + rule.preKept + ' boards kept');
 if (sooner.dec) console.log('the order not one order: ' + beaten.n + ' of ' + sooner.dec + ' decisions played a line beaten head to head by one ranked under it (answer.c beaten=) -- ' + (Object.keys(beaten.by).sort(function (a, b) { return beaten.by[b] - beaten.by[a]; }).map(function (k) { return 'rule ' + k + ' x' + beaten.by[k]; }).join(', ') || '-'));
 if (sooner.dec) console.log('played a line lost sooner than one offered: ' + sooner.n + ' of ' + sooner.dec + ' decisions, by the rule of the order that put it first (rank.c compareJudged) -- ' + (Object.keys(sooner.by).sort(function (a, b) { return sooner.by[b] - sooner.by[a]; }).map(function (k) { return 'rule ' + k + ' x' + sooner.by[k]; }).join(', ') || '-'));
+Object.keys(held).sort().forEach(function (k) { var h = held[k], all = h.survived.n + h.lost.n, got = h.survived.held + h.lost.held; if (!all) return;
+  console.log('the next break held, ' + k + ': ' + got + ' of ' + all + ' landings (' + Math.round(100 * got / all) + '%); games survived ' + h.survived.held + ' of ' + h.survived.n + ', lost ' + h.lost.held + ' of ' + h.lost.n); });
 if (kept.n) console.log('a life kept: ' + kept.held + ' of ' + kept.n + ' lines that lived, nothing new told, lived on at the next decision (' + Math.round(100 * kept.held / kept.n) + '%)');
 if (rule.rdyAsked) console.log('kept plan: ' + rule.rdyHit + ' of ' + rule.rdyAsked + ' readiness checks answered by a break already found (' + Math.round(100 * rule.rdyHit / rule.rdyAsked) + '%)');
 if (rule.keptOff || rule.routeOff || rule.wayOff) console.log('intentions: ' + (rule.keptOff || 0) + ' kept lines offered again, ' + (rule.keptPlayed || 0) + ' played; routes: ' + (rule.routeOff || 0) + ' judged, ' + (rule.routePlayed || 0) + ' played; on the way: ' + (rule.wayOff || 0) + ' offered, ' + (rule.wayPlayed || 0) + ' played');
