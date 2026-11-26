@@ -996,7 +996,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int kx = ax >= BREAK_WALK / 2, ky = ay >= BREAK_WALK / 2;
     if (!kx && !ky && (ax - ay >= FLOOR_STEP || ay - ax >= FLOOR_STEP)) { kx = ax > ay; ky = !kx; }
     // (never over a break begun -- the owner: a break begun is finished: the line in progress that breaks garbage has its walk pressed
-    // already, and the hold that keeps the window throws that walk away with the garbage still on the board; runs 4697-4699, 1494 holds
+    // already, and the hold that keeps the window throws that walk away with the garbage still on the board; runs 4697-4699, 240 holds
     // put before a break in progress, each break's board lost 60 frames or more later than the hold's)
     if (kx != ky) { const Judge *k = kx ? x : y, *d = kx ? y : x;
       int begun = d->carried && !d->hold && d->apBroke > 0;
