@@ -74,6 +74,7 @@ typedef struct {
   int32_t preLast;              // the node the line's last swap was pressed from, in judgeCtx (-1 none)
   int32_t pressedAt[MAXLINE];   // each swap pressed: the row and column it was pressed at (row * 8 + column)
   int32_t even;                 // the board it ends on: its tallest column less its lowest, in rows (evenOf; -1 not known)
+  int32_t hollow;               // and its empty cells under each column's highest garbage (hollowOf; -1 not known)
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
 } Judged;
@@ -319,6 +320,16 @@ static int32_t evenOf(const Board *b) {
     if (h > hi) hi = h; if (h < lo) lo = h;
   }
   return hi - lo;
+}
+// HOW HOLLOW A BOARD IS UNDER ITS GARBAGE: the empty cells under each column's highest garbage, as search/bits.c bitsShape counts them
+static int32_t hollowOf(const Board *b) {
+  int32_t h = 0;
+  for (int c = 1; c <= W; c++) {
+    int hg = 0;
+    for (int r = 1; r < b->nrows; r++) if (gridCell(b, r, c) < 0) hg = r;
+    for (int r = 1; r < hg; r++) if (gridCell(b, r, c) == 0) h++;
+  }
+  return h;
 }
 // HOW A BOARD'S COLOURS ARE SPREAD (plans/gambit-combos.md, the players' stacks): of its panels at rest, the pairs of a colour a swap
 // from a match -- one cell apart in a column or a row with another colour between, or on a diagonal -- less the pairs of a colour
@@ -638,7 +649,7 @@ static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const Jud
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
-  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; }
+  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->hollow = eb ? hollowOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));
