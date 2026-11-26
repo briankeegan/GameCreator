@@ -2071,3 +2071,14 @@ divergences. Finish lost factory 1 and large_garbage 1, both near frame 15,100: 
 break found (the search cut by the clock in 49 of 63 and 10 of 21 decisions), the panels 52 to 18 and 21 to 9 spent on stop-time
 clears that broke nothing, factory 1's 27 slabs held back behind them. Switching lost large_garbage 6 at 3401: the opener's chains
 under the slab took the window to 3 and the panels 54 to 15 by frame 1400.
+A BREAK BEGUN IS FINISHED: the window's floor put the hold before the line in progress that breaks garbage where that line left the
+window under half a break's walk at the next landing -- 240 times in 4697-4699, each break's board lost 60 frames or more later than
+the hold's, its walk pressed for nothing. It no longer puts such a line after any other. FLATTEN BETWEEN MOVES: under garbage the stall
+cut let a set-up through only with 30 actions left at the next landing, and the board held 27,969 times in 4697-4699 with a set-up cut
+in 23,378 of them, the window then 10-29. A set-up now passes where it walks no more than WALK_EARN, keeps a break's walk at the next
+landing, wastes no three and lands the board better than the hold: flatter (the empty cells under resting garbage, else the stack's
+tallest column less its lowest), or as flat and more zipped. Of two set-ups the flatter goes first, then the zip, then the more zipped.
+Measured (`9b2a53e5`, the begun break alone, 4700): finish 25 (seed 141), 1 late -- holds over a break in progress 0; factory 3 lost to
+the window, an eight-swap break carried from 32 actions to 6. (`45da3ee6`, both, 4701-4703): finish 28 (seed 141), switching 26 (seed
+143, 1 late; combo_storm 1 and 6 lost to the window, a six-swap break from 16 actions and a level and a toward of five and seven swaps
+from 13), fill 28 (seed 147); 0 frames over, 0 divergences. The zip under garbage 4.53 against 3.98.
