@@ -2114,3 +2114,9 @@ THE HEAP IN CHUNKS TAKEN BACK: with it, 80 (4717-4719), 74 (4720-4722) and 74 on
 fill 25, 1 late twice); without it, on the same play, 84 (4705-4707), 81 (4711-4713) and 81 (4714-4716). Not yet known why -- most
 likely whole mappings of 512 MB backed by huge pages, a board's pages released inside one splitting it, the search threads slowed.
 The heap takes its blocks from calloc again; the slow frame's log keeps the heap and the pages released.
+THE SAME PLAY, RUN AGAIN: main's play (434f557d's rules) scored 84 (4705-4707), 81 (4711-4713) and 76 (`ac3d2b2c`, 4726-4728:
+switching 27, finish 25, fill 24) -- the heap in chunks did not make 74 and 80 on its own, and taking it back did not bring 84 back. One
+run of three modes moves by 8 of 84 with nothing changed. By the runner's CPU, over every logged game since 4680: Xeon 6975P-C 5.9% of
+648 lost, EPYC 9V74 9.9% of 162, EPYC 7763 14.1% of 198 -- the search is held to the clock, and a slower machine searches less; a run's
+own mix of machines does not explain it alone (4728 lost 4 with 23 of 28 on the 6975P-C, 4705 none with 7 on the 7763). At 6% a game a
+run is 28/28 about one time in five, and every mode twice running asks the games' loss nearer 1%.
