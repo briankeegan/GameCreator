@@ -1249,7 +1249,9 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
       if (ls >= 0 && liveNode(lx, ls)) { const Board *sb = ensureBoard(lx, ls); if (sb) lb = sb; } }
     static int32_t lv[MAXLINE]; int nl = levelLine(lb, lv, MAXLINE);
     if (nl > 0) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; } }
-  if (R->topped || R->dying) {
+  // (and under garbage at rest, not only topped or dying: a block held up by a column or two with a hollow under the rest touches only
+  // their top panels -- at the edge, the panels that match least -- and no break is in reach until it comes down onto the stack)
+  if (R->topped || R->dying || (R->under && !R->pop)) {
     static Perches pd; perchedDrops(decQ.b, &pd);
     for (int i = 0; i < pd.n; i++) { int m0 = n; ADD(PLAY_LEVEL, pd.seq[i], pd.len[i], -1, 0); if (n > m0) out[m0].drop = 1; }
   }
