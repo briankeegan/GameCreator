@@ -77,7 +77,7 @@ typedef struct {
   int32_t hollow;               // and its empty cells under each column's highest garbage (hollowOf; -1 not known)
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
-  int32_t tower;                // and its tower (towerOf): its tallest column of panels over the median column, in rows (-1 not known)
+  int32_t tower;                // and its tower (towerOf): its tallest column of panels less its lowest, in rows (-1 not known)
 } Judged;
 
 static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -322,18 +322,17 @@ static int32_t evenOf(const Board *b) {
   }
   return hi - lo;
 }
-// HOW TOWERED A BOARD IS: its tallest column of panels over the median column, in rows -- panels only, each column's top panel under its
-// lowest garbage. The garbage rests on the tallest columns under it; a column standing over the rest is a support few panels touch, and
-// at the edge, where a panel is in one row of three in four, the hardest to match
+// HOW TOWERED A BOARD IS: its tallest column of panels less its lowest, in rows -- panels only, each column's top panel under its lowest
+// garbage. The garbage rests on the tallest columns under it and hangs over the lowest; a column standing over the rest is a support
+// few panels touch -- at the edge, where a panel is in one row of three in four, the hardest to match -- and a well under it is hollow
 static int32_t towerOf(const Board *b) {
-  int h[W + 1], s[W];
+  int hi = 0, lo = 1 << 20;
   for (int c = 1; c <= W; c++) {
-    h[c] = 0;
-    for (int r = 1; r < b->nrows; r++) { int32_t v = gridCell(b, r, c); if (v < 0) break; if (v > 0) h[c] = r; }
-    s[c - 1] = h[c];
+    int h = 0;
+    for (int r = 1; r < b->nrows; r++) { int32_t v = gridCell(b, r, c); if (v < 0) break; if (v > 0) h = r; }
+    if (h > hi) hi = h; if (h < lo) lo = h;
   }
-  for (int i = 1; i < W; i++) for (int k = i; k > 0 && s[k] < s[k - 1]; k--) { int t = s[k]; s[k] = s[k - 1]; s[k - 1] = t; }
-  return s[W - 1] - (s[W / 2 - 1] + s[W / 2]) / 2;
+  return hi - lo;
 }
 // HOW HOLLOW A BOARD IS UNDER ITS GARBAGE: the empty cells under each column's highest garbage, as search/bits.c bitsShape counts them
 static int32_t hollowOf(const Board *b) {
