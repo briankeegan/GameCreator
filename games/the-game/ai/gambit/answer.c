@@ -475,7 +475,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   backBoard = decQ.b;
   theBack.at = at;
   aloneChain = 0;   // (this decision's, found by the hold's judging -- rank.c holdCand -- or none)
-  readyAsked = readyHit = 0; rnSeen[0] = rnSeen[1] = rnSeen[2] = 0; readyStop(); readyPendClear();
+  readyAsked = readyHit = 0; rnSeen[0] = rnSeen[1] = rnSeen[2] = 0; readySearched = readyShareCut = 0; readyStop(); readyPendClear();
   if (!readBoard_(&R)) { A->d.kind = -1; return; }
   readMs = nowMs() - tStart;
   batTaken = batOwn = batBusy = batSmall = batTight = 0;
@@ -748,7 +748,8 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
   if (contAsked) { L_s(" cont="); L_i(contAsked); }
   if (rnSeen[0] + rnSeen[1] + rnSeen[2]) { L_s(" rn="); L_i(rnSeen[0]); L_s("/"); L_i(rnSeen[1]); L_s("/"); L_i(rnSeen[2]); }   // (ready for the next block: a break / none / not answered)
-  if (decQ.b) { L_s(" tw="); L_i(towerOf(decQ.b)); }   // (the board's tower: its tallest column of panels over the median, judge.c towerOf)
+  if (decQ.b) { L_s(" tw="); L_i(towerOf(decQ.b)); }
+  if (readySearched) { L_s(" rcut="); L_i(readyShareCut); L_s("/"); L_i(readySearched); }   // (readiness searches on the decision's thread that found none with their share run out, of all)   // (the board's tower: its tallest column of panels over the median, judge.c towerOf)
   if (comboTimed) { L_s(" timed="); L_i(comboTimed); }
   if (freeSetup) { L_s(" free8="); L_i(freeSetup); if (twinKeptSet) { L_s("/"); L_i(twinKept.cost); } }
   if (windowCut) { L_s(" windowCut="); L_i(windowCut); }   // (lines taken out: the window not back before their board is lost)

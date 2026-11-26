@@ -875,6 +875,7 @@ static void readyKeep(uint32_t h, const unsigned char *key, int32_t nb, const in
 static void readyKeptClear(void) { readyLockOn(); for (int i = 0; i < READYN; i++) readyKept[i].h = 0, readyKept[i].nbytes = 0; readyLockOff(); }
 // THE BREAK SEARCH ASKED FOR READINESS, on question q until `by`: 1 a break (its line in line, *k), 0 none in the time, NOT_ASKED the
 // decision's time out. Every thread's: what it reads is the question and its own nodes.
+static int32_t readySearched, readyShareCut;   // (this decision's readiness searches, and those that found none with their share run out: the log's rcut=)
 static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t *k) {
   int32_t pop = popLeft(q->b), saved = listDefault;
   static LOCAL Broke rb;
@@ -885,6 +886,7 @@ static int32_t readySearch(const Question *q, double by, int32_t *line, int32_t 
   listDefault = saved;
   clockShareEnd(old);
   *k = 0;
+  if (!inJob) { __atomic_add_fetch(&readySearched, 1, __ATOMIC_RELAXED); if (!rb.depth && nowMs() >= by) __atomic_add_fetch(&readyShareCut, 1, __ATOMIC_RELAXED); }
   if (!rb.depth) return clockOut() ? NOT_ASKED : 0;
   if (rb.pathLen) for (; *k < rb.pathLen && *k < MAXLINE; (*k)++) line[*k] = rb.path[*k];
   else if (rb.nmoves) line[(*k)++] = rb.moves[0];
