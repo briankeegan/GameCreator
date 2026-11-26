@@ -656,24 +656,26 @@ static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNo
 // hollowOf) -- the well a slab perches over; with none resting, the stack's tallest column less its lowest (judge.c evenOf) -- the
 // towers a slab lands on. Fewer is flatter; -1 not known)
 static int32_t landShape(const Judge *J) { return decF.under ? J->o.j.hollow : J->o.j.even; }
-// (A LINE THAT LANDS THE BOARD BETTER THAN THE HOLD: flatter (landShape), or as flat and more zipped -- its colours a swap apart, not
-// touching (judge.c spreadOf). flatHold: the decision's hold, decide.c ranked)
+// (A LINE THAT LANDS THE BOARD BETTER THAN THE HOLD: flatter (landShape) -- 2 -- or as flat and more zipped, its colours a swap apart, not
+// touching (judge.c spreadOf) -- 1; 0 neither. flatHold: the decision's hold, decide.c ranked)
 static const Judge *flatHold;
 static int landsBetter(const Judge *J) {
   const Judge *H = flatHold;
   if (!H || H == J || J->hold || H->o.dead) return 0;
   int32_t sj = landShape(J), sh = landShape(H);
   if (sj < 0 || sh < 0) return 0;
-  return sj < sh || (sj == sh && J->o.j.spread > H->o.j.spread);
+  return sj < sh ? 2 : sj == sh && J->o.j.spread > H->o.j.spread ? 1 : 0;
 }
 // (A FLATTEN BETWEEN MOVES -- the owner: do it between moves, the board landing flatter and zipped; flatter, it would not have to move
 // so far to get things done: a set-up of any kind -- a level, a zip, a lineup -- that walks no more than WALK_EARN actions, wastes no
-// three, is pressed out of what the input allowance holds over a break's walk (BREAK_WALK) -- now, and at the next landing -- and lands
-// the board better than the hold does (landsBetter))
+// three, leaves the input allowance a break's walk at the next landing, and lands the board better than the hold does (landsBetter):
+// flatter, out of what the window holds over half a break's walk now -- the towers a slab lands on are the break it will not have --
+// or only more zipped, out of what it holds over a whole break's walk)
 static int flattenFree(const Judge *J) {
   int w = lineWalk(J);
-  return setupKind(J) && !J->o.dead && J->k.nseq > 0 && pressAllowance >= 0 && w <= WALK_EARN &&
-         allowLeftAt(0, w) >= BREAK_WALK && allowAtLanding(w) >= BREAK_WALK && !wastesThree(J) && landsBetter(J);
+  if (!setupKind(J) || J->o.dead || J->k.nseq <= 0 || pressAllowance < 0 || w > WALK_EARN || allowAtLanding(w) < BREAK_WALK || wastesThree(J)) return 0;
+  int better = landsBetter(J), left = allowLeftAt(0, w);
+  return better == 2 ? left >= BREAK_WALK / 2 : better == 1 && left >= BREAK_WALK;
 }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
