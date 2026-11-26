@@ -2110,3 +2110,7 @@ once a chunk. Measured (`e38c93b1`, with the flatter landing's floor, 4717-4719)
 slab on one tower over cleared middle columns, or a well a column deep beside the edges' towers.
 Measured, not kept: under resting garbage, of two as hollow the landing with the flatter panels the flatter (`e6a8660e`, 4720-4722):
 switching 24, finish 25, fill 25 -- 74 of 84 against 80; seven factory boards lost, the panels under a slab levelled for nothing.
+THE HEAP IN CHUNKS TAKEN BACK: with it, 80 (4717-4719), 74 (4720-4722) and 74 on main (`9cca3943`, 4723-4725: switching 23, finish 26,
+fill 25, 1 late twice); without it, on the same play, 84 (4705-4707), 81 (4711-4713) and 81 (4714-4716). Not yet known why -- most
+likely whole mappings of 512 MB backed by huge pages, a board's pages released inside one splitting it, the search threads slowed.
+The heap takes its blocks from calloc again; the slow frame's log keeps the heap and the pages released.
