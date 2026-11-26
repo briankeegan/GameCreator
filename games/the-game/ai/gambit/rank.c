@@ -653,13 +653,9 @@ static int digPaid(const Judge *J) { int w = lineWalk(J); return decF.under && !
                                                                           allowAtLanding(w) >= BREAK_WALK / 2)); }
 static int spendsReserve(const Judge *J) { return pressAllowance >= 0 && !ruleNoEnemy && !digPaid(J) && reserveLeft(J) < reserveNeed(J); }
 // (THE BOARD THE NEXT BLOCK LANDS ON, as a line leaves it: under garbage resting on the board, the empty cells under it (judge.c
-// hollowOf) -- the well a slab perches over -- and of two as hollow, the panels' tallest column less their lowest, the garbage aside
-// (judge.c panelEvenOf) -- the stack the slab comes down onto; with none resting, the stack's tallest column less its lowest (judge.c
-// evenOf) -- the towers a slab lands on. Fewer is flatter; -1 not known)
-static int32_t landShape(const Judge *J) {
-  if (!decF.under) return J->o.j.even;
-  return J->o.j.hollow < 0 || J->o.j.peven < 0 ? -1 : J->o.j.hollow * 64 + J->o.j.peven;
-}
+// hollowOf) -- the well a slab perches over; with none resting, the stack's tallest column less its lowest (judge.c evenOf) -- the
+// towers a slab lands on. Fewer is flatter; -1 not known)
+static int32_t landShape(const Judge *J) { return decF.under ? J->o.j.hollow : J->o.j.even; }
 // (A LINE THAT LANDS THE BOARD BETTER THAN THE HOLD: flatter (landShape) -- 2 -- or as flat and more zipped, its colours a swap apart, not
 // touching (judge.c spreadOf) -- 1; 0 neither. flatHold: the decision's hold, decide.c ranked)
 static const Judge *flatHold;
