@@ -668,13 +668,12 @@ static int landsBetter(const Judge *J) {
 }
 // (A FLATTEN BETWEEN MOVES -- the owner: do it between moves, the board landing flatter and zipped; flatter, it would not have to move
 // so far to get things done: a set-up of any kind -- a level, a zip, a lineup -- that walks no more than WALK_EARN actions, wastes no
-// three, leaves the input allowance a break's walk (BREAK_WALK) when the next block lands -- what the window holds then is what the next
-// break is pressed out of -- and, with garbage resting on the board, a break's walk now too: that garbage's break is pressed now, not at
-// the next landing -- and lands the board better than the hold does (landsBetter))
+// three, is pressed out of what the input allowance holds over a break's walk (BREAK_WALK) -- now, and at the next landing -- and lands
+// the board better than the hold does (landsBetter))
 static int flattenFree(const Judge *J) {
   int w = lineWalk(J);
   return setupKind(J) && !J->o.dead && J->k.nseq > 0 && pressAllowance >= 0 && w <= WALK_EARN &&
-         (!decF.under || allowLeftAt(0, w) >= BREAK_WALK) && allowAtLanding(w) >= BREAK_WALK && !wastesThree(J) && landsBetter(J);
+         allowLeftAt(0, w) >= BREAK_WALK && allowAtLanding(w) >= BREAK_WALK && !wastesThree(J) && landsBetter(J);
 }
 // THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage with no break offered, the garbage
 // sits on its tallest columns alone, only the panels that touch it make a break, and a row lower it touches more of the stack. Where
@@ -1340,11 +1339,7 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (nor against a flatten the window has room for, beside the hold or a line that is none: rank.c flattenFree -- the set-up key below
     // decides between them)
     int flat = flattenFree(sp) && !flattenFree(kp);
-    // (nor, with no garbage resting on the board, between two that both leave two breaks' walks when they are needed: the window holds
-    // the next two breaks either way, and the keys after it -- survival, the mode, the set-ups -- decide; the hold spends nothing, so a
-    // reserve counted past that is a hold by default. Under resting garbage its break is pressed now, and the reserve decides as it is)
-    int both = !decF.under && reserveLeft(x) >= 2 * BREAK_WALK && reserveLeft(y) >= 2 * BREAK_WALK;
-    if (rx != ry && !rises && !asks && !flat && !both) return (cmpKey = __LINE__, (rx - ry));
+    if (rx != ry && !rises && !asks && !flat) return (cmpKey = __LINE__, (rx - ry));
   }
   // 1'u. NO SWAP BACK (the owner: no flip and back): of two that both live, or are lost alike and BACK_CALM breaks' time off or more, a line whose first swap swaps back the pair the last swap
   // pressed swapped after one that does not and breaks as much -- the two swaps are inputs spent to stand where the board stood
