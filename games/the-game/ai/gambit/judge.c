@@ -76,8 +76,6 @@ typedef struct {
   int32_t even;                 // the board it ends on: its tallest column less its lowest, in rows (evenOf; -1 not known)
   int32_t hollow;               // and its empty cells under each column's highest garbage (hollowOf; -1 not known)
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
-  int32_t landShape, landSpread;   // the board the next block lands on -- the line's board let come to rest, a slab popping converted
-                                // and its panels landed: with garbage on it its hollow, with none its even (-1 not known); and its spread
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
 } Judged;
 
@@ -652,13 +650,6 @@ static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const Jud
   Node *e = NODE(x, n);
   j->endNode = n;
   { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->hollow = eb ? hollowOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; }
-  // (the board the next block lands on: with a slab popping on the board asked, the line's board let come to rest -- the slab converted,
-  // its panels landed, everything fallen; otherwise the board as the line ends it. The settle is engine work the searches' clock pays for,
-  // asked only while a slab pops: then the board the line ends on is not the one the next block lands on)
-  { int pops = 0; for (int r = 0; !pops && r < q->b->nrows; r++) for (int c = 1; c <= W; c++) { const int32_t *f = q->b->p[r][c].f; if (f[ISGARBAGE] && f[STATE] == MATCHED) { pops = 1; break; } }
-    int rn = j->dead ? -1 : pops ? settleOf(x, n) : n; const Board *rb = rn >= 0 && liveNode(x, rn) ? ensureBoard(x, rn) : 0;
-    int g = 0; for (int r = 1; rb && !g && r < rb->nrows; r++) for (int c = 1; c <= W; c++) if (gridCell(rb, r, c) < 0) { g = 1; break; }
-    j->landShape = rb ? (g ? hollowOf(rb) : evenOf(rb)) : -1; j->landSpread = rb ? spreadOf(rb) : j->spread; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));
