@@ -60,7 +60,7 @@ var modes = {}, links = {}, turns = {}, nturns = 0, lostIn = {}, budget = { over
 var kept = { n: 0, held: 0 };
 // (the next break held at each landing, by pattern and outcome: the floor is every landing -- HELD_NEAR the frames off a landing is read
 // at, HELD_NEW how much later the next block must come for the last to have landed)
-var held = {}, HELD_NEAR = 20, HELD_NEW = 30, TOWER_ROWS = 3;   // (TOWER_ROWS: rank.c's -- a tallest column of panels that many rows over the median)
+var held = {}, HELD_NEAR = 20, HELD_NEW = 30, TOWER_ROWS = 4;   // (TOWER_ROWS: rank.c's -- a tallest column of panels that many rows over the lowest)
 // LOSSES BY THE PIECE THAT FAILED: a lost game read from its last line that broke garbage to its end (the dead phase) by the judge's
 // categories (cat=, plans/gambit-next.md): order -- a category better than the line played's passed over; window; search -- no
 // line better than buys time offered (reach where the break search was cut by the clock, else board); press -- something better was
@@ -621,7 +621,7 @@ Object.keys(held).sort().forEach(function (k) { var h = held[k], all = h.survive
   console.log('the next break held, ' + k + ': ' + got + ' of ' + all + ' landings (' + Math.round(100 * got / all) + '%); games survived ' + h.survived.held + ' of ' + h.survived.n + ', lost ' + h.lost.held + ' of ' + h.lost.n +
     (h.rnDec ? '; ready for the next block, asked of each line where none lives (' + h.rnDec + ' decisions under garbage): ' + h.rn[0] + ' a break, ' + h.rn[1] + ' none, ' + h.rn[2] + ' not answered' : ''));
   var pc = function (a, b) { return b ? Math.round(100 * a / b) + '%' : '-'; };
-  if (h.tw) console.log('towered (a column ' + TOWER_ROWS + ' rows or more over the median), ' + k + ': decisions under garbage -- games survived ' + pc(h.tw.survived[1], h.tw.survived[0]) + ' of ' + h.tw.survived[0] + ', lost ' + pc(h.tw.lost[1], h.tw.lost[0]) + ' of ' + h.tw.lost[0] +
+  if (h.tw) console.log('towered (the tallest column of panels ' + TOWER_ROWS + ' rows or more over the lowest), ' + k + ': decisions under garbage -- games survived ' + pc(h.tw.survived[1], h.tw.survived[0]) + ' of ' + h.tw.survived[0] + ', lost ' + pc(h.tw.lost[1], h.tw.lost[0]) + ' of ' + h.tw.lost[0] +
     '; landings -- games survived ' + pc(h.survived.tw || 0, h.survived.twN || 0) + ' of ' + (h.survived.twN || 0) + ', lost ' + pc(h.lost.tw || 0, h.lost.twN || 0) + ' of ' + (h.lost.twN || 0)); });
 if (kept.n) console.log('a life kept: ' + kept.held + ' of ' + kept.n + ' lines that lived, nothing new told, lived on at the next decision (' + Math.round(100 * kept.held / kept.n) + '%)');
 if (rule.rdyAsked) console.log('kept plan: ' + rule.rdyHit + ' of ' + rule.rdyAsked + ' readiness checks answered by a break already found (' + Math.round(100 * rule.rdyHit / rule.rdyAsked) + '%)');
