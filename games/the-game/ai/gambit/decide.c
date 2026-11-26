@@ -424,6 +424,9 @@ static int32_t comboTimed;   // (the frames waited for a combo this decision, 0 
 #define CUT8_MS 4      // (the judging's time for each eight tried with one swap more: decide.c, the eight without its chain)
 #define CONT_MS 6      // (the survival search's time for each)
 static int32_t contAsked;   // (the lines so judged this decision: the log's cont=)
+// (READY FOR THE NEXT BLOCK, asked of each line where none lives: how many answered a break, none, or were not answered -- the clock, or
+// no next block told -- the log's rn=)
+static int32_t rnSeen[3];
 static double contLostOf(const Judge *J, double give) {
   static Board *eb; if (!eb) eb = nb_new();
   if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? (double)J->o.lostAt : -1;
@@ -715,6 +718,7 @@ static int ranked(const Read *R, const Found *S) {
     int own = 0; for (int i = 0; i < n; i++) own += !EXTRA(order[i]);
     for (int i = 0; i < n; i++) if (!EXTRA(order[i])) { readyShare(own--); readyNextFor(order[i]); }
     readyShare(0); sortJudged(order, n);
+    for (int i = 0; i < n; i++) if (!EXTRA(order[i])) { int32_t r = order[i]->readyNext; rnSeen[r == 1 ? 0 : r == 0 ? 1 : 2]++; }
   }
   // (THE GARBAGE LET DOWN (the perch -- the owner: break the garbage, set up the break): under garbage, nothing living and no line of
   // the decision breaking, the swap that lets the garbage down off its tallest column is offered too (propose.c letDownCand), and the
@@ -1087,14 +1091,17 @@ static int opTarget(const Question *q, int32_t rows, Question *out) {
   cloneBoard(cur, q->b); opFlatN = 0;
   for (int k = 0; k < OP_FLAT && !clockOut(); k++) {
     Question t = *q; t.b = cur; t.narr = 0;
-    int32_t sw = level(&t, NOT_ASKED);
-    if (!sw) break;
+    int32_t sw = level(&t, NOT_ASKED), walk[2], nw = 0;
+    // (with no one swap that flattens, a panel walked two cells -- search/level.c levelWalk)
+    if (!sw && opFlatN + 2 <= OP_FLAT) nw = levelWalk(&t, NOT_ASKED, walk);
+    if (!sw && !nw) break;
     Ctx *x = opTCtx = ctxOf(opTCtx);
     int root = rootOf(x, &t); if (root < 0) break;
-    int nd = step(x, root, MK_SETTLE, CR(sw), CC(sw), 0);
+    int nd = sw ? step(x, root, MK_SETTLE, CR(sw), CC(sw), 0) : step(x, step(x, root, MK_SETTLE, CR(walk[0]), CC(walk[0]), 0), MK_SETTLE, CR(walk[1]), CC(walk[1]), 0);
     if (!liveNode(x, nd)) break;
     const Board *b = ensureBoard(x, nd); if (!b) break;
-    cloneBoard(cur, b); opFlat[opFlatN++] = sw;
+    cloneBoard(cur, b);
+    if (sw) opFlat[opFlatN++] = sw; else { opFlat[opFlatN++] = walk[0]; opFlat[opFlatN++] = walk[1]; }
   }
   cloneBoard(tgt, cur);
   int32_t top0 = fullTop(tgt);

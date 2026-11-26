@@ -979,6 +979,33 @@ static int compareJudged(const Judge *x, const Judge *y) {
     if (carriedSame(c) && (c->o.lives || diesAt(c) >= rankSave) && !o->o.dead && imax(0, brokeSeen(o)) <= imax(0, brokeSeen(c)) && imax(0, o->apBroke) <= imax(0, c->apBroke) &&
         !outlives(o, c) && !finishEightBy(o, c))
       return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+    // (A BREAK IN PROGRESS IS NOT PUT DOWN FOR LESS: under garbage, the line in progress that breaks garbage, no worse than when it was
+    // played and its board standing a break's time, before a line that breaks less however much later that one is lost -- garbage
+    // broken comes off the board for good, panels cleared for the frames buy them only until the next block lands)
+    if (decF.under && carriedSame(c) && c->apBroke > 0 && diesAt(c) >= rankSave && imax(0, o->apBroke) < c->apBroke &&
+        imax(0, brokeSeen(o)) < imax(1, brokeSeen(c)) && !o->o.lives && !finishEightBy(o, c))
+      return (cmpKey = __LINE__, (x->carried ? -1 : 1));
+  }
+  // 1. THE FLATNESS FLOOR (the owner: it prefers not dying, and flatness -- both floors): of two that do not live, the one that leaves the
+  // stack towered -- its tallest column of panels TOWER_ROWS or more over its lowest (judge.c towerOf) -- goes after one that leaves it under, and of
+  // two that both leave it towered, the one that leaves it TOWER_STEP rows taller goes after -- not dying first: only where the two are
+  // lost alike (lostAlike) or the flatter is lost no sooner. Rows of
+  // three cross the middle columns three times as often as the edges, so clears left to themselves leave the edges standing, and garbage
+  // resting on a column few panels touch is the break that cannot be made. Only where the flatter one's board stands a break's time,
+  // breaks no less garbage or the other breaks none, and is the hold, walks no more than WALK_EARN actions, or leaves the window a
+  // break's walk when the next block lands
+  #define TOWER_ROWS 4
+  #define TOWER_STEP 2
+  if (!lx && !ly && x->o.j.tower >= 0 && y->o.j.tower >= 0) {
+    int tx = x->o.j.tower, ty = y->o.j.tower;
+    int differ = (tx >= TOWER_ROWS) != (ty >= TOWER_ROWS) || (tx >= TOWER_ROWS && ty >= TOWER_ROWS && iabs(tx - ty) >= TOWER_STEP);
+    if (differ) {
+      const Judge *f = tx < ty ? x : y, *t = tx < ty ? y : x;
+      if (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)) &&
+          (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
+          (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
+        return (cmpKey = __LINE__, (f == x ? -1 : 1));
+    }
   }
   // 1. THE WINDOW'S FLOOR (the owner: efficiency is key): under garbage, of two that do not live, a line that leaves the input window
   // under half a break's walk (BREAK_WALK) at the next landing goes after one that keeps it -- and of two that both leave it under, the
