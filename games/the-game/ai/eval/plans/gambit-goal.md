@@ -2064,3 +2064,10 @@ of 250,589 decisions) and the decision's answer late.
 Measured (`00d644b1`, 4687-4689): fill 27, finish 25, switching 26. (`770654c0`, never deeper, 4690-4692): finish 27, fill 28 (0 late,
 0 divergences), switching 24 (3 late). (`006dc5a1`, the hollow read once and the reaper's sixteen, 4693-4695): switching 26 (0 late),
 fill 26 and 27 (0 late).
+THE GARBAGE LET DOWN, ITS OWN BOARD OUTLIVING THE HOLD'S: the let-down key now also puts a support walked off before a line that does
+not let the garbage down where only the walk's charge puts it after, its own board lost later (rank.c walkTurns).
+Measured (`8ddfabc8`, 4697-4699): switching 27 (seed 143), fill 28 (seed 147), finish 26 (seed 141); 0 late moves, 0 frames over, 0
+divergences. Finish lost factory 1 and large_garbage 1, both near frame 15,100: the last break 1,100 and 340 frames before, then no
+break found (the search cut by the clock in 49 of 63 and 10 of 21 decisions), the panels 52 to 18 and 21 to 9 spent on stop-time
+clears that broke nothing, factory 1's 27 slabs held back behind them. Switching lost large_garbage 6 at 3401: the opener's chains
+under the slab took the window to 3 and the panels 54 to 15 by frame 1400.
