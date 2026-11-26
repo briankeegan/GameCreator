@@ -2097,3 +2097,10 @@ Measured, not kept: the collector stepped before each frame, so none begins with
 finish 28 (seed 141, 0 over), switching 24 (seed 143), fill 25 (seed 147, 1 over) -- the switching and fill losses the break search cut
 by the clock; the frame over 11.6 ms with 0.5 ms of CPU, three waits and the heap unchanged: the game thread waiting, not collecting.
 A slow frame's log now carries the Lua heap at each part and the pages every thread released in it (paRelease).
+Measured (`2574fffb`, main's play with the slow frame's logs, 4711-4713): finish 27 (seed 141), switching 27 (seed 143), fill 27 (seed
+147); 0 late moves, 0 frames over. Finish lost factory 8 to the perch: edge towers 2-3 rows over the middle before the slab landed, the
+slab on them over a 13-cell well, no break for 71 decisions -- every flatten cut, the window at 20-25 under the surplus rule's 20 after it.
+A FLATTER LANDING OUT OF HALF A BREAK'S WALK: a flatten that lands the board flatter than the hold is let through where the window holds
+half a break's walk after it now; one only more zipped, a whole one. Measured, not merged (`a4866fce`, 4714-4716): finish 28 (1 late),
+switching 25, fill 28 (0 over, 0 late) -- 81 of 84 as main's 81; switching lost combo_storm 5 and factory 4 to the window (a level in the
+1000 frames before each, the window spent on breaks, carries and an extension) and large_garbage 6 to a slab of nine rows over 19 panels.
