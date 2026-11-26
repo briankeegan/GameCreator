@@ -12,47 +12,65 @@
 // by an instance of its own (lua/GambitNative.lua), nothing of the last left behind
 // THE CAP: past GC_GAMBIT_HEAP_MB (none when it is not set) the instance says so in its log and aborts, so the game ends with its log
 // kept rather than taking the runner's memory and the runner with it (a lost runner keeps no log at all).
-static void **heapBlocks; static long heapN, heapCap;
+// THE CHUNKS: blocks are cut, in turn, from mappings of CHUNK bytes the heap takes whole (a block over a quarter of one is mapped on its
+// own), zero as a fresh mapping is: the process's memory map changes once a chunk, never once a block -- a change of the map holds every
+// thread's page faults, the game thread's among them, until it is done
+#include <sys/mman.h>
+#define CHUNK (512ul << 20)   // (over POPULATE_MOST: hostPopulate leaves a chunk as it is)
+static struct { void *p; unsigned long n; } *heapMaps; static long heapN, heapCap;
+static unsigned char *chunkAt, *chunkEnd;
 static unsigned long heapBytes;
 static pthread_mutex_t heapMu = PTHREAD_MUTEX_INITIALIZER;
 void hostLog(const char *s);
 void hostLogFlush(void);
 // The bytes the heap has given this instance, in MB
 int hostHeapMB(void) { return (int)(__atomic_load_n(&heapBytes, __ATOMIC_RELAXED) >> 20); }
+// (a mapping taken and kept for hostQuit -- under heapMu; 0 when the system refuses it)
+static void *heapMap(unsigned long n) {
+  void *p = mmap(0, n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+  if (p == MAP_FAILED) return 0;
+  if (heapN == heapCap) {
+    long c = heapCap ? 2 * heapCap : 256;
+    void *nb = realloc(heapMaps, (unsigned long)c * sizeof *heapMaps);
+    if (!nb) { munmap(p, n); return 0; }
+    heapMaps = nb; heapCap = c;
+  }
+  heapMaps[heapN].p = p; heapMaps[heapN].n = n; heapN++;
+  return p;
+}
 void *paHeap(unsigned long n) {
   static unsigned long capBytes;
   if (!capBytes) { const char *e = getenv("GC_GAMBIT_HEAP_MB"); long mb = e && *e ? atol(e) : 0; capBytes = mb > 0 ? (unsigned long)mb << 20 : ~0ul; }
-  unsigned long sz = (n + 15) & ~15ul;
+  unsigned long sz = (n + 63) & ~63ul;
   if (__atomic_add_fetch(&heapBytes, sz, __ATOMIC_RELAXED) > capBytes) {
     char m[160]; snprintf(m, sizeof m, "GAMBITHEAP over the cap: %lu MB held, %lu MB asked, cap %lu MB", heapBytes >> 20, n >> 20, capBytes >> 20);
     hostLog(m); hostLogFlush(); fprintf(stderr, "%s\n", m); abort();
   }
-  void *p = calloc(1, sz);
-  if (!p) return 0;
+  void *p = 0;
   pthread_mutex_lock(&heapMu);
-  if (heapN == heapCap) {
-    long c = heapCap ? 2 * heapCap : 4096;
-    void **nb = (void **)realloc(heapBlocks, (unsigned long)c * sizeof *nb);
-    if (nb) { heapBlocks = nb; heapCap = c; }
+  if (sz > CHUNK / 4) p = heapMap(sz);
+  else {
+    if (!chunkAt || sz > (unsigned long)(chunkEnd - chunkAt)) { unsigned char *c = heapMap(CHUNK); if (c) { chunkAt = c; chunkEnd = c + CHUNK; } else chunkAt = chunkEnd = 0; }
+    if (chunkAt) { p = chunkAt; chunkAt += sz; }
   }
-  if (heapN < heapCap) heapBlocks[heapN++] = p;
   pthread_mutex_unlock(&heapMu);
   return p;
 }
 // GIVING PAGES BACK (eval/native/memory.h paRelease): the whole pages inside a block nothing reads until it writes it again, handed back
 // to the system -- the block stays this heap's (freed with the rest when the instance quits) and reads as zeros when next touched. Only
-// pages wholly inside the block: the allocator's own words before and after it are left alone.
-#include <sys/mman.h>
+// pages wholly inside the block.
+static long releaseN;   // (the releases made, every thread's: a slow frame's log reads how many fell in it)
 void paRelease(void *p, unsigned long n) {
   unsigned long a = ((unsigned long)p + 4095) & ~4095ul, e = ((unsigned long)p + n) & ~4095ul;
-  if (e > a) madvise((void *)a, e - a, MADV_DONTNEED);
+  if (e > a) { madvise((void *)a, e - a, MADV_DONTNEED); __atomic_add_fetch(&releaseN, 1, __ATOMIC_RELAXED); }
 }
-// The calling thread's own account: its CPU time (ms), the times it was taken off its core and gave it up, its page faults.
+// The calling thread's own account: its CPU time (ms), the times it was taken off its core and gave it up, its page faults -- and the
+// pages released so far by every thread (paRelease).
 void hostThreadStats(double *out) {
   struct timespec t; clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);
   struct rusage u; getrusage(RUSAGE_THREAD, &u);
   out[0] = (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6; out[1] = (double)u.ru_nivcsw; out[2] = (double)u.ru_nvcsw;
-  out[3] = (double)(u.ru_minflt + u.ru_majflt); out[4] = (double)u.ru_majflt;
+  out[3] = (double)(u.ru_minflt + u.ru_majflt); out[4] = (double)u.ru_majflt; out[5] = (double)__atomic_load_n(&releaseN, __ATOMIC_RELAXED);
 }
 // EVERY PAGE THE PROCESS HAS MAPPED, IN ITS PAGE TABLES BEFORE PLAY (MADV_POPULATE_READ, Linux 5.14): the code and data of the game, the
 // interpreter and the libraries, read in once here rather than on the frame that first reaches a page -- one page fault in a frame's load
@@ -194,8 +212,8 @@ void hostLogFlush(void) {
 // THE INSTANCE ENDED (native.c gn_quit, its threads joined): its memory freed and its log closed
 void hostQuit(void) {
   pthread_mutex_lock(&heapMu);
-  for (long i = 0; i < heapN; i++) free(heapBlocks[i]);
-  free(heapBlocks); heapBlocks = 0; heapN = heapCap = 0; heapBytes = 0;
+  for (long i = 0; i < heapN; i++) munmap(heapMaps[i].p, heapMaps[i].n);
+  free(heapMaps); heapMaps = 0; heapN = heapCap = 0; heapBytes = 0; chunkAt = chunkEnd = 0;
   pthread_mutex_unlock(&heapMu);
   hostLogFlush();
   pthread_mutex_lock(&logMu);

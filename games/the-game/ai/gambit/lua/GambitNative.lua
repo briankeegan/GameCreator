@@ -127,7 +127,7 @@ function GambitNative.new(opts)
   self.inputs = opts.inputBudget or InputBudget.standard()
   self.ownInputs = opts.inputBudget == nil
   self.dropped, self.frames, self.ages, self.pv = 0, 0, {}, {}
-  self.ts0, self.ts1 = ffi.new("double[5]"), ffi.new("double[5]")
+  self.ts0, self.ts1 = ffi.new("double[6]"), ffi.new("double[6]")
   return self
 end
 
@@ -505,6 +505,7 @@ function GambitNative:think(stack, sources, view)
   self.stepPre = t0 - tIn
   self:load(stack)
   local t1 = ThinkBudget.now()
+  self.kb1 = collectgarbage("count")
   self:telegraph(sources, stack, view)
   local ages, A = self.inputs:ages(stack.clock, self.ages), C.gn_ages()
   for i = 1, math.min(#ages, 512) do A[i - 1] = ages[i] end
@@ -515,6 +516,7 @@ function GambitNative:think(stack, sources, view)
   -- top of them, so finish them is the board a combo's row tops out: the owner, a combo only where it can kill)
   if has == 1 then top = math.min(12, top + (onWay or rowsOnItsWay(stack))) end
   local t2 = ThinkBudget.now()
+  self.kb2 = collectgarbage("count")
   local bits = C.gn_frame(self.inputs.limit, self.inputs.window, math.min(#ages, 512), has, out, top, stop)
   self.stepLoad, self.stepTele, self.stepFrame = t1 - t0, t2 - t1, ThinkBudget.now() - t2
   if bits < 0 then error("GambitNative: the engine refused the board at clock " .. tostring(stack.clock)) end
@@ -550,6 +552,7 @@ function GambitNative:input(stack, sources, view)
   local jitWas = JIT_OFF and jit.status()
   if jitWas then jit.off() end
   C.gn_thread_stats(self.ts0)
+  self.kb0 = collectgarbage("count")
   local began = ThinkBudget.now()
   local ok, key = pcall(self.think, self, stack, sources, view)
   local tPress = ThinkBudget.now()
@@ -566,11 +569,12 @@ function GambitNative:input(stack, sources, view)
     -- (and the game thread's own account of it: its CPU time, the times it was taken off its core or gave it up, its page faults)
     local a, b, P = self.ts0, self.ts1, self.loadParts
     C.gn_thread_stats(b)
-    C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (before %.1f, load %.1f, telegraph %.1f, frame loop %.1f, after %.1f, press %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d (major %d); %s",
+    C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (before %.1f, load %.1f, telegraph %.1f, frame loop %.1f, after %.1f, press %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d (major %d), pages released by every thread %d; %s",
       stack.clock, took * 1000, (self.stepPre or 0) * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, (self.stepPost or 0) * 1000, (self.stepPress or 0) * 1000,
-      b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3], b[4] - a[4],
-      string.format("rows %d, queued %d; load head %.1f, queues %.1f, panels %.1f, queues written %.1f", self.nrows or 0, self.nqueued or 0,
-        P and P[1] * 1000 or -1, P and P[2] * 1000 or -1, P and P[3] * 1000 or -1, P and P[4] * 1000 or -1)))
+      b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3], b[4] - a[4], b[5] - a[5],
+      string.format("rows %d, queued %d; load head %.1f, queues %.1f, panels %.1f, queues written %.1f; lua heap KB %.0f, after the load %.0f, after the telegraph %.0f, now %.0f",
+        self.nrows or 0, self.nqueued or 0, P and P[1] * 1000 or -1, P and P[2] * 1000 or -1, P and P[3] * 1000 or -1, P and P[4] * 1000 or -1,
+        self.kb0 or -1, self.kb1 or -1, self.kb2 or -1, collectgarbage("count"))))
   end
   self.stepLoad = nil
   return key

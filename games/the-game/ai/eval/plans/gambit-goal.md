@@ -2091,3 +2091,22 @@ window from 18 to 4 (4704, lost at 8203). Measured (`94c1f98c`, 4705-4707): swit
 (seed 147); 0 late moves, 0 divergences. Fill is 28 twice running (4703, 4707) with 0 frames over. Frames over the think budget: 1
 (4705) and 3 (4706), each the board's load in the game thread, run by the interpreter -- 93 blocks queued (telegraph 5.5 ms, load 4.6),
 and a board of 23-24 rows (its panels 7.0-10.6 ms); the frame loop under 0.1 ms in each.
+FRAMES OVER THE THINK BUDGET: 9 in 25 runs (4680-4706), each 8-12 ms in the game thread's own work -- the board's load (its panels 7-10.6 ms
+on boards of 23-24 rows) or the telegraph -- the frame loop under 0.1 ms; the load itself is 0.21 ms on 24 rows run by the interpreter.
+Measured, not kept: the collector stepped before each frame, so none begins with its atomic phase pending (`23947a84`, 4708-4710):
+finish 28 (seed 141, 0 over), switching 24 (seed 143), fill 25 (seed 147, 1 over) -- the switching and fill losses the break search cut
+by the clock; the frame over 11.6 ms with 0.5 ms of CPU, three waits and the heap unchanged: the game thread waiting, not collecting.
+A slow frame's log now carries the Lua heap at each part and the pages every thread released in it (paRelease).
+Measured (`2574fffb`, main's play with the slow frame's logs, 4711-4713): finish 27 (seed 141), switching 27 (seed 143), fill 27 (seed
+147); 0 late moves, 0 frames over. Finish lost factory 8 to the perch: edge towers 2-3 rows over the middle before the slab landed, the
+slab on them over a 13-cell well, no break for 71 decisions -- every flatten cut, the window at 20-25 under the surplus rule's 20 after it.
+A FLATTER LANDING OUT OF HALF A BREAK'S WALK: a flatten that lands the board flatter than the hold is let through where the window holds
+half a break's walk after it now; one only more zipped, a whole one. Measured, not merged (`a4866fce`, 4714-4716): finish 28 (1 late),
+switching 25, fill 28 (0 over, 0 late) -- 81 of 84 as main's 81; switching lost combo_storm 5 and factory 4 to the window (a level in the
+1000 frames before each, the window spent on breaks, carries and an extension) and large_garbage 6 to a slab of nine rows over 19 panels.
+THE HEAP IN CHUNKS: the native heap's blocks cut in turn from 512 MB mappings, not one calloc a block -- the process's memory map changed
+once a chunk. Measured (`e38c93b1`, with the flatter landing's floor, 4717-4719): switching 26 (seed 143), finish 27 (seed 141), fill 27
+(seed 147) -- 80 of 84; 0 late moves, 0 frames over (slowest 4-5 ms). Every loss a factory board, three of four no break found: the
+slab on one tower over cleared middle columns, or a well a column deep beside the edges' towers.
+Measured, not kept: under resting garbage, of two as hollow the landing with the flatter panels the flatter (`e6a8660e`, 4720-4722):
+switching 24, finish 25, fill 25 -- 74 of 84 against 80; seven factory boards lost, the panels under a slab levelled for nothing.
