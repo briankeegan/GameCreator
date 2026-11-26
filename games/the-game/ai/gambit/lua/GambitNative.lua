@@ -547,7 +547,12 @@ end
 -- machine code's pages writable and back, and each flip waits for the process's memory map while Gambit's threads fault pages in: a
 -- frame over the think budget on a millisecond of CPU. jit.off keeps the traces compiled; jit.on after the frame)
 local JIT_OFF = jit and jit.off and jit.on and jit.status
+-- (and THE COLLECTOR NEVER IN ITS ATOMIC PHASE AS A FRAME BEGINS: leaving a compiled trace while the collector stands at its atomic phase or
+-- its finalizers runs a step of it, stopped or not (lj_trace.c lj_trace_exit) -- the atomic phase whole, not incremental: 8-12 ms on a frame
+-- of the game's own code. One step before the frame, from the interpreter, runs a pending atomic phase there, and the collector stopped
+-- through the frame stands where that step left it)
 function GambitNative:input(stack, sources, view)
+  collectgarbage("step", 0)
   collectgarbage("stop")
   local jitWas = JIT_OFF and jit.status()
   if jitWas then jit.off() end
