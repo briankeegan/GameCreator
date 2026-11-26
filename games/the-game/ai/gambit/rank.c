@@ -1094,7 +1094,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int dx = letsDown(x), dy = letsDown(y);
     // (never over a line that breaks garbage -- the line in progress, an entry: letting the garbage down stands in for a break, and that
     // line is one)
-    if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x; if (!(o->apBroke > 0) && (lostOf(d) >= lostOf(o) || lostAlike(d, o))) return (cmpKey = __LINE__, (dx ? -1 : 1)); }
+    // (and where only the walk's charge puts it after the other -- walkTurns, its own board outliving the other's: the walk to the support
+    // is the way to the next break, not a loss)
+    if (dx != dy) { const Judge *d = dx ? x : y, *o = dx ? y : x;
+      if (!(o->apBroke > 0) && (lostOf(d) >= lostOf(o) || lostAlike(d, o) || (walkTurns(d, o) && diesAt(d) > diesAt(o)))) return (cmpKey = __LINE__, (dx ? -1 : 1)); }
     // (and of two lost alike that break nothing, the one whose board at rest leaves the garbage nearer coming down onto the stack
     // (restOn, outcome.c restOf): a perch built up is a break put further off -- the garbage on two towers over a well, every break
     // walked to it a support at a time)

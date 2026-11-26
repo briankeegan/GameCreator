@@ -2054,3 +2054,13 @@ Measured (`2cc28c69`, 4681-4684): fill 26, 26 (seed 147), finish 26 (seed 141), 
 decisions begun cut 0; 0 divergences, 0 frames over; 1 late move in 4682 (a chain extension past its stop by 124 ms, large_garbage 7).
 Measured, one run each, not kept: the garbage let down before a clear that digs the well (4677-4678: switching 26, fill 26); the flatness
 key with garbage on its way (4685: switching 23).
+NO DEEP WELL UNDER THE GARBAGE: on the board dumps of factory and large_garbage (runs 4673-4684), a board with 12 or more empty cells
+under its garbage is lost within 600 frames 1.4% of the time, under that 0.35%; and 94% of those wells were dug under garbage already
+resting (3613 of 3842), not landed on. Under garbage, where either of two lines leaves DEEP_WELL (12) or more such cells, the one that
+leaves WELL_STEP (3) fewer goes first, lost alike or no sooner, never a line breaking none over one that breaks (rank.c; the hollow read
+off the board the judge ends on, judge.c hollowOf). THE REAPER HOLDS SIXTEEN: past REAPN contexts waiting the searching thread emptied its
+own, 120-220 ms with no clock asked -- a job past its stop (the planner 299 times and the extension 101 times past it by a frame or more,
+of 250,589 decisions) and the decision's answer late.
+Measured (`00d644b1`, 4687-4689): fill 27, finish 25, switching 26. (`770654c0`, never deeper, 4690-4692): finish 27, fill 28 (0 late,
+0 divergences), switching 24 (3 late). (`006dc5a1`, the hollow read once and the reaper's sixteen, 4693-4695): switching 26 (0 late),
+fill 26 and 27 (0 late).
