@@ -901,6 +901,15 @@ static int calmKept(const Judge *c, const Judge *o) {
 }
 // THE SURVIVAL CREDIT of two lines, each beside the other: lives, or counted as living (the horizon, the finish's safe board), and
 // where it is taken back -- compareJudged's first step, and the log's cr=
+#define TOWER_ROWS 4   // (the flatness floor's tower: the tallest column of panels this many rows or more over the lowest -- key 1 below)
+#define TOWER_STEP 2   // (and of two towered, this many rows taller)
+// (A LINE THAT LEAVES THE STACK TOWERED beside one that leaves it flatter (the flatness floor's measure, judge.c towerOf): towered where the
+// other is not, or TOWER_STEP rows taller -- the other's board standing a break's time)
+static int toweredBeside(const Judge *t, const Judge *f) {
+  int tt = t->o.j.tower, tf = f->o.j.tower;
+  if (tt < 0 || tf < 0 || tt < TOWER_ROWS || f->o.dead || diesAt(f) < rankSave) return 0;
+  return tf < TOWER_ROWS || tt - tf >= TOWER_STEP;
+}
 static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   int lx = livesOn(x), ly = livesOn(y);
   // (the horizon's credit is no life beside a board that outlives it: the line in progress lost past the horizon, beside a line that
@@ -913,6 +922,10 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   if (lx && !x->o.lives && PLAYED_LATER(y, x)) lx = 0;
   if (ly && !y->o.lives && PLAYED_LATER(x, y)) ly = 0;
   #undef PLAYED_LATER
+  // (nor beside a line that leaves the stack flatter, where its own leaves it towered (toweredBeside): the horizon is a guess, and a
+  // towered stack is where garbage rests on a column or two that no break reaches)
+  if (lx && !x->o.lives && toweredBeside(x, y)) lx = 0;
+  if (ly && !y->o.lives && toweredBeside(y, x)) ly = 0;
   // (nor, under garbage, the credit of a line that breaks nothing beside a break lost within a break's time of it: the break is the way
   // out the board has, the horizon is a promise -- r1363, 14839: a 4x stall in progress lost at 296 kept over a break lost at 282, and no
   // break offered again; r1362, 16120)
@@ -1027,8 +1040,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // resting on a column few panels touch is the break that cannot be made. Only where the flatter one's board stands a break's time,
   // breaks no less garbage or the other breaks none, and is the hold, walks no more than WALK_EARN actions, or leaves the window a
   // break's walk when the next block lands
-  #define TOWER_ROWS 4
-  #define TOWER_STEP 2
   if (!lx && !ly && x->o.j.tower >= 0 && y->o.j.tower >= 0) {
     int tx = x->o.j.tower, ty = y->o.j.tower;
     int differ = (tx >= TOWER_ROWS) != (ty >= TOWER_ROWS) || (tx >= TOWER_ROWS && ty >= TOWER_ROWS && iabs(tx - ty) >= TOWER_STEP);
