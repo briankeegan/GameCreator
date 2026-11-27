@@ -624,12 +624,15 @@ static int32_t overNeedAt(void) {
   return t < 0 ? 0 : t;
 }
 static int overspends(const Judge *J) {
-  if (!overHold || J->hold || J->o.dead || J->apBroke > 0) return 0;
+  if (!overHold || J->hold || J->o.dead) return 0;
+  // (A BREAK THAT DOES NOT PAY -- the owner: keep enough panels to break the garbage: a break that clears more panels along its length than
+  // the cells it converts is held to the material floor as any line is; one that pays its panels back is never held to it)
+  if (J->apBroke > 0 && J->o.j.clearedPanels <= J->apBroke) return 0;
   // (the floor holds a line that lives too: it lives through the garbage told, and the storm tells more -- the rule's floor is for the
   // breaks of what is not told yet)
   // (only beside a hold that lives as well: a life is never given up for the floor)
   if (overMat && (!J->o.lives || overHold->o.lives) && J->o.matSettled >= 0 && !test(J->o.matSettled, overFloor) && overHold->o.matSettled > J->o.matSettled) return 1;
-  if (J->o.lives) return 0;
+  if (J->o.lives || J->apBroke > 0) return 0;
   // (a dig toward a break, or a perch let down, with none offered: on the dig's own terms -- rank.c digPaid)
   return pressAllowance >= 0 && !digPaid(J) && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
 }
