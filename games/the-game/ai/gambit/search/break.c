@@ -108,12 +108,13 @@ static int walkTo(int q, int from, int k, int32_t *seq, int n) {
 }
 // HOW MANY SWAPS AWAY THE NEAREST BREAK IS (breakNear): the fewest swaps that line up a match of three with a panel touching garbage --
 // each other panel of the match brought along its own row, over cells that hold it up and are not garbage (bitsBring). NEAR_MISS when
-// none. (And the line that makes it: seq, *nseq -- each panel walked in turn; 0 for none.)
-static int nearLineOf(const Bits *B, int32_t *seq, int *nseq) {
+// none. (And the line that makes it: seq, *nseq -- each panel walked in turn; 0 for none.) With `any`, the nearest match of three
+// anywhere on the board, beside garbage or not (clearNearLine).
+static int nearLineIn(const Bits *B, int any, int32_t *seq, int *nseq) {
   int top = B->top, best = 1 << 30;
   if (nseq) *nseq = 0;
   for (int r = 1; r <= top; r++) {
-    unsigned starts = bitsStarts(B, r);
+    unsigned starts = any ? B->pan[r] & ALLCOLS : bitsStarts(B, r);
     for (int c = 1; c <= W; c++) {
       if (!(starts >> c & 1)) continue;
       int32_t k = B->code[r][c];
@@ -136,7 +137,9 @@ static int nearLineOf(const Bits *B, int32_t *seq, int *nseq) {
   }
   return best;
 }
+static int nearLineOf(const Bits *B, int32_t *seq, int *nseq) { return nearLineIn(B, 0, seq, nseq); }
 static int breakNearLine(const Board *b, int32_t *seq, int *nseq) { bitsOf(b, &scratchBits); return nearLineOf(&scratchBits, seq, nseq); }
+static int clearNearLine(const Board *b, int32_t *seq, int *nseq) { bitsOf(b, &scratchBits); return nearLineIn(&scratchBits, 1, seq, nseq); }
 static int breakNear(const Board *b) { return breakNearLine(b, 0, 0); }
 // A PERCHED BLOCK (perchedDrops): a garbage block whose bottom row is held up by panels in some of the columns under it and by nothing in
 // the others -- a hollow under it. Its supports walked along their row past the block's nearer edge let it down, and the stack's height

@@ -144,7 +144,7 @@ static int opChainFalling(const Read *R, const Board *b) {
 }
 #define OP_FALL_WIDTH 80   // (the opener's falling chain's extension: the lines a level keeps, and its swaps deep -- time attack's TA_EXT_WIDTH/DEPTH)
 #define OP_FALL_DEPTH 8
-static int32_t extDry;   // (the opener's falling chain extended last decision and nothing longer found: the next takes OP_FALL_EXT_DRY of the time)
+static int32_t extDry;   // (atomic: the extension's job writes it beside the decision -- the opener's falling chain extended last decision and nothing longer found: the next takes OP_FALL_EXT_DRY of the time)
 static Ext extLog; static int32_t extLogged, extSkip;   // extSkip: why it was not searched -- 1 off, 2 nothing falling or popping, 3 short of time   // (the last extension searched this decision: the log's xs=)
 static void searchExt(const Read *R, Found *S, double ms) {
   Profile *GP = &C2.GP;
@@ -158,7 +158,7 @@ static void searchExt(const Read *R, Found *S, double ms) {
     if (opFall) { ew = imax(ew, OP_FALL_WIDTH); ed = imax(ed, OP_FALL_DEPTH); }
     ExtOpts eo = { ew, ed, &S->xAims, R->by ? R->by : NOT_ASKED, R->keepOn && !opFall ? &R->keep : 0, ms, opFall };
     extend(&decQ, &eo, &S->ex); S->haveEx = 1; extLog = S->ex; extLogged = 1;
-    extDry = opFall && S->ex.top <= S->ex.baseChain;
+    __atomic_store_n(&extDry, opFall && S->ex.top <= S->ex.baseChain, __ATOMIC_RELAXED);
   } else if (!extLogged) extSkip = GP->extendOff ? 1 : !(cascadeLive(board) || R->pop) ? 2 : 3;
   // (A CHAIN IS BEGUN AND CONTINUED: on a board at rest, each swap that starts a clear, then the links its fall is continued by -- the
   // extension's own search, from the board the swap leaves falling; a beginning whose chain ends in the list is a line)
@@ -205,8 +205,8 @@ static void searchAll(const Read *R, Found *S) {
   // judging's quarter -- so a decision with a second to its move searches a second's worth, and one with a frame, a frame's)
   // (the opener's chain falling: the extension takes the decision's time, OP_FALL_EXT of it -- nothing else pressed then matters)
   int opFall = opChainFalling(R, decQ.b);
-  if (!opFall) extDry = 0;
-  if (!extBeside || opFall) { double xMs = leftMs() * (opFall ? (extDry ? OP_FALL_EXT_DRY : OP_FALL_EXT) : 0.5); if (cdAsk && xMs > CD_PLAN_MS / 4) xMs = CD_PLAN_MS / 4; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
+  if (!opFall) __atomic_store_n(&extDry, 0, __ATOMIC_RELAXED);
+  if (!extBeside || opFall) { double xMs = leftMs() * (opFall ? (__atomic_load_n(&extDry, __ATOMIC_RELAXED) ? OP_FALL_EXT_DRY : OP_FALL_EXT) : 0.5); if (cdAsk && xMs > CD_PLAN_MS / 4) xMs = CD_PLAN_MS / 4; searchExt(R, S, xMs < leftMs() ? xMs : leftMs()); }
   // (idle time is planning time -- while the board left alone lives; a board the hold loses keeps the time for the survival search)
   // (garbage on the board, or the board lost soon: the lines found must be judged to be played -- the planner takes half, never the most)
   int urgent = R->under || (R->F.v[FACT_US_DIES] > 0 && R->F.v[FACT_US_DIES] < PLAN_URGENT);
@@ -1130,7 +1130,7 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap);
 // line, the one the cursor walks least for, pressed now (a slab popping lands its panels a row on every column: the perch is the
 // same columns after it); the next decision takes the next. Offered where no line of the decision breaks (decide.c ranked), judged
 // as any line; the rank reads the board at rest (rank.c letsDown). letDownLine: its swaps into seq (MAXPATH), 0 none
-static int letDownLine(const Board *b, int32_t *seq) {
+static int letDownLineOf(const Board *b, int32_t *seq, int dig) {
   static LOCAL Perch P;
   perchRead(b, &P);
   if (P.hi < 2 || P.room < P.n) return 0;
@@ -1144,7 +1144,7 @@ static int letDownLine(const Board *b, int32_t *seq) {
       while (t >= 1 && t <= W && P.top[t] == P.hi - 1 && OPEN_AT(t)) t += d;
       if (t < 1 || t > W || P.top[t] > P.hi - 2 || !OPEN_AT(t)) continue;
       int32_t first = P.hi * 8 + (d > 0 ? c : c - 1);
-      if (seenDigHas(b, first)) continue;
+      if (dig && seenDigHas(b, first)) continue;
       int acts = iabs(t - c) - 1 + actionsFor(b->curRow, b->curCol, CR(first), CC(first), pressAllowance);
       if (!from || acts < cost) { from = c; to = t; cost = acts; }
     }
@@ -1152,6 +1152,7 @@ static int letDownLine(const Board *b, int32_t *seq) {
   #undef OPEN_AT
   return from ? walkTo(P.hi, from, to, seq, 0) : 0;
 }
+static int letDownLine(const Board *b, int32_t *seq) { return letDownLineOf(b, seq, 1); }
 static int letDownCand(Cand *k) {
   static LOCAL int32_t line[MAXPATH];
   int n = letDownLine(decQ.b, line);

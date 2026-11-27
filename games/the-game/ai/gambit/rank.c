@@ -29,6 +29,7 @@ typedef struct {
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
+  int32_t played;      // its board played on to the horizon by the one policy, lost then (decide.c playedLostOf; FOREVER alive at it); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
@@ -95,7 +96,7 @@ static void tierInsert(Tier *t, int pos, double v) {
 }
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -219,7 +220,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -269,6 +270,17 @@ static double lostOf(const Judge *x);
 // own life on a break it promises after the next block is a line whose promise is never pressed: r1335 3913-4002, four ready swaps lost
 // at 91 against the hold's 135, each credited 376-405)
 static double rankHoldOwn = -1; static int32_t rankHoldClock = -1;   // (the hold's own loss this decision: markIdle)
+// (THE HOLD PLAYED ON, this decision: decide.c playedLostOf, NOT_ASKED not asked -- a line that clears nothing does better than holding
+// where its board played on is lost later than the hold's)
+static int32_t playedHold = NOT_ASKED, playedHoldClock = -1;
+// (A LINE THE BOARD PLAYED ON MAY ORDER: the hold, a break, or a line that clears no panel along its whole length (judge.c clearedPanels)
+// -- the policy clears only when the board is lost
+// otherwise, so a clear that breaks nothing would be put first for panels spent sooner than the bot would spend them; what material
+// buys stays the material keys' to weigh)
+static int playedFair(const Judge *J) { return J->hold || J->apBroke > 0 || J->o.j.made.broke > 0 || !(J->o.j.clearedPanels > 0 || J->apCombo > 0 || J->apChain > 0); }
+static int outplaysHold(const Judge *J) {
+  return !J->hold && playedFair(J) && J->played != NOT_ASKED && playedHoldClock == decQ.b->clock && playedHold != NOT_ASKED && lostAtOf(J->played, 0) > lostAtOf(playedHold, 0);
+}
 static int extCounts(const Judge *x) {
   if (x->hold || x->extLost == NOT_ASKED) return 0;
   if (lostAtOf(x->o.lostAt, 0) < rankSave) return 0;   // (a board lost inside a break's time presses no promise after it)
@@ -555,7 +567,7 @@ static void markIdle(Judge **a, int n) {
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   rankHoldClock = decQ.b->clock; rankHoldOwn = H && !H->o.dead && H->o.lostAt != NOT_ASKED ? lostAtOf(H->o.lostAt, 1) : -1;
   double holdLost = H ? lostOf(H) : 0;
-  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H) && !(a[i]->k.readyGain > 0 && !a[i]->o.dead && diesAt(a[i]) >= diesAt(H))) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H) && !outplaysHold(a[i]) && !(a[i]->k.readyGain > 0 && !a[i]->o.dead && diesAt(a[i]) >= diesAt(H))) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
@@ -889,12 +901,31 @@ static int calmKept(const Judge *c, const Judge *o) {
 }
 // THE SURVIVAL CREDIT of two lines, each beside the other: lives, or counted as living (the horizon, the finish's safe board), and
 // where it is taken back -- compareJudged's first step, and the log's cr=
+#define TOWER_ROWS 4   // (the flatness floor's tower: the tallest column of panels this many rows or more over the lowest -- key 1 below)
+#define TOWER_STEP 2   // (and of two towered, this many rows taller)
+// (A LINE THAT LEAVES THE STACK TOWERED beside one that leaves it flatter (the flatness floor's measure, judge.c towerOf): towered where the
+// other is not, or TOWER_STEP rows taller -- the other's board standing a break's time)
+static int toweredBeside(const Judge *t, const Judge *f) {
+  int tt = t->o.j.tower, tf = f->o.j.tower;
+  if (tt < 0 || tf < 0 || tt < TOWER_ROWS || f->o.dead || diesAt(f) < rankSave) return 0;
+  return tf < TOWER_ROWS || tt - tf >= TOWER_STEP;
+}
 static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   int lx = livesOn(x), ly = livesOn(y);
   // (the horizon's credit is no life beside a board that outlives it: the line in progress lost past the horizon, beside a line that
   // lives or is lost a break's time later, is a line that is lost -- death is never an option)
   if (lx && !x->o.lives && outlives(y, x) && !calmKept(x, y)) lx = 0;
   if (ly && !y->o.lives && outlives(x, y) && !calmKept(y, x)) ly = 0;
+  // (nor beside a line whose board played on is lost a break's time later (decide.c playedLostOf, both lines playedFair): the horizon is
+  // a guess, the board played on is the engine's)
+  #define PLAYED_LATER(a, b) ((a)->played != NOT_ASKED && (b)->played != NOT_ASKED && playedFair(a) && playedFair(b) && lostAtOf((a)->played, 0) - lostAtOf((b)->played, 0) >= rankSave)
+  if (lx && !x->o.lives && PLAYED_LATER(y, x)) lx = 0;
+  if (ly && !y->o.lives && PLAYED_LATER(x, y)) ly = 0;
+  #undef PLAYED_LATER
+  // (nor beside a line that leaves the stack flatter, where its own leaves it towered (toweredBeside): the horizon is a guess, and a
+  // towered stack is where garbage rests on a column or two that no break reaches)
+  if (lx && !x->o.lives && toweredBeside(x, y)) lx = 0;
+  if (ly && !y->o.lives && toweredBeside(y, x)) ly = 0;
   // (nor, under garbage, the credit of a line that breaks nothing beside a break lost within a break's time of it: the break is the way
   // out the board has, the horizon is a promise -- r1363, 14839: a 4x stall in progress lost at 296 kept over a break lost at 282, and no
   // break offered again; r1362, 16120)
@@ -970,6 +1001,24 @@ static int compareJudged(const Judge *x, const Judge *y) {
       lx = ly = 1;
     }
   }
+  // 1. THE BOARD PLAYED ON (the owner: there is no death): of two that do not live, both played on by the one policy (decide.c
+  // playedLostOf) and neither a clear that breaks nothing (playedFair), the one whose board played on is lost later goes first, by any
+  // margin -- a move that leaves the board where the policy finds its next break before one that leaves it where none is found, whatever
+  // their boards left alone are lost on. Two alive at the horizon are ordered by the keys after this one, and so are two of which one
+  // leaves the input window half a break's walk at the next landing and the other does not: the window comes back over 600 frames, the
+  // board is played on for HORIZON + REST, and a window spent is a break the board cannot press past it (the window's floor, below)
+  #define WINDOW_KEPT(J) (pressAllowance < 0 || allowAtLanding((J)->hold ? 0 : lineWalk(J)) >= BREAK_WALK / 2)
+  if (!lx && !ly && x->played != NOT_ASKED && y->played != NOT_ASKED && playedFair(x) && playedFair(y) && WINDOW_KEPT(x) == WINDOW_KEPT(y)) {
+    double px = lostAtOf(x->played, 0), py = lostAtOf(y->played, 0);
+    // (the line in progress put down only for a board played on a break's time longer, the hold's too -- the owner: changing plans is
+    // wasteful: its actions are pressed, and a plan changed on a few frames of the policy's guess is the window spent twice)
+    const Judge *cj = x->carried && !x->hold ? x : y->carried && !y->hold ? y : 0;
+    // (and never while the line in progress is no worse than when it was played -- carriedSame: living, or lost no sooner -- the owner:
+    // a line begun is pressed to its end unless survival needs another; there the plan kept decides, below)
+    int keeps = cj && x->carried != y->carried && (cj == x ? py > px : px > py) && ((px > py ? px - py : py - px) < rankSave || carriedSame(cj));
+    if (px != py && !keeps) return (cmpKey = __LINE__, (px > py ? -1 : 1));
+  }
+  #undef WINDOW_KEPT
   // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress no worse than when it was played -- living, or lost no
   // sooner (carriedSame) -- its board standing a break's time, is not put down for another line found this time: every action spent on it
   // is thrown away. Only for a line that breaks more garbage -- as seen, or as the line makes it -- or outlives it by a break's time
@@ -994,8 +1043,6 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // resting on a column few panels touch is the break that cannot be made. Only where the flatter one's board stands a break's time,
   // breaks no less garbage or the other breaks none, and is the hold, walks no more than WALK_EARN actions, or leaves the window a
   // break's walk when the next block lands
-  #define TOWER_ROWS 4
-  #define TOWER_STEP 2
   if (!lx && !ly && x->o.j.tower >= 0 && y->o.j.tower >= 0) {
     int tx = x->o.j.tower, ty = y->o.j.tower;
     int differ = (tx >= TOWER_ROWS) != (ty >= TOWER_ROWS) || (tx >= TOWER_ROWS && ty >= TOWER_ROWS && iabs(tx - ty) >= TOWER_STEP);

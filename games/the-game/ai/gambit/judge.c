@@ -139,11 +139,17 @@ static int32_t linkBrokeOf(const Stats *s) { for (int j = 0; j < s->n; j++) if (
 #define FIRST_LOOK 30
 static int garbageCells(const Board *b) { int n = 0; for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) n += !!b->p[r][c].f[ISGARBAGE]; return n; }
 #define THREE_SETTLE 400
+// (THE PRESS GUARD'S TIME, front.c: the frame loop's own deadline for the guard's tests, in the host's ms, 0 none -- a test the deadline
+// stops answers "no": the judge played the line on the board it predicted, and the guard is the second look within the frame's budget.
+// The searches never set it, so every judging is the same work every time)
+static LOCAL double guardUntil;
+static int guardOut(int f) { return guardUntil > 0 && (f & 7) == 7 && clock_ms() >= guardUntil; }
 static int wastedThree(Board *g, Board *a) {
   static LOCAL int32_t was[MAXROWS * W * 2], got[MAXROWS * W * 2];
   int nw = 0, ng = 0, touch = 0, first = -1;
   static const int DR[4] = { 1, -1, 0, 0 }, DC[4] = { 0, 0, 1, -1 };
   for (int f = 0; f < FIRST_LOOK && g->gameOverClock <= 0; f++) {
+    if (guardOut(f)) return 0;
     run(g); run(a); g->input = a->input = 0; g->pressSwap = a->pressSwap = 0;
     for (int r = 1; r < a->nrows; r++) for (int c = 1; c <= W; c++) {
       const int32_t *p = a->p[r][c].f;
@@ -166,6 +172,7 @@ static int wastedThree(Board *g, Board *a) {
   if (n != 3) return 0;
   int32_t gc = g->chainCounter, ac = a->chainCounter;
   for (int k = 0; k < THREE_SETTLE && g->gameOverClock <= 0; k++) {
+    if (guardOut(k)) return 0;
     run(g); if (a->gameOverClock <= 0) run(a);
     gc = imax(gc, g->chainCounter); ac = imax(ac, a->chainCounter);
     if (g->chainCounter == 0 && !hasActivePanels(g) && a->chainCounter == 0 && !hasActivePanels(a)) break;
@@ -183,6 +190,7 @@ static int wastedThree(Board *g, Board *a) {
 static int spoilsChain(Board *g, Board *a, int32_t (*keyAt)(int32_t f), void (*land)(Board *g, Board *a)) {
   int32_t gc = g->chainCounter, ac = a->chainCounter;
   for (int f = 0; f < FIRST_LOOK + THREE_SETTLE && g->gameOverClock <= 0; f++) {
+    if (guardOut(f)) return 0;
     run(g); if (a->gameOverClock <= 0) run(a);
     if (land) land(g, a);
     int32_t k = keyAt ? keyAt(f) : 0;

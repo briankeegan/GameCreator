@@ -22,7 +22,7 @@ int hostIdleThread(void *(*fn)(void *), const char *name);
 int hostOpenLog(const char *path);
 void hostLog(const char *s);
 void hostLogFlush(void);
-int hostHeapMB(void);
+int hostHeapMB(void); int hostRssMB(void);
 int snprintf(char *s, unsigned long n, const char *fmt, ...);
 int strncmp(const char *a, const char *b, unsigned long n);
 char *strchr(const char *s, int c);
@@ -167,8 +167,14 @@ static int frameOut(void) {
   return clock_ms() + closeWorst() >= moveStartMs(dueFrame + 1 - burst - more);
 }
 static void ringKeep(int32_t at, int32_t allow);
+// (WHAT GAMBIT'S THREAD IS DOING, for the game's gaps (GAMEGAP): 0 waiting for a question, 1 taking one up, 2 deciding, 3 writing down
+// the decision answered -- and since when)
+static int32_t gambitDoing; static double gambitSince;
+static void doing(int32_t what) { double t = clock_ms(); __atomic_store(&gambitSince, &t, __ATOMIC_SEQ_CST); __atomic_store_n(&gambitDoing, what, __ATOMIC_SEQ_CST); }
+static double flushMs;   // (the last log write's time, the next decision's log line's fl=)
 static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
   double t0 = clock_ms();
+  doing(2);
   if (gnPlanHealth) { b->health = imin(b->health, gnPlanHealth); b->maxHealth = imin(b->maxHealth, gnPlanHealth); }
   dueFrame = q->at - 1; clockFrameOut = frameOut; rescueOn = 0;
   { int32_t room = dueFrame - __atomic_load_n(&gameFrame, __ATOMIC_SEQ_CST) - THINK_FRAMES, burst = burstOf();
@@ -214,9 +220,21 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
       s = at + 2; while (*s >= '0' && *s <= '9') s++;
     }
   }
-  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0, hostHeapMB());
+  // (and the process's resident memory, read every RSS_EVERY decisions, how long the question waited for Gambit's thread, the ms its clock
+  // gave it, the last log write's ms)
+  static int rssMB = -1; static uint32_t rssN;
+  #define RSS_EVERY 16
+  if (rssN++ % RSS_EVERY == 0) rssMB = hostRssMB();
+  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d rssMB=%d wait=%d given=%d fl=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0, hostHeapMB(), rssMB,
+           (int)(t0 - q->posted), (int)(due - t0), (int)flushMs);
   flog(line);
-  hostLogFlush();   // (the log written on Gambit's thread, between decisions: the game's frame never waits on the disk)
+}
+// THE DECISION WRITTEN DOWN, once its answer is the frame loop's: the log written out (Gambit's thread, between decisions: neither the
+// game's frame nor the answer waits on the disk), the boards dumped, the question's board kept
+static void answerAfter(FQuestion *q) {
+  Answer *A = &theAnswer;
+  doing(3);
+  { double t = clock_ms(); hostLogFlush(); flushMs = clock_ms() - t; }
   // (a life not kept: the last decision's board, then this one -- GAMBITK)
   if (A->dumpBoard == 3) { hostLock(); int last = (ringHead - 1 + RINGN) % RINGN; if (ringCount && ring[last]) dumpBoard("GAMBITK", ringAt[last], ring[last], ringArr[last], ringNarr[last], ringAllow[last]); hostUnlock(); }
   if (A->dumpBoard) dumpBoard(A->dumpBoard == 2 ? "GAMBITT" : A->dumpBoard == 3 ? "GAMBITK" : A->dumpBoard == 4 ? "GAMBITO" : "GAMBITB", q->at, hostBoard, hostQ.arr, hostQ.narr, q->allowance);
@@ -261,9 +279,11 @@ static void *workerMain(void *arg) {
   static FQuestion q;
   Board *b = nb_new();
   for (;;) {
+    doing(0);
     hostLock();
     while (!qHas && !qReset && !gnQuit) hostWait();
     if (gnQuit) { hostUnlock(); return 0; }
+    doing(1);
     if (qReset) { qReset = 0; ringCount = 0; hostUnlock(); onStop(); gb_new_game(); continue; }
     q = qSlot; copyBoard(b, qSlotBoard); q.b = b; qHas = 0;
     __atomic_store_n(&curQid, q.id, __ATOMIC_SEQ_CST);
@@ -273,11 +293,13 @@ static void *workerMain(void *arg) {
     onStop();
     if (abort_poll() == 1) continue;
     answerOne(&q, b, &a);
-    if (abort_poll() == 1) continue;
-    hostLock();
-    if (ansN == ANSN) { ansHead = (ansHead + 1) % ANSN; ansN--; }
-    answers[(ansHead + ansN) % ANSN] = a; ansN++;
-    hostUnlock();
+    if (abort_poll() != 1) {
+      hostLock();
+      if (ansN == ANSN) { ansHead = (ansHead + 1) % ANSN; ansN--; }
+      answers[(ansHead + ansN) % ANSN] = a; ansN++;
+      hostUnlock();
+    }
+    answerAfter(&q);
   }
   return 0;
 }
@@ -395,13 +417,15 @@ static void statsOut(void) { static char line[4096]; if (!F.st.frames) return; s
 // (the last frame a game was asked on: a clock behind it is a game begun again)
 static int32_t lastClock = NUL;
 // A match begins: nothing of the last is carried on.
+static double gapEnd, gapStats[6];   // (the game's gaps, GAMEGAP below: when the last frame loop ended, the game thread's account then)
+static int32_t gapLogged;
 void gn_match(void) {
   statsOut();
   lastClock = NUL;
   frontNew(gnReaction, gnAhead, gnGap, gnJitter);
   gb_switch_game((uint32_t)clock_ms());
   // (the frame clock and the closing times are this game's: the last game's slowest closings would cut this one's decisions short)
-  nclose = 0; frameCounter = 0;
+  nclose = 0; frameCounter = 0; gapEnd = 0; gapLogged = 0;
   __atomic_store_n(&gameFrame, 0, __ATOMIC_SEQ_CST); __atomic_store_n(&gameBurst, 0, __ATOMIC_SEQ_CST); dueFrame = 0;
   { double z = 0; __atomic_store(&gameFrameMs, &z, __ATOMIC_SEQ_CST); }
   gnFrames = 0;
@@ -450,7 +474,26 @@ int gn_countdown(int left, int limit, int window, int oppHas, int oppOut, int op
 // budget's limit and window and the frames ago each key inside it went down (gn_ages), and the opponent. The keys to press, or -1.
 // (a clock behind the last frame's is a game begun again without gn_match: begun so. A question asked for a frame sooner than the
 // last one asked is the same game -- the frame loop asks again after it drops its plans.)
+// THE GAME'S OWN GAPS (GAMEGAP): from the end of one frame loop to the start of the next is the game's own frame -- its update, its draw,
+// its wait for the next frame. One over GAP_MS: how long, and the game thread's own account of it (its CPU time, the times it was taken
+// off its core and gave it up, its page faults), the pages released by every thread meanwhile, and what Gambit's thread was doing
+#define GAP_MS 100
+static void gapAt(int32_t clock) {
+  double t = clock_ms();
+  if (gapEnd > 0 && t - gapEnd > GAP_MS && gapLogged < 200) {
+    double st[6]; hostThreadStats(st);
+    double since; __atomic_load(&gambitSince, &since, __ATOMIC_SEQ_CST);
+    static const char *what[] = { "waiting", "taking up a question", "deciding", "writing down" };
+    int32_t d = __atomic_load_n(&gambitDoing, __ATOMIC_SEQ_CST);
+    char l[300]; snprintf(l, sizeof l, "GAMEGAP clock %d: %.0f ms since the last frame loop; game thread cpu %.1f ms, preempted %d, yielded %d, faults %d (major %d), pages released by every thread %d; gambit %s for %.0f ms",
+                          clock, t - gapEnd, st[0] - gapStats[0], (int)(st[1] - gapStats[1]), (int)(st[2] - gapStats[2]), (int)(st[3] - gapStats[3]), (int)(st[4] - gapStats[4]), (int)(st[5] - gapStats[5]),
+                          d >= 0 && d <= 3 ? what[d] : "?", t - since);
+    flog(l); gapLogged++;
+  }
+}
+static void gapMark(void) { hostThreadStats(gapStats); gapEnd = clock_ms(); }
 int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTop, int oppStop) {
+  gapAt(F.truth ? F.truth->clock + 1 : 0);
   if (nb_load(F.truth)) return -1;
   int32_t clock = F.truth->clock;
   if (lastClock != NUL && clock < lastClock) gn_match();
@@ -477,6 +520,7 @@ int gn_frame(int limit, int window, int nages, int oppHas, int oppOut, int oppTo
   // (the stats now and then, and when the game is lost: a client may be stopped at any frame)
   if (++gnFrames % 600 == 0 || F.truth->gameOverClock > 0) statsOut();
   if (F.truth->gameOverClock > 0) hostLogFlush();   // (the game over: the stats written now, whatever ends the process next)
+  gapMark();
   return bits;
 }
 void gn_end(void) { statsOut(); frontTraceOut(); ringOut(); hostLogFlush(); }

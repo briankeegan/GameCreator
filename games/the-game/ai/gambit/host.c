@@ -19,6 +19,22 @@ void hostLog(const char *s);
 void hostLogFlush(void);
 // The bytes the heap has given this instance, in MB
 int hostHeapMB(void) { return (int)(__atomic_load_n(&heapBytes, __ATOMIC_RELAXED) >> 20); }
+// THE BUDGET FOR WHAT IS RESIDENT: GC_GAMBIT_HEAP_SOFT_MB (9000 unset). Under it no page is given back -- what is resident is never more
+// than the heap has grown -- and past it the spares past SPARE_KEEP give theirs back (eval/native/memory.h)
+int paHeapOver(void) {
+  static unsigned long soft;
+  if (!soft) { const char *e = getenv("GC_GAMBIT_HEAP_SOFT_MB"); long mb = e && *e ? atol(e) : 9000; soft = (mb > 0 ? (unsigned long)mb : 1ul) << 20; }
+  return __atomic_load_n(&heapBytes, __ATOMIC_RELAXED) > soft;
+}
+// The process's resident memory, in MB (/proc/self/statm), -1 unread
+int hostRssMB(void) {
+  FILE *f = fopen("/proc/self/statm", "r");
+  if (!f) return -1;
+  long size = 0, res = -1;
+  if (fscanf(f, "%ld %ld", &size, &res) != 2) res = -1;
+  fclose(f);
+  return res < 0 ? -1 : (int)((res * 4096L) >> 20);
+}
 void *paHeap(unsigned long n) {
   static unsigned long capBytes;
   if (!capBytes) { const char *e = getenv("GC_GAMBIT_HEAP_MB"); long mb = e && *e ? atol(e) : 0; capBytes = mb > 0 ? (unsigned long)mb << 20 : ~0ul; }

@@ -447,6 +447,93 @@ static double contLostOf(const Judge *J, double give) {
   if (lost < 0) return -1;
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
+// THE BOARD PLAYED ON (the owner: there is no death -- plans/gambit-infra.md G): with garbage on the board or on its way, where nothing
+// lives, each line, the hold too, is played on from the board it leaves to the horizon by one fixed policy: a break in reach pressed
+// (search/break.c breakNearLine); else, where the board left alone is lost within a break's time, the nearest clear (search/break.c
+// clearNearLine); else the garbage let down off the columns it rests on (propose.c letDownLineOf); else the tallest column's top walked
+// onto a lower neighbour (propose.c levelLine); else PLAY_WAIT frames left alone. Each swap is pressed
+// out of the window the line leaves, as the judge presses it. The frame that board is lost is the line's played life (Judge.played: from now, FOREVER alive at the
+// horizon); the hold's policy begins once the next decision can press (HOLD_GAP). The order puts the later played life first among
+// lines that do not live (rank.c), and the policy's own move is offered as a line, so what the scores count on is always there to press.
+#define PLAY_STEPS 24   // the policy's moves at most, a line played on
+#define PLAY_WAIT 24    // the frames left alone where the policy has nothing to press
+#define PLAY_MS 4       // the time each line's playing on has
+#define PLAY_LINES 10   // the lines played on a decision, the hold and the policy's own move besides
+#define HOLD_GAP 16     // the frames until the next decision presses, for the hold
+#define PLAY_SETTLE 12  // the frames a move's board is let settle at most before the next (a reaction): a board that never comes to rest is played on as it is
+static int32_t playAsked, playOut, playBeat, playOffered;   // (lines played on this decision, those the clock left unanswered, those that outplayed the hold, the policy's move offered: the log's pl=)
+static int32_t playTopLog = NOT_ASKED;   // (the played life of the line on top: the log's pl=)
+// (THE POLICY'S MOVE ON THE BOARD AS IT STANDS, offered as a line: a break in reach, else the garbage let down, else the stack levelled)
+static int policyLine(const Board *b, int32_t *line) {
+  if (garbageOn(b)) { int nl = 0; if (breakNearLine(b, line, &nl) < NEAR_MISS && nl > 0) return nl; }
+  int nl = letDownLineOf(b, line, 0);
+  if (nl > 0) return nl;
+  return levelLine(b, line, 1);
+}
+static LOCAL Ctx *playedCtx;
+// (the board of q played on from its root, `wait` frames left alone first, to `to` frames from its root: the frame it is lost, FOREVER
+// alive at `to`, NOT_ASKED no answer -- the clock, or `until`)
+static int32_t playedOn(const Question *q, int32_t wait, int32_t to, double until) {
+  Ctx *x = playedCtx = ctxOf(playedCtx);
+  int nd = rootOf(x, q);
+  if (nd < 0) return NOT_ASKED;
+  int32_t acts = 0;
+  #define PLAYED_STEP(w_) do { int w__ = (w_); if (w__ == STEP_DEAD) return deadAt; if (w__ < 0) return NOT_ASKED; nd = w__; } while (0)
+  if (wait > 0) PLAYED_STEP(step(x, nd, MK_LONG, 0, 0, wait));
+  for (int s = 0; s < PLAY_STEPS; s++) {
+    if (nowMs() >= until) return NOT_ASKED;
+    PLAYED_STEP(step(x, nd, MK_SETTLE, 0, 0, imax(1, imin(PLAY_SETTLE, to - NODE(x, nd)->t))));
+    if (NODE(x, nd)->dead) return NODE(x, nd)->t;
+    if (NODE(x, nd)->t >= to) return FOREVER;
+    const Board *b = ensureBoard(x, nd);
+    if (!b) return NOT_ASKED;
+    int32_t line[MAXPATH];
+    int nl = 0, pressed = 0;
+    if (garbageOn(b)) { int k = 0; if (breakNearLine(b, line, &k) < NEAR_MISS && k > 0) nl = k; }
+    // (no break in reach and the board left alone lost within a break's time: no break comes in time, and the nearest clear is the life
+    // (search/break.c clearNearLine) -- pressed as late as that, so a line is never put first for panels spent sooner than they need be)
+    if (!nl) {
+      int32_t la = lostAlone(x, nd, NODE(x, nd)->t + rankSave);
+      if (la == NOT_ASKED) return NOT_ASKED;
+      if (la != FOREVER && (b = ensureBoard(x, nd))) { int k = 0; if (clearNearLine(b, line, &k) < NEAR_MISS && k > 0) nl = k; }
+    }
+    if (!nl && (b = ensureBoard(x, nd))) { nl = letDownLineOf(b, line, 0); if (!nl) nl = levelLine(b, line, 1); }
+    for (int i = 0; i < nl; i++) {
+      const Board *pb = ensureBoard(x, nd);
+      if (!pb) return NOT_ASKED;
+      int32_t left = pressAllowance >= 0 ? allowLeftAt(NODE(x, nd)->t, acts) : HOLDTIGHT + 1;
+      int a = actionsFor(pb->curRow, pb->curCol, CR(line[i]), CC(line[i]), left);
+      if (pressAllowance >= 0 && a > left) break;
+      int w = step(x, nd, MK_SWAP, CR(line[i]), CC(line[i]), 0);
+      if (w == STEP_DEAD) return deadAt;
+      if (w < 0) { if (clockOut()) return NOT_ASKED; break; }   // (a swap the board refuses: the line stops there)
+      acts += a; nd = w; pressed++;
+    }
+    if (!pressed) PLAYED_STEP(step(x, nd, MK_LONG, 0, 0, imax(1, imin(PLAY_WAIT, to - NODE(x, nd)->t))));
+  }
+  #undef PLAYED_STEP
+  return lostAlone(x, nd, to);
+}
+// (a judged line played on from the board it leaves, at the frame it ends, out of the window it leaves; the hold from the board as it
+// stands now, left alone HOLD_GAP frames first: the frame from now its board is lost, FOREVER alive at the horizon, NOT_ASKED no answer)
+static int32_t playedLostOf(const Judge *J, double give) {
+  static Board *pb; if (!pb) pb = nb_new();
+  if (J->o.dead) return J->o.lostAt >= 0 && J->o.lostAt != FOREVER ? J->o.lostAt : NOT_ASKED;
+  if (!pb) return NOT_ASKED;
+  endNoKeep = 1;
+  const Board *e = J->hold ? decQ.b : lineEnd(J->k.seq, J->k.nseq, J->settled);
+  endNoKeep = 0;
+  if (!e) return NOT_ASKED;
+  cloneBoard(pb, e);
+  int32_t dt = imax(0, pb->clock - decQ.b->clock);
+  Question q2 = decQ; q2.b = pb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
+  winPast = dt; winGone = J->hold ? 0 : J->o.j.spent;
+  int32_t lost = playedOn(&q2, J->hold ? imax(0, HOLD_GAP - dt) : 0, imax(1, HORIZON + REST - dt), nowMs() + give);
+  winPast = 0; winGone = 0;
+  if (lost == NOT_ASKED || lost == FOREVER) return lost;
+  return dt + lost;
+}
 static int32_t noopWaits;   // (swaps of the line played handed on as a wait: a swap and its swap back -- playOf)
 static int32_t putOffCut;   // (clears taken out for blocks that have not landed: the log's)
 static int32_t twoDropped, windowCut;   // (lines taken out as a 2x not taken to three -- the log's)
@@ -558,7 +645,7 @@ static int enRoute(const Judge *J) {
   int lr = CR(J->k.seq[J->k.nseq - 1]), lc = CC(J->k.seq[J->k.nseq - 1]);
   return iabs(lr - enR) + iabs(lc - enC) < iabs(decQ.b->curRow - enR) + iabs(decQ.b->curCol - enC);
 }
-static int stallsUnder(const Judge *J) { return !J->hold && !J->o.lives && !(J->apBroke > 0) && !digsForBreak(J) && !enRoute(J) && !flattenFree(J) && !finishFree(J) && J->k.play != PLAY_CONVERT && J->k.play != PLAY_CARRY && J->k.play != PLAY_CARRYWAIT; }
+static int stallsUnder(const Judge *J) { return !J->hold && !J->o.lives && !(J->apBroke > 0) && !outplaysHold(J) && !digsForBreak(J) && !enRoute(J) && !flattenFree(J) && !finishFree(J) && J->k.play != PLAY_CONVERT && J->k.play != PLAY_CARRY && J->k.play != PLAY_CARRYWAIT; }
 static int32_t needlessTrimmed;   // (swaps taken out of the line played that it lost nothing without: the log's)
 static int32_t combosDropped;   // (combos the mode does not ask for, played as a line without one: the log's)
 static void dropCombo(const Read *R, Judge *J) {
@@ -745,6 +832,46 @@ static int ranked(const Read *R, const Found *S) {
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeWalkedIn(R, &sk, &theJudged[n + 1], sk.nseq)) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
   }
+  // (THE BOARD PLAYED ON: with garbage on the board or on its way, where nothing lives, the policy's own move offered as a line, then the
+  // hold, that line and the best PLAY_LINES others each played on (playedLostOf), each its own PLAY_MS, up to the move's own frame, and
+  // the order made again -- before the life after the line, which takes CONT_MS a line to the move's own frame)
+  playAsked = playOut = playBeat = playOffered = 0; playTopLog = NOT_ASKED; playedHold = NOT_ASKED; playedHoldClock = decQ.b->clock;
+  if ((decF.under || garbageComing()) && n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
+    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
+    static Judge playJ; Judge *PJ = 0;
+    if (!R->pop) {
+      int32_t pl[MAXPATH]; int np = policyLine(decQ.b, pl);
+      // (kept to the reach: its swaps up to the first past it; where the first is past it, the cursor walks toward it while the bot
+      // holds -- the way to the action)
+      int r0 = decQ.b->curRow, c0 = decQ.b->curCol, p = 0;
+      for (; p < np && iabs(CR(pl[p]) - r0) + iabs(CC(pl[p]) - c0) <= REACH_STEPS; p++) { r0 = CR(pl[p]); c0 = CC(pl[p]); }
+      if (np > 0 && !p) { enR = CR(pl[0]); enC = CC(pl[0]); enOn = 1; }
+      np = p;
+      int have = 0;
+      for (int i = 0; i < n && !have && np > 0; i++) { const Judge *J = order[i]; have = !J->hold && J->k.nseq >= np; for (int q = 0; q < np && have; q++) have = J->k.seq[q] == pl[q]; }
+      Cand pk;
+      if (np > 0 && !have && candOf(&pk, PLAY_LEVEL, pl, np, -1, 0)) { pk.settled = 0; offered[PLAY_LEVEL]++;
+        if (judgeCand(R, &pk, &playJ)) { readyNextFor(&playJ); order[n] = &playJ; PJ = &playJ; n++; playOffered = 1; } }
+    }
+    const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
+    int asked = 0;
+    for (int pass = 0; pass < 3; pass++)
+      for (int i = 0; i < n && !clockFrameOut(); i++) {
+        Judge *J = order[i];
+        if (pass == 0 ? J != H : pass == 1 ? J != PJ : (J == H || J == PJ || asked >= PLAY_LINES)) continue;
+        if (J->o.lives || J->played != NOT_ASKED) continue;
+        double sh = clockShareBegin(nowMs() + PLAY_MS);
+        J->played = playedLostOf(J, PLAY_MS); playAsked++;
+        clockShareEnd(sh);
+        if (J->played == NOT_ASKED) playOut++;
+        if (pass == 2) asked++;
+        if (J == H) playedHold = J->played;
+      }
+    clockDue = due; clockShare = share;
+    for (int i = 0; i < n; i++) playBeat += outplaysHold(order[i]);
+    if (playAsked) sortJudged(order, n);
+    playTopLog = order[0]->played;
+  }
   // (THE LIFE AFTER THE LINE -- the owner: survival is not the line that buys the most frames alone, with nothing pressed after it: in
   // every mode, where nothing lives, the best lines -- in finish them the combos first -- are each judged with the survival search run on
   // from the board they leave (contLostOf), with the window that line leaves, and ranked on the later of that and their own loss: a line
@@ -923,12 +1050,25 @@ static int ranked(const Read *R, const Found *S) {
       Cand c = J->k; c.nseq = p; c.settled = 0;
       if (judgeCand(R, &c, &within[nw]) && !within[nw].o.dead && !reachesFar(&within[nw])) { readyNextFor(&within[nw]); order[n++] = &within[nw]; nw++; reachCut--; }
     }
+    // (and played on, where the decision's lines were: decide.c playedLostOf)
+    if (nw && playedHoldClock == decQ.b->clock && playedHold != NOT_ASKED && clockFrameOut && !clockFrameOut()) {
+      double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
+      for (int i = 0; i < nw && !clockFrameOut(); i++) {
+        if (within[i].o.lives) continue;
+        double sh = clockShareBegin(nowMs() + PLAY_MS);
+        within[i].played = playedLostOf(&within[i], PLAY_MS); playAsked++;
+        clockShareEnd(sh);
+        if (within[i].played == NOT_ASKED) playOut++;
+      }
+      clockDue = due; clockShare = share;
+    }
     if (nw) sortJudged(order, n); }
   // (THE WAY TO THE LINE THE REACH CUT: once the opener is over, under garbage with no break offered, the best line past the reach that
-  // digs toward a break or lets a perch down is where the cursor is going: the way to the action (enRoute, its own checks: lost no sooner,
-  // the reserve kept) walks it there in hops within the reach, unless a line in progress waits for its own next swap)
+  // digs toward a break, lets a perch down, or outplays the hold (rank.c outplaysHold) is where the cursor is going: the way to the action
+  // (enRoute, its own checks: lost no sooner, the reserve kept) walks it there in hops within the reach, unless a line in progress waits
+  // for its own next swap)
   if (openerOver && decF.under && !breakOffered && !(ccPre && cwaitPre)) for (int i = 0; i < n; i++) { const Judge *J = order[i];
-    if (!J->hold && !J->o.dead && J->k.nseq > 0 && farForNothing(J) && digsForBreak(J)) { enR = CR(J->k.seq[0]); enC = CC(J->k.seq[0]); enOn = 1; break; } }
+    if (!J->hold && !J->o.dead && J->k.nseq > 0 && farForNothing(J) && (digsForBreak(J) || outplaysHold(J))) { enR = CR(J->k.seq[0]); enC = CC(J->k.seq[0]); enOn = 1; break; } }
   // (NO STALLING UNDER GARBAGE -- the owner: efficiency is key, no wasted moves: under garbage, while the hold's own board stands a break's
   // time, a line that breaks none of it, does not live, does not dig toward a break (rank.c digsForBreak, a perch let down among them)
   // and is no flatten the window has room for (rank.c flattenFree) nor the finish's attack (rank.c finishFree) is taken out: the actions it
