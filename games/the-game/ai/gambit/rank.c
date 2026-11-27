@@ -29,6 +29,7 @@ typedef struct {
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
+  int32_t played;      // its board played on to the horizon by the one policy, lost then (decide.c playedLostOf; FOREVER alive at it); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
   int32_t met;         // the entry of the list as the board asks it the judged line meets, -1 none (rules.c metOf)
@@ -95,7 +96,7 @@ static void tierInsert(Tier *t, int pos, double v) {
 }
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -219,7 +220,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -269,6 +270,12 @@ static double lostOf(const Judge *x);
 // own life on a break it promises after the next block is a line whose promise is never pressed: r1335 3913-4002, four ready swaps lost
 // at 91 against the hold's 135, each credited 376-405)
 static double rankHoldOwn = -1; static int32_t rankHoldClock = -1;   // (the hold's own loss this decision: markIdle)
+// (THE HOLD PLAYED ON, this decision: decide.c playedLostOf, NOT_ASKED not asked -- a line that clears nothing does better than holding
+// where its board played on is lost later than the hold's)
+static int32_t playedHold = NOT_ASKED, playedHoldClock = -1;
+static int outplaysHold(const Judge *J) {
+  return !J->hold && J->played != NOT_ASKED && playedHoldClock == decQ.b->clock && playedHold != NOT_ASKED && lostAtOf(J->played, 0) > lostAtOf(playedHold, 0);
+}
 static int extCounts(const Judge *x) {
   if (x->hold || x->extLost == NOT_ASKED) return 0;
   if (lostAtOf(x->o.lostAt, 0) < rankSave) return 0;   // (a board lost inside a break's time presses no promise after it)
@@ -555,7 +562,7 @@ static void markIdle(Judge **a, int n) {
   for (int i = 0; i < n; i++) a[i]->idle = 0;
   rankHoldClock = decQ.b->clock; rankHoldOwn = H && !H->o.dead && H->o.lostAt != NOT_ASKED ? lostAtOf(H->o.lostAt, 1) : -1;
   double holdLost = H ? lostOf(H) : 0;
-  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H) && !(a[i]->k.readyGain > 0 && !a[i]->o.dead && diesAt(a[i]) >= diesAt(H))) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
+  for (int i = 0; i < n; i++) if (H && clearsNothing(a[i]) && !beatsHold(a[i], H) && !levelsFree(a[i], H) && !loadsFree(a[i], H) && !outplaysHold(a[i]) && !(a[i]->k.readyGain > 0 && !a[i]->o.dead && diesAt(a[i]) >= diesAt(H))) { a[i]->idle = 1; a[i]->idleLost = holdLost - 0.5; }
 }
 // THE ONE ORDER, key by key: each key decides only between two lines every key before it leaves equal. Survival first, then the list,
 // then the kind of line (plans/gambit-next.md 0).
@@ -969,6 +976,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
       if (!(!l->o.lives && goalLine(o) && !o->o.dead && o->o.lostAt != NOT_ASKED && diesAt(o) >= diesAt(l))) return (cmpKey = __LINE__, (lx ? -1 : 1));
       lx = ly = 1;
     }
+  }
+  // 1. THE BOARD PLAYED ON (the owner: there is no death): of two that do not live, both played on by the one policy (decide.c
+  // playedLostOf), the one whose board played on is lost later goes first, by any margin -- a move that leaves the board where the policy
+  // finds its next break before one that leaves it where none is found, whatever their boards left alone are lost on. Two alive at the
+  // horizon are ordered by the keys after this one
+  if (!lx && !ly && x->played != NOT_ASKED && y->played != NOT_ASKED) {
+    double px = lostAtOf(x->played, 0), py = lostAtOf(y->played, 0);
+    if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
   }
   // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress no worse than when it was played -- living, or lost no
   // sooner (carriedSame) -- its board standing a break's time, is not put down for another line found this time: every action spent on it

@@ -1130,7 +1130,7 @@ static int readyBuild(const Read *R, Cand *out, int n, int cap);
 // line, the one the cursor walks least for, pressed now (a slab popping lands its panels a row on every column: the perch is the
 // same columns after it); the next decision takes the next. Offered where no line of the decision breaks (decide.c ranked), judged
 // as any line; the rank reads the board at rest (rank.c letsDown). letDownLine: its swaps into seq (MAXPATH), 0 none
-static int letDownLine(const Board *b, int32_t *seq) {
+static int letDownLineOf(const Board *b, int32_t *seq, int dig) {
   static LOCAL Perch P;
   perchRead(b, &P);
   if (P.hi < 2 || P.room < P.n) return 0;
@@ -1144,7 +1144,7 @@ static int letDownLine(const Board *b, int32_t *seq) {
       while (t >= 1 && t <= W && P.top[t] == P.hi - 1 && OPEN_AT(t)) t += d;
       if (t < 1 || t > W || P.top[t] > P.hi - 2 || !OPEN_AT(t)) continue;
       int32_t first = P.hi * 8 + (d > 0 ? c : c - 1);
-      if (seenDigHas(b, first)) continue;
+      if (dig && seenDigHas(b, first)) continue;
       int acts = iabs(t - c) - 1 + actionsFor(b->curRow, b->curCol, CR(first), CC(first), pressAllowance);
       if (!from || acts < cost) { from = c; to = t; cost = acts; }
     }
@@ -1152,6 +1152,7 @@ static int letDownLine(const Board *b, int32_t *seq) {
   #undef OPEN_AT
   return from ? walkTo(P.hi, from, to, seq, 0) : 0;
 }
+static int letDownLine(const Board *b, int32_t *seq) { return letDownLineOf(b, seq, 1); }
 static int letDownCand(Cand *k) {
   static LOCAL int32_t line[MAXPATH];
   int n = letDownLine(decQ.b, line);
