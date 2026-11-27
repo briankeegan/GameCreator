@@ -632,7 +632,10 @@ static int overspends(const Judge *J) {
   // breaks of what is not told yet)
   // (only beside a hold that lives as well: a life is never given up for the floor)
   if (overMat && (!J->o.lives || overHold->o.lives) && J->o.matSettled >= 0 && !test(J->o.matSettled, overFloor) && overHold->o.matSettled > J->o.matSettled) return 1;
-  if (J->o.lives || J->apBroke > 0) return 0;
+  if (J->apBroke > 0) return 0;
+  // (and the window, as the panels: a line that lives through the garbage told, beside a hold that lives as well, is taken out where it
+  // walks the window under a break's walk by the next landing -- the storm tells more, and its first block is broken out of what is left)
+  if (J->o.lives) return overHold->o.lives && pressAllowance >= 0 && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
   // (a dig toward a break, or a perch let down, with none offered: on the dig's own terms -- rank.c digPaid)
   return pressAllowance >= 0 && !digPaid(J) && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
 }
