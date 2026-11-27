@@ -235,8 +235,11 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 // A DIG THAT CAN WAIT: a line toward a break that lives no longer than the hold, and is still done before the hold is lost after one
 // more decision (react frames) -- never one that leaves the board nearer a break than the hold does: the frames it waits are frames
 // the break is no nearer in
+static int garbageComing(void);
 static void readyNextFor(Judge *J) {
-  if (J->o.lives || J->readyNext != NOT_ASKED) return;
+  // (a line that lives is asked too where garbage is on the board or on its way: it lives through the garbage told, and the board it
+  // leaves needs a break in reach for the next)
+  if (J->readyNext != NOT_ASKED || (J->o.lives && !(decF.under || garbageComing()))) return;
   J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
 }
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
@@ -1087,10 +1090,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
         if (!(d->apBroke > 0 && !(s->apBroke > 0)) && diesAt(s) >= rankSave && diesAt(s) < 1e299 && (lostAlike(s, d) || lostOf(s) >= lostOf(d)))
           return (cmpKey = __LINE__, (dx ? 1 : -1)); } }
   }
-  // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
+  // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way or on the
   // board, of two that live or are lost alike, the one that leaves a break ready once everything lands (judge.c breaksAfterLanding, the
-  // window counted) goes first: the break is in place when the block arrives, not walked to after it
-  if (lx == ly && !decF.under && garbageComing() && (lx || lostAlike(x, y)) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED &&
+  // window counted) goes first: the break is in place when the block arrives, not walked to after it -- a board that keeps no break in
+  // reach under garbage is the board every lost game ends on
+  if (lx == ly && (decF.under || garbageComing()) && (lx || lostAlike(x, y)) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED &&
       (x->readyNext == 1) != (y->readyNext == 1))
     return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
   // 1. NOTHING AMID THE GARBAGE (amidGarbage): under garbage, of two that do not live, a line that swaps among the slabs and breaks nothing
