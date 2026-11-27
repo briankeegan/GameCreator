@@ -1001,7 +1001,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     int differ = (tx >= TOWER_ROWS) != (ty >= TOWER_ROWS) || (tx >= TOWER_ROWS && ty >= TOWER_ROWS && iabs(tx - ty) >= TOWER_STEP);
     if (differ) {
       const Judge *f = tx < ty ? x : y, *t = tx < ty ? y : x;
-      if (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)) &&
+      // (never between a line that digs for a break and one that does not, under garbage: the dig is the way to the next break, and
+      // the hold that keeps the board flat keeps it with no break to make)
+      if (!(decF.under && digsForBreak(f) != digsForBreak(t)) &&
+          !f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)) &&
           (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
           (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
         return (cmpKey = __LINE__, (f == x ? -1 : 1));
