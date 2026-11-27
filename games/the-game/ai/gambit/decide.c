@@ -461,6 +461,12 @@ static double contLostOf(const Judge *J, double give) {
 #define PLAY_LINES 10   // the lines played on a decision, the hold and the policy's own move besides
 #define HOLD_GAP 16     // the frames until the next decision presses, for the hold
 #define PLAY_SETTLE 12  // the frames a move's board is let settle at most before the next (a reaction): a board that never comes to rest is played on as it is
+// (A DEEP QUEUE: QUEUE_DEEP pieces or more queued and on their way -- garbage told that lands past the horizon -- every line, living ones
+// too, is played on to PLAY_DEEP_TO from now, PLAY_DEEP_STEPS moves at most, PLAY_DEEP_MS each: rank.c playDeep)
+#define QUEUE_DEEP 4
+#define PLAY_DEEP_TO AT_LEVEL(900)
+#define PLAY_DEEP_STEPS 48
+#define PLAY_DEEP_MS 10
 static int32_t playAsked, playOut, playBeat, playOffered;   // (lines played on this decision, those the clock left unanswered, those that outplayed the hold, the policy's move offered: the log's pl=)
 static int32_t playTopLog = NOT_ASKED;   // (the played life of the line on top: the log's pl=)
 // (THE POLICY'S MOVE ON THE BOARD AS IT STANDS, offered as a line: a break in reach, else the garbage let down, else the stack levelled)
@@ -480,7 +486,7 @@ static int32_t playedOn(const Question *q, int32_t wait, int32_t to, double unti
   int32_t acts = 0;
   #define PLAYED_STEP(w_) do { int w__ = (w_); if (w__ == STEP_DEAD) return deadAt; if (w__ < 0) return NOT_ASKED; nd = w__; } while (0)
   if (wait > 0) PLAYED_STEP(step(x, nd, MK_LONG, 0, 0, wait));
-  for (int s = 0; s < PLAY_STEPS; s++) {
+  for (int s = 0; s < (playDeep ? PLAY_DEEP_STEPS : PLAY_STEPS); s++) {
     if (nowMs() >= until) return NOT_ASKED;
     PLAYED_STEP(step(x, nd, MK_SETTLE, 0, 0, imax(1, imin(PLAY_SETTLE, to - NODE(x, nd)->t))));
     if (NODE(x, nd)->dead) return NODE(x, nd)->t;
@@ -529,7 +535,7 @@ static int32_t playedLostOf(const Judge *J, double give) {
   Question q2 = decQ; q2.b = pb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
   for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
   winPast = dt; winGone = J->hold ? 0 : J->o.j.spent;
-  int32_t lost = playedOn(&q2, J->hold ? imax(0, HOLD_GAP - dt) : 0, imax(1, HORIZON + REST - dt), nowMs() + give);
+  int32_t lost = playedOn(&q2, J->hold ? imax(0, HOLD_GAP - dt) : 0, imax(1, (playDeep ? PLAY_DEEP_TO : HORIZON + REST) - dt), nowMs() + give);
   winPast = 0; winGone = 0;
   if (lost == NOT_ASKED || lost == FOREVER) return lost;
   return dt + lost;
@@ -836,7 +842,8 @@ static int ranked(const Read *R, const Found *S) {
   // hold, that line and the best PLAY_LINES others each played on (playedLostOf), each its own PLAY_MS, up to the move's own frame, and
   // the order made again -- before the life after the line, which takes CONT_MS a line to the move's own frame)
   playAsked = playOut = playBeat = playOffered = 0; playTopLog = NOT_ASKED; playedHold = NOT_ASKED; playedHoldClock = decQ.b->clock;
-  if ((decF.under || garbageComing()) && n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
+  playDeep = (decF.under || garbageComing()) && decQ.b->ninc + decQ.narr >= QUEUE_DEEP;
+  if ((decF.under || garbageComing()) && n && (!order[0]->o.lives || playDeep) && clockFrameOut && !clockFrameOut()) {
     double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
     static Judge playJ; Judge *PJ = 0;
     if (!R->pop) {
@@ -859,9 +866,9 @@ static int ranked(const Read *R, const Found *S) {
       for (int i = 0; i < n && !clockFrameOut(); i++) {
         Judge *J = order[i];
         if (pass == 0 ? J != H : pass == 1 ? J != PJ : (J == H || J == PJ || asked >= PLAY_LINES)) continue;
-        if (J->o.lives || J->played != NOT_ASKED) continue;
-        double sh = clockShareBegin(nowMs() + PLAY_MS);
-        J->played = playedLostOf(J, PLAY_MS); playAsked++;
+        if ((J->o.lives && !playDeep) || J->played != NOT_ASKED) continue;
+        double give = playDeep ? PLAY_DEEP_MS : PLAY_MS, sh = clockShareBegin(nowMs() + give);
+        J->played = playedLostOf(J, give); playAsked++;
         clockShareEnd(sh);
         if (J->played == NOT_ASKED) playOut++;
         if (pass == 2) asked++;
