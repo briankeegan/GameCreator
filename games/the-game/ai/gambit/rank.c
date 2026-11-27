@@ -1013,7 +1013,9 @@ static int compareJudged(const Judge *x, const Judge *y) {
     // (the line in progress put down only for a board played on a break's time longer, the hold's too -- the owner: changing plans is
     // wasteful: its actions are pressed, and a plan changed on a few frames of the policy's guess is the window spent twice)
     const Judge *cj = x->carried && !x->hold ? x : y->carried && !y->hold ? y : 0;
-    int keeps = cj && x->carried != y->carried && (px > py ? px - py : py - px) < rankSave && (cj == x ? py > px : px > py);
+    // (and never while the line in progress is no worse than when it was played -- carriedSame: living, or lost no sooner -- the owner:
+    // a line begun is pressed to its end unless survival needs another; there the plan kept decides, below)
+    int keeps = cj && x->carried != y->carried && (cj == x ? py > px : px > py) && ((px > py ? px - py : py - px) < rankSave || carriedSame(cj));
     if (px != py && !keeps) return (cmpKey = __LINE__, (px > py ? -1 : 1));
   }
   #undef WINDOW_KEPT
