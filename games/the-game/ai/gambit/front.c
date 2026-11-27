@@ -986,6 +986,7 @@ static Board *guardBoard, *aloneBoard;
 static int32_t planKeyAt(int32_t f) { Planned *q = planOf(F.now + f + 1); return q ? q->bits : 0; }
 static Arrival guardPendG[MAXARRIVALS], guardPendA[MAXARRIVALS]; static int32_t guardNpG, guardNpA;
 static void guardLand(Board *g, Board *a) { landOn(g, guardPendG, &guardNpG); landOn(a, guardPendA, &guardNpA); }
+#define GUARD_MS 2.5   // (the guard's time in a frame, all its tests: the frame's think budget holds the board's load and the frame loop besides)
 static int wastedSwap(const Board *t, int32_t bits) {
   if (!guardBoard) guardBoard = nb_new();
   if (!aloneBoard) aloneBoard = nb_new();
@@ -1023,6 +1024,7 @@ static int32_t livesFor(const Board *t, int32_t bits, int press) {
   if (receiverTimed) landOn(g, pend, &np);
   g->input = bits & ~(IN_SWAP | IN_RAISE); g->pressSwap = press;
   for (int f = 0; f < GUARD_DIE && g->gameOverClock <= 0; f++) {
+    if (guardOut(f)) return GUARD_DIE;   // (out of the guard's time: no loss seen, so the three is not shown to be the save)
     run(g); landOn(g, pend, &np);
     Planned *q = press ? planOf(F.now + f + 1) : 0;
     g->input = q ? q->bits & ~(IN_SWAP | IN_RAISE) : 0; g->pressSwap = q && (q->bits & IN_SWAP);
@@ -1150,8 +1152,15 @@ static int frontFrame(void) {
   // (only where colours were shown since the question the swap came of was asked: otherwise the board is the one the judge played the
   // line on -- the truth held -- and its test, the guard's own, said the same)
   int32_t guard = 0;
-  if ((bits & IN_SWAP & ~F.prevBits) && F.lastReveal >= asked && F.lastReveal > 0 && wastedSwap(t, bits)) {
-    if (!threeSaves(t, bits, save)) {
+  int wasted = 0, saves = 1;
+  if ((bits & IN_SWAP & ~F.prevBits) && F.lastReveal >= asked && F.lastReveal > 0) {
+    guardUntil = fNow() + GUARD_MS;
+    wasted = wastedSwap(t, bits);
+    if (wasted) saves = threeSaves(t, bits, save);
+    guardUntil = 0;
+  }
+  if (wasted) {
+    if (!saves) {
       // (the first few refused boards, the plan's keys after the swap and the garbage on its way, for replaying the guard and the judge
       // on them: GAMBITR board, GAMBITRK f:bits..., GAMBITRA at,w,h,chain,metal,capped...)
       if (F.loggedRefusedBoards < 12) {
