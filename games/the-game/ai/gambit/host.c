@@ -19,21 +19,35 @@ void hostLog(const char *s);
 void hostLogFlush(void);
 // The bytes the heap has given this instance, in MB
 int hostHeapMB(void) { return (int)(__atomic_load_n(&heapBytes, __ATOMIC_RELAXED) >> 20); }
-// THE BUDGET FOR WHAT IS RESIDENT: GC_GAMBIT_HEAP_SOFT_MB (9000 unset). Under it no page is given back -- what is resident is never more
-// than the heap has grown -- and past it the spares past SPARE_KEEP give theirs back (eval/native/memory.h)
+// THE BUDGET FOR WHAT IS RESIDENT: GC_GAMBIT_RSS_SOFT_MB, and never over RSS_SHARE of the machine's memory (/proc/meminfo; unset: that
+// share). Under it no page is given back; past it the spares past SPARE_KEEP give theirs back (eval/native/memory.h). Read against the
+// process's resident memory as last sampled (hostRssMB, every few decisions on Gambit's thread) -- not the heap grown, which counts every
+// block a long-lived instance has ever been given (a live session, many matches in one process: 13 GB of heap on 4 GB resident).
+#define RSS_SHARE 0.6
+static int residentMB = -1;
 int paHeapOver(void) {
-  static unsigned long soft;
-  if (!soft) { const char *e = getenv("GC_GAMBIT_HEAP_SOFT_MB"); long mb = e && *e ? atol(e) : 9000; soft = (mb > 0 ? (unsigned long)mb : 1ul) << 20; }
-  return __atomic_load_n(&heapBytes, __ATOMIC_RELAXED) > soft;
+  static long softMB;
+  if (!softMB) {
+    long total = 0; FILE *f = fopen("/proc/meminfo", "r");
+    if (f) { char k[64]; long v; while (fscanf(f, "%63s %ld kB\n", k, &v) == 2) if (!strcmp(k, "MemTotal:")) { total = v >> 10; break; } fclose(f); }
+    const char *e = getenv("GC_GAMBIT_RSS_SOFT_MB"); long mb = e && *e ? atol(e) : 0;
+    long cap = total > 0 ? (long)(total * RSS_SHARE) : 8192;
+    softMB = mb > 0 && mb < cap ? mb : cap;
+    if (softMB < 1) softMB = 1;
+  }
+  int r = __atomic_load_n(&residentMB, __ATOMIC_RELAXED);
+  return r >= 0 && r > softMB;
 }
-// The process's resident memory, in MB (/proc/self/statm), -1 unread
+// The process's resident memory, in MB (/proc/self/statm), -1 unread -- kept for the budget above
 int hostRssMB(void) {
   FILE *f = fopen("/proc/self/statm", "r");
   if (!f) return -1;
   long size = 0, res = -1;
   if (fscanf(f, "%ld %ld", &size, &res) != 2) res = -1;
   fclose(f);
-  return res < 0 ? -1 : (int)((res * 4096L) >> 20);
+  int mb = res < 0 ? -1 : (int)((res * 4096L) >> 20);
+  __atomic_store_n(&residentMB, mb, __ATOMIC_RELAXED);
+  return mb;
 }
 void *paHeap(unsigned long n) {
   static unsigned long capBytes;
