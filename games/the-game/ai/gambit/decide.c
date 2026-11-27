@@ -832,31 +832,9 @@ static int ranked(const Read *R, const Found *S) {
     if (sv.set && sv.nseq && candOf(&sk, PLAY_SURVIVE, sv.seq, sv.nseq, -1, 0)) { sk.settled = 0; if (judgeWalkedIn(R, &sk, &theJudged[n + 1], sk.nseq)) { readyNextFor(&theJudged[n + 1]); svClean = !wastesThree(&theJudged[n + 1]); order[n] = &theJudged[n + 1]; n++; sortJudged(order, n); } }
     if (sv.set) svLost = sv.lostAt == FOREVER ? 1e9 : sv.lostAt;
   }
-  // (THE LIFE AFTER THE LINE -- the owner: survival is not the line that buys the most frames alone, with nothing pressed after it: in
-  // every mode, where nothing lives, the best lines -- in finish them the combos first -- are each judged with the survival search run on
-  // from the board they leave (contLostOf), with the window that line leaves, and ranked on the later of that and their own loss: a line
-  // lost at 137 if nothing more is pressed, on a board with room for the next block made by the next moves, is no emergency that only a
-  // chain answers, and a line that walks the window out has no moves after it)
-  // (asked up to the move's own frame, the host's hard stop, as the judging is -- the decision's own time is spent by then -- each line its
-  // own CONT_MS)
-  contAsked = 0;
-  if (n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
-    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
-    for (int pass = 0; pass < 2; pass++)
-      for (int i = 0; i < n && contAsked < CONT_LINES && !clockFrameOut(); i++) {
-        Judge *J = order[i];
-        if (J->hold || J->o.lives || J->o.dead || (pass == 0) != (finishAsked() && J->apCombo >= 4)) continue;
-        double sh = clockShareBegin(nowMs() + CONT_MS);
-        double c = contLostOf(J, CONT_MS); contAsked++;
-        clockShareEnd(sh);
-        if (c > 0) { int32_t f = c >= 1e9 ? FOREVER : (int32_t)c; if (J->extLost == NOT_ASKED || f > J->extLost) J->extLost = f; }
-      }
-    clockDue = due; clockShare = share;
-    if (contAsked) sortJudged(order, n);
-  }
   // (THE BOARD PLAYED ON: with garbage on the board or on its way, where nothing lives, the policy's own move offered as a line, then the
   // hold, that line and the best PLAY_LINES others each played on (playedLostOf), each its own PLAY_MS, up to the move's own frame, and
-  // the order made again)
+  // the order made again -- before the life after the line, which takes CONT_MS a line to the move's own frame)
   playAsked = playOut = playBeat = playOffered = 0; playTopLog = NOT_ASKED; playedHold = NOT_ASKED; playedHoldClock = decQ.b->clock;
   if ((decF.under || garbageComing()) && n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
     double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
@@ -893,6 +871,28 @@ static int ranked(const Read *R, const Found *S) {
     for (int i = 0; i < n; i++) playBeat += outplaysHold(order[i]);
     if (playAsked) sortJudged(order, n);
     playTopLog = order[0]->played;
+  }
+  // (THE LIFE AFTER THE LINE -- the owner: survival is not the line that buys the most frames alone, with nothing pressed after it: in
+  // every mode, where nothing lives, the best lines -- in finish them the combos first -- are each judged with the survival search run on
+  // from the board they leave (contLostOf), with the window that line leaves, and ranked on the later of that and their own loss: a line
+  // lost at 137 if nothing more is pressed, on a board with room for the next block made by the next moves, is no emergency that only a
+  // chain answers, and a line that walks the window out has no moves after it)
+  // (asked up to the move's own frame, the host's hard stop, as the judging is -- the decision's own time is spent by then -- each line its
+  // own CONT_MS)
+  contAsked = 0;
+  if (n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
+    double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
+    for (int pass = 0; pass < 2; pass++)
+      for (int i = 0; i < n && contAsked < CONT_LINES && !clockFrameOut(); i++) {
+        Judge *J = order[i];
+        if (J->hold || J->o.lives || J->o.dead || (pass == 0) != (finishAsked() && J->apCombo >= 4)) continue;
+        double sh = clockShareBegin(nowMs() + CONT_MS);
+        double c = contLostOf(J, CONT_MS); contAsked++;
+        clockShareEnd(sh);
+        if (c > 0) { int32_t f = c >= 1e9 ? FOREVER : (int32_t)c; if (J->extLost == NOT_ASKED || f > J->extLost) J->extLost = f; }
+      }
+    clockDue = due; clockShare = share;
+    if (contAsked) sortJudged(order, n);
   }
   // (THE COMBO WITHOUT ITS CHAIN -- the owner: make the eight, and before or after it move the panels so the ones that fall make no
   // chain: in finish them, a combo of four or more on offer that sends a chain -- the best CUT8_LINES of them -- is judged
