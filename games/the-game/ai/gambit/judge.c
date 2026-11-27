@@ -322,16 +322,17 @@ static int32_t evenOf(const Board *b) {
   }
   return hi - lo;
 }
+// THE EDGE OVER ITS NEIGHBOUR: of columns 1 and 6, the one standing more rows of panels over the column beside it (0 none) -- rows of three
+// cross the edges a third as often as the middle, so clears left to themselves leave the edges standing, and garbage resting on an edge
+// touches the panels that match least
+static int32_t panelsTopOf(const Board *b, int c) { int h = 0; for (int r = 1; r < b->nrows; r++) { int32_t v = gridCell(b, r, c); if (v < 0) break; if (v > 0) h = r; } return h; }
+static int32_t edgeOf(const Board *b) { int a = panelsTopOf(b, 1) - panelsTopOf(b, 2), z = panelsTopOf(b, W) - panelsTopOf(b, W - 1); return imax(0, imax(a, z)); }
 // HOW TOWERED A BOARD IS: its tallest column of panels less its lowest, in rows -- panels only, each column's top panel under its lowest
 // garbage. The garbage rests on the tallest columns under it and hangs over the lowest; a column standing over the rest is a support
 // few panels touch -- at the edge, where a panel is in one row of three in four, the hardest to match -- and a well under it is hollow
 static int32_t towerOf(const Board *b) {
   int hi = 0, lo = 1 << 20;
-  for (int c = 1; c <= W; c++) {
-    int h = 0;
-    for (int r = 1; r < b->nrows; r++) { int32_t v = gridCell(b, r, c); if (v < 0) break; if (v > 0) h = r; }
-    if (h > hi) hi = h; if (h < lo) lo = h;
-  }
+  for (int c = 1; c <= W; c++) { int h = panelsTopOf(b, c); if (h > hi) hi = h; if (h < lo) lo = h; }
   return hi - lo;
 }
 // HOW HOLLOW A BOARD IS UNDER ITS GARBAGE: the empty cells under each column's highest garbage, as search/bits.c bitsShape counts them

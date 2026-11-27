@@ -2172,3 +2172,14 @@ while it lasts, and the landed boards go to the workers whatever the searches' s
 600-1,000 (229 before); the workers' readiness searches: about 200 a game; lines ready for the next block 2-3x as many. Measured
 (`55e66ebc`, 4776-4778): fill 28 (seed 147), switching 28 (seed 143), finish 27 (seed 141) -- 83 of 84; 0 late moves, 0 frames over,
 0 divergences in each. Finish lost factory 5 at 883: the opening's window spent by 726 on an eight and two breaks before the next block.
+THE LOSSES BY FAMILY (90 lost games, runs 4758-4792, each read off its last 300 frames): no break found on 80% or more of its decisions
+under garbage 69, the window 5 actions or under on 30% or more 50, 25 panels or under on half 31, lost before 1500 13. Where no break
+was found, the break search resumed its frontier every decision -- twenty decisions' search on the same garbage -- so no break was in its
+reach: the board's shape, not the search's time. The block rests on a column or two -- the edges, where rows of three cross least
+(landings with an edge 2 rows over its neighbour: 33-40% on main), or one side the board's own chain left standing -- and touches only
+their top panels.
+THE LET-DOWN WHERE NO BREAK IS FOUND: under garbage at rest, no slab popping, where the decision's break search ran and found no break
+(`answer.c` brFoundNone), the lines that walk out the columns holding up a perched block (`search/break.c` perchedDrops) are offered as
+they are topped or dying. Offered on every board under garbage instead (`c4a5b532`): finish 26, fill 23 -- 97-100% of resting garbage
+has some hollow under it. Measured (`3242113d`, 4794-4796): fill 28 (seed 147), finish 28 (seed 141), switching 28 (seed 143) -- 84 of
+84; 0 late moves, 0 frames over, 0 divergences in each.

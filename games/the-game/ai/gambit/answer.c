@@ -499,6 +499,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   S.searchMs = nowMs() - ts;
   batSearch = batOwn;
   C2.br = ran ? &theBr : 0; C2.brMs = (int32_t)brMs;
+  brFoundNone = ran && !theBr.depth;
   clockShareEnd(searchShare);
   int starved = clockOut();   // (out of time before anything was judged)
   int n = ranked(&R, &S);
@@ -748,7 +749,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
   if (contAsked) { L_s(" cont="); L_i(contAsked); }
   if (rnSeen[0] + rnSeen[1] + rnSeen[2]) { L_s(" rn="); L_i(rnSeen[0]); L_s("/"); L_i(rnSeen[1]); L_s("/"); L_i(rnSeen[2]); }   // (ready for the next block: a break / none / not answered)
-  if (decQ.b) { L_s(" tw="); L_i(towerOf(decQ.b)); }
+  if (decQ.b) { L_s(" tw="); L_i(towerOf(decQ.b)); L_s(" ew="); L_i(edgeOf(decQ.b)); }   // (the board's tower, and its edge over its neighbour: judge.c)
   if (readySearched) { L_s(" rcut="); L_i(readyShareCut); L_s("/"); L_i(readySearched); }
   if (readyFoundIn[0] + readyFoundIn[1] + readyFoundIn[2]) { L_s(" rfound="); L_i(readyFoundIn[0]); L_s("/"); L_i(readyFoundIn[1]); L_s("/"); L_i(readyFoundIn[2]); }
   { int32_t a = __atomic_load_n(&readyJobSeen[0], __ATOMIC_RELAXED), b = __atomic_load_n(&readyJobSeen[1], __ATOMIC_RELAXED), c = __atomic_load_n(&readyJobSeen[2], __ATOMIC_RELAXED);

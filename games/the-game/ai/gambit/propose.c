@@ -19,6 +19,7 @@ static Ctx2 C2;
 static double searchesEnd(void) { return C2.due ? C2.due - C2.margin - (C2.due - C2.t0) / 4 : 0; }
 static double leftMs(void) { return C2.due ? searchesEnd() - nowMs() : 1e9; }
 static double leftMsOf(void) { return leftMs(); }
+static int32_t brFoundNone;   // (this decision's break search ran and found no break: answer.c, set before the proposers run)
 // (THE JUDGING'S TIME LEFT: to the decision's own deadline -- the readiness checks are the judging's, asked in its quarter, after the
 // searches' share has ended; leftMs, the searches' share, is spent by then)
 static double judgeLeftMs(void) { return C2.due ? C2.due - C2.margin - nowMs() : 1e9; }
@@ -1249,7 +1250,9 @@ static int proposeAll(const Read *R, const Found *S, Cand *out, int cap) {
       if (ls >= 0 && liveNode(lx, ls)) { const Board *sb = ensureBoard(lx, ls); if (sb) lb = sb; } }
     static int32_t lv[MAXLINE]; int nl = levelLine(lb, lv, MAXLINE);
     if (nl > 0) { int m0 = n; ADD(PLAY_LEVEL, lv, nl, -1, 0); if (n > m0) out[m0].settled = 1; } }
-  if (R->topped || R->dying) {
+  // (and under garbage at rest where this decision's break search found no break (brFoundNone): a block held up by a column or two
+  // touches only their top panels -- at the edge, the panels that match least -- and comes down onto the stack as its supports walk out)
+  if (R->topped || R->dying || (R->under && !R->pop && brFoundNone)) {
     static Perches pd; perchedDrops(decQ.b, &pd);
     for (int i = 0; i < pd.n; i++) { int m0 = n; ADD(PLAY_LEVEL, pd.seq[i], pd.len[i], -1, 0); if (n > m0) out[m0].drop = 1; }
   }
