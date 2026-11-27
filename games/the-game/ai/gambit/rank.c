@@ -907,6 +907,12 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   // lives or is lost a break's time later, is a line that is lost -- death is never an option)
   if (lx && !x->o.lives && outlives(y, x) && !calmKept(x, y)) lx = 0;
   if (ly && !y->o.lives && outlives(x, y) && !calmKept(y, x)) ly = 0;
+  // (nor beside a line whose board played on is lost later (decide.c playedLostOf, both lines playedFair): the horizon is a guess, the
+  // board played on is the engine's)
+  #define PLAYED_LATER(a, b) ((a)->played != NOT_ASKED && (b)->played != NOT_ASKED && playedFair(a) && playedFair(b) && lostAtOf((a)->played, 0) > lostAtOf((b)->played, 0))
+  if (lx && !x->o.lives && PLAYED_LATER(y, x)) lx = 0;
+  if (ly && !y->o.lives && PLAYED_LATER(x, y)) ly = 0;
+  #undef PLAYED_LATER
   // (nor, under garbage, the credit of a line that breaks nothing beside a break lost within a break's time of it: the break is the way
   // out the board has, the horizon is a promise -- r1363, 14839: a 4x stall in progress lost at 296 kept over a break lost at 282, and no
   // break offered again; r1362, 16120)
