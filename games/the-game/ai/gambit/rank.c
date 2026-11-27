@@ -1010,9 +1010,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   #define WINDOW_KEPT(J) (pressAllowance < 0 || allowAtLanding((J)->hold ? 0 : lineWalk(J)) >= BREAK_WALK / 2)
   if (!lx && !ly && x->played != NOT_ASKED && y->played != NOT_ASKED && playedFair(x) && playedFair(y) && WINDOW_KEPT(x) == WINDOW_KEPT(y)) {
     double px = lostAtOf(x->played, 0), py = lostAtOf(y->played, 0);
-    // (the line in progress put down only for a board played on a break's time longer -- the owner: changing plans is wasteful: its
-    // actions are pressed, and a plan changed on a few frames of the policy's guess is the window spent twice)
-    int keeps = x->carried != y->carried && !x->hold && !y->hold && (px > py ? px - py : py - px) < rankSave && ((x->carried && py > px) || (y->carried && px > py));
+    // (the line in progress put down only for a board played on a break's time longer, the hold's too -- the owner: changing plans is
+    // wasteful: its actions are pressed, and a plan changed on a few frames of the policy's guess is the window spent twice)
+    const Judge *cj = x->carried && !x->hold ? x : y->carried && !y->hold ? y : 0;
+    int keeps = cj && x->carried != y->carried && (px > py ? px - py : py - px) < rankSave && (cj == x ? py > px : px > py);
     if (px != py && !keeps) return (cmpKey = __LINE__, (px > py ? -1 : 1));
   }
   #undef WINDOW_KEPT
