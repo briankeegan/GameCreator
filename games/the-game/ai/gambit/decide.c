@@ -637,7 +637,9 @@ static int overspends(const Judge *J) {
   // walks the window under a break's walk by the next landing -- the storm tells more, and its first block is broken out of what is left)
   if (J->o.lives) return overHold->o.lives && pressAllowance >= 0 && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
   // (a dig toward a break, or a perch let down, with none offered: on the dig's own terms -- rank.c digPaid)
-  return pressAllowance >= 0 && !digPaid(J) && allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK;
+  // (the window left counted now as well as at the next landing: a line that breaks nothing leaves a break's walk in hand, not one
+  // the refill promises -- the block lands on a board that may need more than one break, and the refill is spent on the first)
+  return pressAllowance >= 0 && !digPaid(J) && (allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK || pressAllowance - lineWalk(J) < BREAK_WALK);
 }
 static int32_t stallCut, enPlayed;   // (lines taken out as stalls under garbage this decision: the log's stall=)
 static int digsForBreak(const Judge *J);
