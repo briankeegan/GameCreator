@@ -22,7 +22,7 @@ int hostIdleThread(void *(*fn)(void *), const char *name);
 int hostOpenLog(const char *path);
 void hostLog(const char *s);
 void hostLogFlush(void);
-int hostHeapMB(void);
+int hostHeapMB(void); int hostRssMB(void);
 int snprintf(char *s, unsigned long n, const char *fmt, ...);
 int strncmp(const char *a, const char *b, unsigned long n);
 char *strchr(const char *s, int c);
@@ -220,8 +220,12 @@ static void answerOne(FQuestion *q, Board *b, FAnswer *out) {
       s = at + 2; while (*s >= '0' && *s <= '9') s++;
     }
   }
-  // (and how long the question waited for Gambit's thread, the ms its clock gave it, the last log write's ms)
-  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d wait=%d given=%d fl=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0, hostHeapMB(),
+  // (and the process's resident memory, read every RSS_EVERY decisions, how long the question waited for Gambit's thread, the ms its clock
+  // gave it, the last log write's ms)
+  static int rssMB = -1; static uint32_t rssN;
+  #define RSS_EVERY 16
+  if (rssN++ % RSS_EVERY == 0) rssMB = hostRssMB();
+  snprintf(line + k, sizeof line - (unsigned long)k, "%s wallMs=%d out=%d heapMB=%d rssMB=%d wait=%d given=%d fl=%d", s, (int)(clock_ms() - t0), clockWentOut ? (int)(clock_ms() - clockWentOut) + 1 : 0, hostHeapMB(), rssMB,
            (int)(t0 - q->posted), (int)(due - t0), (int)flushMs);
   flog(line);
 }

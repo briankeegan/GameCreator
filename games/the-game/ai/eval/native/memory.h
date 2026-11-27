@@ -83,8 +83,11 @@ EXPORT(nb_new) Board *nb_new(void) {
 // the heap.
 #define FREE_CAP 4096
 // SPARE_KEEP: the spare boards kept ready; one freed past them keeps its place on the list but not its pages (paRelease) -- a search that
-// grew the pool by a hundred thousand boards (Gambit's, 46 KB each) left them all resident, and a run's memory climbed past the machine's
-#define SPARE_KEEP 4096
+// grew the pool by a hundred thousand boards (Gambit's, 46 KB each) left them all resident, and a run's memory climbed past the machine's.
+// Kept enough for the boards a decision lets go to be the next one's: each page given back takes the process's memory map and stops
+// every CPU it runs on, and the game's thread, waiting on the map behind thousands of them a decision, missed its frames (GAMEGAP). What
+// is kept is never more than the heap has given (gambit/host.c heapBytes): giving pages back changes what is resident, not what is grown.
+#define SPARE_KEEP 32768
 EXPORT(nb_free) void nb_free(Board *b) {
   if (freeCount(thId) >= FREE_CAP) {
 #if defined(PA_HEAP)
