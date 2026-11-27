@@ -218,6 +218,12 @@ The design: the life a line is ranked on, under garbage, is the life of its boar
 5. MEASURED by what it is for, every run: the stretches with no break in reach a minute (3.5 now), the next break held at each landing,
    the window and panels left at each landing -- then the three modes.
 
+Measured, its first piece alone (`ef6dd6ad`, run 4800): the board a line leaves played on with up to two breaks (the readiness search's
+break played on the engine and settled), then left alone, asked beside the survival search in the life after the line and counted only
+where it is the later of the two: over 33,807 lines asked, the later on 366 (1%) -- the survival search, free to clear anything, finds
+the later loss nearly every time. Fill 27, the loss an opening's (factory 2 at 1385). Taken out: the plan earns its place only as point 4
+puts it, ranked before the life left alone.
+
 ## Build order
 
 1. E, the threads: no behaviour of its own -- the same decisions, searched deeper in the same time.
