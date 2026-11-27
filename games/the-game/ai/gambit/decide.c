@@ -624,7 +624,7 @@ static int32_t overNeedAt(void) {
   return t < 0 ? 0 : t;
 }
 static int overspends(const Judge *J) {
-  if (!overHold || J->hold || J->o.dead || J->apBroke > 0 || outplaysHold(J)) return 0;
+  if (!overHold || J->hold || J->o.dead || J->apBroke > 0) return 0;
   // (the floor holds a line that lives too: it lives through the garbage told, and the storm tells more -- the rule's floor is for the
   // breaks of what is not told yet)
   // (only beside a hold that lives as well: a life is never given up for the floor)
