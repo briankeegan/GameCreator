@@ -34,8 +34,10 @@ static void *grab(unsigned long n) {
 // next touched, as a block fresh from the heap does. Elsewhere (wasm, the bot) nothing is given back.
 #if defined(PA_HEAP)
 void paRelease(void *p, unsigned long n);
+int paHeapOver(void);   // (the host's budget: the heap grown past what may be resident -- gambit/host.c)
 #else
 static void paRelease(void *p, unsigned long n) { (void)p; (void)n; }
+static int paHeapOver(void) { return 0; }
 #endif
 #define MAXTHREADS 16
 #if defined(THREADS) || !defined(__wasm__)
@@ -86,13 +88,14 @@ EXPORT(nb_new) Board *nb_new(void) {
 // grew the pool by a hundred thousand boards (Gambit's, 46 KB each) left them all resident, and a run's memory climbed past the machine's.
 // Kept enough for the boards a decision lets go to be the next one's: each page given back takes the process's memory map and stops
 // every CPU it runs on, and the game's thread, waiting on the map behind thousands of them a decision, missed its frames (GAMEGAP). What
-// is kept is never more than the heap has given (gambit/host.c heapBytes): giving pages back changes what is resident, not what is grown.
+// is kept is never more than the heap has given (gambit/host.c heapBytes): giving pages back changes what is resident, not what is grown
+// -- so none is given back at all until the heap has grown past the host's budget (paHeapOver).
 #define SPARE_KEEP 32768
 EXPORT(nb_free) void nb_free(Board *b) {
   if (freeCount(thId) >= FREE_CAP) {
 #if defined(PA_HEAP)
     // (released before it is on the list: once there another thread may take it and write it)
-    if (__atomic_load_n(&spareCount, __ATOMIC_RELAXED) >= SPARE_KEEP) paRelease(b, sizeof(Board));
+    if (__atomic_load_n(&spareCount, __ATOMIC_RELAXED) >= SPARE_KEEP && paHeapOver()) paRelease(b, sizeof(Board));
 #endif
     while (__atomic_exchange_n(&spareLock, 1, __ATOMIC_ACQUIRE)) {}
     *(Board **)b = spareOf; spareOf = b; __atomic_fetch_add(&spareCount, 1, __ATOMIC_RELAXED);
