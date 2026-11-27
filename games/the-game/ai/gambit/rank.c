@@ -907,9 +907,9 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   // lives or is lost a break's time later, is a line that is lost -- death is never an option)
   if (lx && !x->o.lives && outlives(y, x) && !calmKept(x, y)) lx = 0;
   if (ly && !y->o.lives && outlives(x, y) && !calmKept(y, x)) ly = 0;
-  // (nor beside a line whose board played on is lost later (decide.c playedLostOf, both lines playedFair): the horizon is a guess, the
-  // board played on is the engine's)
-  #define PLAYED_LATER(a, b) ((a)->played != NOT_ASKED && (b)->played != NOT_ASKED && playedFair(a) && playedFair(b) && lostAtOf((a)->played, 0) > lostAtOf((b)->played, 0))
+  // (nor beside a line whose board played on is lost a break's time later (decide.c playedLostOf, both lines playedFair): the horizon is
+  // a guess, the board played on is the engine's)
+  #define PLAYED_LATER(a, b) ((a)->played != NOT_ASKED && (b)->played != NOT_ASKED && playedFair(a) && playedFair(b) && lostAtOf((a)->played, 0) - lostAtOf((b)->played, 0) >= rankSave)
   if (lx && !x->o.lives && PLAYED_LATER(y, x)) lx = 0;
   if (ly && !y->o.lives && PLAYED_LATER(x, y)) ly = 0;
   #undef PLAYED_LATER
@@ -997,7 +997,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
   #define WINDOW_KEPT(J) (pressAllowance < 0 || allowAtLanding((J)->hold ? 0 : lineWalk(J)) >= BREAK_WALK / 2)
   if (!lx && !ly && x->played != NOT_ASKED && y->played != NOT_ASKED && playedFair(x) && playedFair(y) && WINDOW_KEPT(x) == WINDOW_KEPT(y)) {
     double px = lostAtOf(x->played, 0), py = lostAtOf(y->played, 0);
-    if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
+    // (the line in progress put down only for a board played on a break's time longer -- the owner: changing plans is wasteful: its
+    // actions are pressed, and a plan changed on a few frames of the policy's guess is the window spent twice)
+    int keeps = x->carried != y->carried && !x->hold && !y->hold && (px > py ? px - py : py - px) < rankSave && ((x->carried && py > px) || (y->carried && px > py));
+    if (px != py && !keeps) return (cmpKey = __LINE__, (px > py ? -1 : 1));
   }
   #undef WINDOW_KEPT
   // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress no worse than when it was played -- living, or lost no
