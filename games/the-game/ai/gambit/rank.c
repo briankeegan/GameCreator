@@ -1834,6 +1834,7 @@ static int walkTried(const Read *R, const Cand *k, Judge *J, int ok, int most) {
 static int judgeWalkedIn(const Read *R, const Cand *k, Judge *J, int most) { int ok = judgeCand(R, k, J); return walkTried(R, k, J, ok, most) || ok; }
 static int judgeWalked(const Read *R, const Cand *k, Judge *J) { return judgeWalkedIn(R, k, J, 1); }
 // sorted stably by the one order
+static int32_t playedMoved;   // (lines moved to the top this decision on their board played on alone: the log's pmoved=)
 static void outlivingFirst(Judge **a, int n) {
   // (THE LINE THAT OUTLIVES THE TOP AND BEATS IT IS THE TOP: the keys are not transitive, and a line that loses to another head to head
   // on survival can end on top through a third -- r1350, 4490: the hold played, lost at 156, over a break in progress lost at 264 that
@@ -1846,6 +1847,7 @@ static void outlivingFirst(Judge **a, int n) {
   { int32_t keep = cmpKey;
     for (int pass = 0; pass < 4 && n > 1; pass++) { int moved = 0;
       for (int i = 1; i < n; i++) if (!a[i]->o.dead && (outlives(a[i], a[0]) || PLAYED_OUTLIVES(a[i], a[0])) && compareJudged(a[i], a[0]) < 0) {
+        if (!outlives(a[i], a[0])) playedMoved++;
         Judge *e = a[i]; for (int q = i; q > 0; q--) a[q] = a[q - 1]; a[0] = e; moved = 1; break; }
       if (!moved) break; }
     cmpKey = keep; }
