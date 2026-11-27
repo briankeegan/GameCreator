@@ -194,11 +194,14 @@ int hostWorkers(void *(*fn)(void *), int most) {
 // buffers: the one written out is swapped for the other under the lock, and lines go on into that one meanwhile.
 static FILE *logFile;
 static pthread_mutex_t logMu = PTHREAD_MUTEX_INITIALIZER, logFlushMu = PTHREAD_MUTEX_INITIALIZER;
+// (a buffer that fills is grown, to LOGMAX, rather than written out by whichever thread fills it: the game's thread logs too -- its
+// SCORE lines, the frame loop's -- and a frame that wrote a megabyte to the disk waited on it)
 #define LOGBUF (1 << 20)
-static char *logBuf[2]; static size_t logLen[2]; static int logCur;
+#define LOGMAX (64ul << 20)
+static char *logBuf[2]; static size_t logLen[2], logCap[2]; static int logCur;
 int hostOpenLog(const char *path) {
   if (!logFile) logFile = fopen(path, "a");
-  if (logFile && !logBuf[0]) { logBuf[0] = malloc(LOGBUF); logBuf[1] = malloc(LOGBUF); if (!logBuf[0] || !logBuf[1]) { free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; } }
+  if (logFile && !logBuf[0]) { logBuf[0] = malloc(LOGBUF); logBuf[1] = malloc(LOGBUF); if (!logBuf[0] || !logBuf[1]) { free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; } else logCap[0] = logCap[1] = LOGBUF; }
   return logFile ? 0 : -1;
 }
 static void logWriteOut(void) {   // (logFlushMu held)
@@ -218,7 +221,7 @@ void hostQuit(void) {
   hostLogFlush();
   pthread_mutex_lock(&logMu);
   if (logFile) { fclose(logFile); logFile = 0; }
-  free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; logLen[0] = logLen[1] = 0;
+  free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; logLen[0] = logLen[1] = 0; logCap[0] = logCap[1] = 0;
   pthread_mutex_unlock(&logMu);
 }
 void hostLog(const char *s) {
@@ -226,7 +229,13 @@ void hostLog(const char *s) {
   size_t n = strlen(s);
   if (logBuf[0]) {
     pthread_mutex_lock(&logMu);
-    if (logLen[logCur] + n + 1 <= LOGBUF) { memcpy(logBuf[logCur] + logLen[logCur], s, n); logLen[logCur] += n; logBuf[logCur][logLen[logCur]++] = '\n'; pthread_mutex_unlock(&logMu); return; }
+    int k = logCur;
+    if (logLen[k] + n + 1 > logCap[k] && logCap[k] < LOGMAX) {
+      size_t c = logCap[k]; while (c < logLen[k] + n + 1 && c < LOGMAX) c *= 2;
+      char *g = realloc(logBuf[k], c);
+      if (g) { logBuf[k] = g; logCap[k] = c; }
+    }
+    if (logLen[k] + n + 1 <= logCap[k]) { memcpy(logBuf[k] + logLen[k], s, n); logLen[k] += n; logBuf[k][logLen[k]++] = '\n'; pthread_mutex_unlock(&logMu); return; }
     pthread_mutex_unlock(&logMu);
   }
   // (the buffer full, or none: what it holds written out first, then the line, in order)
