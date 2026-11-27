@@ -22,7 +22,7 @@ int hostIdleThread(void *(*fn)(void *), const char *name);
 int hostOpenLog(const char *path);
 void hostLog(const char *s);
 void hostLogFlush(void);
-int hostHeapMB(void); int hostRssMB(void);
+int hostHeapMB(void); int hostRssMB(void); int hostIsolate(char *names, int cap);
 int snprintf(char *s, unsigned long n, const char *fmt, ...);
 int strncmp(const char *a, const char *b, unsigned long n);
 char *strchr(const char *s, int c);
@@ -364,6 +364,11 @@ static void *reapMain(void *arg) {
   }
 }
 static void reapEnd(void) { __atomic_store_n(&reapQuit, 1, __ATOMIC_SEQ_CST); __atomic_fetch_add(&reapWord, 1, __ATOMIC_SEQ_CST); hostFutexWake(&reapWord, -1); }
+// (the game's CPU kept to the game's thread: the other threads of the process moved off it -- host.c hostIsolate -- logged when any are)
+static void isolate(void) {
+  char names[200]; int n = hostIsolate(names, sizeof names);
+  if (n > 0) { char l[300]; snprintf(l, sizeof l, "ISOLATE moved %d threads off the game's CPU: %s", n, names); flog(l); }
+}
 int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitter, int planHealth, const char *logPath) {
   hostTaps = 1;
   // (the io the host writes every frame, every page of it written once here, before play: a page the kernel maps on its first write cost
@@ -391,6 +396,7 @@ int gn_setup(int reaction, int swapGap, int cursor, int ahead, int gap, int jitt
     if (n > 0 && hostIdleThread(reapMain, "greap") == 0) { reapHand = reapHandOn; reapTake = reapTakeOn; reapReturn = reapReturnOn; }
     static char line[64]; snprintf(line, sizeof line, "GAMBIT workers %d", n); flog(line);
   }
+  isolate();
   return 0;
 }
 // The rules, as the loader encodes them (gambit.js rulesWords), in gn_io; set before the first question.
@@ -421,6 +427,7 @@ static double gapEnd, gapStats[6];   // (the game's gaps, GAMEGAP below: when th
 static int32_t gapLogged;
 void gn_match(void) {
   statsOut();
+  isolate();
   lastClock = NUL;
   frontNew(gnReaction, gnAhead, gnGap, gnJitter);
   gb_switch_game((uint32_t)clock_ms());

@@ -117,6 +117,53 @@ static void pinnedTo(const char *cpus) {
   }
 }
 static void pinned(void) { pinnedTo(getenv("GC_GAMBIT_CPUS")); }
+// THE GAME'S CPU ITS OWN THREAD'S (called on the game's thread, native.c gn_setup and gn_match): every other thread of the process that is
+// not one of Gambit's (gambit, gworkerN, gbetween, greap -- each pins itself) and still runs on a CPU of the game's thread -- the
+// software renderer's, the client's own -- is moved to GC_GAMBIT_WORKER_CPUS, where it still runs ahead of the workers (they are at the
+// idle class) and no longer takes the game's thread off its CPU mid-frame. The threads moved, or -1 nothing to do.
+#include <dirent.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+int hostIsolate(char *names, int cap) {
+  const char *w = getenv("GC_GAMBIT_WORKER_CPUS");
+  if (!w || !*w) return -1;
+  cpu_set_t to; CPU_ZERO(&to);
+  for (const char *p = w; *p;) {
+    int a = atoi(p), b = a;
+    while (*p >= '0' && *p <= '9') p++;
+    if (*p == '-') { p++; b = atoi(p); while (*p >= '0' && *p <= '9') p++; }
+    for (int c = a; c <= b && c < CPU_SETSIZE; c++) CPU_SET(c, &to);
+    if (*p == ',') p++; else if (*p) break;
+  }
+  cpu_set_t mine; if (sched_getaffinity(0, sizeof mine, &mine)) return -1;
+  for (int c = 0; c < CPU_SETSIZE; c++) if (CPU_ISSET(c, &mine)) CPU_CLR(c, &to);
+  if (!CPU_COUNT(&to)) return -1;
+  long self = syscall(SYS_gettid);
+  DIR *d = opendir("/proc/self/task");
+  if (!d) return -1;
+  int moved = 0, k = 0;
+  if (names && cap > 0) names[0] = 0;
+  struct dirent *e;
+  while ((e = readdir(d))) {
+    long tid = atol(e->d_name);
+    if (tid <= 0 || tid == self) continue;
+    char path[64], comm[32] = { 0 };
+    snprintf(path, sizeof path, "/proc/self/task/%ld/comm", tid);
+    FILE *f = fopen(path, "r");
+    if (!f) continue;
+    if (!fgets(comm, sizeof comm, f)) comm[0] = 0;
+    fclose(f);
+    comm[strcspn(comm, "\n")] = 0;
+    if (!strcmp(comm, "gambit") || !strncmp(comm, "gworker", 7) || !strcmp(comm, "gbetween") || !strcmp(comm, "greap")) continue;
+    cpu_set_t its; if (sched_getaffinity((pid_t)tid, sizeof its, &its)) continue;
+    int shares = 0; for (int c = 0; c < CPU_SETSIZE && !shares; c++) shares = CPU_ISSET(c, &its) && CPU_ISSET(c, &mine);
+    if (!shares || sched_setaffinity((pid_t)tid, sizeof to, &to)) continue;
+    moved++;
+    if (names && cap > 0) k += snprintf(names + k, k < cap ? (size_t)(cap - k) : 0, "%s%s", k ? "," : "", comm);
+  }
+  closedir(d);
+  return moved;
+}
 // (every thread the instance starts, by kind -- 0 Gambit's, 1 the search between decisions, 2 the pool's workers -- joined when it quits)
 #define MAXHOSTTHREADS 64
 static pthread_t hostThreads[MAXHOSTTHREADS]; static int hostThreadKind[MAXHOSTTHREADS], nHostThreads;
