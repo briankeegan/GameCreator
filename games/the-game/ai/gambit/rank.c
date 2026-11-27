@@ -273,9 +273,6 @@ static double rankHoldOwn = -1; static int32_t rankHoldClock = -1;   // (the hol
 // (THE HOLD PLAYED ON, this decision: decide.c playedLostOf, NOT_ASKED not asked -- a line that clears nothing does better than holding
 // where its board played on is lost later than the hold's)
 static int32_t playedHold = NOT_ASKED, playedHoldClock = -1;
-// (THE QUEUE PLAYED INTO, this decision: every line's board played on to decide.c PLAY_DEEP_TO, living lines too -- the garbage queued and
-// on its way lands past the horizon, and a line that lives to the horizon on a board the queue then buries is a line lost)
-static int32_t playDeep;
 // (A LINE THE BOARD PLAYED ON MAY ORDER: the hold, a break, or a line that clears no panel along its whole length (judge.c clearedPanels)
 // -- the policy clears only when the board is lost
 // otherwise, so a clear that breaks nothing would be put first for panels spent sooner than the bot would spend them; what material
@@ -963,15 +960,6 @@ static void creditPair(const Judge *x, const Judge *y, int *lxo, int *lyo) {
   *lxo = lx; *lyo = ly;
 }
 static int compareJudged(const Judge *x, const Judge *y) {
-  // THE QUEUE PLAYED INTO (the owner: there is no death): under a deep queue, of two lines whose boards were played on into it, the one
-  // played on a break's time longer comes first -- the later only where it is the hold, a break or a line that clears no panel
-  // (playedFair: the policy's own play), and the line in progress put down only for two breaks' time
-  if (playDeep && playedHoldClock == decQ.b->clock && x->played != NOT_ASKED && y->played != NOT_ASKED) {
-    double px = lostAtOf(x->played, 0), py = lostAtOf(y->played, 0);
-    const Judge *a = px > py ? x : y, *b = a == x ? y : x;
-    double gap = px > py ? px - py : py - px, need = b->carried && !b->hold ? 2 * rankSave : rankSave;
-    if (gap >= need && playedFair(a)) return (cmpKey = __LINE__, (a == x ? -1 : 1));
-  }
   int lx, ly; creditPair(x, y, &lx, &ly);
   // THE LAST CHANCE: the hold lost inside a break's time, beside a line lost no sooner whose next moves promise a break's time more (the
   // readiness break, the survival search after it): the line first -- holding is the loss for certain. Only against the hold: the
