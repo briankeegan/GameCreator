@@ -10,6 +10,7 @@ typedef struct {
   int32_t grown;   // a line another proposed, one more panel walked into its match (propose.c growLines)
   int32_t drop;    // a perched block let down (search/break.c perchedDrops)
   int32_t letDown; // the garbage let down off its tallest column (propose.c letDownCand): a set-up read on its own clears (judge.c firstClear)
+  int32_t policy;  // the played-on policy's own move on the board as it stands (decide.c policyLine): what the hold's board played on counts on
   int32_t kept;    // an intention the last decision kept, found again (decide.c keptJudged)
   int32_t way;     // a line another proposed, with a swap that does something made first on the cursor's way to it (propose.c wayLines)
   int32_t route;   // two lines on columns apart made one, in walking order (decide.c routeJudged)
@@ -278,8 +279,12 @@ static int32_t playedHold = NOT_ASKED, playedHoldClock = -1;
 // otherwise, so a clear that breaks nothing would be put first for panels spent sooner than the bot would spend them; what material
 // buys stays the material keys' to weigh)
 static int playedFair(const Judge *J) { return J->hold || J->apBroke > 0 || J->o.j.made.broke > 0 || !(J->o.j.clearedPanels > 0 || J->apCombo > 0 || J->apChain > 0); }
+// (the policy's own move outplays the hold where it is lost no sooner played on: the hold's board played on is the policy's move pressed at
+// the next decision, and holding then counts on it again -- a move put off for as long as putting it off costs nothing it can see)
 static int outplaysHold(const Judge *J) {
-  return !J->hold && playedFair(J) && J->played != NOT_ASKED && playedHoldClock == decQ.b->clock && playedHold != NOT_ASKED && lostAtOf(J->played, 0) > lostAtOf(playedHold, 0);
+  if (J->hold || !playedFair(J) || J->played == NOT_ASKED || playedHoldClock != decQ.b->clock || playedHold == NOT_ASKED) return 0;
+  double p = lostAtOf(J->played, 0), h = lostAtOf(playedHold, 0);
+  return p > h || (J->k.policy && p >= h);
 }
 static int extCounts(const Judge *x) {
   if (x->hold || x->extLost == NOT_ASKED) return 0;
@@ -998,6 +1003,8 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && !ly && x->played != NOT_ASKED && y->played != NOT_ASKED && playedFair(x) && playedFair(y) && WINDOW_KEPT(x) == WINDOW_KEPT(y)) {
     double px = lostAtOf(x->played, 0), py = lostAtOf(y->played, 0);
     if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
+    // (and the policy's own move before the hold lost alike: the hold's board played on is that move pressed at the next decision)
+    if (x->hold != y->hold && (x->hold ? y : x)->k.policy) return (cmpKey = __LINE__, (x->hold ? 1 : -1));
   }
   #undef WINDOW_KEPT
   // 1. THE PLAN KEPT (the owner: changing plans is wasteful): the line in progress no worse than when it was played -- living, or lost no

@@ -848,9 +848,9 @@ static int ranked(const Read *R, const Found *S) {
       if (np > 0 && !p) { enR = CR(pl[0]); enC = CC(pl[0]); enOn = 1; }
       np = p;
       int have = 0;
-      for (int i = 0; i < n && !have && np > 0; i++) { const Judge *J = order[i]; have = !J->hold && J->k.nseq >= np; for (int q = 0; q < np && have; q++) have = J->k.seq[q] == pl[q]; }
+      for (int i = 0; i < n && !have && np > 0; i++) { Judge *J = order[i]; have = !J->hold && J->k.nseq == np; for (int q = 0; q < np && have; q++) have = J->k.seq[q] == pl[q]; if (have) J->k.policy = 1; }
       Cand pk;
-      if (np > 0 && !have && candOf(&pk, PLAY_LEVEL, pl, np, -1, 0)) { pk.settled = 0; offered[PLAY_LEVEL]++;
+      if (np > 0 && !have && candOf(&pk, PLAY_LEVEL, pl, np, -1, 0)) { pk.settled = 0; pk.policy = 1; offered[PLAY_LEVEL]++;
         if (judgeCand(R, &pk, &playJ)) { readyNextFor(&playJ); order[n] = &playJ; PJ = &playJ; n++; playOffered = 1; } }
     }
     const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
