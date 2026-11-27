@@ -424,6 +424,7 @@ static int32_t comboTimed;   // (the frames waited for a combo this decision, 0 
 #define CUT8_MS 4      // (the judging's time for each eight tried with one swap more: decide.c, the eight without its chain)
 #define CONT_MS 6      // (the survival search's time for each)
 static int32_t contAsked;   // (the lines so judged this decision: the log's cont=)
+static int32_t planAsked, planWon;   // (the lines played on with breaks this decision, and those whose plan outlived every other life after them: the log's plan=)
 // (READY FOR THE NEXT BLOCK, asked of each line where none lives: how many answered a break, none, or were not answered -- the clock, or
 // no next block told -- the log's rn=)
 static int32_t rnSeen[3];
@@ -444,6 +445,49 @@ static double contLostOf(const Judge *J, double give) {
   Outlived c = outlive(&q2, HORIZON + REST, REST, give, OUT_DEPTH, 30);
   winPast = 0; winGone = 0;
   int32_t lost = c.set ? c.lostAt : diesIn(&q2, HORIZON + REST);
+  if (lost < 0) return -1;
+  return lost == FOREVER ? 1e9 : (double)dt + lost;
+}
+// THE BOARD PLAYED ON WITH BREAKS (plans/gambit-infra.md G, its first piece): under garbage, from the board a line leaves at the frame it
+// ends, the break search's break on it (search/break.c readySearch) played on the engine and the board settled, up to PLAN_BREAKS times
+// while one is found, each break's walk pressed out of the window the line and the breaks before it leave -- then the frame that board is
+// lost left alone, from now; -1 not known. A board with no break found is the board the line leaves, left alone.
+#define PLAN_BREAKS 2
+#define PLAN_MS 6      // (the plan's time for each line, its breaks searched in equal parts)
+static Ctx *breakPlanCtx;
+static double planLostOf(const Judge *J, double give) {
+  static Board *pb; if (!pb) pb = nb_new();
+  if (!decF.under || J->o.dead || !pb) return -1;
+  endNoKeep = 1;
+  const Board *e = J->hold ? lineEnd(0, 0, 0) : lineEnd(J->k.seq, J->k.nseq, J->settled);
+  endNoKeep = 0;
+  if (!e) return -1;
+  cloneBoard(pb, e);
+  int32_t dt = imax(0, pb->clock - decQ.b->clock), spent = J->hold ? 0 : J->o.j.spent;
+  Question q2 = decQ; q2.b = pb; q2.holdLeft = 0; q2.holdStarted = 0; q2.narr = 0;
+  for (int a = 0; a < decQ.narr; a++) if (decQ.arr[a].at > dt) { q2.arr[q2.narr] = decQ.arr[a]; q2.arr[q2.narr++].at -= dt; }
+  double until = nowMs() + give;
+  for (int k = 0; k < PLAN_BREAKS && nowMs() < until && !clockFrameOut(); k++) {
+    int32_t line[MAXLINE], nl = 0;
+    winPast = dt; winGone = spent;
+    int32_t r = readySearch(&q2, nowMs() + (until - nowMs()) / (PLAN_BREAKS - k), line, &nl);
+    winPast = 0; winGone = 0;
+    if (r != 1 || nl < 1) break;
+    Ctx *x = breakPlanCtx = ctxOf(breakPlanCtx);
+    int nd = rootOf(x, &q2), cr = pb->curRow, cc = pb->curCol;
+    for (int i = 0; i < nl && nd >= 0 && liveNode(x, nd); i++) { spent += actionsFor(cr, cc, CR(line[i]), CC(line[i]), HOLDTIGHT + 1); cr = CR(line[i]); cc = CC(line[i]); nd = step(x, nd, MK_SWAP, CR(line[i]), CC(line[i]), 0); }
+    if (nd < 0 || !liveNode(x, nd)) return dt > 0 ? (double)dt : -1;
+    int st = settleOf(x, nd); if (liveNode(x, st)) nd = st;
+    const Board *nb = ensureBoard(x, nd);
+    if (!nb) break;
+    int32_t d2 = imax(0, nb->clock - pb->clock);
+    cloneBoard(pb, nb);
+    int na = 0; for (int a = 0; a < q2.narr; a++) if (q2.arr[a].at > d2) { q2.arr[na] = q2.arr[a]; q2.arr[na++].at -= d2; }
+    q2.narr = na; dt += d2;
+  }
+  winPast = dt; winGone = spent;
+  int32_t lost = diesIn(&q2, HORIZON + REST);
+  winPast = 0; winGone = 0;
   if (lost < 0) return -1;
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
@@ -752,7 +796,7 @@ static int ranked(const Read *R, const Found *S) {
   // chain answers, and a line that walks the window out has no moves after it)
   // (asked up to the move's own frame, the host's hard stop, as the judging is -- the decision's own time is spent by then -- each line its
   // own CONT_MS)
-  contAsked = 0;
+  contAsked = 0; planAsked = planWon = 0;
   if (n && !order[0]->o.lives && clockFrameOut && !clockFrameOut()) {
     double due = clockDue, share = clockShare; clockDue = 0; clockShare = 0;
     for (int pass = 0; pass < 2; pass++)
@@ -763,6 +807,13 @@ static int ranked(const Read *R, const Found *S) {
         double c = contLostOf(J, CONT_MS); contAsked++;
         clockShareEnd(sh);
         if (c > 0) { int32_t f = c >= 1e9 ? FOREVER : (int32_t)c; if (J->extLost == NOT_ASKED || f > J->extLost) J->extLost = f; }
+        // (and the board played on with breaks, under garbage: the later of the two is the life after the line)
+        if (decF.under && !clockFrameOut()) {
+          sh = clockShareBegin(nowMs() + PLAN_MS);
+          double pl = planLostOf(J, PLAN_MS); planAsked++;
+          clockShareEnd(sh);
+          if (pl > 0) { int32_t f = pl >= 1e9 ? FOREVER : (int32_t)pl; if (J->extLost == NOT_ASKED || f > J->extLost) { J->extLost = f; planWon++; } }
+        }
       }
     clockDue = due; clockShare = share;
     if (contAsked) sortJudged(order, n);

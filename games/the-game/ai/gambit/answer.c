@@ -748,6 +748,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (taxMs >= 0) { L_s(" tx="); L_i(taxBase); L_s("/"); L_i(taxLong); L_s("/"); L_i(taxN); L_s("/"); L_i(taxMs); }
   if (taLog || taHave) { L_s(" ta="); L_i(taLog); L_s("/"); L_i(taLinks); L_s("/"); L_i(taSwaps); L_s("/"); L_i((int32_t)taMs); L_s("/"); L_i(taOn); }
   if (contAsked) { L_s(" cont="); L_i(contAsked); }
+  if (planAsked) { L_s(" planB="); L_i(planWon); L_s("/"); L_i(planAsked); }   // (lines played on with breaks: the plan outlived the rest / asked)
   if (rnSeen[0] + rnSeen[1] + rnSeen[2]) { L_s(" rn="); L_i(rnSeen[0]); L_s("/"); L_i(rnSeen[1]); L_s("/"); L_i(rnSeen[2]); }   // (ready for the next block: a break / none / not answered)
   if (decQ.b) { L_s(" tw="); L_i(towerOf(decQ.b)); L_s(" ew="); L_i(edgeOf(decQ.b)); }   // (the board's tower, and its edge over its neighbour: judge.c)
   if (readySearched) { L_s(" rcut="); L_i(readyShareCut); L_s("/"); L_i(readySearched); }
