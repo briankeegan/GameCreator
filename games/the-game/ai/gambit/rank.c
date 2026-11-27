@@ -1094,9 +1094,15 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // board, of two that live or are lost alike, the one that leaves a break ready once everything lands (judge.c breaksAfterLanding, the
   // window counted) goes first: the break is in place when the block arrives, not walked to after it -- a board that keeps no break in
   // reach under garbage is the board every lost game ends on
-  if (lx == ly && (decF.under || garbageComing()) && (lx || lostAlike(x, y)) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED &&
-      (x->readyNext == 1) != (y->readyNext == 1))
-    return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
+  // -- and of two that do not live, lost alike or not, wherever the ready one's board stands a break's time and keeps the panels -- no
+  // fewer settled than the other's (the owner: you need the panels; a break made ready by spending them is the next one's gone): a break
+  // ready is the life past the next landing, a few frames more with none is the loss at it
+  if (lx == ly && (decF.under || garbageComing()) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED &&
+      (x->readyNext == 1) != (y->readyNext == 1)) {
+    const Judge *r = x->readyNext == 1 ? x : y, *o = r == x ? y : x;
+    int keeps = r->o.matSettled < 0 || o->o.matSettled < 0 || r->o.matSettled >= o->o.matSettled;
+    if (lx || lostAlike(x, y) || (keeps && !r->o.dead && diesAt(r) >= rankSave && diesAt(r) < 1e299)) return (cmpKey = __LINE__, (r == x ? -1 : 1));
+  }
   // 1. NOTHING AMID THE GARBAGE (amidGarbage): under garbage, of two that do not live, a line that swaps among the slabs and breaks nothing
   // after one that does not -- unless it keeps the board a break's time (rankSave) longer
   if (!lx && decF.under && !x->o.dead && !y->o.dead) {
