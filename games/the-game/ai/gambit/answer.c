@@ -765,6 +765,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (reachCut) { L_s(" reach="); L_i(reachCut); }
   if (stallCut) { L_s(" stall="); L_i(stallCut); }
   if (overCut) { L_s(" over="); L_i(overCut); }
+  if (dearCut) { L_s(" dear="); L_i(dearCut); }
   if (enPlayed) { L_s(" enRoute="); L_i(enPlayed); }
   if (undoCut) { L_s(" undo="); L_i(undoCut); }
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); L_s(" twoWhy="); L_i(twoWhy); L_s("/"); L_i(twoLostLog >= 1e299 ? -2 : (int64_t)twoLostLog); L_s("/"); L_i((int64_t)twoKeptLog); }

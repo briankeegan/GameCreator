@@ -641,6 +641,19 @@ static int overspends(const Judge *J) {
   // the refill promises -- the block lands on a board that may need more than one break, and the refill is spent on the first)
   return pressAllowance >= 0 && !digPaid(J) && (allowLeftAt(overNeedAt(), lineWalk(J)) < BREAK_WALK || pressAllowance - lineWalk(J) < BREAK_WALK);
 }
+// THE DEAR BREAK (the owner: it's all about efficiency): with garbage on the board or on its way, a break that leaves the window under a
+// break's walk (BREAK_WALK) -- now, or by the sooner of the next landing and the hold's loss -- is taken out where another break offered
+// keeps it, converts as many garbage cells or more, and lives, or is lost no sooner where the dear one does not live: the actions it
+// keeps are the next block's break. A break in progress is never taken out: its swaps are pressed
+static const Judge *dearOrd[MAXCANDS + 5 + NINTENT + NROUTE + NSTRIP]; static int dearN; static int32_t dearCut;
+static int keepsWindow(const Judge *J) { int w = lineWalk(J); return allowLeftAt(overNeedAt(), w) >= BREAK_WALK && pressAllowance - w >= BREAK_WALK; }
+static int dearBreak(const Judge *J) {
+  if (pressAllowance < 0 || J->hold || J->o.dead || J->carried || !(J->apBroke > 0) || keepsWindow(J)) return 0;
+  for (int i = 0; i < dearN; i++) { const Judge *K = dearOrd[i];
+    if (K == J || K->hold || K->o.dead || !(K->apBroke > 0) || K->apBroke < J->apBroke || !keepsWindow(K)) continue;
+    if (K->o.lives || (!J->o.lives && diesAt(K) >= diesAt(J))) return 1; }
+  return 0;
+}
 static int32_t stallCut, enPlayed;   // (lines taken out as stalls under garbage this decision: the log's stall=)
 static int digsForBreak(const Judge *J);
 // (THE WAY TO THE ACTION -- the owner: instead of waiting, walk over to the area it needs to get to and flatten or zip along the way, so it
@@ -696,7 +709,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; dearCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0; rankHold = 0; flatHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -1090,6 +1103,10 @@ static int ranked(const Read *R, const Found *S) {
       overHold = H; overMat = R->keepOn && R->keep.t[KEEP_MATERIAL].op; overFloor = R->keep.t[KEEP_MATERIAL];
       n = cutAlways(order, n, overspends, &overCut, 31);
     } }
+  if ((decF.under || garbageComing()) && !ruleNoEnemy && pressAllowance >= 0) {
+    dearN = 0; for (int i = 0; i < n; i++) dearOrd[dearN++] = order[i];
+    n = cutAlways(order, n, dearBreak, &dearCut, 32);
+  }
   n = cutAlways(order, n, farForNothing, &reachCut, 28);
   // NO FLIP AND BACK ACROSS DECISIONS: a line that swaps straight back the two panels the last decision swapped is taken out, whatever
   // the board
