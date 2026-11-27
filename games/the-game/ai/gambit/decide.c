@@ -448,9 +448,10 @@ static double contLostOf(const Judge *J, double give) {
   return lost == FOREVER ? 1e9 : (double)dt + lost;
 }
 // THE BOARD PLAYED ON (the owner: there is no death -- plans/gambit-infra.md G): with garbage on the board or on its way, where nothing
-// lives, each line, the hold too, is played on from the board it leaves to the horizon by one fixed policy (policyLine): a break in
-// reach pressed (search/break.c breakNearLine); else the garbage let down off the columns it rests on (propose.c letDownLineOf); else
-// the tallest column's top walked onto a lower neighbour (propose.c levelLine); else PLAY_WAIT frames left alone. Each swap is pressed
+// lives, each line, the hold too, is played on from the board it leaves to the horizon by one fixed policy: a break in reach pressed
+// (search/break.c breakNearLine); else, where the board left alone is lost within a break's time, the nearest clear (search/break.c
+// clearNearLine); else the garbage let down off the columns it rests on (propose.c letDownLineOf); else the tallest column's top walked
+// onto a lower neighbour (propose.c levelLine); else PLAY_WAIT frames left alone. Each swap is pressed
 // out of the window the line leaves, as the judge presses it. The frame that board is lost is the line's played life (Judge.played: from now, FOREVER alive at the
 // horizon); the hold's policy begins once the next decision can press (HOLD_GAP). The order puts the later played life first among
 // lines that do not live (rank.c), and the policy's own move is offered as a line, so what the scores count on is always there to press.
@@ -462,6 +463,7 @@ static double contLostOf(const Judge *J, double give) {
 #define PLAY_SETTLE 12  // the frames a move's board is let settle at most before the next (a reaction): a board that never comes to rest is played on as it is
 static int32_t playAsked, playOut, playBeat, playOffered;   // (lines played on this decision, those the clock left unanswered, those that outplayed the hold, the policy's move offered: the log's pl=)
 static int32_t playTopLog = NOT_ASKED;   // (the played life of the line on top: the log's pl=)
+// (THE POLICY'S MOVE ON THE BOARD AS IT STANDS, offered as a line: a break in reach, else the garbage let down, else the stack levelled)
 static int policyLine(const Board *b, int32_t *line) {
   if (garbageOn(b)) { int nl = 0; if (breakNearLine(b, line, &nl) < NEAR_MISS && nl > 0) return nl; }
   int nl = letDownLineOf(b, line, 0);
@@ -486,7 +488,16 @@ static int32_t playedOn(const Question *q, int32_t wait, int32_t to, double unti
     const Board *b = ensureBoard(x, nd);
     if (!b) return NOT_ASKED;
     int32_t line[MAXPATH];
-    int nl = policyLine(b, line), pressed = 0;
+    int nl = 0, pressed = 0;
+    if (garbageOn(b)) { int k = 0; if (breakNearLine(b, line, &k) < NEAR_MISS && k > 0) nl = k; }
+    // (no break in reach and the board left alone lost within a break's time: no break comes in time, and the nearest clear is the life
+    // (search/break.c clearNearLine) -- pressed as late as that, so a line is never put first for panels spent sooner than they need be)
+    if (!nl) {
+      int32_t la = lostAlone(x, nd, NODE(x, nd)->t + rankSave);
+      if (la == NOT_ASKED) return NOT_ASKED;
+      if (la != FOREVER && (b = ensureBoard(x, nd))) { int k = 0; if (clearNearLine(b, line, &k) < NEAR_MISS && k > 0) nl = k; }
+    }
+    if (!nl && (b = ensureBoard(x, nd))) { nl = letDownLineOf(b, line, 0); if (!nl) nl = levelLine(b, line, 1); }
     for (int i = 0; i < nl; i++) {
       const Board *pb = ensureBoard(x, nd);
       if (!pb) return NOT_ASKED;
@@ -675,14 +686,6 @@ static int twoMadeThree(const Read *R, const Judge *J, Judge *out) {
 }
 static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
-// (THE BOARDS PLAYED ON, ONE KIND AGAINST THE REST: of the order's lines played on (playedLostOf), the best that `kind` names is lost
-// later than every one it does not, the hold among them)
-static int playedOver(int (*kind)(const Judge *), int n) {
-  double pk = -1, po = -1;
-  for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->played == NOT_ASKED) continue;
-    double p = lostAtOf(J->played, 0); if (kind(J)) { if (p > pk) pk = p; } else if (p > po) po = p; }
-  return pk >= 0 && po >= 0 && pk > po;
-}
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
   carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
@@ -975,9 +978,6 @@ static int ranked(const Read *R, const Found *S) {
     // (the owner: don't die -- a three is kept out only where a line that keeps it lives, or is lost no sooner than the best that wastes one)
     if (!keeps && !wasteLives && keptLost >= 0 && wasteLost <= keptLost) keeps = 1;
     if (!keeps && nearSave) saveOk = 1;
-    // (THE SAVE PLAYED ON: the best board played on that wastes a three lost later than every one that keeps its threes, the hold among
-    // them -- playedLostOf on both sides -- the three is the save)
-    if (playedOver(wastesThree, n)) saveOk = 1;
     // (THE SAVE ASKED: where the rule would let a three through, the best line that wastes one and the best that does not -- the hold
     // among them -- are each played to their end and the survival search asked of the boards they leave, the garbage on its way
     // landing as it would. A three whose board, with the best line on, outlasts the other's by nothing was not needed not to die: it
@@ -1124,8 +1124,6 @@ static int ranked(const Read *R, const Found *S) {
     int why = keeps ? 1 : 0;
     // (the owner: don't die -- a 2x is kept out only where a line that makes none lives, or is lost no sooner than the best 2x)
     if (!keeps && !twoLives && keptLost >= 0 && twoLost <= keptLost) keeps = 1, why = 3;
-    // (nor where the best board played on that makes one is lost later than every one that makes none, the hold among them -- playedLostOf)
-    if (playedOver(shortChain, n)) keeps = 0;
     twoWhy = why; twoLostLog = twoLives ? 1e300 : twoLost; twoKeptLog = keptLost;
     // (not where the list asks no chain: a 2x taken to three is a bigger slab the mode does not ask)
     // (nor the line in progress begun on its 2x: the input pressed of it is spent, and taken out now it is spent for nothing)
@@ -1133,8 +1131,7 @@ static int ranked(const Read *R, const Found *S) {
   // NO CLEAR FOR BLOCKS THAT HAVE NOT LANDED (the owner: low, spend less and break): garbage queued behind the board's own motion and
   // none on the board (outcome.c holdQueueAt), below the material floor, nothing living -- a clear that breaks nothing (spends) is taken
   // out of the order where a line that leaves more of the panels is offered, unless its board lasts a break's time (rankSave) longer
-  // than that line's once the blocks have landed, the drop it puts off taken out (outcome.c putOff), or its board played on is lost later
-  // than that line's (playedLostOf). However near the kept line's loss,
+  // than that line's once the blocks have landed, the drop it puts off taken out (outcome.c putOff). However near the kept line's loss,
   // so long as its board is still there a reaction after the blocks drop, when the first move can answer them: no line breaks a block
   // before it lands, and the break after it is made of the panels kept. The line in progress is held to it like any other
   if (n && !order[0]->o.lives && holdQueueAt() != NOT_ASKED) {
@@ -1144,8 +1141,7 @@ static int ranked(const Read *R, const Found *S) {
       if (!kept || J->o.matLeft > kept->o.matLeft || (J->o.matLeft == kept->o.matLeft && diesAt(J) > diesAt(kept))) kept = J; }
     if (kept) { int m = 0;
       for (int i = 0; i < n; i++) { const Judge *J = order[i];
-        if (J->spends && J != opCarried && J->o.matLeft >= 0 && J->o.matLeft < kept->o.matLeft && diesAt(J) - diesAt(kept) < rankSave &&
-            !(J->played != NOT_ASKED && kept->played != NOT_ASKED && lostAtOf(J->played, 0) > lostAtOf(kept->played, 0))) { putOffCut++; if (J == carriedJ) { carriedJ = 0; carryNone = 27; } }
+        if (J->spends && J != opCarried && J->o.matLeft >= 0 && J->o.matLeft < kept->o.matLeft && diesAt(J) - diesAt(kept) < rankSave) { putOffCut++; if (J == carriedJ) { carriedJ = 0; carryNone = 27; } }
         else order[m++] = order[i]; }
       n = m; }
   }

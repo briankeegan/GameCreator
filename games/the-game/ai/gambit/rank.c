@@ -273,8 +273,13 @@ static double rankHoldOwn = -1; static int32_t rankHoldClock = -1;   // (the hol
 // (THE HOLD PLAYED ON, this decision: decide.c playedLostOf, NOT_ASKED not asked -- a line that clears nothing does better than holding
 // where its board played on is lost later than the hold's)
 static int32_t playedHold = NOT_ASKED, playedHoldClock = -1;
+// (A LINE THE BOARD PLAYED ON MAY ORDER: the hold, a break, or a line that clears no panel along its whole length (judge.c clearedPanels)
+// -- the policy clears only when the board is lost
+// otherwise, so a clear that breaks nothing would be put first for panels spent sooner than the bot would spend them; what material
+// buys stays the material keys' to weigh)
+static int playedFair(const Judge *J) { return J->hold || J->apBroke > 0 || J->o.j.made.broke > 0 || !(J->o.j.clearedPanels > 0 || J->apCombo > 0 || J->apChain > 0); }
 static int outplaysHold(const Judge *J) {
-  return !J->hold && J->played != NOT_ASKED && playedHoldClock == decQ.b->clock && playedHold != NOT_ASKED && lostAtOf(J->played, 0) > lostAtOf(playedHold, 0);
+  return !J->hold && playedFair(J) && J->played != NOT_ASKED && playedHoldClock == decQ.b->clock && playedHold != NOT_ASKED && lostAtOf(J->played, 0) > lostAtOf(playedHold, 0);
 }
 static int extCounts(const Judge *x) {
   if (x->hold || x->extLost == NOT_ASKED) return 0;
@@ -978,10 +983,10 @@ static int compareJudged(const Judge *x, const Judge *y) {
     }
   }
   // 1. THE BOARD PLAYED ON (the owner: there is no death): of two that do not live, both played on by the one policy (decide.c
-  // playedLostOf), the one whose board played on is lost later goes first, by any margin -- a move that leaves the board where the policy
-  // finds its next break before one that leaves it where none is found, whatever their boards left alone are lost on. Two alive at the
-  // horizon are ordered by the keys after this one
-  if (!lx && !ly && x->played != NOT_ASKED && y->played != NOT_ASKED) {
+  // playedLostOf) and neither a clear that breaks nothing (playedFair), the one whose board played on is lost later goes first, by any
+  // margin -- a move that leaves the board where the policy finds its next break before one that leaves it where none is found, whatever
+  // their boards left alone are lost on. Two alive at the horizon are ordered by the keys after this one
+  if (!lx && !ly && x->played != NOT_ASKED && y->played != NOT_ASKED && playedFair(x) && playedFair(y)) {
     double px = lostAtOf(x->played, 0), py = lostAtOf(y->played, 0);
     if (px != py) return (cmpKey = __LINE__, (px > py ? -1 : 1));
   }
