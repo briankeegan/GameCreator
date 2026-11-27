@@ -1839,12 +1839,17 @@ static void outlivingFirst(Judge **a, int n) {
   // on survival can end on top through a third -- r1350, 4490: the hold played, lost at 156, over a break in progress lost at 264 that
   // beats it alone. Each line that outlives the top by a break's time and beats it compared alone moves up, a bounded number of times --
   // after the sort, and after the hold is put on top in place of a line that does nothing: decide.c)
+  // (and a line whose board played on by the one policy outlives the top's by a break's time, both lines playedFair: the engine's
+  // play of the board, not the horizon's guess, is what it outlives the top on)
+  #define PLAYED_OUTLIVES(l_, t_) ((l_)->played != NOT_ASKED && (t_)->played != NOT_ASKED && playedFair(l_) && playedFair(t_) && \
+                                   !(t_)->o.lives && lostAtOf((l_)->played, 0) - lostAtOf((t_)->played, 0) >= rankSave)
   { int32_t keep = cmpKey;
     for (int pass = 0; pass < 4 && n > 1; pass++) { int moved = 0;
-      for (int i = 1; i < n; i++) if (!a[i]->o.dead && outlives(a[i], a[0]) && compareJudged(a[i], a[0]) < 0) {
+      for (int i = 1; i < n; i++) if (!a[i]->o.dead && (outlives(a[i], a[0]) || PLAYED_OUTLIVES(a[i], a[0])) && compareJudged(a[i], a[0]) < 0) {
         Judge *e = a[i]; for (int q = i; q > 0; q--) a[q] = a[q - 1]; a[0] = e; moved = 1; break; }
       if (!moved) break; }
     cmpKey = keep; }
+  #undef PLAYED_OUTLIVES
 }
 static void sortJudged(Judge **a, int n) {
   static Judge *tmp[512];
