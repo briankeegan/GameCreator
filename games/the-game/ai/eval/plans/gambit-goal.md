@@ -109,6 +109,11 @@ large chains go down while the eights and other combos go up.
 6. **Fill, finish them and switching 28/28 at level 11, twice in a row** -- the 24 garbage games and the 4 endless; switching (5-30 s,
    every direction) with the switches happening. These are the modes measured (the owner: everything is fill now); build, big chain
    and pressure are not run.
+   **The seeds (the owner):** each mode is played on seeds of its own, never another mode's -- gambit-24.yml `seed` (PA_SEED = base*100
+   + pattern*10 + game), finish them base 141, switching 143, fill 147, and `rounds` [1,2] the second 28 on base+1 (142, 144, 148): six
+   sets of 28 apart. A mode's runs replay its own seeds, so builds are compared on the same games; a mode is done only once it has also
+   played 28/28 twice on seed bases it has never played -- a fix that holds only on the seeds it was made on is no fix (the owner: it
+   has to work on new seeds, and in bad runs).
    **The order (the owner's):** 22 of the 24 garbage games and all 4 endless is where a mode is left for the next -- a change made for
    one mode can undo another's, so the last two are won with the three run together, each change checked for a mode it set back,
    until all three are at 24, twice.
