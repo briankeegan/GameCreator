@@ -192,6 +192,32 @@ passes anyway (a step aside at most) that does something: it clears, or it bring
 the colours (the planner's connectedness). Only the swaps on some line's way are stepped, on every thread. And of two lines that meet
 the same entry of the list, the one the cursor walks less comes first: a far line earns its walk. Logged as `way=N[/played]`.
 
+### G. The plan of breaks (proposed, not built -- for the owner's agreement)
+
+Where it stands: under the training patterns the board has no break in reach for 150 frames or more about 3.5 times a minute in games
+that survive and 4-5 in games that are lost (runs 4776-4799); 69 of 90 lost games had no break found on 80% or more of their last
+decisions under garbage, the break search resuming its frontier every decision (`/r60`) -- twenty decisions' search on the same garbage
+-- so no break was in its reach. Every line that does not live is ranked on when its board is lost with nothing more pressed, or with
+the survival search after it (`decide.c` contLostOf), which looks for the latest loss, not for the next break. Deaths are the rare stretch
+where the window or the panels run out before a break comes back into reach.
+
+The design: the life a line is ranked on, under garbage, is the life of its board PLAYED ON WITH BREAKS --
+
+1. THE PLAN. From the board a line leaves, at the frame it ends: the break search (`search/break.c` breakMoves) on that board within a
+   share; its break played on the engine, the board settled and run to the next block's landing (the telegraph's frames); the break
+   search again there; to K breaks or the horizon. Each break's walk pressed out of the window the plan has left (`core/nodes.h` winPast,
+   winGone), its panels out of the board's. Its answer: the frame the planned board is lost (FOREVER standing to the horizon), the breaks
+   made, the window and panels left at the end.
+2. ON THE WORKERS. One plan a job (`search.h` startJobs), the best-ranked lines first, beside the decision's judging as the readiness
+   checks are (`decide.c` readySpread); a plan the clock stops is no answer (NOT_ASKED), never a loss.
+3. KEPT AND REPAIRED (F). A plan is keyed by the board its line leaves; the next decision's line in progress lands on the same board
+   when nothing new was told and reads the plan already made; a block sent repairs it from the landing it changes.
+4. IN THE ORDER. Of two that do not live, the planned life decides before the life left alone -- a line whose plan keeps breaking to the
+   horizon before one whose board stands longer with no break after it -- under the survival gate as it is (a line lost a break's time
+   sooner on its plan is never played).
+5. MEASURED by what it is for, every run: the stretches with no break in reach a minute (3.5 now), the next break held at each landing,
+   the window and panels left at each landing -- then the three modes.
+
 ## Build order
 
 1. E, the threads: no behaviour of its own -- the same decisions, searched deeper in the same time.
