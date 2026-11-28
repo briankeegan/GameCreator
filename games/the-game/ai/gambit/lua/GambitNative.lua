@@ -547,11 +547,13 @@ end
 -- machine code's pages writable and back, and each flip waits for the process's memory map while Gambit's threads fault pages in: a
 -- frame over the think budget on a millisecond of CPU. jit.off keeps the traces compiled; jit.on after the frame)
 local JIT_OFF = jit and jit.off and jit.on and jit.status
+-- (THE COLLECTOR AT REST BEFORE THE FRAME'S CLOCK STARTS: a trace exit runs a step of the collector while it is in its atomic phase or
+-- calling finalizers (lj_trace_exit), stopped or not -- 8.5 to 10.5 ms in a frame's panel load, on heaps of 88 to 303 MB. A step asked
+-- from the interpreter runs the atomic phase whole; the steps after it run the finalizers left, until the cycle ends or GC_DRAIN is spent)
+local GC_DRAIN = 0.0015
 function GambitNative:input(stack, sources, view)
-  -- (the collector's atomic phase run here, before the frame's clock starts: while the game's code runs on a trace LuaJIT puts it off, and
-  -- runs it at the next trace exit, the collector stopped or not (lj_trace_exit) -- on a heap of hundreds of MB, 9 ms in the middle of a
-  -- frame's load. A step asked from the interpreter runs it and never leaves it waiting)
-  collectgarbage("step", 0)
+  local g0 = ThinkBudget.now()
+  repeat until collectgarbage("step", 0) or ThinkBudget.now() - g0 > GC_DRAIN
   collectgarbage("stop")
   local jitWas = JIT_OFF and jit.status()
   if jitWas then jit.off() end
