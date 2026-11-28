@@ -7,7 +7,8 @@ stop. No restating the ask, no summarising work already in a commit
 message, no tables or headed sections unless the answer needs structure.
 
 Every report on Gambit runs carries a table (the owner's), narrow enough for
-a phone: one row per mode (finish, fill, switching), its recent results.
+a phone: one row per mode (finish, fill, switching), what it is on now -- its
+seed base and the run going or next. Never the runs before.
 
 When something merges to `main`, announce it in the reply with big emojis
 (🎉) and say in plain words what it does and what it measured.
