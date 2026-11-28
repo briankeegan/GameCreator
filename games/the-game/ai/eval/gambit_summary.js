@@ -154,6 +154,9 @@ var putBack = 0, putBackAt = [], putBackShown = 0, putBackShownAt = [], reaskSho
 var catd = { n: 0, missing: 0 };   // (decisions that offered lines, and those whose lines carry no category)   // (decisions whose line played was beaten head to head by a line ranked under it, by the key)
 var whyNot = { life: {}, brk: {}, lateLife: {}, lateBrk: {}, unsettled: 0, dec: 0 };   // (answer.c opts :kKEY -- every line offered and passed over, by the key)
 var sooner = { n: 0, dec: 0, by: {} };   // (decisions that played a line lost sooner than one offered, by the key that put it first)   // (a life kept: lines that lived, nothing new told, and the next decision's)
+// (THE RUNNERS: each game's machine, its cpu.txt -- a slower model searches less in a decision's time, and loses more: of the games of runs
+// 4820-4848, the EPYC 7763, EPYC 9V74 and Xeon Platinum 8573C lost 55 against 39.7 their runs' own rates gave them, the rest 50 against 65.3)
+var runners = {};
 fs.readdirSync(DIR).sort().forEach(function (g) {
   var rf = path.join(DIR, g, 'results.txt'), lf = path.join(DIR, g, 'survivor.log');
   if (!fs.existsSync(rf)) return;
@@ -161,6 +164,8 @@ fs.readdirSync(DIR).sort().forEach(function (g) {
   if (!m) return;
   var t = modes[m[1]] || (modes[m[1]] = { survived: 0, games: 0, lost: [], combo: {}, chain: {}, dec: 0, under: 0, mat: 0, pan: 0 });
   t.games++;
+  { var cf = path.join(DIR, g, 'cpu.txt'), cm = fs.existsSync(cf) ? /runner cpu: ([^,]*)/.exec(fs.readFileSync(cf, 'utf8')) : null, model = cm ? cm[1].trim() : '?';
+    var r = runners[model] || (runners[model] = { games: 0, lost: 0 }); r.games++; if (m[2] === 'lost') r.lost++; }
   if (m[2] === 'survived') t.survived++; else t.lost.push(+m[3]);
   if (m[2] === 'lost' && fs.existsSync(lf)) causeOf(g, m[1], +m[3], fs.readFileSync(lf, 'utf8').split('\n'));
   var over = /thinkOver=(\d+)/.exec(res), worst = /thinkWorstMs=([\d.]+)/.exec(res), drop = /inputDropped=(\d+)/.exec(res);
@@ -515,6 +520,7 @@ Object.keys(modes).sort().forEach(function (k) {
                 Math.round(100 * (t.popLineupPlayed || 0) / t.pop) + '%, a full row broken ' + Math.round(100 * (t.popFull || 0) / t.pop) + '%' : ''));
 });
 console.log('SURVIVED ' + all + '/' + games);
+console.log('runners: ' + Object.keys(runners).sort(function (a, b) { return runners[b].games - runners[a].games; }).map(function (k) { return k + ' ' + runners[k].games + ' games, ' + runners[k].lost + ' lost'; }).join('; '));
 // THE MEASURE (the owner: every run, whether it meets the mode's goal and the moves it wastes): the attacks in each mode that met its
 // aims and its first, the decisions that passed the mode over, the swaps that came to nothing, the wasted threes a minute
 Object.keys(aimsIn).sort().forEach(function (k) { var t = aimsIn[k];
