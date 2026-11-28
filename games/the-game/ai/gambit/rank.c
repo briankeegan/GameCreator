@@ -907,6 +907,9 @@ static int calmKept(const Judge *c, const Judge *o) {
 // where it is taken back -- compareJudged's first step, and the log's cr=
 #define TOWER_ROWS 4   // (the flatness floor's tower: the tallest column of panels this many rows or more over the lowest -- key 1 below)
 #define TOWER_STEP 2   // (and of two towered, this many rows taller)
+#define PERCH_HIGH 5   // (garbage resting on one or two columns this many rows over the lowest under it -- the perch floor below, and decide.c's
+                       // cut: of the boards with garbage in the last 600 frames of a lost game, 33% had it perched 5 rows or more, 21% 6; of all
+                       // the others, 14.3% and 7.6% -- runs 4840-4917, 235 games, 702 boards and 82,979)
 #define TOWER_HIGH 6   // (a tower this tall with garbage told or on the board is a floor, not a preference -- key 1 below: of the decisions
                        // under garbage in the last 600 frames of a lost game, 26% faced a tower of 6 rows or more, 11% of 7; of all the
                        // others, 12% and 5% -- runs 4830-4866, 203 games, 1,081 decisions and 200,237)
@@ -1064,6 +1067,19 @@ static int compareJudged(const Judge *x, const Judge *y) {
           (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
         return (cmpKey = __LINE__, (f == x ? -1 : 1));
     }
+  }
+  // 1. THE PERCH FLOOR (the owner: it prefers not dying, and flatness -- both floors): with garbage on the board or on its way, of two that
+  // do not live, where either leaves the lowest garbage resting on one or two columns PERCH_HIGH rows or more over the lowest column under
+  // it (judge.c restsFewOf), the one that leaves it lower goes first, lost sooner or not -- where its board stands a break's time, it breaks
+  // no less garbage or the other breaks none, and it is the hold, walks no more than WALK_EARN actions, or leaves the window a break's walk
+  // when the next block lands: a block resting on the columns few panels touch is the break that cannot be made, and a perch comes down a
+  // row a swap
+  if (!lx && !ly && x->o.j.perch >= 0 && y->o.j.perch >= 0 && x->o.j.perch != y->o.j.perch && imax(x->o.j.perch, y->o.j.perch) >= PERCH_HIGH &&
+      (decF.under || garbageComing())) {
+    const Judge *f = x->o.j.perch < y->o.j.perch ? x : y, *t = f == x ? y : x;
+    if (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
+        (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
+      return (cmpKey = __LINE__, (f == x ? -1 : 1));
   }
   // 1. THE WINDOW'S FLOOR (the owner: efficiency is key): under garbage, of two that do not live, a line that leaves the input window
   // under half a break's walk (BREAK_WALK) at the next landing goes after one that keeps it -- and of two that both leave it under, the

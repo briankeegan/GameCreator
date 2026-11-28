@@ -665,8 +665,6 @@ static int growsTower(const Judge *J) {
 // THE GARBAGE NOT PERCHED (the owner: it prefers not dying, and flatness -- both floors): under the same hold, a line that breaks none of
 // the garbage and leaves its lowest block resting on one or two columns PERCH_HIGH rows or more over the lowest column under it (judge.c restsFewOf),
 // and higher than the hold leaves it, is taken out (the log's perch=)
-#define PERCH_HIGH 5   // (of the boards with garbage in the last 600 frames of a lost game, 33% had it perched 5 rows or more, 21% 6; of all the
-                       // others, 14.3% and 7.6% -- runs 4840-4917, 235 games, 702 boards and 82,979)
 static int32_t perchCut;
 static int growsPerch(const Judge *J) {
   return tallHold && !J->hold && !J->o.dead && !(J->apBroke > 0) && J->o.j.perch >= PERCH_HIGH && tallHold->o.j.perch >= 0 && J->o.j.perch > tallHold->o.j.perch;
