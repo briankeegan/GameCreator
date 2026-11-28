@@ -118,7 +118,7 @@ large chains go down while the eights and other combos go up.
    **New seeds, once each (the owner: fix, then move to the next seed -- no more twice in a row, once is enough):** each mode plays a
    seed base it has never played (finish them 201, switching 203, fill 207, then the next unplayed base of its own); a loss there is
    followed by a change and that base again -- never the same build twice (the owner: never rerun on the same build); one 28/28 on it
-   moves the mode on to its next unplayed base. Finish them 28/28 on base 201 (4eb2dc7e, run 5552); fill 28/28 on base 207 (4eb2dc7e, run 5573); switching 28/28 on base 203 (47bedc3a, run 5671 -- one frame over the think budget, 13.6 ms, a board load of 24 rows preempted five times); finish's next base 211, switching's 213, fill's 217.
+   moves the mode on to its next unplayed base. Finish them 28/28 on base 201 (4eb2dc7e, run 5552); fill 28/28 on base 207 (4eb2dc7e, run 5573); switching 28/28 on base 203 (47bedc3a, run 5671 -- one frame over the think budget, 13.6 ms, a board load of 24 rows preempted five times); switching 28/28 on base 213 (93091e33, run 5801 -- one frame over the think budget, 8.7 ms); finish on base 211, fill on 217.
    **The runners (the owner): skip by model, never by vendor.** A game's result depends on the runner's CPU model: each decision has
    the same wall-clock time, so a slower model searches less and loses more. gambit-24, 43 runs (4799-4848), each model's losses
    against what its own runs' loss rate gave it: Intel Xeon Platinum 8573C 91 games, 1.73 -- skip; AMD EPYC 7763 289 games, 1.46 --
