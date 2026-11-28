@@ -218,9 +218,12 @@ static void *workerStart(void *arg) {
 }
 // A THREAD AT THE IDLE CLASS beside the workers, on their CPUs, named `name`: 0 started
 static void *(*idleFn)(void *); static const char *idleName;
+// (the reaper on GC_GAMBIT_FAR_CPUS where it is set: the workers' CPUs on a core the game's thread is not on -- emptying a context sweeps
+// 120-220 ms of memory, and on the other hyperthread of the game's own core it pushes the game's data out of the core's caches: the
+// frame's board load, every read a miss, 8-10 ms)
 static void *idleStart(void *arg) {
-  const char *w = getenv("GC_GAMBIT_WORKER_CPUS");
-  if (w && *w) pinnedTo(w); else pinned();
+  const char *w = getenv("GC_GAMBIT_WORKER_CPUS"), *far = getenv("GC_GAMBIT_FAR_CPUS");
+  if (!strcmp(idleName, "greap") && far && *far) pinnedTo(far); else if (w && *w) pinnedTo(w); else pinned();
   pthread_setname_np(pthread_self(), idleName);
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
   return idleFn(arg);
