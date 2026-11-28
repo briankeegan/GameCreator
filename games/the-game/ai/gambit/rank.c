@@ -1008,12 +1008,11 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. THE BOARD PLAYED ON (the owner: there is no death): of two that do not live, both played on by the one policy (decide.c
   // playedLostOf) and neither a clear that breaks nothing (playedFair), the one whose board played on is lost later goes first, by any
   // margin -- a move that leaves the board where the policy finds its next break before one that leaves it where none is found, whatever
-  // their boards left alone are lost on. Two alive at the horizon are ordered by the keys after this one, and so are two of which either
-  // leaves the input window under half a break's walk at the next landing: the window comes back over 600 frames, the board is played on
-  // for HORIZON + REST, and a window spent is a break the board cannot press past it -- where it is short, the walk each line costs
-  // decides (the window's floor, the walk charged, the cheaper break: below), not the policy's guess
+  // their boards left alone are lost on. Two alive at the horizon are ordered by the keys after this one, and so are two of which one
+  // leaves the input window half a break's walk at the next landing and the other does not: the window comes back over 600 frames, the
+  // board is played on for HORIZON + REST, and a window spent is a break the board cannot press past it (the window's floor, below)
   #define WINDOW_KEPT(J) (pressAllowance < 0 || allowAtLanding((J)->hold ? 0 : lineWalk(J)) >= BREAK_WALK / 2)
-  if (!lx && !ly && x->played != NOT_ASKED && y->played != NOT_ASKED && playedFair(x) && playedFair(y) && WINDOW_KEPT(x) && WINDOW_KEPT(y)) {
+  if (!lx && !ly && x->played != NOT_ASKED && y->played != NOT_ASKED && playedFair(x) && playedFair(y) && WINDOW_KEPT(x) == WINDOW_KEPT(y)) {
     double px = lostAtOf(x->played, 0), py = lostAtOf(y->played, 0);
     // (the line in progress put down only for a board played on a break's time longer, the hold's too -- the owner: changing plans is
     // wasteful: its actions are pressed, and a plan changed on a few frames of the policy's guess is the window spent twice)
