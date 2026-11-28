@@ -259,6 +259,17 @@ static int slabCell(const Board *b, int r, int c) {
   const int32_t *f = b->p[r][c].f;
   return f[COLOR] && f[ISGARBAGE] && f[STATE] != MATCHED && f[STATE] != POPPING && f[STATE] != POPPED;
 }
+// THE GARBAGE TURNING TO PANELS: its cells matched or popping, -1 where any other garbage is on the board
+static int32_t turningOnly(const Board *b) {
+  int32_t n = 0;
+  for (int r = 1; r < b->nrows; r++) for (int c = 1; c <= W; c++) {
+    const int32_t *f = b->p[r][c].f;
+    if (!f[COLOR] || !f[ISGARBAGE]) continue;
+    if (slabCell(b, r, c)) return -1;
+    n++;
+  }
+  return n;
+}
 // THE WELL UNDER THE GARBAGE AS IT LANDS: the empty cells under each column's lowest slab cell (slabCell) -- garbage resting on a column
 // or two over low ones touches only their tops, and the cells under it are where no panel reaches it from below
 static int32_t underLowestOf(const Board *b) {

@@ -764,6 +764,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (samesTrimmed) L_s(" samesTrimmed=1");   // (the line played had its swaps of one colour taken out)
   if (reachCut) { L_s(" reach="); L_i(reachCut); }
   if (stallCut) { L_s(" stall="); L_i(stallCut); }
+  if (turnFull) L_s(" turnFull=1");
   if (overCut) { L_s(" over="); L_i(overCut); }
   if (dearCut) { L_s(" dear="); L_i(dearCut); }
   if (tallCut) { L_s(" tall="); L_i(tallCut); }
