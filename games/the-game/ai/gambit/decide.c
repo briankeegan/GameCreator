@@ -9,7 +9,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OP_KEEP_PANELS 36   // (the panels the opener's chain leaves once landed, at least: six rows -- the owner: keep enough to break)
 #define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
-#define OPENER_CHAINS 1
+#define OPENER_CHAINS 3
 #define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
 static int tallGarbage(const Question *q);
 // THE ROWS A BOARD AND ITS GARBAGE FILL: the panels' rows, the rows holding garbage, and a row for each row of every block on its way or
@@ -152,10 +152,9 @@ static int readBoard_(Read *R) {
   // landed above its top row, not garbage sent -- the opener's rule, big chains; then the mode the enemy's board picks)
   // (the opener named and a mode to follow it -- the profile's `then`, answer.c gb_then: at the top-out the named mode becomes that one,
   // nothing carried let go, as the opener gives way to the enemy's mode in a fight)
-  // (THE OPENER IS OVER ONCE ITS PLAN IS THROWN -- the owner: the opener is the countdown's three seconds not wasted: one great plan,
-  // never thrown away, then the mode: each chain thrown its longest link, the board's chain counter at its height before it ends,
-  // counted where it is OPENER_LEAST or more; over at the first such chain thrown (OPENER_CHAINS), at OPENER_SUM, or a board topped out
-  // first)
+  // (THE OPENER IS OVER ONCE ITS CHAINS ADD UP -- the owner: chains to eight or more, a 3x and a 5x or two 4x alike, and a 2x counts for
+  // nothing: each chain thrown its longest link, the board's chain counter at its height before it ends, counted where it is
+  // OPENER_LEAST or more; over at OPENER_SUM, or OPENER_CHAINS such chains thrown, or a board topped out first)
   if (decQ.b->chainCounter > openerChained) openerChained = decQ.b->chainCounter;
   else if (openerChained && decQ.b->chainCounter == 0) { if (openerChained >= OPENER_LEAST) { openerSum += openerChained; openerThrown++; } openerChained = 0; }
   int thrown = openerSum >= OPENER_SUM || openerThrown >= OPENER_CHAINS;
@@ -723,7 +722,6 @@ static int growsPerch(const Judge *J) {
   return tallHold && !J->hold && !J->o.dead && !(J->apBroke > 0) && J->o.j.perch >= PERCH_HIGH && tallHold->o.j.perch >= 0 && J->o.j.perch > tallHold->o.j.perch;
 }
 static int32_t turnFull;   // (the garbage on the board all turning to panels, the board full once it has: the log's turnFull=)
-static int32_t popFree;    // (a slab popping with no break offered: the log's popFree=)
 static int32_t stallCut, enPlayed;   // (lines taken out as stalls under garbage this decision: the log's stall=)
 static int digsForBreak(const Judge *J);
 // (THE WAY TO THE ACTION -- the owner: instead of waiting, walk over to the area it needs to get to and flatten or zip along the way, so it
@@ -779,7 +777,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  turnFull = 0; popFree = 0; carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; dearCut = 0; tallCut = 0; perchCut = 0; reserveCut = 0; winCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  turnFull = 0; carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; dearCut = 0; tallCut = 0; perchCut = 0; reserveCut = 0; winCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0; rankHold = 0; flatHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -1166,13 +1164,11 @@ static int ranked(const Read *R, const Found *S) {
   // and is no flatten the window has room for (rank.c flattenFree) nor the finish's attack (rank.c finishFree) is taken out: the actions it
   // spends are the next break's, and the hold keeps them. Where the hold is lost within a break's time, a stall may be the life)
   // (NOT WHILE THE GARBAGE TURNS TO PANELS ONTO A FULL BOARD: every garbage cell on the board matched or popping, and the panels with
-  // its cells over the life's peak -- there is nothing left to break, and the room a line clears is where those panels go -- NOR WHILE
-  // A SLAB POPS WITH NO BREAK OFFERED: the board its panels fall onto is the one the next break is built on, and the hold builds none.
-  // The window's and the panels' cuts after it still hold: the next block's break is pressed out of what is left)
+  // its cells over the life's peak -- there is nothing left to break, and the room a line clears is where those panels go. The window's
+  // and the panels' cuts after it still hold: the next block's break is pressed out of what is left)
   { int32_t t = turningOnly(decQ.b); turnFull = t > 0 && panelsOn(decQ.b) + t > lifePeakOf(); }
-  popFree = !turnFull && !breakOffered && popLeft(decQ.b) > 0;
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
-    if (decF.under && !turnFull && !popFree && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) n = cutAlways(order, n, stallsUnder, &stallCut, 30); }
+    if (decF.under && !turnFull && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) n = cutAlways(order, n, stallsUnder, &stallCut, 30); }
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     overHold = 0;
     if ((decF.under || garbageComing()) && !ruleNoEnemy && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) {
