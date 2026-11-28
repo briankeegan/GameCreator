@@ -82,6 +82,20 @@ jobs:
         round: ${{ fromJSON(inputs.rounds || '[1]') }}
         then: ${{ fromJSON(inputs.then || '[""]') }}
     steps:
+      # THE RUNNERS (plans/gambit-goal.md, the runners: skip by model, never by vendor): a slower model searches less in a decision's time
+      # and loses more -- on one of the models named the job stops before the game, and gambit-24-rerun.yml runs it again on another
+      # runner when the run ends; from the 4th attempt it plays on whatever runner it has, so every run finishes its games
+      - name: Skip a slow runner
+        id: skip
+        timeout-minutes: 1
+        run: |
+          model=$(lscpu | sed -n 's/^Model name: *//p' | head -1)
+          echo "runner: $model, attempt ${{ github.run_attempt }}"
+          if [ "${{ github.run_attempt }}" -lt 4 ] && echo "$model" | grep -qiE '8573C|7763|9V74'; then
+            echo "skipped runner: $model" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=skipped runner::$model"
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -159,10 +173,10 @@ jobs:
           mkdir -p out; echo "runner cpu: $(lscpu | sed -n 's/^Model name: *//p' | head -1), $(nproc) threads, $(lscpu | sed -n 's/^CPU max MHz: *//p' | head -1) MHz max" > out/cpu.txt
           bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
-        if: always()
+        if: ${{ always() && steps.skip.outcome != 'failure' }}
         run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }} r${{ matrix.round }}::/' || true
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && steps.skip.outcome != 'failure' }}
         timeout-minutes: 5
         with:
           name: gambit-${{ matrix.pattern }}-${{ matrix.game }}${{ matrix.round > 1 && format('-r{0}', matrix.round) || '' }}${{ matrix.then != '' && format('-{0}', matrix.then) || '' }}
@@ -247,6 +261,7 @@ jobs:
           name: gambit-report
           path: report/
           retention-days: 30
+          overwrite: true   # (a run whose skipped games were played again is written up again: the last report is the run's)
       # THE TRUTH: every board the frame loop predicted is the one the game made (gambit_summary.js counts the games' own stats);
       # a run with any other is red
       - name: The truth held
