@@ -1092,12 +1092,14 @@ static int compareJudged(const Judge *x, const Judge *y) {
   }
   // 1. THE EDGE FLOOR (the owner: it prefers not dying, and flatness -- both floors): with garbage on the board or on its way, of two that
   // both live or both do not, where either leaves the taller edge EDGE_MID rows or more over the middle columns' mean (judge.c edgeMidOf), the one that
-  // leaves it a row lower goes first, lost sooner or not -- under the perch floor's conditions: the clears that dig the middle leave the
+  // leaves it a row lower goes first -- not dying first: where they are lost alike or it is lost no sooner -- under the perch floor's other
+  // conditions: the clears that dig the middle leave the
   // edges standing, and the block that lands rests across them
   if (lx == ly && x->o.j.edgeMid >= 0 && y->o.j.edgeMid >= 0 && iabs(x->o.j.edgeMid - y->o.j.edgeMid) >= 4 &&
       imax(x->o.j.edgeMid, y->o.j.edgeMid) >= 4 * EDGE_MID && (decF.under || garbageComing())) {
     const Judge *f = x->o.j.edgeMid < y->o.j.edgeMid ? x : y, *t = f == x ? y : x;
-    if ((lx || (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299)) && (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
+    if ((lx || (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)))) &&
+        (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
         (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
       return (cmpKey = __LINE__, (f == x ? -1 : 1));
   }
