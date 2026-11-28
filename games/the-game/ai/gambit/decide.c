@@ -176,7 +176,10 @@ static int readBoard_(Read *R) {
   // its loss throughout, paused at 2461 with 62 left and lost at 2533)
   int fullUnder = !savingPanels && garbageOn(decQ.b) && (panelsOn(decQ.b) > lifePeakOf() ||
                   filledRows(&decQ, panelsOn(decQ.b)) >= (decQ.b->height ? decQ.b->height : 12) - FULL_ROOM);
-  int aboutLost = ((F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST) || fullUnder) && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
+  // (the full board's pause held off only by a chain of its own falling -- the game's chain counter -- or a line of its own pressed: under a
+  // stream of garbage something is always popping after a break, and that is no chain of the opener's)
+  int aboutLost = (F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener() && !nextFires) ||
+                  (fullUnder && decQ.b->chainCounter == 0 && !opLineOn && !carryOpener());
   // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
   // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
   // chains, thrown before or after, add up to the eight; set 86 combo_storm 2, a 4 thrown, the opener ended, and a 5 at 1027 the mode's)
