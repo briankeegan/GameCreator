@@ -1109,11 +1109,12 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // 1. THE HOLLOW FLOOR (the owner: it prefers not dying, and flatness -- both floors): with garbage on the board or on its way, of two that
   // both live or both do not, where either leaves HOLLOW_HIGH cells or more empty under the garbage (judge.c hollowOf), the one that leaves
   // HOLLOW_STEP fewer goes first -- not dying first: where they are lost alike or it is lost no sooner -- under the perch floor's other
-  // conditions: a well dug under the garbage is where no panel touches it
+  // conditions, and never over a dig toward a break (digsForBreak, a perch let down among them): a well dug under the garbage is where
+  // no panel touches it, and a support walked out from under a slab is the way it comes down
   if (lx == ly && x->o.j.hollow >= 0 && y->o.j.hollow >= 0 && iabs(x->o.j.hollow - y->o.j.hollow) >= HOLLOW_STEP &&
       imax(x->o.j.hollow, y->o.j.hollow) >= HOLLOW_HIGH && (decF.under || garbageComing())) {
     const Judge *f = x->o.j.hollow < y->o.j.hollow ? x : y, *t = f == x ? y : x;
-    if ((lx || (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)))) &&
+    if ((lx || (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)))) && !digsForBreak(t) &&
         (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
         (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
       return (cmpKey = __LINE__, (f == x ? -1 : 1));
