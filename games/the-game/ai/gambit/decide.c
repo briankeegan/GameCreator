@@ -277,11 +277,14 @@ static int readBoard_(Read *R) {
     R->saving = savingPanels;
     // (the board fuller than it lives longest with -- the life table's peak -- and not saving: while the owner's band saves panels up,
     // the band decides, never the table)
-    R->full = !savingPanels && panels > lifePeakOf();
+    // (never under tall garbage, on the board or on its way: a slab of OP_TALL rows or more comes off a row a break, and the panels are
+    // what each break is made of -- set 147 large_garbage 7 fill, 39 panels cleared to 17 under a twelve-row slab, no break left in them)
+    int tallOn = tallGarbage(&decQ);
+    R->full = !savingPanels && !tallOn && panels > lifePeakOf();
     // (and a board the garbage told of fills: the panels' rows, the rows of garbage on it and a row for each row of every block on its way
     // or queued, FULL_ROOM rows or fewer short of the top -- set 143 combo_storm 8 switching, 33 panels and seven blocks four wide told,
     // the board lost 102 frames on while the list's lines held and cut)
-    if (!savingPanels && !R->full) {
+    if (!savingPanels && !tallOn && !R->full) {
       int32_t rows = (panels + W - 1) / W, h = decQ.b->height ? decQ.b->height : 12;
       for (int r = 1; r < decQ.b->nrows; r++) { int g = 0; for (int c = 1; c <= W; c++) if (decQ.b->p[r][c].f[ISGARBAGE] == 1) g = 1; rows += g; }
       for (int i = 0; i < decQ.narr; i++) rows += imax(1, decQ.arr[i].height);
