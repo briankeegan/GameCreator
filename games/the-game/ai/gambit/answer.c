@@ -769,6 +769,7 @@ static void answerTurn(int32_t qid, int32_t at, int32_t allowanceKnown, int32_t 
   if (tallCut) { L_s(" tall="); L_i(tallCut); }
   if (perchCut) { L_s(" perch="); L_i(perchCut); }
   if (reserveCut) { L_s(" reserve="); L_i(reserveCut); }
+  if (winCut) { L_s(" winKept="); L_i(winCut); }
   if (enPlayed) { L_s(" enRoute="); L_i(enPlayed); }
   if (undoCut) { L_s(" undo="); L_i(undoCut); }
   if (twoDropped) { L_s(" twoDropped="); L_i(twoDropped); L_s(" twoWhy="); L_i(twoWhy); L_s("/"); L_i(twoLostLog >= 1e299 ? -2 : (int64_t)twoLostLog); L_s("/"); L_i((int64_t)twoKeptLog); }

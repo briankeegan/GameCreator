@@ -677,6 +677,15 @@ static int keepsStock(const Judge *K) {
 }
 static int32_t stockBest;   // (the lines as offered: 1 where the one lost latest, or one living, keeps the panels)
 static int spendsStock(const Judge *J) { return overHold && overMat && stockBest && !J->o.dead && !keepsStock(J); }
+// (and THE WINDOW KEPT THE SAME WAY, under any garbage where the hold is lost within a break's time: a line that breaks none of it and
+// leaves the window under a break's walk (BREAK_WALK), now or by the next landing, is taken out where the line lost latest of those
+// offered, or one living, keeps it -- the next block is broken out of what is left)
+static int32_t winBest; static int32_t winCut;
+static int keepsWin(const Judge *K) {
+  if (K->hold || K->apBroke > 0 || pressAllowance < 0) return 1;
+  int w = lineWalk(K); return allowLeftAt(overNeedAt(), w) >= BREAK_WALK && pressAllowance - w >= BREAK_WALK;
+}
+static int drainsWin(const Judge *J) { return overHold && winBest && !J->o.dead && !keepsWin(J); }
 // THE DEAR BREAK (the owner: it's all about efficiency): with garbage on the board or on its way, a break that leaves the window under a
 // break's walk (BREAK_WALK) -- now, or by the sooner of the next landing and the hold's loss -- is taken out where another break offered
 // keeps it, converts as many garbage cells or more, and lives, or is lost no sooner where the dear one does not live: the actions it
@@ -760,7 +769,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; dearCut = 0; tallCut = 0; perchCut = 0; reserveCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; dearCut = 0; tallCut = 0; perchCut = 0; reserveCut = 0; winCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0; rankHold = 0; flatHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -1154,6 +1163,16 @@ static int ranked(const Read *R, const Found *S) {
       overHold = H; overMat = R->keepOn && R->keep.t[KEEP_MATERIAL].op; overFloor = R->keep.t[KEEP_MATERIAL];
       n = cutAlways(order, n, overspends, &overCut, 31);
     } else if (decF.under && !ruleNoEnemy && H && !H->o.dead) {
+      {
+        overHold = H;
+        const Judge *best = 0, *bestKeep = 0;
+        for (int i = 0; i < n; i++) { const Judge *J = order[i]; if (J->o.dead) continue;
+          if (!best || (J->o.lives && !best->o.lives) || (J->o.lives == best->o.lives && diesAt(J) > diesAt(best))) best = J;
+          if (keepsWin(J) && (!bestKeep || (J->o.lives && !bestKeep->o.lives) || (J->o.lives == bestKeep->o.lives && diesAt(J) > diesAt(bestKeep)))) bestKeep = J; }
+        winBest = best && bestKeep && (bestKeep->o.lives || (!best->o.lives && diesAt(bestKeep) >= diesAt(best)));
+        n = cutAlways(order, n, drainsWin, &winCut, 36);
+        overHold = 0; winBest = 0;
+      }
       int rows = 0;
       for (int r = 1; r < decQ.b->nrows; r++) { int g = 0; for (int c = 1; c <= W; c++) if (decQ.b->p[r][c].f[ISGARBAGE] == 1) g = 1; rows += g; }
       if (rows >= RESERVE_ROWS || tallGarbage(&decQ)) {
