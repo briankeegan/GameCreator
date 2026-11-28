@@ -79,7 +79,6 @@ typedef struct {
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
   int32_t tower;                // and its tower (towerOf): its tallest column of panels less its lowest, in rows (-1 not known)
-  int32_t well;                 // and the well under its tallest column (wellOf): the empty cells under a full-width slab resting there
 } Judged;
 
 static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -356,15 +355,6 @@ static int32_t towerOf(const Board *b) {
   for (int c = 1; c <= W; c++) { int h = panelsTopOf(b, c); if (h > hi) hi = h; if (h < lo) lo = h; }
   return hi - lo;
 }
-// THE WELL UNDER THE TALLEST COLUMN: the empty cells under a full-width slab resting on the tallest column of panels -- each column's
-// top panel under its lowest garbage, from the tallest down. A slab comes to rest on the tallest column under it, and every cell of the
-// well is a cell no panel touches it from
-static int32_t wellOf(const Board *b) {
-  int h[W + 1], hi = 0, w = 0;
-  for (int c = 1; c <= W; c++) { h[c] = panelsTopOf(b, c); if (h[c] > hi) hi = h[c]; }
-  for (int c = 1; c <= W; c++) w += hi - h[c];
-  return w;
-}
 // HOW HOLLOW A BOARD IS UNDER ITS GARBAGE: the empty cells under each column's highest garbage, as search/bits.c bitsShape counts them
 static int32_t hollowOf(const Board *b) {
   int32_t h = 0;
@@ -487,7 +477,7 @@ static LOCAL int32_t winWaitOff, winWaitAgain;
 static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
   winWaitAgain = 0;
-  j->lostAt = NOT_ASKED; j->queueAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->readyHollow = -1; j->noopAt = -1; j->clearStep = -1; j->preLast = -1; j->noops = 0; j->sames = 0; j->tower = -1; j->well = -1;
+  j->lostAt = NOT_ASKED; j->queueAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->readyHollow = -1; j->noopAt = -1; j->clearStep = -1; j->preLast = -1; j->noops = 0; j->sames = 0; j->tower = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -693,7 +683,7 @@ static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const Jud
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
-  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->hollow = eb ? hollowOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; j->tower = eb ? towerOf(eb) : -1; j->well = eb ? wellOf(eb) : -1; }
+  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->hollow = eb ? hollowOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; j->tower = eb ? towerOf(eb) : -1; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));

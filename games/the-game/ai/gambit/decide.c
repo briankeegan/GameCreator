@@ -656,16 +656,11 @@ static int dearBreak(const Judge *J) {
 }
 // THE TALL TOWER NOT GROWN (the owner: it prefers not dying, and flatness -- both floors): with garbage on the board or on its way, while
 // the hold's board stands a break's time, a line that breaks none of it and leaves the stack's tower (judge.c towerOf) TOWER_HIGH rows or
-// more and taller than the hold leaves it -- or the well under its tallest column (judge.c wellOf) WELL_HIGH cells or more and deeper than
-// the hold leaves it -- is taken out: the clears beside a tall column leave the garbage resting on it, where no break reaches (the log's
-// tall=)
-#define WELL_HIGH 20   // (of the boards dumped in the last 600 frames of a lost game, 28% had a well of 20 cells or more under the tallest column;
-                       // of all the others, 6% -- runs 4830-4845, 1,223 boards and 258,339)
+// more and taller than the hold leaves it is taken out: the clears beside a tall column leave the garbage resting on it, where no break
+// reaches (the log's tall=)
 static const Judge *tallHold; static int32_t tallCut;
 static int growsTower(const Judge *J) {
-  if (!tallHold || J->hold || J->o.dead || J->apBroke > 0) return 0;
-  return (J->o.j.tower >= TOWER_HIGH && tallHold->o.j.tower >= 0 && J->o.j.tower > tallHold->o.j.tower) ||
-         (J->o.j.well >= WELL_HIGH && tallHold->o.j.well >= 0 && J->o.j.well > tallHold->o.j.well);
+  return tallHold && !J->hold && !J->o.dead && !(J->apBroke > 0) && J->o.j.tower >= TOWER_HIGH && tallHold->o.j.tower >= 0 && J->o.j.tower > tallHold->o.j.tower;
 }
 static int32_t stallCut, enPlayed;   // (lines taken out as stalls under garbage this decision: the log's stall=)
 static int digsForBreak(const Judge *J);
