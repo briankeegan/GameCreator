@@ -79,6 +79,7 @@ typedef struct {
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
   int32_t tower;                // and its tower (towerOf): its tallest column of panels less its lowest, in rows (-1 not known)
+  int32_t perch;                // and its lowest garbage's perch (restsOneOf): rows its one support stands over the lowest column under it (-1 not known)
 } Judged;
 
 static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -354,6 +355,21 @@ static int32_t towerOf(const Board *b) {
   int hi = 0, lo = 1 << 20;
   for (int c = 1; c <= W; c++) { int h = panelsTopOf(b, c); if (h > hi) hi = h; if (h < lo) lo = h; }
   return hi - lo;
+}
+// HOW PERCHED ITS LOWEST GARBAGE IS: where the lowest row holding garbage holds it three columns wide or more and ONE column under it
+// touches it, the rows that column stands over the lowest column under the garbage (0 otherwise, or no garbage) -- a block resting on
+// one column is touched by the panels of that column alone, and the clears beside it lower the rest and leave it hanging
+static int32_t restsOneOf(const Board *b) {
+  int low = 0;
+  for (int r = 1; r < b->nrows && !low; r++) for (int c = 1; c <= W; c++) if (gridCell(b, r, c) < 0) { low = r; break; }
+  if (!low) return 0;
+  int span = 0, sup = 0, lo = 1 << 20;
+  for (int c = 1; c <= W; c++) {
+    if (gridCell(b, low, c) >= 0) continue;
+    int top = 0; for (int r = 1; r < low; r++) if (gridCell(b, r, c) > 0) top = r;
+    span++; if (top == low - 1) sup++; if (top < lo) lo = top;
+  }
+  return span >= 3 && sup == 1 ? low - 1 - lo : 0;
 }
 // HOW HOLLOW A BOARD IS UNDER ITS GARBAGE: the empty cells under each column's highest garbage, as search/bits.c bitsShape counts them
 static int32_t hollowOf(const Board *b) {
@@ -683,7 +699,7 @@ static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const Jud
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
-  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->hollow = eb ? hollowOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; j->tower = eb ? towerOf(eb) : -1; }
+  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->hollow = eb ? hollowOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; j->tower = eb ? towerOf(eb) : -1; j->perch = eb ? restsOneOf(eb) : -1; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));

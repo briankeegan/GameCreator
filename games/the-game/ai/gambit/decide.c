@@ -662,6 +662,15 @@ static const Judge *tallHold; static int32_t tallCut;
 static int growsTower(const Judge *J) {
   return tallHold && !J->hold && !J->o.dead && !(J->apBroke > 0) && J->o.j.tower >= TOWER_HIGH && tallHold->o.j.tower >= 0 && J->o.j.tower > tallHold->o.j.tower;
 }
+// THE GARBAGE NOT PERCHED (the owner: it prefers not dying, and flatness -- both floors): under the same hold, a line that breaks none of
+// the garbage and leaves its lowest block resting on one column PERCH_HIGH rows or more over the lowest column under it (judge.c restsOneOf),
+// and higher than the hold leaves it, is taken out (the log's perch=)
+#define PERCH_HIGH 5   // (of the boards with garbage in the last 600 frames of a lost game, 26% had it perched 5 rows or more, 18% 6; of all the
+                       // others, 9.2% and 5.1% -- runs 4840-4879, 234 games, 657 boards and 82,725)
+static int32_t perchCut;
+static int growsPerch(const Judge *J) {
+  return tallHold && !J->hold && !J->o.dead && !(J->apBroke > 0) && J->o.j.perch >= PERCH_HIGH && tallHold->o.j.perch >= 0 && J->o.j.perch > tallHold->o.j.perch;
+}
 static int32_t stallCut, enPlayed;   // (lines taken out as stalls under garbage this decision: the log's stall=)
 static int digsForBreak(const Judge *J);
 // (THE WAY TO THE ACTION -- the owner: instead of waiting, walk over to the area it needs to get to and flatten or zip along the way, so it
@@ -717,7 +726,7 @@ static int32_t twoRemade;   // (2x lines made a plain break: the log's)
 static int32_t carryShort;   // (the swaps of the line in progress let go past a walk the window does not hold: the log's carryShort=)
 static int ranked(const Read *R, const Found *S) {
   memset(dropped, 0, sizeof dropped); memset(offered, 0, sizeof offered); memset(cutWhy, 0, sizeof cutWhy); memset(cutWhyBreak, 0, sizeof cutWhyBreak);
-  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; dearCut = 0; tallCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
+  carriedJ = 0; carryCrossJ = 0; opCarried = 0; orderN = 0; twoDropped = 0; windowCut = 0; putOffCut = 0; twoWhy = 0; twoRemade = 0; samesTrimmed = 0; needlessTrimmed = 0; reachCut = 0; stallCut = 0; overCut = 0; dearCut = 0; tallCut = 0; perchCut = 0; overHold = 0; enPlayed = 0; undoCut = 0; amidDropped = 0; amidBest = -1; noopWaits = 0; unbroken.set = 0; saveAsked = saveNot = saveOk = saveBlind = 0; saveCw = saveCk = -1; svLost = -1; svClean = 0;
   ideaAims = &R->guides; ideasAsks = 0; rankHold = 0; flatHold = 0;
   double t0 = nowMs();
   int nc = fairShare(theCands, proposeAll(R, S, theCands, PROPOSED), MAXCANDS), n = 0;
@@ -1113,7 +1122,7 @@ static int ranked(const Read *R, const Found *S) {
     } }
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     tallHold = (decF.under || garbageComing()) && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave) ? H : 0;
-    if (tallHold) n = cutAlways(order, n, growsTower, &tallCut, 33);
+    if (tallHold) { n = cutAlways(order, n, growsTower, &tallCut, 33); n = cutAlways(order, n, growsPerch, &perchCut, 34); }
     tallHold = 0; }
   if ((decF.under || garbageComing()) && !ruleNoEnemy && pressAllowance >= 0) {
     dearN = 0; for (int i = 0; i < n; i++) dearOrd[dearN++] = order[i];
