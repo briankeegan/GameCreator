@@ -910,6 +910,9 @@ static int calmKept(const Judge *c, const Judge *o) {
 #define PERCH_HIGH 5   // (garbage resting on one or two columns this many rows over the lowest under it -- the perch floor below, and decide.c's
                        // cut: of the boards with garbage in the last 600 frames of a lost game, 33% had it perched 5 rows or more, 21% 6; of all
                        // the others, 14.3% and 7.6% -- runs 4840-4917, 235 games, 702 boards and 82,979)
+#define EDGE_MID 3     // (the taller edge this many rows over the middle columns' mean -- the edge floor below: of the combo_storm boards with
+                       // garbage in the last 600 frames of a lost game, 49% had it 3 rows or more, 28% 4; of all the others, 17.2% and 5.4% --
+                       // runs 4840-4979, 98 games, 521 boards and 32,072)
 #define TOWER_HIGH 6   // (a tower this tall with garbage told or on the board is a floor, not a preference -- key 1 below: of the decisions
                        // under garbage in the last 600 frames of a lost game, 26% faced a tower of 6 rows or more, 11% of 7; of all the
                        // others, 12% and 5% -- runs 4830-4866, 203 games, 1,081 decisions and 200,237)
@@ -1077,6 +1080,17 @@ static int compareJudged(const Judge *x, const Judge *y) {
   if (!lx && !ly && x->o.j.perch >= 0 && y->o.j.perch >= 0 && x->o.j.perch != y->o.j.perch && imax(x->o.j.perch, y->o.j.perch) >= PERCH_HIGH &&
       (decF.under || garbageComing())) {
     const Judge *f = x->o.j.perch < y->o.j.perch ? x : y, *t = f == x ? y : x;
+    if (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
+        (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
+      return (cmpKey = __LINE__, (f == x ? -1 : 1));
+  }
+  // 1. THE EDGE FLOOR (the owner: it prefers not dying, and flatness -- both floors): with garbage on the board or on its way, of two that
+  // do not live, where either leaves the taller edge EDGE_MID rows or more over the middle columns' mean (judge.c edgeMidOf), the one that
+  // leaves it a row lower goes first, lost sooner or not -- under the perch floor's conditions: the clears that dig the middle leave the
+  // edges standing, and the block that lands rests across them
+  if (!lx && !ly && x->o.j.edgeMid >= 0 && y->o.j.edgeMid >= 0 && iabs(x->o.j.edgeMid - y->o.j.edgeMid) >= 4 &&
+      imax(x->o.j.edgeMid, y->o.j.edgeMid) >= 4 * EDGE_MID && (decF.under || garbageComing())) {
+    const Judge *f = x->o.j.edgeMid < y->o.j.edgeMid ? x : y, *t = f == x ? y : x;
     if (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
         (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
       return (cmpKey = __LINE__, (f == x ? -1 : 1));
