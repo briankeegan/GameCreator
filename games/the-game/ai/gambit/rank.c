@@ -778,7 +778,9 @@ static int lostAlike(const Judge *x, const Judge *y) {
     if (!x->o.lives && !y->o.lives && dlo >= 0 && dhi < 1e299 && dlo < NEAR_LOSS * rankSave && dhi - dlo >= rankSave) return 0; }
   double lo = lostOf(x) < lostOf(y) ? lostOf(x) : lostOf(y), hi = lostOf(x) < lostOf(y) ? lostOf(y) : lostOf(x);
   int tlo = (int)(lo / rankSave), thi = (int)(hi / rankSave);
-  return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < rankSave);   // (or lost less than a break's time apart: the later buys no break more)
+  // (or lost less than a break's time apart: the later buys no break more -- two breaks' time where either is the line in progress: its
+  // swaps pressed are the window spent, and a plan dropped for one a break's estimate ahead is the window spent twice)
+  return lo >= rankSave && (tlo == thi || tlo >= 3 || hi - lo < ((x->carried || y->carried) ? 2 * rankSave : rankSave));
 }
 // (LOST ALIKE AT THE FINISH: within one break's time of each other -- the finish's own keys trade the board's life for a combo or a
 // shorter chain only where the trade costs less than a break; three breaks' time and more apart is a break the next decision loses)
