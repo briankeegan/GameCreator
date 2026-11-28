@@ -441,11 +441,11 @@ static int raisePressed(const char *dir) {
   printf("%s: the raise pressed as answered -- %d raises keyed, %d pressed past the rows they asked\n", over || !raises ? "FAIL" : "ok", raises, over);
   return over || !raises;
 }
-// A LOST GAME'S BOARD ANSWERED AGAIN (test DIR decide WORDS LOG FRAME MODE): the board the game dumped at FRAME (any GAMBIT dump of it),
+// A LOST GAME'S BOARD ANSWERED AGAIN (test DIR decide WORDS LOG FRAME MODE [FRAMEPCT]): the board the game dumped at FRAME (any GAMBIT dump of it),
 // answered with WORDS's rules in MODE and the input window the game had (the dump's "] a"), at half, once, twice and four times a
 // decision's work -- a change checked on the boards a game was lost on before a run is spent on it
 #define REPLAY_MS_GAME 150   // (decide_check.c REPLAY_MS: a decision's time; the move's own frame is put at twice it)
-static int decideOn(const char *words, const char *log, int frame, int mode) {
+static int decideOn(const char *words, const char *log, int frame, int mode, int framePct) {
   static char line[1 << 17], rec[4096];
   if (!loadWords(words)) { fprintf(stderr, "test: %s is not a whole profile\n", words); return 1; }
   FILE *f = fopen(log, "r");
@@ -460,7 +460,7 @@ static int decideOn(const char *words, const char *log, int frame, int mode) {
     static const int mult[4] = { 1, 2, 4, 8 };
     for (int m = 0; m < 4; m++) {
       int narr, n = loadLine(line, &narr);
-      gb_replay_allow(al ? atoi(al + 3) : -1); gb_replay_frame(2 * REPLAY_MS_GAME);
+      gb_replay_allow(al ? atoi(al + 3) : -1); gb_replay_frame(REPLAY_MS_GAME * framePct / 100);
       if (n < 0 || gb_replay(n, narr, mode, (int64_t)REPLAY_WORK * mult[m] / 2, rec, sizeof rec) < 0) { printf("%d x%.1f: does not load\n", frame, mult[m] / 2.0); break; }
       printf("%d x%.1f: %s\n", frame, mult[m] / 2.0, rec);
     }
@@ -472,7 +472,7 @@ static int decideOn(const char *words, const char *log, int frame, int mode) {
 }
 int main(int argc, char **argv) {
   const char *dir = argc > 1 ? argv[1] : "test";
-  if (argc > 6 && !strcmp(argv[2], "decide")) return decideOn(argv[3], argv[4], atoi(argv[5]), atoi(argv[6]));
+  if (argc > 6 && !strcmp(argv[2], "decide")) return decideOn(argv[3], argv[4], atoi(argv[5]), atoi(argv[6]), argc > 7 ? atoi(argv[7]) : 200);
   if (argc > 4 && !strcmp(argv[2], "board")) return drawBoard(argv[3], atoi(argv[4]));
   if (argc > 4 && !strcmp(argv[2], "replay")) return replayLoss(dir, argv[3], atoi(argv[4]));
   if (argc > 2 && !strcmp(argv[2], "speed")) return speed(dir);
