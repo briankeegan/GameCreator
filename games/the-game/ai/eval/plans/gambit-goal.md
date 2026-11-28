@@ -124,14 +124,14 @@ large chains go down while the eights and other combos go up.
       `cpu.txt`, which the report reads.
    2. The match is on the model NUMBER, case-insensitive: 8573C, 7763, 9V74 -- never a vendor or brand word ("AMD", "EPYC",
       "Platinum": "Platinum" would also skip the 8370C, which lost 0 of 24).
-   3. On a match the job stops before the game starts: "skipped runner: <model>" in the job summary, exit non-zero. No game is
-      played or counted.
-   4. When the run ends, if every failed job is a skipped runner, the failed jobs alone are run again
-      (`POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs`) -- a re-run gets a new runner -- until none is skipped.
-   5. On the 4th attempt (`github.run_attempt >= 4`) the job plays on whatever runner it has, so every run finishes all its games.
+   3. On a match the job stops before the game starts and starts the game again at once: it dispatches a run of that one game
+      (same inputs, `parent_run` = the run it belongs to, `hops` + 1), writes "skipped runner: <model>" in the job summary, and ends
+      green. No game is played or counted on that runner, and the run never waits for its other jobs before the game is replayed.
+   4. The run's report waits for every run named "Gambit 28, a game for <run>" to end, then reads their games in beside its own.
+   5. At `hops` 3 the job plays on whatever runner it has, so every run finishes all its games.
    6. The report lists games and losses by runner model (`gambit_summary.js`, the `runners:` line) and flags a game played on a
       skipped model.
-   About a third of jobs get one retry. It does not fix the bot on a slow machine: live games on Actions can still land on one.
+   About a third of jobs are replayed once. It does not fix the bot on a slow machine: live games on Actions can still land on one.
    **The order (the owner's):** 22 of the 24 garbage games and all 4 endless is where a mode is left for the next -- a change made for
    one mode can undo another's, so the last two are won with the three run together, each change checked for a mode it set back,
    until all three are at 24, twice.
