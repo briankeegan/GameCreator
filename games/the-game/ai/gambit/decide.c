@@ -51,6 +51,7 @@ static int taClears(const Judge *J) {
   return j->made.cells > 0 || j->made.combo > 0 || j->made.chain > 0 || j->threes > 0 || j->nsingles > 0 || j->chainAll > 0;
 }
 static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: the chain left alone, the longest found, its swaps, the ms given)
+#define FULL_ROOM 2        // (the rows short of the top at which a board the garbage told of fills counts as full -- Read.full)
 #define OPEN_TOP 7         // (the tallest column the opening's raise leaves, in rows)
 static int32_t openTop = OPEN_TOP;   // (OPEN_TOP; test/decide_check.c lifts it where the raise's keying is checked on boards it would stop)
 static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
@@ -277,6 +278,16 @@ static int readBoard_(Read *R) {
     // (the board fuller than it lives longest with -- the life table's peak -- and not saving: while the owner's band saves panels up,
     // the band decides, never the table)
     R->full = !savingPanels && panels > lifePeakOf();
+    // (and a board the garbage told of fills: the panels' rows, the rows of garbage on it and a row for each row of every block on its way
+    // or queued, FULL_ROOM rows or fewer short of the top -- set 143 combo_storm 8 switching, 33 panels and seven blocks four wide told,
+    // the board lost 102 frames on while the list's lines held and cut)
+    if (!savingPanels && !R->full) {
+      int32_t rows = (panels + W - 1) / W, h = decQ.b->height ? decQ.b->height : 12;
+      for (int r = 1; r < decQ.b->nrows; r++) { int g = 0; for (int c = 1; c <= W; c++) if (decQ.b->p[r][c].f[ISGARBAGE] == 1) g = 1; rows += g; }
+      for (int i = 0; i < decQ.narr; i++) rows += imax(1, decQ.arr[i].height);
+      for (int i = 0; i < decQ.b->ninc; i++) rows += imax(1, decQ.b->inc[i].height);
+      R->full = rows >= h - FULL_ROOM;
+    }
   }
   if (R->under || R->topped) R->by = NOT_ASKED;
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
