@@ -12,6 +12,15 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OPENER_CHAINS 3
 #define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
 static int tallGarbage(const Question *q);
+// THE ROWS A BOARD AND ITS GARBAGE FILL: the panels' rows, the rows holding garbage, and a row for each row of every block on its way or
+// queued -- FULL_ROOM rows or fewer short of the top is a board the garbage told of fills (Read.full; the opener's pause)
+static int32_t filledRows(const Question *q, int32_t panels) {
+  int32_t rows = (panels + W - 1) / W;
+  for (int r = 1; r < q->b->nrows; r++) { int g = 0; for (int c = 1; c <= W; c++) if (q->b->p[r][c].f[ISGARBAGE] == 1) g = 1; rows += g; }
+  for (int i = 0; i < q->narr; i++) rows += imax(1, q->arr[i].height);
+  for (int i = 0; i < q->b->ninc; i++) rows += imax(1, q->b->inc[i].height);
+  return rows;
+}
 static int32_t openerOver, openerChained, openerThrown, openerSum, openerPaused;   // (the opener played out; the longest link of the chain falling; the chains of OPENER_LEAST or more thrown, and their links added: the log's osum=)
 static int32_t openerAt;     // (and the frame it was played out on: a fight's switching begins there -- answer.c modeAt)
 static int32_t nswitch; static int32_t modeAt(int32_t at);   // (answer.c)
@@ -162,10 +171,11 @@ static int readBoard_(Read *R) {
   // a chain falling is a board that cannot top out --
   // set 86 large_garbage 6, a 5 designed and pressed after the 3, put down at 69 frames for a dig that left nothing to build with)
   int nextFires = opKeepOn && openerSum > 0 && decQ.b->clock - opKeepAt <= 40 && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < F->v[FACT_US_DIES];
-  // (and a board fuller than it lives longest with -- the life table's peak, not saving up -- with garbage on it is one about to be lost
-  // too: set 147 factory 6 switching, the opener chasing its eight on 45 to 60 panels from 1909 to 2422, the board 91 to 233 frames from
+  // (and a board fuller than it lives longest with -- the life table's peak, or the rows it and its garbage fill (filledRows) FULL_ROOM
+  // short of the top, not saving up -- with garbage on it is one about to be lost too: set 147 factory 6 switching, the opener chasing its eight on 45 to 60 panels from 1909 to 2422, the board 91 to 233 frames from
   // its loss throughout, paused at 2461 with 62 left and lost at 2533)
-  int fullUnder = !savingPanels && garbageOn(decQ.b) && panelsOn(decQ.b) > lifePeakOf();
+  int fullUnder = !savingPanels && garbageOn(decQ.b) && (panelsOn(decQ.b) > lifePeakOf() ||
+                  filledRows(&decQ, panelsOn(decQ.b)) >= (decQ.b->height ? decQ.b->height : 12) - FULL_ROOM);
   int aboutLost = ((F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST) || fullUnder) && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
   // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
   // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
@@ -284,13 +294,7 @@ static int readBoard_(Read *R) {
     // (and a board the garbage told of fills: the panels' rows, the rows of garbage on it and a row for each row of every block on its way
     // or queued, FULL_ROOM rows or fewer short of the top -- set 143 combo_storm 8 switching, 33 panels and seven blocks four wide told,
     // the board lost 102 frames on while the list's lines held and cut)
-    if (!savingPanels && !tallOn && !R->full) {
-      int32_t rows = (panels + W - 1) / W, h = decQ.b->height ? decQ.b->height : 12;
-      for (int r = 1; r < decQ.b->nrows; r++) { int g = 0; for (int c = 1; c <= W; c++) if (decQ.b->p[r][c].f[ISGARBAGE] == 1) g = 1; rows += g; }
-      for (int i = 0; i < decQ.narr; i++) rows += imax(1, decQ.arr[i].height);
-      for (int i = 0; i < decQ.b->ninc; i++) rows += imax(1, decQ.b->inc[i].height);
-      R->full = rows >= h - FULL_ROOM;
-    }
+    if (!savingPanels && !tallOn && !R->full) R->full = filledRows(&decQ, panels) >= (decQ.b->height ? decQ.b->height : 12) - FULL_ROOM;
   }
   if (R->under || R->topped) R->by = NOT_ASKED;
   // (ready: garbage on its way and none on the board -- the frames until the next block lands, 0 for one queued to drop once settled)
