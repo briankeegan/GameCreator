@@ -45,6 +45,25 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-games-on-actions.sh"
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/goal-before-asking.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/goal-before-asking.sh"
+          }
+        ]
       }
     ]
   }
