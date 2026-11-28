@@ -213,6 +213,9 @@ jobs:
           echo "::notice title=cores::$(nproc) threads, $(lscpu | awk -F: '/^Core\(s\) per socket|^Thread\(s\) per core/ {gsub(/ +/, " ", $2); printf "%s:%s, ", $1, $2}')cpu:core $(lscpu -e=CPU,CORE | tail -n +2 | awk '{printf "%s:%s ", $1, $2}'), GC_GAMBIT_WORKERS=$GC_GAMBIT_WORKERS"
           # (the runner's CPU written beside the game: a slower one gives the search less in the same frame -- every game can be read by it)
           mkdir -p out; echo "runner cpu: $(lscpu | sed -n 's/^Model name: *//p' | head -1), $(nproc) threads, $(lscpu | sed -n 's/^CPU max MHz: *//p' | head -1) MHz max" > out/cpu.txt
+          # (the game ahead of everything else on the runner: this shell at nice -10, which the game and every thread it starts inherit -- the
+          # runner's own processes no longer take the game's core mid-frame; Gambit's workers stay at the idle class)
+          sudo renice -n -10 -p $$ > /dev/null || echo "::warning title=nice::the game plays at the runner's own priority"
           bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
         if: ${{ always() && steps.skip.outputs.skipped != '1' }}
