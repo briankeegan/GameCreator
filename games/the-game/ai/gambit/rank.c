@@ -29,6 +29,7 @@ typedef struct {
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
+  int32_t landHollow;  // and the empty cells under the garbage on that landed board, each column's lowest (readyNextOf); -1 not asked
   int32_t played;      // its board played on to the horizon by the one policy, lost then (decide.c playedLostOf; FOREVER alive at it); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
@@ -96,7 +97,7 @@ static void tierInsert(Tier *t, int pos, double v) {
 }
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED; J->landHollow = -1;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -220,7 +221,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED; J->landHollow = -1;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -240,7 +241,7 @@ static void readyNextFor(Judge *J) {
   // (a line that lives is asked too where garbage is on the board or on its way: it lives through the garbage told, and the board it
   // leaves needs a break in reach for the next)
   if (J->readyNext != NOT_ASKED || (J->o.lives && !(decF.under || garbageComing()))) return;
-  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
+  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost, &J->landHollow);
 }
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
@@ -1102,6 +1103,20 @@ static int compareJudged(const Judge *x, const Judge *y) {
     const Judge *r = x->readyNext == 1 ? x : y, *o = r == x ? y : x;
     int keeps = r->o.matSettled < 0 || o->o.matSettled < 0 || r->o.matSettled >= o->o.matSettled;
     if (lx || lostAlike(x, y) || (keeps && !r->o.dead && diesAt(r) >= rankSave && diesAt(r) < 1e299)) return (cmpKey = __LINE__, (r == x ? -1 : 1));
+  }
+  // 1. THE GARBAGE LANDS ON THE STACK (the owner: just be ready): with garbage on its way or on the board, of two that do not live, ready
+  // alike once the next block lands, where either leaves DEEP_WELL or more empty cells under the garbage on that landed board (judge.c
+  // underLowestOf: each column's lowest garbage), the one that leaves WELL_STEP fewer goes first -- the garbage resting on the whole
+  // stack, not perched on a column or two over a well no break reaches -- where its board stands a break's time and the two are lost
+  // alike (or it is lost no sooner), and never a line that breaks none put before one that breaks
+  if (!lx && !ly && (decF.under || garbageComing()) && !x->o.dead && !y->o.dead && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED &&
+      (x->readyNext == 1) == (y->readyNext == 1)) {
+    int32_t hx = x->landHollow, hy = y->landHollow;
+    if (hx >= 0 && hy >= 0 && (hx >= DEEP_WELL || hy >= DEEP_WELL) && iabs(hx - hy) >= WELL_STEP) {
+      const Judge *s = hx < hy ? x : y, *d = hx < hy ? y : x;
+      if (!(d->apBroke > 0 && !(s->apBroke > 0)) && diesAt(s) >= rankSave && diesAt(s) < 1e299 && (lostAlike(s, d) || lostOf(s) >= lostOf(d)))
+        return (cmpKey = __LINE__, (s == x ? -1 : 1));
+    }
   }
   // 1. NOTHING AMID THE GARBAGE (amidGarbage): under garbage, of two that do not live, a line that swaps among the slabs and breaks nothing
   // after one that does not -- unless it keeps the board a break's time (rankSave) longer
