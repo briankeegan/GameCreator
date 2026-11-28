@@ -59,6 +59,7 @@ typedef struct {
   int32_t readyPend;            // the landed board kept for the decision's readiness, its index + 1 (search/break.c readyPendOf); 0 none
   int32_t readyMat;             // the material that board has -- its panels under the lowest garbage once everything shown has landed
                                 // (facts.c materialOn), -1 not asked: what the next breaks are made of
+  int32_t readyHollow;          // that board's empty cells under each column's lowest garbage (underLowestOf), -1 not asked
   int32_t readyNear;            // the swaps to the nearest break on that board by the shape math (breakNear, NEAR_MISS none; 0 no
                                 // garbage), -1 not asked
   int32_t readyRow1[W + 1];     // the panel ids of the bottom row of the board the readiness break was found on (what anchors it)
@@ -78,6 +79,8 @@ typedef struct {
   int32_t spread;               // and how its colours are spread (spreadOf): the pairs a swap from a match less the pairs touching
   int32_t seams;                // and its crossed seams (seamsOf): the swaps on it that finish two colours at once
   int32_t tower;                // and its tower (towerOf): its tallest column of panels less its lowest, in rows (-1 not known)
+  int32_t edgeMid;              // and its taller edge over the middle columns' mean, in quarter rows (edgeMidOf; -1 not known)
+  int32_t perch;                // and its lowest garbage's perch (restsFewOf): rows its one or two supports stand over the lowest column under it (-1 not known)
 } Judged;
 
 static LOCAL Ctx *judgeCtx;   // the judge's own nodes: a search can ask it while its own nodes stand
@@ -248,7 +251,18 @@ static int32_t readyPendOf(Ctx *x, int n);
 static int readyDefer;
 // readyCollect: and while it is deferred, the landed board kept -- searched once a decision, by whichever thread begins it
 // (readyPendLast: which) -- and how near a break it is by the shape math (readyNearLast), what the decision asks it in the order of
-static int32_t readyCollect; static LOCAL int32_t readyPendLast, readyNearLast, readyMatLast;
+static int32_t readyCollect; static LOCAL int32_t readyPendLast, readyNearLast, readyMatLast, readyHollowLast;
+// THE WELL UNDER THE GARBAGE AS IT LANDS: the empty cells under each column's lowest garbage -- garbage resting on a column or two over
+// low ones touches only their tops, and the cells under it are where no panel reaches it from below
+static int32_t underLowestOf(const Board *b) {
+  int32_t h = 0;
+  for (int c = 1; c <= W; c++) {
+    int lo = 0;
+    for (int r = 1; r < b->nrows && !lo; r++) if (gridCell(b, r, c) < 0) lo = r;
+    for (int r = 1; r < lo; r++) if (gridCell(b, r, c) == 0) h++;
+  }
+  return h;
+}
 static int32_t materialOn(const Board *b);   // (facts.c)
 static int nearOf(const Board *b); static int garbageOn(const Board *b);   // (search/break.c)
 static LOCAL int32_t readyRow1Buf[W + 1];
@@ -260,7 +274,7 @@ static int32_t anchorIdAt(const Board *b, int c) {
   return f[COLOR] && !f[ISGARBAGE] && f[STATE] == NORMAL ? f[ID] : NUL;
 }
 static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int32_t *whyN) {
-  readyPendLast = 0; readyNearLast = -1; readyMatLast = -1;
+  readyPendLast = 0; readyNearLast = -1; readyMatLast = -1; readyHollowLast = -1;
   // (a line that ends past the landing is ready from where it ends -- never a frame on: the same trajectory, asked from any root,
   // lands on the same board, so a break found on it once is found again by its key)
   int dt = wait - NODE(x, n)->t;
@@ -272,12 +286,12 @@ static int32_t breaksAfterLanding(Ctx *x, int n, int32_t wait, int32_t *why, int
   if (readyDefer) {
     Board *lb = ensureBoard(x, land);
     readyNearLast = lb ? (garbageOn(lb) ? nearOf(lb) : 0) : -1;
-    readyMatLast = lb ? materialOn(lb) : -1;
+    readyMatLast = lb ? materialOn(lb) : -1; readyHollowLast = lb ? underLowestOf(lb) : -1;
     readyPendLast = readyPendOf(x, land);
     return NOT_ASKED;
   }
   { Board *lb = ensureBoard(x, land); for (int c = 1; c <= W; c++) readyRow1Buf[c] = anchorIdAt(lb, c);
-    readyMatLast = lb ? materialOn(lb) : -1; }
+    readyMatLast = lb ? materialOn(lb) : -1; readyHollowLast = lb ? underLowestOf(lb) : -1; }
   if (clockOut()) return NOT_ASKED;
   return readyBreak(x, land, why, whyN);
 }
@@ -342,6 +356,28 @@ static int32_t towerOf(const Board *b) {
   int hi = 0, lo = 1 << 20;
   for (int c = 1; c <= W; c++) { int h = panelsTopOf(b, c); if (h > hi) hi = h; if (h < lo) lo = h; }
   return hi - lo;
+}
+// THE EDGES OVER THE MIDDLE: the taller of columns 1 and 6 over the mean of columns 2 to 5, panels only, in quarter rows (0 none over) --
+// rows of three cross the middle columns three times as often as the edges, so clears left to themselves dig the middle and leave the
+// edges standing, where a block four wide rests across them
+static int32_t edgeMidOf(const Board *b) {
+  int mid = 0; for (int c = 2; c <= W - 1; c++) mid += panelsTopOf(b, c);
+  return imax(0, 4 * imax(panelsTopOf(b, 1), panelsTopOf(b, W)) - mid);
+}
+// HOW PERCHED ITS LOWEST GARBAGE IS: where the lowest row holding garbage holds it three columns wide or more and one or two columns
+// under it touch it, the rows they stand over the lowest column under the garbage (0 otherwise, or no garbage) -- a block resting on one
+// column, or bridged over two, is touched by the panels of those columns alone, and the clears beside them lower the rest and leave it hanging
+static int32_t restsFewOf(const Board *b) {
+  int low = 0;
+  for (int r = 1; r < b->nrows && !low; r++) for (int c = 1; c <= W; c++) if (gridCell(b, r, c) < 0) { low = r; break; }
+  if (!low) return 0;
+  int span = 0, sup = 0, lo = 1 << 20;
+  for (int c = 1; c <= W; c++) {
+    if (gridCell(b, low, c) >= 0) continue;
+    int top = 0; for (int r = 1; r < low; r++) if (gridCell(b, r, c) > 0) top = r;
+    span++; if (top == low - 1) sup++; if (top < lo) lo = top;
+  }
+  return span >= 3 && sup >= 1 && sup <= 2 ? low - 1 - lo : 0;
 }
 // HOW HOLLOW A BOARD IS UNDER ITS GARBAGE: the empty cells under each column's highest garbage, as search/bits.c bitsShape counts them
 static int32_t hollowOf(const Board *b) {
@@ -465,7 +501,7 @@ static LOCAL int32_t winWaitOff, winWaitAgain;
 static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const JudgeOpts *o, Judged *j) {
   memset(j, 0, sizeof *j);
   winWaitAgain = 0;
-  j->lostAt = NOT_ASKED; j->queueAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->noopAt = -1; j->clearStep = -1; j->preLast = -1; j->noops = 0; j->sames = 0; j->tower = -1;
+  j->lostAt = NOT_ASKED; j->queueAt = NOT_ASKED; j->ready = NOT_ASKED; j->threes = 0; j->fire = -1; j->cut = -1; j->cutWhy = 0; j->readyNear = -1; j->readyMat = -1; j->readyHollow = -1; j->noopAt = -1; j->clearStep = -1; j->preLast = -1; j->noops = 0; j->sames = 0; j->tower = -1;
   Ctx *x = judgeCtx = ctxOf(judgeCtx);
   int root = rootOf(x, q), n = root;
   if (root < 0) { j->dead = 1; return; }
@@ -671,7 +707,7 @@ static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const Jud
   for (int z = 4; z < MAXCOMBOS + 64; z++) if (single[z] && j->nsingles < MAXCOMBOS) j->singles[j->nsingles++] = z;
   Node *e = NODE(x, n);
   j->endNode = n;
-  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->hollow = eb ? hollowOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; j->tower = eb ? towerOf(eb) : -1; }
+  { const Board *eb = ensureBoard(x, n); j->even = eb ? evenOf(eb) : -1; j->hollow = eb ? hollowOf(eb) : -1; j->spread = eb ? spreadOf(eb) : 0; j->seams = eb ? seamsOf(eb) : 0; j->tower = eb ? towerOf(eb) : -1; j->perch = eb ? restsFewOf(eb) : -1; j->edgeMid = eb ? edgeMidOf(eb) : -1; }
   j->dropAt = j->dead ? 0 : e->t + imax(e->stopTime + e->preStopTime, e->shakeTime);
   j->fire = j->nats ? j->ats[j->nats - 1] : -1;
   if (o->lifeTo >= 0) j->lostAt = j->dead ? j->deadAt : lostAlone(x, n, imax(o->lifeTo, imax(lastAt, o->lifeStop ? j->dropAt : 0) + o->lifeRest));
@@ -694,7 +730,7 @@ static void judgeOnce(const Question *q, const int32_t *seq, int nseq, const Jud
       for (int k = 0; k < *wn && eb; k++) { acts += actionsFor(r, c, CR(wl[k]), CC(wl[k]), left - acts); r = CR(wl[k]); c = CC(wl[k]); }
       if (eb && acts > left) j->ready = 0;
     }
-    j->readyPend = readyPendLast; j->readyNear = readyNearLast; j->readyMat = readyMatLast;
+    j->readyPend = readyPendLast; j->readyNear = readyNearLast; j->readyMat = readyMatLast; j->readyHollow = readyHollowLast;
     memcpy(j->readyRow1, readyRow1Buf, sizeof j->readyRow1);
     if (j->ready == LOST_FIRST) j->ready = 0;   // (lost first: not ready)
   }

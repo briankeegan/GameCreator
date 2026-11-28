@@ -18,9 +18,10 @@ EXPORT(gb_replay_low) void gb_replay_low(int keep) { replayLow = keep; }
 // end as the native host's frame loop taps them -- -1: none said, as the checks replay)
 static int32_t replayAllow = -1;
 EXPORT(gb_replay_allow) void gb_replay_allow(int allow) { replayAllow = allow; }
-// (THE RAISE OFFERED, gb_replay_raise 1 before a replay: the question asked as the frame loop asks one it may answer with a raise)
+// (THE RAISE OFFERED, gb_replay_raise 1 before a replay: the question asked as the frame loop asks one it may answer with a raise -- the
+// opening's height cap, decide.c OPEN_TOP, lifted: raise.txt's boards are games lost to a raise, kept to check how a raise is keyed)
 static int32_t replayRaise;
-EXPORT(gb_replay_raise) void gb_replay_raise(int on) { replayRaise = on; }
+EXPORT(gb_replay_raise) void gb_replay_raise(int on) { replayRaise = on; openTop = on ? 1 << 20 : OPEN_TOP; }
 static int lowered(Board *b, int keep) {
   const Panel *empty = 0;
   for (int c = 1; c <= W && !empty; c++) if (!b->p[b->nrows - 1][c].f[COLOR] && !b->p[b->nrows - 1][c].f[ISGARBAGE]) empty = &b->p[b->nrows - 1][c];

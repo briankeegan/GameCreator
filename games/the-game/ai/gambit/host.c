@@ -19,21 +19,35 @@ void hostLog(const char *s);
 void hostLogFlush(void);
 // The bytes the heap has given this instance, in MB
 int hostHeapMB(void) { return (int)(__atomic_load_n(&heapBytes, __ATOMIC_RELAXED) >> 20); }
-// THE BUDGET FOR WHAT IS RESIDENT: GC_GAMBIT_HEAP_SOFT_MB (9000 unset). Under it no page is given back -- what is resident is never more
-// than the heap has grown -- and past it the spares past SPARE_KEEP give theirs back (eval/native/memory.h)
+// THE BUDGET FOR WHAT IS RESIDENT: GC_GAMBIT_RSS_SOFT_MB, and never over RSS_SHARE of the machine's memory (/proc/meminfo; unset: that
+// share). Under it no page is given back; past it the spares past SPARE_KEEP give theirs back (eval/native/memory.h). Read against the
+// process's resident memory as last sampled (hostRssMB, every few decisions on Gambit's thread) -- not the heap grown, which counts every
+// block a long-lived instance has ever been given (a live session, many matches in one process: 13 GB of heap on 4 GB resident).
+#define RSS_SHARE 0.6
+static int residentMB = -1;
 int paHeapOver(void) {
-  static unsigned long soft;
-  if (!soft) { const char *e = getenv("GC_GAMBIT_HEAP_SOFT_MB"); long mb = e && *e ? atol(e) : 9000; soft = (mb > 0 ? (unsigned long)mb : 1ul) << 20; }
-  return __atomic_load_n(&heapBytes, __ATOMIC_RELAXED) > soft;
+  static long softMB;
+  if (!softMB) {
+    long total = 0; FILE *f = fopen("/proc/meminfo", "r");
+    if (f) { char k[64]; long v; while (fscanf(f, "%63s %ld kB\n", k, &v) == 2) if (!strcmp(k, "MemTotal:")) { total = v >> 10; break; } fclose(f); }
+    const char *e = getenv("GC_GAMBIT_RSS_SOFT_MB"); long mb = e && *e ? atol(e) : 0;
+    long cap = total > 0 ? (long)(total * RSS_SHARE) : 8192;
+    softMB = mb > 0 && mb < cap ? mb : cap;
+    if (softMB < 1) softMB = 1;
+  }
+  int r = __atomic_load_n(&residentMB, __ATOMIC_RELAXED);
+  return r >= 0 && r > softMB;
 }
-// The process's resident memory, in MB (/proc/self/statm), -1 unread
+// The process's resident memory, in MB (/proc/self/statm), -1 unread -- kept for the budget above
 int hostRssMB(void) {
   FILE *f = fopen("/proc/self/statm", "r");
   if (!f) return -1;
   long size = 0, res = -1;
   if (fscanf(f, "%ld %ld", &size, &res) != 2) res = -1;
   fclose(f);
-  return res < 0 ? -1 : (int)((res * 4096L) >> 20);
+  int mb = res < 0 ? -1 : (int)((res * 4096L) >> 20);
+  __atomic_store_n(&residentMB, mb, __ATOMIC_RELAXED);
+  return mb;
 }
 void *paHeap(unsigned long n) {
   static unsigned long capBytes;
@@ -117,6 +131,53 @@ static void pinnedTo(const char *cpus) {
   }
 }
 static void pinned(void) { pinnedTo(getenv("GC_GAMBIT_CPUS")); }
+// THE GAME'S CPU ITS OWN THREAD'S (called on the game's thread, native.c gn_setup and gn_match): every other thread of the process that is
+// not one of Gambit's (gambit, gworkerN, gbetween, greap -- each pins itself) and still runs on a CPU of the game's thread -- the
+// software renderer's, the client's own -- is moved to GC_GAMBIT_WORKER_CPUS, where it still runs ahead of the workers (they are at the
+// idle class) and no longer takes the game's thread off its CPU mid-frame. The threads moved, or -1 nothing to do.
+#include <dirent.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+int hostIsolate(char *names, int cap) {
+  const char *w = getenv("GC_GAMBIT_WORKER_CPUS");
+  if (!w || !*w) return -1;
+  cpu_set_t to; CPU_ZERO(&to);
+  for (const char *p = w; *p;) {
+    int a = atoi(p), b = a;
+    while (*p >= '0' && *p <= '9') p++;
+    if (*p == '-') { p++; b = atoi(p); while (*p >= '0' && *p <= '9') p++; }
+    for (int c = a; c <= b && c < CPU_SETSIZE; c++) CPU_SET(c, &to);
+    if (*p == ',') p++; else if (*p) break;
+  }
+  cpu_set_t mine; if (sched_getaffinity(0, sizeof mine, &mine)) return -1;
+  for (int c = 0; c < CPU_SETSIZE; c++) if (CPU_ISSET(c, &mine)) CPU_CLR(c, &to);
+  if (!CPU_COUNT(&to)) return -1;
+  long self = syscall(SYS_gettid);
+  DIR *d = opendir("/proc/self/task");
+  if (!d) return -1;
+  int moved = 0, k = 0;
+  if (names && cap > 0) names[0] = 0;
+  struct dirent *e;
+  while ((e = readdir(d))) {
+    long tid = atol(e->d_name);
+    if (tid <= 0 || tid == self) continue;
+    char path[64], comm[32] = { 0 };
+    snprintf(path, sizeof path, "/proc/self/task/%ld/comm", tid);
+    FILE *f = fopen(path, "r");
+    if (!f) continue;
+    if (!fgets(comm, sizeof comm, f)) comm[0] = 0;
+    fclose(f);
+    comm[strcspn(comm, "\n")] = 0;
+    if (!strcmp(comm, "gambit") || !strncmp(comm, "gworker", 7) || !strcmp(comm, "gbetween") || !strcmp(comm, "greap")) continue;
+    cpu_set_t its; if (sched_getaffinity((pid_t)tid, sizeof its, &its)) continue;
+    int shares = 0; for (int c = 0; c < CPU_SETSIZE && !shares; c++) shares = CPU_ISSET(c, &its) && CPU_ISSET(c, &mine);
+    if (!shares || sched_setaffinity((pid_t)tid, sizeof to, &to)) continue;
+    moved++;
+    if (names && cap > 0) k += snprintf(names + k, k < cap ? (size_t)(cap - k) : 0, "%s%s", k ? "," : "", comm);
+  }
+  closedir(d);
+  return moved;
+}
 // (every thread the instance starts, by kind -- 0 Gambit's, 1 the search between decisions, 2 the pool's workers -- joined when it quits)
 #define MAXHOSTTHREADS 64
 static pthread_t hostThreads[MAXHOSTTHREADS]; static int hostThreadKind[MAXHOSTTHREADS], nHostThreads;
@@ -157,9 +218,12 @@ static void *workerStart(void *arg) {
 }
 // A THREAD AT THE IDLE CLASS beside the workers, on their CPUs, named `name`: 0 started
 static void *(*idleFn)(void *); static const char *idleName;
+// (the reaper on GC_GAMBIT_FAR_CPUS where it is set: the workers' CPUs on a core the game's thread is not on -- emptying a context sweeps
+// 120-220 ms of memory, and on the other hyperthread of the game's own core it pushes the game's data out of the core's caches: the
+// frame's board load, every read a miss, 8-10 ms)
 static void *idleStart(void *arg) {
-  const char *w = getenv("GC_GAMBIT_WORKER_CPUS");
-  if (w && *w) pinnedTo(w); else pinned();
+  const char *w = getenv("GC_GAMBIT_WORKER_CPUS"), *far = getenv("GC_GAMBIT_FAR_CPUS");
+  if (!strcmp(idleName, "greap") && far && *far) pinnedTo(far); else if (w && *w) pinnedTo(w); else pinned();
   pthread_setname_np(pthread_self(), idleName);
   struct sched_param sp = { 0 }; pthread_setschedparam(pthread_self(), SCHED_IDLE, &sp);
   return idleFn(arg);
@@ -194,11 +258,14 @@ int hostWorkers(void *(*fn)(void *), int most) {
 // buffers: the one written out is swapped for the other under the lock, and lines go on into that one meanwhile.
 static FILE *logFile;
 static pthread_mutex_t logMu = PTHREAD_MUTEX_INITIALIZER, logFlushMu = PTHREAD_MUTEX_INITIALIZER;
+// (a buffer that fills is grown, to LOGMAX, rather than written out by whichever thread fills it: the game's thread logs too -- its
+// SCORE lines, the frame loop's -- and a frame that wrote a megabyte to the disk waited on it)
 #define LOGBUF (1 << 20)
-static char *logBuf[2]; static size_t logLen[2]; static int logCur;
+#define LOGMAX (64ul << 20)
+static char *logBuf[2]; static size_t logLen[2], logCap[2]; static int logCur;
 int hostOpenLog(const char *path) {
   if (!logFile) logFile = fopen(path, "a");
-  if (logFile && !logBuf[0]) { logBuf[0] = malloc(LOGBUF); logBuf[1] = malloc(LOGBUF); if (!logBuf[0] || !logBuf[1]) { free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; } }
+  if (logFile && !logBuf[0]) { logBuf[0] = malloc(LOGBUF); logBuf[1] = malloc(LOGBUF); if (!logBuf[0] || !logBuf[1]) { free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; } else logCap[0] = logCap[1] = LOGBUF; }
   return logFile ? 0 : -1;
 }
 static void logWriteOut(void) {   // (logFlushMu held)
@@ -218,7 +285,7 @@ void hostQuit(void) {
   hostLogFlush();
   pthread_mutex_lock(&logMu);
   if (logFile) { fclose(logFile); logFile = 0; }
-  free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; logLen[0] = logLen[1] = 0;
+  free(logBuf[0]); free(logBuf[1]); logBuf[0] = logBuf[1] = 0; logLen[0] = logLen[1] = 0; logCap[0] = logCap[1] = 0;
   pthread_mutex_unlock(&logMu);
 }
 void hostLog(const char *s) {
@@ -226,7 +293,13 @@ void hostLog(const char *s) {
   size_t n = strlen(s);
   if (logBuf[0]) {
     pthread_mutex_lock(&logMu);
-    if (logLen[logCur] + n + 1 <= LOGBUF) { memcpy(logBuf[logCur] + logLen[logCur], s, n); logLen[logCur] += n; logBuf[logCur][logLen[logCur]++] = '\n'; pthread_mutex_unlock(&logMu); return; }
+    int k = logCur;
+    if (logLen[k] + n + 1 > logCap[k] && logCap[k] < LOGMAX) {
+      size_t c = logCap[k]; while (c < logLen[k] + n + 1 && c < LOGMAX) c *= 2;
+      char *g = realloc(logBuf[k], c);
+      if (g) { logBuf[k] = g; logCap[k] = c; }
+    }
+    if (logLen[k] + n + 1 <= logCap[k]) { memcpy(logBuf[k] + logLen[k], s, n); logLen[k] += n; logBuf[k][logLen[k]++] = '\n'; pthread_mutex_unlock(&logMu); return; }
     pthread_mutex_unlock(&logMu);
   }
   // (the buffer full, or none: what it holds written out first, then the line, in order)

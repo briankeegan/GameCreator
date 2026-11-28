@@ -29,6 +29,7 @@ typedef struct {
   int32_t apWhole;     // the chain the board ends up making with the line played (Judged.whole)
   int32_t readyNext;   // a break in reach once the next block lands (readyNextOf), asked when none lives; NOT_ASKED: not asked
   int32_t extLost;     // and where that break leads: the line and the break played, lost then (readyNextOf); NOT_ASKED: not asked
+  int32_t landHollow;  // and the empty cells under the garbage on that landed board, each column's lowest (readyNextOf); -1 not asked
   int32_t played;      // its board played on to the horizon by the one policy, lost then (decide.c playedLostOf; FOREVER alive at it); NOT_ASKED: not asked
   int32_t outside;     // outside the list, taken as the default's own move (a list ended by "default")
   int32_t spends;      // outside it for clearing panels below the floor without breaking (decide.c read: belowFloor)
@@ -96,7 +97,7 @@ static void tierInsert(Tier *t, int pos, double v) {
 }
 static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED; J->landHollow = -1;
   J->k = *k0;
   Cand *k = &J->k;
   int play = k->play, aim = k->aim;
@@ -200,8 +201,11 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
   // (THE LIFE ITS PANELS LEAVE (outcome.c lifeOf, measured), then THE NEAREST BREAK AFTER IT: of two in one tier, the one whose board has
   // more life by the panels left on it, then the one nearer its next break -- right after the list's own keys)
   // -- under garbage the nearer break first: the next break is the board's life there, and the panels kept by doing nothing never make it
+  // -- and on a board fuller than it lives longest with (Read.full: a wave broken into panels, the next on its way), the life its panels
+  // leave before the list's own keys: the mode's attack is made on a board that has the room for it
   if (oc.panelsLeft >= 0) {
-    if (R->under && oc.nearAfter >= 0) { tierInsert(&J->t, J->t.nlist, oc.nearAfter); tierInsert(&J->t, J->t.nlist + 1, -(double)oc.lifeLeft); }
+    if (R->full) { tierInsert(&J->t, 0, -(double)oc.lifeLeft); if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist, oc.nearAfter); }
+    else if (R->under && oc.nearAfter >= 0) { tierInsert(&J->t, J->t.nlist, oc.nearAfter); tierInsert(&J->t, J->t.nlist + 1, -(double)oc.lifeLeft); }
     else {
       tierInsert(&J->t, J->t.nlist, -(double)oc.lifeLeft);
       if (oc.nearAfter >= 0) tierInsert(&J->t, J->t.nlist + 1, oc.nearAfter);
@@ -220,7 +224,7 @@ static int judgeCand(const Read *R, const Cand *k0, Judge *J) {
 static int32_t aloneChain;   // the chain the board left alone makes, as the hold's judging found it
 static void holdCand(const Read *R, int wait, Judge *J) {
   memset(J, 0, sizeof *J);
-  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED;
+  J->readyNext = NOT_ASKED; J->extLost = NOT_ASKED; J->played = NOT_ASKED; J->landHollow = -1;
   // (the hold presses nothing: it meets the entry the board makes left alone, if any, and is no break -- never a break's best material)
   J->o = outcome(0, 0, 0);
   J->material = -1;
@@ -235,9 +239,12 @@ static void holdCand(const Read *R, int wait, Judge *J) {
 // A DIG THAT CAN WAIT: a line toward a break that lives no longer than the hold, and is still done before the hold is lost after one
 // more decision (react frames) -- never one that leaves the board nearer a break than the hold does: the frames it waits are frames
 // the break is no nearer in
+static int garbageComing(void);
 static void readyNextFor(Judge *J) {
-  if (J->o.lives || J->readyNext != NOT_ASKED) return;
-  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost);
+  // (a line that lives is asked too where garbage is on the board or on its way: it lives through the garbage told, and the board it
+  // leaves needs a break in reach for the next)
+  if (J->readyNext != NOT_ASKED || (J->o.lives && !(decF.under || garbageComing()))) return;
+  J->readyNext = readyNextOf(J->k.seq, J->k.nseq, J->hold ? 0 : J->settled, &J->extLost, &J->landHollow);
 }
 static int digWaits(const Judge *k, const Judge *H, int32_t react) {
   return k->k.play == PLAY_TOWARD && !k->o.lives && !H->o.lives && H->o.lostAt != NOT_ASKED && k->o.j.done >= 0 && !k->o.dead &&
@@ -903,6 +910,18 @@ static int calmKept(const Judge *c, const Judge *o) {
 // where it is taken back -- compareJudged's first step, and the log's cr=
 #define TOWER_ROWS 4   // (the flatness floor's tower: the tallest column of panels this many rows or more over the lowest -- key 1 below)
 #define TOWER_STEP 2   // (and of two towered, this many rows taller)
+#define PERCH_HIGH 5   // (garbage resting on one or two columns this many rows over the lowest under it -- the perch floor below, and decide.c's
+                       // cut: of the boards with garbage in the last 600 frames of a lost game, 33% had it perched 5 rows or more, 21% 6; of all
+                       // the others, 14.3% and 7.6% -- runs 4840-4917, 235 games, 702 boards and 82,979)
+#define EDGE_MID 2     // (the taller edge this many rows over the middle columns' mean -- the edge floor below: of the combo_storm boards with
+                       // garbage in the last 600 frames of a lost game, 66% had it 2 rows or more, 49% 3; of all the others, 38.4% and 17.2% --
+                       // runs 4840-4979, 98 games, 521 boards and 32,072)
+#define HOLLOW_HIGH 15  // (cells empty under the garbage -- the hollow floor below: of the boards with garbage in the last 600 frames of a lost game,
+                        // 54% had 15 or more, 65% 12; of all the others, 24.1% and 38.5% -- runs 4840-4999, 351 games, 924 boards and 123,404)
+#define HOLLOW_STEP 3
+#define TOWER_HIGH 6   // (a tower this tall with garbage told or on the board is a floor, not a preference -- key 1 below: of the decisions
+                       // under garbage in the last 600 frames of a lost game, 26% faced a tower of 6 rows or more, 11% of 7; of all the
+                       // others, 12% and 5% -- runs 4830-4866, 203 games, 1,081 decisions and 200,237)
 // (A LINE THAT LEAVES THE STACK TOWERED beside one that leaves it flatter (the flatness floor's measure, judge.c towerOf): towered where the
 // other is not, or TOWER_STEP rows taller -- the other's board standing a break's time)
 static int toweredBeside(const Judge *t, const Judge *f) {
@@ -1042,17 +1061,60 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // three cross the middle columns three times as often as the edges, so clears left to themselves leave the edges standing, and garbage
   // resting on a column few panels touch is the break that cannot be made. Only where the flatter one's board stands a break's time,
   // breaks no less garbage or the other breaks none, and is the hold, walks no more than WALK_EARN actions, or leaves the window a
-  // break's walk when the next block lands
+  // break's walk when the next block lands. Where either leaves a tower TOWER_HIGH rows or more with garbage on the board or on its way,
+  // the flatter goes first by a row, lost sooner or not: the frames a clear buys beside the tower are the frames before the garbage rests
+  // on it, and a tower comes down a row a swap
   if (!lx && !ly && x->o.j.tower >= 0 && y->o.j.tower >= 0) {
     int tx = x->o.j.tower, ty = y->o.j.tower;
-    int differ = (tx >= TOWER_ROWS) != (ty >= TOWER_ROWS) || (tx >= TOWER_ROWS && ty >= TOWER_ROWS && iabs(tx - ty) >= TOWER_STEP);
+    int tall = imax(tx, ty) >= TOWER_HIGH && (decF.under || garbageComing());
+    int differ = (tx >= TOWER_ROWS) != (ty >= TOWER_ROWS) || (tx >= TOWER_ROWS && ty >= TOWER_ROWS && iabs(tx - ty) >= (tall ? 1 : TOWER_STEP));
     if (differ) {
       const Judge *f = tx < ty ? x : y, *t = tx < ty ? y : x;
-      if (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)) &&
+      int high = tall;
+      if (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (high || lostAlike(f, t) || lostOf(f) >= lostOf(t)) &&
           (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
           (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
         return (cmpKey = __LINE__, (f == x ? -1 : 1));
     }
+  }
+  // 1. THE PERCH FLOOR (the owner: it prefers not dying, and flatness -- both floors): with garbage on the board or on its way, of two that
+  // both live or both do not, where either leaves the lowest garbage resting on one or two columns PERCH_HIGH rows or more over the lowest column under
+  // it (judge.c restsFewOf), the one that leaves it lower goes first, lost sooner or not -- where it lives or its board stands a break's time, it breaks
+  // no less garbage or the other breaks none, and it is the hold, walks no more than WALK_EARN actions, or leaves the window a break's walk
+  // when the next block lands: a block resting on the columns few panels touch is the break that cannot be made, and a perch comes down a
+  // row a swap
+  if (lx == ly && x->o.j.perch >= 0 && y->o.j.perch >= 0 && x->o.j.perch != y->o.j.perch && imax(x->o.j.perch, y->o.j.perch) >= PERCH_HIGH &&
+      (decF.under || garbageComing())) {
+    const Judge *f = x->o.j.perch < y->o.j.perch ? x : y, *t = f == x ? y : x;
+    if ((lx || (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299)) && (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
+        (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
+      return (cmpKey = __LINE__, (f == x ? -1 : 1));
+  }
+  // 1. THE EDGE FLOOR (the owner: it prefers not dying, and flatness -- both floors): with garbage on the board or on its way, of two that
+  // both live or both do not, where either leaves the taller edge EDGE_MID rows or more over the middle columns' mean (judge.c edgeMidOf), the one that
+  // leaves it a row lower goes first -- not dying first: where they are lost alike or it is lost no sooner -- under the perch floor's other
+  // conditions, the window it leaves at the next landing half a break's walk: an edge comes down only by a walk to it, the clears that
+  // dig the middle leave the
+  // edges standing, and the block that lands rests across them
+  if (lx == ly && x->o.j.edgeMid >= 0 && y->o.j.edgeMid >= 0 && iabs(x->o.j.edgeMid - y->o.j.edgeMid) >= 4 &&
+      imax(x->o.j.edgeMid, y->o.j.edgeMid) >= 4 * EDGE_MID && (decF.under || garbageComing())) {
+    const Judge *f = x->o.j.edgeMid < y->o.j.edgeMid ? x : y, *t = f == x ? y : x;
+    if ((lx || (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)))) &&
+        (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
+        (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK / 2))
+      return (cmpKey = __LINE__, (f == x ? -1 : 1));
+  }
+  // 1. THE HOLLOW FLOOR (the owner: it prefers not dying, and flatness -- both floors): with garbage on the board or on its way, of two that
+  // both live or both do not, where either leaves HOLLOW_HIGH cells or more empty under the garbage (judge.c hollowOf), the one that leaves
+  // HOLLOW_STEP fewer goes first -- not dying first: where they are lost alike or it is lost no sooner -- under the perch floor's other
+  // conditions: a well dug under the garbage is where no panel touches it
+  if (lx == ly && x->o.j.hollow >= 0 && y->o.j.hollow >= 0 && iabs(x->o.j.hollow - y->o.j.hollow) >= HOLLOW_STEP &&
+      imax(x->o.j.hollow, y->o.j.hollow) >= HOLLOW_HIGH && (decF.under || garbageComing())) {
+    const Judge *f = x->o.j.hollow < y->o.j.hollow ? x : y, *t = f == x ? y : x;
+    if ((lx || (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)))) &&
+        (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
+        (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
+      return (cmpKey = __LINE__, (f == x ? -1 : 1));
   }
   // 1. THE WINDOW'S FLOOR (the owner: efficiency is key): under garbage, of two that do not live, a line that leaves the input window
   // under half a break's walk (BREAK_WALK) at the next landing goes after one that keeps it -- and of two that both leave it under, the
@@ -1087,12 +1149,33 @@ static int compareJudged(const Judge *x, const Judge *y) {
         if (!(d->apBroke > 0 && !(s->apBroke > 0)) && diesAt(s) >= rankSave && diesAt(s) < 1e299 && (lostAlike(s, d) || lostOf(s) >= lostOf(d)))
           return (cmpKey = __LINE__, (dx ? 1 : -1)); } }
   }
-  // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way and none on the
+  // 1. READY WHEN IT LANDS (the owner: just be ready -- the stack raised, the garbage on its way): with garbage on its way or on the
   // board, of two that live or are lost alike, the one that leaves a break ready once everything lands (judge.c breaksAfterLanding, the
-  // window counted) goes first: the break is in place when the block arrives, not walked to after it
-  if (lx == ly && !decF.under && garbageComing() && (lx || lostAlike(x, y)) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED &&
-      (x->readyNext == 1) != (y->readyNext == 1))
-    return (cmpKey = __LINE__, (x->readyNext == 1 ? -1 : 1));
+  // window counted) goes first: the break is in place when the block arrives, not walked to after it -- a board that keeps no break in
+  // reach under garbage is the board every lost game ends on
+  // -- and of two that do not live, lost alike or not, wherever the ready one's board stands a break's time and keeps the panels -- no
+  // fewer settled than the other's (the owner: you need the panels; a break made ready by spending them is the next one's gone): a break
+  // ready is the life past the next landing, a few frames more with none is the loss at it
+  if (lx == ly && (decF.under || garbageComing()) && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED &&
+      (x->readyNext == 1) != (y->readyNext == 1)) {
+    const Judge *r = x->readyNext == 1 ? x : y, *o = r == x ? y : x;
+    int keeps = r->o.matSettled < 0 || o->o.matSettled < 0 || r->o.matSettled >= o->o.matSettled;
+    if (lx || lostAlike(x, y) || (keeps && !r->o.dead && diesAt(r) >= rankSave && diesAt(r) < 1e299)) return (cmpKey = __LINE__, (r == x ? -1 : 1));
+  }
+  // 1. THE GARBAGE LANDS ON THE STACK (the owner: just be ready): with garbage on its way or on the board, of two that do not live, ready
+  // alike once the next block lands, where either leaves DEEP_WELL or more empty cells under the garbage on that landed board (judge.c
+  // underLowestOf: each column's lowest garbage), the one that leaves WELL_STEP fewer goes first -- the garbage resting on the whole
+  // stack, not perched on a column or two over a well no break reaches -- where its board stands a break's time and the two are lost
+  // alike (or it is lost no sooner), and never a line that breaks none put before one that breaks
+  if (!lx && !ly && (decF.under || garbageComing()) && !x->o.dead && !y->o.dead && x->readyNext != NOT_ASKED && y->readyNext != NOT_ASKED &&
+      (x->readyNext == 1) == (y->readyNext == 1)) {
+    int32_t hx = x->landHollow, hy = y->landHollow;
+    if (hx >= 0 && hy >= 0 && (hx >= DEEP_WELL || hy >= DEEP_WELL) && iabs(hx - hy) >= WELL_STEP) {
+      const Judge *s = hx < hy ? x : y, *d = hx < hy ? y : x;
+      if (!(d->apBroke > 0 && !(s->apBroke > 0)) && diesAt(s) >= rankSave && diesAt(s) < 1e299 && (lostAlike(s, d) || lostOf(s) >= lostOf(d)))
+        return (cmpKey = __LINE__, (s == x ? -1 : 1));
+    }
+  }
   // 1. NOTHING AMID THE GARBAGE (amidGarbage): under garbage, of two that do not live, a line that swaps among the slabs and breaks nothing
   // after one that does not -- unless it keeps the board a break's time (rankSave) longer
   if (!lx && decF.under && !x->o.dead && !y->o.dead) {

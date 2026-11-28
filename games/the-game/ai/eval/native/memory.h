@@ -34,7 +34,7 @@ static void *grab(unsigned long n) {
 // next touched, as a block fresh from the heap does. Elsewhere (wasm, the bot) nothing is given back.
 #if defined(PA_HEAP)
 void paRelease(void *p, unsigned long n);
-int paHeapOver(void);   // (the host's budget: the heap grown past what may be resident -- gambit/host.c)
+int paHeapOver(void);   // (the host's budget: the process resident past what it may hold -- gambit/host.c)
 #else
 static void paRelease(void *p, unsigned long n) { (void)p; (void)n; }
 static int paHeapOver(void) { return 0; }
@@ -89,7 +89,7 @@ EXPORT(nb_new) Board *nb_new(void) {
 // Kept enough for the boards a decision lets go to be the next one's: each page given back takes the process's memory map and stops
 // every CPU it runs on, and the game's thread, waiting on the map behind thousands of them a decision, missed its frames (GAMEGAP). What
 // is kept is never more than the heap has given (gambit/host.c heapBytes): giving pages back changes what is resident, not what is grown
-// -- so none is given back at all until the heap has grown past the host's budget (paHeapOver).
+// -- so none is given back at all until the process's resident memory passes the host's budget (paHeapOver).
 #define SPARE_KEEP 32768
 EXPORT(nb_free) void nb_free(Board *b) {
   if (freeCount(thId) >= FREE_CAP) {
