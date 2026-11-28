@@ -54,9 +54,17 @@ on:
       then:
         description: "The modes an opener gives way to at the top-out, a JSON list (`_` for a space: [\"finish_them\",\"big_chain\",\"pressure\",\"build\"]): every game is played once per mode on the same seed (GC_GAMBIT_THEN); [\"rotate\"]: each game one mode, in turn; none: the profile's mode all game"
         default: '[""]'
+      parent_run:
+        description: 'Set by a game a slow runner skipped: the run it belongs to (its games are written up there); empty for a run of its own'
+        default: ''
+      hops:
+        description: 'Set by a game a slow runner skipped: the times it has been dispatched again (from 3 on it plays on whatever runner it gets)'
+        default: '0'
       stop_after:
         description: "Frames: a game ends alive this long after the enemy first tops out (GC_STOP_AFTER_HANDOVER; needs a panel_ref whose training loop reads GC_TRAINING_STOP_AT) -- the opener measured to its handover and the seconds after; empty: the frames input alone"
         default: ''
+
+run-name: ${{ inputs.parent_run != '' && format('Gambit 28, a game for {0}', inputs.parent_run) || 'Gambit 28' }}
 
 permissions:
   contents: read
@@ -67,6 +75,9 @@ jobs:
     if: ${{ inputs.report_run == '' }}
     runs-on: ubuntu-24.04   # (pinned: ubuntu-latest put some jobs on a 26.04 image whose apt finds no luajit, clang or libfuse2)
     timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: write   # (a game a slow runner skipped is dispatched again at once)
     strategy:
       fail-fast: false
       max-parallel: 29   # (the runners are shared: one run at a time, 30 jobs at most with the report)
@@ -83,25 +94,50 @@ jobs:
         then: ${{ fromJSON(inputs.then || '[""]') }}
     steps:
       # THE RUNNERS (plans/gambit-goal.md, the runners: skip by model, never by vendor): a slower model searches less in a decision's time
-      # and loses more -- on one of the models named the job stops before the game, and gambit-24-rerun.yml runs it again on another
-      # runner when the run ends; from the 4th attempt it plays on whatever runner it has, so every run finishes its games
+      # and loses more -- on one of the models named, the game is dispatched again at once as a run of its own (parent_run: this run, whose
+      # report waits for it and writes it up) and this job plays nothing; from its 3rd dispatch it plays on whatever runner it gets
       - name: Skip a slow runner
         id: skip
-        timeout-minutes: 1
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOPS: ${{ inputs.hops || '0' }}
+          PARENT: ${{ inputs.parent_run || github.run_id }}
+          M_PATTERN: ${{ matrix.pattern }}
+          M_GAME: ${{ matrix.game }}
+          M_ROUND: ${{ matrix.round }}
+          M_THEN: ${{ matrix.then }}
+          I_PROFILE: ${{ inputs.profile }}
+          I_FRAMES: ${{ inputs.frames }}
+          I_PANEL: ${{ inputs.panel_ref }}
+          I_WORKERS: ${{ inputs.workers }}
+          I_BOT: ${{ inputs.bot }}
+          I_SEED: ${{ inputs.seed }}
+          I_GAMBIT: ${{ inputs.gambit_from }}
+          I_FIGHT: ${{ inputs.fight }}
+          I_BLIND: ${{ inputs.blind }}
+          I_ENEMY: ${{ inputs.enemy }}
+          I_STOP: ${{ inputs.stop_after }}
         run: |
           model=$(lscpu | sed -n 's/^Model name: *//p' | head -1)
-          echo "runner: $model, attempt ${{ github.run_attempt }}"
-          if [ "${{ github.run_attempt }}" -lt 4 ] && echo "$model" | grep -qiE '8573C|7763|9V74'; then
-            echo "skipped runner: $model" >> "$GITHUB_STEP_SUMMARY"
-            echo "::error title=skipped runner::$model"
-            exit 1
+          echo "runner: $model, dispatched again $HOPS times"
+          if [ "$HOPS" -lt 3 ] && echo "$model" | grep -qiE '8573C|7763|9V74'; then
+            for i in 1 2 3; do gh workflow run gambit-24.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
+              -f profile="$I_PROFILE" -f frames="$I_FRAMES" -f panel_ref="$I_PANEL" -f workers="$I_WORKERS" -f bot="$I_BOT" -f seed="$I_SEED" \
+              -f gambit_from="$I_GAMBIT" -f fight="$I_FIGHT" -f blind="$I_BLIND" -f enemy="$I_ENEMY" -f stop_after="$I_STOP" \
+              -f patterns="[\"$M_PATTERN\"]" -f games="[$M_GAME]" -f rounds="[$M_ROUND]" -f then="[\"$M_THEN\"]" \
+              -f parent_run="$PARENT" -f hops="$((HOPS + 1))" && break; sleep 10; done
+            echo "skipped runner: $model -- $M_PATTERN $M_GAME dispatched again for run $PARENT" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=skipped runner::$model: $M_PATTERN $M_GAME dispatched again"
+            echo "skipped=1" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@v4
+        if: ${{ steps.skip.outputs.skipped != '1' }}
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
       - name: The Gambit of another commit
-        if: ${{ inputs.gambit_from != '' }}
+        if: ${{ inputs.gambit_from != '' && steps.skip.outputs.skipped != '1' }}
         env:
           GAMBIT_FROM: ${{ inputs.gambit_from }}
         run: |
@@ -114,17 +150,20 @@ jobs:
           rm -rf games/the-game/ai/gambit games/the-game/ai/eval/native && git checkout FETCH_HEAD -- games/the-game/ai/gambit games/the-game/ai/eval/native
           echo "::notice title=gambit::the Gambit of ${{ inputs.gambit_from }}"
       - uses: actions/checkout@v4
+        if: ${{ steps.skip.outputs.skipped != '1' }}
         with:
           repository: briankeegan/panel-game
           ref: ${{ inputs.panel_ref || '5c6c3231a97c3faad163c5e9bb0d35c53eaf5d4a' }}
           path: panel-game
           fetch-depth: 1
       - uses: actions/setup-node@v4
+        if: ${{ steps.skip.outputs.skipped != '1' }}
         with:
           node-version: '22'
       # (love from the cache when a job before this one fetched it: the release download returns 504 for minutes at a time, and a job
       # without love plays no game)
       - name: love, cached
+        if: ${{ steps.skip.outputs.skipped != '1' }}
         id: lovecache
         timeout-minutes: 5
         uses: actions/cache@v4
@@ -132,6 +171,7 @@ jobs:
           path: /tmp/love.tar.gz
           key: love-12.0-linux-x86_64
       - name: xvfb, love and clang
+        if: ${{ steps.skip.outputs.skipped != '1' }}
         timeout-minutes: 15
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
@@ -142,9 +182,11 @@ jobs:
           mv ~/love2d/*.AppImage ~/love2d/love.AppImage
           chmod +x ~/love2d/love.AppImage
       - name: Gambit sees only what the screen shows
+        if: ${{ steps.skip.outputs.skipped != '1' }}
         timeout-minutes: 2
         run: luajit games/the-game/ai/gambit/lua/board.test.lua
       - name: Play
+        if: ${{ steps.skip.outputs.skipped != '1' }}
         timeout-minutes: 340
         env:
           PG: ${{ github.workspace }}/panel-game
@@ -173,10 +215,10 @@ jobs:
           mkdir -p out; echo "runner cpu: $(lscpu | sed -n 's/^Model name: *//p' | head -1), $(nproc) threads, $(lscpu | sed -n 's/^CPU max MHz: *//p' | head -1) MHz max" > out/cpu.txt
           bash games/the-game/ai/eval/training.sh "${{ inputs.bot || 'gambit' }}" "${{ matrix.pattern }}" 1
       - name: Results
-        if: ${{ always() && steps.skip.outcome != 'failure' }}
+        if: ${{ always() && steps.skip.outputs.skipped != '1' }}
         run: grep -h '^game ' out/results.txt 2>/dev/null | sed 's/^/::notice title=${{ matrix.pattern }} ${{ matrix.game }} r${{ matrix.round }}::/' || true
       - uses: actions/upload-artifact@v4
-        if: ${{ always() && steps.skip.outcome != 'failure' }}
+        if: ${{ always() && steps.skip.outputs.skipped != '1' }}
         timeout-minutes: 5
         with:
           name: gambit-${{ matrix.pattern }}-${{ matrix.game }}${{ matrix.round > 1 && format('-r{0}', matrix.round) || '' }}${{ matrix.then != '' && format('-{0}', matrix.then) || '' }}
@@ -189,7 +231,7 @@ jobs:
 
   # (the code's checks, once a run beside the games: a check that fails turns the run red without stopping a game)
   checks:
-    if: ${{ inputs.report_run == '' }}
+    if: ${{ inputs.report_run == '' && inputs.parent_run == '' }}
     runs-on: ubuntu-24.04   # (pinned: ubuntu-latest put some jobs on a 26.04 image whose apt finds no luajit, clang or libfuse2)
     timeout-minutes: 30
     steps:
@@ -221,9 +263,9 @@ jobs:
 
   report:
     needs: play
-    if: always()
+    if: ${{ always() && inputs.parent_run == '' }}
     runs-on: ubuntu-24.04   # (pinned: ubuntu-latest put some jobs on a 26.04 image whose apt finds no luajit, clang or libfuse2)
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -238,6 +280,26 @@ jobs:
           path: games-of-run
           run-id: ${{ inputs.report_run || github.run_id }}
           github-token: ${{ github.token }}
+      # (THE GAMES A SLOW RUNNER SKIPPED, each played again at once as a run of its own named for this one: waited for -- a game played
+      # again may itself be skipped and dispatched once more -- and their games read in beside this run's)
+      - name: The skipped games, played again
+        timeout-minutes: 60
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PARENT: ${{ inputs.report_run || github.run_id }}
+        run: |
+          title="Gambit 28, a game for $PARENT"
+          since=$(gh api "repos/$REPO/actions/runs/$PARENT" --jq .created_at)
+          kids() { gh api "repos/$REPO/actions/workflows/gambit-24.yml/runs?created=>=$since&per_page=100" --jq ".workflow_runs[] | select(.display_title == \"$title\") | \"\(.id) \(.status)\""; }
+          calm=0
+          while [ $calm -lt 2 ]; do
+            k=$(kids || true); busy=$(printf '%s\n' "$k" | grep -c ' \(queued\|in_progress\|waiting\|requested\|pending\)$' || true)
+            if [ "$busy" = 0 ]; then calm=$((calm + 1)); else calm=0; fi
+            sleep 30
+          done
+          n=0; for id in $(printf '%s\n' "$k" | awk 'NF {print $1}'); do gh run download "$id" --repo "$REPO" --pattern 'gambit-*-*' --dir games-of-run && n=$((n + 1)) || true; done
+          echo "::notice title=played again::$n skipped games read in from their own runs"
       - name: The run, written up
         timeout-minutes: 45
         run: |
