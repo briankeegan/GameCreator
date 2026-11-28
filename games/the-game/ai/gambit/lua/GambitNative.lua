@@ -547,9 +547,11 @@ end
 -- machine code's pages writable and back, and each flip waits for the process's memory map while Gambit's threads fault pages in: a
 -- frame over the think budget on a millisecond of CPU. jit.off keeps the traces compiled; jit.on after the frame)
 local JIT_OFF = jit and jit.off and jit.on and jit.status
--- (THE COLLECTOR AT REST BEFORE THE FRAME'S CLOCK STARTS: a trace exit runs a step of the collector while it is in its atomic phase or
--- calling finalizers (lj_trace_exit), stopped or not -- 8.5 to 10.5 ms in a frame's panel load, on heaps of 88 to 303 MB. A step asked
--- from the interpreter runs the atomic phase whole; the steps after it run the finalizers left, until the cycle ends or GC_DRAIN is spent; how long it took, and whether it ended, go in a slow frame's log)
+-- (THE COLLECTOR BROUGHT TO REST BETWEEN FRAMES, outside the frame's clock: a trace exit runs a collector step while it is in its atomic
+-- phase or calling finalizers (lj_trace_exit), stopped or not; a step asked from the interpreter runs the atomic phase whole and the steps
+-- after it the finalizers left, until the cycle ends or GC_DRAIN is spent. Run after the frame, never before it: the catch-up walks tens
+-- of MB of the heap and leaves the caches cold for the board the next frame reads. How long it took, whether the cycle ended, and the
+-- frame's trace exits go in a slow frame's log)
 local GC_DRAIN = 0.003
 -- (the trace exits inside the frame, counted for a slow frame's log: each is where a collector step can run -- jit.attach's texit event,
 -- attached only while the frame is worked)
@@ -557,10 +559,6 @@ local TEXITS = jit and jit.attach and true
 local texits = 0
 local function onTexit() texits = texits + 1 end
 function GambitNative:input(stack, sources, view)
-  local g0 = ThinkBudget.now()
-  local rested
-  repeat rested = collectgarbage("step", 0) until rested or ThinkBudget.now() - g0 > GC_DRAIN
-  self.drainMs, self.drainRested = (ThinkBudget.now() - g0) * 1000, rested and 1 or 0
   collectgarbage("stop")
   texits = 0
   if TEXITS then jit.attach(onTexit, "texit") end
@@ -576,6 +574,10 @@ function GambitNative:input(stack, sources, view)
   self.stepPress = began + took - tPress
   if jitWas then jit.on() end
   if TEXITS then jit.attach(onTexit) end
+  local g0 = ThinkBudget.now()
+  local rested
+  repeat rested = collectgarbage("step", 0) until rested or ThinkBudget.now() - g0 > GC_DRAIN
+  self.drainMs, self.drainRested = (ThinkBudget.now() - g0) * 1000, rested and 1 or 0
   collectgarbage("restart")
   if not ok then error(key, 0) end
   if self.ownThinking then self.thinking:charge(took) end
@@ -588,7 +590,7 @@ function GambitNative:input(stack, sources, view)
     C.gn_log(string.format("SLOWFRAME clock %d: %.1f ms (before %.1f, load %.1f, telegraph %.1f, frame loop %.1f, after %.1f, press %.1f) cpu %.1f ms, preempted %d, yielded %d, faults %d (major %d), pages released by every thread %d; %s",
       stack.clock, took * 1000, (self.stepPre or 0) * 1000, self.stepLoad * 1000, self.stepTele * 1000, self.stepFrame * 1000, (self.stepPost or 0) * 1000, (self.stepPress or 0) * 1000,
       b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3], b[4] - a[4], b[5] - a[5],
-      string.format("rows %d, queued %d; load head %.1f, queues %.1f, panels %.1f, queues written %.1f; lua heap KB %.0f, after the load %.0f, after the telegraph %.0f, now %.0f; collector before the frame %.1f ms, at rest %d; trace exits %d",
+      string.format("rows %d, queued %d; load head %.1f, queues %.1f, panels %.1f, queues written %.1f; lua heap KB %.0f, after the load %.0f, after the telegraph %.0f, now %.0f; collector after the frame %.1f ms, at rest %d; trace exits %d",
         self.nrows or 0, self.nqueued or 0, P and P[1] * 1000 or -1, P and P[2] * 1000 or -1, P and P[3] * 1000 or -1, P and P[4] * 1000 or -1,
         self.kb0 or -1, self.kb1 or -1, self.kb2 or -1, collectgarbage("count"), self.drainMs or -1, self.drainRested or -1, texits)))
   end
