@@ -21,12 +21,6 @@ EXPORT(gb_replay_allow) void gb_replay_allow(int allow) { replayAllow = allow; }
 // (THE RAISE OFFERED, gb_replay_raise 1 before a replay: the question asked as the frame loop asks one it may answer with a raise)
 static int32_t replayRaise;
 EXPORT(gb_replay_raise) void gb_replay_raise(int on) { replayRaise = on; }
-// (THE MOVE'S OWN FRAME, gb_replay_frame MS before a replay: the host's hard stop MS of the replay's time in -- the work that runs past the
-// decision's deadline up to it (the board played on, the life after the line) runs as in a game; 0: none, as the checks replay)
-static int32_t replayFrameMs;
-static double replayT0;
-static int replayFrameOut(void) { return replayNow() >= replayT0 + replayFrameMs; }
-EXPORT(gb_replay_frame) void gb_replay_frame(int ms) { replayFrameMs = ms; }
 static int lowered(Board *b, int keep) {
   const Panel *empty = 0;
   for (int c = 1; c <= W && !empty; c++) if (!b->p[b->nrows - 1][c].f[COLOR] && !b->p[b->nrows - 1][c].f[ISGARBAGE]) empty = &b->p[b->nrows - 1][c];
@@ -55,7 +49,6 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   modeRule = mode;
   curQid = abortId + 1;
   replayWork = work; clockNowOf = work > 0 ? replayNow : 0; clockFrameOut = 0; clockWork = 0;
-  replayT0 = 0; if (replayFrameMs > 0 && work > 0) clockFrameOut = replayFrameOut;
   int topped = fullTop(hostBoard) >= hostBoard->height;
   // (work 0: the wall clock's REPLAY_MS, as a game gives it -- the speed check's; else the work's, the same answer every time)
   double t0 = work > 0 ? 0 : clock_ms(), due = t0 + REPLAY_MS;
@@ -64,7 +57,6 @@ EXPORT(gb_replay) int gb_replay(int nbytes, int narr, int mode, int64_t work, ch
   answerQuestion(1, 0, topped, opp, opp && replayOppOut, opp, opp ? replayOppTop : 0, opp && replayOppStop >= 0, opp ? replayOppStop : 0,
                  replayAllow >= 0, imax(0, replayAllow), -1, 0, (replayLow || replayRaise) && canRaiseOn(hostBoard), due, t0, 0);
   hostTaps = taps;   // (the raise asked of a low stack only)
-  clockFrameOut = 0;
   readyStop();   // (the readiness the workers search on past the decision taken back before its clock is: the next decision would)
   clockNowOf = 0;
   const Answer *A = &theAnswer;
