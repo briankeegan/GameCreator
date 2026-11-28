@@ -913,8 +913,8 @@ static int calmKept(const Judge *c, const Judge *o) {
 #define PERCH_HIGH 5   // (garbage resting on one or two columns this many rows over the lowest under it -- the perch floor below, and decide.c's
                        // cut: of the boards with garbage in the last 600 frames of a lost game, 33% had it perched 5 rows or more, 21% 6; of all
                        // the others, 14.3% and 7.6% -- runs 4840-4917, 235 games, 702 boards and 82,979)
-#define EDGE_MID 3     // (the taller edge this many rows over the middle columns' mean -- the edge floor below: of the combo_storm boards with
-                       // garbage in the last 600 frames of a lost game, 49% had it 3 rows or more, 28% 4; of all the others, 17.2% and 5.4% --
+#define EDGE_MID 2     // (the taller edge this many rows over the middle columns' mean -- the edge floor below: of the combo_storm boards with
+                       // garbage in the last 600 frames of a lost game, 66% had it 2 rows or more, 49% 3; of all the others, 38.4% and 17.2% --
                        // runs 4840-4979, 98 games, 521 boards and 32,072)
 #define HOLLOW_HIGH 15  // (cells empty under the garbage -- the hollow floor below: of the boards with garbage in the last 600 frames of a lost game,
                         // 54% had 15 or more, 65% 12; of all the others, 24.1% and 38.5% -- runs 4840-4999, 351 games, 924 boards and 123,404)
