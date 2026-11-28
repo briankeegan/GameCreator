@@ -161,7 +161,11 @@ static int readBoard_(Read *R) {
   // a chain falling is a board that cannot top out --
   // set 86 large_garbage 6, a 5 designed and pressed after the 3, put down at 69 frames for a dig that left nothing to build with)
   int nextFires = opKeepOn && openerSum > 0 && decQ.b->clock - opKeepAt <= 40 && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < F->v[FACT_US_DIES];
-  int aboutLost = F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
+  // (and a board fuller than it lives longest with -- the life table's peak, not saving up -- with garbage on it is one about to be lost
+  // too: set 147 factory 6 switching, the opener chasing its eight on 45 to 60 panels from 1909 to 2422, the board 91 to 233 frames from
+  // its loss throughout, paused at 2461 with 62 left and lost at 2533)
+  int fullUnder = !savingPanels && garbageOn(decQ.b) && panelsOn(decQ.b) > lifePeakOf();
+  int aboutLost = ((F->v[FACT_US_DIES] > 0 && F->v[FACT_US_DIES] < OPENER_LOST) || fullUnder) && !ownFalling && !opLineOn && !carryOpener() && !nextFires;
   // (A BOARD ABOUT TO BE LOST PAUSES THE OPENER, never ends it -- the owner: carry on after the garbage is broken: the mode after it plays
   // while the board is lost within OPENER_LOST, its breaks the board's way out, and the opener takes up again once it stands -- its
   // chains, thrown before or after, add up to the eight; set 86 combo_storm 2, a 4 thrown, the opener ended, and a 5 at 1027 the mode's)
