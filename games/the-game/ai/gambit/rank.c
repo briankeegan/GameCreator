@@ -907,9 +907,9 @@ static int calmKept(const Judge *c, const Judge *o) {
 // where it is taken back -- compareJudged's first step, and the log's cr=
 #define TOWER_ROWS 4   // (the flatness floor's tower: the tallest column of panels this many rows or more over the lowest -- key 1 below)
 #define TOWER_STEP 2   // (and of two towered, this many rows taller)
-#define TOWER_HIGH 7   // (a tower this tall with garbage told or on the board is a floor, not a preference -- key 1 below: of the decisions in
-                       // the last 600 frames of a lost game, 40% faced a tower of 7 rows or more; of all the others, 7% -- fill and finish
-                       // runs 4837-4842, 152,951 decisions and 385)
+#define TOWER_HIGH 6   // (a tower this tall with garbage told or on the board is a floor, not a preference -- key 1 below: of the decisions
+                       // under garbage in the last 600 frames of a lost game, 26% faced a tower of 6 rows or more, 11% of 7; of all the
+                       // others, 12% and 5% -- runs 4830-4866, 203 games, 1,081 decisions and 200,237)
 // (A LINE THAT LEAVES THE STACK TOWERED beside one that leaves it flatter (the flatness floor's measure, judge.c towerOf): towered where the
 // other is not, or TOWER_STEP rows taller -- the other's board standing a break's time)
 static int toweredBeside(const Judge *t, const Judge *f) {
