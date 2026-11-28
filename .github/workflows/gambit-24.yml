@@ -95,7 +95,7 @@ jobs:
     steps:
       # THE RUNNERS (plans/gambit-goal.md, the runners: skip by model, never by vendor): a slower model searches less in a decision's time
       # and loses more -- on one of the models named, the game is dispatched again at once as a run of its own (parent_run: this run, whose
-      # report waits for it and writes it up) and this job plays nothing; from its 3rd dispatch it plays on whatever runner it gets
+      # report waits for it and writes it up) and this job plays nothing -- as many times as it takes
       - name: Skip a slow runner
         id: skip
         timeout-minutes: 3
@@ -121,7 +121,7 @@ jobs:
         run: |
           model=$(lscpu | sed -n 's/^Model name: *//p' | head -1)
           echo "runner: $model, dispatched again $HOPS times"
-          if [ "$HOPS" -lt 3 ] && echo "$model" | grep -qiE '8573C|7763|9V74'; then
+          if echo "$model" | grep -qiE '8573C|7763|9V74'; then
             for i in 1 2 3; do gh workflow run gambit-24.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
               -f profile="$I_PROFILE" -f frames="$I_FRAMES" -f panel_ref="$I_PANEL" -f workers="$I_WORKERS" -f bot="$I_BOT" -f seed="$I_SEED" \
               -f gambit_from="$I_GAMBIT" -f fight="$I_FIGHT" -f blind="$I_BLIND" -f enemy="$I_ENEMY" -f stop_after="$I_STOP" \
