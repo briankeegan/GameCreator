@@ -128,7 +128,7 @@ large chains go down while the eights and other combos go up.
       (same inputs, `parent_run` = the run it belongs to, `hops` + 1), writes "skipped runner: <model>" in the job summary, and ends
       green. No game is played or counted on that runner, and the run never waits for its other jobs before the game is replayed.
    4. The run's report waits for every run named "Gambit 28, a game for <run>" to end, then reads their games in beside its own.
-   5. At `hops` 3 the job plays on whatever runner it has, so every run finishes all its games.
+   5. There is no limit: a game is skipped and dispatched again until it lands on a model that plays.
    6. The report lists games and losses by runner model (`gambit_summary.js`, the `runners:` line) and flags a game played on a
       skipped model.
    About a third of jobs are replayed once. It does not fix the bot on a slow machine: live games on Actions can still land on one.
