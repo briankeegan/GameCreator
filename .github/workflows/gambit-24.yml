@@ -293,16 +293,25 @@ jobs:
           PARENT: ${{ inputs.report_run || github.run_id }}
         run: |
           title="Gambit 28, a game for $PARENT"
-          since=$(gh api "repos/$REPO/actions/runs/$PARENT" --jq .created_at)
+          since=; for t in 1 2 3 4 5; do since=$(gh api "repos/$REPO/actions/runs/$PARENT" --jq .created_at) && [ -n "$since" ] && break; sleep $((t * 10)); done
           kids() { gh api "repos/$REPO/actions/workflows/gambit-24.yml/runs?created=>=$since&per_page=100" --jq ".workflow_runs[] | select(.display_title == \"$title\") | \"\(.id) \(.status)\""; }
+          # (a listing is believed only when the call succeeded and every line it gave is a run's id and status -- an error page is not a
+          # list of runs: calm again from nothing)
           calm=0
           while [ $calm -lt 2 ]; do
-            k=$(kids || true); busy=$(printf '%s\n' "$k" | grep -c ' \(queued\|in_progress\|waiting\|requested\|pending\)$' || true)
-            if [ "$busy" = 0 ]; then calm=$((calm + 1)); else calm=0; fi
+            if k=$(kids) && ! printf '%s\n' "$k" | grep -qvE '^([0-9]+ [a-z_]+)?$'; then
+              busy=$(printf '%s\n' "$k" | grep -cE ' (queued|in_progress|waiting|requested|pending)$' || true)
+              if [ "$busy" = 0 ]; then calm=$((calm + 1)); else calm=0; fi
+            else calm=0; fi
             sleep 30
           done
-          n=0; for id in $(printf '%s\n' "$k" | awk 'NF {print $1}'); do gh run download "$id" --repo "$REPO" --pattern 'gambit-*-*' --dir games-of-run && n=$((n + 1)) || true; done
-          echo "::notice title=played again::$n skipped games read in from their own runs"
+          n=0 m=0
+          for id in $(printf '%s\n' "$k" | awk 'NF {print $1}'); do
+            for t in 1 2 3 4; do gh run download "$id" --repo "$REPO" --pattern 'gambit-*-*' --dir games-of-run 2> dl.err && { n=$((n + 1)); break; }
+              grep -q 'no valid artifacts' dl.err && { m=$((m + 1)); break; }; sleep $((t * 10)); done
+          done
+          echo "::notice title=played again::$n replayed games read in from their own runs ($m skipped there and replayed again)"
+          g=$(ls -d games-of-run/gambit-*-* 2>/dev/null | wc -l); echo "::notice title=games::$g games read in"
       - name: The run, written up
         timeout-minutes: 45
         run: |
