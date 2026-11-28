@@ -172,9 +172,9 @@ static int readBoard_(Read *R) {
   // set 86 large_garbage 6, a 5 designed and pressed after the 3, put down at 69 frames for a dig that left nothing to build with)
   int nextFires = opKeepOn && openerSum > 0 && decQ.b->clock - opKeepAt <= 40 && (opKeepSeq.n + 1) * OPEN_SWAP_FRAMES + popLeft(decQ.b) < F->v[FACT_US_DIES];
   // (and a board fuller than it lives longest with -- the life table's peak, or the rows it and its garbage fill (filledRows) FULL_ROOM
-  // short of the top, not saving up -- with garbage on it is one about to be lost too: set 147 factory 6 switching, the opener chasing its eight on 45 to 60 panels from 1909 to 2422, the board 91 to 233 frames from
+  // short of the top, not saving up -- with garbage on it or on its way is one about to be lost too: set 147 factory 6 switching, the opener chasing its eight on 45 to 60 panels from 1909 to 2422, the board 91 to 233 frames from
   // its loss throughout, paused at 2461 with 62 left and lost at 2533)
-  int fullUnder = !savingPanels && garbageOn(decQ.b) && (panelsOn(decQ.b) > lifePeakOf() ||
+  int fullUnder = !savingPanels && (garbageOn(decQ.b) || decQ.narr > 0 || decQ.b->ninc > 0) && (panelsOn(decQ.b) > lifePeakOf() ||
                   filledRows(&decQ, panelsOn(decQ.b)) >= (decQ.b->height ? decQ.b->height : 12) - FULL_ROOM);
   // (the full board's pause held off only by a chain of its own falling -- the game's chain counter -- or a line of its own pressed: under a
   // stream of garbage something is always popping after a break, and that is no chain of the opener's)
