@@ -6,6 +6,10 @@ Keep chat replies SHORT. Answer the question, state the recommendation,
 stop. No restating the ask, no summarising work already in a commit
 message, no tables or headed sections unless the answer needs structure.
 
+Every report on Gambit runs carries a table (the owner's): run, started and
+ended (EST), build, the change, games won, losses (game @ frame), frames
+over the think budget -- every run of the current push, newest last.
+
 When something merges to `main`, announce it in the reply with big emojis
 (🎉) and say in plain words what it does and what it measured.
 
