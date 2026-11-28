@@ -9,7 +9,7 @@ static int32_t canRaiseNow, gambitHit, modeRule = -1, hostTopped, surviveAsked;
 #define OP_KEEP_PANELS 36   // (the panels the opener's chain leaves once landed, at least: six rows -- the owner: keep enough to break)
 #define OP_FALL_KEEP AT_LEVEL(250)   // (and how much longer the line it gives way to keeps the board: set 86 combo_storm 7, a break 294-312 frames longer; combo_storm 3, 135-232, the chain the eight needed given up and the board lost all the same)
 #define OPENER_LOST AT_LEVEL(90)   // (frames to the board's loss inside which the opener gives way: a second and a half, the next mode's dig)
-#define OPENER_CHAINS 3
+#define OPENER_CHAINS 1
 #define OP_TWO_UNDER 2   // (the chain asked under tall garbage once a chain is thrown: a two whose link breaks the slab, decide.c read)
 static int tallGarbage(const Question *q);
 // THE ROWS A BOARD AND ITS GARBAGE FILL: the panels' rows, the rows holding garbage, and a row for each row of every block on its way or
@@ -152,9 +152,10 @@ static int readBoard_(Read *R) {
   // landed above its top row, not garbage sent -- the opener's rule, big chains; then the mode the enemy's board picks)
   // (the opener named and a mode to follow it -- the profile's `then`, answer.c gb_then: at the top-out the named mode becomes that one,
   // nothing carried let go, as the opener gives way to the enemy's mode in a fight)
-  // (THE OPENER IS OVER ONCE ITS CHAINS ADD UP -- the owner: chains to eight or more, a 3x and a 5x or two 4x alike, and a 2x counts for
-  // nothing: each chain thrown its longest link, the board's chain counter at its height before it ends, counted where it is
-  // OPENER_LEAST or more; over at OPENER_SUM, or OPENER_CHAINS such chains thrown, or a board topped out first)
+  // (THE OPENER IS OVER ONCE ITS PLAN IS THROWN -- the owner: the opener is the countdown's three seconds not wasted: one great plan,
+  // never thrown away, then the mode: each chain thrown its longest link, the board's chain counter at its height before it ends,
+  // counted where it is OPENER_LEAST or more; over at the first such chain thrown (OPENER_CHAINS), at OPENER_SUM, or a board topped out
+  // first)
   if (decQ.b->chainCounter > openerChained) openerChained = decQ.b->chainCounter;
   else if (openerChained && decQ.b->chainCounter == 0) { if (openerChained >= OPENER_LEAST) { openerSum += openerChained; openerThrown++; } openerChained = 0; }
   int thrown = openerSum >= OPENER_SUM || openerThrown >= OPENER_CHAINS;
