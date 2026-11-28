@@ -1120,8 +1120,16 @@ static int ranked(const Read *R, const Found *S) {
       overHold = H; overMat = R->keepOn && R->keep.t[KEEP_MATERIAL].op; overFloor = R->keep.t[KEEP_MATERIAL];
       n = cutAlways(order, n, overspends, &overCut, 31);
     } }
+  // (and where the hold is lost within a break's time, the same lines are taken out while a line that grows neither lives or stands a
+  // break's time: the life is kept, and taken from a line that leaves the garbage no tower to rest on)
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
-    tallHold = (decF.under || garbageComing()) && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave) ? H : 0;
+    tallHold = (decF.under || garbageComing()) && H && !H->o.dead ? H : 0;
+    if (tallHold && !(H->o.lives || diesAt(H) >= rankSave)) {
+      int alt = 0;
+      for (int i = 0; i < n && !alt; i++) { const Judge *J = order[i];
+        alt = !J->hold && !J->o.dead && (J->o.lives || diesAt(J) >= rankSave) && !growsTower(J) && !growsPerch(J); }
+      if (!alt) tallHold = 0;
+    }
     if (tallHold) { n = cutAlways(order, n, growsTower, &tallCut, 33); n = cutAlways(order, n, growsPerch, &perchCut, 34); }
     tallHold = 0; }
   if ((decF.under || garbageComing()) && !ruleNoEnemy && pressAllowance >= 0) {
