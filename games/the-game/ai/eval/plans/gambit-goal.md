@@ -113,8 +113,11 @@ large chains go down while the eights and other combos go up.
    a second time in a row only after it played 28/28; a run with a loss is followed by a change, never by the same build again. Each mode is
    played on seeds of its own, never another mode's -- gambit-24.yml `seed` (PA_SEED = base*100 + pattern*10 + game), finish them base
    141, switching 143, fill 147. A mode's runs replay its own seeds, so builds are compared on the same games; a mode is done only once
-   it has also played 28/28 twice on seed bases it has never played -- a fix that holds only on the seeds it was made on is no fix (the
+   it has also played 28/28 on seed bases it has never played -- a fix that holds only on the seeds it was made on is no fix (the
    owner: it has to work on new seeds, and in bad runs).
+   **New seeds, once each (the owner: fix, then move to the next seed -- no more twice in a row, once is enough):** each mode plays a
+   seed base it has never played (finish them 201, switching 203, fill 207, then the next unplayed base of its own); a loss there is
+   followed by a change and that base again; one 28/28 on it moves the mode on to its next unplayed base.
    **The runners (the owner): skip by model, never by vendor.** A game's result depends on the runner's CPU model: each decision has
    the same wall-clock time, so a slower model searches less and loses more. gambit-24, 43 runs (4799-4848), each model's losses
    against what its own runs' loss rate gave it: Intel Xeon Platinum 8573C 91 games, 1.73 -- skip; AMD EPYC 7763 289 games, 1.46 --
