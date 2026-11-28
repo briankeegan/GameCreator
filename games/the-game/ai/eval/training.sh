@@ -45,6 +45,10 @@ for c in $(seq 1 $(( NCPU - 1 ))); do
   if [ -z "$GAMBIT_CPU" ] && [ "$(core "$c")" != "$(core "$CLIENT_CPU")" ]; then GAMBIT_CPU=$c; else WORKER_CPUS=${WORKER_CPUS:+$WORKER_CPUS,}$c; fi
 done
 [ -z "$GAMBIT_CPU" ] && { GAMBIT_CPU=$MIND_CPUS; WORKER_CPUS=$MIND_CPUS; }
+# (and of the workers' CPUs, those on a core the game's is not on: the reaper's, whose sweeps of memory would otherwise share the game's
+# core and its caches -- host.c idleStart)
+FAR_CPUS=
+for c in ${WORKER_CPUS//,/ }; do case "$c" in *-*) ;; *) [ "$(core "$c")" != "$(core "$CLIENT_CPU")" ] && FAR_CPUS=${FAR_CPUS:+$FAR_CPUS,}$c ;; esac; done
 MIND=
 cleanup() { [ -n "$MIND" ] && kill "$MIND" 2>/dev/null; [ -n "${CLIENT:-}" ] && kill "$CLIENT" 2>/dev/null; }
 trap cleanup EXIT
@@ -64,8 +68,8 @@ elif [ "$BOT" = gambit ]; then
   # (the game drawn a frame in sixty, as unpaced training draws it -- enough for the game's last screenshot: the software renderer took
   # most of a CPU from Gambit, which a headless bot on the server never spends; the game plays at its own pace either way)
   export PA_DRAW_EVERY="${PA_DRAW_EVERY:-60}"
-  export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS"
-  echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS"
+  export GC_GAMBIT_WORDS="$OUT_DIR/gambit.words" GC_GAMBIT_LOG="$OUT_DIR/survivor.log" GC_GAMBIT_CPUS="$GAMBIT_CPU" GC_GAMBIT_WORKER_CPUS="$WORKER_CPUS" GC_GAMBIT_FAR_CPUS="$FAR_CPUS"
+  echo "training.sh: the game on CPU $CLIENT_CPU, Gambit on $GAMBIT_CPU, its workers on $WORKER_CPUS, the reaper on ${FAR_CPUS:-theirs}"
   : > "$OUT_DIR/survivor.log"
 fi
 
