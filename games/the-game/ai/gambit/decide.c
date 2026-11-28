@@ -1164,14 +1164,14 @@ static int ranked(const Read *R, const Found *S) {
   // and is no flatten the window has room for (rank.c flattenFree) nor the finish's attack (rank.c finishFree) is taken out: the actions it
   // spends are the next break's, and the hold keeps them. Where the hold is lost within a break's time, a stall may be the life)
   // (NOT WHILE THE GARBAGE TURNS TO PANELS ONTO A FULL BOARD: every garbage cell on the board matched or popping, and the panels with
-  // its cells over the life's peak -- there is nothing left to break, and the room a line clears is where those panels go)
+  // its cells over the life's peak -- there is nothing left to break, and the room a line clears is where those panels go. The window's
+  // and the panels' cuts after it still hold: the next block's break is pressed out of what is left)
   { int32_t t = turningOnly(decQ.b); turnFull = t > 0 && panelsOn(decQ.b) + t > lifePeakOf(); }
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     if (decF.under && !turnFull && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) n = cutAlways(order, n, stallsUnder, &stallCut, 30); }
   { const Judge *H = 0; for (int i = 0; i < n && !H; i++) if (order[i]->hold) H = order[i];
     overHold = 0;
-    if (turnFull) ;
-    else if ((decF.under || garbageComing()) && !ruleNoEnemy && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) {
+    if ((decF.under || garbageComing()) && !ruleNoEnemy && H && !H->o.dead && (H->o.lives || diesAt(H) >= rankSave)) {
       overHold = H; overMat = R->keepOn && R->keep.t[KEEP_MATERIAL].op; overFloor = R->keep.t[KEEP_MATERIAL];
       n = cutAlways(order, n, overspends, &overCut, 31);
     } else if (decF.under && !ruleNoEnemy && H && !H->o.dead) {
