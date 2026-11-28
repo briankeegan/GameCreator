@@ -117,7 +117,8 @@ large chains go down while the eights and other combos go up.
    owner: it has to work on new seeds, and in bad runs).
    **New seeds, once each (the owner: fix, then move to the next seed -- no more twice in a row, once is enough):** each mode plays a
    seed base it has never played (finish them 201, switching 203, fill 207, then the next unplayed base of its own); a loss there is
-   followed by a change and that base again; one 28/28 on it moves the mode on to its next unplayed base.
+   followed by a change and that base again -- never the same build twice (the owner: never rerun on the same build); one 28/28 on it
+   moves the mode on to its next unplayed base. Finish them 28/28 on base 201 (4eb2dc7e, run 5552); fill 28/28 on base 207 (4eb2dc7e, run 5573); switching 28/28 on base 203 (47bedc3a, run 5671 -- one frame over the think budget, 13.6 ms, a board load of 24 rows preempted five times); switching 28/28 on base 213 (93091e33, run 5801 -- one frame over the think budget, 8.7 ms); fill 28/28 on base 217 (93091e33, run 5819); finish 28/28 on base 211 (9031bec1, run 5834). Next: finish 221, switching 223, fill 227.
    **The runners (the owner): skip by model, never by vendor.** A game's result depends on the runner's CPU model: each decision has
    the same wall-clock time, so a slower model searches less and loses more. gambit-24, 43 runs (4799-4848), each model's losses
    against what its own runs' loss rate gave it: Intel Xeon Platinum 8573C 91 games, 1.73 -- skip; AMD EPYC 7763 289 games, 1.46 --
@@ -142,7 +143,7 @@ large chains go down while the eights and other combos go up.
    pressure 23 in run 1555 and 21 in 1556 (factory 5 to 8 of 8, the other two 7 and 8); build 23 in run 1636 (combo_storm and
    large_garbage 8 of 8, factory 7); finish 23 in run 1641 (factory and large_garbage 8 of 8, combo_storm 7); big chain 23 in run 1644 (combo_storm and large_garbage 8 of 8, factory 7); switching 23 in run 1645 (large_garbage 7). On the owner's lists (110143e3): pressure 22 in run 1669, build 22 in run 1672, finish 22 in run 1679, switching 22 in run 1789; each mode to 22 again, one at a time. At level 11, 28 games a run (one per runner model that plays): finish 28/28 twice on 4f69f40b, runs 5089 and 5109 (seed base 141), no late move, no frame over, no divergence. Fill 28/28 twice on a184adc6, runs 5312 and 5327 (seed base 147), the same. Switching 28/28 twice on a184adc6, runs 5340 and 5358 (seed base 143), the same.
 
-THE OPENER'S OWN TARGET (the owner): 100%. It has the countdown's three seconds to itself, so it never dies. And it attacks at once (the owner: the opener is the worst move now): the three seconds plan several chains and set-ups -- more
+THE OPENER IS THE COUNTDOWN'S THREE SECONDS NOT WASTED (the owner): one great plan, never thrown away; once its chain is thrown, the mode plays. THE OPENER'S OWN TARGET (the owner): 100%. It has the countdown's three seconds to itself, so it never dies. And it attacks at once (the owner: the opener is the worst move now): the three seconds plan several chains and set-ups -- more
 than one idea, each continued on its own -- so they are fired as soon as the game starts and top the enemy out within its first five
 moves. Measured: the frames from the start to the enemy's first top-out, and the garbage sent in the first 15 s. It is measured as a
 handover: from the start to the top-out, that garbage broken, then 15 s (900 frames) in the mode it gives way to -- each of finish
