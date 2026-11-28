@@ -548,6 +548,10 @@ end
 -- frame over the think budget on a millisecond of CPU. jit.off keeps the traces compiled; jit.on after the frame)
 local JIT_OFF = jit and jit.off and jit.on and jit.status
 function GambitNative:input(stack, sources, view)
+  -- (the collector's atomic phase run here, before the frame's clock starts: while the game's code runs on a trace LuaJIT puts it off, and
+  -- runs it at the next trace exit, the collector stopped or not (lj_trace_exit) -- on a heap of hundreds of MB, 9 ms in the middle of a
+  -- frame's load. A step asked from the interpreter runs it and never leaves it waiting)
+  collectgarbage("step", 0)
   collectgarbage("stop")
   local jitWas = JIT_OFF and jit.status()
   if jitWas then jit.off() end
