@@ -916,6 +916,9 @@ static int calmKept(const Judge *c, const Judge *o) {
 #define EDGE_MID 3     // (the taller edge this many rows over the middle columns' mean -- the edge floor below: of the combo_storm boards with
                        // garbage in the last 600 frames of a lost game, 49% had it 3 rows or more, 28% 4; of all the others, 17.2% and 5.4% --
                        // runs 4840-4979, 98 games, 521 boards and 32,072)
+#define HOLLOW_HIGH 15  // (cells empty under the garbage -- the hollow floor below: of the boards with garbage in the last 600 frames of a lost game,
+                        // 54% had 15 or more, 65% 12; of all the others, 24.1% and 38.5% -- runs 4840-4999, 351 games, 924 boards and 123,404)
+#define HOLLOW_STEP 3
 #define TOWER_HIGH 6   // (a tower this tall with garbage told or on the board is a floor, not a preference -- key 1 below: of the decisions
                        // under garbage in the last 600 frames of a lost game, 26% faced a tower of 6 rows or more, 11% of 7; of all the
                        // others, 12% and 5% -- runs 4830-4866, 203 games, 1,081 decisions and 200,237)
@@ -1095,6 +1098,18 @@ static int compareJudged(const Judge *x, const Judge *y) {
       imax(x->o.j.edgeMid, y->o.j.edgeMid) >= 4 * EDGE_MID && (decF.under || garbageComing())) {
     const Judge *f = x->o.j.edgeMid < y->o.j.edgeMid ? x : y, *t = f == x ? y : x;
     if ((lx || (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299)) && (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
+        (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
+      return (cmpKey = __LINE__, (f == x ? -1 : 1));
+  }
+  // 1. THE HOLLOW FLOOR (the owner: it prefers not dying, and flatness -- both floors): with garbage on the board or on its way, of two that
+  // both live or both do not, where either leaves HOLLOW_HIGH cells or more empty under the garbage (judge.c hollowOf), the one that leaves
+  // HOLLOW_STEP fewer goes first -- not dying first: where they are lost alike or it is lost no sooner -- under the perch floor's other
+  // conditions: a well dug under the garbage is where no panel touches it
+  if (lx == ly && x->o.j.hollow >= 0 && y->o.j.hollow >= 0 && iabs(x->o.j.hollow - y->o.j.hollow) >= HOLLOW_STEP &&
+      imax(x->o.j.hollow, y->o.j.hollow) >= HOLLOW_HIGH && (decF.under || garbageComing())) {
+    const Judge *f = x->o.j.hollow < y->o.j.hollow ? x : y, *t = f == x ? y : x;
+    if ((lx || (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)))) &&
+        (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
         (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
       return (cmpKey = __LINE__, (f == x ? -1 : 1));
   }
