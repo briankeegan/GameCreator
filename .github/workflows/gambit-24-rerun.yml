@@ -1,0 +1,32 @@
+name: Gambit 28, the skipped games again
+
+# THE RUNNERS (plans/gambit-goal.md, the runners: skip by model, never by vendor): when a Gambit 28 run ends and every job that failed
+# failed at "Skip a slow runner", those jobs alone are run again (rerun-failed-jobs: each gets a new runner, and the report after them
+# is written again). From the run's 4th attempt the games play on whatever runner they get, so nothing is run again after it.
+on:
+  workflow_run:
+    workflows: ["Gambit 28"]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  rerun:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: The skipped games again
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          if [ "$ATTEMPT" -ge 4 ]; then echo "attempt $ATTEMPT: the games played on the runners they had"; exit 0; fi
+          jobs=$(gh api "repos/$REPO/actions/runs/$RUN/jobs?filter=latest&per_page=100")
+          failed=$(echo "$jobs" | jq '[.jobs[] | select(.conclusion == "failure")] | length')
+          skipped=$(echo "$jobs" | jq '[.jobs[] | select(.conclusion == "failure") | select(any(.steps[]?; .name == "Skip a slow runner" and .conclusion == "failure"))] | length')
+          echo "attempt $ATTEMPT: $failed failed, $skipped of them skipped runners"
+          if [ "$failed" -gt 0 ] && [ "$failed" -eq "$skipped" ]; then gh api -X POST "repos/$REPO/actions/runs/$RUN/rerun-failed-jobs" && echo "run again"; fi
