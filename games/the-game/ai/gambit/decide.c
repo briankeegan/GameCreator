@@ -52,7 +52,7 @@ static int taClears(const Judge *J) {
 }
 static int32_t taxBase, taxLong, taxN, taxMs;   // (the chain going, the log's: the chain left alone, the longest found, its swaps, the ms given)
 #define FULL_ROOM 2        // (the rows short of the top at which a board the garbage told of fills counts as full -- Read.full)
-#define OPEN_TOP 7         // (the tallest column the opening's raise leaves, in rows)
+#define OPEN_TOP 6         // (the tallest column the opening's raise leaves, in rows)
 static int32_t openTop = OPEN_TOP;   // (OPEN_TOP; test/decide_check.c lifts it where the raise's keying is checked on boards it would stop)
 static int32_t taLog;      // (the log's: 3 the chain going taken on, 1 swaps handed, 2 the trigger, -1 the design lost, -2 no order, -3 not in time, -4 too few full rows, -10 - the judge's drop)   // (the planned opener handed on and not yet done: carried, not grown over)
 static int carryHeld(void);
@@ -360,7 +360,8 @@ static int readBoard_(Read *R) {
     if (opening && rows > 1) rows = 1;
     // (and the opening's raise never takes the tallest column past OPEN_TOP rows -- the owner: the opener raise changed only where it
     // kills: set 147 combo_storm 8 fill, a start whose right column stood seven rows raised twice to nine, six blocks four wide landing
-    // on it at 455, the board lost by 900 in four runs of six)
+    // on it at 455, the board lost by 900 in four runs of six; set 147 combo_storm 3 fill, six rows raised to seven at 192, the first wave
+    // broken into panels at 378 and the second landing at 526 on 51 of them)
     if (opening) rows = imin(rows, openTop - panelTop(rq.b));
     if (rows <= 0) { R->up = R->low = 0; raiseWait = 0; } else to = fullTop(rq.b) + rows;
   }
