@@ -907,6 +907,9 @@ static int calmKept(const Judge *c, const Judge *o) {
 // where it is taken back -- compareJudged's first step, and the log's cr=
 #define TOWER_ROWS 4   // (the flatness floor's tower: the tallest column of panels this many rows or more over the lowest -- key 1 below)
 #define TOWER_STEP 2   // (and of two towered, this many rows taller)
+#define TOWER_HIGH 7   // (a tower this tall with garbage told or on the board is a floor, not a preference -- key 1 below: of the decisions in
+                       // the last 600 frames of a lost game, 40% faced a tower of 7 rows or more; of all the others, 7% -- fill and finish
+                       // runs 4837-4842, 152,951 decisions and 385)
 // (A LINE THAT LEAVES THE STACK TOWERED beside one that leaves it flatter (the flatness floor's measure, judge.c towerOf): towered where the
 // other is not, or TOWER_STEP rows taller -- the other's board standing a break's time)
 static int toweredBeside(const Judge *t, const Judge *f) {
@@ -1046,13 +1049,17 @@ static int compareJudged(const Judge *x, const Judge *y) {
   // three cross the middle columns three times as often as the edges, so clears left to themselves leave the edges standing, and garbage
   // resting on a column few panels touch is the break that cannot be made. Only where the flatter one's board stands a break's time,
   // breaks no less garbage or the other breaks none, and is the hold, walks no more than WALK_EARN actions, or leaves the window a
-  // break's walk when the next block lands
+  // break's walk when the next block lands. Where either leaves a tower TOWER_HIGH rows or more with garbage on the board or on its way,
+  // the flatter goes first by a row, lost sooner or not: the frames a clear buys beside the tower are the frames before the garbage rests
+  // on it, and a tower comes down a row a swap
   if (!lx && !ly && x->o.j.tower >= 0 && y->o.j.tower >= 0) {
     int tx = x->o.j.tower, ty = y->o.j.tower;
-    int differ = (tx >= TOWER_ROWS) != (ty >= TOWER_ROWS) || (tx >= TOWER_ROWS && ty >= TOWER_ROWS && iabs(tx - ty) >= TOWER_STEP);
+    int tall = imax(tx, ty) >= TOWER_HIGH && (decF.under || garbageComing());
+    int differ = (tx >= TOWER_ROWS) != (ty >= TOWER_ROWS) || (tx >= TOWER_ROWS && ty >= TOWER_ROWS && iabs(tx - ty) >= (tall ? 1 : TOWER_STEP));
     if (differ) {
       const Judge *f = tx < ty ? x : y, *t = tx < ty ? y : x;
-      if (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (lostAlike(f, t) || lostOf(f) >= lostOf(t)) &&
+      int high = tall;
+      if (!f->o.dead && diesAt(f) >= rankSave && diesAt(f) < 1e299 && (high || lostAlike(f, t) || lostOf(f) >= lostOf(t)) &&
           (imax(0, f->apBroke) >= imax(0, t->apBroke) || !(t->apBroke > 0)) &&
           (pressAllowance < 0 || f->hold || lineWalk(f) <= WALK_EARN || allowAtLanding(lineWalk(f)) >= BREAK_WALK))
         return (cmpKey = __LINE__, (f == x ? -1 : 1));
