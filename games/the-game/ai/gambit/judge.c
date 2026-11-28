@@ -252,13 +252,20 @@ static int readyDefer;
 // readyCollect: and while it is deferred, the landed board kept -- searched once a decision, by whichever thread begins it
 // (readyPendLast: which) -- and how near a break it is by the shape math (readyNearLast), what the decision asks it in the order of
 static int32_t readyCollect; static LOCAL int32_t readyPendLast, readyNearLast, readyMatLast, readyHollowLast;
-// THE WELL UNDER THE GARBAGE AS IT LANDS: the empty cells under each column's lowest garbage -- garbage resting on a column or two over
-// low ones touches only their tops, and the cells under it are where no panel reaches it from below
+// A SLAB'S CELL: garbage that stays garbage -- a cell matched or popping is a panel on its way, and the cells under it are where its
+// panels fall
+static int slabCell(const Board *b, int r, int c) {
+  if (r >= b->nrows) return 0;
+  const int32_t *f = b->p[r][c].f;
+  return f[COLOR] && f[ISGARBAGE] && f[STATE] != MATCHED && f[STATE] != POPPING && f[STATE] != POPPED;
+}
+// THE WELL UNDER THE GARBAGE AS IT LANDS: the empty cells under each column's lowest slab cell (slabCell) -- garbage resting on a column
+// or two over low ones touches only their tops, and the cells under it are where no panel reaches it from below
 static int32_t underLowestOf(const Board *b) {
   int32_t h = 0;
   for (int c = 1; c <= W; c++) {
     int lo = 0;
-    for (int r = 1; r < b->nrows && !lo; r++) if (gridCell(b, r, c) < 0) lo = r;
+    for (int r = 1; r < b->nrows && !lo; r++) if (slabCell(b, r, c)) lo = r;
     for (int r = 1; r < lo; r++) if (gridCell(b, r, c) == 0) h++;
   }
   return h;
@@ -379,12 +386,13 @@ static int32_t restsFewOf(const Board *b) {
   }
   return span >= 3 && sup >= 1 && sup <= 2 ? low - 1 - lo : 0;
 }
-// HOW HOLLOW A BOARD IS UNDER ITS GARBAGE: the empty cells under each column's highest garbage, as search/bits.c bitsShape counts them
+// HOW HOLLOW A BOARD IS UNDER ITS GARBAGE: the empty cells under each column's highest slab cell (slabCell) -- search/bits.c
+// bitsShape's count, less the garbage already turning to panels
 static int32_t hollowOf(const Board *b) {
   int32_t h = 0;
   for (int c = 1; c <= W; c++) {
     int hg = 0;
-    for (int r = 1; r < b->nrows; r++) if (gridCell(b, r, c) < 0) hg = r;
+    for (int r = 1; r < b->nrows; r++) if (slabCell(b, r, c)) hg = r;
     for (int r = 1; r < hg; r++) if (gridCell(b, r, c) == 0) h++;
   }
   return h;
