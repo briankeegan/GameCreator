@@ -115,6 +115,23 @@ large chains go down while the eights and other combos go up.
    141, switching 143, fill 147. A mode's runs replay its own seeds, so builds are compared on the same games; a mode is done only once
    it has also played 28/28 twice on seed bases it has never played -- a fix that holds only on the seeds it was made on is no fix (the
    owner: it has to work on new seeds, and in bad runs).
+   **The runners (the owner): skip by model, never by vendor.** A game's result depends on the runner's CPU model: each decision has
+   the same wall-clock time, so a slower model searches less and loses more. gambit-24, 43 runs (4799-4848), each model's losses
+   against what its own runs' loss rate gave it: Intel Xeon Platinum 8573C 91 games, 1.73 -- skip; AMD EPYC 7763 289 games, 1.46 --
+   skip; AMD EPYC 9V74 255 games, 1.33 -- skip; Intel Xeon 6975P-C 986 games, 0.78 -- play; AMD EPYC 9V45 146 games, 0.56, the best --
+   play; any model not named -- play. Every workflow that plays games does this:
+   1. The first step of every game job reads the model (`lscpu | sed -n 's/^Model name: *//p' | head -1`) and writes it to the game's
+      `cpu.txt`, which the report reads.
+   2. The match is on the model NUMBER, case-insensitive: 8573C, 7763, 9V74 -- never a vendor or brand word ("AMD", "EPYC",
+      "Platinum": "Platinum" would also skip the 8370C, which lost 0 of 24).
+   3. On a match the job stops before the game starts: "skipped runner: <model>" in the job summary, exit non-zero. No game is
+      played or counted.
+   4. When the run ends, if every failed job is a skipped runner, the failed jobs alone are run again
+      (`POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs`) -- a re-run gets a new runner -- until none is skipped.
+   5. On the 4th attempt (`github.run_attempt >= 4`) the job plays on whatever runner it has, so every run finishes all its games.
+   6. The report lists games and losses by runner model (`gambit_summary.js`, the `runners:` line) and flags a game played on a
+      skipped model.
+   About a third of jobs get one retry. It does not fix the bot on a slow machine: live games on Actions can still land on one.
    **The order (the owner's):** 22 of the 24 garbage games and all 4 endless is where a mode is left for the next -- a change made for
    one mode can undo another's, so the last two are won with the three run together, each change checked for a mode it set back,
    until all three are at 24, twice.
